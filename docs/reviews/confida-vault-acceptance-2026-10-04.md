@@ -169,5 +169,7 @@ fixed/auto-hide preference remains shared across products.
   selections explicitly: remove obsolete names, or securely store the intended
   values in the correct project/Vault and assign the necessary group access.
   Keep the 13 valid project secrets and do not broaden Vault grants as a workaround.
-  This configuration decision is pending; no live secret values or selections
-  were changed during diagnosis.
+  No live secret values or selections were changed during diagnosis. The
+  subsequent [one-time migration](../vault-secret-selection-migration.md)
+  reconciles confirmed absent selections during deployment, with private
+  backups, while retaining all existing records and group permission checks.

@@ -427,6 +427,17 @@ MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
 vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
 
+# One-time reconciliation before Vault's stricter admission starts serving.
+# The command backs up manifests, preserves stored/ungranted names and values,
+# and stamps completion only after a fully readable scan and successful writes.
+if [[ "${VAULT_ENABLED:-false}" == "true" ]]; then
+  echo "==> [$RELEASE_ID] Reconciling legacy secret selections"
+  # shellcheck disable=SC1091
+  ( set -a; . "$REMOTE_APP/.env"; set +a;
+    exec "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-secret-selections \
+      --docs-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state" --apply --once )
+fi
+
 # One-time migration of legacy Workflow Builder chats, if this product opted
 # in. Runs after `current` points at code that understands the new nested
 # layout, but before starting the new agent, so no turn can rewrite a

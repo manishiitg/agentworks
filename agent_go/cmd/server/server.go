@@ -1689,6 +1689,7 @@ func init() {
 	ServerCmd.AddCommand(addUserCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
+	ServerCmd.AddCommand(migrateSecretSelectionsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
 	ServerCmd.AddCommand(migrateCrewsToSharedRootCmd)
@@ -1931,6 +1932,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to resolve durable structured-event state: %v", err)
 	}
 	migrateDurableChatsAtStartup(eventStateRoot)
+	migrateSecretSelectionsAtStartup(eventStateRoot)
 	dedupeChatHistoriesAtStartup(eventStateRoot)
 	eventJournal, err := events.OpenSQLiteEventJournal(filepath.Join(eventStateRoot, "structured-chat-events-v2.sqlite"))
 	if err != nil {
