@@ -138,10 +138,20 @@ unlisted and future tools refused by default.
 - Adding a tool is one line in `museFullNativeTools`; a refused tool shows up in the
   chat transcript as "tool blocked by hook".
 
+## Cursor: goals and AskQuestion (provider pinned `ec337e3`)
+
+Audit with real Cursor runs: its own `CreateGoal`, `UpdateGoal`, `AskQuestion`, `SwitchMode`,
+`TodoWrite` and `ReadLints` run in Full mode, and Cursor fires NO hook for them (a control
+run showed the hook firing for `Shell` only), so they cannot be refused like Muse's. The Full-mode
+guidance now tells the agent not to use `CreateGoal`/`UpdateGoal`/`AskQuestion` (goals and
+scheduling belong to the platform; ask in the reply, or use the clarification tool if listed;
+a chat nobody is watching must never wait on a question). Real cursor-agent: without the line it
+used both; with it it declined both and asked in its reply. Prompt-level only, nothing enforces it.
+
 ## Left (policy)
 
-- Cursor and Agy were not audited tool by tool; Cursor uses `WithCursorFullNativeTools`
-  plus its hooks, Agy a mode hook.
+- Agy was not audited tool by tool (it needs a logged-in run); its Full-mode gate allows any
+  tool name.
 
 ## Left
 
