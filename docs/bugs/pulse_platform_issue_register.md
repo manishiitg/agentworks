@@ -1,3 +1,7 @@
+## Muse messages ran three or more times: stale refusal notice — PLAT-422
+
+[PLAT-422](pulse_platform/coding-agent-bridge/plat-422.md), P1, fixed on `main`; deploy in progress. A refusal now needs a new notice or the draft still in the input box.
+
 ## Muse launch ended at once: sweep prelude could not find `muse` — PLAT-421
 
 [PLAT-421](pulse_platform/coding-agent-bridge/plat-421.md), P1, fixed on `main`; deploy to Excellence and RTS in progress.
