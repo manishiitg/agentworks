@@ -438,7 +438,7 @@ Select a deletion independently of a live version:
 
 Resolve the token to its server-side path and retained folder; a client-supplied path cannot change what it deletes. Both preparation and push check the caller's current Editor permission there. `backup_knowledgebase(action=status)` can include authorized deletion records so another permitted writer can find and back up an unpushed deletion.
 
-Keep tombstones and their tokens as durable internal records. Do not export them to Git. Reserve the deleted path until its absence is confirmed in the remote and no unknown push can restore it. It can then be reused by a new entry with a new ID. Prepared snapshots are bound to entry IDs as well as paths, so an old content or deletion receipt cannot overwrite or remove a replacement entry. A retry of an already-pushed receipt returns its recorded outcome without touching the replacement.
+Keep tombstones and their tokens as durable internal records. Do not export them to Git. Reserve the deleted path until its absence is confirmed in the remote and no unknown push can restore it. It can then be reused by a new entry with a new ID. On a live-only installation with no configured remote, no initialized backup history, and no receipts, the path can be reused immediately; its deletion status is `not_required`. Removing a configured remote does not release paths with existing backup history. Prepared snapshots are bound to entry IDs as well as paths, so an old content or deletion receipt cannot overwrite or remove a replacement entry. A retry of an already-pushed receipt returns its recorded outcome without touching the replacement.
 
 ### 9.5 Receipt lifecycle and retries
 
@@ -566,6 +566,11 @@ Private registries, journals, identities, request outcomes and backup receipts a
 24. The registered product uses the shared viewer/chat shell and platform identity. Its access-builder principal cannot execute content or backup mutations, even when the signed-in user separately has Editor access through content MCP.
 
 ## 13. V2 and deferred work
+
+Workflow/Crew coexistence, execution identity and audience checks, and the
+explicit migration/cutover contract are documented in
+[the integration and migration plan](knowledgebase-integration-migration.md).
+Deployment does not automatically rewrite legacy manifests or move their files.
 
 - Knowledge graphs and structured relationships between entries.
 - Automated ingestion, fact extraction, enrichment, and consolidation.

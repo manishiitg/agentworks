@@ -822,6 +822,18 @@ func commonFolder(sels []Snapshot) string {
 }
 func (s *Service) deletionReusable(d Deletion) bool {
 	st := s.backupState()
+	// A live-only installation has no remote deletion to confirm. Never use
+	// this exception after backup initialization or while receipts exist:
+	// removing the remote must not release paths with unpublished snapshots.
+	if s.cfg.BackupRemote == "" && !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {
+		// An unreadable/corrupt state is not evidence of a live-only store.
+		b, err := os.ReadFile(filepath.Join(s.private, "backup-state.json"))
+		if err != nil && !os.IsNotExist(err) || err == nil && json.Unmarshal(b, &st) != nil {
+			return false
+		}
+		rs, err := s.receipts()
+		return err == nil && len(rs) == 0
+	}
 	if !st.Initialized || st.ExternalChange {
 		return false
 	}
@@ -909,7 +921,9 @@ func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
 				return nil, inspectErr
 			}
 			state := "pending"
-			if st.Initialized && !exists && s.deletionReusable(d) {
+			if s.cfg.BackupRemote == "" && !st.Initialized && s.deletionReusable(d) {
+				state = "not_required"
+			} else if st.Initialized && !exists && s.deletionReusable(d) {
 				state = "backed_up"
 			} else {
 				for _, rec := range receipts {

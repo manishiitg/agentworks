@@ -3,13 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
@@ -45,6 +48,51 @@ func knowledgebaseServerTest(t *testing.T) (*StreamingAPI, *knowledgebase.Servic
 	call("create_knowledgebase", map[string]any{"folder_path": "Payments/Checkout", "filename": "retries.md", "type": "skill", "title": "Retries", "content": "# Retries\nRetry failed payments safely.\n", "request_id": "entry-checkout"})
 	call("create_knowledgebase", map[string]any{"folder_path": "Payments/Billing", "filename": "private.md", "type": "note", "title": "Billing private", "content": "Protected billing secret", "request_id": "entry-billing"})
 	return &StreamingAPI{}, service
+}
+
+func TestKnowledgebaseReconcileRouteRequiresInteractiveAdministrator(t *testing.T) {
+	api, _ := knowledgebaseServerTest(t)
+	remote := filepath.Join(t.TempDir(), "backup.git")
+	if output, err := exec.Command("git", "init", "--bare", remote).CombinedOutput(); err != nil {
+		t.Fatalf("remote: %v %s", err, output)
+	}
+	t.Setenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE", remote)
+	for _, tc := range []struct {
+		name   string
+		claims *UserClaims
+		want   int
+	}{
+		{"anonymous", nil, http.StatusForbidden},
+		{"reader", &UserClaims{UserID: "priya", Username: "priya"}, http.StatusForbidden},
+		{"admin-token", &UserClaims{UserID: "admin", Username: "admin", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read", "knowledgebase:write"}}}, http.StatusForbidden},
+		{"admin-session", &UserClaims{UserID: "admin", Username: "admin"}, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/knowledgebase/maintenance/reconcile-backup", nil)
+			if tc.claims != nil {
+				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, tc.claims))
+			}
+			w := httptest.NewRecorder()
+			api.handleKnowledgebaseReconcileBackup(w, r)
+			if w.Code != tc.want {
+				t.Fatalf("got %d %s, want %d", w.Code, w.Body, tc.want)
+			}
+			if w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("maintenance response cacheable")
+			}
+		})
+	}
+	service, err := knowledgebaseService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := service.Call(t.Context(), knowledgebase.Principal{IdentityID: "priya"}, "read_knowledgebase", map[string]any{"path": "Payments/Checkout/retries.md"})
+	if err != nil || !strings.Contains(fmt.Sprint(value), "Retry failed payments safely") {
+		t.Fatal("reconciliation changed live content or grants", value, err)
+	}
+	if output, err := exec.Command("git", "--git-dir="+remote, "for-each-ref", "--format=%(refname)", "refs/heads").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("reconciliation published: %s %v", output, err)
+	}
 }
 
 func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
@@ -124,5 +172,33 @@ func TestKnowledgebaseConfigRejectsWorkspaceDataRoots(t *testing.T) {
 		if _, err := knowledgebaseConfig(); err == nil {
 			t.Fatalf("accepted overlapping root %s", root)
 		}
+	}
+}
+
+func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testing.T) {
+	_, service := knowledgebaseServerTest(t)
+	// Unattended calls have no browser claims and must use the trusted run
+	// identity, with exactly the same folder checks as interactive MCP calls.
+	args := map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}
+	if result, err := knowledgebaseExecute(t.Context(), "priya", false, "read_knowledgebase", args); err != nil || !strings.Contains(result, "Retry failed payments safely") {
+		t.Fatal("run identity could not read granted folder", result, err)
+	}
+	if _, err := knowledgebaseExecute(t.Context(), "outsider", false, "read_knowledgebase", args); err == nil {
+		t.Fatal("ungranted run identity read shared knowledge")
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
+	if _, err := knowledgebaseExecute(ctx, "priya", false, "read_knowledgebase", args); err == nil {
+		t.Fatal("run identity borrowed another caller's authority")
+	}
+	admin := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}
+	access, err := service.Call(t.Context(), admin, "get_knowledgebase_access", map[string]any{"folder_path": "Payments/Checkout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Call(t.Context(), admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "request_id": "revoke-runtime", "expected_acl_version": access.(map[string]any)["acl_version"]}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := knowledgebaseExecute(t.Context(), "priya", false, "read_knowledgebase", args); err == nil {
+		t.Fatal("running agent retained revoked folder access")
 	}
 }

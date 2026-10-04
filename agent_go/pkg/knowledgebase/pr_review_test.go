@@ -1,0 +1,132 @@
+package knowledgebase
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLiveOnlyDeletedPathCanBeRecreated(t *testing.T) {
+	s, admin, _ := fixture(t, false)
+	old := create(t, s, admin, "", "guide.md", "old", "create-old")
+	deleted := call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": old["entry_id"], "expected_version": old["version"], "request_id": "delete-old"})
+	status := call(t, s, admin, "get_knowledgebase_backup_status", nil)
+	if asMap(status["deletions"].([]any)[0])["backup_status"] != "not_required" {
+		t.Fatal("live-only deletion marked pending backup", status)
+	}
+	replacement := create(t, s, admin, "", "Guide.md", "replacement", "create-new")
+	if replacement["entry_id"] == old["entry_id"] {
+		t.Fatal("replacement reused the deleted identity")
+	}
+	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": old["entry_id"], "expected_version": old["version"], "request_id": "delete-old"})
+	if got := call(t, s, admin, "read_knowledgebase", map[string]any{"entry_id": replacement["entry_id"]}); got["content"] != "replacement" {
+		t.Fatal("old delete retry affected replacement", got)
+	}
+	// Configuring backup later must not let a historical tombstone delete
+	// the newly created entry from the same path.
+	s.cfg.BackupRemote = "unused-remote"
+	_, err := s.collect(admin, map[string]any{"deletions": []any{map[string]any{"deletion_id": deleted["deletion_id"]}}})
+	if failure, ok := err.(*Error); !ok || failure.Code != "BACKUP_VERSION_CONFLICT" {
+		t.Fatal("historical deletion selected over replacement", err)
+	}
+}
+
+func TestCorruptBackupStateDoesNotReleaseDeletedPath(t *testing.T) {
+	s, admin, _ := fixture(t, false)
+	entry := create(t, s, admin, "", "guide.md", "old", "create")
+	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
+	if err := os.WriteFile(filepath.Join(s.private, "backup-state.json"), []byte("{broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"}, "PATH_PENDING_DELETION_BACKUP")
+}
+
+func TestRemovingRemoteDoesNotReleaseDeletedBackupPath(t *testing.T) {
+	s, admin, _ := fixture(t, true)
+	entry := create(t, s, admin, "", "guide.md", "old", "create")
+	push(t, s, admin, commit(t, s, admin, entry, "commit"), "push")
+	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
+	s.cfg.BackupRemote = ""
+	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"}, "PATH_PENDING_DELETION_BACKUP")
+}
+
+func TestValidateCapsUsesLiveGrantsAndIdentity(t *testing.T) {
+	s, admin, reader := fixture(t, false)
+	folder(t, s, admin, "", "Payments")
+	folder(t, s, admin, "Payments", "Checkout")
+	folder(t, s, admin, "", "Private")
+	grant(t, s, admin, reader.IdentityID, "Payments", "Reader", "grant")
+	entry := create(t, s, admin, "Payments", "guide.md", "text", "create")
+	cases := []struct {
+		name, identity string
+		caps           *[]Cap
+		want           string
+	}{
+		{"unrestricted", reader.IdentityID, nil, ""},
+		{"empty", reader.IdentityID, &[]Cap{}, ""},
+		{"inherited", reader.IdentityID, &[]Cap{{FolderPath: "Payments/Checkout", Role: "Reader"}}, ""},
+		{"overgrant", reader.IdentityID, &[]Cap{{FolderPath: "Payments", Role: "Editor"}}, "FORBIDDEN"},
+		{"outside", reader.IdentityID, &[]Cap{{FolderPath: "Private", Role: "Reader"}}, "FORBIDDEN"},
+		{"owner", reader.IdentityID, &[]Cap{{FolderPath: "Payments", Role: "Owner"}}, "INVALID_ARGUMENT"},
+		{"missing", reader.IdentityID, &[]Cap{{FolderPath: "Missing", Role: "Reader"}}, "NOT_FOUND"},
+		{"impersonation", "admin", nil, "FORBIDDEN"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.ValidateCaps(context.Background(), reader, tc.identity, tc.caps)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if failure, ok := err.(*Error); !ok || failure.Code != tc.want {
+				t.Fatalf("got %v, want %s", err, tc.want)
+			}
+		})
+	}
+	empty := reader
+	empty.Caps = &[]Cap{}
+	code(t, s, empty, "read_knowledgebase", map[string]any{"entry_id": entry["entry_id"]}, "NOT_FOUND")
+	call(t, s, admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments", "identity_id": reader.IdentityID, "request_id": "revoke", "expected_acl_version": call(t, s, admin, "get_knowledgebase_access", map[string]any{"folder_path": "Payments"})["acl_version"]})
+	if err := s.ValidateCaps(context.Background(), reader, reader.IdentityID, &[]Cap{{FolderPath: "Payments", Role: "Reader"}}); err == nil {
+		t.Fatal("revoked grant validated")
+	}
+	if err := s.ValidateCaps(context.Background(), admin, "missing", nil); err == nil {
+		t.Fatal("unknown identity validated")
+	}
+}
+
+func TestRevokedFolderGrantCannotPublishPreparedReceipt(t *testing.T) {
+	s, admin, writer := fixture(t, true)
+	folder(t, s, admin, "", "Payments")
+	grant(t, s, admin, writer.IdentityID, "Payments", "Editor", "grant")
+	entry := create(t, s, writer, "Payments", "guide.md", "private", "create")
+	receipt := commit(t, s, writer, entry, "commit")
+	call(t, s, admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments", "identity_id": writer.IdentityID, "request_id": "revoke", "expected_acl_version": call(t, s, admin, "get_knowledgebase_access", map[string]any{"folder_path": "Payments"})["acl_version"]})
+	if _, err := s.Call(context.Background(), writer, "push_knowledgebase", map[string]any{"receipt_id": receipt["receipt_id"], "request_id": "push"}); err == nil {
+		t.Fatal("revoked folder grant published")
+	}
+	if tip := gitTest(t, "--git-dir="+s.cfg.BackupRemote, "for-each-ref", "--format=%(refname)", "refs/heads/main"); tip != "" {
+		t.Fatal("remote branch changed", tip)
+	}
+}
+
+func TestEntryAndFolderNamesRejectUnsafePaths(t *testing.T) {
+	s, admin, _ := fixture(t, false)
+	invalid := []string{"", ".", "..", "../secret", "/absolute", "a/b", `a\b`, " space", "space ", "CON", "nul", "COM1", "LPT9", "a\x00b", strings.Repeat("x", 65)}
+	for i, name := range invalid {
+		code(t, s, admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": name, "request_id": fmt.Sprintf("folder-%d", i)}, "INVALID_ARGUMENT")
+		code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": name + ".md", "type": "note", "title": "Title", "content": "text", "request_id": fmt.Sprintf("entry-%d", i)}, "INVALID_ARGUMENT")
+	}
+	for i, name := range []string{"guide", "guide.MD", "guide.txt"} {
+		code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": name, "type": "note", "title": "Title", "content": "text", "request_id": fmt.Sprintf("extension-%d", i)}, "INVALID_ARGUMENT")
+	}
+	folder(t, s, admin, "", "Payments")
+	code(t, s, admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "payments", "request_id": "case-folder"}, "NAME_CONFLICT")
+	create(t, s, admin, "Payments", "guide.md", "text", "valid")
+	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "Payments", "filename": "GUIDE.md", "type": "note", "title": "Title", "content": "text", "request_id": "case-file"}, "NAME_CONFLICT")
+}

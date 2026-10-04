@@ -41,6 +41,18 @@ uses its current grants; an empty cap list grants nothing. Only administrators c
 mint a Knowledge Base token for a managed service account. Disabling a service
 account invalidates its connections.
 
+## Workflow and Crew rollout
+
+The shared product coexists with workflow-local `knowledgebase/`, legacy
+`knowledgebase_sources`, and Crew workspace attachments. Merging or deploying
+this MVP does not migrate them, rewrite manifests, or grant folder access.
+Work/Code profiles and workflow tools can use the shared MCP surface under their
+execution identity; an existing attachment is not a shared-folder grant.
+See [the integration and migration plan](design/knowledgebase-integration-migration.md)
+for the merge rollout, identity/audience requirements, and explicit cutover.
+
+## MCP operations
+
 The MCP endpoint is `/api/external/v1/mcp`. Authenticate with a Bearer token, use
 `get_api_spec` to discover tools and schemas, then `call_tool` with the operation
 name and its arguments. The existing local bridge uses the same catalog.
@@ -68,6 +80,11 @@ live directory or push a private receipt ref yourself.
 Content and diffs must be UTF-8 text. Binary control characters and NUL bytes are
 rejected; CRLF and CR line endings are normalized to LF. Tags must be unique and
 non-empty; an empty tag list clears tags.
+
+Without a configured remote or any initialized backup history/receipts, a
+deleted filename can be reused immediately with a new entry ID. Its retained
+deletion record reports `backup_status: not_required`. Removing a remote after
+backup was initialized does not waive confirmation for reserved paths.
 
 Backup status includes a durable, sanitized `last_backup_error` for backend
 failures. Successful publication, confirmed unknown-outcome recovery, or
