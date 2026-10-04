@@ -29,6 +29,23 @@ export function googleAccessLevels(conn: GmailConnection): { gmail: GoogleAccess
   return { gmail, levels }
 }
 
+/** Google's grants, separately from the stored AgentWorks choices. */
+export function googleGrantedAccess(scopes: string[]): { gmail: GoogleAccessLevel; gmailRead: boolean; gmailWrite: boolean; gmailSend: boolean; levels: Record<string, GoogleAccessLevel> } {
+  const has = (...names: string[]) => names.some(name => scopes.includes(`https://www.googleapis.com/auth/${name}`))
+  const fullGmail = has('gmail.modify') || scopes.includes('https://mail.google.com/')
+  const readGmail = has('gmail.readonly') || fullGmail
+  const gmailWrite = has('gmail.compose') || fullGmail
+  const gmail: GoogleAccessLevel = gmailWrite ? 'write' : readGmail ? 'read' : 'off'
+  const scopeNames: Record<string, string> = { drive: 'drive', calendar: 'calendar', docs: 'documents', sheets: 'spreadsheets', slides: 'presentations' }
+  const levels: Record<string, GoogleAccessLevel> = {}
+  for (const service of GOOGLE_SERVICES) {
+    const driveCompatible = ['docs', 'sheets', 'slides'].includes(service.key)
+    levels[service.key] = has(scopeNames[service.key]) || (driveCompatible && has('drive')) ? 'write'
+      : has(`${scopeNames[service.key]}.readonly`) || (driveCompatible && has('drive.readonly')) ? 'read' : 'off'
+  }
+  return { gmail, gmailRead: readGmail, gmailWrite, gmailSend: has('gmail.send') || gmailWrite, levels }
+}
+
 /** What the agent may do with the account, in one line of plain words. */
 export function googleAccessSummary(conn: GmailConnection): string {
   const { gmail, levels } = googleAccessLevels(conn)

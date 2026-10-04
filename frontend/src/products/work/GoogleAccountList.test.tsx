@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GmailConnection } from '../../services/api-types'
 import { GoogleAccountList } from './GoogleAccountList'
-import { CHANGE_GOOGLE_ACCESS_EVENT, googleAccessSummary } from './googleAccountAccess'
+import { CHANGE_GOOGLE_ACCESS_EVENT, googleAccessSummary, googleGrantedAccess } from './googleAccountAccess'
 
 const account = (extra: Partial<GmailConnection>): GmailConnection => ({
   id: 'c1', display_name: 'Google account', email: 'me@x.com', enabled: true, is_default: false, ready: true,
@@ -45,7 +45,7 @@ describe('Google accounts in a Code', () => {
     cleanups.push(() => window.removeEventListener(CHANGE_GOOGLE_ACCESS_EVENT, seen))
     await act(async () => { root.render(<GoogleAccountList connections={[account({})]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />) })
     expect(host.textContent).toContain('me@x.com')
-    expect(host.textContent).toContain('Current agent access')
+    expect(host.textContent).toContain('AgentWorks settings')
     expect(host.textContent).toContain('Gmail: Read only')
     expect(host.textContent).toContain('Drive: Read only')
     expect(host.textContent).toContain('Docs: No access')
@@ -55,4 +55,24 @@ describe('Google accounts in a Code', () => {
     expect(seen).toHaveBeenCalledTimes(1)
     expect((seen.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ email: 'me@x.com', gmail: 'read', levels: { drive: 'read', calendar: 'read' } })
   })
+})
+
+it('distinguishes Google-granted Gmail reading from disabled AgentWorks reading', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  cleanups.push(() => { act(() => root.unmount()); host.remove() })
+  await act(async () => root.render(<GoogleAccountList connections={[account({ allow_read_access: false, services: [], auth: { scopes: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send'] } as GmailConnection['auth'] })]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />))
+  expect(host.textContent).toContain('Gmail: Notifications only')
+  expect(host.textContent).toContain('Google: Read, Send')
+  expect(host.textContent).toContain('Gmail reading is granted by Google but disabled in AgentWorks')
+})
+
+it('recognizes broader Google grants without treating restricted scopes as full access', () => {
+  const grant = googleGrantedAccess(['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/gmail.compose'])
+  expect(grant.levels.docs).toBe('write')
+  expect(grant.gmailRead).toBe(false)
+  expect(grant.gmailWrite).toBe(true)
+  const restricted = googleGrantedAccess(['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/gmail.metadata'])
+  expect(restricted.levels.drive).toBe('off')
+  expect(restricted.gmailRead).toBe(false)
 })

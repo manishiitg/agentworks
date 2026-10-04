@@ -21,6 +21,13 @@ export interface GoogleAppConnectRequest {
 
 export const googleAppApi = {
   status: async (): Promise<GoogleAppStatus> => (await api.get('/api/human-feedback/gmail/google-app')).data,
+  clients: async () => (await agentApi.listGmailOAuthClients()).clients,
+  registerClient: async (name: string, json: unknown) => agentApi.createGmailOAuthClient(name, json),
+  connectWithClient: async (clientName: string, req: GoogleAppConnectRequest): Promise<{ id: string; auth_url: string }> => {
+    const created = await agentApi.createGmailConnection({ ...req, client_name: clientName, display_name: req.display_name || 'Google account' })
+    const started = await agentApi.startGmailConnectionAuth(created.id)
+    return { id: created.id, auth_url: started.auth_url }
+  },
   /** Create the connection, then open Google's sign-in; the server stores the login when Google returns. */
   connect: async (req: GoogleAppConnectRequest): Promise<{ id: string; auth_url: string }> => {
     const created = (await api.post('/api/human-feedback/gmail/google-app/connect', req)).data as { id: string }
@@ -31,6 +38,7 @@ export const googleAppApi = {
   reconnect: async (id: string, req: GoogleAppConnectRequest): Promise<{ id: string; auth_url: string }> => {
     await agentApi.updateGmailConnection(id, {
       services: req.services,
+      services_set: req.services !== undefined,
       allow_read_access: req.allow_read_access,
       allow_agent_write_access: req.allow_agent_write_access,
     })

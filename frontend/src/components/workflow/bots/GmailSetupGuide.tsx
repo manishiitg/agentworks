@@ -69,7 +69,7 @@ export function GmailSetupGuide({ backend }: { backend?: string }) {
       >
         <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
         First-time setup guide
-        <span className="font-normal text-muted-foreground">— needed before adding your first account</span>
+        <span className="font-normal text-muted-foreground">— for your own OAuth JSON</span>
       </button>
 
       {open && (
@@ -173,7 +173,7 @@ export function GmailSetupGuide({ backend }: { backend?: string }) {
 
             <Step n={6} title="Check the downloaded client file">
               <p>
-                Keep the downloaded JSON file ready to upload under <strong>Sending accounts</strong> below.
+                Keep the downloaded JSON file ready for <strong>Use my own OAuth JSON</strong>.
                 You do not need to place it on the server filesystem.
               </p>
               <p>
@@ -198,9 +198,9 @@ export function GmailSetupGuide({ backend }: { backend?: string }) {
 
             <Step n={8} title="Add your mailboxes">
               <p>
-                Under <strong>Sending accounts</strong> below, enter the mailbox address, upload the OAuth client JSON,
-                choose the access it needs, and click <strong>Add &amp; sign in</strong>. Complete Google consent in
-                the browser. Use <strong>+ Add account</strong> for another mailbox; you can reuse the same Google
+                In <strong>Connect a Google account</strong>, select <strong>Use my own OAuth JSON</strong>, name the app and upload its JSON,
+                choose the access it needs, and click <strong>Connect Google account</strong>. Complete Google consent in
+                the browser. Reuse the saved app in <strong>Connect a Google account</strong> for another mailbox; you can reuse the same Google
                 Cloud project when appropriate.
               </p>
               <Gotcha>
