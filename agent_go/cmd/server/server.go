@@ -3965,7 +3965,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Scheduled/Chief requests may already carry the configured secret name at
 	// this point. Resolve it for backend delivery and strip it from agent env.
 	api.resolveNotificationSecretForRequest(r.Context(), currentUserID, req.SelectedFolder, &req)
-	if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+	if err := api.validateQuerySecretSelection(r.Context(), currentUserID, req); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}

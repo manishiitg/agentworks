@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -155,6 +156,25 @@ func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.
 	writeUsersJSON(w, 200, map[string]any{"success": true})
 }
 
+// Workflow secrets are loaded later in handleQuery. The first admission check
+// must use the same server-resolved workspace and encrypted project store,
+// rather than treating the browser's empty decrypted list as authoritative.
+func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
+	scoped := req.DecryptedSecrets
+	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
+		workspace := req.SelectedFolder
+		// Phase execution prefers the preset; headless execution prefers the
+		// explicit folder. Match the respective manifest-loading paths.
+		if req.AgentMode == "workflow_phase" || strings.TrimSpace(workspace) == "" {
+			if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil && resolved != "" {
+				workspace = resolved
+			}
+		}
+		scoped = api.loadSelectedSecrets(ctx, userID, workspace, *req.SelectedGlobalSecrets)
+	}
+	return validateVaultSecretSelection(ctx, userID, scoped, req.SelectedGlobalSecrets)
+}
+
 // A requested shared secret must resolve or the run stops before any execution.
 // A same-named project secret retains the established project precedence.
 func validateVaultSecretSelection(ctx context.Context, userID string, scoped []struct {
@@ -174,6 +194,15 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 	if len(wanted) == 0 {
 		return nil
 	}
+	existing := map[string]bool{}
+	for _, s := range getGlobalSecrets() {
+		existing[s.Name] = true
+	}
+	for _, name := range *selection {
+		if wanted[name] && !existing[name] {
+			return fmt.Errorf("Secret %q does not exist", name)
+		}
+	}
 	rows, err := permittedGlobalSecrets(ctx, userID)
 	if err != nil {
 		return errors.New("Vault secret permissions are unavailable; execution was stopped")
@@ -181,8 +210,10 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 	for _, s := range rows {
 		delete(wanted, s.Name)
 	}
-	if len(wanted) > 0 {
-		return errors.New("A selected secret is unavailable or your group no longer has access. Check Integrations > Secrets")
+	for _, name := range *selection {
+		if wanted[name] {
+			return fmt.Errorf("Your groups do not have access to secret %q. Check Vault > Access", name)
+		}
 	}
 	return nil
 }

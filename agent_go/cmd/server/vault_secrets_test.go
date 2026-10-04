@@ -95,3 +95,63 @@ func withVaultSecretGrant(t *testing.T, userID string, names ...string) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", token)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 }
+
+func TestQuerySecretAdmissionLoadsTheExecutionWorkspace(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	withVaultSecretGrant(t, "bob") // No shared-secret grants.
+	managedGlobalsMu.Lock()
+	oldGlobals, oldManaged := globalSecrets, managedGlobals
+	globalSecrets, managedGlobals = nil, map[string]string{}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() {
+		managedGlobalsMu.Lock()
+		globalSecrets, managedGlobals = oldGlobals, oldManaged
+		managedGlobalsMu.Unlock()
+	})
+	encrypted, err := encryptSecretValueWithAAD("project-test-value", []byte("alice"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := env.do(t, env.api.handleStoreWorkflowSecret, http.MethodPut, "/api/secrets/workflow/store", "alice", storeSecretRequest{
+		Name: "PROJECT_TOKEN", EncryptedValue: encrypted, WorkspacePath: "Workflow/w",
+	}, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("store project secret: %d", w.Code)
+	}
+	names := []string{"PROJECT_TOKEN"}
+	cases := []struct {
+		name, mode, folder, preset string
+		allowed                    bool
+	}{
+		{"phase preset wins over stale browser folder", "workflow_phase", "Workflow/v", "wf-w", true},
+		{"headless explicit folder wins", "workflow", "Workflow/w", "wf-v", true},
+		{"headless resolves absent folder from preset", "workflow", "", "wf-w", true},
+		{"phase falls back when preset missing", "workflow_phase", "Workflow/w", "absent", true},
+		{"other preset cannot borrow browser folder secret", "workflow_phase", "Workflow/w", "wf-v", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := QueryRequest{AgentMode: tc.mode, SelectedFolder: tc.folder, PresetQueryID: tc.preset, SelectedGlobalSecrets: &names}
+			err := env.api.validateQuerySecretSelection(context.Background(), "bob", req)
+			if (err == nil) != tc.allowed {
+				t.Fatalf("admission allowed=%v, err=%v", tc.allowed, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), `Secret "PROJECT_TOKEN" does not exist`) {
+				t.Fatalf("missing project secret not named: %v", err)
+			}
+		})
+	}
+	// Project precedence also holds when a shared secret has the same name,
+	// without admitting a shared-only secret for an ungranted user.
+	managedGlobalsMu.Lock()
+	globalSecrets = []globalSecretEntry{{Name: "PROJECT_TOKEN", Value: "shared-test-value"}, {Name: "SHARED_ONLY", Value: "shared-only-test-value"}}
+	managedGlobalsMu.Unlock()
+	req := QueryRequest{AgentMode: "workflow_phase", PresetQueryID: "wf-w", SelectedGlobalSecrets: &names}
+	if err := env.api.validateQuerySecretSelection(context.Background(), "bob", req); err != nil {
+		t.Fatalf("project precedence rejected: %v", err)
+	}
+	names = []string{"SHARED_ONLY"}
+	if err := env.api.validateQuerySecretSelection(context.Background(), "bob", req); err == nil || !strings.Contains(err.Error(), `do not have access to secret "SHARED_ONLY"`) {
+		t.Fatalf("ungranted shared secret not refused: %v", err)
+	}
+}

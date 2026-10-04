@@ -42,7 +42,9 @@ route `/api/vault/mcp`.
 7. Confirm the old workload paths and connections intended for migration still
    work; preserve exact labels/connection identities and existing project choices.
 
-Deployment and live server acceptance have not yet been completed by this record.
+Initial activation and connection migration are complete. Final live acceptance
+is in progress, including the browser configuration and project-secret fixes
+below; Notion remains pending sign-in.
 
 ## Migration preparation
 
@@ -106,3 +108,33 @@ fixed/auto-hide preference remains shared across products.
   Legacy provider/tool URLs resolve uniquely to live permitted Vault tools;
   project tool selection still applies. Regression tests cover viewer identity,
   legacy mapping, selected-tool denial, revocation and ended-session rejection.
+- Issue #266 identifies a separate chat admission regression: the initial
+  selected-secret check ran before loading encrypted project secrets. That check
+  now resolves the same execution workspace as the subsequent manifest loader,
+  including preset-first phase execution and folder-first headless execution.
+  Regression tests cover both priorities, preset fallback, project precedence
+  over an ungranted shared secret, and refusal of ungranted shared-only secrets.
+  Missing-secret errors name the missing secret; denied grants have a separate
+  message. The live-report fix in PR #267 did not fix this separate bug.
+
+## Initial live deployment
+
+- Standard deployment activated `confida-3880f34e-20261004135433` from shared build
+  `3880f34e-20261004114819`. All four product services are active, private/public
+  agent health returns 200, and Vault bootstrapped Platform.
+- The migration resealed Linear's existing OAuth credential for its Vault
+  connection and retained Langfuse's Basic authorization in encrypted storage.
+  Platform has 68 Linear tools and 86 Langfuse tools; authenticated runtime
+  inventory confirms both. Thirteen existing platform identities were bound.
+  Existing project selections, user roles/slots and source credentials remain.
+- Notion has a connection record but no tools or runtime grant yet: its old
+  credential file was missing. Complete sign-in, then sync/approve/grant its
+  discovered tools through the same migration command.
+- Browser inspection found Vault hidden despite its product allowlist because
+  Confida's runtime configuration omitted `gatewayUrl`. The configuration now
+  supplies the public product origin; deployment preflight and regression tests
+  check that URL. The private Vault listener is not exposed directly.
+- The standard release pruning removed the prior release directory. The private
+  configuration/credential and project-secret backups remain; reverting to the
+  old code requires rebuilding its recorded source revisions and using the
+  standard deployer rather than pointing `current` at that removed directory.
