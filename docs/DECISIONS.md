@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Muse in Full CLI refuses every native tool that is not on a list — PLAT-473
+
+- **Decided (owner).** Muse's own goals, memory and peer-session tools are not available in AgentWorks chats, and any native
+  tool not on the list (including ones a later Muse update adds) is refused until it is added on purpose. Muse's own `cron_create`
+  is refused too.
+- **Why.** Full mode gave Muse every tool it ships. Its cron, goals, memory and session messaging run outside the platform's
+  schedules, Goals, knowledge and workflow isolation. Claude Code, Codex and Pi already had a fixed set.
+- **Where.** `museFullNativeTools` in the provider's Muse adapter; the same hook as the platform-call redirect.
+  [PLAT-473](bugs/pulse_platform/coding-agent-bridge/plat-473.md).
+
 ### 2026-10-04 — The Platform group automatically has every shared secret and platform MCP; admin revokes persist
 
 The first Vault install granted nothing, so every run selecting a shared secret

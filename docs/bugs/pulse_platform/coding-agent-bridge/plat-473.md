@@ -82,17 +82,38 @@ them. Results, each against the real CLI unless noted:
   token (it never enters those shells); the hooks only turn a call that cannot succeed
   into a clear instruction.
 
-## Native tools worth restricting (audit, not built)
+## Muse Full CLI: refuse every native tool not on the list (provider `7ee3932`)
 
-Claude Code has an explicit tool list and a strict MCP config; Codex disables everything
-except the shell and its own subagents; Pi is bridge-only. Muse in Full CLI mode has NO
-tool list: every tool it ships, and every tool a future Muse update adds, is allowed.
-Candidates for refusal (beyond `cron_create`, done above): `snooze_reminder`,
-`create_goal`/`update_goal`/`get_goal`/`report_progress` (Muse's own autonomy outside
-Goals and Pulse), and to verify first `list_peer_sessions`/`send_session_message` (the
-Muse data folder is shared by all chats) and the memory tools (`read_memory` etc.). The
-structural fix is a Full-mode allowlist for Muse mirroring Claude's list, through the
-existing `WithMuseToolAllowlist`; waiting for the owner's decision.
+Audit: Claude Code has an explicit tool list and a strict MCP config; Codex disables
+everything except the shell and its own subagents; Pi is bridge-only; Muse in Full CLI
+mode had NO list, so every tool it ships, and every tool a later update adds, was allowed.
+Owner decisions (2026-10-04): Muse's own goals out; memory and peer-session tools out;
+unlisted and future tools refused by default.
+
+- `musecli_mcpsettings.go`: with the bridge mounted and no bridge-only allowlist (Full
+  mode), the settings step installs the existing PreToolUse allowlist hook with
+  `museFullNativeTools` and its own deny reason; the launch flags are unchanged (still
+  `--yolo`; the bridge-only `--disable-shell/--disable-write` are not applied). MCP tools
+  (`mcp__*`) are never refused.
+- Allowed: `read_file`, `search`, `write_file`, `edit_file`, `bash`, `bash_input`,
+  `monitor`, `web_fetch`, `web_search`, `read_skill`, `write_todos`, the six `subagent_*`
+  tools, `work_status`, `work_list`, `work_stop`, `request_user_input` (plus
+  `tool_search` and `submit_reminder_decision`, always allowed by the hook).
+- Refused: goals (`get_goal`, `create_goal`, `update_goal`, `report_progress`), memory
+  (`read_memory`, `add_memory`, `edit_memory`), peer sessions (`list_peer_sessions`,
+  `send_session_message`), `cron_*`, `snooze_reminder`, `workflow`, and anything not
+  listed. Also turns workflow triggers off and subagent delegation on.
+- Real Muse (one Full-mode turn with the generated settings): file read/write, bash,
+  todos, `web_fetch` and a subagent worked; `get_goal`, `read_memory` and `cron_create`
+  were refused with the message. `list_peer_sessions` does not exist in headless `exec`
+  mode (the hook refuses it in the TUI; unit-tested).
+- Adding a tool is one line in `museFullNativeTools`; a refused tool shows up in the
+  chat transcript as "tool blocked by hook".
+
+## Left (policy)
+
+- Cursor and Agy were not audited tool by tool; Cursor uses `WithCursorFullNativeTools`
+  plus its hooks, Agy a mode hook.
 
 ## Left
 
