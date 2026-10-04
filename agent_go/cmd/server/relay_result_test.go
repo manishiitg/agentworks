@@ -128,13 +128,14 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	if err := ValidateManifest(manifest); err != nil {
 		t.Fatalf("Relay rejected Gmail notifications: %v", err)
 	}
-	manifest.Schedules = []WorkflowSchedule{{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}, PulseMode: "off"}}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("Relay rejected a cron schedule: %v", err)
-	}
-	manifest.Schedules[0].TriggerPayload = json.RawMessage(`[]`)
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted a non-object schedule input")
+	for _, timer := range []WorkflowSchedule{
+		{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}, PulseMode: "off"},
+		{ID: "calendar", ScheduleType: "calendar", CalendarItems: []CalendarScheduleItem{{Date: "2030-01-01", Time: "12:00"}}, GroupNames: []string{"prod"}, PulseMode: "off"},
+	} {
+		manifest.Schedules = []WorkflowSchedule{timer}
+		if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "API function triggers only") {
+			t.Fatalf("Relay timer accepted: %v", err)
+		}
 	}
 	manifest.Schedules = nil
 	function := reviewPRTrigger()
@@ -154,7 +155,7 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	}
 }
 
-func TestRelayScheduledInputUsesDirectGraphContract(t *testing.T) {
+func TestRelayFunctionContextSuppressesLegacyChannels(t *testing.T) {
 	manifest := NewWorkflowManifest("Relay")
 	manifest.Kind = "relay"
 	// Existing Relays may still have the previous Slack configuration on disk.
@@ -179,17 +180,7 @@ func TestRelayScheduledInputUsesDirectGraphContract(t *testing.T) {
 	if sctx.Capabilities.Notifications.GmailConnectionID != "google-account" || manifest.Capabilities.SlackConnectionID != "legacy-slack" || manifest.Capabilities.Notifications.SlackWebhookSecretName != "legacy-webhook" {
 		t.Fatal("schedule sanitization changed Google access or mutated the saved manifest")
 	}
-	input, err := relayScheduledInput(sctx, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if input.RunID != "run-1" || input.Group != "prod" || input.Variables["INPUT"] != `{"question":"status"}` || input.Event != "relay.schedule" {
-		t.Fatalf("scheduled input = %+v", input)
-	}
-	sctx.Schedule.TriggerPayload = json.RawMessage(`[]`)
-	if _, err := relayScheduledInput(sctx, "run-2"); err == nil {
-		t.Fatal("Relay schedule accepted a non-object payload")
-	}
+
 }
 
 func TestRelayRejectsBotChannelRoute(t *testing.T) {

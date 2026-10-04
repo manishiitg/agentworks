@@ -63,12 +63,6 @@ chat:
       - get_step_prompts
       - manage_custom_commands
       - get_llm_config
-      - list_schedules
-      - create_schedule
-      - create_calendar_schedule
-      - update_schedule
-      - delete_schedule
-      - trigger_schedule
       - manage_workflow_webhook
       - list_mcp_servers
       - search_mcp_catalog
@@ -87,7 +81,6 @@ chat:
       - google_workspace_cli
       - get_notification_history
       - get_cost_summary
-      - get_schedule_runs
       - get_ui_state
       - list_ui_capabilities
       - perform_ui_action
@@ -129,12 +122,6 @@ profile:
       icon: terminal
       prompt: |
         Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and a default variable group if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
-        {{context}}
-    - name: schedule
-      description: Configure a schedule and its input payload for this Relay
-      icon: bell-ring
-      prompt: |
-        Configure a Relay schedule using the relay-builder skill and registered schedule tools. Inspect existing schedules first, gather the user's timing, timezone and required INPUT payload, then create or update the requested schedule. Explain that schedules execute the current draft and later draft edits affect the next occurrence. Do not enable Pulse or conversational bot routes.
         {{context}}
 
 branding:

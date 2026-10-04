@@ -1,3 +1,9 @@
+## Relays use external API triggers without timed schedules — PLAT-433
+
+[PLAT-433](pulse_platform/scheduler-runs/plat-433.md), fixed on main; deployment
+pending. Remove scheduling from Relay UI/Builder/runtime, keep function APIs and
+shared delivery tracking; retire saved Relay timers without rewriting releases.
+
 ## Scripted routes are named tools — PLAT-432
 
 [PLAT-432](pulse_platform/plans-contracts/plat-432.md), fixed on `main`, not

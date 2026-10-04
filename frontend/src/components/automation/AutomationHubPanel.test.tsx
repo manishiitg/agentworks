@@ -28,6 +28,10 @@ vi.mock('../workflow/WorkflowAPITriggersView', () => ({ default: (props: Record<
   triggersPanelProps.current = props
   return <div data-testid="workflow-triggers" data-hide-header={String(Boolean(props.hideHeader))} data-refresh-token={String(props.refreshToken ?? 0)}>Workflow trigger content</div>
 } }))
+vi.mock('../workflow/WorkflowFunctionsView', () => ({ default: (props: Record<string, unknown>) => {
+  triggersPanelProps.current = props
+  return <div data-testid="relay-triggers">Relay API triggers</div>
+} }))
 vi.mock('./CrewFunctionsView', () => ({ default: () => <div data-testid="functions">Function content</div> }))
 vi.mock('./TriggerDeliveryHistoryPanel', () => ({ TriggerDeliveryHistoryPanel: () => <div data-testid="delivery-history" /> }))
 const { askAIProps } = vi.hoisted(() => ({ askAIProps: { current: null as null | Record<string, unknown> } }))
@@ -113,12 +117,17 @@ describe('AutomationHubPanel Ask AI', () => {
     return host.querySelector('[role="dialog"] [data-testid="ask-ai"]')?.getAttribute('data-message')
   }
 
-  it('shows the Relay draft schedule notice while preserving management permissions', async () => {
-    const { host, unmount } = await mountHub({ entityType: 'workflow', relayMode: true, canManage: false, workflowScope: { workspacePath: 'Workflow/one' } })
+  it('opens Relay API triggers and hides schedules even with an old schedule target', async () => {
+    storeState.workspaceViewTarget = { view: 'workshop', target: 'schedules', token: 1 }
+    const { host, unmount } = await mountHub({ entityType: 'workflow', relayMode: true, canManage: false, initialSection: 'schedules', chatContent: <div>Chats</div>, workflowScope: { workspacePath: 'Workflow/one' } })
     try {
-      expect(host.querySelector('[role="note"]')?.textContent).toContain('Relay schedules run the current draft')
-      expect(schedulesPanelProps.current?.canManage).toBe(false)
-    } finally { await unmount() }
+      const tabs = Array.from(host.querySelectorAll('[aria-label="Automation center"] [role="tab"]'))
+      expect(tabs.map(tab => tab.textContent)).toEqual(['Triggers', 'Chats'])
+      expect(host.querySelector('[data-testid="relay-triggers"]')).not.toBeNull()
+      expect(host.querySelector('[data-testid="schedules"]')).toBeNull()
+      expect(host.querySelector('button[aria-label="Refresh schedules"]')).toBeNull()
+      expect(triggersPanelProps.current?.relayMode).toBe(true)
+    } finally { storeState.workspaceViewTarget = null; await unmount() }
   })
 
   it('renders one popup Ask AI whose message follows the active tab', async () => {

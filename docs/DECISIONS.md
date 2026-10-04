@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relays expose external API triggers only
+
+Relays integrate with existing products through API function triggers. Remove
+cron/calendar scheduling from their UI, Builder tools and commands, and runtime.
+Older Relay timers are ignored on read and removed on the next draft save;
+frozen release files stay immutable. The shared scheduler still handles API
+function deliveries and ordinary product schedules.
+Ticket: [PLAT-433](bugs/pulse_platform/scheduler-runs/plat-433.md).
+
 ### 2026-10-04 — Agents call scripts through scripted routes, not a second tool concept
 
 An agent calls a workflow script as a named tool backed by a saved scripted route

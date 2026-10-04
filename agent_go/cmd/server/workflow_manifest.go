@@ -1201,14 +1201,8 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	for i, sched := range m.Schedules {
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() && scheduleTypeOrDefault(sched.ScheduleType) != "cron" && scheduleTypeOrDefault(sched.ScheduleType) != "calendar" {
-			return fmt.Errorf("schedules[%d]: Relays support function, cron, or calendar triggers", i)
-		}
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() && len(sched.TriggerPayload) > 0 {
-			var payload map[string]interface{}
-			if err := json.Unmarshal(sched.TriggerPayload, &payload); err != nil || payload == nil {
-				return fmt.Errorf("schedules[%d].trigger_payload must be a JSON object for a Relay", i)
-			}
+		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
+			return fmt.Errorf("schedules[%d]: Relays support API function triggers only; cron and calendar schedules are not supported", i)
 		}
 		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) != 1 {
 			return fmt.Errorf("schedules[%d]: a Relay trigger must select exactly one variable group", i)
@@ -1462,6 +1456,35 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 
 	// Apply defaults for missing fields from older schema versions
 	applyManifestDefaults(&m)
+	// Retired Relay timers never execute. Ignore them on read so an older
+	// draft or frozen release remains callable; the next draft save removes
+	// them through the normal manifest writer and changelog. Never rewrite a
+	// published snapshot for this product policy change.
+	if m.Kind == "relay" {
+		retired := map[string]bool{}
+		kept := make([]WorkflowSchedule, 0, len(m.Schedules))
+		for _, schedule := range m.Schedules {
+			kind := scheduleTypeOrDefault(schedule.ScheduleType)
+			if kind == "cron" || kind == "calendar" {
+				retired[schedule.ID] = true
+				continue
+			}
+			kept = append(kept, schedule)
+		}
+		if len(retired) > 0 {
+			for i := range kept {
+				deps := []string{}
+				for _, id := range scheduleDependencyIDs(kept[i]) {
+					if !retired[id] {
+						deps = append(deps, id)
+					}
+				}
+				kept[i].AfterScheduleID = ""
+				kept[i].AfterScheduleIDs = deps
+			}
+		}
+		m.Schedules = kept
+	}
 	llmConfigMigrated := workflowtypes.NormalizePresetLLMConfig(m.Capabilities.LLMConfig)
 
 	// A field retired from the Go schema (e.g. a past execution_defaults knob

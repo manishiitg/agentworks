@@ -42,7 +42,7 @@ The intended chat command is “test with this input, then publish.” The Build
 
 For the first release implementation, `Publish` should freeze a tested graph as version `v1`, `v2`, and so on. New Builder edits remain a draft. External API calls execute the active published version until a later version is published. A run pins its release ID at dispatch and returns that ID on both the start and poll responses. Idempotency keys continue to resolve to the original run even after a newer release is published.
 
-Publish is a local product operation. It creates an API callable release in the existing authenticated server; it does not deploy a server, create a public URL, or use the workflow HTML publisher. Anyone who can see a Relay can execute it and poll their own API runs. Publishing, editing, and schedule configuration require Owner or Write access. Runs use the owner's configured provider accounts, workflow secrets, and quota; they never attach a reader's private credentials. Existing access-token `runs:execute` and workflow scopes remain authoritative. Listing releases requires `workflows:read` for tokens. Disabled functions and live caller restrictions apply to polling and idempotent retries as well as new dispatches.
+Publish is a local product operation. It creates an API callable release in the existing authenticated server; it does not deploy a server, create a public URL, or use the workflow HTML publisher. Anyone who can see a Relay can execute it and poll their own API runs. Publishing and editing require Owner or Write access. Runs use the owner's configured provider accounts, workflow secrets, and quota; they never attach a reader's private credentials. Existing access-token `runs:execute` and workflow scopes remain authoritative. Listing releases requires `workflows:read` for tokens. Disabled functions and live caller restrictions apply to polling and idempotent retries as well as new dispatches.
 
 ## Implementation and shared code
 
@@ -54,7 +54,7 @@ Publish is a local product operation. It creates an API callable release in the 
 
 ## Boundary
 
-Interrupted node resume remains deferred. Cron and calendar schedules currently run the draft through the shared scheduler, and the Schedules pane explicitly displays that behavior; version pinning in this release applies to function/API calls. A future schedule option can select a release through the same scheduler. Release snapshots currently accept UTF-8 text files up to 50 MiB total; binary workspace data is outside this release contract. A published script or agent that writes to its own release workspace can change executable files; the next run's hash check then rejects that release until the draft is republished. Release isolation is therefore tested for Builder edits, not arbitrary in-run writes.
+Interrupted node resume remains deferred. Relays expose API function triggers only; cron/calendar scheduling is retired. Version pinning applies to function/API calls. Existing timed entries are ignored when loading older drafts or releases and removed on the next draft save; published files stay immutable. Release snapshots currently accept UTF-8 text files up to 50 MiB total; binary workspace data is outside this release contract. A published script or agent that writes to its own release workspace can change executable files; the next run's hash check then rejects that release until the draft is republished. Release isolation is therefore tested for Builder edits, not arbitrary in-run writes.
 
 ## Review fixes verified on 2026-10-01
 
@@ -68,12 +68,12 @@ Verification: backend server build and frontend production build passed. The sha
 
 ## Integration scope (2026-10-03)
 
-Relays are API products with schedules and selected MCP tools/skills. They reuse
+Relays are API products with function triggers and selected MCP tools/skills. They reuse
 the platform's authorized Google app connections for Drive, Sheets, Calendar
 and Gmail, including per-service grants; the right pane labels the existing
 connection panel **Google apps**. Plan creation needs no Google connection.
 Slack and WhatsApp connections, tools, bot routes and notifications are excluded.
 The product manifest owns the Builder tool allowlist, prompt and skill; manifest
 validation and execution-time checks enforce the same scope. Existing saved
-Slack bindings are suppressed when constructing a Relay schedule context.
+Slack bindings are suppressed when constructing a Relay API execution context.
 See [PLAT-389](../bugs/pulse_platform/integrations/plat-389.md).

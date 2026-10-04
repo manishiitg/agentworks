@@ -30,7 +30,7 @@ and the API refuses with 409 — keys are promises, not suggestions.
 
 Publishing requires a valid graph: a final output agent producing JSON, at
 least one enabled function with a required object `INPUT`, and saved code for
-every script step. Only owners and editors can publish or call.
+every script step. Only owners and editors can publish. Users with Relay visibility can invoke permitted API functions.
 
 ## What's inside a Relay
 
@@ -40,8 +40,9 @@ every script step. Only owners and editors can publish or call.
 <div class="sec-lane"><h4>Branches</h4>Deterministic routes on JSON values. Every route must reach the output agent; no loops or joins.</div>
 </div>
 
-Schedules can fire a Relay on a timer with a fixed JSON payload. Slack
-notifications are supported; WhatsApp, bot chats, and Pulse are not.
+External products invoke Relays through authenticated API function triggers.
+Cron/calendar schedules, Slack, WhatsApp, bot chats, and Pulse are not supported.
+Authorized Google apps remain available to agents.
 
 ## API reference
 
@@ -84,7 +85,6 @@ Returns the active version and every published release with its content hash.
 
 - Snapshots hold UTF-8 text only (50 MiB / 5000 files). Binary assets are
   outside the release contract.
-- Schedules execute the draft, not a pinned release.
 - A crashed run ends honestly as `interrupted` and stays pollable — but it
   never resumes mid-chain. Don't describe Relays as resumable.
 - A release whose files change after publishing fails its checksum and stops

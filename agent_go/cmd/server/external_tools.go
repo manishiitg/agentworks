@@ -437,6 +437,13 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalRelayCall(w, r, tool.Name, args, *selected)
 		return
 	}
+	if selected.Manifest.Kind == "relay" {
+		switch tool.Name {
+		case "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs":
+			externalError(w, 400, "relay_api_only", "Relays use API function triggers. Use test_relay or run_relay and get_relay_run.")
+			return
+		}
+	}
 	// Relay chat is Builder-only; direct API tools handle published execution.
 	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
 		externalError(w, 400, "relay_builder_only", "Use builder_chat to edit a Relay, test_relay for draft tests, or run_relay for published versions.")
