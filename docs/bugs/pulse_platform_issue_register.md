@@ -1,3 +1,7 @@
+## A refused builder send shows the raw 409 text — PLAT-485
+
+[PLAT-485](pulse_platform/frontend-chat/plat-485.md), P3, open. The one-builder-chat-per-workflow guard works, but a send from a different session id (second tab, API client) shows "Request failed with status code 409" with no stop/wait choice.
+
 ## Builder-guided administrator setup for incoming Gmail — PLAT-483
 
 [PLAT-483](pulse_platform/integrations/plat-483.md), P2, fixed on main, not deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Requires app admin plus Google project permissions. No live Cloud/account changes or deployment performed.
