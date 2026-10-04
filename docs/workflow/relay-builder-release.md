@@ -8,6 +8,34 @@ The Builder can test the draft with `run_full_workflow(group_name=..., variables
 
 Publishing is implemented through the Relay only `publish_relay` chat tool. It copies the executable, text based workspace files to `Workflow/.relay_releases/<workspace-hash>/vN`, records a content hash, and moves the active version pointer only after validating the copied graph. Builder edits remain in the original workspace. `/api/relays/{id}/runs` defaults to the active release; its optional `version` selects an older release. The workflow HTML `publish` configuration is a separate static page feature.
 
+## Custom Python tools
+
+Relay agents select named Python tools through the existing
+`enabled_custom_tools` setting (`python_tools:<name>`). Source and metadata are
+stored in `code/tools/<name>/main.py` and `tool.json`. Metadata specifies the
+description, object JSON input schema and optional timeout. A synchronous
+`run(input)` returns JSON directly to the agent; this differs from a graph
+script node's `set_output` handoff. The manifest-owned relay-builder skill has
+the complete authoring example.
+
+The shared execution-only agent factory adds immutable `ToolDefinition`s before
+construction, so native LLM tools, CLI MCP bridge discovery and existing tool
+receipts use the same registration. Each executor captures the guarded shell
+after step session/environment injection. No host Python executor, permission
+store, tool-management API or separate Relay agent loop is introduced. Schema
+validation rejects bad arguments before running Python. Only explicitly named
+tools are exposed; source grants are read-only and shared platform state is
+not mutated. Existing step credentials and grants apply, including managed
+workflow DB restrictions.
+
+Release snapshots include tool source/metadata and step selection. Publishing
+checks selected definitions and saved main.py from its exact snapshot;
+runtime uses that version's source. It does not import user code during publish
+or check package/connectivity availability. Named tool errors go to the existing
+agent loop; side effects are not automatically replayed. This does not add crash
+recovery or JSON repair.
+Ticket: [PLAT-423](../bugs/pulse_platform/coding-agent-bridge/plat-423.md).
+
 ## Release contract
 
 The intended chat command is “test with this input, then publish.” The Builder must only say “published” after a dedicated release tool returns a durable version and the active release pointer has been checked. A failed test leaves publishing available to the user but the Builder must report the failure and ask whether to proceed; it must never claim the failure was a pass.

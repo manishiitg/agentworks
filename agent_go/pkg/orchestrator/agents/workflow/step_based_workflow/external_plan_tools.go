@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythontools"
+
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -64,7 +66,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"enabled_custom_tools": map[string]interface{}{
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
-				"description": "Optional workspace/custom tools to add (format: 'category:tool' or 'category:*'). Every execution agent already receives workspace_advanced plus the narrow human baseline: human_feedback, notify_user, and create_human_input_request. Name any additional human tool explicitly. Legacy human_tools:* is normalized to the same three-tool baseline and does not grant the complete category. workspace_browser:agent_browser enables browser automation.",
+				"description": "Optional workspace/custom tools to add (format: 'category:tool' or 'category:*'). python_tools:<name> enables a named Python tool saved in code/tools/<name>/tool.json and main.py; Python wildcards are forbidden. Every execution agent already receives workspace_advanced plus the narrow human baseline: human_feedback, notify_user, and create_human_input_request. Name any additional human tool explicitly. Legacy human_tools:* is normalized to the same three-tool baseline and does not grant the complete category. workspace_browser:agent_browser enables browser automation.",
 			},
 			"enabled_skills": map[string]interface{}{
 				"type":        "array",
@@ -501,13 +503,14 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 			"workspace_advanced": true,
 			"human_tools":        true,
 			"workspace_browser":  true,
+			pythontools.Category: true,
 		}
 		if len(targetConfig.AgentConfigs.EnabledCustomTools) > 0 {
 			for _, t := range targetConfig.AgentConfigs.EnabledCustomTools {
 				if idx := strings.Index(t, ":"); idx >= 0 {
 					cat := t[:idx]
 					if !validCustomCategories[cat] {
-						errors = append(errors, fmt.Sprintf("Custom tool %q uses unknown category %q. Valid categories: workspace_advanced, human_tools, workspace_browser.", t, cat))
+						errors = append(errors, fmt.Sprintf("Custom tool %q uses unknown category %q. Valid categories: workspace_advanced, human_tools, workspace_browser, python_tools.", t, cat))
 					}
 				} else {
 					errors = append(errors, fmt.Sprintf("Custom tool %q is missing category prefix. Expected format: 'category:tool_name' or 'category:*'.", t))
@@ -517,6 +520,10 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		}
 
 		// 6. Validate learning config consistency.
+		if _, err := pythontools.Load(ctx, targetConfig.AgentConfigs.EnabledCustomTools, runtime.ReadWorkspaceFile); err != nil {
+			errors = append(errors, err.Error())
+		}
+
 		// Learnings access ↔ objective consistency. Mirror of the KB access ↔
 		// contribution rule below: write-capable access is meaningless without an
 		// extraction instruction for the direct post-completion learning turn.

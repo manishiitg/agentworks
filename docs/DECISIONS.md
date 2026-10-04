@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Named Python tools reuse the step registry and sandbox
+
+User-authored functions in code/tools/<name> become named agent tools through
+explicit python_tools:<name> step selections. They use immutable direct tool
+definitions and the guarded step shell, with existing credentials and limits.
+Returned JSON goes directly to the agent; published versions freeze tool source
+with their existing workspace snapshot. No wildcard selection or host executor.
+Ticket: [PLAT-423](bugs/pulse_platform/coding-agent-bridge/plat-423.md).
+
 ### 2026-10-04 — A platform session never loads a person's own CLI config or MCP servers (Codex on a Mac) — PLAT-418
 
 - **Decided.** Whatever the home is, a coding CLI in a platform session runs with a config of its own: on a

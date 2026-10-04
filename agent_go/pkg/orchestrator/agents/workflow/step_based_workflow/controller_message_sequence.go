@@ -1578,6 +1578,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupMessageSequenceFolderGuard(stepP
 		writePaths = append(writePaths, filepath.Join(baseWorkspacePath, LearningsFolderName, GlobalLearningID))
 	}
 	readPaths = appendAdditionalWorkflowReadPaths(readPaths, baseWorkspacePath, stepConfig)
+	readPaths = appendPythonToolReadPaths(readPaths, baseWorkspacePath, stepConfig)
 	readPaths, writePaths = hcpo.appendCDPHostDownloadsPaths(readPaths, writePaths)
 	return common.DeduplicateStrings(readPaths), common.DeduplicateStrings(writePaths)
 }

@@ -294,6 +294,9 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			}
 		}
 	}
+	if err := validateRelayPythonTools(ctx, content); err != nil {
+		return nil, err
+	}
 	// Hash the exact file names and contents, independent of workspace listing order.
 	keys := make([]string, 0, len(content))
 	for key := range content {

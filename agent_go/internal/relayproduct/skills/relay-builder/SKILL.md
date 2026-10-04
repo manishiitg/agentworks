@@ -34,6 +34,70 @@ available through the shared sandboxed command runner in all products.
 - Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with a configured `group_name` and `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
 - Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
 
+## Custom Python tools for agents
+
+For a custom database lookup or action the agent may choose to call, create
+`code/tools/lookup_customer/tool.json`:
+
+```json
+{
+  "description": "Look up a customer by ID in the configured database",
+  "parameters": {
+    "type": "object",
+    "properties": {"customer_id": {"type": "string", "minLength": 1}},
+    "required": ["customer_id"],
+    "additionalProperties": false
+  },
+  "timeout_seconds": 30
+}
+```
+
+Save `code/tools/lookup_customer/main.py` with a synchronous `run(input)`
+function. For example, if the user supplies a SQLite database path in the
+`CUSTOM_DB_PATH` secret and grants that file through `additional_read_paths`:
+
+```python
+import os
+import sqlite3
+
+def run(input):
+    with sqlite3.connect(os.environ["SECRET_CUSTOM_DB_PATH"]) as db:
+        row = db.execute(
+            "SELECT name FROM customers WHERE id = ?", (input["customer_id"],)
+        ).fetchone()
+    return {"name": row[0] if row else None}
+```
+
+Adapt the code to the user's real schema and credentials. For remote databases
+use the user's chosen client/library and secret connection string. The
+platform's managed workflow SQLite database still requires its registered DB
+tools; a custom Python tool does not bypass that restriction.
+
+Enable `python_tools:lookup_customer` through `update_step_config` on each
+intended agent, retaining its other tool selections. The directory name is the
+tool name, a lowercase identifier of at most 64 characters. No Python wildcard
+or platform tool name collision is allowed. Save source and metadata before
+enabling; the config tool checks both. An agent receives only its selections.
+Additional local input files require the existing read grants; tool source is
+read-only. Write generated files under STEP_OUTPUT_DIR, not beside main.py.
+
+`run(input)` returns JSON-compatible data directly to the agent. Do not call
+set_output inside a custom tool to supply its return value; that helper is for
+graph script nodes. Prints go to the shell's stderr, never the tool result.
+Exceptions, timeout, invalid arguments and non-JSON values fail the tool call
+and are visible to the agent. Do not add automatic retries to side effects.
+Inputs are limited to 64 KiB; output uses the shared shell limit and incomplete
+JSON fails explicitly. For large data return a compact summary or an artifact
+reference. Use explicit read/connection grants and the shared sandbox; there
+is no new database credential store or host execution path.
+
+Test with execute_step/run_full_workflow, inspect the actual named tool call
+and result, then publish when requested. Publishing validates definitions and
+saved source, freezes them in the release and includes them in its integrity
+hash. Later draft edits do not change the tool in an earlier version. Python
+syntax, dependencies and connectivity must be tested in the sandbox; publish
+does not execute user code to validate them.
+
 ## Validation boundaries
 
 - Relay agents accept authored `user_message` items only. Workflow

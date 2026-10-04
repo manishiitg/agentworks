@@ -1,3 +1,10 @@
+## Named custom Python tools for Relay agents — PLAT-423
+
+[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), fixed on main;
+deployment pending. User-authored run(input) functions register as named tools
+with per-step selection, schemas and the shared sandbox/registry. Published
+versions freeze tool source. The original custom-tool requirement is implemented.
+
 ## Muse messages ran three or more times: stale refusal notice — PLAT-422
 
 [PLAT-422](pulse_platform/coding-agent-bridge/plat-422.md), P1, fixed on `main`; deploy in progress. A refusal now needs a new notice or the draft still in the input box.
