@@ -312,6 +312,33 @@ export function SecretSelectionSection({
       if (view === viewGeneration.current) setBusy('')
     }
   }
+  const renderShareForm = () => sharing ? (
+        <form
+          aria-label={`Share ${sharing.name} to Vault`}
+          className="w-full space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3"
+          onSubmit={(e) => { e.preventDefault(); void share() }}
+        >
+          <h4 className="text-sm font-medium">Share {sharing.name} to Vault</h4>
+          <p className="text-xs text-muted-foreground">Keeps the project copy. Copies rotate independently.</p>
+          <label className="block space-y-1 text-xs">
+            <span>Vault secret name</span>
+            <Input aria-label="Vault secret name" value={shareName} disabled={!!busy} onChange={(e) => setShareName(e.target.value)} />
+          </label>
+          <fieldset disabled={!!busy} className="space-y-2">
+            <legend className="mb-2 text-xs font-medium">Give access to</legend>
+            {shareGroups.map((g) => (
+              <label key={g.ID} className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-2 text-xs">
+                <Checkbox aria-label={`Share with ${g.Name}`} checked={shareGroupIds.includes(g.ID)} onCheckedChange={(checked) => setShareGroupIds((ids) => checked === true ? [...ids, g.ID] : ids.filter((id) => id !== g.ID))} />
+                <span><span className="font-medium">{g.Name}</span>{g.Description && <span className="mt-0.5 block text-muted-foreground">{g.Description}</span>}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={!!busy} onClick={() => setSharing(null)}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={!!busy || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(shareName.trim()) || !shareGroupIds.length}>{busy ? 'Sharing…' : 'Share to Vault'}</Button>
+          </div>
+        </form>
+  ) : null
   const renderRow = (row: Row) => (
     <div
       key={row.name}
@@ -456,6 +483,7 @@ export function SecretSelectionSection({
           )}
         </div>
       )}
+      {sharing?.name === row.name && !isVault && renderShareForm()}
       {revealed[row.name] !== undefined && (
         <p className="w-full whitespace-pre-wrap break-all rounded-md border border-border bg-background px-3 py-2 font-mono text-xs">
           {revealed[row.name]}
@@ -553,33 +581,7 @@ export function SecretSelectionSection({
         </p>
       )}
       {shareNotice && <p role="status" className="text-xs text-primary">{shareNotice}</p>}
-      {sharing && !isVault && (
-        <form
-          aria-label={`Share ${sharing.name} to Vault`}
-          className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3"
-          onSubmit={(e) => { e.preventDefault(); void share() }}
-        >
-          <h4 className="text-sm font-medium">Share {sharing.name} to Vault</h4>
-          <p className="text-xs text-muted-foreground">Keeps the project copy. Copies rotate independently.</p>
-          <label className="block space-y-1 text-xs">
-            <span>Vault secret name</span>
-            <Input aria-label="Vault secret name" value={shareName} disabled={!!busy} onChange={(e) => setShareName(e.target.value)} />
-          </label>
-          <fieldset disabled={!!busy} className="space-y-2">
-            <legend className="mb-2 text-xs font-medium">Give access to</legend>
-            {shareGroups.map((g) => (
-              <label key={g.ID} className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-2 text-xs">
-                <Checkbox aria-label={`Share with ${g.Name}`} checked={shareGroupIds.includes(g.ID)} onCheckedChange={(checked) => setShareGroupIds((ids) => checked === true ? [...ids, g.ID] : ids.filter((id) => id !== g.ID))} />
-                <span><span className="font-medium">{g.Name}</span>{g.Description && <span className="mt-0.5 block text-muted-foreground">{g.Description}</span>}</span>
-              </label>
-            ))}
-          </fieldset>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" disabled={!!busy} onClick={() => setSharing(null)}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={!!busy || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(shareName.trim()) || !shareGroupIds.length}>{busy ? 'Sharing…' : 'Share to Vault'}</Button>
-          </div>
-        </form>
-      )}
+
       {loading && !rows.length ? (
         <p className="text-sm text-muted-foreground">Loading secrets…</p>
       ) : (
