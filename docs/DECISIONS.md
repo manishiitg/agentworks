@@ -446,6 +446,8 @@ Owner decision: decisions are applied only where the person can watch. The
 pre-run decision drain (PLAT-093) is removed; an answered decision is applied in
 the Builder chat, by the answering turn or Needs you's "Apply in chat". Ticket:
 [PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
+The chat message is the only apply path: the Builder is the Fixer, for every apply
+mode and whatever option was picked. Ticket: [PLAT-445](bugs/pulse_platform/human-decisions/plat-445.md).
 
 ### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
 

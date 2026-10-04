@@ -1,3 +1,9 @@
+## Applying a decision in chat pointed at a Fixer that no longer exists — PLAT-445
+
+[PLAT-445](pulse_platform/human-decisions/plat-445.md), fixed on `main`, not
+deployed: every answered decision is applied by the Builder in chat, honoring any
+option picked; the dead pre-run Fixer/drain routing is removed.
+
 ## Relay script-tool names can be advertised after registration drops them — PLAT-444
 
 [PLAT-444](pulse_platform/plans-contracts/plat-444.md), P2, open. Reproduced:
