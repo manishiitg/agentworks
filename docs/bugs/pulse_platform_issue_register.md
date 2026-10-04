@@ -30,6 +30,11 @@ owner-only rule). Phase 2 removes the "private MCP" concept.
 contract tests are fixed; the suite is green. The DMG build now runs on release tags only; a new
 `frontend-ci.yml` runs the frontend checks on pushes. Left: confirm both are green.
 
+## Muse bridge note shown in chat messages — PLAT-486
+
+[PLAT-486](pulse_platform/chat-reliability/plat-486.md), fixed on main: the model-only "AgentWorks note: platform
+bridge mounted" text is stripped from Muse messages read back into the chat. Left: Codex/Cursor wrappers unconfirmed.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
