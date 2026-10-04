@@ -19,6 +19,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Slot-run shell commands never receive app-private paths such as browser profiles; every slot deploy proves the chain
+
+A command run as a user's slot account is never granted an app-private path: the managed browsers' profiles (logged-in
+sessions, app-owned 0700) and socket folders, the app's state root. The grant builder leaves them out (logged
+`[SLOT_GRANT]`) and the policy is browser scoped, so no shared browser folder is added either; nothing is opened up for
+slots (no chmod/chgrp/ACL of those trees). The Landlock launcher leaves out, with a `SANDBOX_GRANT_SKIPPED` warning, a
+grant its account may not even stat (EACCES only: it grants less); every other launcher failure still refuses the command,
+and a slot command never falls back to running unconfined or as the app account (PLAT-451 unchanged). A slot uses its
+project's browser through the platform (`agent_browser`, a standalone `agent-browser` command runs as the service account).
+Why: a project chat's shell command named its project's browser, the profile landed in the slot's write grants, and the
+launcher, running as the slot, refused every Crew/Code command on RTS (`SANDBOX_UNAVAILABLE: inspect Landlock path`).
+Deploys of slot hosts set `releases/` 0711 and run a read-only self-test (`deploy/common/slotcheck.sh`, `./deploy.sh
+slotcheck <server>`) that fails the deploy loudly when a real slotted `pwd` does not start. Code: `workspace/security/
+slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: [PLAT-478](bugs/pulse_platform/security-sandbox/plat-478.md).
+
 ### 2026-10-04 — Muse in Full CLI refuses every native tool that is not on a list — PLAT-473
 
 - **Decided (owner).** Muse's own goals, memory and peer-session tools are not available in AgentWorks chats, and any native

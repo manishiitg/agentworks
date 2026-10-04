@@ -1,6 +1,6 @@
 ## Slot shell commands never worked end to end on RTS — PLAT-478
 
-[PLAT-478](pulse_platform/security-sandbox/plat-478.md), open, P1. Three stacked failures (allowed_cwd, releases/ 0700, Landlock launcher fails closed on an unreadable browser-profile grant); RTS admin slot released as mitigation; slots are canary-stage.
+[PLAT-478](pulse_platform/security-sandbox/plat-478.md), P1, fixed on main 2026-10-04, not deployed. Three stacked failures (allowed_cwd, releases/ 0700, Landlock launcher fails closed on an unreadable browser-profile grant). Fix: slot commands never get app-private paths (browser profiles/sockets, app state), the launcher skips an un-stat-able grant, deploys set releases/ 0711 and run a read-only slot self-test (`./deploy.sh slotcheck <server>`). RTS admin slot still released until the deploy's self-test passes.
 
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
