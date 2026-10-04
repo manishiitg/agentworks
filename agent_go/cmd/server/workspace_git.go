@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"net/http"
 	"os"
 	"os/exec"
@@ -121,7 +122,7 @@ func workspaceGitCanonicalPath(r *http.Request, raw string) (string, bool) {
 		if owner == "" {
 			return "", false
 		}
-		clean = path.Join("_users", owner, clean)
+		clean = workspaceref.PhysicalPath(owner, clean)
 	}
 	return clean, true
 }

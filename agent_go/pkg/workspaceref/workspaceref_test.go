@@ -213,3 +213,29 @@ func TestWithLogicalKeepsOwner(t *testing.T) {
 		t.Errorf("%+v", r)
 	}
 }
+
+func TestProjectRootStringAndPhysicalPathOf(t *testing.T) {
+	cases := map[string]bool{
+		"_users/a/Chats/Work/projects/c":    true,
+		"Chats/Code/projects/p":             true,
+		"_users/a/Chats/Work/projects/c/db": false,
+		"_users/a/Chats/Work/projects":      false,
+		"_users/a/Chats/Other/projects/x":   false,
+	}
+	for in, want := range cases {
+		if _, _, ok := MustParse(in).ProjectRoot(); ok != want {
+			t.Errorf("ProjectRoot(%q) = %v", in, ok)
+		}
+	}
+	for _, in := range []string{"_users/a/Chats", "Chats/x", "_users", "", "_users/a"} {
+		if got := MustParse(in).String(); got != in {
+			t.Errorf("String(%q) = %q", in, got)
+		}
+	}
+	if MustParse("/_users/a//Chats/").String() != "_users/a/Chats" {
+		t.Error("String must be canonical")
+	}
+	if PhysicalPathOf("bob", "Chats", "x") != "_users/bob/Chats/x" {
+		t.Error("PhysicalPathOf")
+	}
+}

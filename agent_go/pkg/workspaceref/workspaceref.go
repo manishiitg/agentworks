@@ -239,3 +239,33 @@ func CanonicalFor(user, p string) string {
 func (r Ref) WithLogical(logical string) Ref {
 	return Ref{owner: r.owner, logical: strings.Trim(path.Clean("/"+logical), "/")}
 }
+
+// ProjectRoot is Project for a path that IS a project root (nothing below
+// the project folder): the logical path is exactly "<root>/<project>".
+func (r Ref) ProjectRoot() (root, project string, ok bool) {
+	root, project, ok = r.Project()
+	if !ok || r.logical != root+"/"+project {
+		return "", "", false
+	}
+	return root, project, true
+}
+
+// String is the canonical spelling: "_users/<owner>/<logical>" when the ref
+// has an owner, the logical path otherwise. Comparing it with the input tells
+// whether the input was already clean and canonical.
+func (r Ref) String() string {
+	switch {
+	case r.usersRoot:
+		return UsersDir
+	case r.owner != "":
+		return path.Join(UsersDir, r.owner, r.logical)
+	}
+	return r.logical
+}
+
+// PhysicalPathOf builds "_users/<owner>/<rel...>" for an owner that came from
+// a parsed Ref or was already validated (it is NOT sanitized; use
+// PhysicalPath for a user id from a request or a session).
+func PhysicalPathOf(owner string, rel ...string) string {
+	return path.Join(append([]string{UsersDir, owner}, rel...)...)
+}

@@ -39,7 +39,7 @@ func resolveWorkspacePath(docsRoot, rel string) string {
 
 func newWorkspacePaths(docsRoot, chatsFolder string) workspacePaths {
 	if chatsFolder == "" {
-		chatsFolder = "_users/default/Chats"
+		chatsFolder = perUserChatsFolderFor("")
 	}
 	return workspacePaths{
 		DocsRoot:    docsRoot,

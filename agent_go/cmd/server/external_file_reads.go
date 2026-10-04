@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -145,10 +146,10 @@ func externalIsCrewRoot(rootPath string) bool {
 	switch {
 	case len(parts) == 2 && parts[0] == crewSharedRootName:
 		return parts[1] != "" && parts[1] != "."
-	case len(parts) == 6 && parts[0] == "_users" && parts[2] == "Chats" && parts[3] == "Work" && parts[4] == "projects":
-		return parts[1] != "" && parts[5] != ""
 	}
-	return false
+	ref := workspaceref.MustParse(rootPath)
+	root, _, ok := ref.ProjectRoot()
+	return ok && root == workspaceref.CrewProjectsRoot && ref.HasOwner() && ref.String() == rootPath
 }
 
 // externalPathPrivate is the workflow file privacy rule, plus a Crew's own

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Code targets are resolved privately, under the actual actor's own tree.
@@ -161,13 +162,12 @@ func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, call
 			return denied
 		}
 		root := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path))
-		parts := strings.Split(root, "/")
-		productFolder := "Work"
+		wantRoot := workspaceref.CrewProjectsRoot
 		if profileID == codeproduct.ProfileID {
-			productFolder = "Code"
+			wantRoot = workspaceref.CodeProjectsRoot
 		}
-		if path.Clean(root) != root || len(parts) != 6 || parts[0] != "_users" ||
-			parts[1] != sanitizeUserIDForPath(ownerID) || parts[2] != "Chats" || parts[3] != productFolder || parts[4] != "projects" || parts[5] == "" {
+		rootRef := workspaceref.MustParse(root)
+		if projectsRoot, _, ok := rootRef.ProjectRoot(); !ok || projectsRoot != wantRoot || !rootRef.OwnedBy(ownerID) || rootRef.String() != root {
 			return denied
 		}
 		raw, present, err := defaultProductProjectStore().read(ctx, root+"/product.json")
@@ -257,7 +257,7 @@ func (s *ProductScheduleService) codeFunctionRunBinding(ctx context.Context, job
 func codePeerPrivateRunsWorkspace(actorID, targetPath, targetID string) string {
 	ownerID, _ := crewProjectOwnerID(targetPath)
 	key := sha256.Sum256([]byte(ownerID + "\x00" + targetID))
-	return "_users/" + sanitizeUserIDForPath(actorID) + "/chat_history/code-peer-runs/" + hex.EncodeToString(key[:])
+	return workspaceref.PhysicalPath(actorID, "chat_history", "code-peer-runs", hex.EncodeToString(key[:]))
 }
 
 func isPrivateCodePeerTrigger(profileID string, trigger productWebhookTrigger) bool {

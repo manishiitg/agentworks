@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"log"
 	"strings"
 )
@@ -160,15 +161,10 @@ func mergeDurableWorkflowContextPaths(ctx context.Context, selectedFolder string
 // isOtherOwnerCrewPath reports whether parts spell a physical Crew project
 // path _users/<owner>/Chats/Work/projects/<project>.
 func isOtherOwnerCrewPath(parts []string) bool {
-	if len(parts) != 6 || parts[0] != "_users" || parts[2] != "Chats" || parts[3] != "Work" || parts[4] != "projects" {
-		return false
-	}
-	for _, part := range []string{parts[1], parts[5]} {
-		if part == "" || part == "." || part == ".." {
-			return false
-		}
-	}
-	return true
+	joined := strings.Join(parts, "/")
+	ref := workspaceref.MustParse(joined)
+	root, _, ok := ref.ProjectRoot()
+	return ok && root == workspaceref.CrewProjectsRoot && ref.HasOwner() && ref.String() == joined
 }
 
 // admitTurnContextPaths merges a turn's saved workflow links with its

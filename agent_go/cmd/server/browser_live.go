@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Browser discovery is scoped to both the signed-in session owner and workflow.
@@ -89,7 +90,7 @@ func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string)
 		if !ok || !found || product.ProfileID != codeproduct.ProfileID {
 			return WorkflowAccessNone
 		}
-		root := "_users/" + owner + "/" + product.ProjectsRoot + "/" + project
+		root := workspaceref.PhysicalPathOf(owner, product.ProjectsRoot, project)
 		if !codeLinkReadAllowed(context.Background(), claims, owner, root) {
 			return WorkflowAccessNone
 		}

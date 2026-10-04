@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Per-workflow READ authorization for the workflow data routes.
@@ -118,27 +119,27 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		if logical == logicalPathIsCaller {
 			owner = caller
 		}
-		segments = append([]string{"_users", owner}, segments...)
-		clean = strings.Join(segments, "/")
+		clean = workspaceref.PhysicalPath(owner, clean)
+		segments = strings.Split(clean, "/")
 	}
-	switch segments[0] {
-	case "_users":
-		if len(segments) < 2 {
+	if ref := workspaceref.MustParse(clean); ref.HasOwner() || ref.IsUsersRoot() {
+		if !ref.HasOwner() {
 			return false
 		}
-		if segments[1] == caller {
+		if ref.Owner() == caller {
 			return true
 		}
-		if len(segments) >= 6 && segments[2] == "Chats" && segments[4] == "projects" {
-			switch segments[3] {
-			case "Work":
-				ref, ok := resolveCrewPath(ctx, claims.UserID, clean)
-				return ok && crewAccessFor(claims, ref) == crewAccessOwner
-			case "Code":
-				return codeRoleFor(ctx, claims.UserID, segments[1], segments[5]) != codeRoleNone
-			}
+		switch root, project, ok := ref.Project(); {
+		case !ok:
+		case root == workspaceref.CrewProjectsRoot:
+			crewRef, found := resolveCrewPath(ctx, claims.UserID, clean)
+			return found && crewAccessFor(claims, crewRef) == crewAccessOwner
+		case root == workspaceref.CodeProjectsRoot:
+			return codeRoleFor(ctx, claims.UserID, ref.Owner(), project) != codeRoleNone
 		}
 		return false
+	}
+	switch segments[0] {
 	case crewSharedRootName:
 		ref, ok := resolveCrewPath(ctx, claims.UserID, clean)
 		return ok && crewAccessFor(claims, ref) == crewAccessOwner

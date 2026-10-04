@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 var commandToolSlugPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
@@ -33,7 +34,7 @@ func commandToolContent(name, description, icon, prompt, mode string) string {
 // used by the browser editor. activeWorkspace is a workflow for Workshop and
 // empty for the user's personal AgentWorks commands.
 func (api *StreamingAPI) registerCustomCommandTools(reg definitionToolRegistrar, userID, activeWorkspace string) error {
-	commandsPath := path.Join("_users", sanitizeUserIDForPath(userID), commands.CustomCommandsSubPath)
+	commandsPath := workspaceref.PhysicalPath(userID, commands.CustomCommandsSubPath)
 	mode := "multi-agent"
 	if strings.HasPrefix(strings.TrimSpace(activeWorkspace), "Workflow/") {
 		commandsPath = path.Join(strings.Trim(activeWorkspace, "/"), commands.CustomCommandsSubPath)

@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -123,12 +123,12 @@ func (api *StreamingAPI) executeSlackTrigger(ctx context.Context, route ChannelR
 	sessionID := deliveryID
 	if route.ProfileID != "" {
 		inputPath := strings.Join([]string{route.WorkspacePath, "slack-inputs", deliveryID + ".json"}, "/")
-		if err := writeFileToWorkspace(ctx, filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(route.WorkspaceUserID), normalizeConversationWorkspace(inputPath))), string(payload)); err != nil {
+		if err := writeFileToWorkspace(ctx, workspaceref.PhysicalPath(route.WorkspaceUserID, normalizeConversationWorkspace(inputPath)), string(payload)); err != nil {
 			return err
 		}
 		if history != nil {
 			contextPath := strings.TrimSuffix(inputPath, ".json") + "-context.json"
-			if err := writeFileToWorkspace(ctx, filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(route.WorkspaceUserID), normalizeConversationWorkspace(contextPath))), string(history)); err != nil {
+			if err := writeFileToWorkspace(ctx, workspaceref.PhysicalPath(route.WorkspaceUserID, normalizeConversationWorkspace(contextPath)), string(history)); err != nil {
 				return err
 			}
 		}

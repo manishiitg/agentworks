@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"path"
 	"strings"
 	"sync"
@@ -61,6 +62,9 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 	segments := strings.Split(clean, "/")
 	rest := func(from int) string { return strings.Join(segments[from:], "/") }
 	validID := func(id string) bool { return id != "" && !strings.HasPrefix(id, ".") }
+	ownedRef := workspaceref.MustParse(clean)
+	ownedRoot, ownedProject, ownedOK := ownedRef.Project()
+	ownedOK = ownedOK && ownedRef.HasOwner() && ownedRoot == workspaceref.CrewProjectsRoot && validID(ownedProject)
 	switch {
 	case segments[0] == crewSharedRootName:
 		if len(segments) < 2 || !validID(segments[1]) {
@@ -73,14 +77,15 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 		}
 		owner := sanitizeUserIDForPath(callerID)
 		return crewPathRef{Root: legacyCrewRoot(owner, segments[3]), Rest: rest(4), OwnerID: owner}, true
-	case len(segments) >= 6 && segments[0] == "_users" && segments[1] != "" && segments[2] == "Chats" && segments[3] == "Work" && segments[4] == "projects" && validID(segments[5]):
-		return crewPathRef{Root: legacyCrewRoot(segments[1], segments[5]), Rest: rest(6), OwnerID: segments[1]}, true
+	case ownedOK:
+		below := strings.Trim(strings.TrimPrefix(ownedRef.Logical(), ownedRoot+"/"+ownedProject), "/")
+		return crewPathRef{Root: legacyCrewRoot(ownedRef.Owner(), ownedProject), Rest: below, OwnerID: ownedRef.Owner()}, true
 	}
 	return crewPathRef{}, false
 }
 
 func legacyCrewRoot(owner, id string) string {
-	return "_users/" + owner + "/Chats/Work/projects/" + id
+	return workspaceref.PhysicalPathOf(owner, workspaceref.CrewProjectsRoot, id)
 }
 
 // resolveCrewPath is the one entry point for a crew path from a request or a

@@ -57,3 +57,10 @@ PLAT-434 fixed the Code/Crew UI-control instance.
 - Migrated (commit 5): `sparkquillproduct.runtimeRoot`, `videoproduct.profileWorkspaceRoot` (an escaping `..` path now
   maps to a non-existent folder, not to the user's whole tree; old code joined it, so `../bob/x` reached `_users/bob/x`),
   `pkg/browser.captureWorkspace`, `livefeed.IsPlanPath`, `presentations.workspaceDatabasePath`. Tests in each package.
+- Migrated (commit 6, cmd/server parsers and builders): `externalIsCrewRoot`, `parseCrewPath`, `isOtherOwnerCrewPath`,
+  shared-asset parsing (`shared_assets.go`, `shared_assets_crew.go`), `codeFilesDeletionProtected`, `browserProjectKey`,
+  `costOverviewRoot`/`costOverviewIsCode`, `isChatsWriteFolder` (a relative `x/_users/y/chats` no longer counts: only an
+  absolute path carries a document root), `workspaceReadAllowed`, `workspaceGitWriteAllowed`, code-peer root check;
+  physical-path builders (`PhysicalPath`/`PhysicalPathOf`) in agent_profile_routes, chat_submission_journal,
+  crew_functions, code_peer_functions, slack_trigger, chat_history_persistence, command_routes, custom_command_tools,
+  browser_live, workspace_git, instructions. Tests added to `workspaceref_sites_test.go`.

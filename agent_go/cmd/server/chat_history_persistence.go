@@ -285,7 +285,7 @@ var chatHistoryIndexLocks [64]sync.Mutex
 
 // chatHistoryRoot returns the workspace-relative path to a user's chat_history root.
 func chatHistoryRoot(userID string) string {
-	return fmt.Sprintf("_users/%s/chat_history", sanitizeUserIDForPath(userID))
+	return workspaceref.PhysicalPath(userID, "chat_history")
 }
 
 func chatHistoryConversationFileName(sessionID string) string {
@@ -436,7 +436,7 @@ func workProjectChatHistoryConversationPath(userID, workspacePath, sessionID str
 		return "", false
 	}
 
-	userWorkspacePath := pathpkg.Join("_users", sanitizeUserIDForPath(userID), canonicalWorkspace)
+	userWorkspacePath := workspaceref.PhysicalPath(userID, canonicalWorkspace)
 	return workflowBuilderConversationLogPath(userWorkspacePath, sanitizeChatHistorySessionID(sessionID), t), true
 }
 

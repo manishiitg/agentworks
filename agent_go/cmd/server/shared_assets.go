@@ -13,6 +13,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -59,16 +60,16 @@ func authorizedSharedAsset(w http.ResponseWriter, r *http.Request, full string) 
 			externalError(w, 403, "forbidden", "Another user's personal files cannot be opened through this link.")
 			return
 		}
-		if parts[0] == "_users" {
-			if len(parts) < 3 || parts[1] != uid {
+		if ref := workspaceref.MustParse(clean); ref.HasOwner() || ref.IsUsersRoot() {
+			if ref.Logical() == "" || ref.Owner() != uid {
 				externalError(w, 403, "forbidden", "Personal file access denied.")
 				return
 			}
-			parts = parts[2:]
+			parts = strings.Split(ref.Logical(), "/")
 		}
 		switch parts[0] {
 		case "Chats", "Downloads":
-			root = "_users/" + uid + "/" + parts[0]
+			root = workspaceref.PhysicalPathOf(uid, parts[0])
 		case "skills", "knowledgebase", "learnings":
 			root = parts[0]
 		default:
