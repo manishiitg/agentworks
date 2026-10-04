@@ -37,6 +37,13 @@ bin/*
 !agent_go/cmd/server/guidance/templates/system/secret-management.md
 # Vault design documentation contains references and behavior, never secret values.
 !docs/design/vault-secrets.md
+# Vault secret handling source and tests contain no stored credentials.
+!mcp-gateway/internal/store/secrets.go
+!mcp-gateway/internal/store/secrets_test.go
+!mcp-gateway/internal/admin/secrets.go
+!mcp-gateway/internal/admin/secrets_test.go
+!agent_go/cmd/server/vault_secrets.go
+!agent_go/cmd/server/vault_secrets_test.go
 # PLAT-272 shared workflow-secret store: source and its test, no secret values.
 !agent_go/cmd/server/workflow_shared_secrets.go
 !agent_go/cmd/server/workflow_shared_secrets_test.go

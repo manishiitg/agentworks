@@ -15,6 +15,18 @@ the current behavior. The product remains a single-user, loopback alpha.
 - Audit logs use SQLite by default for both local and MVP server installs. SQLite is the only MVP audit storage backend; collection can be disabled. Asynchronous logging, bounded storage and local 24-hour retention remain available.
 - PII detection, scanning, masking and custom PII rules are removed.
 
+## PR #228 review follow-up — 2026-10-04
+
+- Six Vault secret source/test files were present locally but excluded by the
+  broad `*secret*` ignore rule. Explicit source-file exceptions restore the
+  gateway metadata/grant API and host-side secret permission integration to
+  clean checkouts. Stored credential files remain ignored.
+- Audit capture replaces an oversized `json.Number` with a JSON string marker;
+  truncation no longer causes serialization of the entire payload to fail.
+- Policy clones prepare immutable regexes when saved and after SQLite restore.
+  Tool calls reuse compiled expressions, retaining full-string matching and
+  denial for invalid conditions. Edits cannot reuse a stale expression.
+
 ## Product and shared interface
 
 - The visible name is **Vault**. Internal `caplayer` profile IDs, routes,

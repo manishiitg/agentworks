@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -34,5 +35,24 @@ func TestAuditPayloadBoundsAndDetachedSnapshot(t *testing.T) {
 	cycle["self"] = cycle
 	if raw, truncated = CaptureAuditPayload(cycle); !truncated || !json.Valid(raw) {
 		t.Fatal("cyclic payload not bounded")
+	}
+}
+
+func TestAuditPayloadTruncatedNumberPreservesOtherFields(t *testing.T) {
+	// A slice gives deterministic traversal: keep metadata before the large number.
+	payload := []any{"retained", json.Number(strings.Repeat("1", AuditPayloadMaxBytes))}
+	raw, truncated := CaptureAuditPayload(payload)
+	if !truncated || !json.Valid(raw) || string(raw) != `["retained","[truncated]"]` {
+		t.Fatalf("large number discarded payload: %s, truncated=%v", raw, truncated)
+	}
+	raw, truncated = CaptureAuditPayload([]any{json.Number("123.45")})
+	if truncated || string(raw) != `[123.45]` {
+		t.Fatalf("ordinary number changed: %s, truncated=%v", raw, truncated)
+	}
+	// Exercise a number that exceeds only the remaining traversal budget.
+	c := payloadCapture{remaining: 67}
+	data, err := json.Marshal(c.copy(reflect.ValueOf(json.Number("1234")), 0))
+	if err != nil || !c.truncated || string(data) != `"[truncated]"` {
+		t.Fatalf("exhausted budget produced invalid number: %s, %v", data, err)
 	}
 }

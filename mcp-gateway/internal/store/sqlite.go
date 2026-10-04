@@ -72,6 +72,13 @@ func (s *MemoryStore) restore(data []byte) error {
 	s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer = state.Workspaces, state.Users, state.Groups, state.Members, state.Connectors, state.Bearers
 	s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers = state.Tools, state.ToolVersions, state.Grants, state.GroupGrants, state.GroupServers
 	s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys = state.Drafts, state.Live, state.Governed, state.History, state.Keys
+	// Compiled regexes are process-local; prepare them again after decoding.
+	for id, p := range s.packageDrafts {
+		s.packageDrafts[id] = access.Clone(p)
+	}
+	for id, p := range s.packageLive {
+		s.packageLive[id] = access.Clone(p)
+	}
 	return nil
 }
 
