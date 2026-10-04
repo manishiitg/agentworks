@@ -80,3 +80,18 @@ Not automated (still by hand, need a real chat, LLM or login): the Code terminal
 ### Excellence deployed (2026-10-05 20:31 UTC, release agents-85c97836, main 85c978361)
 
 First deploy with the F1 fix and the full self-test on a Hetzner host: slot self-test 133 passed, 0 failed, 11 skipped (no AppArmor exception needed: sysctl 0, kernel 6.8). All extended rows passed (`tmux-socket-unreachable` on the test slot, `slot-python-helpers`, `wf-write-outside`, `wf-list-users`, `wf-list-state`, `wf-read-env`, `wf-list-shared-secrets`, `wf-app-tmux-socket`) and every `deny-*` row for slots 01-12. `releases/` went from 0775 to 0711 (F2 for Excellence closed by the deploy's slots_release_traversal), `logs/` 0750, slot Docker on for all 12 slots (provisioned before the deploy). No chat turns, tmux sessions or CLI processes were running at deploy time. Services active, site 200, no errors. Leftovers not touched: two old failed deploy job units under the agents user (`agents-deploy-20261001181304-72506`, `agents-deploy-20261004164304-5381`). Secret admission warning (names only): MISTRAL_API_KEY selected by one manifest, no Platform grant. Confida is not deployed yet.
+
+## Todo (as of 2026-10-05, owner asked for it)
+
+State today: F1 (tmux) fixed and deployed on RTS (4441bb0) and Excellence (agents-85c97836); full self-test default on every deploy; slot Docker on for all slots on RTS (7), Excellence (12), Confida (13).
+
+1. **Agentic checks as Manish on Excellence (owner: "do that later").** Add the MCP connection (`! claude mcp add --transport http agentworks-excellence https://agents.excellencetechnologies.in/api/external/v1/mcp`, then `/mcp` login); pick or create a test Crew (`smoke-test`) and workflow; run the paste sets as chats (Crew shell, GitHub/Notion/secret names, Docker D1-D3, Code terminal, workflow-chat W1-W11, a workflow run); then an opt-in deploy flag (`DEPLOY_AGENTIC_CHECKS=1`) with a dedicated smoke user and one retry; assert on tool results, not model wording.
+2. **Confida**: deploy current main (the Vault owner normally deploys it; check nothing is running first), read the first full self-test, compare with Excellence.
+3. **Stage 2 of F1**: coding CLI launches (multi-llm-provider-go `internal/clisandbox/landlock.go`) have no private_tmp / private_roots / namespaces; the agent process also lacks the userns exception on RTS (the "private /tmp unavailable" line at each chat start). Same hide for the CLI and its commands.
+4. **F2 release readability**: Excellence closed (0711 by the deploy). Left: launcher outside the release tree (root-owned, hash-verified) so `releases/` can be 0700.
+5. **RTS deploy resets `<app>/logs` to 0755**: enforce 0750 in the deploy (set by hand each time so far).
+6. **PLAT-485 (frontend)**: dead session id after a server restart and the raw 409; rotate to a fresh session or offer it.
+7. **Docker**: watch RTS memory (about 70 MB per idle daemon, 1.4 GB available of 3.8 GB); optional later trial of rootless Podman where it works (keeps Landlock confinement, but no_new_privs blocks newuidmap).
+8. **Excellence leftovers**: two old failed deploy units under the agents user; `MISTRAL_API_KEY` selected by a manifest without a Platform grant.
+9. **Other open tickets**: PLAT-457 (P1, symlink in a user's tree bypasses the proxy gates), close issues #266 and #269 and update PLAT-469 when the owner confirms, Muse restart on the Mac (PLAT-468), local-app Cmd+K chat bounce, a script or SSM to stop the RTS firewall IP churn.
+10. **Housekeeping**: remove my worktrees (`mabg-terminal-fix`; `mabg-slotharden` holds partial, unpushed hardening edits: do not push as-is) and fast-forward the three main checkouts when the work is finished (AGENTS.md rule 5).
