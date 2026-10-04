@@ -63,9 +63,11 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
       document.title = 'Vault'
       const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
       if (favicon) favicon.href = '/vault.svg'
-      return
+    } else {
+      document.title = 'AgentWorks'
     }
-    document.title = 'AgentWorks'
+    // Deployment branding also owns the Vault title and favicon. The product
+    // fallback above is only used when no white label is configured.
     applyRuntimeBranding(window.__APP_RUNTIME_CONFIG__ as Parameters<typeof applyRuntimeBranding>[0])
   }, [productSurface, standalone])
 

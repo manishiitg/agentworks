@@ -65,3 +65,14 @@ the existing tool set through Platform, preserving the previous global sharing.
 Keep the original labels so unambiguous existing project selections resolve;
 verify the runtime mapping before removing any legacy entry. New tools require
 explicit approval/grants. Notion still needs the administrator's browser sign-in.
+
+## White label navigation
+
+The shared left navigation uses the deployment's same-origin `markUrl` (Confida's
+`/brand/icon.svg`), sized to fit the 48px rail. Horizontal headers retain
+`logoUrl`/`logoDarkUrl`. Deployments without a mark use a contained wordmark;
+deployments without branding add no logo. Product icons remain unchanged.
+The deployment's app name, favicon and optional brand colour also apply when
+switching into Vault, rather than being replaced by Vault's default branding.
+The navigation still respects deployment and user product allowlists, and its
+fixed/auto-hide preference remains shared across products.
