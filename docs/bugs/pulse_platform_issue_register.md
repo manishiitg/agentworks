@@ -2,6 +2,11 @@
 
 [PLAT-471](pulse_platform/security-sandbox/plat-471.md), fixed on main, not deployed; GitHub issue #269. The first Vault install granted nothing, so every run selecting a shared secret was refused. The Platform group is now granted every existing and newly registered shared secret and MCP server (gateway start check plus host-side registration of environment-defined and managed secret names); admin removals persist in `platformRevoked`; servers without Vault behave as before Vault.
 
+## OAuth consent screens say "Multi Agent Builder" — PLAT-474
+
+[PLAT-474](pulse_platform/integrations/plat-474.md), fixed on `main` for newly authorized
+servers, needs a restart: dynamic client registration now names the app AgentWorks.
+
 ## A CLI's own shell has no platform credentials: prompt line and a Muse redirect hook — PLAT-473
 
 [PLAT-473](pulse_platform/coding-agent-bridge/plat-473.md), fixed on `main` for the prompt
