@@ -17,9 +17,9 @@ slottmux then passes it to the app account's tmux.
 A startup backfill can stamp an attacker's identity into another user's
 unstamped product manifest through a symlink.
 
-## Editable project metadata selects another user's CLI identity — PLAT-452
+## Editable project metadata selects another user's CLI identity — PLAT-449
 
-[PLAT-452](pulse_platform/security-sandbox/plat-449.md), P1, open, reproduced.
+[PLAT-449](pulse_platform/security-sandbox/plat-449.md), P1, open, reproduced.
 A can edit their own Code's owner_id to B, remain owner-admitted, and select
 B's launch slot. Ownership is not yet protected as server authority.
 
