@@ -30,19 +30,7 @@ func (cfg ExecConfig) Validate(req ExecRequest) (cwd string, err error) {
 	if len(req.Argv) == 0 || !filepath.IsAbs(req.Argv[0]) || filepath.Clean(req.Argv[0]) != req.Argv[0] {
 		return "", errors.New("the program must be an absolute, clean path")
 	}
-	allowed := false
-	for _, program := range cfg.AllowedExec {
-		// A pattern may use * for one path segment (release folders change at every deploy).
-		if program == req.Argv[0] {
-			allowed = true
-			break
-		}
-		if ok, _ := filepath.Match(program, req.Argv[0]); ok && strings.Contains(program, "*") {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	if !cfg.AllowsProgram(req.Argv[0]) {
 		return "", fmt.Errorf("%s is not an allowed program", req.Argv[0])
 	}
 	if req.Argv[0] == TmuxPath {

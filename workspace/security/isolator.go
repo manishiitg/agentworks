@@ -930,6 +930,14 @@ func (iso *Isolator) scopeBrowser() string {
 		iso.BrowserSession = ""
 		return ""
 	}
+	if iso.Slot != "" {
+		// A slot command gets no browser folder at all (PLAT-478): the profile holds the project's logged-in
+		// sessions and stays app-owned 0700, and the socket folder is the service account's daemon. The slot uses
+		// the project's browser through the platform (agent_browser / a standalone agent-browser command, which
+		// runs as the service account). BrowserSession stays set, so the policy is "browser scoped" and the shared
+		// browser folders are not granted either. Nothing is created here.
+		return ""
+	}
 	socketDir := browserconfig.SocketDirForSession(session)
 	if err := os.MkdirAll(socketDir, 0o700); err != nil {
 		iso.BrowserSession = ""

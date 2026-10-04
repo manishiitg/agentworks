@@ -162,6 +162,31 @@ entry point (there is no separate per-directory deployer).
 Env overrides (all default from `product.env`): `HOST_IP`, `SSH_PORT`,
 `SSH_KEY_PATH`, `DEPLOY_BRANCH` (defaults to `main`).
 
+## Slot-enabled servers: the slot self-test (PLAT-478)
+
+On a host with per-user accounts (`SLOTS_ENABLED=true` in `product.env`, or a readable `/etc/agentworks/slots.json`; RTS too),
+every deploy:
+
+- sets `<app>/releases` to `0711` and gives the new release folder and its `bin/` search permission (`o+x`), so slot accounts
+  can reach `bin/video-studio-landlock-runner` (`slots_release_traversal` in `deploy/common/slots.sh`; nothing becomes readable);
+- after activation, runs `<release>/slotcheck.sh` as the service account. It is read-only. It checks `slotctl.json` (readable,
+  `docs_root` = the service's docs root, `allowed_cwd` covers it, `allowed_exec` lists the launcher), the slot table (root-owned,
+  the service's group, `0640`, readable), that every folder from `/` to the launcher is traversable by each slot, and then runs a
+  real `pwd` through sudo + slotctl + the launcher with the shell tool's own grant builder, for each assigned slot and for one
+  unassigned test slot (the highest-numbered free slot account), in the docs root, a workflow, a Crew project and a Code project
+  (the user's own first project; the test slot uses its own state folder). It prints slot names and counts only, never who holds
+  a slot. A secret admission scan (names only; selected secrets that exist nowhere, shared secrets without a Vault Platform grant)
+  follows as warnings.
+- A `FAIL` line says what failed and how to fix it, and the deploy exits 1. The release is already active: nothing is rolled
+  back. Fix the cause (usually as root through `provision-slots.sh` / `deploy/aws-ec2/slots-admin.sh`) and re-run the check alone:
+
+```
+./deploy.sh slotcheck excellence      # or confida, sparkquill, rts
+```
+
+Do not assign a slot to anyone on a server whose self-test fails. A slot command never receives a browser profile, a browser
+socket folder or the app state (see `docs/DECISIONS.md`); it uses the project's browser through the platform.
+
 ## Managed Chrome under the shell sandbox
 
 `build-and-activate.sh` now does this on every deploy (`install-managed-chrome.sh`): it installs the launcher beside the host's

@@ -204,6 +204,9 @@ vault_check_build "$BUILD_DIR"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
 cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
+# The slot self-test and the secret admission scan travel with the release (./deploy.sh slotcheck runs current's copy).
+cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"
+cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"
 # frontend's build:report-preview step (part of `npm run build` above) writes
 # report-preview.js to agent_go/cmd/server/static/ in the source checkout,
 # never into the release. $PRODUCT-agent, like every other product on this
@@ -285,6 +288,8 @@ echo "==> [$RELEASE_ID] Activating release and restarting services"
 # Check again after the build, before switching current or restarting services.
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
 chmod +x "$BUILD_DIR"/bin/*
+# Slot accounts must reach this release's Landlock launcher (releases/ 0711; PLAT-478). No-op without slots.
+slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"
 ln -sfn "$REMOTE_APP/logs" "$BUILD_DIR/logs"
 
 # The standard runtime profile (deploy/common/runtime_profile.json, docs/design/deploy_unification.md): the same settings on every
@@ -583,5 +588,15 @@ python3 "$BUILD_DIR/prune-releases.py" "$REMOTE_APP" --apply \
 # a deploy while the servers are being aligned.
 python3 "$REPO_ROOT/deploy/common/profile_report.py" --profile "$REPO_ROOT/deploy/common/runtime_profile.json" --name "$PRODUCT" \
   --account "$PRODUCT" --app "$REMOTE_APP" --data "$REMOTE_APP/state" --workspace-port "$WORKSPACE_PORT" || true
+
+# The slot self-test (PLAT-478): on a slot host, a real slotted `pwd` per slot in the docs root, a workflow, a Crew and a
+# Code project, plus the config checks. Read-only. The release is already live: a failure does not roll back, it fails
+# the deploy loudly with FAIL lines that say what to fix.
+if slots_enabled; then
+  if ! slots_selfcheck "$REMOTE_APP" "$REMOTE_APP/data/docs" "$PRODUCT" "$BUILD_DIR"; then
+    echo "==> Release $RELEASE_ID is live at https://$DOMAIN, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
+    exit 1
+  fi
+fi
 
 echo "==> Done. Release $RELEASE_ID is live at https://$DOMAIN"

@@ -19,6 +19,9 @@ Servers:
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
   report [server]       how each server differs from the standard runtime profile (read-only)
+  slotcheck <server>    the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
+                        docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
+                        secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
   builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
@@ -429,6 +432,31 @@ if [[ "$SERVER" == build ]]; then
   name="$(build_release_remote)"
   echo "Build ready: $name (on ${BUILD_HOST:-116.202.210.102}:$BUILDS_DIR/$name). Nothing was deployed."
   exit 0
+fi
+
+# ./deploy.sh slotcheck <server>: run the deployed release's slot self-test (deploy/common/slotcheck.sh) as the service
+# account. Read-only; changes nothing on the server.
+if [[ "$SERVER" == slotcheck ]]; then
+  [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida|sparkquill>" >&2; exit 2; }
+  case "$1" in
+    rts|video-studio)
+      HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:-RTS}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:-video-studio-prod}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
+      exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
+        "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio"
+      ;;
+    excellence|confida|sparkquill)
+      product="$1"; [[ "$product" == excellence ]] && product=agents
+      (
+        # shellcheck disable=SC1090
+        source "$REPO_ROOT/deploy/rootless-linux/products/$product/product.env"
+        identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
+        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+          "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product"
+      )
+      ;;
+    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill)" >&2; exit 2 ;;
+  esac
+  exit $?
 fi
 
 # ./deploy.sh report [server]: how each server differs from the standard runtime profile. Read-only, deploys nothing.

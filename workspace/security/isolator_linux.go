@@ -60,6 +60,9 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	if iso.Slot != "" && iso.UserHome != "" {
 		writes = append(writes, canonicalPath(iso.UserHome))
 	}
+	// A slot command never receives an app-private path (browser profiles and sockets, app state): PLAT-478.
+	reads = withoutAppPrivatePaths(iso.Slot, reads, iso.getBaseDir(), iso.UserHome)
+	writes = withoutAppPrivatePaths(iso.Slot, writes, iso.getBaseDir(), iso.UserHome)
 	// Blocked paths are deny rules. A SQLite WAL/SHM sidecar is intentionally
 	// absent until SQLite first writes in WAL mode; a missing deny target cannot
 	// grant access and must not prevent the entire sandbox from starting. We
@@ -115,7 +118,7 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays, HiddenPaths: hidden}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "" || iso.Slot != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays, HiddenPaths: hidden}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {

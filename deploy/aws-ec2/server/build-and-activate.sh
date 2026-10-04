@@ -135,6 +135,8 @@ node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/frontend
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
 cp "$REPO_ROOT/deploy/common/slots.sh" "$BUILD_DIR/slots.sh"
+cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"
+cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate_workflow_builder_chats.py" "$BUILD_DIR/migrations/migrate_workflow_builder_chats.py"
 install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/migrations/workflow-builder-chat-owners-v1.json"
 # frontend's build:report-preview step (part of `npm run build` above) writes
@@ -363,6 +365,9 @@ echo "activation: immediate breaking deploy (logical-session drain disabled)"
 # Migrate a legacy release-local overlay before swapping current. Never replace
 # an existing durable overlay; only the base catalog is refreshed on startup.
 "${SSH[@]}" 'set -e; state="$HOME/.local/state/agentworks/mcp"; old="$HOME/video-studio/current/configs/mcp_servers_video_studio_user.json"; install -d -m 0700 "$state"; if [ -f "$old" ] && [ ! -e "$state/mcp_servers_video_studio_user.json" ]; then cp -n "$old" "$state/mcp_servers_video_studio_user.json"; chmod 600 "$state/mcp_servers_video_studio_user.json"; fi'
+# Slot accounts must reach this release's Landlock launcher: releases/ was 0700 on RTS and every slotted command failed
+# with "fork/exec ...: permission denied" (PLAT-478). releases/ 0711, the release and bin/ o+x. No-op without slots.
+slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"
 vault_prepare "$BUILD_DIR" "$REMOTE_APP" /data/video-studio/docs video-studio 8000 "$VAULT_PORT"
 vault_install "$BUILD_DIR" "$REMOTE_APP" video-studio
 
@@ -375,5 +380,15 @@ vault_start video-studio "$VAULT_PORT"
 # Keep the active release and any older files still used by retained sessions.
 # No rollback archive is retained after a healthy deployment.
 "${SSH[@]}" "set -e; rm -f '$REMOTE_RELEASE/.deploying'; python3 '$REMOTE_RELEASE/prune-releases.py' '$REMOTE_APP' --apply --health-url http://127.0.0.1:8000/api/health --health-url http://127.0.0.1:8080/health"
+
+# The slot self-test (PLAT-478), read-only: on a slot host (the slot table exists), a real slotted `pwd` per slot in the
+# docs root, a workflow, a Crew and a Code project, plus the config checks. The release is already live: a failure
+# does not roll back, it fails the deploy loudly with FAIL lines that say what to fix.
+if slots_enabled; then
+  if ! slots_selfcheck "$REMOTE_APP" /data/video-studio/docs video-studio "$REMOTE_RELEASE"; then
+    echo "Rootless Video Studio release is live at https://video.realtrainingsys.com, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
+    exit 1
+  fi
+fi
 
 echo "Rootless Video Studio release deployed: https://video.realtrainingsys.com"
