@@ -20,6 +20,11 @@ func RunThroughShellTool(ctx context.Context, probe Probe) (string, string, erro
 	return runThroughShellTool(ctx, probe, "pwd")
 }
 
+// RunCommandThroughShellTool is RunThroughShellTool for one command (the confinement checks).
+func RunCommandThroughShellTool(ctx context.Context, probe Probe, command string) (string, string, error) {
+	return runThroughShellTool(ctx, probe, command)
+}
+
 // runThroughShellTool runs one fixed command for a probe (the self-test only ever runs `pwd`; the Linux container
 // tests also run negative reads through the same chain).
 func runThroughShellTool(ctx context.Context, probe Probe, command string) (string, string, error) {

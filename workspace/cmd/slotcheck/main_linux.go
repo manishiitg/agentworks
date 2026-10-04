@@ -65,6 +65,7 @@ func main() {
 		ServiceGIDs:   gids,
 		TestSlot:      *testSlot,
 		Run:           slotcheck.RunThroughShellTool,
+		RunCommand:    slotcheck.RunCommandThroughShellTool,
 		Lookup:        slotcheck.LookupAccount,
 	})
 	fmt.Print(slotcheck.Format(rows))

@@ -3,6 +3,7 @@ package slotcheck
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -308,5 +309,54 @@ func TestWorldListableReleasesIsAWarningOnly(t *testing.T) {
 	}
 	if !strings.Contains(Format(rows), "WARN  releases-listable") {
 		t.Fatalf("expected a warning:\n%s", Format(rows))
+	}
+}
+
+func denyRows(rows []Row) map[string]Row {
+	out := map[string]Row{}
+	for _, r := range rows {
+		if strings.HasPrefix(r.Check, "deny-") {
+			out[r.Check] = r
+		}
+	}
+	return out
+}
+
+func TestDenyChecksPassWhenEveryCommandIsRefused(t *testing.T) {
+	l := newLayout(t)
+	l.opts.RunCommand = func(_ context.Context, _ Probe, _ string) (string, string, error) {
+		return "started\nrc=1\n", "", nil
+	}
+	got := denyRows(Check(context.Background(), l.opts))
+	for _, name := range []string{"deny-write-outside", "deny-list-users", "deny-list-releases", "deny-list-state"} {
+		if got[name].Status != Pass {
+			t.Errorf("%s = %+v, want PASS", name, got[name])
+		}
+	}
+}
+
+func TestDenyChecksFailWhenACommandSucceeds(t *testing.T) {
+	l := newLayout(t)
+	l.opts.RunCommand = func(_ context.Context, _ Probe, command string) (string, string, error) {
+		if strings.Contains(command, "_users") {
+			return "started\nrc=0\n", "", nil
+		}
+		return "started\nrc=2\n", "", nil
+	}
+	got := denyRows(Check(context.Background(), l.opts))
+	if got["deny-list-users"].Status != Fail || got["deny-list-releases"].Status != Pass {
+		t.Fatalf("a leak in one place must fail only that check: %+v", got)
+	}
+}
+
+func TestDenyChecksNeverCountALauncherThatDidNotStartAsARefusal(t *testing.T) {
+	l := newLayout(t)
+	l.opts.RunCommand = func(_ context.Context, _ Probe, _ string) (string, string, error) {
+		return "", "SANDBOX_UNAVAILABLE: boom", errors.New("exit status 125")
+	}
+	for name, row := range denyRows(Check(context.Background(), l.opts)) {
+		if row.Status != Fail || !strings.Contains(row.Detail, "did not run") {
+			t.Errorf("%s = %+v, want FAIL (nothing proven)", name, row)
+		}
 	}
 }

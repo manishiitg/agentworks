@@ -39,3 +39,7 @@ dir, so Landlock keeps other users' temp files closed). The Hetzner box has the 
 Consequence: an H1 fix that relies on a mount namespace (placeholder mount over the slot run root, /run/user) works on Hetzner but NOT on RTS unless the launcher gets an AppArmor
 profile exception (a root step) or the design avoids namespaces (e.g. a socket location/ownership no confined slot command can reach). The design must cover both hosts.
 
+## Confinement checks in the deploy self-test (built 2026-10-04)
+
+`slotcheck` now also proves, per slot, that a slotted command started with only its own project granted is REFUSED when it tries to create a file in the docs root, list `_users`, list `releases/`, or list the app `state/` folder (`deny-write-outside`, `deny-list-users`, `deny-list-releases`, `deny-list-state`). Each command prints `started` first and its exit code last, so a launcher that failed to start is a FAIL, never a "refusal". Unit tests cover pass, a leak, and a launcher that does not start. Live runs by the owner on RTS (Crew and Code chats as slot01, 2026-10-04) agreed: all refused. Attached Crews are shared read-write by design (server.go "Crew references ... shared read-write"), so a Code chat can reach a Crew attached to it; no other Crew was reachable. Not yet run on a host: the first deploy that carries it will show the four rows.
+

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
@@ -78,7 +79,9 @@ type Options struct {
 	// TestSlot overrides the dedicated test slot (default: the highest-numbered unassigned slot account).
 	TestSlot string
 	Run      func(context.Context, Probe) (stdout, stderr string, err error)
-	Lookup   func(name string) (Account, bool)
+	// RunCommand runs one shell command for a probe the way Run does. When nil the confinement (deny) checks are skipped.
+	RunCommand func(context.Context, Probe, string) (stdout, stderr string, err error)
+	Lookup     func(name string) (Account, bool)
 }
 
 // Kinds of folder a slotted command is proven in.
@@ -167,9 +170,11 @@ func Check(ctx context.Context, opts Options) []Row {
 			add(Row{Pass, "runner-reachable", slot, "every folder down to the launcher is traversable", ""})
 		}
 		user := table.Slots[slot]
-		for _, probe := range probesFor(cfg, docs, workflow, slot, user, account) {
+		probes := probesFor(cfg, docs, workflow, slot, user, account)
+		for _, probe := range probes {
 			rows = append(rows, runProbe(ctx, opts, cfg, probe))
 		}
+		rows = append(rows, denyChecks(ctx, opts, docs, probes)...)
 	}
 	if releases := filepath.Join(opts.AppDir, "releases"); opts.AppDir != "" {
 		if info, err := os.Stat(releases); err == nil && info.Mode().Perm()&0o004 != 0 {
@@ -482,3 +487,56 @@ func Format(rows []Row) string {
 	fmt.Fprintf(&b, "slot self-test: %d passed, %d failed, %d skipped\n", pass, fail, skip)
 	return b.String()
 }
+
+// denyChecks proves a slotted command stays inside the folders it was granted. It runs a few commands through the same
+// chain as the pwd probes, with only the probe's own folder granted, and requires each to be REFUSED. Every command
+// prints "started" first and its exit code last, so a launcher that failed to start (which also "refuses") is a
+// FAIL, never a pass. Nothing is changed: the one write attempt is removed if it ever succeeds (and fails the check).
+func denyChecks(ctx context.Context, opts Options, docs string, probes []Probe) []Row {
+	if opts.RunCommand == nil {
+		return nil
+	}
+	var probe Probe
+	for _, p := range probes {
+		if (p.Kind == KindCrew || p.Kind == KindCode) && p.Dir != "" {
+			probe = p
+			break
+		}
+	}
+	if probe.Dir == "" {
+		return []Row{{Skip, "deny-checks", probes[0].Slot, "no project folder to run the confinement checks from", ""}}
+	}
+	type denial struct{ name, command, what string }
+	stamp := fmt.Sprintf(".slotcheck-deny-%d", time.Now().UnixNano())
+	outside := filepath.Join(docs, stamp)
+	tests := []denial{
+		{"deny-write-outside", "touch " + shQuote(outside) + " 2>/dev/null; rc=$?; rm -f " + shQuote(outside) + " 2>/dev/null; echo rc=$rc", "create a file in the docs root"},
+		{"deny-list-users", "ls " + shQuote(filepath.Join(docs, "_users")) + " >/dev/null 2>&1; echo rc=$?", "list the other users' folders"},
+	}
+	if opts.AppDir != "" {
+		tests = append(tests,
+			denial{"deny-list-releases", "ls " + shQuote(filepath.Join(opts.AppDir, "releases")) + " >/dev/null 2>&1; echo rc=$?", "list the release folders"},
+			denial{"deny-list-state", "ls " + shQuote(filepath.Join(opts.AppDir, "state")) + " >/dev/null 2>&1; echo rc=$?", "list the app state folder"})
+	}
+	var rows []Row
+	for _, t := range tests {
+		stdout, stderr, err := opts.RunCommand(ctx, probe, "echo started; "+t.command)
+		out := strings.Fields(stdout)
+		switch {
+		case err != nil || len(out) < 2 || out[0] != "started":
+			why := firstLine(stderr)
+			if why == "" && err != nil {
+				why = shortErr(err)
+			}
+			rows = append(rows, Row{Fail, t.name, probe.Slot, "the command did not run, so nothing was proven: " + orNone(why), "fix the slot chain first (see the pwd checks above)"})
+		case out[len(out)-1] == "rc=0":
+			rows = append(rows, Row{Fail, t.name, probe.Slot, "a slotted command could " + t.what, "PLAT-480: the sandbox grants too much; do not leave this release live"})
+		default:
+			rows = append(rows, Row{Pass, t.name, probe.Slot, "refused: cannot " + t.what, ""})
+		}
+	}
+	return rows
+}
+
+// shQuote single-quotes a path for the shell.
+func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
