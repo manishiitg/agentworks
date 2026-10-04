@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -106,7 +107,7 @@ func SanitizeInputPath(inputPath, docsDir string) string {
 // Per-user folders (Chats/, Downloads/) are routed to _users/{userID}/ for isolation.
 
 // UsersDirectory is kept for backwards compatibility (e.g. migration from old layout)
-const UsersDirectory = "_users"
+const UsersDirectory = workspaceref.UsersDir
 
 // defaultUserID is the resolved default user ID (lazy-initialized from env)
 var (
@@ -178,7 +179,7 @@ func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 	var resolved string
 	if IsPerUserPath(cleanPath) {
 		sanitizedUID := SanitizeUserID(userID)
-		resolved = filepath.Join(docsDir, UsersDirectory, sanitizedUID, cleanPath)
+		resolved = filepath.Join(docsDir, filepath.FromSlash(workspaceref.PhysicalPathOf(sanitizedUID, filepath.ToSlash(cleanPath))))
 	} else {
 		resolved = filepath.Join(docsDir, cleanPath)
 	}
@@ -211,14 +212,14 @@ func userTreeOwner(root, path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) == 0 || parts[0] != UsersDirectory {
-		return "", false
-	}
-	if len(parts) == 1 {
+	ref := workspaceref.MustParse(filepath.ToSlash(rel))
+	if ref.IsUsersRoot() {
 		return "", true
 	}
-	return parts[1], true
+	if ref.HasOwner() {
+		return ref.Owner(), true
+	}
+	return "", false
 }
 
 // ConvertToUserRelativePath converts an absolute path back to a relative path
@@ -228,15 +229,10 @@ func ConvertToUserRelativePath(fullPath, docsDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Strip _users/{userID}/ prefix if present
-	if strings.HasPrefix(rel, UsersDirectory+string(filepath.Separator)) {
-		// _users/{userID}/Chats/... → Chats/...
-		parts := strings.SplitN(rel, string(filepath.Separator), 3)
-		if len(parts) >= 3 {
-			return parts[2], nil
-		}
-		// _users/{userID} with no sub-path — shouldn't happen in normal use
-		return "", nil
+	// Strip _users/{userID}/ prefix if present: _users/{userID}/Chats/... → Chats/...
+	// (_users/{userID} with no sub-path shouldn't happen in normal use: "").
+	if ref := workspaceref.MustParse(filepath.ToSlash(rel)); ref.HasOwner() {
+		return ref.Logical(), nil
 	}
 	return rel, nil
 }

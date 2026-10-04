@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"github.com/spf13/viper"
 )
 
@@ -183,7 +184,16 @@ type skillInstallRequest struct {
 }
 
 // projectSkillsDirPattern is the only shape a TargetDir may have.
-var projectSkillsDirPattern = regexp.MustCompile(`^_users/[A-Za-z0-9._@-]+/Chats/[A-Za-z]+/projects/[A-Za-z0-9._-]+/skills$`)
+var (
+	projectSkillsLogicalPattern = regexp.MustCompile(`^Chats/[A-Za-z]+/projects/[A-Za-z0-9._-]+/skills$`)
+	projectSkillsOwnerPattern   = regexp.MustCompile(`^[A-Za-z0-9._@-]+$`)
+)
+
+// isProjectSkillsDir reports the shape of a project skills folder: <owner>'s tree, Chats/<Product>/projects/<project>/skills.
+func isProjectSkillsDir(target string) bool {
+	ref, ok := workspaceref.Parse(target)
+	return ok && ref.HasOwner() && ref.String() == target && projectSkillsOwnerPattern.MatchString(ref.Owner()) && projectSkillsLogicalPattern.MatchString(ref.Logical())
+}
 
 // skillInstallTargetDir resolves the folder an install writes to: the
 // account-wide library, or a validated project skills folder.
@@ -202,7 +212,7 @@ func skillInstallTargetDir(docsDir, target string) (string, error) {
 // from, another user's tree.
 func projectSkillsDir(docsDir, target string) (string, error) {
 	target = strings.Trim(filepath.ToSlash(strings.TrimSpace(target)), "/")
-	if strings.Contains(target, "..") || !projectSkillsDirPattern.MatchString(target) {
+	if strings.Contains(target, "..") || !isProjectSkillsDir(target) {
 		return "", fmt.Errorf("target_dir must be a project's skills folder")
 	}
 	dir := filepath.Join(docsDir, filepath.FromSlash(target))

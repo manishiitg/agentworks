@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"github.com/spf13/viper"
 )
 
@@ -505,7 +506,7 @@ func ListDocuments(c *gin.Context) {
 		var sharedDocuments []models.Document
 		for _, doc := range documents {
 			// Skip _users/ directory and its contents
-			if doc.FilePath == utils.UsersDirectory || strings.HasPrefix(doc.FilePath, utils.UsersDirectory+"/") {
+			if docRef := workspaceref.MustParse(doc.FilePath); docRef.IsUsersRoot() || docRef.HasOwner() {
 				continue
 			}
 			// Skip root-level per-user folders (they'll be replaced with user-scoped ones)

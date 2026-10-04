@@ -34,6 +34,11 @@ var literalAllowlist = map[string]string{
 	"cmd/testing/": "developer e2e commands: flag defaults and fixtures naming the default user's folder; not a server code path",
 }
 
+// workspaceUsersDirAllowlist is the same list for the workspace module (PLAT-442 step 3), paths relative to workspace/.
+var workspaceUsersDirAllowlist = map[string]string{
+	"utils/path.go": "defines UsersDirectory (the on-disk per-user folder name, used by tests and legacy migration) from the shared constant",
+}
+
 // usersDirAllowlist: files allowed to use UsersDir, the directory name. All are
 // physical-storage layers that join it onto a document root on disk, or a
 // one-shot migration of legacy data.
@@ -101,9 +106,31 @@ func k() string { return "my_users_table" }
 	}
 }
 
+type guardRoot struct {
+	name           string
+	dir            string // relative to this directory
+	skipDir        string // the package that owns the rule, relative to dir
+	usersDirAllow  map[string]string
+	literalAllow   map[string]string
+	selectorPrefix string
+}
+
 func TestNoUsersPathHandlingOutsideWorkspaceref(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
-	root := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+	here := filepath.Dir(thisFile)
+	// The agent server and the workspace service both parse paths through workspaceref; this one test guards both.
+	for _, g := range []guardRoot{
+		{name: "agent_go", dir: filepath.Join("..", ".."), skipDir: "pkg/workspaceref", usersDirAllow: usersDirAllowlist, literalAllow: literalAllowlist},
+		{name: "workspace", dir: filepath.Join("..", "..", "..", "workspace"), skipDir: "workspaceref", usersDirAllow: workspaceUsersDirAllowlist, literalAllow: map[string]string{}},
+	} {
+		t.Run(g.name, func(t *testing.T) { checkGuardRoot(t, filepath.Clean(filepath.Join(here, g.dir)), g) })
+	}
+}
+
+func checkGuardRoot(t *testing.T, root string, g guardRoot) {
+	if _, err := os.Stat(root); err != nil {
+		t.Skipf("%s is not checked out next to this module: %v", g.name, err)
+	}
 	var violations []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -116,7 +143,7 @@ func TestNoUsersPathHandlingOutsideWorkspaceref(t *testing.T) {
 			case "node_modules", "vendor", ".git", "frontend":
 				return filepath.SkipDir
 			}
-			if rel == "pkg/workspaceref" {
+			if rel == g.skipDir {
 				return filepath.SkipDir
 			}
 			return nil
@@ -135,9 +162,9 @@ func TestNoUsersPathHandlingOutsideWorkspaceref(t *testing.T) {
 		for _, f := range found {
 			allowed := false
 			if f.what == "workspaceref.UsersDir" {
-				_, allowed = usersDirAllowlist[rel]
+				_, allowed = g.usersDirAllow[rel]
 			} else {
-				for prefix := range literalAllowlist {
+				for prefix := range g.literalAllow {
 					if rel == prefix || (strings.HasSuffix(prefix, "/") && strings.HasPrefix(rel, prefix)) {
 						allowed = true
 					}
@@ -154,18 +181,18 @@ func TestNoUsersPathHandlingOutsideWorkspaceref(t *testing.T) {
 	}
 	sort.Strings(violations)
 	if len(violations) > 0 {
-		t.Fatalf("PLAT-435: %d place(s) handle the _users path segment outside pkg/workspaceref. Use workspaceref.Parse / Ref "+
-			"(Logical, Physical, OwnedBy, SameFor, Project) instead:\n  %s", len(violations), strings.Join(violations, "\n  "))
+		t.Fatalf("PLAT-435: %d place(s) in %s handle the _users path segment outside workspaceref. Use workspaceref.Parse / Ref "+
+			"(Logical, Physical, OwnedBy, SameFor, Project) instead:\n  %s", len(violations), g.name, strings.Join(violations, "\n  "))
 	}
 	// Every allowlist entry must still need its exemption.
-	for file := range usersDirAllowlist {
+	for file := range g.usersDirAllow {
 		src, err := os.ReadFile(filepath.Join(root, file))
 		if err != nil {
 			t.Errorf("allowlisted file %s: %v", file, err)
 			continue
 		}
 		if found, _ := scanSource(file, src); len(found) == 0 {
-			t.Errorf("%s no longer uses UsersDir: remove it from usersDirAllowlist", file)
+			t.Errorf("%s no longer uses UsersDir: remove it from the allowlist", file)
 		}
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"io/fs"
 	"os"
 	"os/user"
@@ -242,6 +243,10 @@ func IsCodeProjectDir(docsDir, dir string) bool {
 	if err != nil {
 		return false
 	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	return len(parts) >= 5 && parts[0] == "_users" && parts[2] == "Chats" && parts[3] == "Code" && parts[4] == "projects"
+	ref, ok := workspaceref.Parse(filepath.ToSlash(rel))
+	if !ok || !ref.HasOwner() {
+		return false
+	}
+	logical := ref.Logical()
+	return logical == workspaceref.CodeProjectsRoot || strings.HasPrefix(logical, workspaceref.CodeProjectsRoot+"/")
 }

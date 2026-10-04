@@ -45,3 +45,26 @@ Where each product's owner lived before: Workflows in `workflow.json` (several o
 - Tests (`product_owner_test.go`): stamp never overwrites and keeps other fields; the pick rule; startup scan (stamps, idempotent, leaves a
   disagreeing and a foreign manifest alone); manifest vs path agree for EVERY physical project root a fixture in `cmd/server/*_test.go` spells
   (scanned by regexp); `resolveCrewPath` prefers the manifest.
+
+### Step 3: one path library (2026-10-04, not deployed)
+
+- **Shared how.** `agent_go` already imports the `workspace` module (`replace ... => ../workspace`) and the workspace module cannot import agent_go,
+  so the package moved INTO the workspace module: `workspace/workspaceref` (code and its table tests moved with `git mv`). `agent_go/pkg/workspaceref`
+  stays as a thin re-export (type alias for `Ref`, the constants and the six functions), so none of the ~60 agent_go files that import it changed (other
+  sessions are editing them). No import cycle, no new module: the deploy builds (`deploy/rootless-linux/build-and-activate.sh`: `go build
+  .../workspace` and `.../agent_go/cmd/agentworks` with the same `replace`) are unchanged. Verified `GOWORK=off go build ./...` of the workspace module
+  (also `GOOS=linux`) and the agent_go packages that do not use the new provider API.
+- **Migrated** (all through `workspaceref.Parse`): `utils.UsersDirectory` (now the shared constant), `utils.userTreeOwner`,
+  `utils.ConvertToUserRelativePath`, `utils.ResolveUserPath` (physical path via `PhysicalPathOf`; its user sanitizer stays the workspace one, see
+  PLAT-440), `handlers/query.go normalizeOwnedPerUserDBPath`, `handlers/documents.go` root-listing filter, `server.go` default folders,
+  `skill_sync.go` project skills-folder shape (`isProjectSkillsDir`), `slots.IsCodeProjectDir`, `slots.ExecConfig.SlotForDir`.
+- **Guard.** `pkg/workspaceref/guard_test.go` now walks agent_go AND `../workspace` (own allowlist: `utils/path.go` only, for the constant); a probe file
+  with a `"_users/x"` literal in the workspace module fails it.
+- **Tests (both spellings, another user refused):** `utils/path_spellings_test.go`, `handlers/db_path_spellings_test.go` (own logical, own physical,
+  own physical absolute, another user's physical and absolute physical, the users folder), `skill_target_spellings_test.go`,
+  `slots/identity_table_test.go` (regression table of `SlotForDir` and `IsCodeProjectDir`, run against the unmigrated code too: same results).
+- **Behaviour changes, where the old code was wrong on a spelling:** `skill_sync` accepted `_users/./Chats/Code/projects/p/skills` (owner `.`),
+  which resolved to `<docs>/_users/Chats/...` (an owner called `Chats`); it is refused now (the target must be canonical). Nothing else differs on
+  the tests above (the new spelling tests pass on the old code for the migrated helpers).
+- This commit also carries the workspace half of step 2 (`slots.ExecConfig.SlotForLaunch`, `slottmux` follows the launch script's run folder,
+  `slots/launch_test.go`); the agent_go and provider halves, and what the fallback status is, are under Step 2 once that lands.

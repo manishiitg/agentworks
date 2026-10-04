@@ -26,6 +26,7 @@ import (
 
 	"database/sql/driver"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"modernc.org/sqlite"
 )
 
@@ -237,12 +238,11 @@ const dbTablesSampleRows = 50
 func normalizeOwnedPerUserDBPath(c *gin.Context, requestedPath string) (string, error) {
 	docsDir := viper.GetString("docs-dir")
 	clean := utils.SanitizeInputPath(requestedPath, docsDir)
-	if clean == utils.UsersDirectory || strings.HasPrefix(clean, utils.UsersDirectory+"/") {
-		ownPrefix := filepath.ToSlash(filepath.Join(utils.UsersDirectory, getUserID(c))) + "/"
-		if !strings.HasPrefix(clean, ownPrefix) {
+	if ref := workspaceref.MustParse(clean); ref.IsUsersRoot() || ref.HasOwner() {
+		if !ref.HasOwner() || ref.Owner() != getUserID(c) {
 			return "", fmt.Errorf("access to another user's database is not allowed")
 		}
-		clean = strings.TrimPrefix(clean, ownPrefix)
+		clean = ref.Logical()
 		if !utils.IsPerUserPath(clean) {
 			return "", fmt.Errorf("invalid private database path")
 		}

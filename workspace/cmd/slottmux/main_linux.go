@@ -205,6 +205,15 @@ func hasDelete(c slots.TmuxCommand) bool {
 	return false
 }
 
+// launchCommand is the pane's command line of a new-session request ("" when it has none).
+func launchCommand(c slots.TmuxCommand) string {
+	idx := c.ShellCommandIndex()
+	if idx < 0 {
+		return ""
+	}
+	return strings.Join(c.Rest[idx:], " ")
+}
+
 // commandUsesSlotFolder reports whether the pane's command refers to a file in the slot's run folder.
 func commandUsesSlotFolder(c slots.TmuxCommand, runDir string) bool {
 	idx := c.ShellCommandIndex()
@@ -314,7 +323,9 @@ func run(args []string) int {
 	switch {
 	case c.IsNewSession():
 		name, dir := c.NewSessionFlags()
-		slot := cfg.SlotForDir(dir)
+		// The slot is the one the platform named by putting the launch script in its run folder (PLAT-442); the
+		// folder the session starts in no longer decides.
+		slot := cfg.SlotForLaunch(dir, launchCommand(c))
 		if name != "" && !commandUsesSlotFolder(c, filepath.Join(cfg.SlotRunRoot, slot)) {
 			forget(registry, name) // a session of this name is about to live on the platform's own tmux
 		}

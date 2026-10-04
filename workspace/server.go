@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -65,7 +66,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Create default workspace subdirectories.
 	// Root-level Chats/ and Downloads/ are kept for backwards compatibility with existing workspaces.
 	// New sessions write to _users/<userID>/Chats/ instead (per-user isolation).
-	defaultFolders := []string{"Chats", "Downloads", "Workflow", "skills", "_users/default/Chats", "_users/default/memories", "_users/default/chat_history"}
+	defaultFolders := []string{"Chats", "Downloads", "Workflow", "skills",
+		workspaceref.PhysicalPath("default", "Chats"), workspaceref.PhysicalPath("default", "memories"), workspaceref.PhysicalPath("default", "chat_history")}
 	for _, folder := range defaultFolders {
 		path := filepath.Join(docsDir, folder)
 		if err := os.MkdirAll(path, 0755); err != nil {
