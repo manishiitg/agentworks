@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on `main` (multi-llm-provider-go `4dba54e`); not deployed, needs a backend restart |
+| State | fixed on `main` (provider `4dba54e`, pinned `e6cc149`); needs a rebuild and backend restart |
 | Date | 2026-10-04 |
 | Owner | coding-agent-bridge |
 | Related | PLAT-394 (Mac Seatbelt for all CLIs), PLAT-463 |
@@ -41,6 +41,12 @@ out by experiment. Codex and Claude do not walk up this way and were unaffected.
 - `seatbelt_darwin_test.go`: under the real sandbox, Muse can list the three folders
   above its runtime folder, Codex cannot, and Muse still cannot list or read another
   runtime.
+
+- `agent_go/go.mod` pins multi-llm-provider-go at `e6cc149` (includes `4dba54e`). The
+  first push of the provider fix did not bump this pin, so the server built after the
+  owner's 19:57 restart still had the old sandbox and the relaunched Muse chats
+  (`muse resume`) failed the same way. A provider change reaches the app only through
+  this pin.
 
 ## Left
 
