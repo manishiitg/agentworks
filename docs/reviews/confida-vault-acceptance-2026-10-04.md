@@ -91,5 +91,18 @@ fixed/auto-hide preference remains shared across products.
   bridge explicitly; normal products, read-only turns and disabled profile tools
   receive no additional admission. Execution-time authority remains unchanged.
 - Confida has no `GLOBAL_SECRET_*` settings or managed global secret file.
-  Eight shared project secret files and eight legacy per-user project secret
-  files exist. Their contents are not printed or promoted into Platform.
+  Eight project secret files exist in the shared project store. Their contents
+  are not printed or promoted into Platform. These files and the empty user
+  secret metadata file are backed up in `project-secrets.tar.gz` (0600).
+- An isolated Linux instance of the release binary passed Basic authentication,
+  credential redaction, allowed/denied full-string regex, denial before upstream
+  execution, secret cross-user isolation/revocation, MCP revocation and SQLite
+  persistence across process restart. It used only synthetic identities,
+  credentials and a loopback mock upstream. Record:
+  `/srv/confida/state/manual-backups/vault-predeploy-z2_sbwa_/result.json`.
+- Reviewing issue #226 exposed a live-report bridge gap: report sessions were
+  absent from Vault's session-owner lookup. The bridge now uses the registered
+  report viewer only while the script runs, never a retained event-store owner.
+  Legacy provider/tool URLs resolve uniquely to live permitted Vault tools;
+  project tool selection still applies. Regression tests cover viewer identity,
+  legacy mapping, selected-tool denial, revocation and ended-session rejection.

@@ -26,12 +26,19 @@ workflows from `reporting-policy` / `design-reporting-ui`.
 
 - Anyone who can open the workflow (owner, editor or read-only user) can
   trigger the scripts its Dashboard calls.
-- The script always runs **as the workflow**, never as the viewer. It uses the
-  workflow's own connections, the same as a scheduled run:
+- The script uses the workflow's or Crew's selection, with the authenticated
+  viewer's live MCP and Vault permissions:
   - its selected MCP servers and tools;
   - its selected secrets (`$SECRET_*`);
   - its variables (`$VAR_*`, only when there is a single group; otherwise the
     defaults).
+- A selected Vault connection must be permitted to the viewer through their
+  groups, including Platform for globally shared connections. Project access
+  alone does not grant Vault MCPs or global secrets. Private MCP credentials
+  remain private to their owner; share a connection through Vault for other
+  Dashboard viewers. Revocation applies to subsequent bridge calls.
+- A report bridge session exists only while its script runs. It has no Vault
+  builder authority and cannot inherit a chat owner's identity.
 - Published static copies cannot run scripts. The publish guidance bakes the
   output in at publish time, or hides that panel.
 

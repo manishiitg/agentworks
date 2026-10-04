@@ -56,10 +56,24 @@ func vaultSelectionName(name string) string {
 // OpenAPI bridge URLs also normalize tool names. Recover only a unique name
 // from this caller's live inventory; the gateway still authorizes the call.
 func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, server, tool string) (context.Context, string, error) {
-	if !strings.HasPrefix(server, "vault_") {
+	vaultPath := strings.HasPrefix(server, "vault_")
+	legacyReportPath := !vaultPath && strings.HasPrefix(session, "report-run-")
+	if !vaultPath && !legacyReportPath {
 		return ctx, tool, nil
 	}
 	person := api.mcpSessionPerson(session)
+	if legacyReportPath {
+		// Preserve old report URLs such as Linear/list_issues after migration,
+		// but a viewer's private connection always retains its own tool names.
+		resolved, err := api.resolveGovernedMCP(ctx, person, server)
+		if err != nil {
+			return ctx, "", err
+		}
+		if !strings.HasPrefix(resolved.Name, "vault_") {
+			return ctx, tool, nil
+		}
+		server = resolved.Name
+	}
 	rows, err := vaultServersFor(ctx, person)
 	if err != nil {
 		return ctx, "", err
@@ -72,7 +86,8 @@ func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, serve
 			continue
 		}
 		for _, candidate := range row.Tools {
-			if candidate.Name == tool || openapi.SanitizePathSegment(candidate.Name) == tool {
+			_, upstream, hasPrefix := strings.Cut(candidate.Name, "__")
+			if candidate.Name == tool || openapi.SanitizePathSegment(candidate.Name) == tool || legacyReportPath && hasPrefix && (upstream == tool || openapi.SanitizePathSegment(upstream) == tool) {
 				matches = append(matches, candidate.Name)
 			}
 		}
@@ -98,6 +113,16 @@ func mcpCaller(ctx context.Context) string {
 // Workflow children carry server-owned parent registrations rather than their
 // own persisted browser session. Never infer an owner from a client-supplied ID.
 func (api *StreamingAPI) mcpSessionPerson(session string) string {
+	if strings.HasPrefix(session, "report-run-") {
+		// Report sessions have a server-owned lifetime and viewer identity, not
+		// an event-store chat owner. Never fall back after the script has ended.
+		if cached, exists := api.reportRunSessions.Load(session); exists {
+			if scope, ok := cached.(reportRunScope); ok {
+				return scope.userID
+			}
+		}
+		return ""
+	}
 	if pin, ok, err := codeSessionPinFor(session); err == nil && ok {
 		return pin.Person
 	}
@@ -514,16 +539,14 @@ func (api *StreamingAPI) ownsLegacyPlaceMCP(ctx context.Context, person, interna
 
 // Project selection is an additional limit, never an authorization grant.
 func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *mcpclient.MCPConfig, selected, tools []string, person, server, tool string) (*executor.ResolvedMCPServer, error) {
-	var vaultResolved *executor.ResolvedMCPServer
+	resolved, err := api.resolveGovernedMCP(ctx, person, server)
+	if err != nil {
+		return nil, err
+	}
 	if strings.HasPrefix(server, "vault_") {
-		var err error
-		vaultResolved, err = api.resolveGovernedMCP(ctx, person, server)
-		if err != nil {
-			return nil, err
-		}
 		// Selection must still refer to the exact live connector ID. Comparing
 		// normalized selection IDs could conflate two different connections.
-		server = vaultSelectionName(vaultResolved.Name)
+		server = vaultSelectionName(resolved.Name)
 	}
 	allowed := false
 	canonical := func(name string) string {
@@ -548,9 +571,15 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 	}
 	if len(tools) > 0 {
 		allowed = false
+		upstreamTool := tool
+		if strings.HasPrefix(resolved.Name, "vault_") {
+			if _, suffix, ok := strings.Cut(tool, "__"); ok {
+				upstreamTool = suffix
+			}
+		}
 		for _, entry := range tools {
 			n, t, ok := strings.Cut(entry, ":")
-			if ok && canonical(n) == canonical(server) && (t == "*" || t == tool) {
+			if ok && canonical(n) == canonical(server) && (t == "*" || t == tool || t == upstreamTool) {
 				allowed = true
 			}
 		}
@@ -558,10 +587,7 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 			return nil, errors.New("MCP tool is not selected for this project")
 		}
 	}
-	if vaultResolved != nil {
-		return vaultResolved, nil
-	}
-	return api.resolveGovernedMCP(ctx, person, server)
+	return resolved, nil
 }
 func (api *StreamingAPI) discoverGovernedServerTools(ctx context.Context, person, server string) (*ToolStatus, error) {
 	resolved, err := api.resolveGovernedMCP(ctx, person, server)
