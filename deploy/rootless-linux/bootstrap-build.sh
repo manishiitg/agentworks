@@ -21,6 +21,15 @@ exec 9>"$REMOTE_APP/deploy.lock"
 flock -n 9 || { echo "Another $PRODUCT deployment is already running." >&2; exit 1; }
 trap 'rm -rf "$JOB"' EXIT
 
+# Prebuilt release (PLAT-426): nothing to install, clone or compile. The build holds the three repositories' source, so the
+# activation script that runs is the one from the very revisions the build was made from.
+if [[ -f "$JOB/prebuilt" ]]; then
+  PREBUILT="$(cat "$JOB/prebuilt")"
+  [[ "$PREBUILT" =~ ^/srv/_builds/[0-9a-f]{8}-[0-9]{14}$ ]] || { echo "Unexpected prebuilt path: $PREBUILT" >&2; exit 1; }
+  bash "$PREBUILT/source/mcp-agent-builder-go/deploy/rootless-linux/build-and-activate.sh" "$PREBUILT/source" "$PRODUCT" --prebuilt "$PREBUILT"
+  exit $?
+fi
+
 if ! command -v go >/dev/null; then
   echo 'Installing the pinned Go toolchain on the server'
   curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o "$JOB/go.tar.gz"

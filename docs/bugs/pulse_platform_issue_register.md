@@ -10,7 +10,9 @@ operations/publisher/scheduler, draft tests and immutable version calls.
 
 ## Build a release once, deploy everywhere — PLAT-426
 
-[PLAT-426](pulse_platform/scheduler-runs/plat-426.md), P3, open (planned). Deploys take about 5 min on the Hetzner box and 7 min on RTS because every server builds the same source.
+[PLAT-426](pulse_platform/scheduler-runs/plat-426.md), P3, fixed on `main`; not deployed. `deploy.sh` builds once on the Hetzner
+box (`/srv/_builds`, manifest with revisions, arch, glibc, file hashes; about 3 min warm) and Excellence, Confida, SparkQuill
+and RTS only copy and activate it after verifying the manifest; `--build` deploys a chosen older build.
 
 ## Provider switch: next sends rejected with 409 delivery_uncertain — PLAT-425
 

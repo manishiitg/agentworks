@@ -15,6 +15,9 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ## How it works
 
+(This is the original on-server build path, still used by `DEPLOY_BUILD_MODE=server`; the default builds once, see
+"Build once, deploy everywhere" below.)
+
 1. `./deploy.sh <product>` runs on your machine. It reads
    `products/<product>/product.env`, installs/updates the product's CLI
    dependencies over SSH, then ships `bootstrap-build.sh` plus the branch
@@ -37,6 +40,49 @@ per-product configuration. Video Studio and Dominion have their own cases in
    checks both loopback ports and the public domain, then prunes old
    releases (only ones with no process still referencing them, and only
    after a health check confirms the new release is up).
+
+## Build once, deploy everywhere (PLAT-426)
+
+By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no longer compiles on the target. The release is built
+**once** on the Hetzner box and each server only copies and activates it:
+
+1. `deploy/common/build-release.sh` (shipped and run over ssh as `root` by `deploy.sh`, under `systemd-run` limits: 800% CPU,
+   12 GB, nice 10; set `BUILD_AS=<user>` to build as an unprivileged account that owns the builds folder) fetches the three
+   repositories at the revisions `deploy.sh` resolves (head of `DEPLOY_BRANCH`, default `main`) and builds into
+   `/srv/_builds/<builder-sha8>-<utc timestamp>/`: `bin/` (agent with cgo native STT and `bin/lib`, workspace, gateway, browser,
+   landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), `frontend/`, `static/`, `downloads/`, `packages/`,
+   `source/` (the three repos without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
+   sha256 of every file; `deploy/common/release_manifest.py`). The folder is world-readable, so every product account can copy
+   from it. A build of the same three revisions is reused; the newest 3 builds are kept (a build younger than an hour or pinned is
+   never removed).
+2. `bootstrap-build.sh` (given a `prebuilt` file instead of repository URLs) runs `build-and-activate.sh --prebuilt <build>` from
+   the build's own `source/`. It first verifies the manifest: wrong CPU architecture, a build that needs a newer glibc than the
+   host has, a missing, changed or unlisted file, or an agent that cannot load its libraries all **refuse** the deploy before
+   anything is touched. Then it copies the files into the product's own `releases/<id>/` (binaries renamed `<product>-agent`,
+   `-workspace`, `-gateway`; runtime-config, brand, MCP catalog and `downloads/version.json` are product-specific and made at
+   this step) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
+   (`DEPLOY_DRAIN_SECONDS`), restart, `deployment_checks`, managed Chrome, profile report, release pruning.
+3. RTS: `./deploy.sh rts` streams a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) over
+   ssh, checks it against the manifest hash read from the build host, and runs the unchanged RTS activation without compiling.
+
+```
+./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
+./deploy.sh builds                     # list builds: name, age, build seconds, the three revisions, pinned
+./deploy.sh excellence                 # build once if needed, then copy + activate
+./deploy.sh all-hetzner                # excellence, confida, sparkquill in sequence from ONE build (never dominion)
+./deploy.sh rts                        # same build, shipped to RTS
+./deploy.sh confida --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
+                                       # ancestors of origin/main, so a known-good older build can go out while main is held
+./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
+DEPLOY_BUILD_MODE=server ./deploy.sh confida   # the original path: the server clones main and compiles (fallback)
+```
+
+Build host settings: `BUILD_HOST` (116.202.210.102), `BUILD_PORT` (2299), `BUILD_USER` (root), `BUILD_SSH_KEY`, `BUILDS_DIR`
+(/srv/_builds), `BUILD_CPU_QUOTA`, `BUILD_MEMORY_MAX`, `DEPLOY_FORCE_BUILD=1` (rebuild even if the revisions are already built).
+
+Rehearse the copy without touching a product: `build-and-activate.sh <build>/source <product> --prebuilt <build> --stage-only` with
+`DEPLOY_APP_ROOT=<scratch dir>` assembles the release in the scratch folder and stops before preflight, `current` and every service.
+Dominion has its own script and is not part of this.
 
 ## Adding a new product
 

@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Build a release once; every server copies and activates it, and refuses a build that does not match — PLAT-426
+
+`./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box
+(`deploy/common/build-release.sh` into `/srv/_builds/<sha>-<time>/`, with `manifest.json`) and each server only copies that build and runs
+its usual activation. Before touching anything the target verifies the manifest and refuses on another CPU architecture, a glibc older than
+the build's, or any missing, changed or unlisted file. Before, every server cloned and compiled the same commit (5 min each, RTS 7 min), and
+each build could differ. `--build <name|sha>` deploys an existing build instead of main's head, allowed only when its three revisions are
+ancestors of `origin/main`, so a known-good older build can go out while main is held. `DEPLOY_BUILD_MODE=server` keeps the old on-server
+build. Dominion is not part of it.
+
 ### 2026-10-04 — Scripts use the managed DB layer; `$DB_PATH` is compatibility only
 
 Scripted steps reach the workflow database through the built-in `agentworks_db`

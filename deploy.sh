@@ -16,8 +16,20 @@ Servers:
   confida               Confida rootless Linux deployment
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
+  all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
   report [server]       how each server differs from the standard runtime profile (read-only)
+  build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
+  builds                list the builds on the build host (name, age, the three revisions, pinned)
+  pin|unpin <build>     keep a known-good build from being pruned by later builds (the newest 3 are kept otherwise)
+
+Build once, deploy everywhere (PLAT-426): rts, excellence, confida, sparkquill and all-hetzner build the release ONCE on the
+Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
+server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
+  --build <name|sha>    deploy that existing build instead of main's head (see `builds`); its three revisions must be
+                        ancestors of origin/main of the three repositories
+  DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
+  Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 
 dominion optionally takes --activate (stage-only otherwise):
   ./deploy.sh dominion              # clone/pull, build, stage a release
@@ -32,6 +44,10 @@ reject_extra_arguments() {
     exit 2
   fi
 }
+
+# Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
+# shellcheck disable=SC1091
+source "$REPO_ROOT/deploy/common/build-once.sh"
 
 # --- RTS (video.realtrainingsys.com) -------------------------------------
 # Sends only deployment instructions and secrets; the server clones main of
@@ -54,20 +70,34 @@ deploy_rts() {
   SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$SSH_KEY_PATH" "video-studio@$HOST_IP")
   rts_cleanup() { rm -rf "$STAGING"; "${SSH[@]}" "rm -rf '$REMOTE_JOB'" >/dev/null 2>&1 || true; }
   trap rts_cleanup EXIT
-  local repo url
-  for repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
-    url="$(git -C "$REPO_ROOT/../$repo" remote get-url origin)"
-    url="${url/git@github.com:/https://github.com/}"
-    [[ "$url" =~ ^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Unsupported repository URL for $repo" >&2; exit 1; }
-    printf '%s\n' "$url" >> "$STAGING/repos"
-  done
+  local repo url prebuilt_name=""
+  if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
+    # Build once on the Hetzner box (or reuse the build of these revisions); RTS only copies it after verifying the manifest.
+    prebuilt_name="$(ensure_prebuilt_build)" || exit 1
+    # The manifest's own hash travels separately from the tarball, so RTS can tell a damaged or swapped manifest.
+    build_ssh "sha256sum '$BUILDS_DIR/$prebuilt_name/manifest.json'" | awk '{print $1}' > "$STAGING/prebuilt"
+    [[ "$(cat "$STAGING/prebuilt")" =~ ^[0-9a-f]{64}$ ]] || { echo "Cannot read the build's manifest hash" >&2; exit 1; }
+  else
+    [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "--build needs the prebuilt mode (unset DEPLOY_BUILD_MODE=server)" >&2; exit 1; }
+    for repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
+      url="$(git -C "$REPO_ROOT/../$repo" remote get-url origin)"
+      url="${url/git@github.com:/https://github.com/}"
+      [[ "$url" =~ ^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Unsupported repository URL for $repo" >&2; exit 1; }
+      printf '%s\n' "$url" >> "$STAGING/repos"
+    done
+  fi
   aws_rts secretsmanager get-secret-value --secret-id "$GLOBAL_SECRETS_SECRET_ID" --query SecretString --output text \
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
   cp "$RTS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
-  echo 'Server cloning main from all three repositories and building the release locally.'
+  if [[ -n "$prebuilt_name" ]]; then
+    echo "Shipping build $prebuilt_name to RTS (verified there against its manifest); nothing is compiled on RTS."
+    ship_build_to_rts "$prebuilt_name" "$REMOTE_JOB"
+  else
+    echo 'Server cloning main from all three repositories and building the release locally.'
+  fi
   # Keep builds below ~3/4 of a 4 GB host (RTS_BUILD_MEMORY_MAX overrides, e.g. 6G on a larger instance) and two CPU
   # cores while tests keep running; swap absorbs the rest, so a build is slower, not killed.
   "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
@@ -146,6 +176,15 @@ SCP=(scp -P "$SSH_PORT" -i "$SSH_KEY_PATH" -o BatchMode=yes -o ConnectTimeout=10
 
 echo "==> [$PRODUCT] Checking deployment configuration"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - preflight" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
+
+PREBUILT_NAME=""
+if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
+  # Build once (or reuse the build of these revisions); the server below only copies and activates it.
+  PREBUILT_NAME="$(ensure_prebuilt_build)"
+  [[ -n "$PREBUILT_NAME" ]]
+else
+  [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "--build needs the prebuilt mode (unset DEPLOY_BUILD_MODE=server)" >&2; exit 1; }
+fi
 
 echo "==> [$PRODUCT] Checking for jq on the remote host (required by agent shell scripts)"
 if "${SSH[@]}" 'command -v jq' >/dev/null 2>&1; then
@@ -227,27 +266,22 @@ printf '%s\n' "$DEPLOY_BRANCH" > "$STAGING/branch"
 printf '%s\n' "$PRODUCT" > "$STAGING/product"
 "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
 
-# All three repos are public; use an anonymous HTTPS URL so a fresh account
-# with no SSH deploy key for github.com can still clone (confida hit "Host
-# key verification failed" on the SSH remote form, 2026-09-11).
-to_https_url() {
-  local url="$1"
-  url="${url/ssh:\/\/git@github.com\//https://github.com/}"
-  url="${url/git@github.com:/https://github.com/}"
-  url="${url%.git}"
-  [[ "$url" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Unsupported repository URL: $1" >&2; exit 1; }
-  printf '%s\n' "$url"
-}
-
-echo "==> [$PRODUCT] Resolving git remotes for $DEPLOY_BRANCH (mcp-agent-builder-go, mcpagent, multi-llm-provider-go)"
-{
-  to_https_url "$(git -C "$LOCAL_REPO_ROOT" remote get-url origin)"
-  to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" remote get-url origin)"
-  to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" remote get-url origin)"
-} > "$STAGING/repos"
-"${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/repos" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
-
-echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH and building natively"
+# All three repos are public; to_https_url (above) gives an anonymous HTTPS URL so a fresh account with no SSH deploy key for
+# github.com can still clone (confida hit "Host key verification failed" on the SSH remote form, 2026-09-11).
+if [[ -n "$PREBUILT_NAME" ]]; then
+  printf '%s\n' "$BUILDS_DIR/$PREBUILT_NAME" > "$STAGING/prebuilt"
+  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
+  echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOST_IP (copy and activate, no compile)"
+else
+  echo "==> [$PRODUCT] Resolving git remotes for $DEPLOY_BRANCH (mcp-agent-builder-go, mcpagent, multi-llm-provider-go)"
+  {
+    to_https_url "$(git -C "$LOCAL_REPO_ROOT" remote get-url origin)"
+    to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" remote get-url origin)"
+    to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" remote get-url origin)"
+  } > "$STAGING/repos"
+  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/repos" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
+  echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH and building natively"
+fi
 # Throttled below the box's shared core/RAM budget: this box also runs other
 # products, each under its own account, and a full go+npm build must not
 # starve their live services while it runs.
@@ -297,6 +331,7 @@ deploy_label() {
   case "$SERVER" in
     rts|video-studio) echo "RTS (video.realtrainingsys.com)" ;;
     excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
+    all-hetzner) echo "Excellence, Confida and SparkQuill" ;;
     confida) echo "Confida (confida.agentworkshq.com)" ;;
     *) echo "$SERVER" ;;
   esac
@@ -326,6 +361,45 @@ deploy_finish_notice() {
   return "$rc"
 }
 
+# --build <name|sha> (or DEPLOY_BUILD): deploy that existing build; --force: rebuild even if these revisions were already built.
+DEPLOY_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --build) [[ $# -ge 2 ]] || { echo "--build needs a build name or sha (see ./deploy.sh builds)" >&2; exit 2; }; DEPLOY_BUILD="$2"; shift 2 ;;
+    --build=*) DEPLOY_BUILD="${1#--build=}"; shift ;;
+    --force) if [[ "$SERVER" == build ]]; then DEPLOY_FORCE_BUILD=1; shift; else DEPLOY_ARGS+=("$1"); shift; fi ;;
+    *) DEPLOY_ARGS+=("$1"); shift ;;
+  esac
+done
+set -- ${DEPLOY_ARGS[@]+"${DEPLOY_ARGS[@]}"}
+export DEPLOY_BUILD DEPLOY_FORCE_BUILD
+
+# ./deploy.sh builds: what the build host holds. ./deploy.sh build: make (or reuse) the build of the current main; deploys nothing.
+if [[ "$SERVER" == builds ]]; then
+  reject_extra_arguments "$@"
+  build_ssh "python3 - list '$BUILDS_DIR'" < "$REPO_ROOT/deploy/common/release_manifest.py"
+  exit 0
+fi
+if [[ "$SERVER" == pin || "$SERVER" == unpin ]]; then
+  [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh $SERVER <build name or sha>" >&2; exit 2; }
+  found="$(find_build "$1")" || { echo "No unique build matches '$1' (see ./deploy.sh builds)" >&2; exit 1; }
+  pinned_name="${found%% *}"
+  if [[ "$SERVER" == pin ]]; then
+    build_ssh "install -d -m 0755 '$BUILDS_DIR/.pinned' && touch '$BUILDS_DIR/.pinned/$pinned_name'"
+  else
+    build_ssh "rm -f '$BUILDS_DIR/.pinned/$pinned_name'"
+  fi
+  echo "$SERVER: $pinned_name"
+  exit 0
+fi
+if [[ "$SERVER" == build ]]; then
+  reject_extra_arguments "$@"
+  [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "'build' makes a new build; --build selects an existing one for a deploy." >&2; exit 2; }
+  name="$(build_release_remote)"
+  echo "Build ready: $name (on ${BUILD_HOST:-116.202.210.102}:$BUILDS_DIR/$name). Nothing was deployed."
+  exit 0
+fi
+
 # ./deploy.sh report [server]: how each server differs from the standard runtime profile. Read-only, deploys nothing.
 if [[ "$SERVER" == report ]]; then
   exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
@@ -349,7 +423,20 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rootless_product agents
     ;;
+  all-hetzner)
+    # Excellence, Confida and SparkQuill from ONE build, one after the other; stops at the first failure. Never Dominion.
+    reject_extra_arguments "$@"
+    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]] || { echo "all-hetzner needs the prebuilt mode" >&2; exit 1; }
+    DEPLOY_PREBUILT_NAME="$(ensure_prebuilt_build)"
+    [[ -n "$DEPLOY_PREBUILT_NAME" ]]
+    export DEPLOY_PREBUILT_NAME
+    echo "==> all-hetzner: build $DEPLOY_PREBUILT_NAME -> excellence, confida, sparkquill"
+    deploy_rootless_product agents
+    deploy_rootless_product confida
+    deploy_rootless_product sparkquill
+    ;;
   dominion)
+    [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "Dominion has its own deploy path; --build does not apply to it." >&2; exit 2; }
     ACTIVATE_FLAG=""
     if [[ $# -gt 0 ]]; then
       if [[ $# -gt 1 || "$1" != "--activate" ]]; then
@@ -389,7 +476,7 @@ case "$SERVER" in
     usage
     ;;
   --list)
-    printf '%s\n' rts confida sparkquill excellence dominion
+    printf '%s\n' rts confida sparkquill excellence all-hetzner dominion
     ;;
   "")
     usage >&2
