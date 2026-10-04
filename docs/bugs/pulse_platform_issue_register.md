@@ -1,3 +1,9 @@
+## Message-sequence prompts advertised KB read the sandbox denied — PLAT-438
+
+[PLAT-438](pulse_platform/step-execution/plat-438.md), fixed on `main`, not
+deployed: a sequence step's prompt now offers the knowledge base only when its
+`knowledgebase_access` allows it.
+
 ## Builder chats treated as "provider changed" on every message — PLAT-437
 
 [PLAT-437](pulse_platform/chat-reliability/plat-437.md), regression of PLAT-425 (deployed), fixed on main; deploy pending. A workflow whose manifest

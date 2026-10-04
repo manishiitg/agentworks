@@ -200,6 +200,9 @@ func TestMessageSequenceTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	base.SetWorkspacePath("Workflow/test-flow")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0"}
 	step := msgSeqStep(MessageSequenceItem{ID: "capture", Type: "user_message"})
+	// The step itself grants KB read-write: the prompt advertises only what the
+	// step's folder guard allows (PLAT-438).
+	step.AgentConfigs = &AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite}
 	item := MessageSequenceItem{
 		ID:          "capture",
 		Type:        "user_message",

@@ -1613,10 +1613,7 @@ func messageSequenceValidationSchemaJSON(schema *ValidationSchema) string {
 func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step *MessageSequencePlanStep, item MessageSequenceItem, stepIndex int, stepPath string, message string, readPaths []string, writePaths []string, writeAccess MessageSequenceWriteAccess) map[string]string {
 	stepExecRel := hcpo.messageSequenceExecutionRelPath(stepPath, step.GetID())
 	docsRoot := GetPromptDocsRoot()
-	kbAccess := KBAccessRead
-	if writeAccess.Knowledgebase {
-		kbAccess = KBAccessReadWrite
-	}
+	kbAccess := messageSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)
 	dbAccess := DBAccessReadWrite
 	// Honor the step's declared context_output so the sequence writes the file
 	// downstream steps expect (in execution/<stepID>/, the normal step folder).
@@ -1871,4 +1868,19 @@ func messageSequenceHaltedBeforeItem(ctx context.Context, stepID, itemID string)
 		return fmt.Errorf("message_sequence step %q halted before item %q: %w", stepID, itemID, err)
 	}
 	return nil
+}
+
+// messageSequencePromptKBAccess is the knowledge-base access a sequence item's
+// prompt advertises. It must match the folder guard (setupMessageSequenceFolderGuard):
+// the prompt used to say "read" for every step, so a step with
+// knowledgebase_access "none" was told to read knowledgebase/context and was
+// then refused by the sandbox ("Operation not permitted"), PLAT-438.
+func messageSequencePromptKBAccess(stepAccess string, writeAccess MessageSequenceWriteAccess) string {
+	if !kbAccessAllowsRead(stepAccess) {
+		return KBAccessNone
+	}
+	if writeAccess.Knowledgebase && kbAccessAllowsWrite(stepAccess) {
+		return KBAccessReadWrite
+	}
+	return KBAccessRead
 }
