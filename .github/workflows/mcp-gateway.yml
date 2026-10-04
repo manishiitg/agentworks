@@ -1,0 +1,40 @@
+name: MCP Gateway
+
+# PR #228 merged with mcp-gateway not compiling (a referenced store type was
+# never committed), so no gateway test had ever run. This gate keeps that from
+# recurring: the module must build, vet clean, and pass its suite.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp-gateway/**"
+      - ".github/workflows/mcp-gateway.yml"
+  pull_request:
+    paths:
+      - "mcp-gateway/**"
+      - ".github/workflows/mcp-gateway.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build, vet, test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-gateway
+    steps:
+      - name: Checkout coding-agent-loop
+        uses: actions/checkout@v6
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: mcp-gateway/go.sum
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...

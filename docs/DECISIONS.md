@@ -19,6 +19,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — PR #228 merged with mcp-gateway not compiling; gate it in CI
+
+- **Found.** The Vault MVP merge referenced `store.SecretResource`,
+  `RegisterSecrets`, and `ListSecrets`, none of which existed anywhere. The
+  module had never compiled, so none of its tests had ever run either. Fixed
+  in PR #262 (`mcp-gateway/internal/store/secrets.go` plus the two smaller
+  review findings: truncated `json.Number` audit values and per-call regex
+  compilation).
+- **Done.** `.github/workflows/mcp-gateway.yml` builds, vets, and tests the
+  module on pushes to main and PRs touching it. The module is self-contained
+  in this repo, so the gate needs no sibling checkouts.
+- **Open.** `agent_go` has no equivalent cheap gate (its sibling replaces
+  complicate CI); `deploy/aws-ec2/server` tests still can't run at all (no
+  `go.mod`), as recorded earlier.
+
 ### 2026-10-04 — Chat restore returns older turns as messages only
 
 Chat restore returns older turns as messages only; tool calls are a debugging
