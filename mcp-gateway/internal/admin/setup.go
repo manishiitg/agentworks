@@ -58,7 +58,7 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 		for _, t := range tools {
 			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "fingerprint": t.Fingerprint, "description": t.Description, "annotations": json.RawMessage(t.Annotations)})
 		}
-		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListPackages(a.WorkspaceID), "providers": a.Catalog.Providers}, nil
+		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListAppliedPackages(a.WorkspaceID), "providers": a.Catalog.Providers}, nil
 	case "inspect_tool":
 		var in struct {
 			PublicName string `json:"public_name"`
@@ -71,7 +71,7 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			return nil, errors.New("tool not found")
 		}
 		return map[string]any{"public_name": t.PublicName, "description": t.Description, "status": t.Status, "fingerprint": t.Fingerprint, "input_schema": json.RawMessage(t.InputSchema), "annotations": json.RawMessage(t.Annotations)}, nil
-	case "save_draft":
+	case "save_permissions":
 		var in access.Package
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return nil, err
@@ -83,11 +83,10 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 		if err := a.validateAccessPackage(in); err != nil {
 			return nil, err
 		}
-		saved, ok := a.Store.SavePackageDraft(in, in.Version)
-		if !ok {
-			return nil, errors.New("package version changed; inspect the current draft")
+		saved, err := a.Store.SaveAccessPackage(in, in.Version, setupActor(actors))
+		if err != nil {
+			return nil, err
 		}
-		a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: setupActor(actors), Action: "save_draft", PackageID: saved.ID, Version: saved.Version})
 		return saved, nil
 	default:
 		return nil, errors.New("unknown setup tool")
@@ -95,9 +94,9 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 }
 
 func (a *Admin) setupRoutes(mux *http.ServeMux) {
-	// The shared product chat invokes deterministic connection/draft operations.
+	// The shared product chat invokes deterministic connection and immediate permission operations.
 	// The service credential is checked before any operation; this endpoint
-	// has no publish, membership, upstream execution or credential operation.
+	// has no membership, upstream execution or credential operation.
 	mux.HandleFunc("/api/admin/setup/tool", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)

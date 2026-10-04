@@ -42,89 +42,109 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 			return auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: client}, "", valid
 		}))
 		mux.Handle("/api/admin/runtime/mcp", a.Gateway.ProductHandler(identity))
+		mux.Handle("/api/admin/runtime/builder/mcp", a.Gateway.BuilderProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
+			id, connector, ok := identity(r)
+			id.ClientID = "agentworks-vault-builder"
+			return id, connector, ok && r.Header.Get("X-Vault-Builder") == "1"
+		}))
 	} else {
 		mux.HandleFunc("/api/admin/runtime/mcp", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "MCP service unavailable", http.StatusServiceUnavailable)
 		})
 	}
-	mux.HandleFunc("/api/admin/runtime/servers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(405)
-			return
-		}
-		actor := r.Header.Get("X-CapLayer-Actor")
-		if !serviceAuth(r) || !validID.MatchString(actor) {
-			w.WriteHeader(401)
-			return
-		}
-		if err := a.bindPlatformUser(r); err != nil {
-			http.Error(w, "platform permissions unavailable", 503)
-			return
-		}
-		id := auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: "agentworks"}
-		type tool struct {
-			Name        string          `json:"name"`
-			Description string          `json:"description"`
-			InputSchema json.RawMessage `json:"input_schema"`
-		}
-		type row struct {
-			ID       string `json:"id"`
-			Label    string `json:"label"`
-			Provider string `json:"provider"`
-			Tools    []tool `json:"tools"`
-		}
-		type group struct {
-			ID          string                 `json:"id"`
-			Name        string                 `json:"name"`
-			Description string                 `json:"description"`
-			Servers     []row                  `json:"servers"`
-			Secrets     []store.SecretResource `json:"secrets"`
-		}
-		if a.Store.PersistenceError() != nil {
-			http.Error(w, "permissions unavailable", 503)
-			return
-		}
-		groups := []group{}
-		memberships := []string{}
-		if user, ok := a.Store.GetUser(actor); ok && user.WorkspaceID == a.WorkspaceID {
-			memberships = a.Store.GroupsOf(actor)
-		}
-		for _, gid := range memberships {
-			g, ok := a.Store.GetGroup(gid)
-			if ok && g.WorkspaceID == a.WorkspaceID {
-				groups = append(groups, group{ID: g.ID, Name: g.Name, Description: g.Description, Servers: []row{}, Secrets: a.Store.ListSecrets(a.WorkspaceID, actor, gid, false)})
+	inventory := func(builder bool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(405)
+				return
 			}
-		}
-		rows := []row{}
-		tools := a.Store.ListTools(a.WorkspaceID)
-		for _, c := range a.Store.ListConnectors(a.WorkspaceID) {
-			if c.Status != store.StatusActive {
-				continue
+			actor := r.Header.Get("X-CapLayer-Actor")
+			if !serviceAuth(r) || !validID.MatchString(actor) || (builder && r.Header.Get("X-Vault-Builder") != "1") {
+				w.WriteHeader(401)
+				return
 			}
-			item := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
-			for _, t := range tools {
-				if t.ConnectorID == c.ID && policy.Visible(a.Store, id, t.PublicName) {
-					item.Tools = append(item.Tools, tool{t.PublicName, t.Description, t.InputSchema})
+			if err := a.bindPlatformUser(r); err != nil {
+				http.Error(w, "platform permissions unavailable", 503)
+				return
+			}
+			id := auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: "agentworks"}
+			type tool struct {
+				Name        string          `json:"name"`
+				Description string          `json:"description"`
+				InputSchema json.RawMessage `json:"input_schema"`
+			}
+			type row struct {
+				ID       string `json:"id"`
+				Label    string `json:"label"`
+				Provider string `json:"provider"`
+				Tools    []tool `json:"tools"`
+			}
+			type group struct {
+				ID          string                 `json:"id"`
+				Name        string                 `json:"name"`
+				Description string                 `json:"description"`
+				Servers     []row                  `json:"servers"`
+				Secrets     []store.SecretResource `json:"secrets"`
+			}
+			if a.Store.PersistenceError() != nil {
+				http.Error(w, "permissions unavailable", 503)
+				return
+			}
+			groups := []group{}
+			memberships := []string{}
+			if user, ok := a.Store.GetUser(actor); ok && user.WorkspaceID == a.WorkspaceID {
+				memberships = a.Store.GroupsOf(actor)
+			}
+			if builder {
+				memberships = nil
+				for _, group := range a.Store.ListGroups(a.WorkspaceID) {
+					memberships = append(memberships, group.ID)
 				}
 			}
-			if len(item.Tools) > 0 {
-				rows = append(rows, item)
-				for i := range groups {
-					groupItem := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
-					groupIdentity := id
-					groupIdentity.ViaGroup = groups[i].ID
-					for _, t := range item.Tools {
-						if policy.Visible(a.Store, groupIdentity, t.Name) {
-							groupItem.Tools = append(groupItem.Tools, t)
+			for _, gid := range memberships {
+				g, ok := a.Store.GetGroup(gid)
+				if ok && g.WorkspaceID == a.WorkspaceID {
+					groups = append(groups, group{ID: g.ID, Name: g.Name, Description: g.Description, Servers: []row{}, Secrets: a.Store.ListSecrets(a.WorkspaceID, actor, gid, false)})
+				}
+			}
+			rows := []row{}
+			tools := a.Store.ListTools(a.WorkspaceID)
+			for _, c := range a.Store.ListConnectors(a.WorkspaceID) {
+				if c.Status != store.StatusActive {
+					continue
+				}
+				item := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
+				for _, t := range tools {
+					visible := policy.Visible(a.Store, id, t.PublicName)
+					if builder {
+						_, err := policy.AuthorizeSetup(a.Store, id, t.PublicName)
+						visible = err == nil
+					}
+					if t.ConnectorID == c.ID && visible {
+						item.Tools = append(item.Tools, tool{t.PublicName, t.Description, t.InputSchema})
+					}
+				}
+				if builder || len(item.Tools) > 0 {
+					rows = append(rows, item)
+					for i := range groups {
+						groupItem := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
+						groupIdentity := id
+						groupIdentity.ViaGroup = groups[i].ID
+						for _, t := range item.Tools {
+							if policy.Visible(a.Store, groupIdentity, t.Name) {
+								groupItem.Tools = append(groupItem.Tools, t)
+							}
+						}
+						if len(groupItem.Tools) > 0 {
+							groups[i].Servers = append(groups[i].Servers, groupItem)
 						}
 					}
-					if len(groupItem.Tools) > 0 {
-						groups[i].Servers = append(groups[i].Servers, groupItem)
-					}
 				}
 			}
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, 200, map[string]any{"servers": rows, "groups": groups, "secrets": a.Store.ListSecrets(a.WorkspaceID, actor, "", builder)})
 		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, 200, map[string]any{"servers": rows, "groups": groups, "secrets": a.Store.ListSecrets(a.WorkspaceID, actor, "", false)})
-	})
+	}
+	mux.HandleFunc("/api/admin/runtime/servers", inventory(false))
+	mux.HandleFunc("/api/admin/runtime/builder/servers", inventory(true))
 }

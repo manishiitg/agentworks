@@ -1,6 +1,22 @@
 package access
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func TestClonedPolicyJSONUsesEmptyArraysForUnrestrictedRules(t *testing.T) {
+	p := Clone(Package{Rules: []ToolRule{{PublicName: "notion__fetch"}}})
+	data, err := json.Marshal(p)
+	if err != nil || !strings.Contains(string(data), `"conditions":[]`) {
+		t.Fatalf("empty conditions should serialize as an array: %s, %v", data, err)
+	}
+	data, err = json.Marshal(Clone(Package{}))
+	if err != nil || !strings.Contains(string(data), `"rules":[]`) {
+		t.Fatalf("empty policy should serialize as an array: %s, %v", data, err)
+	}
+}
 
 func TestMatchIsFullStringAndMissingPathDenies(t *testing.T) {
 	c := Condition{Path: "/scope/project", Op: "matches", Value: "prod-[0-9]+"}

@@ -81,6 +81,8 @@ func TestSQLiteAuditSurvivesRestartAndFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := []AuditEvent{auditTestEvent("one", "w"), auditTestEvent("two", "w"), auditTestEvent("other", "other")}
+	events[0].Input, _ = CaptureAuditPayload(map[string]any{"project": "one"})
+	events[0].Output, _ = CaptureAuditPayload(map[string]any{"content": []any{map[string]any{"type": "text", "text": "recorded result"}}})
 	events[1].Decision = DecisionDeny
 	events[1].Outcome = OutcomeDenied
 	events[1].UserID = "bob"
@@ -101,6 +103,9 @@ func TestSQLiteAuditSurvivesRestartAndFilters(t *testing.T) {
 	rows, err := a.Query(ctx, AuditFilter{WorkspaceID: "w", GroupID: "g", UserID: "alice", Limit: 1})
 	if err != nil || len(rows) != 1 || rows[0].ID != "one" || rows[0].ClientID != "claude" {
 		t.Fatalf("restart/filter: %+v %v", rows, err)
+	}
+	if string(rows[0].Input) != string(events[0].Input) || string(rows[0].Output) != string(events[0].Output) {
+		t.Fatal("payload lost on SQLite restart")
 	}
 	summary, err := a.Summary(ctx, AuditFilter{WorkspaceID: "w", Limit: 1})
 	if err != nil || summary.Total != 2 || summary.Allowed != 1 || summary.Denied != 1 || summary.AvgDurationMs != 15 {

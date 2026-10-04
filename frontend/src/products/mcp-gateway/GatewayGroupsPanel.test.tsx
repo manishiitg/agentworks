@@ -72,7 +72,7 @@ describe('GatewayGroupsPanel', () => {
     vi.restoreAllMocks()
   })
 
-  async function renderPanel(fetchMock?: ReturnType<typeof vi.fn>, directoryOnly = false, allowLegacyAPIKeys = false): Promise<ReturnType<typeof vi.fn>> {
+  async function renderPanel(fetchMock?: ReturnType<typeof vi.fn>, directoryOnly = false, allowLegacyAPIKeys = false, openGroup = true): Promise<ReturnType<typeof vi.fn>> {
     const mock = fetchMock ?? vi.fn(healthyFetch())
     vi.stubGlobal('fetch', mock)
     container = document.createElement('div')
@@ -83,20 +83,41 @@ describe('GatewayGroupsPanel', () => {
     })
     await act(async () => {})
     await act(async () => {})
+    if (openGroup) await act(async () => { (container!.querySelector('[aria-label^="Select group"]') as HTMLButtonElement).click() })
     return mock
   }
 
-  it('shows the selected group with users and MCP/tool tabs', async () => {
+  it('opens a group from the list and returns with a back button', async () => {
+    const fetchMock = await renderPanel(undefined, false, false, false)
+    expect(container!.querySelector('[data-testid="gateway-group-detail"]')).toBeNull()
+    expect(container!.textContent).toContain('Access groups')
+    expect(container!.querySelector('[aria-label="Find a group"]')).toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/members') || url.endsWith('/secrets'))).toBe(false)
+    await act(async () => { (container!.querySelector('[aria-label="Select group Engineering"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[data-testid="gateway-group-select"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Group MCPs"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Edit group"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Group secrets"]')).toBeNull()
+    await act(async () => { (container!.querySelector('[role=tab][title=Secrets]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[aria-label="Group MCPs"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Group secrets"]')).not.toBeNull()
+    await act(async () => { (container!.querySelector('[aria-label="Back to groups"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[data-testid="gateway-group-detail"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Select group Engineering"]')).not.toBeNull()
+  })
+
+  it('shows the selected group with Users, MCPs and Secrets tabs', async () => {
     await renderPanel()
 
-    expect(container!.textContent).toContain('Engineering')
+    expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).value).toBe('Engineering')
     expect(container!.querySelector('[role=tab][title=Users]')).not.toBeNull()
-    expect(container!.querySelector('[role=tab][title="Permissions"]')).not.toBeNull()
+    expect(container!.querySelector('[role=tab][title="MCPs"]')).not.toBeNull()
     expect(container!.querySelector('[aria-label="Group users"]')).toBeNull()
-    expect(container!.textContent).toContain('Permissions')
+    expect(container!.querySelector('[role=tab][title=Secrets]')).not.toBeNull()
     expect(container!.textContent).not.toContain('Whole server')
     expect(container!.querySelector('[aria-label="Remove Notion from group"]')).not.toBeNull()
     expect(container!.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
+    expect(container!.querySelector('[title="0 of 1 tools allowed for this group"]')!.textContent).toContain('0/1')
   })
 
   it('keeps secret controls mounted and the add list open while refreshing after a saved grant', async () => {
@@ -111,6 +132,7 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await renderPanel(fetchMock)
+    await act(async () => { (container!.querySelector('[role=tab][title=Secrets]') as HTMLButtonElement).click() })
     const section = container!.querySelector('[aria-label="Group secrets"]')
     expect(section).not.toBeNull()
     expect(container!.querySelector('[aria-label="Allow TEAM_KEY"]')?.getAttribute('aria-checked')).toBe('true')
@@ -133,12 +155,11 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await renderPanel(fetchMock, true)
-    expect(container!.textContent).toContain('Built-in')
+    expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).value).toBe('Platform')
     expect(container!.textContent).toContain('All platform users · membership is automatic')
     expect(container!.textContent).toContain('a@x.com')
     expect(container!.querySelector('[aria-label="Remove alice from everyone-w1"]')).toBeNull()
     expect(container!.querySelector('[aria-label="Add member to everyone-w1"]')).toBeNull()
-    await act(async () => { (container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click() })
     expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).disabled).toBe(true)
     expect((container!.querySelector('[aria-label="Group description"]') as HTMLTextAreaElement).disabled).toBe(false)
   })
@@ -164,7 +185,8 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await renderPanel(fetchMock)
-    expect(container!.textContent).toContain('Engineering scoped access')
+    expect(container!.textContent).not.toContain('Engineering scoped access')
+    expect(container!.querySelector('[title="1 of 1 tools allowed for this group"]')!.textContent).toContain('1/1')
     expect(container!.textContent).not.toContain('Sales scoped access')
     // Memberships load only for the selected group.
     expect(fetchMock.mock.calls.some(([url]) => url.includes('/sales/members'))).toBe(false)
@@ -172,14 +194,40 @@ describe('GatewayGroupsPanel', () => {
     expect((container!.querySelector('[aria-label="Grant notion__search"]') as HTMLButtonElement).disabled).toBe(true)
     expect(container!.textContent).toContain('Allowed with restrictions')
     expect(container!.querySelector('[aria-label="search permission details"]')!.textContent).toContain('project must equal eng-project')
-    await act(async () => { setInputValue(container!.querySelector('[aria-label="Find a group"]') as HTMLInputElement, 'sales') })
-    expect(container!.querySelector('[aria-label="Select group Engineering"]')).toBeNull()
+    await act(async () => { (container!.querySelector('[aria-label="Back to groups"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[aria-label="Find a group"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Select group Engineering"]')).not.toBeNull()
     await act(async () => { (container!.querySelector('[aria-label="Select group Sales"]') as HTMLButtonElement).click() })
     await act(async () => {})
-    expect(container!.querySelector('[aria-label="Select group Sales"]')?.getAttribute('aria-pressed')).toBe('true')
-    expect(container!.textContent).toContain('Sales scoped access')
+    expect(container!.querySelector('[data-testid="gateway-group-select"]')).toBeNull()
+    expect(container!.textContent).not.toContain('Sales scoped access')
+    expect(container!.querySelector('[title="0 of 1 tools allowed for this group"]')!.textContent).toContain('0/1')
     expect(container!.textContent).not.toContain('Engineering scoped access')
     expect(container!.textContent).not.toContain('eng-project')
+  })
+
+  it('places allowed tools first and shows their regex inline without review controls', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/api/admin/tools')) return Promise.resolve(jsonResponse(200, { tools: [
+        { ConnectorID: 'c1', PublicName: 'notion__blocked', UpstreamName: 'blocked', Status: 'active', InputSchema: '', Fingerprint: 'v1' },
+        { ConnectorID: 'c1', PublicName: 'notion__allowed', UpstreamName: 'allowed', Status: 'active', InputSchema: '', Fingerprint: 'v1' },
+      ] }))
+      if (url.includes('/permissions')) return Promise.resolve(jsonResponse(200, { permissions: [
+        { public_name: 'notion__blocked', allowed: false, governed: false },
+        { public_name: 'notion__allowed', allowed: true, governed: true },
+      ] }))
+      if (url.endsWith('/api/admin/access/packages')) return Promise.resolve(jsonResponse(200, { packages: [
+        { id: 'p', group_id: 'eng', name: 'Scope', status: 'published', version: 1, rules: [{ public_name: 'notion__allowed', fingerprint: 'v1', conditions: [{ path: '/project', op: 'matches', value: 'team-.*', description: 'Only projects starting with team- are allowed' }] }] },
+      ] }))
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock)
+    await act(async () => { (container!.querySelector('[aria-label="Show tools on Notion"]') as HTMLButtonElement).click() })
+    expect([...container!.querySelectorAll('[aria-label^="Grant notion__"]')].map(el => el.getAttribute('aria-label'))).toEqual(['Grant notion__allowed', 'Grant notion__blocked'])
+    expect(container!.querySelector('[aria-label="allowed permission details"]')!.textContent).toContain('Only projects starting with team- are allowed')
+    expect(container!.textContent).toContain('1 regex rule')
+    expect(container!.querySelector('[aria-hidden="true"] svg, svg[aria-hidden="true"]')).not.toBeNull()
+    expect(container!.textContent).not.toMatch(/Draft|Publish|Simulate/)
   })
 
   it('confirms removing all access to a server from only the selected group', async () => {
@@ -220,7 +268,7 @@ describe('GatewayGroupsPanel', () => {
 
   it('creates a group from a single name with a derived id', async () => {
     const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock, true)
+    await renderPanel(fetchMock, true, false, false)
     await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent === 'New group') as HTMLButtonElement).click() })
 
     await act(async () => {
@@ -260,9 +308,6 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await act(async () => {
-      ;(container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {
       setInputValue(container!.querySelector('[data-testid="gateway-group-rename-input"]') as HTMLInputElement, 'Platform')
     })
     await act(async () => {
@@ -287,10 +332,9 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await renderPanel(fetchMock)
-    expect(container!.querySelector('[data-testid="gateway-group-description"]')?.textContent).toBe('Support read tools')
+    expect((container!.querySelector('[data-testid="gateway-group-description"]') as HTMLTextAreaElement)?.value).toBe('Support read tools')
     for (const value of ['Tools for on-call support', '']) {
-      await act(async () => { (container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click() })
-      expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).value).toBe('Engineering')
+        expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).value).toBe('Engineering')
       await act(async () => {
         const field = container!.querySelector('[aria-label="Group description"]') as HTMLTextAreaElement
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, value)
@@ -298,7 +342,7 @@ describe('GatewayGroupsPanel', () => {
       })
       await act(async () => { (container!.querySelector('[aria-label="Save group details"]') as HTMLButtonElement).click() })
       expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/groups/eng`, expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'Engineering', Description: value }) }))
-      expect(container!.querySelector('[data-testid="gateway-group-description"]')?.textContent ?? '').toBe(value)
+      expect((container!.querySelector('[data-testid="gateway-group-description"]') as HTMLTextAreaElement)?.value ?? '').toBe(value)
     }
   })
 

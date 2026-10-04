@@ -18,7 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
-func TestSetupChatCreatesDraftWithoutPublishing(t *testing.T) {
+func TestSetupChatAppliesPermissionsImmediately(t *testing.T) {
 	called := 0
 	var requestedModels []string
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,10 +31,10 @@ func TestSetupChatCreatesDraftWithoutPublishing(t *testing.T) {
 		}
 		requestedModels = append(requestedModels, request.Model)
 		if called == 1 {
-			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"draft1","type":"function","function":{"name":"save_draft","arguments":"{\"group_id\":\"g\",\"name\":\"one project\",\"rules\":[{\"public_name\":\"p__read\",\"fingerprint\":\"v1\",\"conditions\":[{\"path\":\"/project\",\"op\":\"equals\",\"value\":\"one\"}]}]}"}}]}}]}`))
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"draft1","type":"function","function":{"name":"save_permissions","arguments":"{\"group_id\":\"g\",\"name\":\"one project\",\"rules\":[{\"public_name\":\"p__read\",\"fingerprint\":\"v1\",\"conditions\":[{\"path\":\"/project\",\"op\":\"equals\",\"value\":\"one\"}]}]}"}}]}}]}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"Draft saved for review."}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"Permissions saved and active."}}]}`))
 	}))
 	defer model.Close()
 	s := store.NewMemoryStore()
@@ -60,15 +60,15 @@ func TestSetupChatCreatesDraftWithoutPublishing(t *testing.T) {
 	if invalidResponse.Code != http.StatusBadRequest || called != 0 {
 		t.Fatalf("unlisted model accepted: %d %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
-	r := httptest.NewRequest(http.MethodPost, "/api/admin/setup/chat", bytes.NewBufferString(`{"model":"other","messages":[{"role":"user","content":"Create a draft for group g on project one"}]}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/admin/setup/chat", bytes.NewBufferString(`{"model":"other","messages":[{"role":"user","content":"Apply permissions for group g on project one"}]}`))
 	r.Header.Set("Authorization", "Bearer secret")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Draft saved") {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Permissions saved") {
 		t.Fatalf("setup chat: %d %s", w.Code, w.Body.String())
 	}
 	packages := s.ListPackages("w")
-	if len(packages) != 1 || packages[0].Status != "draft" || called != 2 {
+	if len(packages) != 1 || packages[0].Status != "published" || called != 2 {
 		t.Fatalf("setup result: packages=%+v model calls=%d", packages, called)
 	}
 	if len(requestedModels) != 2 || requestedModels[0] != "other" || requestedModels[1] != "other" {
@@ -76,7 +76,7 @@ func TestSetupChatCreatesDraftWithoutPublishing(t *testing.T) {
 	}
 }
 
-func TestSharedSetupToolEndpointCannotPublishAndRecordsActor(t *testing.T) {
+func TestSharedSetupToolEndpointAppliesPermissionsAndRecordsActor(t *testing.T) {
 	s := store.NewMemoryStore()
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddGroup(store.Group{ID: "g", WorkspaceID: "w"})
@@ -92,10 +92,11 @@ func TestSharedSetupToolEndpointCannotPublishAndRecordsActor(t *testing.T) {
 	}{
 		{"", `{"operation":"inspect_environment","arguments":{}}`, 401},
 		{"secret", `{"operation":"publish","arguments":{}}`, 400},
+		{"secret", `{"operation":"save_draft","arguments":{}}`, 400},
 		{"secret", `{"operation":"revoke","arguments":{}}`, 400},
 		{"secret", `{"operation":"inspect_environment","arguments":[]} `, 400},
 		{"secret", `{"operation":"inspect_environment","arguments":{}} {}`, 400},
-		{"secret", `{"operation":"save_draft","arguments":{"group_id":"g","name":"one project","rules":[{"public_name":"p__read","fingerprint":"v1","conditions":[{"path":"/project","op":"equals","value":"one"}]}]}}`, 200},
+		{"secret", `{"operation":"save_permissions","arguments":{"group_id":"g","name":"one project","rules":[{"public_name":"p__read","fingerprint":"v1","conditions":[{"path":"/project","op":"equals","value":"one"}]}]}}`, 200},
 	} {
 		req := httptest.NewRequest(http.MethodPost, "/api/admin/setup/tool", strings.NewReader(tc.body))
 		if tc.token != "" {
@@ -109,11 +110,11 @@ func TestSharedSetupToolEndpointCannotPublishAndRecordsActor(t *testing.T) {
 		}
 	}
 	packages := s.ListPackages("w")
-	if len(packages) != 1 || packages[0].Status != "draft" {
-		t.Fatal("setup changed live policy")
+	if len(packages) != 1 || packages[0].Status != "published" {
+		t.Fatal("setup did not apply permissions")
 	}
 	events := s.ListPolicyEvents("w")
-	if len(events) != 1 || events[0].Actor != "product-admin" {
+	if len(events) != 1 || events[0].Actor != "product-admin" || events[0].Action != "save_permissions" {
 		t.Fatalf("incorrect policy attribution: %+v", events)
 	}
 }

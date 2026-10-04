@@ -190,12 +190,22 @@ func TestCapLayerAgentUsesAllowedSetupOperationsAndRechecksRoles(t *testing.T) {
 	}
 }
 
-func TestCapLayerProfileHasNoGeneralShellOrLivePolicyTools(t *testing.T) {
+func TestCapLayerProfileUsesSharedNativeToolsAndGovernanceBridge(t *testing.T) {
 	profile := caplayerproduct.BuiltinAgentProfile()
-	if profile.Runtime.AgentTools.Mode != "mcp_only" || profile.Runtime.APITransport.Mode != "" || profile.Runtime.Capabilities.Secrets != agentprofiles.CapabilityDisabled {
-		t.Fatal("CapLayer inherited native execution or secret access")
+	if profile.Runtime.AgentTools.Mode != "full" || profile.Runtime.APITransport.Mode != "" || profile.Runtime.Capabilities.Secrets != agentprofiles.CapabilityDisabled {
+		t.Fatal("Vault must request full native tools without enabling secret injection")
 	}
 	registry := agentprofiles.NewRegistry()
+	if err := caplayerproduct.RegisterRuntime(registry, func(context.Context, string, string, json.RawMessage) (string, error) { return "ok", nil }); err != nil {
+		t.Fatal(err)
+	}
+	tool, err := registry.BuildTool(agentprofiles.ToolBinding{ID: "caplayer.access"}, agentprofiles.ToolRuntimeContext{UserID: "admin"})
+	if err != nil || tool.Name != "manage_vault_access" || tool.Category != "vault" {
+		t.Fatalf("management tool still exposes legacy branding: %+v, %v", tool, err)
+	}
+	if len(profile.Skills) != 1 || profile.Skills[0] != "vault-access" {
+		t.Fatal("Vault skill still exposes legacy branding")
+	}
 	profile.Product = "mcp-gateway"
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
@@ -203,14 +213,14 @@ func TestCapLayerProfileHasNoGeneralShellOrLivePolicyTools(t *testing.T) {
 	if len(profile.Tools) != 4 || profile.Tools[0].ID != "caplayer.access" {
 		t.Fatal("unexpected governance tool surface")
 	}
-	if len(profile.Runtime.BridgeTools) != 6 || profile.Runtime.BridgeTools[0] != "manage_caplayer_access" {
+	if len(profile.Runtime.BridgeTools) != 6 || profile.Runtime.BridgeTools[0] != "manage_vault_access" {
 		t.Fatal("tool is not directly reachable without shell")
 	}
 	if profile.Runtime.Workspace.Root != "Chats/CapLayer" || profile.Runtime.Conversation.Mode != "singleton" {
 		t.Fatal("not a durable isolated product chat")
 	}
 	for _, name := range profile.ToolPolicy.Enabled {
-		if name != "manage_caplayer_access" && name != "query_workflow_db" && name != "mutate_workflow_db" && name != "manage_vault_secret_access" && name != "list_mcp_servers" && name != "call_mcp_tool" {
+		if name != "manage_vault_access" && name != "query_workflow_db" && name != "mutate_workflow_db" && name != "manage_vault_secret_access" && name != "list_mcp_servers" && name != "call_mcp_tool" {
 			t.Fatalf("unexpected tool %s", name)
 		}
 	}
@@ -227,7 +237,7 @@ func TestCapLayerProfileHasNoGeneralShellOrLivePolicyTools(t *testing.T) {
 	}
 }
 
-func TestCapLayerRuntimeRejectsInheritedSecretsAndNativeToolRollout(t *testing.T) {
+func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_CLI_FULL", "on")
 	t.Setenv("AGENTWORKS_CLI_LANDLOCK", "on")
@@ -256,19 +266,21 @@ func TestCapLayerRuntimeRejectsInheritedSecretsAndNativeToolRollout(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if agentProfileToolsMode(resolved) != "mcp_only" {
-		t.Fatal("rollout widened CapLayer tools")
+	if agentProfileToolsMode(resolved) != "full" {
+		t.Fatal("Vault did not request the shared full native CLI runtime")
 	}
 	if len(req.DecryptedSecrets) != 0 || req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 0 || len(resolved.ChatSecrets) != 0 {
 		t.Fatal("inherited secrets reached the CLI runtime")
 	}
+	// Full native tools are controlled by the provider runtime, not this
+	// product bridge allowlist; bridge authority and secret injection stay narrow.
 	gate := newProductToolGate(resolved)
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "run_in_background", "publish", "agent_browser"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "run_in_background", "publish", "agent_browser", "manage_caplayer_access"} {
 		if gate.Admit(name) {
 			t.Fatalf("CapLayer admitted %s", name)
 		}
 	}
-	if !gate.Admit("manage_caplayer_access") || !gate.Admit("list_mcp_servers") || !gate.Admit("call_mcp_tool") {
+	if !gate.Admit("manage_vault_access") || !gate.Admit("list_mcp_servers") || !gate.Admit("call_mcp_tool") {
 		t.Fatal("governance tool disappeared")
 	}
 	registrar := &gateRecordingRegistrar{gate: gate}

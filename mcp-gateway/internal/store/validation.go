@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var sqlIdentity = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
@@ -47,6 +48,9 @@ func validatePackageState(p access.Package, workspaceID string, state durableSta
 			return fmt.Errorf("invalid schema for %s", rule.PublicName)
 		}
 		for _, condition := range rule.Conditions {
+			if utf8.RuneCountInString(condition.Description) > 500 || (condition.Op == "matches" && strings.TrimSpace(condition.Description) == "") {
+				return fmt.Errorf("%s: regex conditions require a human-readable description (1 to 500 characters)", rule.PublicName)
+			}
 			if err := access.ValidateCondition(condition); err != nil {
 				return fmt.Errorf("%s: %w", rule.PublicName, err)
 			}

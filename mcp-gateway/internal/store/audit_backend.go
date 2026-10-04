@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// AuditBackend stores immutable tool-call metadata independently of editable
+// AuditBackend stores immutable tool-call records and bounded payloads independently of editable
 // permission configuration. Append acknowledges persistence in durable mode,
 // or admission to a bounded in-memory queue in async mode.
 type AuditBackend interface {

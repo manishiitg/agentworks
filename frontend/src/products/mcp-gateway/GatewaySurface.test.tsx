@@ -14,17 +14,19 @@ vi.mock('../../services/api', () => ({
   authApi: { listAdminUsers: async () => ({ users: [], products: [] }) },
   agentApi: { getToolDetail: vi.fn(), resolveAgentProfileConversation: chatRuntime.resolve, startNewAgentProfileConversation: chatRuntime.startNew },
 }))
-vi.mock('../../components/ModePresetBar', () => ({ ModePresetBar: () => <header data-testid="shared-header"><button aria-label="Switch product">Vault</button></header> }))
+vi.mock('../../components/ModePresetBar', () => ({ ModePresetBar: ({ productActions }: any) => <header data-testid="shared-header"><button aria-label="Switch product">Vault</button>{productActions}</header> }))
 vi.mock('../../components/ChatArea', () => ({ default: ({ tabId, landingContent, composerPlaceholder }: any) => <div data-testid="shared-chat-area" data-tab-id={tabId}>{landingContent}<div data-testid="tour-chat-input-area"><textarea data-testid="chat-input-textarea" placeholder={composerPlaceholder} /></div></div> }))
 vi.mock('../../components/GlobalHumanFeedbackPrompt', () => ({ GlobalHumanFeedbackPrompt: () => null }))
 vi.mock('../../components/UpdateProgressToast', () => ({ UpdateProgressToast: () => null }))
 vi.mock('../../components/topbar/LlmModalHost', () => ({ default: () => null }))
 vi.mock('../../components/SchedulesPage', () => ({ default: () => null }))
 vi.mock('../../components/AdminPages', () => ({ default: () => null }))
+vi.mock('./GatewayAuditPanel', () => ({ GatewayAuditPanel: ({ tab }: any) => <div data-testid="audit-content">{tab}</div> }))
+vi.mock('./GatewayConnectPanel', () => ({ GatewayConnectPanel: () => <div data-testid="endpoint-content">Endpoint connection</div> }))
 vi.mock('./GatewayModelSettings', () => ({ GatewayModelSettings: () => <span>Shared provider model settings</span> }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: any) => unknown) => selector(auth) }))
-vi.mock('../../stores/useAppStore', () => ({ useAppStore: Object.assign((selector: (state: any) => unknown) => selector({}), { getState: () => ({}) }) }))
-vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (state: any) => unknown) => selector({}) }))
+vi.mock('../../stores/useAppStore', () => ({ useAppStore: Object.assign((selector: (state: any) => unknown) => selector({}), { getState: () => ({ setAdminPage: vi.fn(), setShowSchedulesOverview: vi.fn(), setShowWorkflowsOverview: vi.fn() }) }) }))
+vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: Object.assign((selector: (state: any) => unknown) => selector({}), { getState: () => ({ setShowLLMModal: vi.fn() }) }) }))
 vi.mock('../../stores/useChatStore', () => ({
   useChatStore: Object.assign((selector: (state: any) => unknown) => selector(chatRuntime.state), { getState: () => chatRuntime.state }),
   waitForChatStoreHydration: () => Promise.resolve(),
@@ -100,6 +102,27 @@ describe('GatewaySurface', () => {
     await act(async () => {})
   }
 
+  it('opens audit and MCP endpoint as full-width rail pages and returns to the same builder', async () => {
+    stubGatewayUrl(BASE)
+    vi.stubGlobal('fetch', vi.fn(healthyFetch()))
+    await renderSurface()
+    const chatId = container!.querySelector('[data-testid="shared-chat-area"]')!.getAttribute('data-tab-id')
+    await act(async () => { (container!.querySelector('[aria-label="Audit logs"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[aria-label="Vault audit page"]')).not.toBeNull()
+    expect(container!.querySelector('[data-testid="audit-content"]')!.textContent).toBe('logs')
+    expect(container!.querySelector('[data-testid="gateway-setup-panel"]')!.closest('.hidden')).not.toBeNull()
+    await act(async () => { (container!.querySelector('[role="tab"][title="Analysis"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[data-testid="audit-content"]')!.textContent).toBe('analysis')
+    await act(async () => { (container!.querySelector('[aria-label="Vault MCP endpoint"]') as HTMLButtonElement).click() })
+    expect(container!.querySelector('[aria-label="Vault MCP endpoint page"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault audit page"]')).toBeNull()
+    const back = [...container!.querySelectorAll('button')].find(el => el.textContent?.includes('Back to Vault'))!
+    await act(async () => { back.click() })
+    expect(container!.querySelector('[aria-label="Vault MCP endpoint page"]')).toBeNull()
+    expect(container!.querySelector('[data-testid="gateway-setup-panel"]')!.closest('.hidden')).toBeNull()
+    expect(container!.querySelector('[data-testid="shared-chat-area"]')!.getAttribute('data-tab-id')).toBe(chatId)
+  })
+
   it('opens group-based access in the shared workspace', async () => {
     stubGatewayUrl(BASE)
     const fetchMock = vi.fn((url: string, _init?: RequestInit) => healthyFetch()(url))
@@ -112,9 +135,13 @@ describe('GatewaySurface', () => {
     expect(menu).not.toBeNull()
     expect(menu!.closest('[aria-label="Vault workspace toolbar"]')).not.toBeNull()
     expect(container!.textContent).toContain('Vault')
-    for (const label of ['Connected MCPs', 'Available MCPs', 'People', 'Audit', 'Models', 'Connect']) {
+    for (const label of ['Connected MCPs', 'Available MCPs', 'People', 'Models']) {
       expect(menu!.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
     }
+    expect(menu!.querySelector('[aria-label="Audit"]')).toBeNull()
+    expect(menu!.querySelector('[aria-label="Connect"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Vault pages"] [aria-label="Audit logs"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault pages"] [aria-label="Vault MCP endpoint"]')).not.toBeNull()
     expect(menu!.querySelector('[aria-label="Groups"]')).toBeNull()
     expect(menu!.querySelector('[aria-label="Users"]')).toBeNull()
     expect(menu!.textContent).not.toContain('Tools & Grants')

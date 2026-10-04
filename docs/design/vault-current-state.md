@@ -106,8 +106,7 @@ views hide tool details. Open Vault shortcuts respect current product/admin acce
   containing active platform users. It starts with no grants. Its description
   and resource grants are editable; its name and automatic membership are fixed.
 - Advanced permissions support exact values or full-string RE2 conditions on
-  explicit string argument paths. Drafts can be inspected and simulated before
-  explicit reviewed publication. Version checks reject stale publication.
+  explicit string argument paths. Saving validates and applies them immediately. Version checks reject stale edits.
 - Published policies take precedence over older grants. Revocation retains deny
   tombstones; changed tool fingerprints require review. Schema validation and
   authorization run on every call, independently of the setup assistant.
@@ -194,19 +193,21 @@ end-to-end result or production capacity.
 Vault uses the shared conversation runtime with a dedicated system prompt and
 embedded access skill. It inspects actual tool schemas and annotations, preserves
 unrelated grants, distinguishes read/write/destructive tools, and tells the user
-whether a change is active or only a draft.
+whether a change was saved successfully.
 
 | Tool | Implemented authority |
 |---|---|
-| `manage_caplayer_access` | Inspect inventory/schemas, connect a server without chat credentials, save a validated advanced draft. Connection does not grant group access. |
+| `manage_vault_access` | Inspect inventory/schemas, connect a server without chat credentials, save and immediately apply validated advanced permissions. Connection does not grant group access. |
 | `query_workflow_db` | Read bounded governance metadata and schemas from this Vault project's SQLite database. |
-| `mutate_workflow_db` | Apply validated, atomic group, membership, simple tool-grant and draft changes to persistent and live state. |
+| `mutate_workflow_db` | Apply validated, atomic group, membership, simple tool-grant changes to persistent and live state. |
 | `manage_vault_secret_access` | Grant or revoke use of an existing secret for a group, without revealing its value. |
 
-Every tool rechecks the current product administrator. The assistant cannot
-retrieve credentials, execute upstream MCP tools, change central account roles,
-or publish advanced policies. It has no unrestricted shell or direct database
-file access. SQL tools use the gateway owner; arbitrary physical SQLite edits
+Governance tools recheck the current product administrator. The assistant can
+execute active approved Vault MCP tools through its administrative setup route,
+but cannot retrieve secret values through governance tools, change central
+account roles, or retrieve raw credentials. Full native CLI tools follow the
+same platform confinement as other product builders; governance database edits
+must use the governance APIs. SQL tools use the gateway owner; arbitrary physical SQLite edits
 invalidate the live metadata revision instead of silently changing authorization.
 
 ## Private MCPs and shared Vault runtime
@@ -282,7 +283,7 @@ client, such as AgentWorks; it is separate from the upstream MCP server and user
 Group API keys attribute a call to a group/key rather than an individual human.
 
 Events contain identity, MCP/tool, decision, outcome and timing metadata.
-They contain no raw arguments, outputs or secret values. Requests rejected before
+New events also contain bounded input arguments and output content, structured data and error indicators. Tool payloads may contain sensitive values. Transport headers, protocol metadata and configured credentials are excluded. Audit access and exports stay administrator-only and workspace-scoped. Historical events may lack payloads. Requests rejected before
 tool dispatch are not tool-call events.
 
 | Setting | Local default | Server default |
@@ -415,7 +416,7 @@ Connection settings reauthorize only that row. Disconnect removes that connectio
 
 ### Chat builder
 
-`manage_caplayer_access` supports:
+`manage_vault_access` supports:
 
 | Operation | Arguments | Result |
 | --- | --- | --- |
@@ -427,7 +428,7 @@ Connection settings reauthorize only that row. Disconnect removes that connectio
 | `sync_connection` | `{connection_id}` | Rediscover this connection’s tools |
 | `disconnect_connection` | `{connection_id}` | Remove the explicitly requested connection and its permissions |
 
-The embedded system prompt and `caplayer-access` skill describe this lifecycle, independent account naming, provider account selection, completion verification and separate group assignments. Chat sign-in uses `PUBLIC_URL` for its callback and reports completion/failure back to its initiating chat. Administrator access is checked on every tool call and again before OAuth token exchange. Passwords, API keys and OAuth client secrets are never requested through chat.
+The embedded system prompt and `vault-access` skill describe this lifecycle, independent account naming, provider account selection, completion verification and separate group assignments. Chat sign-in uses `PUBLIC_URL` for its callback and reports completion/failure back to its initiating chat. Administrator access is checked on every tool call and again before OAuth token exchange. Passwords, API keys and OAuth client secrets are never requested through chat.
 
 ### Storage and enforcement
 
@@ -453,8 +454,8 @@ The embedded system prompt and `caplayer-access` skill describe this lifecycle, 
 Removed the PII section, scanner, rule/review APIs and standalone admin pages,
 review queues, persisted rule fields, and audit action/type fields. MCP payloads
 pass through without PII masking, blocking or review. Authentication, tool grants,
-approved schemas, resource argument conditions and metadata-only audit logging
-remain active. Audit never stores raw tool arguments or results.
+approved schemas, resource argument conditions and audit logging
+remain active. Audit now captures bounded tool inputs and outputs without reintroducing PII scanning.
 
 Existing encrypted SQLite snapshots still load: legacy PII fields are ignored
 and omitted on the next saved configuration mutation. Historical audit rows are
@@ -472,7 +473,7 @@ The api-bridge contained all governance tools, but Muse 1.4.2's interactive MCP
 configuration loader failed when launched directly in the protected Vault project.
 The agent therefore saw no bridge tools and tried its blocked native read_skill.
 Vault now uses the same private CLI projection as Crew/workflows, linked to the
-authoritative project. Native tools remain disabled; the governance tools, SQL
+authoritative project. Native tools were disabled at that stage (superseded by profile v4 below); the governance tools, SQL
 checks, OAuth isolation and tool fingerprints are unchanged. The prompt identifies
 the bridge read_skill tool explicitly and instructs inventory requests to inspect
 live tools instead of treating old assistant failures as current availability.
@@ -559,8 +560,83 @@ Verification covers caller and group isolation, metadata-only secret responses, 
 
 ### Vault builder chat: live MCP resource lookup
 
-Vault profile v2 exposes the shared `list_mcp_servers` and `call_mcp_tool` through api-bridge alongside its governance/SQLite tools. The agent can search/fetch permitted resources to resolve canonical IDs before drafting equality or regex conditions. It uses the same MCP executor and live Vault proxy as other products, including tool grants, fingerprints, argument conditions, revocation and gateway audit logging. No provider-specific Notion execution path exists.
+Vault profile v5 exposes the shared `list_mcp_servers` and `call_mcp_tool` through api-bridge alongside its governance/SQLite tools. The administrator builder discovers all active connected Vault MCPs, all groups and all secret metadata. It can search/fetch resources before drafting equality or regex restrictions without joining the target group or changing grants. Other users' private MCP connections remain private.
 
-Connecting a server gives management metadata, not runtime permission. The builder chat lists the signed-in user's permitted Vault connections (plus their private connection metadata), and every call resolves its user/session from host-owned state. Calls cannot nominate another user/session, supply a URL, bypass policies, retrieve Vault secret values or enable native shell/file tools. A query request does not authorize upstream mutations or self-grants. Existing project selections for Crew, Code and workflows remain separate and enforced by their shared resolver.
+Setup authority is bound to the authenticated administrator's interactive Vault profile, fixed workspace and owned chat session. The bound tool context cannot be supplied by the model or HTTP caller. The host signs a connector/session/purpose delegation, separates pooled connections by that signed authority, and rechecks current administrator role, product access and session ownership on every proxied request. A separate service-only gateway builder route bypasses group grants and published argument restrictions for setup calls while retaining active-connector checks, approved fingerprints, schema validation and audit events with the real user and `agentworks-vault-builder` client.
 
-The narrow `manage_caplayer_access` tool still cannot execute upstream tools; resource reads use `call_mcp_tool` instead. Updated prompt and skill tell the agent to try live authorized search/fetch before asking for copied IDs, return only relevant identifiers, and explain an actual missing grant rather than saying Vault cannot execute MCPs.
+Normal product and external MCP routes never acquire this authority. Their inventories and execution remain caller/group scoped, including when an administrator uses Crew, Code, Goals, workflows or Relays. Group grants are not changed by a setup lookup. Upstream mutations still require an explicit user request. Secret values remain in the encrypted host store: the Vault builder receives names and permission metadata, can manage assignments, and cannot retrieve values into chat through the Vault governance tools. Native CLI skill/file/search/shell tools are enabled through the shared full-tools runtime and its confinement policy.
+
+
+### Vault native CLI tools — 2026-10-04
+
+Vault requests `runtime.agent_tools.mode: full`, like the other product builders. Muse receives its full native toolset rather than the `mcp_only` PreToolUse hook that blocks `read_skill`, files and shell. The shared provider skill projection exposes `vault-access` to Muse's native `read_skill` as a project skill; the bridge reader remains an alternative with its own input schema. Native tools use the existing Seatbelt/Landlock policy, with the normal bridge-only fallback when confinement is unavailable. No Vault-specific hook bypass or provider fork is introduced. The profile version and definition fingerprint change relaunch the retained CLI while preserving the application's saved conversation. Connected MCP execution, SQL changes and secret assignment retain their existing gateway paths.
+
+### Saved MCP tools after gateway restart — 2026-10-04
+
+The live Vault builder test exposed a startup ordering failure: the gateway's one-time OAuth reconnect could run before the product credential broker was ready. Persisted Notion schemas remained visible in inventory, but their MCP handlers were absent, producing `tool not found` instead of a useful connection error.
+
+The gateway now registers saved tool definitions before serving. An authorized call initializes and rediscovers a missing upstream under the same per-connector lock used by sync and reauthorization. It retries connection/discovery only, never a tool invocation. Temporary broker failures leave the connector eligible for recovery on the next call. Failed discovery drops the newly opened session. Current approval, fingerprint, identity, group and argument restrictions are checked before reconnect and again before invoking the tool; changed definitions stay quarantined. A connection failure records an upstream-error audit event and returns `upstream connection unavailable`. This shared path applies to Vault builder, product and external MCP callers without adding group grants.
+
+Regression tests reproduce persisted inventory with a failed startup OAuth broker, successful recovery on a later call, denied callers making no reconnect attempt, changed-schema quarantine, unchanged memberships and audit coverage.
+
+Live verification: submitted a read-only Notion fetch in the existing open Vault builder chat. Before the fix it returned the exact protocol `tool not found` error. After rebuilding/restarting the gateway, the same chat's `call_mcp_tool` completed successfully and returned the Task List database's canonical ID and data-source reference. No Notion content, group memberships, grants or secrets were changed. Gateway MCP, admin, policy and server tests passed.
+
+### Vault tool branding and nullable policy arrays — 2026-10-04
+
+The builder's exposed management tool is now `manage_vault_access`, its category is `vault`, and its projected setup skill is `vault-access`. Prompt references, tool policy and bridge allowlists use the new names. Profile v5 changes the definition fingerprint so a retained CLI refreshes its tool surface on the next turn. Internal profile/factory IDs, service routes and the existing chat/database folder remain compatible with saved installations.
+
+Unrestricted policy rules previously serialized empty conditions as `null`, which crashed the review panel on `.length`. The shared frontend access API now normalizes absent/null package lists, rules and conditions into arrays for both the group tools and draft-review views. The backend clones saved policies with empty arrays, retaining the existing meaning of no argument restriction. Tests cover legacy null/missing conditions, null rules, unchanged restricted rules and no automatic publishing. The existing Task List draft was opened successfully in the local browser without altering or publishing it.
+
+Live rename verification: after restarting the idle product and gateway, the existing builder chat successfully loaded `vault-access` with Muse's native skill reader. A focused `inspect_environment` call to `manage_vault_access` through the configured shared API bridge returned `success:true`. The existing draft review rendered its regex, equality and unrestricted rules without crashing. Verification made no permission or connection changes. Frontend regression tests (16), the TypeScript build, focused product tests and gateway access/admin/policy/MCP tests passed.
+
+### Per-server group access count — 2026-10-04
+
+Each MCP row in group permissions shows `allowed/total tools` using the backend's effective group-permission decisions. Published conditional access counts as allowed; unpublished draft rules do not add to the count. A tooltip explains the count. Ordinary checkboxes save live grants immediately, while builder-created argument/regex policies are saved as drafts for simulation/review and become active only when explicitly published. Edits to a published policy remain drafts until publishing replaces its live version.
+
+
+## Immediate regex permissions (2026-10-04)
+
+Scoped equality and regex permissions now save and apply in one gateway configuration transaction through `manage_vault_access` → `save_permissions` or POST `/api/admin/access/packages`. There is no draft, simulation or publish UI/API. This supersedes the historical draft workflow described above. Existing pending drafts are retained only as inactive compatibility data and are not automatically applied.
+
+Saving validates the group, active connector, approved tool fingerprint and explicit string schema paths before activating the conditions. Current versions prevent concurrent edits from overwriting one another. Configuration and the `save_permissions` actor event persist together in the project SQLite database. Runtime calls immediately enforce full-string regex/equality matches; missing or invalid arguments fail closed. Saved restrictions appear under the group’s tool, and the server keeps its allowed/total count.
+
+SQL remains available for groups, memberships and simple grants. Advanced rules are edited through the validated save operation; `permission_drafts` is no longer exposed as a mutable SQL table. Group access enforcement for other products and the dedicated Vault administrator setup authority are unchanged.
+
+Allowed tools appear first within each MCP. Saved regex and equality conditions appear directly under their tool without a separate policy review box.
+
+Audit and Vault MCP endpoint are product-specific entries in the shared left navigation. They open full-width pages with Back to Vault; Audit defaults to Logs and keeps Analysis as a subtab. They are removed from the right workspace toolbar. The builder chat remains mounted while these pages are open.
+
+Navigation placement: Global Monitor stays at the top below the product switcher. Audit and MCP endpoint sit in the bottom action stack with Providers, MCP clients and Users; one divider separates Vault pages from platform actions.
+
+The MCP endpoint page uses the same single-row page header and shared `CliMcpSetupPanel` as platform MCP connection setup. Local-client commands/configurations use the Vault endpoint and a separate `vault` server name. OAuth clients and revocation use `/api/oauth/vault/connections`. Hosted app instructions explain public URL requirements. Workflow skill/plugin downloads are omitted for Vault. The Send test request action is removed.
+
+All users use the same Vault MCP endpoint URL and authenticate separately with their own platform account. Each call applies that user’s current user/group permissions; the endpoint is not a shared credential. This is explained in the setup UI.
+
+Audit Logs now shows readable MCP/tool names and one result badge (Success, Blocked, Failed). User and duration remain in the main row. Expand a row to see groups, calling app, permission decision, outcome, full tool ID and error text. Group-key calls explicitly identify the group credential rather than inventing a user. Filters, refresh and export share one toolbar; storage details stay in a tooltip and the visible note explains retention. Analysis remains separate.
+
+## Access groups and payload audit (2026-10-04)
+
+- **Access groups** opens a list without search. Selecting a group replaces the list with a back button and independent **Users**, **MCPs**, **Secrets** tabs. Name/description fields are always editable; Save/Cancel appear for changes. Platform keeps its immutable name.
+- The shared MCP header shows original provider branding (including Notion), **Tools 3/44**, and a regex-condition count where present. Allowed tools appear first. Human-readable restrictions appear beneath each tool; the actual expression is in a disclosure.
+- New/edited regex conditions require nonblank `description` of at most 500 characters. Both API and builder save validate it. The prompt, projected skill and fallback schema instruct the builder to supply it. Existing rules without descriptions keep working; editing requires explanations. Description text never controls authorization.
+- Audit stores detached bounded **Input** and **Output** JSON. Output includes content, structured output and error indicator, excluding protocol metadata/transport headers/configured credentials. Payloads themselves may contain sensitive values. Denied calls capture attempted arguments but no upstream output. Transport failures retain safe error metadata.
+- Capture limits string copies, nodes and nesting with a 64 KiB ceiling per payload and explicit truncation flags. Bounded capture consumes CPU at admission; async mode performs SQLite I/O in the queue worker. Off skips capture. Retention, database size, shutdown flushing and administrator/workspace isolation remain intact. No PII scanning is added.
+- Expand a call to open **Input arguments** and **Tool output** JSON. Earlier calls show **Not recorded for this call**; denied output says **Tool was not called**. CSV and JSON exports include payloads and truncation indicators.
+
+## Crew live regex verification (2026-10-04)
+
+The local account (`default`) was added to **local platform test** and, at the user's request, remains a member permanently. The existing Crew builder selected **notion - manish 1**; **notion - manish 2** remained unselected. No grants, regex conditions, secrets or Notion content were changed.
+
+The generated per-tool API paths normalize hyphens to underscores. This exposed a routing mismatch before requests could reach Vault. The shared product bridge now resolves forward-normalized connection/tool names against the caller's live authorized inventory, then uses the original names. Project selection still checks the exact connection ID. Ambiguous aliases, absent selection and revoked inventory fail closed; names are not reverse-guessed by replacing underscores.
+
+The actual Crew builder made three read-only calls through the ordinary `agentworks` runtime, with user `default` and connection `c-f31bdfa1707d322e26a77298f6e868cf`:
+
+| Call | Gateway result | Audit time (UTC) |
+| --- | --- | --- |
+| `notion-fetch` with Task List ID `487025c3-8b29-494a-a48f-f03da00fac90` | Allow / OK | 09:12:23.223257 |
+| `notion-fetch` with ID `00000000-0000-4000-8000-000000000001` | Deny: arguments outside published access package | 09:12:24.558403 |
+| `notion-get-users` with `{}` | Deny: no grant for tool | 09:12:24.750175 |
+
+The allowed call recorded input and output; both denied calls recorded attempted input without upstream output. HTTP 200 is the tool transport envelope and does not imply permission was granted. These results used group permissions, not Vault administrator setup authority. Focused product regression tests and the backend build passed.
+
+This test used the connected Codex CLI temporarily because Muse did not load its MCP bridge tools. The original Muse model and Max reasoning were restored afterward. Muse MCP loading remains unresolved. This verifies the fetch-ID regex and tool grant for **manish 1** only; it does not verify the search equality rule or restrict **manish 2**, which has separate grants without this regex.

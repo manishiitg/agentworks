@@ -15,7 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
-func TestPackageDraftPublishAndRevokeAPI(t *testing.T) {
+func TestPermissionsSaveAppliesImmediatelyAndRevokeAPI(t *testing.T) {
 	s := store.NewMemoryStore()
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddUser(store.User{ID: "u", WorkspaceID: "w"})
@@ -41,19 +41,45 @@ func TestPackageDraftPublishAndRevokeAPI(t *testing.T) {
 	}
 	p := access.Package{ID: "pkg", GroupID: "g", Name: "one project", Rules: []access.ToolRule{{PublicName: "p__read", Fingerprint: "v1", Conditions: []access.Condition{{Path: "/project", Op: "equals", Value: "one"}}}}}
 	if got := request(http.MethodPost, "/api/admin/access/packages", p); got.Code != http.StatusOK {
-		t.Fatalf("save draft: %d %s", got.Code, got.Body.String())
+		t.Fatalf("save permissions: %d %s", got.Code, got.Body.String())
 	}
-	if _, err := policy.Authorize(s, auth.Identity{UserID: "u", WorkspaceID: "w"}, "p__read"); err == nil {
-		t.Fatal("draft affected live authorization")
+	identity := auth.Identity{UserID: "u", WorkspaceID: "w"}
+	if _, err := policy.Authorize(s, identity, "p__read"); err != nil {
+		t.Fatalf("saved permissions denied: %v", err)
 	}
-	if got := request(http.MethodPost, "/api/admin/access/packages/pkg/publish", map[string]any{"version": 999}); got.Code != http.StatusConflict {
-		t.Fatalf("stale review published: %d %s", got.Code, got.Body.String())
+	for _, tc := range []struct {
+		args    map[string]any
+		allowed bool
+	}{
+		{map[string]any{"project": "one"}, true},
+		{map[string]any{"project": "two"}, false},
+		{map[string]any{}, false},
+	} {
+		if err := policy.AuthorizeArguments(s, identity, tool, tc.args); (err == nil) != tc.allowed {
+			t.Fatalf("immediate conditions: %v %v", tc.args, err)
+		}
 	}
-	if got := request(http.MethodPost, "/api/admin/access/packages/pkg/publish", map[string]any{"version": 1}); got.Code != http.StatusOK {
-		t.Fatalf("publish: %d %s", got.Code, got.Body.String())
+	if got := request(http.MethodPost, "/api/admin/access/packages", p); got.Code != http.StatusConflict {
+		t.Fatalf("stale edit accepted: %d", got.Code)
 	}
-	if _, err := policy.Authorize(s, auth.Identity{UserID: "u", WorkspaceID: "w"}, "p__read"); err != nil {
-		t.Fatalf("published package denied: %v", err)
+	if got := request(http.MethodPost, "/api/admin/access/packages/pkg/publish", map[string]any{"version": 1}); got.Code != http.StatusNotFound {
+		t.Fatalf("publish route still available: %d", got.Code)
+	}
+	p.Version = 1
+	p.Rules[0].Conditions[0].Op = "matches"
+	p.Rules[0].Conditions[0].Value = "one|two"
+	if got := request(http.MethodPost, "/api/admin/access/packages", p); got.Code != http.StatusBadRequest {
+		t.Fatal("regex missing explanation accepted", got.Code)
+	}
+	p.Rules[0].Conditions[0].Description = "Only projects one and two are allowed"
+	if got := request(http.MethodPost, "/api/admin/access/packages", p); got.Code != http.StatusOK {
+		t.Fatalf("regex update: %d %s", got.Code, got.Body)
+	}
+	if err := policy.AuthorizeArguments(s, identity, tool, map[string]any{"project": "two"}); err != nil {
+		t.Fatal("regex not active immediately", err)
+	}
+	if err := policy.AuthorizeArguments(s, identity, tool, map[string]any{"project": "prefix-one"}); err == nil {
+		t.Fatal("regex allowed partial match")
 	}
 	if got := request(http.MethodPost, "/api/admin/access/packages/pkg/revoke", map[string]any{}); got.Code != http.StatusOK {
 		t.Fatalf("revoke: %d %s", got.Code, got.Body.String())

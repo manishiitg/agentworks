@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -100,23 +102,26 @@ const (
 	OutcomeUpstreamError = "upstream_error"
 )
 
-// AuditEvent is one attempted tool call. No raw arguments, results, or
-// secrets are stored.
+// AuditEvent records one attempted tool call, including bounded payload snapshots.
 type AuditEvent struct {
-	ID           string
-	CallID       string
-	Timestamp    time.Time
-	WorkspaceID  string
-	UserID       string
-	GroupIDs     []string
-	ClientID     string
-	ConnectorID  string
-	PublicName   string
-	UpstreamName string
-	Decision     string
-	Outcome      string
-	DurationMs   int64
-	ErrorText    string
+	ID              string
+	CallID          string
+	Timestamp       time.Time
+	WorkspaceID     string
+	UserID          string
+	GroupIDs        []string
+	ClientID        string
+	ConnectorID     string
+	PublicName      string
+	UpstreamName    string
+	Decision        string
+	Outcome         string
+	DurationMs      int64
+	ErrorText       string
+	Input           json.RawMessage `json:",omitempty"`
+	Output          json.RawMessage `json:",omitempty"`
+	InputTruncated  bool            `json:",omitempty"`
+	OutputTruncated bool            `json:",omitempty"`
 }
 
 type AuditFilter struct {
@@ -468,6 +473,70 @@ func (s *MemoryStore) ConnectorBearer(id string) string {
 	return s.connectorBearer[id]
 }
 
+var ErrPolicyConflict = errors.New("permissions changed; reload before editing")
+
+// SaveAccessPackage validates and applies permissions in one configuration
+// transaction. Version checks prevent overwriting concurrent administrator edits.
+func (s *MemoryStore) SaveAccessPackage(p access.Package, expectedVersion int, actor string) (saved access.Package, err error) {
+	s.mu.Lock()
+	defer func() {
+		s.persistUnlock()
+		if persistenceErr := s.PersistenceError(); persistenceErr != nil {
+			saved, err = access.Package{}, persistenceErr
+		}
+	}()
+	if err = validatePackageState(p, p.WorkspaceID, s.durableState()); err != nil {
+		return access.Package{}, err
+	}
+	version := 0
+	for _, records := range []map[string]access.Package{s.packageLive, s.packageDrafts} {
+		if previous, ok := records[p.ID]; ok {
+			if previous.WorkspaceID != p.WorkspaceID || previous.GroupID != p.GroupID {
+				return access.Package{}, ErrPolicyConflict
+			}
+			if previous.Version > version {
+				version = previous.Version
+			}
+		}
+	}
+	if expectedVersion != version {
+		return access.Package{}, ErrPolicyConflict
+	}
+	for _, rule := range p.Rules {
+		t := s.tools[rule.PublicName]
+		c, ok := s.connectors[t.ConnectorID]
+		if !ok || c.WorkspaceID != p.WorkspaceID || c.Status != StatusActive {
+			return access.Package{}, errors.New("permissions require an active connector")
+		}
+	}
+	p.Version, p.Status = version+1, "published"
+	if s.governedTools[p.WorkspaceID] == nil {
+		s.governedTools[p.WorkspaceID] = map[string]bool{}
+	}
+	for _, rule := range p.Rules {
+		s.governedTools[p.WorkspaceID][rule.PublicName] = true
+	}
+	s.packageLive[p.ID] = access.Clone(p)
+	delete(s.packageDrafts, p.ID)
+	s.policyEvents[p.WorkspaceID] = append(s.policyEvents[p.WorkspaceID], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: "save_permissions", PackageID: p.ID, Version: p.Version})
+	return access.Clone(p), nil
+}
+
+// ListAppliedPackages excludes historical pending drafts. They are retained
+// only for compatibility with saved configuration, never activated on startup.
+func (s *MemoryStore) ListAppliedPackages(workspaceID string) []access.Package {
+	all := s.ListPackages(workspaceID)
+	out := make([]access.Package, 0, len(all))
+	for _, p := range all {
+		if p.Status != "draft" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// Legacy draft helpers support reading/migrating saved configurations. They
+// are not exposed by the management API, builder or SQL mutation tools.
 // SavePackageDraft keeps edits separate from the published runtime policy.
 func (s *MemoryStore) SavePackageDraft(p access.Package, expectedVersion int) (access.Package, bool) {
 	s.mu.Lock()
@@ -1026,7 +1095,7 @@ func (s *MemoryStore) AppendAudit(e AuditEvent) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e.GroupIDs = append([]string(nil), e.GroupIDs...)
+	e = cloneAuditEvent(e)
 	// Keep the local alpha's in-memory history bounded under repeated calls.
 	// Durable, full-history audit storage remains a separate requirement.
 	const maxAuditEvents = 50_000
@@ -1046,6 +1115,8 @@ func (s *MemoryStore) auditAt(i int) AuditEvent {
 
 func cloneAuditEvent(e AuditEvent) AuditEvent {
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
+	e.Input = append(json.RawMessage(nil), e.Input...)
+	e.Output = append(json.RawMessage(nil), e.Output...)
 	return e
 }
 

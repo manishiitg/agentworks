@@ -179,3 +179,45 @@ func TestRuntimeInventoryGroupsAreCallerScopedAndRevocationIsLive(t *testing.T) 
 		t.Fatal(body)
 	}
 }
+
+func TestBuilderInventoryAllConnectionsAndSecretMetadataIsServiceOnly(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	st.AddUser(store.User{ID: "admin", WorkspaceID: "w"})
+	st.AddGroup(store.Group{ID: "empty", WorkspaceID: "w", Name: "No members"})
+	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive, UpstreamURL: "https://credential.example/mcp"})
+	snap := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
+	st.ApproveTool("w", snap.PublicName, snap.Fingerprint, snap.Version)
+	st.RegisterSecrets("w", []store.SecretResource{{Name: "TEST2"}})
+	mux := http.NewServeMux()
+	a := &Admin{Store: st, WorkspaceID: "w", HumanToken: "service"}
+	a.runtimeRoutes(mux)
+	for _, tc := range []struct {
+		path, token, builder, origin, cookie string
+		status                               int
+		visible                              bool
+	}{
+		{"/api/admin/runtime/builder/servers", "service", "1", "", "", 200, true},
+		{"/api/admin/runtime/servers", "service", "1", "", "", 200, false},
+		{"/api/admin/runtime/builder/servers", "wrong", "1", "", "", 401, false},
+		{"/api/admin/runtime/builder/servers", "service", "", "", "", 401, false},
+		{"/api/admin/runtime/builder/servers", "service", "1", "https://app.example", "", 401, false},
+		{"/api/admin/runtime/builder/servers", "service", "1", "", "login=x", 401, false},
+	} {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		req.Header.Set("Authorization", "Bearer "+tc.token)
+		req.Header.Set("X-CapLayer-Actor", "admin")
+		req.Header.Set("X-Vault-Builder", tc.builder)
+		req.Header.Set("Origin", tc.origin)
+		req.Header.Set("Cookie", tc.cookie)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		body := w.Body.String()
+		if w.Code != tc.status || strings.Contains(body, "c__read") != tc.visible || strings.Contains(body, "TEST2") != tc.visible || strings.Contains(body, "credential.example") {
+			t.Fatalf("inventory leak or missing setup authority: %d %s", w.Code, body)
+		}
+		if tc.visible && !strings.Contains(body, "No members") {
+			t.Fatal("group membership incorrectly required")
+		}
+	}
+}

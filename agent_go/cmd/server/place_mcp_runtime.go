@@ -34,6 +34,9 @@ func mergeServerLists(selected, extra []string) []string {
 // resolveMCPServer is the bridge's resolver: Code sessions first (decided
 // only here, fail closed), then the existing report-run and workshop scopes.
 func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server, tool string) (*executor.ResolvedMCPServer, error) {
+	if authority, builder := ctx.Value(vaultBuilderKey{}).(vaultBuilderAuthority); builder && authority.Session != sessionID {
+		return nil, fmt.Errorf("Vault builder scope does not match the requested MCP session")
+	}
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
 		return resolved, err
 	}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/manishiitg/mcpagent/mcpcache"
+	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -50,6 +51,41 @@ func vaultSelectionName(name string) string {
 		}
 	}
 	return name
+}
+
+// OpenAPI bridge URLs also normalize tool names. Recover only a unique name
+// from this caller's live inventory; the gateway still authorizes the call.
+func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, server, tool string) (context.Context, string, error) {
+	if !strings.HasPrefix(server, "vault_") {
+		return ctx, tool, nil
+	}
+	person := api.mcpSessionPerson(session)
+	rows, err := vaultServersFor(ctx, person)
+	if err != nil {
+		return ctx, "", err
+	}
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person: person, servers: rows})
+	selection := vaultSelectionName(server)
+	var matches []string
+	for _, row := range rows {
+		if selection != vaultServerName(row.ID) && selection != openapi.SanitizePathSegment(vaultServerName(row.ID)) {
+			continue
+		}
+		for _, candidate := range row.Tools {
+			if candidate.Name == tool || openapi.SanitizePathSegment(candidate.Name) == tool {
+				matches = append(matches, candidate.Name)
+			}
+		}
+	}
+	if len(matches) > 1 {
+		return ctx, "", errors.New("ambiguous Vault tool bridge path")
+	}
+	if len(matches) == 1 {
+		return ctx, matches[0], nil
+	}
+	// Do not grant a tool absent from discovery. Its original name can still
+	// reach the gateway's normal denial/audit handler.
+	return ctx, tool, nil
 }
 func mcpCaller(ctx context.Context) string {
 	if user := GetUserFromContext(ctx); user != nil {
@@ -101,6 +137,9 @@ func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, erro
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("X-CapLayer-Actor", person)
 	req.Header.Set("X-Vault-Platform-User", "1")
+	if path == "/api/admin/runtime/builder/servers" {
+		req.Header.Set("X-Vault-Builder", "1")
+	}
 	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -143,7 +182,14 @@ type vaultAccessGroup struct {
 
 func vaultAccessFor(ctx context.Context, person string) (vaultAccessInventory, error) {
 	out := vaultAccessInventory{Servers: []vaultRuntimeServer{}, Groups: []vaultAccessGroup{}, Secrets: []vaultSecretMetadata{}}
-	data, err := vaultRuntimeRequest(ctx, person, "/api/admin/runtime/servers")
+	path := "/api/admin/runtime/servers"
+	if authority, builder := ctx.Value(vaultBuilderKey{}).(vaultBuilderAuthority); builder {
+		if authority.Person != person || authority.Session == "" || authority.Session != executor.SessionIDFromContext(ctx) || !vaultBuilderAdministrator(person) {
+			return out, errors.New("Vault administrator required")
+		}
+		path = "/api/admin/runtime/builder/servers"
+	}
+	data, err := vaultRuntimeRequest(ctx, person, path)
 	if err != nil {
 		return out, err
 	}
@@ -179,6 +225,7 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 }
 
 type vaultDelegation struct {
+	Purpose   string `json:"purpose,omitempty"`
 	Session   string `json:"session,omitempty"`
 	Person    string `json:"person"`
 	Connector string `json:"connector"`
@@ -244,9 +291,17 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
+	runtimePath := "/api/admin/runtime/mcp"
+	if in.Purpose != "" {
+		if in.Purpose != "vault-builder" || in.Session == "" || !vaultBuilderAdministrator(in.Person) {
+			http.Error(w, "Vault builder administrator required", 403)
+			return
+		}
+		runtimePath = "/api/admin/runtime/builder/mcp"
+	}
 	proxy := &httputil.ReverseProxy{Transport: capLayerTransport, Rewrite: func(pr *httputil.ProxyRequest) {
 		pr.SetURL(target)
-		pr.Out.URL.Path = strings.TrimRight(target.Path, "/") + "/api/admin/runtime/mcp"
+		pr.Out.URL.Path = strings.TrimRight(target.Path, "/") + runtimePath
 		pr.Out.URL.RawPath = ""
 		pr.Out.URL.RawQuery = ""
 		headers := make(http.Header)
@@ -259,6 +314,9 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		headers.Set("X-CapLayer-Actor", in.Person)
 		headers.Set("X-Vault-Platform-User", "1")
 		headers.Set("X-Vault-Connector", in.Connector)
+		if in.Purpose == "vault-builder" {
+			headers.Set("X-Vault-Builder", "1")
+		}
 		pr.Out.Header = headers
 	}, ModifyResponse: func(resp *http.Response) error {
 		resp.Header.Del("Set-Cookie")
@@ -302,13 +360,20 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if isPlaceMCPInternalName(server) {
 		return nil, errors.New("private MCP does not belong to this user")
 	}
+	authority, builder, err := api.vaultBuilderAuthority(ctx, person)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := vaultServersFor(ctx, person)
 	if err != nil {
 		return nil, err
 	}
 	matches := []vaultRuntimeServer{}
 	for _, v := range rows {
-		if vaultSelectionName(server) == vaultServerName(v.ID) || strings.EqualFold(server, v.Label) || strings.EqualFold(server, v.Provider) {
+		// Generated bridge paths normalize hyphens to underscores. Compare the
+		// forward-normalized live ID, never guess an ID by replacing underscores.
+		selection := vaultSelectionName(server)
+		if selection == vaultServerName(v.ID) || selection == openapi.SanitizePathSegment(vaultServerName(v.ID)) || strings.EqualFold(server, v.Label) || strings.EqualFold(server, v.Provider) {
 			matches = append(matches, v)
 		}
 	}
@@ -319,6 +384,13 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	cfg, err := api.vaultServerConfig(person, v.ID)
 	if err != nil {
 		return nil, err
+	}
+	if builder {
+		_, secret, err := capLayerServiceConfig()
+		if err != nil {
+			return nil, err
+		}
+		cfg.Headers["Authorization"] = "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: person, Connector: v.ID, Session: authority.Session, Purpose: "vault-builder", Expires: time.Now().Truncate(time.Hour).Add(time.Hour).Unix()})
 	}
 	name := vaultRuntimeName(vaultServerName(v.ID), cfg)
 	return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
@@ -442,6 +514,17 @@ func (api *StreamingAPI) ownsLegacyPlaceMCP(ctx context.Context, person, interna
 
 // Project selection is an additional limit, never an authorization grant.
 func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *mcpclient.MCPConfig, selected, tools []string, person, server, tool string) (*executor.ResolvedMCPServer, error) {
+	var vaultResolved *executor.ResolvedMCPServer
+	if strings.HasPrefix(server, "vault_") {
+		var err error
+		vaultResolved, err = api.resolveGovernedMCP(ctx, person, server)
+		if err != nil {
+			return nil, err
+		}
+		// Selection must still refer to the exact live connector ID. Comparing
+		// normalized selection IDs could conflate two different connections.
+		server = vaultSelectionName(vaultResolved.Name)
+	}
 	allowed := false
 	canonical := func(name string) string {
 		name = vaultSelectionName(name)
@@ -474,6 +557,9 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		if !allowed {
 			return nil, errors.New("MCP tool is not selected for this project")
 		}
+	}
+	if vaultResolved != nil {
+		return vaultResolved, nil
 	}
 	return api.resolveGovernedMCP(ctx, person, server)
 }

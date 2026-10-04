@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,7 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func TestCallsPreservePayloadsAndAuditMetadata(t *testing.T) {
+func TestCallsPreservePayloadsAndRecordAuditPayloads(t *testing.T) {
 	const message = "alice@example.test 123-45-6789 4111 1111 1111 1111"
 	var calls atomic.Int32
 	srv := server.NewMCPServer("payload-upstream", "0.1")
@@ -81,9 +82,18 @@ func TestCallsPreservePayloadsAndAuditMetadata(t *testing.T) {
 		if event.UserID != "u1" || event.ClientID != "claude-test" || event.ConnectorID != "c1" {
 			t.Fatalf("audit attribution lost: %+v", event)
 		}
-		data, _ := json.Marshal(event)
-		if strings.Contains(string(data), message) {
-			t.Fatal("audit contains payload")
+		if !strings.Contains(string(event.Input), message) || event.InputTruncated || event.OutputTruncated {
+			t.Fatal("audit lost unmodified input payload")
 		}
+	}
+	if len(events[0].Output) != 0 || !strings.Contains(string(events[1].Output), message) || !strings.Contains(string(events[1].Output), "aGVsbG8=") {
+		t.Fatal("audit denied/success output incorrect")
+	}
+	var recorded, expected any
+	json.Unmarshal(events[1].Output, &recorded)
+	expectedBytes, _ := json.Marshal(map[string]any{"content": res.Content, "structuredContent": res.StructuredContent, "isError": res.IsError})
+	json.Unmarshal(expectedBytes, &expected)
+	if !reflect.DeepEqual(recorded, expected) {
+		t.Fatalf("MCP output shape changed: %s", events[1].Output)
 	}
 }

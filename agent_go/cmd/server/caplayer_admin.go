@@ -207,7 +207,7 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 		return "", errors.New("Vault management requires an administrator account")
 	}
 	switch operation {
-	case "inspect_environment", "inspect_tool", "save_draft", "connect_server":
+	case "inspect_environment", "inspect_tool", "save_permissions", "connect_server":
 	default:
 		return "", errors.New("unsupported Vault operation")
 	}

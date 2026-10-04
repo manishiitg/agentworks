@@ -125,7 +125,7 @@ func (g *Gateway) ValidateArguments(snap store.ToolSnapshot, args map[string]any
 	return g.validateArguments(snap, args)
 }
 
-// New builds the gateway MCP server. Call SyncTools before serving.
+// New builds the gateway MCP server. RestoreTools before serving saved workspaces.
 func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client, oauthSrv *mcpoauth.Server, options ...upstream.DialOptions) *Gateway {
 	g := &Gateway{store: st, auth: a, upstreams: ups, oauth: oauthSrv}
 	if len(options) > 0 {
@@ -146,7 +146,12 @@ func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.C
 		for _, t := range result.Tools {
 			snap, found := st.GetTool(t.Name)
 			connector, scoped := ctx.Value(connectorKey{}).(string)
-			if policy.Visible(st, id, t.Name) && (!scoped || (found && snap.ConnectorID == connector)) {
+			visible := policy.Visible(st, id, t.Name)
+			if ctx.Value(builderKey{}) == true {
+				_, err := policy.AuthorizeSetup(st, id, t.Name)
+				visible = err == nil
+			}
+			if visible && (!scoped || (found && snap.ConnectorID == connector)) {
 				out = append(out, t)
 			}
 		}
@@ -157,6 +162,19 @@ func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.C
 		server.WithHooks(hooks),
 	)
 	return g
+}
+
+// RestoreTools registers persisted definitions without changing approval or
+// grants. Calls still validate live policy and rediscover a missing upstream
+// before execution. Run before serving, so temporary startup OAuth failures do
+// not turn existing tools into protocol-level "tool not found" errors.
+func (g *Gateway) RestoreTools(workspaceID string) {
+	for _, snap := range g.store.ListTools(workspaceID) {
+		tool := mcp.Tool{Description: snap.Description, Title: snap.Title,
+			RawInputSchema: json.RawMessage(snap.InputSchema), RawOutputSchema: json.RawMessage(snap.OutputSchema)}
+		_ = json.Unmarshal(snap.Annotations, &tool.Annotations)
+		g.register(snap, tool)
+	}
 }
 
 // SyncTools discovers every active connector's tools, snapshots them, and
@@ -300,6 +318,29 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 // Resync rediscovers one connector's tools, dialing first if needed.
 func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 	defer g.lockConnector(c.ID)()
+	return g.resyncConnector(ctx, c)
+}
+
+// ensureConnected retries initialization/discovery, never an actual tool call.
+// The same connector lock serializes this with startup, sync and reauthorization.
+func (g *Gateway) ensureConnected(ctx context.Context, workspaceID, connectorID string) (*upstream.Client, error) {
+	defer g.lockConnector(connectorID)()
+	c, ok := g.store.GetConnector(connectorID)
+	if !ok || c.WorkspaceID != workspaceID || c.Status != store.StatusActive {
+		return nil, policy.ErrConnectorDisabled
+	}
+	if up, ok := g.upstreamFor(connectorID); ok {
+		return up, nil
+	}
+	if err := g.resyncConnector(ctx, c); err != nil {
+		return nil, err
+	}
+	up, _ := g.upstreamFor(connectorID)
+	return up, nil
+}
+
+// Caller holds the connector operation lock.
+func (g *Gateway) resyncConnector(ctx context.Context, c store.Connector) error {
 	current, ok := g.store.GetConnector(c.ID)
 	if !ok || (current.Status != store.StatusActive && current.Status != store.StatusAuthRequired) || current.WorkspaceID != c.WorkspaceID {
 		return fmt.Errorf("connector %s is no longer active", c.ID)
@@ -316,6 +357,7 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 			old.Close()
 		}
 	}
+	dialed := false
 	if _, ok := g.upstreamFor(c.ID); !ok {
 		opts, err := g.connectorOptions(c)
 		if err != nil {
@@ -328,9 +370,17 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 		g.mu.Lock()
 		g.upstreams[c.ID] = up
 		g.mu.Unlock()
+		dialed = true
 	}
 	initial := c.Status == store.StatusAuthRequired && len(g.store.ListToolsForConnector(c.ID)) == 0
 	if err := g.syncConnector(ctx, c, initial); err != nil {
+		if dialed {
+			g.mu.Lock()
+			up := g.upstreams[c.ID]
+			delete(g.upstreams, c.ID)
+			g.mu.Unlock()
+			up.Close()
+		}
 		return err
 	}
 	c.Status = store.StatusActive
@@ -431,6 +481,23 @@ func (g *Gateway) register(snap store.ToolSnapshot, upstreamTool mcp.Tool) {
 func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req mcp.CallToolRequest) (result *mcp.CallToolResult, callErr error) {
 	var auditErr error
 	appendAudit := func(e store.AuditEvent) {
+		if !g.store.AuditInfo().Enabled {
+			return
+		}
+		input := req.Params.Arguments
+		if input == nil {
+			input = map[string]any{}
+		}
+		e.Input, e.InputTruncated = store.CaptureAuditPayload(input)
+		if result != nil {
+			// Record tool content, structured output and the error indicator. Protocol
+			// metadata and HTTP headers are not tool output and are not captured.
+			output := map[string]any{"content": result.Content, "isError": result.IsError}
+			if result.StructuredContent != nil {
+				output["structuredContent"] = result.StructuredContent
+			}
+			e.Output, e.OutputTruncated = store.CaptureAuditPayload(output)
+		}
 		if err := g.store.AppendAudit(e); err != nil {
 			auditErr = err
 		}
@@ -464,12 +531,13 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if connector, scoped := ctx.Value(connectorKey{}).(string); scoped && snap.ConnectorID != connector {
 		return deny(policy.ErrNoGrant)
 	}
-	if _, err := policy.Authorize(g.store, id, snap.PublicName); err != nil {
-		return deny(err)
+	authorize := policy.Authorize
+	builder := ctx.Value(builderKey{}) == true
+	if builder {
+		authorize = policy.AuthorizeSetup
 	}
-	up, ok := g.upstreamFor(snap.ConnectorID)
-	if !ok {
-		return deny(policy.ErrConnectorDisabled)
+	if _, err := authorize(g.store, id, snap.PublicName); err != nil {
+		return deny(err)
 	}
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok && req.Params.Arguments != nil {
@@ -485,11 +553,42 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if err := g.validateArguments(current, args); err != nil {
 		return deny(fmt.Errorf("arguments do not match approved tool schema"))
 	}
-	if err := policy.AuthorizeArguments(g.store, id, current, args); err != nil {
-		return deny(err)
+	if current.Fingerprint != snap.Fingerprint {
+		return deny(policy.ErrToolNotActive)
+	}
+	if !builder {
+		if err := policy.AuthorizeArguments(g.store, id, current, args); err != nil {
+			return deny(err)
+		}
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	up, err := g.ensureConnected(callCtx, id.WorkspaceID, snap.ConnectorID)
+	if err != nil {
+		appendAudit(store.AuditEvent{
+			ID: callID, CallID: callID, Timestamp: start.UTC(),
+			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
+			GroupIDs: groups, ConnectorID: snap.ConnectorID,
+			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
+			Decision: store.DecisionAllow, Outcome: store.OutcomeUpstreamError,
+			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream connection unavailable",
+		})
+		return nil, fmt.Errorf("upstream connection unavailable; reconnect the MCP server (call %s)", callID)
+	}
+	// Discovery may quarantine a changed definition, or access may be revoked
+	// while initialization waits on OAuth. Recheck before any upstream invocation.
+	if _, err := authorize(g.store, id, snap.PublicName); err != nil {
+		return deny(err)
+	}
+	current, ok = g.store.GetTool(snap.PublicName)
+	if !ok || current.Fingerprint != snap.Fingerprint {
+		return deny(policy.ErrToolNotActive)
+	}
+	if !builder {
+		if err := policy.AuthorizeArguments(g.store, id, current, args); err != nil {
+			return deny(err)
+		}
+	}
 	res, err := up.Call(callCtx, snap.UpstreamName, args)
 	if err != nil {
 		appendAudit(store.AuditEvent{
@@ -503,6 +602,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		})
 		return nil, fmt.Errorf("upstream call failed (call %s)", callID)
 	}
+	result = res // Snapshot only the returned MCP result, never transport headers or credentials.
 	outcome, auditError := store.OutcomeOK, ""
 	if res != nil && res.IsError {
 		outcome, auditError = store.OutcomeUpstreamError, "upstream tool reported error"
@@ -706,6 +806,13 @@ func outputSchemaBytes(t mcp.Tool) []byte {
 // and connector scope come from the authenticated host, never browser headers.
 // Use a separate stateless transport so a retained MCP session cannot switch users.
 type connectorKey struct{}
+type builderKey struct{}
+
+// BuilderProductHandler is service-only. Its callback must validate the host's
+// live administrator assertion. No normal or external transport sets this key.
+func (g *Gateway) BuilderProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
+	return g.productHandler("/api/admin/runtime/builder/mcp", identity)
+}
 
 func (g *Gateway) ProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
 	return g.productHandler("/api/admin/runtime/mcp", identity)
@@ -726,6 +833,9 @@ func (g *Gateway) productHandler(path string, identity func(*http.Request) (auth
 			return
 		}
 		ctx := auth.WithIdentity(r.Context(), id)
+		if path == "/api/admin/runtime/builder/mcp" {
+			ctx = context.WithValue(ctx, builderKey{}, true)
+		}
 		if connector != "" {
 			ctx = context.WithValue(ctx, connectorKey{}, connector)
 		}

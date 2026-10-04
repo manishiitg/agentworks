@@ -14,7 +14,7 @@ import (
 )
 
 // validateAccessPackage checks exact approved tool versions and paths before
-// any draft can become live policy. Unsupported schemas fail closed.
+// permissions are applied. Unsupported schemas fail closed.
 func (a *Admin) validateAccessPackage(p access.Package) error {
 	return a.Store.ValidateAccessPackage(p, a.WorkspaceID)
 }
@@ -52,8 +52,8 @@ func (a *Admin) accessRoutes(mux *http.ServeMux) {
 		}
 		permissions := []permission{}
 		assignedRules := map[string]bool{}
-		for _, p := range a.Store.ListPackages(a.WorkspaceID) {
-			if p.GroupID == group.ID && (p.Status == "published" || p.Status == "draft") {
+		for _, p := range a.Store.ListAppliedPackages(a.WorkspaceID) {
+			if p.GroupID == group.ID && p.Status == "published" {
 				for _, rule := range p.Rules {
 					assignedRules[rule.PublicName] = true
 				}
@@ -78,7 +78,7 @@ func (a *Admin) accessRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/access/packages", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, http.StatusOK, map[string]any{"packages": a.Store.ListPackages(a.WorkspaceID)})
+			writeJSON(w, http.StatusOK, map[string]any{"packages": a.Store.ListAppliedPackages(a.WorkspaceID)})
 		case http.MethodPost:
 			var p access.Package
 			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&p); err != nil {
@@ -93,50 +93,22 @@ func (a *Admin) accessRoutes(mux *http.ServeMux) {
 				writeErr(w, http.StatusBadRequest, err)
 				return
 			}
-			version := p.Version
-			saved, ok := a.Store.SavePackageDraft(p, version)
-			if !ok {
-				writeErr(w, http.StatusConflict, errors.New("package changed; reload before editing"))
+			saved, err := a.Store.SaveAccessPackage(p, p.Version, adminActor(r))
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, store.ErrPolicyConflict) {
+					status = http.StatusConflict
+				}
+				if a.Store.PersistenceError() != nil {
+					status = http.StatusServiceUnavailable
+				}
+				writeErr(w, status, err)
 				return
 			}
-			a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: adminActor(r), Action: "save_draft", PackageID: saved.ID, Version: saved.Version})
 			writeJSON(w, http.StatusOK, saved)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-	}))
-	mux.HandleFunc("/api/admin/access/packages/{id}/publish", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		var in struct {
-			Version int `json:"version"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, errors.New("invalid publish request"))
-			return
-		}
-		p, ok := a.Store.GetPackageDraft(a.WorkspaceID, r.PathValue("id"))
-		if !ok {
-			writeErr(w, http.StatusNotFound, errors.New("draft not found"))
-			return
-		}
-		if in.Version != 0 && in.Version != p.Version {
-			writeErr(w, http.StatusConflict, errors.New("draft changed; reload before publishing"))
-			return
-		}
-		if err := a.validateAccessPackage(p); err != nil {
-			writeErr(w, http.StatusConflict, err)
-			return
-		}
-		published, ok := a.Store.PublishPackage(a.WorkspaceID, p.ID, p.Version)
-		if !ok {
-			writeErr(w, http.StatusConflict, errors.New("draft changed; validate again"))
-			return
-		}
-		a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: adminActor(r), Action: "publish", PackageID: published.ID, Version: published.Version})
-		writeJSON(w, http.StatusOK, published)
 	}))
 	mux.HandleFunc("/api/admin/access/packages/{id}/revoke", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -158,51 +130,7 @@ func (a *Admin) accessRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"events": a.Store.ListPolicyEvents(a.WorkspaceID)})
 	}))
-	mux.HandleFunc("/api/admin/access/packages/{id}/simulate", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		p, ok := a.Store.GetPackageDraft(a.WorkspaceID, r.PathValue("id"))
-		if !ok {
-			writeErr(w, http.StatusNotFound, errors.New("draft not found"))
-			return
-		}
-		var in struct {
-			PublicName string         `json:"public_name"`
-			Arguments  map[string]any `json:"arguments"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		t, ok := a.Store.GetTool(in.PublicName)
-		if !ok || t.WorkspaceID != a.WorkspaceID || t.Status != store.StatusActive || t.ApprovedFingerprint != t.Fingerprint {
-			writeErr(w, http.StatusConflict, errors.New("tool is not an approved active version"))
-			return
-		}
-		if err := a.Gateway.ValidateArguments(t, in.Arguments); err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"allowed": false, "reason": "arguments do not match approved tool schema"})
-			return
-		}
-		allowed := false
-		for _, rule := range p.Rules {
-			if rule.PublicName != in.PublicName {
-				continue
-			}
-			if rule.Fingerprint != t.Fingerprint {
-				break
-			}
-			allowed = true
-			for _, condition := range rule.Conditions {
-				if !access.Match(condition, in.Arguments) {
-					allowed = false
-					break
-				}
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]bool{"allowed": allowed})
-	}))
+
 }
 
 // The product proxy replaces this header after checking the central admin role.

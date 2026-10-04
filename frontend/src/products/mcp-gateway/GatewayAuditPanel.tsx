@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Download, ListFilter, RefreshCw, ScrollText, X } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
@@ -10,10 +10,17 @@ import { codeClass, plural, tableClass, tdClass, thClass, useAttempt, useGateway
 const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
-function outcomeDot(outcome: string): string {
-  if (outcome === 'ok') return 'bg-green-500'
-  if (outcome === 'denied') return 'bg-amber-500'
-  return 'bg-red-500'
+function callResult(outcome: string, decision: string) {
+  if (outcome === 'denied' || decision === 'deny') return { label: 'Blocked', style: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' }
+  if (outcome === 'ok') return { label: 'Success', style: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' }
+  return { label: 'Failed', style: 'bg-destructive/10 text-destructive' }
+}
+
+function callingApp(id: string) {
+  if (id === 'agentworks') return 'AgentWorks'
+  if (id === 'agentworks-vault-builder') return 'Vault builder'
+  if (id.startsWith('api-key:')) return `Group API key (${id.slice(8)})`
+  return id || '—'
 }
 
 function formatTime(iso: string): string {
@@ -28,6 +35,7 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
   const [range, setRange] = useState('all')
   const [dates, setDates] = useState({ after: '', before: '' })
   const [moreFilters, setMoreFilters] = useState(false)
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
   const [directoryAttempt, refreshDirectory] = useAttempt()
   const { data: directory, error: directoryError } = useGatewayLoader(async () => {
     const [inventory, people, groups, tools] = await Promise.all([
@@ -108,7 +116,7 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
     if (!toolOptions.has(event.PublicName)) toolOptions.set(event.PublicName, filter.connector ? event.UpstreamName : `${connectorNames.get(event.ConnectorID) || event.ConnectorID} / ${event.UpstreamName}`)
   }
   const clientOptions = new Map([...seenClients.current, ...events.map(event => event.ClientID || ''), filter.client || '']
-    .filter(Boolean).map(id => [id, id === 'agentworks' ? 'AgentWorks' : id.startsWith('api-key:') ? `Group API key (${id.slice(8)})` : id]))
+    .filter(Boolean).map(id => [id, callingApp(id)]))
   const sortedOptions = (options: Map<string, string>) => [...options].sort((a, b) => a[1].localeCompare(b[1]))
   const advancedCount = [filter.group, filter.tool, filter.client, filter.decision].filter(Boolean).length
   const hasFilters = range !== 'all' || Object.values(filter).some(Boolean)
@@ -116,16 +124,16 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
   return (
     <div className="space-y-4" data-testid="gateway-audit">
       {error && <ConsoleStale message={error} onRetry={bump} />}
-      {data.settings && <div className="text-xs text-muted-foreground" role="status">
+      {data.settings && <div className="text-xs text-muted-foreground" role="status" title={`${data.settings.provider} · ${data.settings.write_mode}`}>
         {data.settings.enabled
-          ? `${data.settings.provider === 'sqlite' ? 'SQLite' : 'Memory'}${data.settings.write_mode === 'async' ? ' · Async' : ''}${data.settings.retention_seconds ? ` · ${data.settings.retention_seconds / 3600}h retention` : ''}`
+          ? data.settings.retention_seconds ? `Calls retained for ${data.settings.retention_seconds / 3600} hours` : 'Audit collection enabled'
           : 'Auditing is off. New calls are not recorded.'}
       </div>}
       {data.settings?.enabled && data.settings.write_healthy === false && <p role="alert" className="text-xs text-destructive">Audit writes are delayed; queued events are awaiting retry.</p>}
       {directoryError && <ConsoleStale message="Filter options could not be refreshed." onRetry={refreshDirectory} />}
       <div className="space-y-2" aria-label="Audit filters">
         <div className="flex flex-wrap items-center gap-2">
-          <select aria-label="Time range" className={`${selectClass} min-w-28 flex-1`} value={range} onChange={event => changeRange(event.target.value)}>
+          <select aria-label="Time range" className={`${selectClass} min-w-28 sm:w-44`} value={range} onChange={event => changeRange(event.target.value)}>
             <option value="all">Any time</option>
             <option value="1h">Last hour</option>
             <option value="24h">Last 24 hours</option>
@@ -137,7 +145,7 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
             { key: 'user', label: 'User', all: 'All users', options: userNames },
             { key: 'connector', label: 'MCP server', all: 'All MCPs', options: connectorNames },
             { key: 'outcome', label: 'Result', all: 'All results', options: new Map([['ok', 'Success'], ['denied', 'Blocked'], ['upstream_error', 'Failed']]) },
-          ] as const).map(field => <select key={field.key} aria-label={field.label} className={`${selectClass} min-w-28 flex-1`} value={filter[field.key] || ''}
+          ] as const).map(field => <select key={field.key} aria-label={field.label} className={`${selectClass} min-w-28 sm:w-44`} value={filter[field.key] || ''}
             onChange={event => updateFilter({ [field.key]: event.target.value, ...(field.key === 'connector' ? { tool: '' } : {}) })}>
             <option value="">{field.all}</option>
             {sortedOptions(field.options).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -147,6 +155,13 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
             {moreFilters ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />}
           </Button>
           <Button size="sm" variant="ghost" aria-label="Refresh audit log" title="Refresh" onClick={refresh}><RefreshCw className="h-3.5 w-3.5" /></Button>
+          <details className="relative ml-auto text-xs">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Download className="h-3.5 w-3.5" /> Export</summary>
+            <div className="absolute right-0 z-10 mt-1 w-28 rounded-md border border-border bg-popover p-1 shadow-md">
+              <a className="block rounded px-2 py-1.5 hover:bg-muted" href={`${base}${auditPath(filter, undefined, 'csv')}`}>CSV</a>
+              <a className="block rounded px-2 py-1.5 hover:bg-muted" href={`${base}${auditPath(filter, undefined, 'json')}`}>JSON</a>
+            </div>
+          </details>
         </div>
         {range === 'custom' && <div className="flex flex-wrap items-center gap-2">
           {(['after', 'before'] as const).map(field => <label key={field} className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -167,16 +182,8 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
             </select>
           </label>)}
         </div>}
-        <div className="flex items-center justify-between gap-2">
-          <div>{hasFilters && <Button size="sm" variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearFilters}><X className="mr-1 h-3 w-3" /> Clear filters</Button>}</div>
-          <details className="relative text-xs">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Download className="h-3.5 w-3.5" /> Export</summary>
-            <div className="absolute right-0 z-10 mt-1 w-28 rounded-md border border-border bg-popover p-1 shadow-md">
-              <a className="block rounded px-2 py-1.5 hover:bg-muted" href={`${base}${auditPath(filter, undefined, 'csv')}`}>CSV</a>
-              <a className="block rounded px-2 py-1.5 hover:bg-muted" href={`${base}${auditPath(filter, undefined, 'json')}`}>JSON</a>
-            </div>
-          </details>
-        </div>
+        {hasFilters && <Button size="sm" variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearFilters}><X className="mr-1 h-3 w-3" /> Clear filters</Button>}
+
       </div>
       {tab === 'analysis' && <div role="tabpanel" aria-label="Audit analysis">
       {usageError && (usage ? <ConsoleStale message={usageError} onRetry={bump} /> : <ConsoleError message={usageError} onRetry={bump} />)}
@@ -208,9 +215,8 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
       </div>}
       {tab === 'logs' && <div role="tabpanel" aria-label="Audit logs"><SettingsCard
         icon={<ScrollText className="h-4 w-4 text-primary" />}
-        title="Audit log"
-        count={<SettingsCount>{plural(events.length, 'event')}</SettingsCount>}
-        description="Newest first. Group keys identify the group, not the individual."
+        title="Recent calls"
+        count={<SettingsCount>{plural(events.length, 'call')}</SettingsCount>}
         actions={
           <select
             aria-label="Event limit"
@@ -233,49 +239,55 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
           <ConsoleEmpty>{data.settings?.enabled === false ? 'Audit collection is off.' : hasFilters ? 'No calls match these filters.' : 'No tool calls yet.'}</ConsoleEmpty>
         ) : (
           <div className="overflow-x-auto">
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th className={thClass}>Time</th>
-                <th className={thClass}>User</th>
-                <th className={thClass}>Group</th>
-                <th className={thClass} title="App or credential calling Vault">Calling app</th>
-                <th className={thClass}>MCP server</th>
-                <th className={thClass}>Tool</th>
-                <th className={thClass}>Decision</th>
-                <th className={thClass}>Outcome</th>
-                <th className={thClass}>Duration</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((e) => (
-                <tr key={e.ID}>
-                  <td className={`${tdClass} whitespace-nowrap`}>{formatTime(e.Timestamp)}</td>
-                  <td className={tdClass}>
-                    <span title={e.UserID}>{userNames.get(e.UserID) || e.UserID || '—'}</span>
+          <table className={`${tableClass} min-w-[680px]`}>
+            <thead><tr>
+              <th className={thClass}>Time</th>
+              <th className={thClass}>User</th>
+              <th className={thClass}>MCP server</th>
+              <th className={thClass}>Tool</th>
+              <th className={thClass}>Result</th>
+              <th className={`${thClass} text-right`}>Duration</th>
+              <th className={thClass}><span className="sr-only">Details</span></th>
+            </tr></thead>
+            <tbody>{events.map(e => {
+              const result = callResult(e.Outcome, e.Decision)
+              const toolName = e.UpstreamName || directory?.tools.find(tool => tool.PublicName === e.PublicName)?.UpstreamName || e.PublicName.split('__').at(-1) || e.PublicName
+              const expanded = expandedEvent === e.ID
+              const timestamp = new Date(e.Timestamp)
+              return <Fragment key={e.ID}>
+                <tr className="hover:bg-muted/30">
+                  <td className={`${tdClass} whitespace-nowrap`} title={formatTime(e.Timestamp)}>
+                    <div className="tabular-nums">{Number.isNaN(timestamp.getTime()) ? e.Timestamp : timestamp.toLocaleTimeString()}</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">{Number.isNaN(timestamp.getTime()) ? '' : timestamp.toLocaleDateString()}</div>
                   </td>
-                  <td className={tdClass} title={e.GroupIDs?.join(', ')}>{e.GroupIDs?.map(id => groupNames.get(id) || id).join(', ') || '—'}</td>
-                  <td className={tdClass} title={e.ClientID}>{e.ClientID === 'agentworks' ? 'AgentWorks' : e.ClientID || '—'}</td>
-                  <td className={tdClass} title={e.ConnectorID}>{connectorNames.get(e.ConnectorID) || e.ConnectorID || '—'}</td>
-                  <td className={tdClass}>
-                    <span className={codeClass}>{e.PublicName}</span>
-                  </td>
-                  <td className={tdClass}>{e.Decision}</td>
-                  <td className={tdClass}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className={`h-2 w-2 rounded-full ${outcomeDot(e.Outcome)}`} aria-hidden />
-                      {e.Outcome}
-                    </span>
-                    {e.ErrorText && (
-                      <span className="block max-w-60 truncate text-muted-foreground" title={e.ErrorText}>
-                        {e.ErrorText}
-                      </span>
-                    )}
-                  </td>
-                  <td className={tdClass}>{e.DurationMs} ms</td>
+                  <td className={tdClass}><span className="block max-w-48 truncate" title={e.UserID}>{userNames.get(e.UserID) || e.UserID || (e.ClientID?.startsWith('api-key:') ? 'Group API key' : '—')}</span></td>
+                  <td className={tdClass}><span className="block max-w-56 truncate" title={e.ConnectorID}>{connectorNames.get(e.ConnectorID) || e.ConnectorID || '—'}</span></td>
+                  <td className={tdClass}><span className="block max-w-72 truncate font-medium" title={e.PublicName}>{toolName}</span></td>
+                  <td className={tdClass}><span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${result.style}`}>{result.label}</span></td>
+                  <td className={`${tdClass} whitespace-nowrap text-right tabular-nums`}>{e.DurationMs} ms</td>
+                  <td className={tdClass}><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`${expanded ? 'Hide' : 'View'} details for ${toolName} at ${e.Timestamp}`} aria-expanded={expanded} aria-controls={`audit-event-${e.ID}`} onClick={() => setExpandedEvent(expanded ? null : e.ID)}>
+                    {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </Button></td>
                 </tr>
-              ))}
-            </tbody>
+                {expanded && <tr id={`audit-event-${e.ID}`}><td colSpan={7} className="border-b border-border bg-muted/20 px-4 py-3">
+                  <dl className="grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                    <div><dt className="text-muted-foreground">Groups</dt><dd className="mt-1">{e.GroupIDs?.map(id => groupNames.get(id) || id).join(', ') || '—'}</dd></div>
+                    <div><dt className="text-muted-foreground">Calling app</dt><dd className="mt-1" title={e.ClientID}>{callingApp(e.ClientID || '')}</dd></div>
+                    <div><dt className="text-muted-foreground">Permission decision</dt><dd className="mt-1">{e.Decision === 'allow' ? 'Allowed' : e.Decision === 'deny' ? 'Denied' : e.Decision}</dd></div>
+                    <div><dt className="text-muted-foreground">Outcome</dt><dd className="mt-1">{e.Outcome}</dd></div>
+                    <div className="sm:col-span-2 lg:col-span-4"><dt className="text-muted-foreground">Tool ID</dt><dd className="mt-1 break-all font-mono">{e.PublicName}</dd></div>
+                  </dl>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {(['Input', 'Output'] as const).map(kind => <details key={kind} className="min-w-0 rounded-md border border-border bg-background">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-medium">{kind === 'Input' ? 'Input arguments' : 'Tool output'}{e[`${kind}Truncated`] && <span className="ml-2 text-amber-600">Truncated</span>}</summary>
+                      {Object.hasOwn(e, kind) ? <pre className="max-h-80 overflow-auto border-t border-border p-3 text-[11px] leading-relaxed">{JSON.stringify(e[kind], null, 2)}</pre> : <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{kind === 'Output' && e.Outcome === 'denied' ? 'Tool was not called.' : 'Not recorded for this call.'}</p>}
+                    </details>)}
+                  </div>
+                  {e.ErrorText && <p className="mt-3 break-words text-destructive">{e.ErrorText}</p>}
+                  {!e.UserID && e.ClientID?.startsWith('api-key:') && <p className="mt-3 text-muted-foreground">This call used a group key; no individual user was identified.</p>}
+                </td></tr>}
+              </Fragment>
+            })}</tbody>
           </table>
           </div>
         )}

@@ -27,7 +27,7 @@ func registerCapLayerDatabaseTools(registry *agentprofiles.Registry) error {
 		if err = json.Unmarshal(encoded, &params); err != nil {
 			return err
 		}
-		description := definition.Function.Description + " In Vault this targets Chats/CapLayer/db/gateway.sqlite. Use action=describe first. Mutable tables: groups, group_members, user_tool_grants, group_tool_grants, permission_drafts. Draft versions increment automatically after validated edits; include the current version in WHERE predicates and inserts based on existing policies. Users, connector metadata, tool approvals, live policies and history are read-only. No credentials are exposed."
+		description := definition.Function.Description + " In Vault this targets Chats/CapLayer/db/gateway.sqlite. Use action=describe first. Mutable tables: groups, group_members, user_tool_grants, group_tool_grants. Advanced equality/regex permissions use manage_vault_access with operation save_permissions and apply immediately after validation. Users, connector metadata, tool approvals, live policies and history are read-only. No credentials are exposed."
 		if err = registry.RegisterToolFactory("caplayer.database."+operation, func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
 			return agentprofiles.ToolSpec{Name: name, Description: description, Parameters: params, Category: virtualtools.WorkflowDBToolCategory, Execute: func(ctx context.Context, args map[string]any) (string, error) {
 				if canonicalChatHistoryWorkspacePath(runtime.UserID, runtime.WorkspacePath) != "Chats/CapLayer" {

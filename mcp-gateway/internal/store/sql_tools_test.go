@@ -94,32 +94,18 @@ func TestSQLBatchesRollbackAndProtectedTablesStayProtected(t *testing.T) {
 		t.Fatal(q, err)
 	}
 }
-func TestSQLDraftValidationVersionsAndGovernedGrants(t *testing.T) {
+func TestSQLCannotCreateDraftsOrBypassSavedPermissions(t *testing.T) {
 	s, _ := sqlFixture(t)
 	defer s.Close()
 	ctx := context.Background()
 	rules, _ := json.Marshal([]access.ToolRule{{PublicName: "c__read", Fingerprint: "f", Conditions: []access.Condition{{Path: "/project", Op: "equals", Value: "one"}}}})
-	if _, err := s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `INSERT INTO permission_drafts(id,workspace_id,group_id,name,rules_json) VALUES(?,?,?,?,?)`, Params: []any{"p", "w", "g", "One project", string(rules)}}); err != nil {
+	if _, err := s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `INSERT INTO permission_drafts(id,workspace_id,group_id,name,rules_json) VALUES(?,?,?,?,?)`, Params: []any{"p", "w", "g", "One project", string(rules)}}); err == nil {
+		t.Fatal("SQL created a draft")
+	}
+	_, err := s.SaveAccessPackage(access.Package{ID: "p", WorkspaceID: "w", GroupID: "g", Name: "One project", Rules: []access.ToolRule{{PublicName: "c__read", Fingerprint: "f", Conditions: []access.Condition{{Path: "/project", Op: "equals", Value: "one"}}}}}, 0, "admin")
+	if err != nil {
 		t.Fatal(err)
 	}
-	p, ok := s.GetPackageDraft("w", "p")
-	if !ok || p.Version != 1 {
-		t.Fatal(p)
-	}
-	if _, err := s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `UPDATE permission_drafts SET name='Edited' WHERE id='p' AND version=1`}); err != nil {
-		t.Fatal(err)
-	}
-	p, _ = s.GetPackageDraft("w", "p")
-	if p.Version != 2 {
-		t.Fatal("SQL draft edit did not increment version")
-	}
-	if _, ok := s.PublishPackage("w", "p", 1); ok {
-		t.Fatal("stale review published")
-	}
-	if _, err := s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `UPDATE permission_drafts SET rules_json='[{"public_name":"c__read","fingerprint":"wrong","conditions":[]}]' WHERE id='p'`}); err == nil {
-		t.Fatal("invalid fingerprint accepted")
-	}
-	s.PublishPackage("w", "p", 2)
 	if _, err := s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `INSERT INTO group_tool_grants VALUES('g','c__read')`}); err == nil {
 		t.Fatal("SQL bypassed governed grant")
 	}

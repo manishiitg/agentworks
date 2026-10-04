@@ -987,12 +987,13 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 			w.Header().Set("Content-Disposition", `attachment; filename="gateway-audit.csv"`)
 			writer := csv.NewWriter(w)
-			_ = writer.Write([]string{"time", "call_id", "user", "groups", "client", "connector", "tool", "decision", "outcome", "duration_ms", "error"})
+			_ = writer.Write([]string{"time", "call_id", "user", "groups", "client", "connector", "tool", "decision", "outcome", "duration_ms", "error", "input", "output", "input_truncated", "output_truncated"})
 			for _, e := range events {
 				_ = writer.Write([]string{
 					e.Timestamp.Format(time.RFC3339Nano), csvSafe(e.CallID), csvSafe(e.UserID), csvSafe(strings.Join(e.GroupIDs, ";")),
 					csvSafe(e.ClientID), csvSafe(e.ConnectorID), csvSafe(e.PublicName), e.Decision, e.Outcome,
 					strconv.FormatInt(e.DurationMs, 10), csvSafe(e.ErrorText),
+					csvSafe(string(e.Input)), csvSafe(string(e.Output)), strconv.FormatBool(e.InputTruncated), strconv.FormatBool(e.OutputTruncated),
 				})
 			}
 			writer.Flush()

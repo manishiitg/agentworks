@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqlpolicy"
 )
 
@@ -33,8 +32,8 @@ var publicSchema = []string{
 	`CREATE TABLE IF NOT EXISTS published_permissions(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,name TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,rules_json TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS policy_history(sequence INTEGER PRIMARY KEY,event_json TEXT NOT NULL)`,
 }
-var publicTables = []string{"vault_secrets", "group_secret_grants", "workspaces", "users", "groups", "group_members", "connectors", "tools", "user_tool_grants", "group_tool_grants", "group_server_grants", "permission_drafts", "published_permissions", "policy_history"}
-var editableTables = map[string]bool{"groups": true, "group_members": true, "user_tool_grants": true, "group_tool_grants": true, "permission_drafts": true}
+var publicTables = []string{"vault_secrets", "group_secret_grants", "workspaces", "users", "groups", "group_members", "connectors", "tools", "user_tool_grants", "group_tool_grants", "group_server_grants", "published_permissions", "policy_history"}
+var editableTables = map[string]bool{"groups": true, "group_members": true, "user_tool_grants": true, "group_tool_grants": true}
 
 // EnableSQLWorkspace binds this project's SQL surface to one workspace. SQL
 // callers cannot select a different database or tenant through arguments.
@@ -82,7 +81,7 @@ func (s *MemoryStore) EnableSQLWorkspace(id string) error {
 			return err
 		}
 	}
-	for _, table := range publicTables {
+	for _, table := range append(append([]string{}, publicTables...), "permission_drafts") {
 		for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
 			q := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS "caplayer_%s_%s" AFTER %s ON "%s" BEGIN UPDATE gateway_configuration SET revision=revision+1 WHERE id=1; END`, table, op, op, table)
 			if _, err := p.db.Exec(q); err != nil {
@@ -105,7 +104,7 @@ func (p *sqlitePersistence) project(tx *sql.Tx, state durableState) error {
 	if p.sqlWorkspace == "" {
 		return nil
 	}
-	for _, table := range publicTables {
+	for _, table := range append(append([]string{}, publicTables...), "permission_drafts") {
 		if _, err := tx.Exec(`DELETE FROM "` + table + `"`); err != nil {
 			return err
 		}
@@ -440,7 +439,7 @@ func (s *MemoryStore) MutateSQL(ctx context.Context, workspaceID, actor string, 
 			return empty, err
 		}
 		if !editableTables[table] {
-			return empty, fmt.Errorf("%s is read-only; mutable tables: groups, group_members, user_tool_grants, group_tool_grants, permission_drafts", table)
+			return empty, fmt.Errorf("%s is read-only; mutable tables: groups, group_members, user_tool_grants, group_tool_grants", table)
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -631,7 +630,7 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 			}
 			if !wasGranted && (tool.Status != StatusActive || tool.Fingerprint != tool.ApprovedFingerprint || state.Governed[w][value]) {
 				rows.Close()
-				return errors.New("new grants require an approved active tool without a governing policy; edit a permission draft instead")
+				return errors.New("new grants require an approved active tool without a governing policy; edit saved permissions through save_permissions instead")
 			}
 			if table == "user_tool_grants" {
 				state.Grants[id][value] = true
@@ -645,67 +644,11 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 		}
 		rows.Close()
 	}
-	for id, p := range state.Drafts {
-		if p.WorkspaceID == w {
-			delete(state.Drafts, id)
-		}
-	}
 	for gid, g := range groups {
 		if g.BuiltIn && !reflect.DeepEqual(state.Members[gid], old.Members[gid]) {
 			return errors.New("built-in group membership is automatic")
 		}
 	}
 
-	rows, err = tx.Query(`SELECT id,workspace_id,group_id,name,version,rules_json FROM permission_drafts`)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var p access.Package
-		var rules string
-		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.GroupID, &p.Name, &p.Version, &rules); err != nil {
-			rows.Close()
-			return err
-		}
-		if _, ok := groups[p.GroupID]; !ok {
-			if g, existed := old.Groups[p.GroupID]; existed && g.WorkspaceID == w {
-				continue
-			}
-		}
-		if err = json.Unmarshal([]byte(rules), &p.Rules); err != nil {
-			rows.Close()
-			return err
-		}
-		p.Status = "draft"
-		if previous, exists := old.Drafts[p.ID]; exists && previous.WorkspaceID != w {
-			rows.Close()
-			return errors.New("draft belongs to another workspace")
-		}
-		if previous, exists := old.Live[p.ID]; exists && previous.WorkspaceID != w {
-			rows.Close()
-			return errors.New("policy belongs to another workspace")
-		}
-		previous := old.Drafts[p.ID]
-		version := previous.Version
-		if live := old.Live[p.ID]; live.Version > version {
-			version = live.Version
-		}
-		if p.Version != version {
-			rows.Close()
-			return errors.New("draft version changed; query current version before editing")
-		}
-		if previous.ID != "" && reflect.DeepEqual(p, previous) {
-			state.Drafts[p.ID] = previous
-			continue
-		}
-		if err = validatePackageState(p, w, *state); err != nil {
-			rows.Close()
-			return err
-		}
-		p.Version = version + 1
-		state.Drafts[p.ID] = p
-	}
-	err = rows.Err()
-	rows.Close()
-	return err
+	return nil
 }

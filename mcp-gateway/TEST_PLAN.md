@@ -18,12 +18,12 @@ Live upstreams: Context7 is the full read-only call target. DeepWiki and Microso
 | A2 | Gateway OAuth | In-process MCP client completes OAuth and calls approved tool | Client sees only its granted tools; allowed call succeeds. |
 | A3 | Live MCP | Context7 discovery, approval, grant, `tools/list`, `resolve-library-id`, audit | Both Context7 tools discovered; only granted tool listed; call succeeds; allow/OK audit event recorded. |
 | A4 | Other MCPs | Connect and discover DeepWiki and Microsoft Learn | Valid reachable servers expose tool snapshots; failures include the upstream reason. |
-| B1 | Browser startup | Open embedded Vault on this branch | Access, Connected MCPs, Available MCPs, Secrets, People, Audit, Models and Connect sections render in the shared application. |
+| B1 | Browser startup | Open embedded Vault on this branch | Access, Connected MCPs, Available MCPs, Secrets, People and Models render in the workspace. Audit and Vault MCP endpoint open full-width from the left navigation. |
 | B2 | Browser auth | Open console with the existing product account; probe anonymous/non-admin management requests | Local mode uses the local account without a gateway token prompt; only authorized product admins can manage Vault. Service credentials stay on the backend. |
 | B3 | Browser connect | Add Context7 from catalog, inspect server and tool list | Server shows connected; initial discovered tools are approved automatically, with no user/group access granted. |
 | B4 | Browser review | Resync a connected tool | Initial approval persists through resync if schema is unchanged. |
 | B5 | Browser grants | Grant one approved tool to a local user or group | Only that tool becomes visible to that principal. |
-| B6 | Browser audit | Make a call and inspect Audit | Decision, outcome, identity, tool and timestamp are shown without raw arguments. |
+| B6 | Browser audit | Make a call and inspect Audit | Decision, outcome, identity, tool and timestamp are shown; expandable details show bounded input/output JSON and explicit truncation. |
 | C1 | Default deny | Try an unapproved or ungranted tool | Hidden from `tools/list`; direct call denied and audited. |
 | C2 | Revocation | Revoke a grant and call again | Next call is denied. |
 | C3 | Schema changes | Change upstream tool schema, then resync | Tool returns to pending review; old approval cannot authorize it. |
@@ -147,7 +147,7 @@ An admin connecting a server approves the initial tool list. Group/tool assignme
 - Through `mutate_workflow_db`, atomically edit a group, add a valid member and tool grant; verify live authorization and persistence after restart. Remove the grant and verify immediate denial.
 - Reject foreign workspaces, arbitrary file paths, DDL, ATTACH, stacked SQL, writes to credentials/tool approvals/published policies, and quoted-CTE attempts to disguise a protected target.
 - Reject an invalid member or fingerprint and verify that the entire batch rolls back with no memory change. Validation failures must not latch storage errors.
-- Edit a draft and verify its automatic version increment. Reject stale publication and attempts to bypass a governed policy using direct grants.
+- Save regex/equality permissions and verify immediate activation and persisted version increments. Reject stale edits, invalid conditions, changed fingerprints and attempts to bypass governing policies with direct grants.
 - Delete a group and verify membership/grant cleanup, revoked policy history, and retained denial tombstones.
 - Reject non-admin/currently-disabled callers and tools invoked outside the Vault chat project. Verify trusted actor/service identity and exact shared workflow tool names.
 - Modify a metadata row outside the gateway owner in a test database; verify revision invalidation and denial until restart.
@@ -389,3 +389,24 @@ tests have been removed; it is deferred until after the MVP release.
   aliases and foreign-user runtime IDs. Existing legacy accounts keep their paths.
 - Provider sign-in chooses the actual account. A label is not verified identity;
   two-account real OAuth acceptance still requires user authorization.
+
+## Immediate permissions and full-width navigation (2026-10-04)
+
+- Scoped saves activate immediately; no draft/publish/simulation controls or operations are exposed. Legacy drafts remain inactive unless explicitly saved through the new validated operation.
+- Allowed tools sort first within each MCP; effective allowed/total counts and inline regex/equality conditions remain visible.
+- Audit and MCP endpoint open from the bottom rail at full width, with Back to Vault preserving the builder chat. Global Monitor remains at the top. One divider separates Vault pages from platform controls.
+- Vault MCP setup reuses `CliMcpSetupPanel`, with its own endpoint, client commands and OAuth connection/revocation routes. No test request action or AgentWorks workflow skill/plugin downloads appear for Vault.
+
+### Payload audit and readable regex checks
+
+- Confirm success/error output and denied attempted arguments are captured; denied calls have no output and never reach upstream. Test detached copies, bounded valid JSON for large/cyclic values, SQLite restart persistence, off, retention and workspace isolation.
+- Reject regex saves without descriptions without activating changes; retain explanations across restart. Legacy rules keep matching.
+- Verify list/detail/back navigation, no search, independent Users/MCPs/Secrets content, always-editable name/description without a pencil, provider icons, allowed/total badges, regex counts, allowed tools first, and expandable technical expressions.
+
+### Executed Crew regex acceptance — 2026-10-04
+
+- Added local account `default` to **local platform test** permanently as requested. Selected **notion - manish 1** in Crew; left **manish 2** unselected. No permission edits or Notion writes.
+- Actual Crew builder calls: allowed Task List fetch succeeded; another page ID was denied by the argument restriction; `notion-get-users {}` was denied for no grant and absent from granted-tool discovery.
+- Verified gateway audit at 09:12:23–09:12:24 UTC: actor `default`, client `agentworks`, exact manish 1 connector, allow/OK plus two deny/denied events. Input exists for all three and output only for the successful fetch. No Vault administrator bypass.
+- Fixed normalized generated bridge paths failing connector resolution before gateway enforcement. Regression coverage checks live inventory mapping, exact project selection, unknown sessions, ambiguous normalized connection names, revoked access and normalized tool mapping. Focused product tests and backend build passed.
+- Acceptance used the connected Codex CLI; restored Muse's original model and Max reasoning afterward. Muse MCP loading remains unresolved. Search equality and manish 2 permissions were not tested.

@@ -77,6 +77,10 @@ export interface GatewayAuditEvent {
   Outcome: string
   DurationMs: number
   ErrorText: string
+  Input?: unknown
+  Output?: unknown
+  InputTruncated?: boolean
+  OutputTruncated?: boolean
 }
 
 export interface GatewayUsageSummary {
@@ -111,6 +115,7 @@ export interface GatewayAccessCondition {
   path: string
   op: 'equals' | 'matches'
   value: string
+  description?: string
 }
 
 export interface GatewayAccessPackage {
@@ -121,6 +126,18 @@ export interface GatewayAccessPackage {
   status: 'draft' | 'published' | 'revoked'
   version: number
   rules: { public_name: string; fingerprint: string; conditions: GatewayAccessCondition[] }[]
+}
+
+// Go's nil slices and older saved policies can encode empty rules/conditions
+// as null. Normalize at the API boundary for every permission-review consumer.
+type GatewayAccessPackageResponse = Omit<GatewayAccessPackage, 'rules'> & {
+  rules?: (Omit<GatewayAccessPackage['rules'][number], 'conditions'> & {
+    conditions?: GatewayAccessCondition[] | null
+  })[] | null
+}
+
+function normalizeAccessPackage(policy: GatewayAccessPackageResponse): GatewayAccessPackage {
+  return { ...policy, rules: (policy.rules ?? []).map(rule => ({ ...rule, conditions: rule.conditions ?? [] })) }
 }
 
 export interface GatewayPolicyEvent {
@@ -333,24 +350,9 @@ export function listCatalog(base: string): Promise<{ providers: GatewayProvider[
   return request(base, '/api/admin/catalog')
 }
 
-export function listAccessPackages(base: string): Promise<{ packages: GatewayAccessPackage[] }> {
-  return request(base, '/api/admin/access/packages')
-}
-
-export function listAccessHistory(base: string): Promise<{ events: GatewayPolicyEvent[] }> {
-  return request(base, '/api/admin/access/history')
-}
-
-export function publishAccessPackage(base: string, id: string, version?: number): Promise<GatewayAccessPackage> {
-  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/publish`, version === undefined ? {} : { version })
-}
-
-export function revokeAccessPackage(base: string, id: string): Promise<GatewayAccessPackage> {
-  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/revoke`, {})
-}
-
-export function simulateAccessPackage(base: string, id: string, publicName: string, args: Record<string, unknown>): Promise<{ allowed: boolean }> {
-  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/simulate`, { public_name: publicName, arguments: args })
+export async function listAccessPackages(base: string): Promise<{ packages: GatewayAccessPackage[] }> {
+  const result = await request<{ packages?: GatewayAccessPackageResponse[] | null }>(base, '/api/admin/access/packages')
+  return { packages: (result.packages ?? []).map(normalizeAccessPackage) }
 }
 
 export interface GatewayGroupPermission {

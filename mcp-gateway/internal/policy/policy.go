@@ -68,19 +68,9 @@ func matchingRules(s *store.MemoryStore, id auth.Identity, t store.ToolSnapshot)
 // Authorize resolves the registered tool and checks the caller's grant.
 // It returns the snapshot on allow.
 func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
-	if err := s.PersistenceError(); err != nil {
+	t, err := authorizeActiveTool(s, id, publicName)
+	if err != nil {
 		return store.ToolSnapshot{}, err
-	}
-	t, ok := s.GetTool(publicName)
-	if !ok || t.WorkspaceID != id.WorkspaceID {
-		return store.ToolSnapshot{}, ErrUnknownTool
-	}
-	if t.Status != store.StatusActive {
-		return store.ToolSnapshot{}, ErrToolNotActive
-	}
-	c, ok := s.GetConnector(t.ConnectorID)
-	if !ok || c.Status != store.StatusActive {
-		return store.ToolSnapshot{}, ErrConnectorDisabled
 	}
 	if rules, governed, err := matchingRules(s, id, t); governed {
 		if err != nil {
@@ -109,6 +99,45 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
 		!s.HasServerGrant(id.UserID, t.ConnectorID) {
 		return store.ToolSnapshot{}, ErrNoGrant
+	}
+	return t, nil
+}
+
+// Operational checks apply to both ordinary calls and administrator setup.
+func authorizeActiveTool(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
+	if err := s.PersistenceError(); err != nil {
+		return store.ToolSnapshot{}, err
+	}
+	t, ok := s.GetTool(publicName)
+	if !ok || t.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrUnknownTool
+	}
+	if t.Status != store.StatusActive {
+		return store.ToolSnapshot{}, ErrToolNotActive
+	}
+	c, ok := s.GetConnector(t.ConnectorID)
+	if !ok || c.Status != store.StatusActive {
+		return store.ToolSnapshot{}, ErrConnectorDisabled
+	}
+	if c.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrConnectorDisabled
+	}
+	if t.Fingerprint == "" || t.ApprovedFingerprint != t.Fingerprint {
+		return store.ToolSnapshot{}, ErrToolNotActive
+	}
+	return t, nil
+}
+
+// AuthorizeSetup is used only by the service-authorized Vault builder handler.
+// Other transports call Authorize, which also checks group and user grants.
+func AuthorizeSetup(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
+	t, err := authorizeActiveTool(s, id, publicName)
+	if err != nil {
+		return store.ToolSnapshot{}, err
+	}
+	user, ok := s.GetUser(id.UserID)
+	if !ok || user.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrUnknownUser
 	}
 	return t, nil
 }

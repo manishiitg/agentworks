@@ -1,7 +1,7 @@
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { secretsApi } from '../../api/secrets'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, Copy, KeyRound, Loader2, Pencil, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, KeyRound, Loader2, LockKeyhole, Server, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { SettingsCard, SettingsCount, SettingsEmpty } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from '../../components/ui/Input'
 import { Textarea } from '../../components/ui/Textarea'
 import { WorkspaceViewTabs } from '../../components/workflow/WorkspaceViewTabs'
-import { GatewayGroupPolicyReview } from './GatewayGroupPolicyReview'
+import { McpServerHeader } from '../../components/integrations/McpServerHeader'
 import { McpToolCard } from '../../components/integrations/McpToolCard'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import {
@@ -60,11 +60,10 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   useEffect(() => {
     if (revision && revision !== lastRevision.current) { lastRevision.current = revision; bump() }
   }, [revision, bump])
-  const [detailTab, setDetailTab] = useState<'users' | 'permissions'>('permissions')
+  const [detailTab, setDetailTab] = useState<'users' | 'mcps' | 'secrets'>('mcps')
   const [showCreate, setShowCreate] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [groupSearch, setGroupSearch] = useState('')
   const [groupName, setGroupName] = useState('')
   const [groupDescription, setGroupDescription] = useState('')
   const [createMembers, setCreateMembers] = useState<Set<string>>(new Set())
@@ -73,7 +72,6 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   const [memberBusy, setMemberBusy] = useState(false)
   const [memberError, setMemberError] = useState<string | null>(null)
   const [memberPick, setMemberPick] = useState('')
-  const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState('')
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [renameBusy, setRenameBusy] = useState(false)
@@ -81,13 +79,12 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
 
   useEffect(() => {
     if (!data) return
-    if (!data.groups.some((g) => g.ID === selectedId)) {
-      setSelectedId(data.groups.length > 0 ? data.groups[0].ID : null)
+    if (selectedId && !data.groups.some((g) => g.ID === selectedId)) {
+      setSelectedId(null)
     }
   }, [data, selectedId])
 
   useEffect(() => {
-    setRenaming(false)
     setRenameError(null)
     setShowKeys(false)
     setMemberPick('')
@@ -107,6 +104,10 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   }, [base, selectedId, attempt])
 
   const group = data?.groups.find((g) => g.ID === selectedId) ?? null
+  useEffect(() => {
+    setRenameDraft(group?.Name || group?.ID || '')
+    setDescriptionDraft(group?.Description || '')
+  }, [group?.ID, group?.Name, group?.Description])
 
   async function onAdd() {
     const name = groupName.trim()
@@ -173,8 +174,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
     setRenameError(null)
     try {
       await renameGroup(base, group.ID, renameDraft.trim(), descriptionDraft.trim())
-      setRenaming(false)
-      bump()
+        bump()
     } catch (err: unknown) {
       setRenameError(gatewayErrorMessage(err))
     } finally {
@@ -192,61 +192,47 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   return (
     <div className="space-y-4" data-testid="gateway-groups">
       {error && <ConsoleStale message={error} onRetry={bump} />}
-      {!(directoryOnly && showCreate) && <SettingsCard
+      {!showCreate && <>{!group && <SettingsCard
         icon={<UsersRound className="h-4 w-4 text-primary" />}
-        title="Groups"
+        title="Access groups"
         count={<SettingsCount>{plural(data.groups.length, 'group')}</SettingsCount>}
-        description={directoryOnly ? 'Manage members here. Set permissions in Access.' : undefined}
         actions={
           directoryOnly ? <Button variant="outline" size="xs" onClick={() => { setAddError(null); setShowCreate(true) }}>New group</Button> : undefined
         }
       >
         {data.groups.length > 0 && <div className="space-y-2" data-testid="gateway-group-select" aria-label="Choose a group">
-          {data.groups.length > 1 && <Input aria-label="Find a group" placeholder="Find a group…" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} />}
-          <div className="flex max-h-44 flex-col gap-1.5 overflow-y-auto">
-            {data.groups.slice().sort((a, b) => Number(!!b.BuiltIn) - Number(!!a.BuiltIn)).filter(g => (g.Name || g.ID).toLowerCase().includes(groupSearch.trim().toLowerCase())).map(g => <Button
+          <div className="flex flex-col gap-2">
+            {data.groups.slice().sort((a, b) => Number(!!b.BuiltIn) - Number(!!a.BuiltIn)).map(g => <Button
               key={g.ID} variant="outline" size="sm" aria-label={`Select group ${g.Name || g.ID}`} aria-pressed={g.ID === selectedId}
-              onClick={() => setSelectedId(g.ID)}
+              onClick={() => { setSelectedId(g.ID); setDetailTab('mcps') }}
               className={`h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left ${g.ID === selectedId ? 'border-primary/50 bg-primary/10 text-foreground hover:bg-primary/15' : 'text-muted-foreground'}`}
             >
               <UsersRound className={g.ID === selectedId ? 'shrink-0 text-primary' : 'shrink-0'} />
-              <span className="min-w-0 flex-1 break-words">{g.Name || g.ID}</span>
+              <span className="min-w-0 flex-1 space-y-1 break-words"><span className="block font-medium text-foreground">{g.Name || g.ID}</span>{g.Description && <span className="block text-xs font-normal text-muted-foreground">{g.Description}</span>}</span>
               {g.BuiltIn && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Built-in</span>}
-              {g.ID === selectedId && <Check className="shrink-0 text-primary" aria-hidden />}
+              <ChevronRight className="shrink-0 text-muted-foreground" aria-hidden />
             </Button>)}
-            {!data.groups.some(g => (g.Name || g.ID).toLowerCase().includes(groupSearch.trim().toLowerCase())) && <SettingsEmpty>No groups match your search.</SettingsEmpty>}
           </div>
         </div>}
-        {!group ? (
+        {data.groups.length === 0 && (
           <SettingsEmpty>{directoryOnly ? 'No groups yet. Create one below.' : 'No groups available. Manage groups under People → Groups.'}</SettingsEmpty>
-        ) : (
-          <div className="mt-4 border-t border-border pt-4">
-            {renaming ? (
-              <div className="space-y-2">
-                <Input aria-label="Group name" value={renameDraft} onChange={e => setRenameDraft(e.target.value)} disabled={renameBusy || group.BuiltIn} data-testid="gateway-group-rename-input" />
-                <Textarea aria-label="Group description" placeholder="Description (optional)" value={descriptionDraft} onChange={e => setDescriptionDraft(e.target.value)} maxLength={1000} rows={2} disabled={renameBusy} className="text-xs md:text-xs" />
-                <div className="flex items-center justify-end gap-2">
-                  <Button variant="ghost" size="xs" disabled={renameBusy} onClick={() => setRenaming(false)} aria-label="Cancel group edit">Cancel</Button>
-                  <Button size="xs" disabled={renameBusy} onClick={() => void onRename()} aria-label="Save group details">
-                    {renameBusy ? <Loader2 className="animate-spin" /> : <Check />}Save
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
-                  {group.Name || group.ID}
-                  {directoryOnly && <span className="font-mono text-[11px] font-normal text-muted-foreground">{group.ID}</span>}
-                  <Button variant="ghost" size="xs" onClick={() => {
-                    setRenameDraft(group.Name || group.ID)
-                    setDescriptionDraft(group.Description || '')
-                    setRenameError(null)
-                    setRenaming(true)
-                  }} aria-label="Edit group" title="Edit name and description"><Pencil /></Button>
-                </p>
-                {group.Description && <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground" data-testid="gateway-group-description">{group.Description}</p>}
-              </div>
-            )}
+        )}
+      </SettingsCard>}
+        {group && (
+          <div data-testid="gateway-group-detail">
+            <Button variant="ghost" size="xs" className="mb-3" onClick={() => setSelectedId(null)} aria-label="Back to groups"><ArrowLeft />Groups</Button>
+            <div className="space-y-2">
+              <Input aria-label="Group name" value={renameDraft} onChange={e => setRenameDraft(e.target.value)} disabled={renameBusy || group.BuiltIn}
+                className="h-9 text-sm font-semibold" data-testid="gateway-group-rename-input" />
+              <Textarea aria-label="Group description" placeholder="Add a description…" value={descriptionDraft} onChange={e => setDescriptionDraft(e.target.value)}
+                maxLength={1000} rows={2} disabled={renameBusy} className="text-xs md:text-xs" data-testid="gateway-group-description" />
+              {(renameDraft !== (group.Name || group.ID) || descriptionDraft !== (group.Description || '')) && <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="xs" disabled={renameBusy} onClick={() => { setRenameDraft(group.Name || group.ID); setDescriptionDraft(group.Description || ''); setRenameError(null) }} aria-label="Cancel group edit">Cancel</Button>
+                <Button size="xs" disabled={renameBusy || !renameDraft.trim()} onClick={() => void onRename()} aria-label="Save group details">
+                  {renameBusy ? <Loader2 className="animate-spin" /> : <Check />}Save
+                </Button>
+              </div>}
+            </div>
             {renameError && (
               <p className="mt-1 text-destructive" role="alert">
                 {renameError}
@@ -254,8 +240,8 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             )}
             {memberError && <ConsoleError message={memberError} onRetry={bump} />}
             {!directoryOnly && <div className="mt-3 border-b border-border">
-              <WorkspaceViewTabs value={detailTab} onChange={value => setDetailTab(value === 'users' ? 'users' : 'permissions')}
-                options={[{ value: 'users', label: 'Users', icon: UserRound, count: members.length }, { value: 'permissions', label: 'Permissions', icon: KeyRound }]}
+              <WorkspaceViewTabs value={detailTab} onChange={value => setDetailTab(value as 'users' | 'mcps' | 'secrets')}
+                options={[{ value: 'users', label: 'Users', icon: UserRound, count: members.length }, { value: 'mcps', label: 'MCPs', icon: Server }, { value: 'secrets', label: 'Secrets', icon: LockKeyhole }]}
                 ariaLabel="Group tabs" />
             </div>}
             {(directoryOnly || detailTab === 'users') && <div className="mt-3" role="tabpanel" aria-label="Group users">
@@ -299,14 +285,15 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
               {directoryOnly && allowLegacyAPIKeys && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
               {allowLegacyAPIKeys && showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
             </div>}
-            {!directoryOnly && detailTab === 'permissions' && <div role="tabpanel" aria-label="Group permissions" className="mt-4 space-y-6">
+            {!directoryOnly && detailTab === 'secrets' && <div role="tabpanel" aria-label="Group secrets tab" className="mt-4">
               <GroupSecretPermissions key={`secrets:${group.ID}`} base={base} groupId={group.ID} attempt={attempt} onChanged={bump} />
+            </div>}
+            {!directoryOnly && detailTab === 'mcps' && <div role="tabpanel" aria-label="Group MCPs" className="mt-4">
               <GroupPermissions key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} />
-              <GatewayGroupPolicyReview key={`policies:${group.ID}`} base={base} groupId={group.ID} revision={`${revision ?? ''}:${attempt}`} onChanged={bump} chatBusy={chatBusy} />
             </div>}
           </div>
         )}
-      </SettingsCard>}
+      </>}
 
       {directoryOnly && showCreate && <div className="space-y-3">
         <Button variant="ghost" size="xs" disabled={adding} onClick={() => { setShowCreate(false); setAddError(null) }} aria-label="Back to groups">
@@ -600,13 +587,7 @@ function GroupPermissions({
   }
 
   return (
-    <SettingsCard
-      icon={<KeyRound className="h-4 w-4 text-primary" />}
-      title="Permissions"
-      className="border-0 p-0 rounded-none"
-      count={<SettingsCount>{`${data.connectors.length} MCPs · ${[...data.permissions.values()].filter(p => p.allowed).length} tools allowed`}</SettingsCount>}
-
-    >
+    <div className="space-y-3 text-xs">
       {permError && <ConsoleError message={permError} onRetry={onChanged} />}
       {error && <ConsoleStale message={error} onRetry={onChanged} />}
       {data.connectors.length === 0 ? (
@@ -615,40 +596,31 @@ function GroupPermissions({
         <div className="space-y-2" data-testid="gateway-permissions">
           {data.connectors.map((c) => {
             const full = data.servers.has(c.ID)
-            const tools = toolsByConnector.get(c.ID) ?? []
+            const tools = [...(toolsByConnector.get(c.ID) ?? [])].sort((a, b) =>
+              Number(data.permissions.get(b.PublicName)?.allowed ?? false) - Number(data.permissions.get(a.PublicName)?.allowed ?? false))
+            const allowedTools = tools.filter(t => data.permissions.get(t.PublicName)?.allowed).length
             const assigned = full || tools.some(t => data.permissions.get(t.PublicName)?.assigned || data.permissions.get(t.PublicName)?.allowed || data.permissions.get(t.PublicName)?.source === 'tool')
-              || data.policies.some(p => (p.status === 'draft' || p.status === 'published') && p.rules.some(r => tools.some(t => t.PublicName === r.public_name)))
+              || data.policies.some(p => p.status === 'published' && p.rules.some(r => tools.some(t => t.PublicName === r.public_name)))
+            const regexRules = data.policies.filter(p => p.status === 'published').flatMap(p => p.rules)
+              .filter(rule => tools.some(tool => tool.PublicName === rule.public_name))
+              .reduce((count, rule) => count + rule.conditions.filter(condition => condition.op === 'matches').length, 0)
             const open = expanded.has(c.ID)
             return (
               <div key={c.ID} className="rounded-md border border-border/60 p-3">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <button
-                    onClick={() =>
-                      setExpanded((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(c.ID)) next.delete(c.ID)
-                        else next.add(c.ID)
-                        return next
-                      })
-                    }
-                    aria-expanded={open}
-                    aria-label={`${open ? 'Hide' : 'Show'} tools on ${c.Label || c.Provider}`}
-                    className="inline-flex items-center gap-1.5 rounded font-medium text-foreground hover:bg-muted/60"
-                  >
-                    <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
-                    {c.Label || c.Provider}
-                    <span className="font-mono text-[11px] font-normal text-muted-foreground">
-                      {plural(tools.length, 'tool')}
-                    </span>
-                  </button>
-                  {full && <span className="text-xs text-muted-foreground">Server-wide grant active</span>}
-                  <Button variant="outline" size="xs" disabled={!assigned || busy !== null}
-                    className="ml-auto text-destructive hover:text-destructive"
+                <McpServerHeader name={c.Label || c.Provider} brandName={c.Provider} status="" expanded={open} compactToggle
+                  toolsLabel={`${open ? 'Hide' : 'Show'} tools on ${c.Label || c.Provider}`}
+                  onToggleTools={() => setExpanded(prev => { const next = new Set(prev); if (next.has(c.ID)) next.delete(c.ID); else next.add(c.ID); return next })}
+                  toolSummary={<span className="inline-flex items-center gap-1.5 rounded bg-primary/10 px-2 py-0.5 text-primary" title={`${allowedTools} of ${tools.length} tools allowed for this group`}><span>Tools</span><strong className="tabular-nums">{allowedTools}/{tools.length}</strong></span>}
+                  detail={<>
+                    {regexRules > 0 && <span className="rounded bg-muted px-2 py-0.5" title="Saved regular-expression conditions">{regexRules} regex {regexRules === 1 ? 'rule' : 'rules'}</span>}
+                    {full && <span className="text-xs text-muted-foreground">Server-wide grant active</span>}
+                  </>}
+                  actions={<Button variant="ghost" size="xs" disabled={!assigned || busy !== null}
+                    className="text-muted-foreground hover:text-destructive"
                     aria-label={`Remove ${c.Label || c.Provider} from group`}
                     onClick={() => setRemoveServer({ id: c.ID, name: c.Label || c.Provider })}>
                     Remove from group
-                  </Button>
-                </div>
+                  </Button>} />
                 {open && (
                   <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
                     {tools.length === 0 && <p className="text-muted-foreground">No tools discovered yet.</p>}
@@ -656,7 +628,7 @@ function GroupPermissions({
                       const effective = data.permissions.get(t.PublicName)
                       const governed = effective?.governed ?? false
                       const granted = effective?.allowed ?? false
-                      const policies = data.policies.filter(p => p.rules.some(r => r.public_name === t.PublicName))
+                      const policies = data.policies.filter(p => p.status === 'published' && p.rules.some(r => r.public_name === t.PublicName))
                       const currentRules = policies.filter(p => p.status === 'published').flatMap(p => p.rules.filter(r => r.public_name === t.PublicName))
                       const restricted = granted && currentRules.length > 0 && currentRules.every(r => r.conditions.length > 0)
                       return (
@@ -666,19 +638,16 @@ function GroupPermissions({
                             onCheckedChange={v => void run(`tool:${t.PublicName}`, () => setGrant(base, { group: groupId }, t.PublicName, v === true))}
                             aria-label={`Grant ${t.PublicName}`} className="mt-0.5" />}>
                           {policies.length > 0 && <div className="mt-3 space-y-3 border-t border-border pt-3" aria-label={`${t.UpstreamName} permission details`}>
-                            <p className="text-muted-foreground">{t.Status !== 'active' ? 'This tool is unavailable until its definition is approved.'
-                              : governed ? granted ? restricted ? 'Access is limited by the published conditions shown below.' : 'Assigned to this group by a published permission policy.' : 'No published policy grants this group access. Describe the permissions you want for this tool in chat.'
-                                : full ? 'Assigned to this group through an existing server grant.'
-                                  : granted ? 'Assigned to this group. Members can use this tool with any valid arguments.'
-                                    : 'Not assigned to this group. Select the checkbox beside the tool to give access, or ask AI to set advanced permissions.'}</p>
-                            {policies.map(p => <div key={`${p.id}:${p.status}`} className="space-y-1 rounded border border-border p-2">
-                              <p className="font-medium">{p.name} · {p.status === 'draft' ? 'Draft — not active' : p.status === 'published' ? 'Published' : 'Revoked'}</p>
+                            {policies.map(p => <div key={`${p.id}:${p.status}`} className="space-y-1">
                               {p.rules.filter(r => r.public_name === t.PublicName).map(rule => <div key={rule.public_name}>
-                                {rule.conditions.length === 0 ? <p className="text-muted-foreground">All arguments permitted</p> : rule.conditions.map((condition, i) => <p key={i} className="break-all text-muted-foreground">{condition.path.replace(/^\//, '')} {condition.op === 'equals' ? 'must equal' : 'must match'} <span className="font-mono text-foreground">{condition.value}</span></p>)}
+                                {rule.conditions.length === 0 ? <p className="text-muted-foreground">All arguments permitted</p> : rule.conditions.map((condition, i) => <div key={i} className="space-y-1">
+                                  <p className="text-foreground">{condition.description || (condition.op === 'equals' ? `${condition.path.replace(/^\//, '')} must equal ${condition.value}` : `Only values matching the ${condition.path.replace(/^\//, '')} rule are allowed.`)}</p>
+                                  <details className="text-[11px] text-muted-foreground"><summary className="cursor-pointer">{condition.op === 'matches' ? 'Regex rule' : 'Exact match'}</summary><p className="mt-1 break-all font-mono">{condition.path} {condition.op === 'matches' ? 'matches' : '='} {condition.value}</p></details>
+                                </div>)}
                                 {p.status === 'published' && rule.fingerprint !== t.Fingerprint && <p className="text-amber-600">Tool changed — this rule must be updated before it can grant access.</p>}
                               </div>)}
                             </div>)}
-                            {currentRules.length > 1 && <p className="text-muted-foreground">A call is allowed when it satisfies any one published rule. All conditions in that rule must match.</p>}
+                            {currentRules.length > 1 && <p className="text-muted-foreground">A call is allowed when it satisfies any one saved rule. All conditions in that rule must match.</p>}
 
                           </div>}
                         </McpToolCard>
@@ -700,13 +669,13 @@ function GroupPermissions({
           void run(`remove:${serverId}`, () => removeGroupServerAccess(base, groupId, serverId)).then(success => { if (success) setRemoveServer(null) })
         }}
         title={`Remove ${removeServer?.name ?? 'server'} from ${groupName}?`}
-        message="Remove this group’s whole-server grant, individual tool grants, and this server’s rules from published permissions and drafts. Permissions for other servers and groups are preserved. The server stays connected."
+        message="Remove this group’s whole-server grant, individual tool grants, and this server’s saved permissions. Permissions for other servers and groups are preserved. The server stays connected."
         confirmText="Remove from group"
         type="danger"
         loadingText="Removing…"
         isLoading={busy === `remove:${removeServer?.id}`}
       />
-    </SettingsCard>
+    </div>
   )
 }
 

@@ -10,9 +10,10 @@ import (
 )
 
 type Condition struct {
-	Path  string `json:"path"` // JSON pointer into tool arguments
-	Op    string `json:"op"`   // equals or matches
-	Value string `json:"value"`
+	Path        string `json:"path"` // JSON pointer into tool arguments
+	Op          string `json:"op"`   // equals or matches
+	Value       string `json:"value"`
+	Description string `json:"description,omitempty"` // Human-readable explanation; required when saving regex rules.
 }
 
 type ToolRule struct {
@@ -32,9 +33,9 @@ type Package struct {
 }
 
 func Clone(p Package) Package {
-	p.Rules = append([]ToolRule(nil), p.Rules...)
+	p.Rules = append([]ToolRule{}, p.Rules...)
 	for i := range p.Rules {
-		p.Rules[i].Conditions = append([]Condition(nil), p.Rules[i].Conditions...)
+		p.Rules[i].Conditions = append([]Condition{}, p.Rules[i].Conditions...)
 	}
 	return p
 }

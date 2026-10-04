@@ -81,6 +81,8 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
 interface ModePresetBarProps {
   /** Product-owned control rendered in the same slot as AgentWorks' automation selector. */
   productControl?: React.ReactNode
+  /** Additional product-owned entries in the navigation rail. */
+  productActions?: React.ReactNode
   /** Keep the AgentWorks bar and shared controls while omitting automation-only actions. */
   reduced?: boolean
   /** Product surface and readiness for its context-specific walkthrough. */
@@ -89,7 +91,7 @@ interface ModePresetBarProps {
   walkthroughPaused?: boolean
 }
 
-export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
+export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, productActions, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const isRelaySurface = productSurface === 'relays'
   const hasProductActivity = productSurface === 'agentworks'
@@ -629,6 +631,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
             <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
+            <GlobalActivityMonitor />
 
             {productControl}
 
@@ -825,7 +828,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           {/* Shared actions remain at the bottom in every product. */}
           <TooltipProvider delayDuration={400}>
             <ProductTopBarActions>
-              <GlobalActivityMonitor />
+              {productActions && <div className="mb-2 border-b border-border pb-3" data-product-navigation-divider="product-platform">{productActions}</div>}
 
               <ProvidersControl />
 

@@ -15,6 +15,9 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		return "", fmt.Errorf("active user required")
 	}
 	if operation == "list_mcp_servers" {
+		if _, _, err := api.vaultBuilderAuthority(ctx, person); err != nil {
+			return "", err
+		}
 		private, _ := listPlaceMCPServers(person)
 		rows := []map[string]any{}
 		for _, s := range private {
@@ -26,7 +29,11 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		if err != nil {
 			vaultError = err.Error()
 		}
-		data, _ := json.Marshal(map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": "Private connections run only for their owner. Shared MCPs require Vault group permissions."})
+		sharing := "Private connections run only for their owner. Shared MCPs require Vault group permissions."
+		if _, builder, _ := api.vaultBuilderAuthority(ctx, person); builder {
+			sharing = "Vault administrator setup access covers connected Vault MCPs and secret metadata independently of group grants. Other products and external clients remain group scoped. Secret values are excluded."
+		}
+		data, _ := json.Marshal(map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing})
 		return string(data), nil
 	}
 	name, _ := args["name"].(string)
