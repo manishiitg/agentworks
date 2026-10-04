@@ -34,6 +34,16 @@ open); this one is a restart.
   requires the user to have access to the workflow (`workflowAccessForWorkspacePath`).
 - `TestRestoredWorkflowUIScopeForOnlyRestoresAnInteractiveBuilderChat`.
 
+- Second cause, found after the owner restarted with the fix above and website-aeo and
+  upwork still said browser_disconnected: the page sends its bind the moment the chat
+  looks live (it is streaming), a few milliseconds before the server tracks the session
+  (log: `POST /api/query` and `session_not_active` at 20:13:25, `Tracked active session`
+  after). The refused bind sent the page dormant, and nothing wakes a dormant page once
+  the chat is already live, so the panel never connected. `useWorkspaceUIControl.ts`
+  now retries a refused bind up to four times (1, 2, 4, 8 s) while the chat looks live;
+  an idle chat still goes dormant at once. Two tests (they fail on the old hook).
+  Frontend only: a page reload is enough.
+
 ## Left
 
 - Takes effect after the next backend restart; a chat already stuck keeps

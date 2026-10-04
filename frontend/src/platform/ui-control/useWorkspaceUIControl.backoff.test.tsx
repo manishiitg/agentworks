@@ -83,4 +83,28 @@ describe('UI control lease for chats without a live session', () => {
     expect(sessionLooksLive({ chatTabs: {}, activeSessionsCache: [{ session_id: 's' }] }, 's')).toBe(true)
     expect(sessionLooksLive({ chatTabs: { a: { sessionId: 's', isStreaming: false } }, activeSessionsCache: [] }, 's')).toBe(false)
   })
+
+  it('retries a refused bind while the chat looks live, then connects once the server tracks it', async () => {
+    useChatStore.setState({ activeSessionsCache: [{ session_id: 'live-chat' } as never] })
+    workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => {
+      if (body.operation !== 'bind') return []
+      if (bindCalls() <= 2) throw notActive()
+      return { binding: 'b', token: 't', workspace: 'w' }
+    })
+    await act(async () => { root.render(<Probe session="live-chat" />) })
+    expect(bindCalls()).toBe(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(bindCalls()).toBe(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(bindCalls()).toBe(3)
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(bindCalls()).toBe(3)
+  })
+
+  it('stops retrying after a few attempts when the server never tracks the live-looking chat', async () => {
+    useChatStore.setState({ activeSessionsCache: [{ session_id: 'live-chat' } as never] })
+    await act(async () => { root.render(<Probe session="live-chat" />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+    expect(bindCalls()).toBe(5)
+  })
 })
