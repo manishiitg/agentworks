@@ -19,7 +19,7 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
-### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
+### 2026-10-04 — Run-as identity is explicit; Crew and Goal turns stay on the app account; Crews move to `Crew/<id>`
 
 - The owner of a Goal, Crew or Code comes from its manifest, and the platform names the slot a CLI runs as. Neither is read from the folder path any more.
 - Crew turns (owner and reader alike) run as the app account, with Landlock; the reader block, tools and folder guards limit a reader. (The CLI starts in an app-owned runtime folder, not in the owner's folder, so it never ran as the owner's slot; owner confirmed keeping it, PLAT-446.)
