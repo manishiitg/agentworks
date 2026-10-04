@@ -11,8 +11,8 @@
 slots_build() {
   local workspace_root="$1" gowork="$2" repo_root="$3" build_dir="$4" program
   # slotctl is the one program the service account may run as a slot; a root-run provision-slots.sh
-  # installs it root-owned. slottmux is the tmux front-end.
-  for program in slotctl slottmux; do
+  # installs it root-owned. slottmux is the tmux front-end. slotcheck is the deploy self-test (slotcheck.sh).
+  for program in slotctl slottmux slotcheck; do
     (cd "$workspace_root" && GOWORK="$gowork" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$build_dir/bin/$program" "$repo_root/workspace/cmd/$program")
   done
 }
@@ -32,4 +32,29 @@ slots_install_shim() {
   cp "$build_dir/bin/slottmux" "$app_dir/slots/bin/.tmux.new" && chmod 0755 "$app_dir/slots/bin/.tmux.new" \
     && mv -f "$app_dir/slots/bin/.tmux.new" "$app_dir/slots/bin/tmux"
   printf '%s\n' "$app_dir/slots/bin"
+}
+
+# slots_release_traversal APP_DIR BUILD_DIR: a slot account must reach the Landlock launcher in the release
+# (BUILD_DIR/bin/video-studio-landlock-runner, which slotctl starts as the slot). RTS had releases/ at 0700, so every
+# slotted command failed with "fork/exec ...: permission denied" (PLAT-478). Search-only (x), never read: releases/ is
+# 0711 (traversable, not listable), the release folder and its bin/ get o+x, the launcher is 0755. Idempotent; only
+# folders this account owns are touched (the folders above APP_DIR are provision-slots.sh's, run as root).
+slots_release_traversal() {
+  local app_dir="$1" build_dir="$2" dir
+  slots_enabled || return 0
+  [[ -d "$app_dir/releases" ]] || return 0
+  chmod 0711 "$app_dir/releases"
+  for dir in "$app_dir" "$build_dir" "$build_dir/bin"; do
+    [[ -d "$dir" && -O "$dir" ]] || continue
+    chmod o+x "$dir"
+  done
+  [[ -f "$build_dir/bin/video-studio-landlock-runner" ]] && chmod 0755 "$build_dir/bin/video-studio-landlock-runner"
+  return 0
+}
+
+# slots_selfcheck APP_DIR DOCS PRODUCT BUILD_DIR: the read-only deploy self-test (deploy/common/slotcheck.sh, copied
+# into every release). Returns non-zero when a slot check fails; the caller fails the deploy loudly after activation.
+slots_selfcheck() {
+  local app_dir="$1" docs="$2" product="$3" build_dir="$4"
+  bash "$build_dir/slotcheck.sh" --app "$app_dir" --docs "$docs" --product "$product" --release "$build_dir"
 }

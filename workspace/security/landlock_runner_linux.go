@@ -105,18 +105,21 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			}
 		}
 	}
+	// The policy's own grants. A grant this account may not even stat (a slot asked for an app-owned 0700 tree,
+	// PLAT-478) is left out with a warning instead of refusing the whole command: it could grant nothing the
+	// account's permissions allow, so the command gets less, never more, and still runs fully confined.
 	for _, path := range policy.ReadPaths {
-		if err := addLandlockPathRule(int(rulesetFD), path, readAccess); err != nil {
+		if err := addPolicyPathRule(int(rulesetFD), path, readAccess); err != nil {
 			return err
 		}
 	}
 	for _, path := range policy.WritePaths {
-		if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
+		if err := addPolicyPathRule(int(rulesetFD), path, writeAccess); err != nil {
 			return err
 		}
 	}
 	for _, path := range policy.ListPaths {
-		if err := addLandlockPathRule(int(rulesetFD), path, handled&unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
+		if err := addPolicyPathRule(int(rulesetFD), path, handled&unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
 			return err
 		}
 	}
@@ -135,6 +138,16 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 		return fmt.Errorf("execute sandboxed command: %w", err)
 	}
 	return nil
+}
+
+// addPolicyPathRule is addLandlockPathRule for a grant from the policy: a path this account is not permitted to
+// stat is skipped and reported on stderr (SANDBOX_GRANT_SKIPPED). Any other failure still refuses the command.
+func addPolicyPathRule(rulesetFD int, path string, allowed uint64) error {
+	if _, err := os.Stat(path); grantStatSkippable(err) {
+		fmt.Fprintf(os.Stderr, "SANDBOX_GRANT_SKIPPED: %s is not accessible to this account; it is not granted\n", path)
+		return nil
+	}
+	return addLandlockPathRule(rulesetFD, path, allowed)
 }
 
 func addLandlockPathRule(rulesetFD int, path string, allowed uint64) error {

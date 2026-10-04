@@ -66,6 +66,41 @@ type ExecConfig struct {
 	SlotTable string `json:"slot_table,omitempty"`
 }
 
+// AllowsProgram reports whether allowed_exec lists program (an absolute, clean path); a pattern may use * for one
+// path segment (release folders change at every deploy). slotctl and the deploy self-test use this one rule.
+func (cfg ExecConfig) AllowsProgram(program string) bool {
+	for _, allowed := range cfg.AllowedExec {
+		if allowed == program {
+			return true
+		}
+		if ok, _ := filepath.Match(allowed, program); ok && strings.Contains(allowed, "*") {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsCwd reports whether dir (resolved through symlinks) lies in one of allowed_cwd, the rule slotctl applies to a
+// request's working folder.
+func (cfg ExecConfig) AllowsCwd(dir string) bool {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
+	}
+	for _, root := range cfg.AllowedCwd {
+		if rootResolved, rerr := filepath.EvalSymlinks(root); rerr == nil && withinDir(rootResolved, resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+func withinDir(root, candidate string) bool {
+	root = filepath.Clean(root)
+	candidate = filepath.Clean(candidate)
+	return candidate == root || strings.HasPrefix(candidate, root+string(filepath.Separator))
+}
+
 // TmuxPath is the tmux the launcher will run for a slot.
 const TmuxPath = "/usr/bin/tmux"
 
