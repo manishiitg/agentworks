@@ -328,7 +328,43 @@ cmd_status() {
   ls -l "$LIBEXEC/slotctl" "$SLOTCTL_CONFIG" "$SUDOERS" 2>&1 | sed 's/^/  /'
 }
 
+# PLAT-480 (F1): a slot command runs in its own user and mount namespaces so the launcher can hide the slot's tmux
+# socket folder from it. Hosts whose AppArmor restricts unprivileged user namespaces (Ubuntu 24.04+, the RTS instance)
+# strip the launcher's capabilities in them unless its binary has a profile with `userns`. Path-scoped and
+# unconfined otherwise, like the product's own exception: every unrelated process keeps the host-wide restriction.
+USERNS_PROFILE="/etc/apparmor.d/$PRODUCT-slot-userns"
+userns_profile() {
+  cat <<PROFILE
+abi <abi/4.0>,
+
+# Slot commands (PLAT-480): the launcher mounts an empty folder over the slot run root inside its own
+# namespaces. slotctl creates the namespaces after switching to the slot; the launcher uses them.
+$LIBEXEC/slotctl flags=(unconfined) {
+  userns,
+}
+
+$HOME_DIR/releases/**/bin/video-studio-landlock-runner flags=(unconfined) {
+  userns,
+}
+PROFILE
+}
+
+cmd_userns() {
+  if [[ "${1:-}" == --print ]]; then userns_profile; return; fi
+  if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" != 1 ]]; then
+    echo "AppArmor does not restrict unprivileged user namespaces here: nothing to allow."
+    return 0
+  fi
+  command -v apparmor_parser >/dev/null || { echo "apparmor_parser is missing: cannot install the user-namespace exception." >&2; exit 1; }
+  userns_profile > "$USERNS_PROFILE.new"
+  apparmor_parser -Q "$USERNS_PROFILE.new" || { rm -f "$USERNS_PROFILE.new"; echo "the AppArmor profile does not parse; nothing changed." >&2; exit 1; }
+  install -o root -g root -m 0644 "$USERNS_PROFILE.new" "$USERNS_PROFILE" && rm -f "$USERNS_PROFILE.new"
+  apparmor_parser -r "$USERNS_PROFILE"
+  echo "installed $USERNS_PROFILE"
+}
+
 case "${1:-}" in
+  userns) shift; cmd_userns "$@" ;;
   init) cmd_init ;;
   shared) cmd_shared ;;
   docker) shift; cmd_docker "$@" ;;
@@ -336,5 +372,5 @@ case "${1:-}" in
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | userns [--print] | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac

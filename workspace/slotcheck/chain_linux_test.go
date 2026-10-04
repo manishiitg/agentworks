@@ -63,6 +63,23 @@ func TestRealSlotChain(t *testing.T) {
 			t.Logf("%s: refused (%v): %s", command, err, firstLine(errOut))
 		})
 	}
+	// PLAT-480 (F1): the slot's tmux server belongs to the same account, and Landlock does not govern connect() on
+	// pathname Unix sockets, so the only thing between a confined command and that server is that the socket is
+	// not in the command's view. container_e2e.sh starts a real server on the socket first.
+	if socket := os.Getenv("E2E_TMUX_SOCKET"); socket != "" {
+		t.Run("cannot reach the slot's tmux server", func(t *testing.T) {
+			list := "tmux -S " + socket + " list-sessions"
+			out, errOut, err := runThroughShellTool(ctx, base, list)
+			if err == nil || strings.Contains(out, "probe") {
+				t.Fatalf("a confined command reached the slot's tmux server: out=%q err=%v", out, err)
+			}
+			t.Logf("refused: %s", firstLine(errOut))
+			out, errOut, err = runThroughShellTool(ctx, base, "ls -A "+filepath.Dir(filepath.Dir(socket))+" | wc -l")
+			if err != nil || strings.TrimSpace(out) != "0" {
+				t.Fatalf("the slot run root is not empty in the command's view: out=%q err=%v stderr=%q", out, err, errOut)
+			}
+		})
+	}
 	t.Run("the whole self-test passes on the fixed layout", func(t *testing.T) {
 		gids := []int{os.Getgid()}
 		if groups, err := os.Getgroups(); err == nil {

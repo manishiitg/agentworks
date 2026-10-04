@@ -174,7 +174,7 @@ func Check(ctx context.Context, opts Options) []Row {
 		for _, probe := range probes {
 			rows = append(rows, runProbe(ctx, opts, cfg, probe))
 		}
-		rows = append(rows, denyChecks(ctx, opts, docs, probes)...)
+		rows = append(rows, denyChecks(ctx, opts, docs, cfg.SlotRunRoot, probes)...)
 	}
 	if releases := filepath.Join(opts.AppDir, "releases"); opts.AppDir != "" {
 		if info, err := os.Stat(releases); err == nil && info.Mode().Perm()&0o004 != 0 {
@@ -492,7 +492,7 @@ func Format(rows []Row) string {
 // chain as the pwd probes, with only the probe's own folder granted, and requires each to be REFUSED. Every command
 // prints "started" first and its exit code last, so a launcher that failed to start (which also "refuses") is a
 // FAIL, never a pass. Nothing is changed: the one write attempt is removed if it ever succeeds (and fails the check).
-func denyChecks(ctx context.Context, opts Options, docs string, probes []Probe) []Row {
+func denyChecks(ctx context.Context, opts Options, docs, slotRunRoot string, probes []Probe) []Row {
 	if opts.RunCommand == nil {
 		return nil
 	}
@@ -512,6 +512,10 @@ func denyChecks(ctx context.Context, opts Options, docs string, probes []Probe) 
 	tests := []denial{
 		{"deny-write-outside", "touch " + shQuote(outside) + " 2>/dev/null; rc=$?; rm -f " + shQuote(outside) + " 2>/dev/null; echo rc=$rc", "create a file in the docs root"},
 		{"deny-list-users", "ls " + shQuote(filepath.Join(docs, "_users")) + " >/dev/null 2>&1; echo rc=$?", "list the other users' folders"},
+	}
+	if slotRunRoot != "" {
+		// PLAT-480 (F1): the folder holding every slot's tmux socket must look empty from inside a slot command.
+		tests = append(tests, denial{"deny-slot-run-root", "test -n \"$(ls -A " + shQuote(slotRunRoot) + " 2>/dev/null)\"; echo rc=$?", "see the slot tmux socket folder"})
 	}
 	if opts.AppDir != "" {
 		tests = append(tests,
