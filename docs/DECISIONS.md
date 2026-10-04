@@ -19,6 +19,11 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A provider change is a runtime change: it waits for the running turn, then the chat relaunches on the new provider — PLAT-425
+
+Changing the coding provider of a chat (Models page) never sends the next message into the old provider's CLI. A running turn finishes first, the message waits in the turn queue, then the old CLI is closed and the turn runs on the selected provider
+(the native conversation resumes across providers). It applies to every retained coding CLI. Before, only a definition change counted, so a provider switch killed the running turn and the next sends were rejected as uncertain.
+
 ### 2026-10-04 — Product model panels show the short provider list without search
 
 Setup → Models offers only a handful of ready coding providers. Show that list

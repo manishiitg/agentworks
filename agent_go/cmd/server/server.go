@@ -4064,7 +4064,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if productDefinitionRefreshed {
 		log.Printf("[CHAT_HISTORY] Product definition changed for session %s; relaunching the coding CLI and resuming its native session where supported", sessionID)
 	}
-	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !requestLLMConfigOverridesManifest(req) {
+	// A different coding provider than the retained CLI's makes that CLI the wrong target, whatever the definition says: a message must never be steered into
+	// (or fail against) the old provider's terminal. Before this a provider change was invisible here, so after switching Muse to Codex mid-chat the next sends went to the old Muse
+	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on Excellence, 2026-10-04). Like any runtime change it waits for a running turn
+	// and then relaunches on the selected provider (the native conversation resumes across providers).
+	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, requestedProviderOf(req))
+	if providerChanged {
+		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, requestedProviderOf(req))
+		retainedProfileCompatible = false
+	}
+	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
 		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
 		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
 		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
