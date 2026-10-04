@@ -87,9 +87,10 @@ falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetz
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
 
 A Relay reuses the workflow runtime, so it owes the same contract migrations for
-steps, scripts, code layout and the database, run from its own Builder. It skips
+steps, scripts and code layout, run from its own Builder. It skips
 migrations about schedules, Pulse, reports and notifications, and is runnable
-when no shared migration is pending.
+when no shared migration is pending. The original database inclusion was
+superseded by PLAT-441 above: platform DB/KB/learnings migrations are also skipped.
 Ticket: [PLAT-431](bugs/pulse_platform/plans-contracts/plat-431.md).
 
 ### 2026-10-04 — Costs shows numbers and short labels

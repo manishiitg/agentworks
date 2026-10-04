@@ -52,7 +52,10 @@ func workflowContractUpgradeLists(manifest *WorkflowManifest) (pending, applied 
 		return pending, applied
 	}
 
-	allActive := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion})
+	// Use the same product eligibility for history as for pending upgrades.
+	// A skipped Goals/store migration was never applied to a Relay merely
+	// because its shared contract marker advanced past that migration.
+	allActive := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion, Kind: manifest.Kind})
 	pendingPlan := workflowVersionUpgradePlan(manifest)
 	pendingLabels := make(map[string]struct{}, len(pendingPlan))
 	for _, upgrade := range pendingPlan {

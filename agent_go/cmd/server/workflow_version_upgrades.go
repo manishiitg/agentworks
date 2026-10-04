@@ -33,8 +33,9 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
 // schedules, Pulse, reports, notifications and run summaries. A Relay shares the
-// workflow runtime (steps, scripts, code layout, database) and therefore every
-// other migration, but never these (PLAT-431).
+// workflow runtime (steps, scripts, code layout) and therefore every other
+// migration, except its absent stores below (PLAT-431, PLAT-441). New ladder
+// entries apply to both products by default; these are explicit exceptions.
 var goalsOnlyWorkflowUpgrades = map[string]bool{
 	"upgrade-notification-config":            true,
 	"upgrade-current-artifact-contract":      true,

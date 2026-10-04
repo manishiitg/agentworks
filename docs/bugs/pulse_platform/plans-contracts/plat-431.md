@@ -24,27 +24,34 @@ a Relay.
 Relays reuse the workflow runtime and its migrations as much as possible; they
 skip only what is goal-driven.
 
+This original decision was narrowed by [PLAT-441](plat-441.md) and enforced at
+runtime by [PLAT-447](plat-447.md): Relays also have no platform DB, KB or
+learnings, so migrations for those stores are inapplicable. There is still one
+workflow migration ladder and contract version namespace. New migrations apply
+to Relays by default unless explicitly excluded for an absent feature.
+
 ## Done
 
 - `goalsOnlyWorkflowUpgrades` tags 16 goal-driven migrations. A Relay's plan
   (`workflowVersionUpgradePlan`) keeps every other one: step types, scripts,
-  code layout, nested artifacts, managed DB scripts. It still ends at the current
-  contract.
+  code layout and nested artifacts. PLAT-441 subsequently excluded KB and managed
+  DB changes; a Relay can therefore finish its applicable upgrades at an older
+  known marker rather than stamping work it never performed.
 - `manifestContractIsExecutionCompatible`: a Goals workflow must be on the current
   version; a Relay must be on a known version with no shared migration pending.
   Used by the webhook/Relay preflight, the Builder run guard, the manifest
   banner and the upgrade status.
 - The Relay Builder gets the tools the shared migrations call
   (`get_contract_upgrades`, `set_workflow_contract_version`,
-  `set_code_layout_version`, the `migrate_*` tools, `scan_workflow_script_db_usage`,
-  `apply_workflow_db_migration`, `query_workflow_db`, `mutate_workflow_db`). A test
-  fails if a shared migration names a tool the Relay Builder lacks.
+  `set_code_layout_version`, the `migrate_*` tools). The DB tools initially added
+  here were removed in PLAT-441. A test fails if an applicable migration names a
+  tool the Relay Builder lacks.
 - Fixed `TestRetiredMarkersStillRequireCurrentNestedArtifactMigration`, missed in
   PLAT-428.
 
 ## Left
 
-- A Relay on 1.0.44 still owes the managed-DB-scripts migration before it runs
-  (shared, by design). Published Relay releases keep their frozen version; a
-  release made before 1.0.45 must be republished after migrating.
+- A Relay on 1.0.44 is now compatible, provided `code_layout_version` is 1.
+  Older releases still owing an applicable shared migration must be migrated in
+  the draft and republished; published versions remain immutable.
 - No live Relay migration has been run end to end.

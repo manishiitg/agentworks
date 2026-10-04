@@ -1,3 +1,9 @@
+## Relay migration history claims inapplicable upgrades were applied — PLAT-448
+
+[PLAT-448](pulse_platform/plans-contracts/plat-448.md), fixed on `main`, not
+deployed: applied history now uses the same product-filtered shared ladder as
+pending upgrades; audit checks preserve all applicable Relay migrations and gates.
+
 ## Relay execution inherited workflow DB/KB/learnings — PLAT-447
 
 [PLAT-447](pulse_platform/plans-contracts/plat-447.md), fixed on `main`, not
