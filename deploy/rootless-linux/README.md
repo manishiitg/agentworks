@@ -63,8 +63,9 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
    `-workspace`, `-gateway`; runtime-config, brand, MCP catalog and `downloads/version.json` are product-specific and made at
    this step) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
    (`DEPLOY_DRAIN_SECONDS`), restart, `deployment_checks`, managed Chrome, profile report, release pruning.
-3. RTS: `./deploy.sh rts` streams a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) over
-   ssh, checks it against the manifest hash read from the build host, and runs the unchanged RTS activation without compiling.
+3. RTS: `./deploy.sh rts` gets a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) onto RTS, checks it
+   against the manifest hash read from the build host, and runs the unchanged RTS activation without compiling. RTS downloads the copy
+   itself from GitHub (next section); the old stream through this machine is the fallback.
 
 ```
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
@@ -84,6 +85,25 @@ Build host settings: `BUILD_HOST` (116.202.210.102), `BUILD_PORT` (2299), `BUILD
 Rehearse the copy without touching a product: `build-and-activate.sh <build>/source <product> --prebuilt <build> --stage-only` with
 `DEPLOY_APP_ROOT=<scratch dir>` assembles the release in the scratch folder and stops before preflight, `current` and every service.
 Dominion has its own script and is not part of this.
+
+### Builds on GitHub (PLAT-426)
+
+The build host publishes each build to the public repo `github.com/manishiitg/agentworks-builds` (releases only; tag
+`build-<builder8>-<mcpagent8>-<provider8>`; assets `build.tar.gz`, `build-rts.tar.gz`, `manifest.json`, `SHA256SUMS`; newest 8 kept;
+never marked latest). `build-release.sh` does it after a build, best effort (`BUILD_PUBLISH=0` skips). It needs a write token on the
+build host: a fine-grained token (only `agentworks-builds`, Contents read and write, 90 days) as the single line `GH_TOKEN=...` in
+`/root/.config/agentworks/builds.env`, mode 600 (`install -d -m 700 /root/.config/agentworks`; a looser file is refused). Without it
+publishing prints one message and is skipped, and deploys stream as before. To rotate: new token, overwrite the file, delete the old token.
+
+```
+./deploy.sh publish [build]            # upload the newest (or the named) build now; prints Published: <build> -> <tag>
+./deploy.sh builds                     # also lists the builds on GitHub
+DEPLOY_BUILD_TRANSPORT=github ./deploy.sh rts   # RTS must download it (no fallback); "stream" forces the old path; default "auto"
+```
+
+`deploy/common/fetch-build.sh <tag> <asset> <manifest-sha256> <dest>` is what RTS runs: it downloads anonymously (resume, retries), refuses
+unless `manifest.json` has the announced hash, and leaves nothing behind on failure. Tests: `deploy/common/test_publish_build.py`,
+`test_deploy_transport.py` (a fake GitHub API, `fake_github.py`).
 
 ## Adding a new product
 

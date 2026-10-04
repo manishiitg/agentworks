@@ -97,3 +97,37 @@ ship_build_to_rts() { # name remote_job_dir
     | "${SSH[@]}" "cd '$job' && tar -xzf - && mv '$name' build"
 }
 
+
+# Publishes a build to the public builds repository from the build host (deploy/common/publish-build.sh: idempotent; repairs a
+# half upload; prunes old releases). Prints the release tag on stdout when the build is on GitHub, nothing when it is not (for
+# example no upload token on the build host yet, which is only a message, never a failure). Progress goes to stderr.
+publish_build_remote() { # name
+  local name="$1" out
+  build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.publish-build.sh' && chmod 0755 '$BUILDS_DIR/.publish-build.sh'" < "$REPO_ROOT/deploy/common/publish-build.sh" || return 1
+  out="$(build_ssh "BUILDS_DIR='$BUILDS_DIR' bash '$BUILDS_DIR/.publish-build.sh' '$BUILDS_DIR/$name'" | tee /dev/stderr)" || return 1
+  printf '%s\n' "$out" | sed -n 's/^RELEASE_TAG=//p' | tail -n 1
+}
+
+# Gets the trimmed build onto the RTS job folder as <job>/build. DEPLOY_BUILD_TRANSPORT: auto (default: RTS downloads the build from
+# GitHub, and the old stream through this machine is the fallback when the release is missing or the download fails), github
+# (never fall back), stream (the old path only). Needs SSH (the ssh command line to RTS) like ship_build_to_rts.
+deliver_build_to_rts() { # name remote_job_dir manifest_sha256
+  local name="$1" job="$2" hash="$3" mode="${DEPLOY_BUILD_TRANSPORT:-auto}" tag="" why=""
+  case "$mode" in auto|github|stream) ;; *) echo "DEPLOY_BUILD_TRANSPORT must be auto, github or stream (got '$mode')" >&2; return 1 ;; esac
+  if [[ "$mode" != stream ]]; then
+    tag="$(publish_build_remote "$name")" || tag=""
+    if [[ -z "$tag" ]]; then
+      why="the build is not on GitHub (no upload token on the build host yet, or the upload failed)"
+    else
+      echo "==> RTS downloads build $name itself from GitHub ($tag)" >&2
+      if "${SSH[@]}" "cat > '$job/fetch-build.sh'" < "$REPO_ROOT/deploy/common/fetch-build.sh" \
+         && "${SSH[@]}" "bash '$job/fetch-build.sh' '$tag' build-rts.tar.gz '$hash' '$job/build'"; then
+        return 0
+      fi
+      why="RTS could not download and verify $tag"
+    fi
+    [[ "$mode" != github ]] || { echo "DEPLOY_BUILD_TRANSPORT=github: $why" >&2; return 1; }
+    echo "==> Falling back to streaming the build through this machine: $why" >&2
+  fi
+  ship_build_to_rts "$name" "$job"
+}

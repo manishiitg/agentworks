@@ -247,6 +247,12 @@ chmod 0755 "$BUILDS/$NAME"
 
 prune_builds
 trap 'rm -rf "$WORK"' EXIT
+# Upload the build to the public builds repository so servers can download it (publish-build.sh; PLAT-426). Best effort: without a
+# token it only prints a message, and a failure here never fails the build (BUILD_PUBLISH=0 turns it off).
+if [[ "${BUILD_PUBLISH:-1}" != 0 && -f "$REPO_ROOT/deploy/common/publish-build.sh" ]]; then
+  step "Publishing to GitHub"
+  bash "$REPO_ROOT/deploy/common/publish-build.sh" "$BUILDS/$NAME" || echo "Publishing the build to GitHub failed (the build itself is fine)" >&2
+fi
 step "Build complete"
 echo "BUILD_NAME=$NAME"
 echo "BUILD_DIR=$BUILDS/$NAME"

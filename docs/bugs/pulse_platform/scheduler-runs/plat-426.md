@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on `main` (2026-10-04); not deployed; the first real deploys are for the owner's session |
+| State | fixed on `main` (2026-10-04); GitHub publish/download added 2026-10-04, on `main`, not deployed; publishing from the box starts when the owner places the token (below) |
 | Severity | P3 (speed and consistency: the same commit is compiled up to six times, and each build can differ) |
 | Date | 2026-10-04 |
 | Owner | scheduler-runs (deploy tooling; see PLAT-405) |
@@ -51,11 +51,46 @@ All of it is on `main`; `deploy/rootless-linux/README.md` has the commands.
    seconds, the three revisions, pinned), `pin|unpin <build>`, `--build <name|sha>` (deploy a chosen existing build). Dominion's script and
    case are untouched and `all-hetzner` does not include it.
 5. **RTS**: `./deploy.sh rts` ships a trimmed copy of the same build (no mcpagent/provider source, no `downloads/`, which RTS never
-   had; about 180 MB compressed, streamed build host -> this machine -> RTS) with the manifest hash read from the build host. The RTS
+   had; about 180 MB compressed; first streamed build host -> this machine -> RTS, now downloaded by RTS from GitHub, see below, with the stream as fallback) with the manifest hash read from the build host. The RTS
    `build-and-activate.sh --prebuilt` verifies it, then only the compile step differs: Secrets Manager `.env` merge, `systemd-run`
    limits, units reinstalled every deploy, preflight, hyperframes browser, CloudFront usage print are unchanged. RTS can safely use the
    prebuilt build: same x86_64, Ubuntu 24.04, glibc 2.39, and the agent's shared libraries (libstdc++, libgcc_s, libc, libm) are plain Ubuntu
    packages plus the shipped `bin/lib`; the verification refuses it on any mismatch and `ldd` on the agent must resolve.
+
+## Builds on GitHub: servers download them (owner's decision, 2026-10-04)
+
+Streaming the build box -> owner's Mac -> RTS took 5+ minutes. The box now publishes each build to the PUBLIC repo
+`github.com/manishiitg/agentworks-builds` (releases only, no source) and RTS downloads it itself, with no credential.
+
+- `deploy/common/publish-build.sh <build-dir>` (python3 + tar + gzip only; called best effort at the end of `build-release.sh`, and by `./deploy.sh publish [build]`)
+  creates the pre-release `build-<builder8>-<mcpagent8>-<provider8>` with `build.tar.gz` (the whole folder), `build-rts.tar.gz` (without
+  `source/mcpagent`, `source/multi-llm-provider-go`, `downloads/`), `manifest.json`, `SHA256SUMS` (uploaded last); the body holds the three revisions
+  and `manifest-sha256`. Idempotent; a half-uploaded or stale release (different manifest hash, e.g. after `--force`) is repaired by re-uploading its
+  assets; keeps the newest 8 build releases (`BUILDS_KEEP_RELEASES`) and deletes older releases and their tags; never `latest`. Before the first upload it creates and deletes a draft release
+  to prove the token really can write to that one repo (a clear message if not); it never writes to any other repository. `--list` (anonymous) backs `./deploy.sh builds`.
+- Token: `GH_TOKEN` in the environment or `GH_TOKEN=...` in `~/.config/agentworks/builds.env` (root on the box); a file readable by group/world, or owned by another user, is refused. With no token the step prints one
+  message and exits 0: a build or deploy never fails because of it.
+- `deploy/common/fetch-build.sh <tag> <asset> <manifest-sha256> <dest>` runs on the target: curl with resume, retries and timeouts, extracts into a scratch folder next to `dest`,
+  refuses unless `manifest.json` hashes to the value `deploy.sh` read on the build host, then moves it to `dest`. Any failure leaves nothing behind. The activation's manifest verify is unchanged.
+- `./deploy.sh rts`: publish if needed, then RTS downloads `build-rts.tar.gz`. `DEPLOY_BUILD_TRANSPORT=auto` (default) falls back to the old stream with a one-line reason
+  when the release is missing or the download fails verification; `github` never falls back; `stream` is the old path only. Hetzner products still copy from `/srv/_builds`.
+- Tests: `test_publish_build.py` (fake GitHub API in `fake_github.py`: create, upload, idempotent rerun, half upload, stale manifest, prune to 8, loose token file, no token, write preflight, anonymous
+  fetch, hash mismatch, tampered archive, truncated and resumed download), `test_deploy_transport.py` (github vs stream vs fallback, `publish`, `builds`). Run on the Hetzner box as `agents`: 22 pass.
+- Real check from the box (2026-10-04, owner's scoped token, tiny fake build `0badc0de-...`, not a real build): release created with 4 assets, rerun left it alone, anonymous API and
+  `fetch-build.sh` as an unprivileged user with an empty environment downloaded and verified it, a wrong hash was refused with nothing left, `releases/latest` stayed 404; the test release and tag
+  were deleted (the repo holds only its README).
+
+### Owner setup for the token (one time)
+
+1. GitHub > Settings > Developer settings > Fine-grained personal access tokens > Generate new token. Resource owner `manishiitg`; repository access: only `agentworks-builds`; permission Contents: Read and write; expiry 90 days.
+2. On the box as root: `install -d -m 700 /root/.config/agentworks`, then a file `/root/.config/agentworks/builds.env` with the single line `GH_TOKEN=<token>`, `chmod 600` (create it with `umask 077`, do not paste the token into a shell history line you keep).
+3. Check: `./deploy.sh publish` (uploads the newest build; prints `Published: <build> -> <tag>`).
+4. Rotate before the 90 days end: create a new token the same way, overwrite the file, delete the old token on GitHub. Expired or wrong tokens show as `HTTP 401` or the write-check message; deploys then fall back to the stream.
+
+### Not verified / left
+
+- A real upload of a full-size build (about 500 MB uncompressed, a few hundred MB compressed per asset) and RTS downloading it itself: RTS was not touched. The first `./deploy.sh rts` after the token exists should be watched.
+- Publishing adds the upload time (box to GitHub) to every fresh build, also for Hetzner-only deploys; `BUILD_PUBLISH=0` skips it.
 
 ## Choosing an older build (owner's addition, 2026-10-04)
 

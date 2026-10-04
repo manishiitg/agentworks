@@ -36,6 +36,13 @@ An agent calls a workflow script as a named tool backed by a saved scripted rout
 this, so Goals and Relays share one mechanism.
 Ticket: [PLAT-432](bugs/pulse_platform/plans-contracts/plat-432.md).
 
+### 2026-10-04 — Builds are published to a public GitHub repo; servers download and verify them
+
+The build box publishes each build to `github.com/manishiitg/agentworks-builds` (releases only, newest 8 kept, no source) and RTS downloads its trimmed copy itself,
+accepting it only if `manifest.json` hashes to the value `deploy.sh` read on the box (then the normal manifest verify). The repo is public so servers need no credential; only
+the box holds a write token (Contents read+write on that one repo, root-only 0600 file). Streaming through the owner's Mac took 5+ minutes. Without a token or a release, `./deploy.sh rts`
+falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetzner products still copy from `/srv/_builds`. Ticket: [PLAT-426](bugs/pulse_platform/scheduler-runs/plat-426.md).
+
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
 
 A Relay reuses the workflow runtime, so it owes the same contract migrations for

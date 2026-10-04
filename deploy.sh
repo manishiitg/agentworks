@@ -20,7 +20,8 @@ Servers:
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
   report [server]       how each server differs from the standard runtime profile (read-only)
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
-  builds                list the builds on the build host (name, age, the three revisions, pinned)
+  builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
+  publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
@@ -29,6 +30,8 @@ Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when 
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
   --build <name|sha>    deploy that existing build instead of main's head (see `builds`); its three revisions must be
                         ancestors of origin/main of the three repositories
+  DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
+                        (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 
@@ -94,8 +97,8 @@ deploy_rts() {
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
   if [[ -n "$prebuilt_name" ]]; then
-    echo "Shipping build $prebuilt_name to RTS (verified there against its manifest); nothing is compiled on RTS."
-    ship_build_to_rts "$prebuilt_name" "$REMOTE_JOB"
+    echo "Getting build $prebuilt_name onto RTS (verified there against its manifest); nothing is compiled on RTS."
+    deliver_build_to_rts "$prebuilt_name" "$REMOTE_JOB" "$(cat "$STAGING/prebuilt")"
   else
     echo 'Server cloning main from all three repositories and building the release locally.'
   fi
@@ -383,6 +386,22 @@ export DEPLOY_BUILD DEPLOY_FORCE_BUILD
 if [[ "$SERVER" == builds ]]; then
   reject_extra_arguments "$@"
   build_ssh "python3 - list '$BUILDS_DIR'" < "$REPO_ROOT/deploy/common/release_manifest.py"
+  echo
+  echo "On GitHub (github.com/manishiitg/agentworks-builds; a tag is build-<builder8>-<mcpagent8>-<provider8>):"
+  bash "$REPO_ROOT/deploy/common/publish-build.sh" --list || echo "(GitHub could not be read)" >&2
+  exit 0
+fi
+if [[ "$SERVER" == publish ]]; then
+  [[ $# -le 1 ]] || { echo "Usage: ./deploy.sh publish [build name or sha]" >&2; exit 2; }
+  if [[ $# -eq 1 ]]; then
+    found="$(find_build "$1")" || { echo "No unique build matches '$1' (see ./deploy.sh builds)" >&2; exit 1; }
+  else
+    found="$(build_ssh "cd '$BUILDS_DIR' && ls -1t */manifest.json 2>/dev/null | head -n 1 | cut -d/ -f1")"
+    [[ -n "$found" ]] || { echo "No builds on the build host (see ./deploy.sh builds)" >&2; exit 1; }
+  fi
+  tag="$(publish_build_remote "${found%% *}")" || exit 1
+  [[ -n "$tag" ]] || { echo "Not published (see the message above)." >&2; exit 1; }
+  echo "Published: ${found%% *} -> $tag"
   exit 0
 fi
 if [[ "$SERVER" == prune-builds ]]; then
