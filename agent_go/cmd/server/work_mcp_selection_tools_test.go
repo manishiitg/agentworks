@@ -13,6 +13,8 @@ import (
 )
 
 func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
 	const workspacePath = "_users/user-1/Chats/Work/projects/agentworks"
 	const manifestPath = workspacePath + "/workflow.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
@@ -35,6 +37,7 @@ func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, _ = addPlaceMCPServer("user-1", placeMCPServer{Name: "linear", Catalog: "Linear", URL: "https://linear.example/mcp", Transport: "http"})
 	api := &StreamingAPI{logger: loggerv2.NewNoop(), mcpConfig: base, mcpConfigPath: configPath}
 	registrar := &recordingRegistrar{}
 	if err := api.registerWorkMCPSelectionTool(registrar, "user-1", workspacePath); err != nil {
@@ -50,7 +53,7 @@ func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
 	}
 
 	selected, initialized, err := productSelectedServers(context.Background(), "work", workspacePath)
-	if err != nil || !initialized || len(selected) != 1 || selected[0] != "Linear" {
+	if err != nil || !initialized || len(selected) != 1 || selected[0] != "linear" {
 		t.Fatalf("selected=%v initialized=%v err=%v", selected, initialized, err)
 	}
 	workspace.mu.Lock()
@@ -94,8 +97,8 @@ func TestWorkMCPSelectionToolRejectsUnconnectedServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := registrar.tools[updateProjectMCPServerSelectionTool].exec(context.Background(), map[string]interface{}{"action": "select", "server": "Linear"})
-	if err == nil || !strings.Contains(err.Error(), "not connected platform-wide") {
-		t.Fatalf("expected platform connection rejection, got %v", err)
+	if err == nil {
+		t.Fatalf("expected unconnected MCP rejection, got %v", err)
 	}
 	selected, _, readErr := productSelectedServers(context.Background(), "work", workspacePath)
 	if readErr != nil || len(selected) != 0 {

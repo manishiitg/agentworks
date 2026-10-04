@@ -1094,6 +1094,13 @@ func knownProductIDs() []string {
 // filtered by AGENT_PRODUCTS so a dedicated deployment only offers its own.
 func registeredProductIDs() []string {
 	var out []string
+	// Relay shares the workflow runtime, but is a selectable product surface.
+	if productEnabled("agentworks") || productEnabled("relays") {
+		out = append(out, "relays")
+	}
+	if os.Getenv("CAPLAYER_SERVICE_URL") != "" && productEnabled("mcp-gateway") {
+		out = append(out, "mcp-gateway")
+	}
 	for _, id := range []string{"video-studio", "dominion", "sparkquill", "work", "code"} {
 		if productEnabled(id) {
 			out = append(out, id)

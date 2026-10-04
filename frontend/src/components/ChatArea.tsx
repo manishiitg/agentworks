@@ -1,3 +1,4 @@
+import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
 import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
@@ -524,6 +525,7 @@ let globalHasRestored = false
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
   const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder} = props
+  useMcpOAuthChatNotifications(tabId)
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
   // every new product gets the durable transcript and normalized error UI by

@@ -20,4 +20,8 @@ When the user asks to try a Relay, use the existing `run_full_workflow` tool wit
 
 The chat edits the draft. Use `get_relay_releases` to inspect published versions. When the user asks to publish, validate the draft and use `publish_relay`, then report its returned version and content hash. External API calls default to the active published version and may select an earlier version. A Builder test run always uses the draft. Do not describe a draft as published or as crash resumable. Node boundary recovery is not yet implemented.
 
+## Private plugins and shared Vault access
+
+Integrations → Plugins contains Connected, Available, Secrets, Skills and Vault. Private MCP logins belong to the signed-in user. Vault lists that user's groups and their permitted shared MCPs/tools and secret names, including the Platform group's explicit grants. Before adding a duplicate or answering what is available, inspect `list_mcp_servers`: `vault_groups`, `vault` and `vault_secrets` supply live authorized metadata. Never infer the caller from an email in chat. Use exact `vault_<id>` connection names and existing configuration tools to select resources for this project. Availability and project selection are separate; every execution still checks current grants and argument/regex restrictions. Read the connection skill before setup; never request or expose secret values in chat or prompts.
+
 Data moves through INPUT, variables and step outputs. To read or write a user's own database or system, use a script tool or an MCP integration with attached secrets (for example a connection string in `SECRET_*`).

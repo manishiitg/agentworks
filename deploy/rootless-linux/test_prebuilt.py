@@ -45,6 +45,9 @@ class PrebuiltActivationTest(unittest.TestCase):
         (self.build / "bin/lib").mkdir(parents=True)
         for name in ("agent", "workspace", "gateway", "browser", "slotctl", "slottmux", "mcpbridge", "video-studio-landlock-runner"):
             shutil.copy("/bin/true", self.build / "bin" / name)  # a real dynamic executable, so the ldd check has something to load
+        shutil.copy("/bin/true", self.build / "bin/agentworks-vault")
+        shutil.copy(ROOT.parent / 'common/install-vault-service.py', self.build / 'bin/install-vault-service.py')
+        (self.build / 'bin/install-vault-service.py').chmod(0o755)
         (self.build / "bin/lib/libfake.so").write_text("lib")
         (self.build / "frontend/assets").mkdir(parents=True)
         (self.build / "frontend/index.html").write_text('<html><head><title>AgentWorks</title><link rel="icon" href="/x.ico" /></head></html>')

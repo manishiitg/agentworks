@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -55,8 +56,8 @@ describe('CostsHeader', () => {
     expect(askIndex).toBeLessThan(refreshIndex)
   })
 
-  it('uses the standard title size', () => {
-    expect(renderHeader()).not.toContain('text-lg')
+  it('uses the larger shared title when there is no subtitle', () => {
+    expect(renderHeader()).toContain('text-lg')
   })
 
   it('keeps the stats strip to neutral kit colors', () => {

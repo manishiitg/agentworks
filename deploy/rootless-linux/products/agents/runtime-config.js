@@ -14,6 +14,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   brandColor: "#109AAA",
   // Code for everyone; Crew and Relays are offered by this list but each account only sees the products its own
   // list allows (users.json `products`; administrators see all three), so they stay a few people's.
-  enabledProductSurfaces: ["code", "work", "relays"],
+  gatewayUrl: "https://agents.excellencetechnologies.in",
+  enabledProductSurfaces: ["code", "work", "relays", "mcp-gateway"],
   defaultProductSurface: "code"
 };

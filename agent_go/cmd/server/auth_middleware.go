@@ -308,6 +308,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 // shouldSkipAuth returns true for paths that don't require authentication
 func shouldSkipAuth(path string) bool {
+	if path == vaultMCPPath || path == vaultOAuthPrefix+"/register" || path == vaultOAuthPrefix+"/authorize" || path == vaultOAuthPrefix+"/token" {
+		return true // handlers enforce PKCE or a resource-bound Vault token
+	}
 	if path == gmailInboundEventPath {
 		return true
 	} // Google OIDC is verified by the receiver.

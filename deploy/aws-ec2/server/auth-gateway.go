@@ -484,11 +484,11 @@ const accessTokenPrefix = "aw_pat_"
 const hostedMCPPath = "/api/external/v1/mcp"
 
 func isMCPOAuthDiscoveryPath(path string) bool {
-	return path == "/.well-known/oauth-protected-resource" || path == "/.well-known/oauth-protected-resource/api/external/v1/mcp" || path == "/.well-known/oauth-authorization-server"
+	return path == "/.well-known/oauth-protected-resource" || path == "/.well-known/oauth-protected-resource/api/external/v1/mcp" || path == "/.well-known/oauth-authorization-server" || path == "/.well-known/oauth-authorization-server/vault" || path == "/.well-known/oauth-protected-resource/api/vault/mcp"
 }
 
 func isMCPOAuthPublicAPIPath(path string) bool {
-	return path == "/api/oauth/mcp/register" || path == "/api/oauth/mcp/authorize" || path == "/api/oauth/mcp/token" || path == hostedMCPPath || path == "/api/oauth/cli/device" || path == "/api/oauth/cli/token" || path == "/api/oauth/cli/revoke"
+	return path == "/api/vault/mcp" || path == "/api/oauth/vault/register" || path == "/api/oauth/vault/authorize" || path == "/api/oauth/vault/token" || path == "/api/oauth/mcp/register" || path == "/api/oauth/mcp/authorize" || path == "/api/oauth/mcp/token" || path == hostedMCPPath || path == "/api/oauth/cli/device" || path == "/api/oauth/cli/token" || path == "/api/oauth/cli/revoke"
 }
 
 func isAccessTokenCredential(r *http.Request) bool {

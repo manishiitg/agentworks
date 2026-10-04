@@ -1,11 +1,17 @@
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'dominion', 'sparkquill', 'work', 'code'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'dominion', 'sparkquill', 'work', 'code', 'mcp-gateway'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
+
+export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
+  agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio', dominion: 'Dominion',
+  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault',
+}
 
 type ProductRuntimeConfig = {
   defaultProductSurface?: unknown
   enabledProductSurfaces?: unknown
   gatewaySso?: unknown
+  gatewayUrl?: unknown
 }
 
 function runtimeConfig(): ProductRuntimeConfig | undefined {
@@ -20,15 +26,17 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 /**
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation, Relay, and built-in Crew surfaces together.
- * Dedicated product shells can still replace this with their own allowlist.
+ * the automation, Relays, and built-in Crew surfaces together.
+ * A configured gateway URL opts a local deployment into the Vault alpha.
+ * Dedicated product shells can replace this with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
-  if (!Array.isArray(configured)) return ['agentworks', 'relays', 'work']
+  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway'] : ['agentworks', 'relays', 'work']
+  if (!Array.isArray(configured)) return defaults
 
-  const enabled = configured.filter(isProductSurface)
-  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'relays', 'work']
+  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
+  return enabled.length > 0 ? [...new Set(enabled)] : defaults
 }
 
 export function deploymentDefaultProductSurface(): ProductSurface {
@@ -52,6 +60,28 @@ export function hasGatewaySSO(): boolean {
 }
 
 /**
+ * Base URL of the MCP Gateway deployment embedded as a product surface,
+ * without a trailing slash. Null hides the switcher entry.
+ */
+export function gatewayBaseUrl(): string | null {
+  const raw = runtimeConfig()?.gatewayUrl
+  if (typeof raw !== 'string') return null
+  const url = raw.trim().replace(/\/+$/, '')
+  if (!/^https?:\/\/[^/\s]+/.test(url)) return null
+  return url
+}
+
+/**
+ * Admin URL of the MCP Gateway deployment embedded as a product surface.
+ * The React console talks to the gateway API directly; the server-rendered
+ * UI stays available at this URL as a standalone fallback.
+ */
+export function gatewayAdminUrl(): string | null {
+  const base = gatewayBaseUrl()
+  return base === null ? null : `${base}/admin/`
+}
+
+/**
  * Narrows a deployment-wide surface list to what one user is allowed to see.
  * `allowedProducts` is the logged-in user's `allowed_products` from
  * `/api/auth/me` -- null/undefined (unrestricted) passes `surfaces` through
@@ -69,4 +99,10 @@ export function intersectAllowedProductSurfaces(
   // Relays use the existing workflow APIs and permissions. A user granted
   // AgentWorks workflow access can use the Relay view without a new ACL.
   return surfaces.filter((surface) => allowed.has(surface.toLowerCase()) || (surface === 'relays' && allowed.has('agentworks')))
+}
+
+/** Product switcher entries in stable UI order for the current user. */
+export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
+  const enabled = new Set(enabledProductSurfaces())
+  return intersectAllowedProductSurfaces(PRODUCT_SURFACES.filter(surface => enabled.has(surface)), allowedProducts)
 }

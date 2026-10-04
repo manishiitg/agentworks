@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -388,7 +389,7 @@ func (api *StreamingAPI) handleAgentProfilePresentationDelete(w http.ResponseWri
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
@@ -504,7 +505,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
@@ -577,7 +578,7 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
@@ -626,7 +627,7 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
@@ -820,7 +821,7 @@ func listAgentProfilesHandler(registry *agentprofiles.Registry) http.HandlerFunc
 		claims := GetUserFromContext(r.Context())
 		visible := profiles[:0]
 		for _, profile := range profiles {
-			if userAllowedProduct(claims, profile.Product) {
+			if userAllowedProduct(claims, profile.Product) && canUseCapLayerProfile(r.Context(), profile.ID) {
 				visible = append(visible, profileWithAvailableProviders(profile))
 			}
 		}
@@ -870,7 +871,7 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
 		}
-		if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+		if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
 		}
@@ -967,8 +968,25 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		if err != nil {
 			return QueryRequest{}, err
 		}
+		// A previous attempt may already have persisted the new selection while
+		// leaving the old durable session alive. Check the actual retained runtime
+		// too, so retrying that selection cannot deliver to the old model.
+		retained, retainedExists := mcpagent.LookupSession(conversation.SessionID)
+		if retainedExists {
+			if handle := retained.Snapshot(); handle != nil {
+				restart = restart ||
+					(handle.Provider.Provider != "" && !strings.EqualFold(handle.Provider.Provider, query.Provider)) ||
+					(handle.Provider.Model != "" && query.ModelID != "" && !strings.EqualFold(handle.Provider.Model, query.ModelID))
+			}
+		}
 		if restart {
+			query.DisableLiveInputDelivery = true
 			closeCodingCLIAndReleaseTurnMarkers(conversation.SessionID, "product chat: runtime configuration changed")
+			// Closing a provider CLI alone does not remove the transport-neutral
+			// Session.Send target. Unregister it before the new turn is dispatched.
+			if retainedExists {
+				_ = retained.Close()
+			}
 		}
 	}
 	return query, nil

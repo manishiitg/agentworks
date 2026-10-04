@@ -37,6 +37,9 @@ const workflowProviderCredentialUrl = (provider: WorkflowCredentialProvider) =>
   `/api/workflow-provider-credentials/${provider}`;
 
 export const secretsApi = {
+  setVaultSecretAccess: async (groupId: string, name: string, allowed: boolean): Promise<void> => {
+    await api.post('/api/secrets/vault/access', { group_id: groupId, name, allowed });
+  },
   promoteWorkflowSecret: async (workspacePath: string, name: string): Promise<void> => {
     await api.post('/api/secrets/global', { workspace_path: workspacePath, name });
   },
@@ -67,8 +70,8 @@ export const secretsApi = {
     return response.data;
   },
 
-  getGlobalSecrets: async (): Promise<{ name: string }[]> => {
-    const response = await api.get('/api/secrets/global');
+  getGlobalSecrets: async (manage = false): Promise<{ name: string; managed?: boolean }[]> => {
+    const response = await api.get('/api/secrets/global', { params: manage ? { manage: true } : {} });
     return response.data;
   },
 

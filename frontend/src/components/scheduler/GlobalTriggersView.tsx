@@ -9,12 +9,12 @@ import { workflowManifestApi } from '../../services/api'
 export type TriggerOwner = { id: string; label: string; kind: 'workflow' | 'crew' }
 type TriggerRow = { id: string; name: string; enabled: boolean; path: string; owner: TriggerOwner }
 
-async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: TriggerRow[]; failures: number }> {
+async function loadTriggers(kind: TriggerOwner['kind'], workflowKind?: 'workflow' | 'relay'): Promise<{ rows: TriggerRow[]; failures: number }> {
   const owners = kind === 'crew'
     ? (await loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true })).map(project => ({
       id: project.id, label: project.identity?.name || project.title, kind,
     }))
-    : (await workflowManifestApi.listWorkflowManifests()).workflows.map(workflow => ({
+    : (await workflowManifestApi.listWorkflowManifests()).workflows.filter(workflow => !workflowKind || (workflow.manifest.kind || 'workflow') === workflowKind).map(workflow => ({
       id: workflow.manifest.id, label: workflow.manifest.label || workflow.workspace_path, kind,
       workspacePath: workflow.workspace_path,
     }))
@@ -40,8 +40,9 @@ async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: Trigger
   return { rows, failures }
 }
 
-export default function GlobalTriggersView({ kind, onOpen }: {
+export default function GlobalTriggersView({ kind, workflowKind, onOpen }: {
   kind: TriggerOwner['kind']
+  workflowKind?: 'workflow' | 'relay'
   onOpen: (owner: TriggerOwner) => void
 }) {
   const [rows, setRows] = useState<TriggerRow[]>([])
@@ -55,7 +56,7 @@ export default function GlobalTriggersView({ kind, onOpen }: {
     let cancelled = false
     setLoading(true)
     setError('')
-    void loadTriggers(kind).then(result => {
+    void loadTriggers(kind, workflowKind).then(result => {
       if (cancelled) return
       setRows(result.rows)
       setFailures(result.failures)
@@ -63,7 +64,7 @@ export default function GlobalTriggersView({ kind, onOpen }: {
       if (!cancelled) setError(`Could not load ${kind === 'crew' ? 'Crew' : 'Workflow'} triggers.`)
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kind, refreshToken])
+  }, [kind, workflowKind, refreshToken])
 
   return <div className="h-full overflow-y-auto px-4 py-5 sm:px-6">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

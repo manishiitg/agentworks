@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:caplayer": "vite --config vite.caplayer.config.ts",
+    "build:caplayer": "tsc -b && vite build --config vite.caplayer.config.ts",
     "dev:no-server": "VITE_API_BASE_URL=http://localhost:99999 vite",
     "build": "npm run check:website-growth-catalog && npm run check:finance-crew-catalog && npm run check:marketing-crew-catalog && npm run check:sales-crew-catalog && npm run check:customer-success-crew-catalog && npm run check:customer-support-crew-catalog && npm run check:product-crew-catalog && npm run check:operations-crew-catalog && npm run check:engineering-crew-catalog && npm run check:qa-crew-catalog && npm run check:security-crew-catalog && npm run check:gtm-crew-catalog && npm run check:shopify-crew-catalog && npm run check:playbook-catalog && tsc -b && vite build && npm run build:report-preview && npm run check:release-assets && npm run check:bundle-budget",
     "check:playbook-catalog": "node scripts/check-playbook-catalog.mjs",

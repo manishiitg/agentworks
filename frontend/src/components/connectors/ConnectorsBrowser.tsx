@@ -8,33 +8,13 @@ import {
 } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import { brandSlugFor } from './brandSlug'
-import { GROUP_ORDER, descriptionFor, groupFor } from './catalog'
+import { GROUP_ORDER, descriptionFor, groupFor, statusIndicator } from './catalog'
 import { ConnectorGroupSection } from './ConnectorGroupSection'
 import { useMCPStore } from '../../stores'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import MCPConfigPopup from '../MCPConfigPopup'
 import { AskAIButton } from '../workflow/AskAIButton'
-
-/**
- * The card's status dot answers whether this platform connection exists.
- * `status` answers a different question — whether the server is
- * currently reachable — so a connected-but-down server is surfaced as an
- * amber dot against the connected state rather than silently reading as not
- * connected. Every connected-but-not-ready state pulses: flat grey is
- * reserved for truly disconnected cards, so a connected card can never
- * read as "not connected". A dot beside the provider name keeps status
- * visible without adding another row to the card.
- */
-const statusIndicator = (connection: string | undefined, status: string | undefined) => {
-  if (connection === 'connected') {
-    if (status === 'error') return { dot: 'bg-amber-500', title: 'Connected — unreachable' }
-    if (status === 'loading') return { dot: 'bg-gray-400 animate-pulse', title: 'Connected — checking...' }
-    if (status === 'not_loaded') return { dot: 'bg-gray-400 animate-pulse', title: 'Connected — tools load when used' }
-    return { dot: 'bg-green-500', title: 'Connected' }
-  }
-  return { dot: 'bg-gray-300 dark:bg-gray-600', title: 'Not connected' }
-}
 
 interface ConnectorsBrowserProps {
   // The embedded workflow panel uses tighter spacing for a narrow side panel.
@@ -101,9 +81,8 @@ export default function ConnectorsBrowser({
   const canManagePlatformMCP = useAuthStore(state =>
     state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
   )
-  // Everyone can reuse connected MCPs; only platform admins may change the
-  // deployment-wide connection registry.
-  const readOnly = !canWriteWorkflow || !canManagePlatformMCP
+  // Connections are private to the caller; catalog JSON remains admin-only.
+  const readOnly = !canWriteWorkflow
   const [internalQuery, setInternalQuery] = useState('')
   const query = externalQuery ?? internalQuery
   // Local to this instance -- deliberately independent of the store's global
@@ -143,7 +122,7 @@ export default function ConnectorsBrowser({
 
   // Raw-JSON escape hatch for admins, parked on the first list heading
   // rather than in its own banner action.
-  const debugJsonButton = !readOnly && (
+  const debugJsonButton = !readOnly && canManagePlatformMCP && (
     <button
       type="button"
       onClick={() => setShowJsonConfig(true)}
@@ -195,9 +174,7 @@ export default function ConnectorsBrowser({
               label={`Ask AI about ${serverName}`}
               message={connection === 'connected'
                 ? `Help me with the existing ${JSON.stringify(serverName)} MCP connection in this ${workspaceLabel}. Check its current connection status and ${workspaceLabel} selection, then ask what I want to do with it.`
-                : canManagePlatformMCP
-                  ? `Help me connect ${JSON.stringify(serverName)} to this ${workspaceLabel}. It is already listed in the MCP catalog, so check its existing configuration and connection status first and reuse it. Before authorization, remind me that the account will be shared by every AgentWorks user and product. Guide me through the required authorization or secure credential setup, verify its tools, then add it to this ${workspaceLabel}. Do not ask me to paste secrets into chat.`
-                  : `Explain that ${JSON.stringify(serverName)} is not yet connected to this AgentWorks platform, that only an administrator can connect the shared external account, and how I can select it for this ${workspaceLabel} after an administrator connects it. Do not attempt to change MCP configuration.`}
+                : `Help me connect ${JSON.stringify(serverName)} privately to this ${workspaceLabel}. Check my existing connection first, guide me through sign-in in My MCPs, verify its tools, and select it for this ${workspaceLabel}. Use Vault group permissions for shared access. Do not ask for secrets in chat.`}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
@@ -227,20 +204,16 @@ export default function ConnectorsBrowser({
           <div className="min-w-0 flex-1 basis-48">
             <p className="text-sm font-semibold text-foreground">{"Can't find the app you need?"}</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              {canManagePlatformMCP
-                ? `The ${assistantLabel} can connect it for you. New connections are shared with everyone.`
-                : 'Only an admin can add new connections. Everything connected below is ready to use.'}
+              The {assistantLabel} can connect it privately for you. Use Vault to share access.
             </p>
           </div>
           <AskAIButton
             workspacePath={readOnly ? null : workspacePath ?? null}
             onAsk={onAskAI}
-            label={canManagePlatformMCP ? `Ask ${assistantLabel} to connect` : "Why can't I add one?"}
-            message={canManagePlatformMCP
-              ? query.trim()
-                ? `Help me add an MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation on the web, and help me connect it. Before authorization, remind me that the account will be shared by every AgentWorks user and product.`
-                : `Help me add a shared platform MCP server to this ${workspaceLabel}. Ask which app or service I want, then search the catalog and official provider documentation and help me connect it. Before authorization, remind me that the account will be shared by every AgentWorks user and product.`
-              : `Explain how shared platform MCP connections work in AgentWorks, why only an administrator can add or replace one, and how I can reuse an already-connected service in this ${workspaceLabel}. Do not attempt to change MCP configuration.`}
+            label={`Ask ${assistantLabel} to connect`}
+            message={query.trim()
+              ? `Help me add a private MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and guide me through sign-in in My MCPs. Use Vault to share access. Never ask for secrets in chat.`
+              : `Help me add a private MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and help me connect in My MCPs. Use Vault to share access. Never ask for secrets in chat.`}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>

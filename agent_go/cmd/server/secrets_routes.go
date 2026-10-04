@@ -44,7 +44,7 @@ func loadGlobalSecrets() {
 		}
 		name := env[len(prefix):eqIdx]
 		value := env[eqIdx+1:]
-		if name == "" {
+		if !globalSecretNamePattern.MatchString(name) {
 			continue
 		}
 		globalSecrets = append(globalSecrets, globalSecretEntry{Name: name, Value: value})
@@ -70,7 +70,27 @@ func (api *StreamingAPI) handleGetGlobalSecrets(w http.ResponseWriter, r *http.R
 		Name    string `json:"name"`
 		Managed bool   `json:"managed"`
 	}
-	globals := getGlobalSecrets()
+	w.Header().Set("Cache-Control", "no-store")
+	userID := GetUserIDFromContext(r.Context())
+	var globals []globalSecretEntry
+	if r.URL.Query().Get("manage") == "true" {
+		if !canManageGlobalSecrets(userID) {
+			globalSecretError(w, errGlobalAdmin)
+			return
+		}
+		if err := syncVaultSecretMetadata(r.Context(), userID); err != nil {
+			writeUsersError(w, 503, err.Error())
+			return
+		}
+		globals = getGlobalSecrets()
+	} else {
+		var err error
+		globals, err = permittedGlobalSecrets(r.Context(), userID)
+		if err != nil {
+			writeUsersError(w, 503, err.Error())
+			return
+		}
+	}
 	result := make([]entry, len(globals))
 	for i, s := range globals {
 		result[i] = entry{Name: s.Name, Managed: s.Managed}

@@ -15,7 +15,7 @@ export interface WorkflowSecret {
 interface SecretsState {
   globalSecrets: GlobalSecret[]
   workflowSecretsByPath: Record<string, WorkflowSecret[]>
-  // null = all global secrets selected (default), string[] = only these names selected
+  // null = no global secrets selected (legacy), string[] = only these names selected
   selectedGlobalSecretNames: string[] | null
   fetchGlobalSecrets: () => Promise<void>
   fetchWorkflowSecrets: (workspacePath: string) => Promise<void>
@@ -30,14 +30,15 @@ export const useSecretsStore = create<SecretsState>()(
     (set) => ({
       globalSecrets: [],
       workflowSecretsByPath: {},
-      selectedGlobalSecretNames: null,
+      selectedGlobalSecretNames: [],
 
       fetchGlobalSecrets: async () => {
         try {
           const result = await secretsApi.getGlobalSecrets()
           set({ globalSecrets: result })
         } catch {
-          // Silently fail — global secrets are optional
+          set({ globalSecrets: [] })
+          // Never keep a previous identity's inventory after access fails.
         }
       },
 

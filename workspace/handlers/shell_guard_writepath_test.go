@@ -44,7 +44,7 @@ func TestResolveGuardWritePath(t *testing.T) {
 	}
 
 	invalid := []string{
-		outsideDir,                          // absolute, outside the boundary
+		outsideDir,                           // absolute, outside the boundary
 		filepath.Join(docsDir, "..", "evil"), // .. escape
 		"../evil",
 		"Workflow/../../evil",
@@ -54,6 +54,57 @@ func TestResolveGuardWritePath(t *testing.T) {
 		if got, err := resolveGuardWritePath(wp, docsDir); err == nil {
 			t.Errorf("resolveGuardWritePath(%q) = %q, want rejection", wp, got)
 		}
+	}
+}
+
+func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
+	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	docsDir, hostDir := t.TempDir(), t.TempDir()
+	got, err := guardWritePathToCreate(hostDir, docsDir)
+	if err != nil || got != "" {
+		t.Fatalf("existing host grant must not be created: path=%q err=%v", got, err)
+	}
+	inside := filepath.Join(docsDir, "project", "new")
+	if got, err := guardWritePathToCreate("project/new", docsDir); err != nil || got != inside {
+		t.Fatalf("workspace directory should be prepared: path=%q err=%v", got, err)
+	}
+	file := filepath.Join(hostDir, "file")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(docsDir, "escape")
+	if err := os.Symlink(hostDir, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(hostDir, "missing"), file, link, "escape", "../outside", hostDir + "/../" + filepath.Base(hostDir)} {
+		if _, err := guardWritePathToCreate(path, docsDir); err == nil {
+			t.Errorf("unsafe or missing grant accepted: %s", path)
+		}
+	}
+}
+
+func TestGuardWritePathToCreateRejectsHostGrantsOnServer(t *testing.T) {
+	docsDir, hostDir := t.TempDir(), t.TempDir()
+	for _, mode := range []struct{ name, local, multi, native string }{
+		{"defaults", "", "", ""},
+		{"native server", "false", "true", "true"},
+		{"multi-user local flag", "true", "true", "true"},
+		{"missing single-user mode", "true", "", "true"},
+		{"container workspace", "true", "false", "false"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			t.Setenv("LOCAL_MODE", mode.local)
+			t.Setenv("MULTI_USER_MODE", mode.multi)
+			t.Setenv("NATIVE_WORKSPACE", mode.native)
+			if _, err := guardWritePathToCreate(hostDir, docsDir); err == nil {
+				t.Fatal("existing host directory accepted outside local native single-user mode")
+			}
+			if _, err := guardWritePathToCreate("project/new", docsDir); err != nil {
+				t.Fatalf("workspace path rejected: %v", err)
+			}
+		})
 	}
 }
 

@@ -37,7 +37,7 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 		}
 
 		canonical := ""
-		for _, secret := range getGlobalSecrets() {
+		for _, secret := range visibleGlobalSecrets(ctx, userID) {
 			if strings.EqualFold(secret.Name, requested) {
 				canonical = secret.Name
 				break

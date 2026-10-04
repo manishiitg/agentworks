@@ -1073,6 +1073,12 @@ func sortedArgumentKeys(args map[string]any) []string {
 	return keys
 }
 
+// WorkflowDBSQLToolDefinitions lets other products reuse the exact query/mutate
+// schema while their storage owner supplies atomic execution and authorization.
+func WorkflowDBSQLToolDefinitions() []llmtypes.Tool {
+	return []llmtypes.Tool{workflowDBQueryToolDefinition(), workflowDBMutateToolDefinition()}
+}
+
 // workflowDBPagedSQL skips the first offset rows of a SELECT or WITH
 // statement by wrapping it as a subquery; the caller's ORDER BY keeps pages
 // stable and positional params keep their order. Other read statements (PRAGMA

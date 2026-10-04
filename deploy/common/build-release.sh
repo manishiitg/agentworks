@@ -196,6 +196,10 @@ source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$OUT"
 gobuild "$OUT/bin/mcpbridge" ./mcpagent/cmd/mcpbridge
 gobuild "$OUT/bin/gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
+# Include Vault in the same manifest-verified build. A prebuilt activation never
+# compiles this service or creates its installer on the deployment host.
+source "$REPO_ROOT/deploy/common/vault.sh"
+vault_build "$REPO_ROOT" "$OUT"
 install -m 0755 "$REPO_ROOT/deploy/aws-ec2/server/update-coding-clis.sh" "$OUT/bin/update-coding-clis"
 
 step "Building AgentWorks CLI downloads"

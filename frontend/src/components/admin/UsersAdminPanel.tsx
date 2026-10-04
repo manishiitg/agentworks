@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail } from 'lucide-react'
+import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail, LockKeyhole } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
@@ -7,9 +7,10 @@ import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/checkbox'
 import { Badge } from '../ui/badge'
 import { Input } from '../ui/Input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import { enabledProductSurfaces } from '../../products/productSurfaceConfig'
+import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
@@ -17,11 +18,31 @@ import { selectableProducts } from './selectableProducts'
 // the same access. Records without a stamped role map from the booleans.
 type Role = 'admin' | 'creator' | 'editor' | 'viewer'
 const ROLES: { value: Role; label: string; hint: string }[] = [
-  { value: 'viewer', label: 'Viewer', hint: 'Can chat, run and watch what is shared with them. Cannot create or edit anything.' },
-  { value: 'editor', label: 'Editor', hint: 'Can own and edit assigned workflows, but cannot create new workflows.' },
-  { value: 'creator', label: 'Creator', hint: 'Creates workflows and projects and owns what they create.' },
-  { value: 'admin', label: 'Admin', hint: 'Creator, plus manages users and product access. Can open any workflow.' },
+  { value: 'viewer', label: 'Viewer', hint: 'Use shared work. No creating or editing.' },
+  { value: 'editor', label: 'Editor', hint: 'Edit assigned workflows. No creating.' },
+  { value: 'creator', label: 'Creator', hint: 'Create and own workflows and projects.' },
+  { value: 'admin', label: 'Admin', hint: 'Manage users, products and all workflows.' },
 ]
+/** Shared styled role menu for both invitations and existing accounts. */
+function RolePicker({ value, onChange, label, disabled, title }: {
+  value: Role; onChange: (role: Role) => void; label: string; disabled?: boolean; title?: string
+}) {
+  return (
+    <Select value={value} onValueChange={(next) => onChange(next as Role)} disabled={disabled}>
+      <SelectTrigger aria-label={label} title={title} className="min-w-[7rem] bg-background text-xs">
+        <SelectValue>{ROLES.find((role) => role.value === value)?.label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent className="w-72 max-w-[calc(100vw-2rem)]" align="start">
+        {ROLES.map((role) => (
+          <SelectItem key={role.value} value={role.value} textValue={role.label} className="py-2.5">
+            <span className="block text-xs font-medium">{role.label}</span>
+            <span className="mt-0.5 block whitespace-normal text-xs leading-relaxed text-muted-foreground">{role.hint}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 const roleOf = (u: { role?: Role; admin: boolean; can_create: boolean; can_edit: boolean }): Role => (
   u.role ?? (u.admin ? 'admin' : u.can_create ? 'creator' : u.can_edit ? 'editor' : 'viewer')
 )
@@ -32,22 +53,18 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
   can_edit: r !== 'viewer',
 })
 
-const PRODUCT_LABELS: Record<string, string> = {
-  agentworks: 'Goals',
-  work: 'Crew',
-  code: 'Code',
-  'video-studio': 'Video Studio',
-  finance: 'Finance',
-  dominion: 'Dominion',
-  sparkquill: 'SparkQuill',
+const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
+
+interface UsersAdminPanelProps {
+  /** Vault adds MCP consumers; platform roles/products are managed outside this view. */
+  vaultOnly?: boolean
 }
-const productLabel = (id: string) => PRODUCT_LABELS[id] ?? id
 
 /**
  * Users & access: the admin page for the user directory. Set each account's
  * role and which products they may open, reset passwords, disable or delete.
  */
-const UsersAdminPanel: React.FC = () => {
+const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) => {
   const me = useAuthStore((s) => s.user)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [products, setProducts] = useState<string[]>([])
@@ -64,6 +81,7 @@ const UsersAdminPanel: React.FC = () => {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('viewer')
   const [inviteProducts, setInviteProducts] = useState<string[]>([])
+  const selectedInviteProducts = vaultOnly ? ['mcp-gateway'] : inviteProducts
   const [inviting, setInviting] = useState(false)
   // Shown after adding someone. Accounts are added here by an administrator: signing in never creates one.
   const [addedNotice, setAddedNotice] = useState<string | null>(null)
@@ -121,9 +139,9 @@ const UsersAdminPanel: React.FC = () => {
       const created = await authApi.createAdminUser({
         username: email,
         email,
-        ...roleFields(inviteRole),
+        ...roleFields(vaultOnly ? 'viewer' : inviteRole),
         // With one product there is nothing to choose: they get it.
-        products: inviteRole === 'admin' ? [] : products.length === 1 ? products : inviteProducts,
+        products: vaultOnly ? ['mcp-gateway'] : inviteRole === 'admin' ? [] : [...new Set([...selectedInviteProducts, ...(products.length === 1 ? products : [])])],
       })
       setAddedNotice(`${created.email || email} was added. Ask them to sign in with Google using this address.`)
       setInviteEmail('')
@@ -139,53 +157,57 @@ const UsersAdminPanel: React.FC = () => {
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
 
   return (
-    <div className="space-y-4">
+    <div className="[container-type:inline-size] space-y-5">
       <SettingsCard
         icon={<UserPlus className="h-4 w-4 text-primary" />}
         title="Add a user"
-        description="Add someone by email. There is no password: they sign in with SSO (for example Google) using this address, and the account keeps the role and products you set here. They show as Invited until their first sign-in."
+        description={vaultOnly ? 'Vault access only. Set MCP and secret permissions in groups.' : 'Invite by email. Users sign in with SSO.'}
       >
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && inviteEmailValid && !inviting) void addByEmail() }}
-              placeholder="name@example.com"
-              aria-label="Email"
-              className="sm:max-w-xs"
-            />
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as Role)}
-              aria-label="Role"
-              className="px-2 py-1.5 text-sm bg-muted/40 border border-border rounded"
-            >
-              {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-            <Button disabled={!inviteEmailValid || inviting} onClick={() => { void addByEmail() }}>
-              {inviting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1 h-3.5 w-3.5" />}
+          <div className={`grid grid-cols-1 gap-3 ${vaultOnly ? '' : '[@container(min-width:360px)]:grid-cols-[minmax(0,1fr)_8rem]'}`}>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Email</span>
+              <Input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && inviteEmailValid && !inviting) void addByEmail() }}
+                placeholder="name@example.com"
+                aria-label="Email"
+                className="text-sm"
+              />
+            </label>
+            {!vaultOnly && <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Role</span>
+              <RolePicker value={inviteRole} onChange={setInviteRole} label="Role" />
+            </div>}
+          </div>
+          {!vaultOnly && inviteRole !== 'admin' && products.length > 1 && (
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-xs font-medium text-muted-foreground">Product access</legend>
+              <div className="flex flex-wrap gap-2">
+                {products.map((p) => (
+                  <label key={p} className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs transition-colors ${selectedInviteProducts.includes(p) ? 'border-primary/40 bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/40'} cursor-pointer`}>
+                    <Checkbox
+                      checked={selectedInviteProducts.includes(p)}
+                      onCheckedChange={() => setInviteProducts((list) => toggleProduct(list, p))}
+                      aria-label={`${productLabel(p)} for the new user`}
+                    />
+                    {productLabel(p)}
+                  </label>
+                ))}
+              </div>
+              {selectedInviteProducts.length === 0 && <p className="text-xs text-muted-foreground">{inviteRole === 'creator' ? 'Access to all products.' : 'Select products this user can open.'}</p>}
+            </fieldset>
+          )}
+          {!vaultOnly && inviteRole === 'admin' && <p className="text-xs text-muted-foreground">Admins have access to all products.</p>}
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+            {vaultOnly ? <Badge variant="outline"><LockKeyhole className="mr-1.5 h-3 w-3" />Vault only</Badge> : <span />}
+            <Button size="sm" disabled={!inviteEmailValid || inviting} onClick={() => { void addByEmail() }}>
+              {inviting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
               Add user
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">{ROLES.find((r) => r.value === inviteRole)?.hint}</p>
-          {inviteRole !== 'admin' && products.length > 1 && (
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className="text-muted-foreground">Products:</span>
-              {products.map((p) => (
-                <label key={p} className="inline-flex items-center gap-1.5">
-                  <Checkbox
-                    checked={inviteProducts.includes(p)}
-                    onCheckedChange={() => setInviteProducts((list) => toggleProduct(list, p))}
-                    aria-label={`${productLabel(p)} for the new user`}
-                  />
-                  {productLabel(p)}
-                </label>
-              ))}
-              {inviteProducts.length === 0 && <span className="text-muted-foreground">{inviteRole === 'creator' ? '(none ticked: all)' : '(none ticked: none)'}</span>}
-            </div>
-          )}
           {addedNotice && (
             <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/40 p-2 text-xs text-emerald-700 dark:text-emerald-300">
               <span className="min-w-0 flex-1">{addedNotice}</span>
@@ -199,7 +221,7 @@ const UsersAdminPanel: React.FC = () => {
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
         count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description="Everyone who can open this deployment, and what each account may do. A creator owns what they create; an editor may edit assigned workflows but cannot create new ones; a viewer only sees shared workflows. Product boxes decide which surfaces an account may open. A Code reviewer (any role) reviews every Code workspace's cost, chats and files, read-only, and every view is audited."
+        description={vaultOnly ? undefined : 'Manage roles and product access.'}
       >
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -237,16 +259,14 @@ const UsersAdminPanel: React.FC = () => {
                       <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {u.invited ? 'signs in with SSO' : `${u.provider}${u.has_password ? '' : ' · no password'}`}</div>
                     </td>
                     <td className="py-2 pr-3 align-top">
-                      <select
+                      {vaultOnly ? <span className="text-xs text-muted-foreground">{ROLES.find(r => r.value === role)?.label}</span> : <RolePicker
                         value={role}
+                        label={`Role for ${u.username}`}
                         disabled={busy || (isMe && role === 'admin')}
                         title={isMe && role === 'admin' ? 'You cannot remove your own admin access' : undefined}
-                        onChange={(e) => { void run(u.id, () => authApi.updateAdminUser(u.id, roleFields(e.target.value as Role))) }}
-                        className="px-2 py-1 text-xs bg-muted/40 border border-border rounded"
-                      >
-                        {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                      </select>
-                      {role !== 'admin' && (
+                        onChange={(next) => { void run(u.id, () => authApi.updateAdminUser(u.id, roleFields(next))) }}
+                      />}
+                      {!vaultOnly && role !== 'admin' && (
                         <label
                           className="mt-1.5 flex items-center gap-1.5 text-xs"
                           title="Reviews every Code workspace's cost, chats and files, read-only. Every view is recorded in the audit log."
@@ -262,7 +282,7 @@ const UsersAdminPanel: React.FC = () => {
                       )}
                     </td>
                     <td className="py-2 pr-3 align-top">
-                      {role === 'admin' ? (
+                      {vaultOnly ? <span className="text-xs text-muted-foreground">{role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'None'}</span> : role === 'admin' ? (
                         <span className="text-xs text-muted-foreground">all</span>
                       ) : (
                         products.length === 1 ? (

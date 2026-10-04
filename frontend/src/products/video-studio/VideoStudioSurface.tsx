@@ -13,7 +13,7 @@ import {
   FolderOpen,
   Users,
   Eye,
-  KeyRound,
+  PlugZap,
   Loader2,
   MessageSquareText,
   Play,
@@ -83,10 +83,10 @@ function VideoStudioHeader({ children, project, projectTabId, onProjectChange }:
             type="button"
             onClick={() => setShowProjectSecrets(true)}
             className="grid h-8 w-8 place-items-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950"
-            aria-label="Project secrets"
-            title="Project secrets"
+            aria-label="Integrations"
+            title="Integrations"
           >
-            <KeyRound className="h-3.5 w-3.5" />
+            <PlugZap className="h-3.5 w-3.5" />
           </button>
         ) : null}
         <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 sm:flex dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">

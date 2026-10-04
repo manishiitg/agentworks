@@ -88,7 +88,7 @@ const errorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback
 }
 
-export default function RuntimeHealthControl() {
+export default function RuntimeHealthControl({ embedded = false }: { embedded?: boolean } = {}) {
   const [browserProcesses, setBrowserProcesses] = useState<BrowserProcess[]>([])
   const [browserTracking, setBrowserTracking] = useState<BrowserSessionTracking[]>([])
   const [managedProcesses, setManagedProcesses] = useState<ManagedWorkflowProcess[]>([])
@@ -197,13 +197,7 @@ export default function RuntimeHealthControl() {
     </span>
   ) : null
 
-  return (
-    <IconPopover
-      icon={<Activity className="w-4 h-4" />}
-      label={tooltipLabel}
-      badge={badge}
-      panelClassName="w-[28rem]"
-    >
+  const content = (
       <div className="space-y-4 text-sm text-gray-900 dark:text-gray-100">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -412,6 +406,17 @@ export default function RuntimeHealthControl() {
           )}
         </section>
       </div>
+  )
+  if (embedded) return content
+  return (
+    <IconPopover
+      icon={<Activity className="w-4 h-4" />}
+      label={tooltipLabel}
+      navigationLabel="Runtime health"
+      badge={badge}
+      panelClassName="w-[28rem]"
+    >
+      {content}
     </IconPopover>
   )
 }

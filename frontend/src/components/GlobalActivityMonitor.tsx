@@ -1,6 +1,7 @@
+import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useLLMStore } from '../stores/useLLMStore'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Bot, CalendarClock, ChevronDown, Clock, Loader2, MessageSquare, Pause, Play, Webhook } from 'lucide-react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Activity, AlertCircle, Bot, CalendarClock, ChevronDown, Clock, Loader2, MessageSquare, Pause, Play, Webhook } from 'lucide-react'
 import type { ActiveSessionInfo, RunningWorkflowInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useModeStore } from '../stores/useModeStore'
@@ -192,6 +193,9 @@ function workflowPresetForActivity(
 }
 
 export const GlobalActivityMonitor: React.FC = () => {
+  const sidebar = useProductNavigationSidebar()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 })
   const activeSessionsCache = useChatStore(state => state.activeSessionsCache)
   const getActiveSessions = useChatStore(state => state.getActiveSessions)
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -390,6 +394,26 @@ export const GlobalActivityMonitor: React.FC = () => {
     openActiveWorkInQuickSwitcher()
   }, [openActiveWorkInQuickSwitcher])
 
+  useLayoutEffect(() => {
+    if (!sidebar || !open) return
+    const reposition = () => {
+      const trigger = rootRef.current?.getBoundingClientRect()
+      const panel = panelRef.current?.getBoundingClientRect()
+      if (!trigger || !panel) return
+      setPanelPosition({
+        left: Math.max(12, Math.min(trigger.right + 12, window.innerWidth - panel.width - 12)),
+        top: Math.max(12, Math.min(trigger.bottom - panel.height, window.innerHeight - panel.height - 12)),
+      })
+    }
+    reposition()
+    window.addEventListener('resize', reposition)
+    document.addEventListener('scroll', reposition, true)
+    return () => {
+      window.removeEventListener('resize', reposition)
+      document.removeEventListener('scroll', reposition, true)
+    }
+  }, [sidebar, open, activityItems.length])
+
   if (activityItems.length === 0) {
     return null
   }
@@ -416,24 +440,27 @@ export const GlobalActivityMonitor: React.FC = () => {
         onClick={() => setOpen(current => !current)}
         aria-expanded={open}
         aria-label={`Active work: ${buttonLabel}. Activate to switch.`}
-        title="Active work — click to see everything running and switch to it"
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
+        title={`Active work · ${buttonLabel}`}
+        className={`${sidebar ? 'relative h-9 w-full justify-center' : ''} flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${dotClasses}`} />
-        <span className="whitespace-nowrap">{buttonLabel}</span>
-        <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {sidebar && <Activity className="h-4 w-4" aria-hidden="true" />}
+        <span className={`${sidebar ? 'absolute right-1.5 top-1.5' : ''} h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${dotClasses}`} />
+        <span className={sidebar ? 'sr-only' : 'whitespace-nowrap'}>{buttonLabel}</span>
+        <ChevronDown className={`${sidebar ? 'hidden' : ''} w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div
+          ref={panelRef}
           role="menu"
           aria-label="Active work"
-          className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[90vw] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+          style={sidebar ? panelPosition : undefined}
+          className={`${sidebar ? 'fixed' : 'absolute right-0 top-full mt-2'} z-50 flex max-h-[75vh] w-80 max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900`}
         >
           <div className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
             Active work · {count}
           </div>
-          <div className="max-h-96 overflow-y-auto pb-1">
+          <div className="min-h-0 max-h-96 overflow-y-auto pb-1">
             {activityItems.map(item => {
               if (item.type === 'builder-tab') {
                 const builderBusy = item.tab.isStreaming || item.tab.isSyntheticTurn
@@ -513,7 +540,7 @@ export const GlobalActivityMonitor: React.FC = () => {
           <button
             type="button"
             onClick={showQuickSwitcher}
-            className="w-full border-t border-gray-200 px-3 py-2 text-center text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+            className="w-full shrink-0 border-t border-gray-200 px-3 py-2 text-center text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
           >
             Show all in Ctrl+K
           </button>

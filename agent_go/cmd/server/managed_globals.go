@@ -49,11 +49,18 @@ func canManageGlobalSecrets(userID string) bool {
 
 // Persist first, then publish to the process-wide snapshot used by every
 // existing global-secret consumer. Values never appear in API/tool responses.
-func (api *StreamingAPI) saveManagedGlobalSecret(ctx context.Context, userID, name, value string, createOnly bool) error {
+func (api *StreamingAPI) saveManagedGlobalSecret(ctx context.Context, userID, name, value string, createOnly bool) (resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			if err := syncVaultSecretMetadata(ctx, userID); err != nil {
+				resultErr = errors.New("Secret value was saved, but Vault permissions are unavailable. Refresh Vault before assigning access")
+			}
+		}
+	}()
 	if !canManageGlobalSecrets(userID) {
 		return errGlobalAdmin
 	}
-	if !globalSecretNamePattern.MatchString(name) || value == "" {
+	if len(name) > 128 || !globalSecretNamePattern.MatchString(name) || value == "" {
 		return errors.New("A valid secret name and non-empty value are required")
 	}
 	managedGlobalsMu.Lock()
@@ -90,6 +97,9 @@ func (api *StreamingAPI) deleteManagedGlobalSecret(ctx context.Context, userID, 
 	}
 	if _, exists := managedGlobals[name]; !exists {
 		return errGlobalNotFound
+	}
+	if err := revokeVaultSecret(ctx, userID, name); err != nil {
+		return err
 	}
 	if err := api.chatStore.DeleteUserSecret(ctx, managedGlobalSecretsUserID, name); err != nil {
 		return errors.New("Could not delete global secret")
@@ -206,6 +216,7 @@ func (api *StreamingAPI) handleRevealGlobalSecret(w http.ResponseWriter, r *http
 	}
 	for _, secret := range sortedGlobalSecrets() {
 		if secret.Name == name {
+			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(secretDecryptResponse{Value: secret.Value})
 			return

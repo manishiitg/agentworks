@@ -125,7 +125,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         setIsAuthCallback(true);
         return;
       }
-      if (path === "/oauth/consent") {
+      if ((path === "/oauth/consent" || path === "/oauth/vault")) {
         setIsMcpConsent(true);
         return;
       }

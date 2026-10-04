@@ -5,6 +5,9 @@ import { agentApi } from '../services/api'
 import { mcpConfigApi } from '../services/mcpConfigApi'
 import type { ServerLogEntry } from '../services/mcpConfigApi'
 
+// Reset invalidates outstanding requests when the authenticated account changes.
+let mcpGeneration = 0
+
 interface MCPState extends StoreActions {
   // Server and tool data
   toolList: ToolDefinition[]
@@ -110,10 +113,12 @@ export const useMCPStore = create<MCPState>()(
         },
 
         refreshTools: async () => {
+          const generation = mcpGeneration
           set({ isLoadingTools: true, toolsError: null })
 
           try {
             const toolList = await agentApi.getTools() as ToolDefinition[]
+            if (generation !== mcpGeneration) return
 
             // Servers the user has connected. Reachability (status === 'ok') is a
             // separate question — a connected server that is down stays in this list.
@@ -125,7 +130,7 @@ export const useMCPStore = create<MCPState>()(
             const filteredEnabledServers = currentEnabledServers.filter(server => availableServers.includes(server))
 
             const filterSelectedServers = (servers: string[]) => servers.filter(server =>
-              server === "NO_SERVERS" || availableServers.includes(server)
+              server === "NO_SERVERS" || server.startsWith("vault_") || availableServers.includes(server)
             )
             const filteredChatSelectedServers = filterSelectedServers(get().chatSelectedServers)
             const filteredWorkflowSelectedServers = filterSelectedServers(get().workflowSelectedServers)
@@ -166,9 +171,10 @@ export const useMCPStore = create<MCPState>()(
             // Idle/not_loaded catalog entries must not trigger polling.
             const hasLoadingServers = toolList.some((t: ToolDefinition) => t.status === 'loading')
             if (hasLoadingServers) {
-              setTimeout(() => get().refreshTools(), 2000)
+              setTimeout(() => { if (generation === mcpGeneration) void get().refreshTools() }, 2000)
             }
           } catch (error) {
+            if (generation !== mcpGeneration) return
             set({
               toolsError: error instanceof Error ? error.message : 'Failed to load tools',
               isLoadingTools: false
@@ -198,6 +204,7 @@ export const useMCPStore = create<MCPState>()(
         },
 
         loadToolDetails: async (serverName) => {
+          const generation = mcpGeneration
           const state = get()
           if (state.toolDetails[serverName] || state.loadingToolDetails.has(serverName)) {
             return // Already loaded or loading
@@ -209,6 +216,7 @@ export const useMCPStore = create<MCPState>()(
 
           try {
             const toolDetail = await agentApi.getToolDetail(serverName)
+            if (generation !== mcpGeneration) return
             set((state) => ({
               toolDetails: {
                 ...state.toolDetails,
@@ -217,6 +225,7 @@ export const useMCPStore = create<MCPState>()(
               loadingToolDetails: new Set([...state.loadingToolDetails].filter(s => s !== serverName))
             }))
           } catch (error) {
+            if (generation !== mcpGeneration) return
             console.error(`Failed to load tool details for ${serverName}:`, error)
             set((state) => ({
               loadingToolDetails: new Set([...state.loadingToolDetails].filter(s => s !== serverName))
@@ -243,8 +252,10 @@ export const useMCPStore = create<MCPState>()(
 
         // Log actions
         fetchServerLogs: async (serverName?: string) => {
+          const generation = mcpGeneration
           try {
             const response = await mcpConfigApi.getServerLogs(serverName)
+            if (generation !== mcpGeneration) return
             set((state) => ({
               serverLogs: { ...state.serverLogs, ...response.logs }
             }))
@@ -280,6 +291,7 @@ export const useMCPStore = create<MCPState>()(
 
         // Generic actions
         reset: () => {
+          mcpGeneration += 1
           set({
             toolList: [],
             enabledServers: [],
@@ -293,6 +305,7 @@ export const useMCPStore = create<MCPState>()(
             showMCPDetails: false,
             showRegistryModal: false,
             showConfigEditor: false,
+            showApiTester: null,
             serverLogs: {},
             isLoadingTools: true,
             toolsError: null
@@ -309,13 +322,15 @@ export const useMCPStore = create<MCPState>()(
       }),
       {
         name: 'mcp-store',
+        version: 1,
+        // Drop unowned pre-private MCP preferences and tool metadata.
+        migrate: () => ({}),
         partialize: (state) => ({
           // Only persist user preferences, not temporary state
           enabledServers: state.enabledServers,
           chatSelectedServers: state.chatSelectedServers,
           workflowSelectedServers: state.workflowSelectedServers,
           expandedServers: Array.from(state.expandedServers), // Convert Set to Array for persistence
-          toolDetails: state.toolDetails
         }),
         onRehydrateStorage: () => (state) => {
           // Convert expandedServers array back to Set

@@ -18,6 +18,10 @@ const (
 )
 
 type RuntimePolicy struct {
+	// BridgeTools names registered profile tools exposed as direct native MCP
+	// calls. The bridge advertises only admitted, registered tools; naming one
+	// here does not bypass ToolPolicy or give access to other platform tools.
+	BridgeTools     []string         `json:"bridge_tools,omitempty" yaml:"bridge_tools,omitempty"`
 	Transport       string           `json:"transport" yaml:"transport"`
 	Provider        string           `json:"provider,omitempty" yaml:"provider,omitempty"`
 	ModelID         string           `json:"model_id,omitempty" yaml:"model_id,omitempty"`

@@ -1,3 +1,4 @@
+import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import React, { useEffect, useRef, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 
@@ -9,7 +10,8 @@ interface IconPopoverProps {
   icon: React.ReactNode
   /** Accessible label, also shown as the trigger tooltip. */
   label: string
-  children: React.ReactNode
+  navigationLabel?: string
+  children: React.ReactNode | ((close: () => void) => React.ReactNode)
   /** Side the panel anchors to relative to the trigger. */
   align?: 'left' | 'right'
   badge?: React.ReactNode
@@ -26,6 +28,7 @@ interface IconPopoverProps {
 export default function IconPopover({
   icon,
   label,
+  navigationLabel,
   children,
   align = 'right',
   badge,
@@ -33,6 +36,7 @@ export default function IconPopover({
   dataTestid,
   panelClassName = 'w-80',
 }: IconPopoverProps) {
+  const sidebar = useProductNavigationSidebar()
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -60,24 +64,27 @@ export default function IconPopover({
         <TooltipTrigger asChild>
           <button
             type="button"
+            data-product-navigation-action
             data-tour={dataTour}
             data-testid={dataTestid}
             onClick={() => setOpen(prev => !prev)}
             aria-label={label}
+            aria-expanded={open}
             className={`relative ${iconButtonClass} ${open ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200' : ''}`}
           >
             {icon}
+            <ProductNavigationLabel>{navigationLabel || label}</ProductNavigationLabel>
             {badge}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
+        <TooltipContent side={sidebar ? 'right' : 'bottom'}>{label}</TooltipContent>
       </Tooltip>
 
       {open && (
         <div
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2 ${panelClassName} max-h-[75vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[60] p-3`}
+          className={`absolute ${sidebar ? 'left-[calc(100%+12px)] bottom-0' : `${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2`} ${panelClassName} max-w-[calc(100vw-5rem)] max-h-[75vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[60] p-3`}
         >
-          {children}
+          {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
     </div>

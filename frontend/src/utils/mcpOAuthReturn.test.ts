@@ -42,3 +42,11 @@ describe('MCP consent return', () => {
     expect(consumeMcpConsentReturnPath('state-1')).toBeNull()
   })
 })
+
+it('keeps a Vault consent request through platform sign-in', () => {
+  const vault = `/oauth/vault?request=mcp_req_${'b'.repeat(64)}`
+  expect(mcpConsentReturnPath(vault)).toBe(vault)
+  rememberMcpConsentReturnPath(vault, 'vault-sign-in')
+  expect(consumeMcpConsentReturnPath('vault-sign-in')).toBe(vault)
+  expect(mcpConsentReturnPath(vault + '&redirect=https://evil.example')).toBeNull()
+})

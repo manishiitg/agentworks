@@ -1,3 +1,4 @@
+import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -14,6 +15,7 @@ interface GlobalActivityButtonProps {
 }
 
 export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalActivityButtonProps) {
+  const sidebar = useProductNavigationSidebar()
   const [hasRecentActivity, setHasRecentActivity] = useState(false)
   const refreshSequence = useRef(0)
   const pathKey = workspacePaths.join('\u0000')
@@ -51,6 +53,7 @@ export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalA
       <TooltipTrigger asChild>
         <button
           type="button"
+          data-product-navigation-action
           onClick={onOpen}
           data-tour="global-activity"
           aria-label="Activity"
@@ -61,10 +64,11 @@ export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalA
               ? 'text-sky-500/70 hover:bg-sky-500/5 dark:text-sky-400/70'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
         >
-          <Inbox className="h-4 w-4" />
+          <Inbox className="h-4 w-4 shrink-0" />
+          <ProductNavigationLabel>Activity</ProductNavigationLabel>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{hasRecentActivity ? 'Activity · Updates in the last 24 hours' : 'Activity · Updates'}</TooltipContent>
+      <TooltipContent side={sidebar ? 'right' : 'bottom'}>{hasRecentActivity ? 'Activity · Updates in the last 24 hours' : 'Activity · Updates'}</TooltipContent>
     </Tooltip>
   )
 }

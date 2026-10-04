@@ -29,6 +29,19 @@ that established this.
 - `bare` variant when the shell owns the row (Costs, Execution Logs),
   `sticky` for scroll views — both visually identical to the standard.
 
+## Nested sections
+
+Use breadcrumb navigation when a section has its own tabs. Render
+`WorkspaceViewBreadcrumbs` as the shared header title: its Back action returns
+to the parent section picker. Only the current section's tabs appear in
+`WorkspaceViewHeader.tabs`; do not stack parent tabs above child tabs.
+
+Integrations uses the shared `IntegrationSectionPicker` for Plugins, Slack,
+WhatsApp, Google apps and Connect (subject to product permissions). Inside
+Plugins, one header row contains Connected, Available, Secrets, Skills and
+Vault. `ProjectPluginsPanel` accepts the controlled header tab and renders
+content without another tab row. Crew, Code, workflows and Relay reuse it.
+
 ## Ask AI and chat
 
 One function sends every right-pane message to chat:
@@ -184,3 +197,14 @@ active tab (a nonce key), since every tab loads on mount.
 Plain business words everywhere the user reads: "apps", "passwords and
 keys", "folders", "bots". Workflow nouns for automations, project nouns
 for Crew. No jargon, no config keys, no emoji as icons.
+
+
+### Shared sidebar and product actions
+
+- The shared icon rail is 48px wide with 36px tall controls and 6px side padding. Keep product icons and hover/focus flyouts unchanged when adjusting its density.
+- The product picker shows the current product icon; hover, click, or Arrow Down opens the permitted product list beside the rail. Escape or leaving the picker closes it.
+- The bottom utility section is shared across products: active work, Providers, Connect an AI agent (MCP), Users & access (administrators), and Account.
+- Activity belongs to Goals/workflows. Schedules and triggers belong to Goals/workflows and Crew, and sit with product actions above the shared utilities. Code and Vault do not show schedule actions. Relays are API-only and do not support timed schedules (PLAT-433).
+- Schedules uses one row, **Schedules · Triggers**, scoped to the current product. Crew uses product schedules; Goals/workflows filter workflow records and exclude Relays.
+- Full-page utilities and Activity use `WorkspaceBackButton`; returning closes overlays and restores the product workspace.
+- Users & access reuses the Vault directory panel. UI invitations grant Vault only; other product access continues through platform provisioning.

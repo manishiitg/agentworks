@@ -1758,3 +1758,25 @@
 .runloop-raw-xterm .xterm-scrollable-element > .scrollbar > .slider {
   border-radius: 999px;
 }
+
+/* Global navigation reuses the header controls in a vertical layout. */
+[data-product-navigation="sidebar"] [data-product-navigation-action] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: .5rem;
+  border-radius: .5rem;
+  color: hsl(var(--muted-foreground));
+}
+[data-product-navigation="sidebar"] [data-product-navigation-action]:hover,
+[data-product-navigation="sidebar"] [data-product-navigation-action][aria-pressed="true"],
+[data-product-navigation="sidebar"] [data-product-navigation-action][aria-expanded="true"],
+[data-product-navigation="sidebar"] [data-product-navigation-action][aria-current="page"] {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+[data-product-navigation="sidebar"] [data-product-navigation-action] > svg { flex-shrink: 0; width: 1.125rem; height: 1.125rem; }
+[data-product-navigation="sidebar"] img { max-width: 2rem; object-fit: contain; }

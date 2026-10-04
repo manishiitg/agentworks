@@ -40,7 +40,7 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	api.logger = loggerv2.NewNoop()
 	const logical = "Chats/Code/projects/app-c0de0001"
 	root := codePrivacyOwnerRoot
-	store := placeMCPStoreID("owner", root)
+	store := "owner"
 
 	rec := personalRoute(api, (*StreamingAPI).handlePlaceMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
 	var listed struct {
@@ -104,12 +104,12 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	if _, other, err := placeMCPServerConfig(placeMCPStoreID("other", root), "gmail"); err == nil {
 		t.Fatalf("another store resolved the Code's connection: %+v", other)
 	}
-	// Adding the name again starts clean: the old client never reaches
-	// whatever the name points at now.
+	// Attaching the same catalog account again keeps its sealed login. A
+	// custom URL replacement still goes through addPlaceMCP and clears login.
 	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("re-add = %d %s", rec.Code, rec.Body.String())
 	}
-	if _, cfg, err := placeMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
-		t.Fatalf("old client survived a re-add: %+v, %v", cfg.OAuth, err)
+	if _, cfg, err := placeMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "cid.apps.googleusercontent.com" {
+		t.Fatalf("private account lost its client on reuse: %+v, %v", cfg.OAuth, err)
 	}
 }

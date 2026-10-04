@@ -3,10 +3,10 @@ const PREFIX = 'agentworks:mcp-consent:oauth:'
 export function mcpConsentReturnPath(value: string | null): string | null {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null
   const url = new URL(value, 'https://agentworks.invalid')
-  if (url.pathname !== '/oauth/consent') return null
+  if (url.pathname !== '/oauth/consent' && url.pathname !== '/oauth/vault') return null
   const request = url.searchParams.get('request')
   if (!request || !/^mcp_req_[a-f0-9]{64}$/.test(request) || [...url.searchParams.keys()].some(key => key !== 'request')) return null
-  return `/oauth/consent?request=${request}`
+  return `${url.pathname}?request=${request}`
 }
 
 export function cliConsentReturnPath(value: string | null): string | null {

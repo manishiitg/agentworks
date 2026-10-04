@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
-import { Settings, Copy, ArrowLeft, Eye, CalendarClock } from 'lucide-react'
+import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { hasWorkflowCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
 import { useModeStore } from '../stores/useModeStore'
@@ -23,6 +23,7 @@ import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
+import { ProductTopBar, ProductTopBarActions, ProductTopBarMain, ProductNavigationLabel } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
@@ -63,7 +64,7 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     selectedTools: caps?.selected_tools || [],
     selectedSkills: caps?.selected_skills || [],
     selectedSecrets: caps?.selected_secrets || [],
-    selectedGlobalSecretNames: caps?.selected_global_secret_names ?? null,
+    selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
     browserMode: (caps?.browser_mode || 'auto') as CustomPreset['browserMode'],
     cdpPorts: caps?.cdp_ports || [],
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
@@ -80,6 +81,8 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
 interface ModePresetBarProps {
   /** Product-owned control rendered in the same slot as AgentWorks' automation selector. */
   productControl?: React.ReactNode
+  /** Additional product-owned entries in the navigation rail. */
+  productActions?: React.ReactNode
   /** Keep the AgentWorks bar and shared controls while omitting automation-only actions. */
   reduced?: boolean
   /** Product surface and readiness for its context-specific walkthrough. */
@@ -88,8 +91,11 @@ interface ModePresetBarProps {
   walkthroughPaused?: boolean
 }
 
-export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
+export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, productActions, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
+  const productSurface = useProductSurfaceStore(state => state.productSurface)
+  const isRelaySurface = productSurface === 'relays'
+  const hasProductActivity = productSurface === 'agentworks'
+  const hasProductSchedules = ['agentworks', 'work'].includes(productSurface)
   const { selectedModeCategory, setModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
     setModeCategory: state.setModeCategory,
@@ -118,7 +124,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     savePreset,
     duplicatePreset,
     refreshPresets,
-    loading: presetsLoading
+    loading: presetsLoading,
+    workflowPresetsLoaded,
   } = usePresetManagement()
 
   const {
@@ -164,7 +171,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const [pendingDuplicatePreset, setPendingDuplicatePreset] = useState<{ id: string; label: string } | null>(null)
   const [duplicatingPreset, setDuplicatingPreset] = useState(false)
   const [llmDiscoveryReady, setLLMDiscoveryReady] = useState(() => getLLMDiscoveryOnboardingState() === 'cleared')
-  const workflowPresetsLoaded = useGlobalPresetStore(state => state.workflowPresetsLoaded)
   // The persisted preset ID arrives before its manifest. Until the initial
   // fetch finishes, an existing automation looks like an empty workspace.
   const walkthroughStartupReady = walkthroughReady && (productWalkthroughSurface !== undefined || workflowPresetsLoaded)
@@ -583,14 +589,15 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     }
   }, [duplicatePreset, duplicatingPreset, handlePresetClick, pendingDuplicatePreset])
 
-  // Refresh presets when switching to workflow mode
+  // An empty automation list is a valid loaded state. Checking its length here
+  // retriggers refresh after every empty response and blocks the UI thread.
   useEffect(() => {
-    if (selectedModeCategory === 'workflow' && workflowPresets.length === 0 && !presetsLoading) {
+    if (selectedModeCategory === 'workflow' && !workflowPresetsLoaded && !presetsLoading) {
       refreshPresets().catch(error => {
         console.error('[ModePresetBar] Failed to refresh presets:', error)
       })
     }
-  }, [selectedModeCategory, workflowPresets.length, presetsLoading, refreshPresets])
+  }, [selectedModeCategory, workflowPresetsLoaded, presetsLoading, refreshPresets])
 
   // Refresh presets when dropdown is opened for workflow mode
   const handlePresetDropdownToggle = useCallback(() => {
@@ -618,34 +625,24 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <div data-terminal-focus-chrome="header" className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
+      <ProductTopBar sidebar>
           {/* Product and current automation */}
-          <div className="flex min-w-0 items-center gap-3">
+          <ProductTopBarMain>
             <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
+            <GlobalActivityMonitor />
 
             {productControl}
 
-            {isGlobalPage && (
-              <button
-                type="button"
-                onClick={returnToWorkspace}
-                className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="Back to workspace"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Back</span>
-              </button>
-            )}
+
 
             {isEffectiveReadOnly && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                     <Eye className="w-3 h-3" />
-                    <span>Read-only</span>
+                    <span className="sr-only">Read-only</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
@@ -782,12 +779,56 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 return null
               })()}
             </div>
-          </div>
+            {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
+              <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col gap-1 border-t border-border pt-3">
+              {hasProductActivity && <GlobalActivityButton
+                workspacePaths={workflowActivityPaths}
+                active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
+                onOpen={() => {
+                  useLLMStore.getState().setShowLLMModal(false)
+                  setAdminPage(null)
+                  setShowSchedulesOverview(false)
+                  setActivityWorkflowPath(null)
+                  setShowWorkflowsOverview(true)
+                }}
+              />}
 
-          {/* Right: icons */}
+              {hasProductSchedules && <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      useLLMStore.getState().setShowLLMModal(false)
+                      setAdminPage(null)
+                      setShowWorkflowsOverview(false)
+                      setShowSchedulesOverview(true)
+                    }}
+                    data-tour="global-schedules"
+                    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
+                    aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
+                    data-product-navigation-action
+                    className={`relative rounded-md p-1.5 transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                  >
+                    <CalendarClock className="h-4 w-4 shrink-0" />
+                    <ProductNavigationLabel>Schedules & triggers</ProductNavigationLabel>
+                    {schedulerPaused === true && (
+                      <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
+              </Tooltip>}
+
+              </div>
+            </TooltipProvider>}
+          </ProductTopBarMain>
+
+          {/* Shared actions remain at the bottom in every product. */}
           <TooltipProvider delayDuration={400}>
-            <div className="flex shrink-0 items-center gap-2">
-              <GlobalActivityMonitor />
+            <ProductTopBarActions>
+              {productActions && <div className="mb-2 border-b border-border pb-3" data-product-navigation-divider="product-platform">{productActions}</div>}
 
               <ProvidersControl />
 
@@ -795,52 +836,15 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
               <UsersControl />
 
-              {!reduced && !isRelaySurface && <GlobalActivityButton
-                workspacePaths={workflowActivityPaths}
-                active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
-                onOpen={() => {
-                  useLLMStore.getState().setShowLLMModal(false)
-                  setShowSchedulesOverview(false)
-                  setActivityWorkflowPath(null)
-                  setShowWorkflowsOverview(true)
-                }}
-              />}
-
-              {!isRelaySurface && <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      useLLMStore.getState().setShowLLMModal(false)
-                      setShowWorkflowsOverview(false)
-                      setShowSchedulesOverview(true)
-                    }}
-                    data-tour="global-schedules"
-                    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
-                    aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
-                    className={`relative rounded-md p-1.5 transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                  >
-                    <CalendarClock className="h-4 w-4" />
-                    {schedulerPaused === true && (
-                      <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
-              </Tooltip>}
-
-              <span className="mx-0.5 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+              <span className="mx-0.5 h-px w-full bg-border" />
               <WorkspaceTopBarControls
                 onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
                 onOpenShortcuts={reduced ? undefined : () => setShowShortcuts(true)}
               />
 
-            </div>
+            </ProductTopBarActions>
           </TooltipProvider>
-        </div>
-      </div>
+      </ProductTopBar>
 
       {/* Keyboard Shortcuts & Tips Modal */}
       {showShortcuts && (

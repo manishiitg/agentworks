@@ -355,6 +355,7 @@ func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *
 }
 
 func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T) {
+	withVaultSecretGrant(t, "user-1", "SHARED_TOKEN")
 	store, err := chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +399,7 @@ func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T)
 	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 1 || (*req.SelectedGlobalSecrets)[0] != "SHARED_TOKEN" {
 		t.Fatalf("Crew global selection = %#v", req.SelectedGlobalSecrets)
 	}
-	resolved := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+	resolved := api.mergeGlobalSecretsFor(context.Background(), userID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 	if len(resolved) != 1 || resolved[0].Name != "SHARED_TOKEN" || resolved[0].Value != "selected-value" {
 		t.Fatalf("Crew received globals outside its explicit allowlist: %#v", resolved)
 	}

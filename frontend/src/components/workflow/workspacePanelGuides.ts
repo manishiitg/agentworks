@@ -249,7 +249,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: surface === 'crew' ? 'Set this Crew member’s name, icon, role, and purpose.' : 'Set this workflow’s name, icon, objective, and success criteria.',
     howTo: 'Review the current identity, then save changes that describe what this work should accomplish.',
   }),
-  'Identity · Secrets': surface => ({
+  'Integrations · Secrets': surface => ({
     purpose: `Choose saved credentials this ${surface === 'crew' ? 'Crew project' : 'workflow'} may use.`,
     howTo: 'Select only the secrets needed for its work. Secret values remain hidden; do not paste them into chat.',
   }),
@@ -264,6 +264,15 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   'Identity · Upgrades': () => ({
     purpose: 'Review available updates for this AgentWorks workflow.',
     howTo: 'Inspect what an upgrade changes before applying it to the workflow.',
+  }),
+  'Integrations · Plugins': surface => ({
+    purpose: `Private app connections, project secrets, skills and shared Vault access for this ${surface === 'crew' ? 'project' : 'workflow'}.`,
+    howTo: 'Use Back to return to other integrations. Choose a tab in this header to change the type of resource.',
+    steps: [
+      'Connected shows your private accounts; Available lets you add another account with its own login.',
+      'Secrets and Skills manage resources for this project.',
+      'Vault shows your groups and the shared connections and secret names they permit. Select the resources this project should use.',
+    ],
   }),
   'Integrations · MCPs': surface => ({
     purpose: `MCPs (Model Context Protocol servers) give this ${surface === 'crew' ? 'Crew member' : 'workflow'} tools from external apps and services.`,

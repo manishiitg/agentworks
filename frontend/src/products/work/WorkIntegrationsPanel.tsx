@@ -1,27 +1,28 @@
-import { useMemo, useRef, useState } from 'react'
+import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
+import { useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { AlertTriangle, Server } from 'lucide-react'
-import { ToolSelectionSection } from '../../components/ToolSelectionSection'
-import { isSelectedServer, serverNamesMatch } from '../../utils/mcpServerAlias'
+import { Server } from 'lucide-react'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
-import { PlaceMcpSection } from './PlaceMcpSection'
+import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
+import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
+import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
+import { ProjectMcpPanel } from '../../components/integrations/ProjectMcpPanel'
 import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
-import { useMCPStore } from '../../stores/useMCPStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
 
-export type WorkIntegrationTab = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
-  { value: 'apps', label: 'MCPs' },
-  { value: 'skills', label: 'Skills' },
+  { value: 'apps', label: 'Plugins' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'gmail', label: 'Google apps' },
@@ -31,6 +32,7 @@ const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
 function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, string> {
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
+    secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
@@ -40,52 +42,24 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 }
 
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
-// the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
+// the shared MCP browser, scoped to this Code's private and permitted Vault connections;
 // the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
 // Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
 const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
-export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
+export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
+  view?: 'connected' | 'available'
+  vault?: boolean
+  selectedSecrets?: string[]
+  onSelectedSecretsChange?: (names: string[]) => Promise<unknown> | void
   tabId: string
   projectId: string
   workspacePath: string
   onAsk: (message: string) => Promise<void>
   onSelectedServersChange: (servers: string[]) => Promise<unknown>
 }) {
+  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
-  const toolList = useMCPStore(state => state.toolList)
-  const toolsLoading = useMCPStore(state => state.isLoadingTools)
-  // Mirror the workflow tab: connected servers plus already-selected ones
-  // (a selected-but-since-disconnected server stays visible/manageable
-  // instead of silently vanishing from the project's config).
-  const availableServers = useMemo(() => {
-    const connected = toolList
-      .filter(tool => tool.connection === 'connected' && tool.server)
-      .map(tool => tool.server as string)
-    return [...new Set([...connected, ...selectedServers.filter(server => server !== 'NO_SERVERS')])]
-  }, [toolList, selectedServers])
-  const actualSelected = selectedServers.filter(server => server !== 'NO_SERVERS')
-  const selectedAvailableServers = useMemo(() => availableServers.filter(serverName => isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
-  const unselectedAvailableServers = useMemo(() => availableServers.filter(serverName => !isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
-  // Selected for this project but not connected to the platform (e.g. a Crew
-  // the Builder created with an app that still needs sign-in). Its tools do
-  // not work until someone connects it, so say so and offer the way.
-  // While the tool list reloads, keep showing what was last known instead of
-  // blinking the notice away (it vanished right after Connect on RTS: the
-  // reload hid it mid-action, 2026-09-28 QA #205 BUG_ID_004).
-  const lastNeedsConnecting = useRef<string[]>([])
-  const needsConnecting = useMemo(() => {
-    if (toolsLoading) return lastNeedsConnecting.current
-    const next = actualSelected.filter(serverName =>
-      !toolList.some(tool => tool.server && serverNamesMatch(tool.server, serverName) && tool.connection === 'connected'))
-    lastNeedsConnecting.current = next
-    return next
-  }, [toolsLoading, actualSelected, toolList])
-  // Connecting a platform app is admin-only (an admin-only action); for
-  // anyone else Connect cannot do anything, so say who can.
-  const canConnectApps = useAuthStore(state =>
-    state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
-  )
   const setSelected = async (servers: string[]) => {
     const store = useChatStore.getState()
     const selected = servers.length > 0 ? servers : ['NO_SERVERS']
@@ -93,7 +67,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
       await onSelectedServersChange(servers)
     } catch (cause) {
       store.addToast(cause instanceof Error ? cause.message : 'Could not save project integrations.', 'error')
-      return
+      throw cause
     }
     for (const tab of Object.values(store.chatTabs)) {
       if (!projectId || !isProjectProductId(tab.metadata?.agentProfileId) || tab.metadata?.agentProfileProjectId !== projectId) continue
@@ -104,86 +78,22 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
-      {/* A Crew's own connections with someone's login. A shared Crew
-          arrives under its owner's _users/ path: viewers see, never add. */}
-      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
-      {needsConnecting.length > 0 && (
-        <div data-testid="work-mcp-needs-connecting" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Needs connecting
-          </div>
-          <p className="mt-1 text-xs leading-5">
-            This project uses {needsConnecting.length === 1 ? 'an app that is' : 'apps that are'} not connected yet. Its tools won't work until {needsConnecting.length === 1 ? 'it is' : 'they are'} connected.
-          </p>
-          <ul className="mt-2 space-y-1.5">
-            {needsConnecting.map(serverName => (
-              <li key={serverName} className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{serverName}</span>
-                {!canConnectApps && <span className="text-xs text-amber-800/80 dark:text-amber-200/80">Only an admin can connect it.</span>}
-                <button
-                  type="button"
-                  className="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
-                  onClick={() => void onAsk(`Help me connect ${serverName} for this project. It is selected but not connected yet; walk me through signing in or adding its credentials.`)}
-                >
-                  Ask agent
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {selectedAvailableServers.length > 0 && (
-        <div>
-          <div className="mb-3 text-sm font-medium text-muted-foreground">
-            This project
-          </div>
-          <ToolSelectionSection
-            stepId="project-selected"
-            availableServers={selectedAvailableServers}
-            selectedServers={actualSelected}
-            selectedTools={[]}
-            onServerChange={(servers) => void setSelected(servers)}
-            onToolChange={() => {}}
-            agentMode="multi-agent"
-            hideHeader
-            hideToolDetails
-            manageOwnScroll={false}
-          />
-        </div>
-      )}
-      {unselectedAvailableServers.length > 0 && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="mb-1 text-sm font-medium text-muted-foreground">
-            Platform connected
-          </div>
-          <p className="mb-3 text-xs leading-5 text-muted-foreground">
-            Shared with everyone. Tick one to let this project use it.
-          </p>
-          <ToolSelectionSection
-            stepId="project-available"
-            availableServers={unselectedAvailableServers}
-            selectedServers={actualSelected}
-            selectedTools={[]}
-            onServerChange={(servers) => void setSelected(servers)}
-            onToolChange={() => {}}
-            agentMode="multi-agent"
-            hideHeader
-            hideToolDetails
-            manageOwnScroll={false}
-          />
-        </div>
-      )}
+      {vault ? <ProjectVaultPanel selectedServers={selectedServers} onSelectedServersChange={setSelected} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={workspacePath.startsWith('_users/')} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
+        selectedServers={selectedServers} onSelectedServersChange={setSelected} />}
     </div>
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
+export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange, onSelectedGlobalSecretsChange }: {
   workspacePath: string
   projectId: string
   projectTitle: string
   projectTemplates: Array<{ id: string; version: number }>
   tabId: string
+  selectedSecrets?: string[]
+  selectedGlobalSecrets?: string[]
+  onSelectedSecretsChange?: (names: string[]) => Promise<unknown>
+  onSelectedGlobalSecretsChange?: (names: string[]) => Promise<unknown>
   enabledPanels?: Set<string>
   onAsk: (message: string) => Promise<void>
   onSelectedServersChange: (servers: string[]) => Promise<unknown>
@@ -200,6 +110,12 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
+  const [integrationMenu, setIntegrationMenu] = useState(false)
+  const [pluginTab, setPluginTab] = useProjectPluginTab()
+  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
+  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
   const toggleSkill = async (folderName: string) => {
@@ -224,34 +140,42 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Server}
-        title="Integrations"
+        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={visibleTabs.find(option => option.value === activeTab)?.label ?? 'Plugins'} onBack={() => setIntegrationMenu(true)} />}
         helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
-        subtitle="Choose connected apps, skills, and bots for this project."
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={integrationTabAskAIMessage(product.noun)[activeTab]}
+            message={activeTab === 'apps' && activePluginTab === 'vault'
+              ? `Help me choose from my Vault groups' permitted connections and secrets for this ${product.noun} project. Check my current access and selection; never show secret values.`
+              : integrationTabAskAIMessage(product.noun)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
+        tabs={!integrationMenu && activeTab === 'apps' ? { value: activePluginTab, onChange: value => setPluginTab(value as typeof pluginTab), options: [...pluginTabs], ariaLabel: 'Plugins' } : undefined}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'apps' && product.profileId === 'code' && (
-          // A Code is a place like a Crew: its connections are its own, added
-          // by its owner (the physical _users/ path names that owner).
-          <PlaceMcpSection workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
-        )}
-        {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody
+        {integrationMenu ? <IntegrationSectionPicker options={visibleTabs} onSelect={value => { setTab(value as WorkIntegrationTab); setIntegrationMenu(false) }} /> : <>
+        {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
+          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
+              await onSelectedServersChange(servers)
+              const store = useChatStore.getState()
+              for (const chat of Object.values(store.chatTabs)) {
+                if (chat.metadata?.agentProfileId === 'code' && chat.metadata?.agentProfileProjectId === projectId) {
+                  store.setTabConfig(chat.tabId, { selectedServers: servers.length ? servers : ['NO_SERVERS'] })
+                  store.setTabMetadata(chat.tabId, { agentProfileRuntimeDirty: true, agentProfileMCPSelectionInitialized: true })
+                }
+              }
+            }} />) : (<WorkMCPTabBody view={view}
           tabId={tabId}
           projectId={projectId}
           workspacePath={workspacePath}
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
-        />}
-        {activeTab === 'skills' && <SkillsManagerPanel
+        />)) : undefined}
+          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <SecretSelectionSection showGlobalSecrets={false} selectedSecrets={selectedSecrets} workflowPath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)} /> : undefined}
+          skills={(!enabledPanels || enabledPanels.has('skills')) ? (<SkillsManagerPanel
           compact
           selectedOnly
           manageOwnScroll={false}
@@ -260,6 +184,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
           selectionScopeLabel="project"
           emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
+        />) : undefined}
+          vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
@@ -290,6 +216,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           </>
         )}
         {activeTab === 'cli' && <CliMcpSetupPanel />}
+        </>}
       </div>
     </div>
   )

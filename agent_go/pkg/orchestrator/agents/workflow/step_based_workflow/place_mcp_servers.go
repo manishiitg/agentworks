@@ -14,11 +14,11 @@ import (
 var PlaceMCPServers func(ctx context.Context, workspacePath string) ([]string, mcpclient.RuntimeOverrides)
 
 // addPlaceMCPServers adds the workflow's own connections to a step agent.
-func (hcpo *StepBasedWorkflowOrchestrator) addPlaceMCPServers(config *agents.OrchestratorAgentConfig) {
+func (hcpo *StepBasedWorkflowOrchestrator) addPlaceMCPServers(ctx context.Context, config *agents.OrchestratorAgentConfig) {
 	if PlaceMCPServers == nil || config == nil {
 		return
 	}
-	names, overrides := PlaceMCPServers(context.Background(), hcpo.GetWorkspacePath())
+	names, overrides := PlaceMCPServers(ctx, hcpo.GetWorkspacePath())
 	if len(names) == 0 {
 		return
 	}

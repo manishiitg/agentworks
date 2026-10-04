@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -44,6 +46,51 @@ func redactedURL(raw string) string {
 	}
 	u.RawQuery, u.Fragment, u.User = "", "", nil
 	return u.String()
+}
+
+// ensurePrivateMCP is shared by project UI, Code and builder setup tools.
+// A label creates a new account. Unlabelled requests reuse an exact connection
+// ID or an unambiguous provider alias without clearing its stored login.
+func (api *StreamingAPI) ensurePrivateMCP(ctx context.Context, person string, body placeMCPServer, catalog string) (placeMCPServer, int, error) {
+	if strings.TrimSpace(body.Label) == "" && strings.TrimSpace(body.URL) == "" {
+		selector := strings.TrimSpace(body.Name)
+		if selector == "" {
+			selector = catalog
+		}
+		saved, found, err := lookupPrivateMCP(person, selector)
+		if err != nil {
+			return placeMCPServer{}, http.StatusBadRequest, err
+		}
+		if found {
+			if catalog != "" && !strings.EqualFold(saved.Catalog, catalog) && !strings.EqualFold(saved.Name, catalog) {
+				return placeMCPServer{}, http.StatusBadRequest, fmt.Errorf("connection does not belong to requested provider")
+			}
+			return saved, http.StatusOK, nil
+		}
+	}
+	if strings.TrimSpace(body.Label) != "" {
+		baseName := body.Name
+		if catalog != "" {
+			entry, ok := api.placeMCPCatalogEntry(catalog)
+			if !ok {
+				return placeMCPServer{}, http.StatusBadRequest, fmt.Errorf("%q is not a remote server in the catalog", catalog)
+			}
+			baseName = entry.Name
+		}
+		base := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(baseName), "_"), "_")
+		if base == "" {
+			base = "mcp"
+		}
+		if len(base) > 24 {
+			base = base[:24]
+		}
+		random := make([]byte, 6)
+		if _, err := rand.Read(random); err != nil {
+			return placeMCPServer{}, http.StatusInternalServerError, err
+		}
+		body.Name = base + "_" + hex.EncodeToString(random)
+	}
+	return api.addPlaceMCP(ctx, person, body, catalog)
 }
 
 // addPlaceMCP adds (or replaces) one of the person's servers: a catalog
@@ -132,7 +179,7 @@ func (api *StreamingAPI) addPlaceMCP(ctx context.Context, userID string, body pl
 // and token requests, the token sealed in their own store. It returns the
 // URL to open, or a discovery answer when the provider needs the person's own
 // OAuth app (entered then carries its client ID and secret).
-func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI string, entered *registeredClient) (string, *OAuthDiscoveryResponse, int, error) {
+func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionID string, entered *registeredClient) (string, *OAuthDiscoveryResponse, int, error) {
 	internal, cfg, err := placeMCPServerConfigFor(userID, name, true)
 	if err != nil {
 		return "", nil, http.StatusNotFound, err
@@ -174,10 +221,14 @@ func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI string, e
 			cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = "", ""
 		}
 	}
-	start, discovery, err := api.runOAuthFlow("", redirectURI, oauthFlowTarget{
+	notificationID := "private-oauth:" + name + ":" + newSteerMessageID()
+	start, discovery, err := api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
 		Name:       internal,
 		Config:     cfg,
 		ClientFile: placeMCPClientFile(dir, userID, name),
+		Notify: func(success bool, detail string) {
+			api.notifyPrivateOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
+		},
 		Discoverer: oauth.Discoverer{Client: netguard.Client(30 * time.Second)},
 		OnSuccess: func(*OAuthFlowState) {
 			if entered != nil {

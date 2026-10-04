@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,7 +58,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 		t.Fatalf("list = %s", out)
 	}
 	out := call(map[string]interface{}{"action": "connect", "catalog": "AcmeMail"})
-	if !strings.Contains(out, "MCP") || !strings.Contains(out, "api/oauth/callback") {
+	if !strings.Contains(out, "Integrations → Plugins → Available") || !strings.Contains(out, "api/oauth/callback") {
 		t.Fatalf("connect = %s", out)
 	}
 	if attached, _ := placeMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "acmemail" || attached[0].Owner != "owner" {
@@ -63,8 +67,8 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	if attached, _ := placeMCPAttachmentsFor(otherCode); len(attached) != 0 {
 		t.Fatalf("connection reached another Code: %+v", attached)
 	}
-	if servers, _ := listPlaceMCPServers("owner"); len(servers) != 0 {
-		t.Fatalf("connection stored in the person's own store: %v", servers)
+	if servers, _ := listPlaceMCPServers("owner"); len(servers) != 1 {
+		t.Fatalf("connection missing from the person's private store: %v", servers)
 	}
 	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"acmemail"`) {
 		t.Fatalf("list after connect = %s", out)
@@ -77,6 +81,10 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 		t.Fatalf("server not removed: %v", servers)
 	}
 
+	if servers, _ := listPlaceMCPServers("owner"); len(servers) != 1 {
+		t.Fatal("detaching destroyed the personal connection used by other projects")
+	}
+
 	// Someone who is not the Code's owner (a participant of a shared Code)
 	// can list but not connect.
 	guest := &placeMCPToolRegistrar{}
@@ -85,5 +93,52 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	}
 	if _, err := guest.exec(context.Background(), map[string]interface{}{"action": "connect", "catalog": "AcmeMail"}); err == nil || !strings.Contains(err.Error(), "owner") {
 		t.Fatalf("a non-owner connected to the Code: %v", err)
+	}
+}
+
+func TestManageMyMCPServersSelectsVaultThroughOwnerGroups(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	secret := strings.Repeat("s", 32)
+	var granted atomic.Bool
+	granted.Store(true)
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rows := []any{}
+		if r.Header.Get("X-CapLayer-Actor") == "owner" && granted.Load() {
+			rows = append(rows, map[string]any{"id": "shared", "label": "Company Linear", "provider": "linear", "tools": []any{map[string]any{"name": "linear__read"}}})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"servers": rows})
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	root := "_users/owner/Chats/Code/projects/test"
+	ws := &mockWorkspaceAPI{files: map[string]string{root + "/workflow.json": `{"schema_version":1,"id":"test","capabilities":{"selected_servers":["my_private"]}}`}}
+	host := httptest.NewServer(ws)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
+	file := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(file, []byte(`{"mcpServers":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{mcpConfigPath: file, logger: loggerv2.NewNoop()}
+	reg := &placeMCPToolRegistrar{}
+	if err := api.registerPlaceMCPTool(reg, "owner", root, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "select", "server": "vault_shared"}); err != nil {
+		t.Fatal(err)
+	}
+	selected, _, err := productSelectedServers(context.Background(), "code", root)
+	if err != nil || len(selected) != 2 || selected[0] != "my_private" || selected[1] != "vault_shared" {
+		t.Fatalf("selection did not preserve private connection: %v %v", selected, err)
+	}
+	granted.Store(false)
+	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "select", "server": "vault_shared"}); err == nil {
+		t.Fatal("Code selection ignored grant revocation")
+	}
+	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "deselect", "server": "vault_shared"}); err != nil {
+		t.Fatal("revoked selection could not be removed")
 	}
 }

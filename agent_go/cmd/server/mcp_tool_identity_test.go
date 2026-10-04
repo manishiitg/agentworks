@@ -47,32 +47,32 @@ func TestMCPToolIdentityUsesSessionOwnerAndRejectsMissingOrConflictingUsers(t *t
 	}
 }
 
-func TestMCPToolListUsesPlatformDiscoveryCache(t *testing.T) {
+func TestMCPToolListUsesOnlyPrivateDiscoveryCache(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	name := "test-account-connector-" + t.Name()
 	cfg := mcpclient.MCPServerConfig{URL: "https://provider.example/mcp", OAuth: &oauth.OAuthConfig{}}
 	api := &StreamingAPI{logger: loggerv2.NewNoop()}
-	owned := cfg
-	oauthConfig := *cfg.OAuth
-	oauthConfig.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
-	owned.OAuth = &oauthConfig
-	if err := os.MkdirAll(filepath.Dir(oauthConfig.TokenFile), 0700); err != nil {
+	withMCPConnectionsRoot(t)
+	_, err := addPlaceMCPServer("alice", placeMCPServer{Name: "private_test", Catalog: name, URL: "https://example.com/mcp", Transport: "http"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(oauthConfig.TokenFile, []byte(`{}`), 0600); err != nil {
+	internal, owned, err := placeMCPServerConfig("alice", "private_test")
+	if err != nil {
 		t.Fatal(err)
 	}
+
 	cache := mcpcache.GetCacheManager(api.logger)
-	entry := &mcpcache.CacheEntry{ServerName: name, CreatedAt: time.Now(), IsValid: true, TTLMinutes: 30, Tools: []llmtypes.Tool{{Function: &llmtypes.FunctionDefinition{Name: "account_search"}}}}
+	entry := &mcpcache.CacheEntry{ServerName: internal, CreatedAt: time.Now(), IsValid: true, TTLMinutes: 30, Tools: []llmtypes.Tool{{Function: &llmtypes.FunctionDefinition{Name: "account_search"}}}}
 	if err := cache.Put(entry, owned); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = cache.Invalidate(mcpcache.GenerateUnifiedCacheKey(name, owned)) })
+	t.Cleanup(func() { _ = cache.Invalidate(mcpcache.GenerateUnifiedCacheKey(internal, owned)) })
 	if status := api.mcpToolStatusForUser(name, "alice", cfg); status.Status != "ok" || len(status.FunctionNames) != 1 {
 		t.Fatalf("platform discovery not shown: %+v", status)
 	}
-	if status := api.mcpToolStatusForUser(name, "bob", cfg); status.Status != "ok" || len(status.FunctionNames) != 1 {
-		t.Fatal("platform authorization was not reusable by another product user")
+	if status := api.mcpToolStatusForUser(name, "bob", cfg); status.Status == "ok" || len(status.FunctionNames) != 0 {
+		t.Fatal("Alice's discovery was visible to Bob")
 	}
 	if cfg.OAuth.TokenFile != "" {
 		t.Fatal("status lookup mutated shared OAuth config")
@@ -91,10 +91,12 @@ func TestMCPInstallToolRejectsAnonymousBridgeBeforeConfigMutation(t *testing.T) 
 	}
 }
 
-func TestMCPInstallBridgeStartsOAuthInPlatformTokenDirectory(t *testing.T) {
+func TestMCPInstallBridgeStartsOAuthInPrivateTokenDirectory(t *testing.T) {
 	for _, reconnect := range []bool{false, true} {
 		t.Run(fmt.Sprintf("reconnect=%v", reconnect), func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			withMCPConnectionsRoot(t)
+			t.Setenv("MULTI_USER_MODE", "false")
 			t.Setenv("PUBLIC_URL", "https://app.example")
 			name := "TestOwnerConnector"
 			cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{
@@ -141,7 +143,8 @@ func TestMCPInstallBridgeStartsOAuthInPlatformTokenDirectory(t *testing.T) {
 				t.Fatal("flow was not registered")
 			}
 			defer func() { flow.ErrChan <- fmt.Errorf("test canceled before authorization") }()
-			if got := flow.ServerConfig.OAuth.TokenFile; got != getUserTokenFilePath(platformMCPTokenUserID, name) {
+			dir, _ := placeMCPDir("alice")
+			if got := flow.ServerConfig.OAuth.TokenFile; !strings.HasPrefix(got, dir+string(os.PathSeparator)) {
 				t.Fatalf("OAuth would save under wrong identity: %q", got)
 			}
 

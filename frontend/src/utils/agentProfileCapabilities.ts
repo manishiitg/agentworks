@@ -27,7 +27,7 @@ export type AgentProfileEngineGroup = {
   reasoningLevels: Array<{ id: string; label: string }>
 }
 
-/** Shared profile-to-picker adapter used by product composers and settings. */
+/** Shared profile-to-picker adapter used by product model settings. */
 export function buildAgentProfileEngineGroups(
   options: AgentProfileProviderOption[],
   modelCatalog: ModelMetadata[],

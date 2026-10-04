@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: () => undefined }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { getState: () => ({}) } }))
 
-import { visibleProductSurfaceIDs } from './ProductSurfaceSwitcher'
+import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 
 afterEach(() => {
   vi.unstubAllGlobals()

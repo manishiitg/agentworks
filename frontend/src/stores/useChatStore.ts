@@ -362,6 +362,8 @@ export interface PastedAttachment {
 
 // Tab-specific configuration (all settings that should be per-tab)
 export interface ChatTabConfig {
+  /** Callback IDs already placed in this conversation’s durable message queue. */
+  mcpOAuthNotificationIDs?: string[]
   conversationAcknowledged?: boolean
   composerRevision?: number  // Store-owned revision survives composer remounts
   inputText: string  // Chat input text
@@ -2248,6 +2250,7 @@ export const useChatStore = create<ChatState>()(
 
       discardChatStateForAccountChange: () => {
         invalidateChatIdentity()
+        useMCPStore?.getState?.()?.reset?.()
         pendingActiveSessionsFetch = null
         const state = get()
 

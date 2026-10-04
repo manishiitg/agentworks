@@ -41,7 +41,8 @@ vi.mock('./branding/RuntimeBrandLogo', () => ({ RuntimeBrandLogo: () => null }))
 vi.mock('./topbar/McpControl', () => ({ default: () => null }))
 vi.mock('./topbar/UsersControl', () => ({ default: () => null }))
 vi.mock('./topbar/ProvidersControl', () => ({ default: () => null }))
-vi.mock('./topbar/GlobalActivityButton', () => ({ GlobalActivityButton: () => null }))
+vi.mock('./topbar/GlobalActivityButton', () => ({ GlobalActivityButton: () => <button aria-label="Activity" /> }))
+vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: mocks.store }))
 vi.mock('./workflow/WorkflowWalkthrough', () => ({ default: ({ isOpen, surface, onClose }: any) => {
   if (!isOpen) return null
   mocks.renderedTours.push(surface)
@@ -49,6 +50,7 @@ vi.mock('./workflow/WorkflowWalkthrough', () => ({ default: ({ isOpen, surface, 
 } }))
 
 import { ModePresetBar } from './ModePresetBar'
+import { TooltipProvider } from './ui/tooltip'
 import { dismissWorkflowWalkthrough, markLLMDiscoveryOnboardingCleared, markLLMDiscoveryOnboardingOpen } from '../utils/onboarding'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -56,7 +58,7 @@ let host: HTMLDivElement
 let root: Root
 const originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
 const render = async (props: React.ComponentProps<typeof ModePresetBar> = {}) => {
-  await act(async () => root.render(<ModePresetBar {...props} />))
+  await act(async () => root.render(<TooltipProvider><ModePresetBar {...props} /></TooltipProvider>))
 }
 const tour = () => host.querySelector('[data-testid="tour"]')
 
@@ -68,7 +70,7 @@ beforeEach(() => {
   } })
   delete (window as any).__llmDiscoveryOnboardingState
   delete window.electronAPI
-  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false, showPresetCreate: false, canCreate: true })
+  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false, showPresetCreate: false, canCreate: true, productSurface: 'agentworks' })
   mocks.renderedTours.length = 0
   host = document.createElement('div')
   document.body.append(host)
@@ -149,4 +151,20 @@ it('rejects intro creation requests when the account cannot create', async () =>
   await render()
   expect(host.querySelector('[data-testid="preset-modal"]')).toBeNull()
   expect(mocks.state.showPresetCreate).toBe(false)
+})
+
+
+it.each([
+  ['agentworks', true, true], ['work', false, true], ['relays', false, false],
+  ['code', false, false], ['mcp-gateway', false, false],
+])('keeps product actions separate from shared controls for %s', async (surface, activity, schedules) => {
+  markLLMDiscoveryOnboardingCleared()
+  mocks.state.productSurface = surface
+  await render({ reduced: surface !== 'agentworks' })
+  const product = host.querySelector('[data-product-navigation-section="product-actions"]')
+  const global = host.querySelector('[data-product-navigation-section="global-actions"]')!
+  expect(Boolean(product?.querySelector('[aria-label="Activity"]'))).toBe(activity)
+  expect(Boolean(product?.querySelector('[data-tour="global-schedules"]'))).toBe(schedules)
+  expect(global.querySelector('[aria-label="Activity"]')).toBeNull()
+  expect(global.querySelector('[data-tour="global-schedules"]')).toBeNull()
 })

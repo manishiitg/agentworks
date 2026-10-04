@@ -21,6 +21,7 @@ vi.mock('../utils/globalProductNavigation', async importOriginal => {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { useChatStore } from '../stores/useChatStore'
+import { ProductTopBar } from './workspace/ProductTopBar'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 
 const now = () => new Date().toISOString()
@@ -109,6 +110,24 @@ describe('global activity monitor dropdown', () => {
     }
   })
 
+  it('keeps active session switching available from the sidebar monitor', async () => {
+    getHeaderSummary.mockResolvedValue({ active_sessions: [workflowSession(), crewTrigger()], schedule_summary: null })
+    const { host, root } = renderMonitor()
+    try {
+      await act(async () => root.render(<ProductTopBar sidebar><GlobalActivityMonitor /></ProductTopBar>))
+      const trigger = host.querySelector('button[data-testid="tour-active-work-switcher"]')!
+      expect(trigger.getAttribute('title')).toBe('Active work · 2 running')
+      expect(trigger.querySelector('svg')).not.toBeNull()
+      click(trigger)
+      expect(host.querySelector('[role="menu"]')?.textContent).toContain('News Monitor')
+      click(host.querySelector('[role="menuitem"]'))
+      expect(openGlobalActivitySession).toHaveBeenCalledWith(
+        expect.objectContaining({ session_id: 'wf-session' }),
+        expect.objectContaining({ source: 'global-activity-monitor' }),
+      )
+      expect(host.querySelector('[role="menu"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it('switches to the clicked row and closes the panel', async () => {
     const sessions = [workflowSession(), crewTrigger()]
     getHeaderSummary.mockResolvedValue({ active_sessions: sessions, schedule_summary: null })

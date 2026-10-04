@@ -1,58 +1,38 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-const memoryStorage = vi.hoisted(() => {
-  const values = new Map<string, string>()
-  const storage = {
-    get length() { return values.size },
-    clear: () => values.clear(),
-    getItem: (key: string) => values.get(key) ?? null,
-    key: (index: number) => Array.from(values.keys())[index] ?? null,
-    removeItem: (key: string) => { values.delete(key) },
-    setItem: (key: string, value: string) => { values.set(key, value) },
-  }
-  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true })
-  return storage
-})
-void memoryStorage
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: vi.fn() }))
-import { useAuthStore } from '../../stores/useAuthStore'
-import { useAppStore } from '../../stores/useAppStore'
-import { TooltipProvider } from '../ui/tooltip'
+import { expect, it, vi, afterAll } from 'vitest'
+vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
+const state = vi.hoisted(() => ({ user: null as null | { is_admin: boolean }, isMultiUserMode: false }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: typeof state) => unknown) => selector(state) }))
+const setShowLLMModal = vi.hoisted(() => vi.fn())
+vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: { getState: () => ({ setShowLLMModal }) } }))
 import UsersControl from './UsersControl'
-
+import { TooltipProvider } from '../ui/tooltip'
+import { ProductTopBar } from '../workspace/ProductTopBar'
+import { useAppStore } from '../../stores/useAppStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-afterEach(() => useAppStore.setState({ adminPage: null, showSchedulesOverview: false, showWorkflowsOverview: false }))
-
-async function render(state: unknown) {
-  vi.mocked(useAuthStore).mockReturnValue(state as ReturnType<typeof useAuthStore>)
+afterAll(() => vi.unstubAllGlobals())
+it.each([false, true])('opens the shared users page for an admin in multi-user mode %s', async (multiUser) => {
+  state.user = { is_admin: true }; state.isMultiUserMode = multiUser
+  useAppStore.setState({ adminPage: null, showSchedulesOverview: true })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
-  await act(async () => root.render(<TooltipProvider><UsersControl /></TooltipProvider>))
-  return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove() } }
-}
-
-describe('Users control in the top bar', () => {
-  it('shows only to an admin on a multi-user server, and opens the Users page', async () => {
-    useAppStore.setState({ showSchedulesOverview: true })
-    const { host, cleanup } = await render({ user: { id: 'a', username: 'Owner', is_admin: true }, isMultiUserMode: true })
-    try {
-      const button = host.querySelector('button[aria-label="Users and access"]') as HTMLButtonElement
-      expect(button).not.toBeNull()
-      await act(async () => button.click())
-      // A full page, and only one at a time: Schedules closes.
-      expect(useAppStore.getState().adminPage).toBe('users')
-      expect(useAppStore.getState().showSchedulesOverview).toBe(false)
-    } finally { await cleanup() }
-  })
-  it.each([
-    ['a member', { user: { id: 'm', username: 'Member' }, isMultiUserMode: true }],
-    ['an admin of a single-user install', { user: { id: 'a', username: 'Owner', is_admin: true }, isMultiUserMode: false }],
-    ['nobody signed in', { user: null, isMultiUserMode: true }],
-  ])('stays hidden for %s', async (_name, state) => {
-    const { host, cleanup } = await render(state)
-    try {
-      expect(host.querySelector('button')).toBeNull()
-    } finally { await cleanup() }
-  })
+  try {
+    await act(async () => root.render(<ProductTopBar><TooltipProvider><UsersControl /></TooltipProvider></ProductTopBar>))
+    const button = host.querySelector<HTMLButtonElement>('[aria-label="Users and access"]')!
+    expect(button).not.toBeNull()
+    await act(async () => button.click())
+    expect(useAppStore.getState().adminPage).toBe('users')
+    expect(useAppStore.getState().showSchedulesOverview).toBe(false)
+    expect(setShowLLMModal).toHaveBeenCalledWith(false)
+    expect(button.getAttribute('aria-pressed')).toBe('true')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})
+it.each([null, { is_admin: false }])('hides account management for an unauthorized identity', async (user) => {
+  state.user = user
+  const host = document.createElement('div'); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<TooltipProvider><UsersControl /></TooltipProvider>))
+    expect(host.querySelector('button')).toBeNull()
+  } finally { await act(async () => root.unmount()) }
 })

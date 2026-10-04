@@ -65,7 +65,7 @@ func TestResolveNotificationSecretStripsWebhookFromAgentSecrets(t *testing.T) {
 	if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "APPLICATION_TOKEN" {
 		t.Fatalf("agent secrets = %#v, want only APPLICATION_TOKEN", req.DecryptedSecrets)
 	}
-	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 1 || (*req.SelectedGlobalSecrets)[0] != "GLOBAL_APPLICATION_TOKEN" {
-		t.Fatalf("global agent secrets = %#v, want only GLOBAL_APPLICATION_TOKEN", req.SelectedGlobalSecrets)
+	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 0 {
+		t.Fatalf("global agent secrets = %#v, want none when omitted", req.SelectedGlobalSecrets)
 	}
 }

@@ -23,6 +23,8 @@ type WorkspaceViewHeaderProps = {
   icon?: ComponentType<{ className?: string }> | ReactElement
   /** View title. */
   title: ReactNode
+  /** Hide the title, icon and subtitle; retain explicit actions, tabs and below content. */
+  hideHeader?: boolean
   /** Guide topic when the visible title is dynamic or omitted. */
   helpTopic?: string
   /** A parent toolbar can provide the walkthrough inside its own action pair. */
@@ -63,7 +65,7 @@ type WorkspaceViewHeaderProps = {
  * The fixed standard, enforced by this component:
  * - icon: h-9 tile (h-4 glyph) spanning title + subtitle; custom elements
  *   render as-is at the same h-9 footprint
- * - title: text-sm font-semibold, rendered here — never override the size
+ * - title: text-sm with a subtitle, text-lg without one; font-semibold
  * - subtitle: text-xs text-muted-foreground, rendered here
  * - actions: walkthrough, Refresh; Ask AI lives inside the walkthrough popup
  */
@@ -112,6 +114,7 @@ function insertWalkthrough(actions: ReactNode, walkthrough: ReactNode): ReactNod
 export function WorkspaceViewHeader({
   icon,
   title,
+  hideHeader = false,
   helpTopic,
   showWalkthrough = true,
   context,
@@ -124,9 +127,11 @@ export function WorkspaceViewHeader({
   className = '',
   tabActions,
 }: WorkspaceViewHeaderProps) {
+  const hasSubtitle = typeof subtitle === 'string' ? subtitle.trim().length > 0 : Boolean(subtitle)
   const tabExtra = tabs ? tabActions?.[tabs.value] : undefined
   const guideTopic = helpTopic ?? (typeof title === 'string' ? title : '')
-  const walkthrough = showWalkthrough && guideTopic ? <WorkspacePanelGuideButton key="walkthrough" topic={guideTopic} /> : null
+  const walkthrough = !hideHeader && showWalkthrough && guideTopic ? <WorkspacePanelGuideButton key="walkthrough" topic={guideTopic} /> : null
+  if (hideHeader && !actions && !tabExtra && !below && !tabs) return null
   const renderIcon = () => {
     if (!icon) return null
     if (isValidElement(icon)) return icon
@@ -139,19 +144,19 @@ export function WorkspaceViewHeader({
   }
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 gap-2">
+      {(!hideHeader || actions || tabExtra) && <div className={`flex ${hasSubtitle ? 'items-start' : 'items-center'} ${hideHeader ? 'justify-end' : 'justify-between'} gap-3`}>
+        {!hideHeader && <div className={`flex min-w-0 flex-1 ${hasSubtitle ? 'items-start' : 'items-center'} gap-2`}>
           {icon && <div className="shrink-0">{renderIcon()}</div>}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
+              <h2 className={`truncate ${hasSubtitle ? 'text-sm' : 'text-lg'} font-semibold text-foreground`}>{title}</h2>
               {context}
             </div>
-            {subtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}
+            {hasSubtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}
           </div>
-        </div>
+        </div>}
         {(actions || tabExtra || walkthrough) && <div className="flex shrink-0 items-center gap-2">{tabExtra}{insertWalkthrough(actions, walkthrough)}</div>}
-      </div>
+      </div>}
       {below}
       {tabs && (
         <div className={bare ? 'pt-1' : '-mb-2 pt-1'}>

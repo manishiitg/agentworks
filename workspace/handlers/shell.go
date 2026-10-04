@@ -65,6 +65,15 @@ func isExistingHostGrant(wp, docsDir string) bool {
 	return err == nil && info.IsDir()
 }
 
+// Compatibility helper: existing local host roots are never created here.
+func guardWritePathToCreate(wp, docsDir string) (string, error) {
+	physicalPath, err := resolveGuardWritePath(wp, docsDir)
+	if err != nil && os.Getenv("LOCAL_MODE") == "true" && os.Getenv("MULTI_USER_MODE") == "false" && os.Getenv("NATIVE_WORKSPACE") == "true" && isExistingHostGrant(wp, docsDir) {
+		return "", nil
+	}
+	return physicalPath, err
+}
+
 // ExecuteShellCommand handles POST /api/execute
 func ExecuteShellCommand(c *gin.Context) {
 	var req models.ExecuteShellRequest
@@ -199,9 +208,8 @@ func ExecuteShellCommand(c *gin.Context) {
 	if req.FolderGuard != nil && req.FolderGuard.Enabled {
 		// Pre-create write path directories in the real filesystem before isolation.
 		// The mount script relies on these existing so it can bind-mount them as writable.
-		// Each path is resolved exactly as the isolator resolves it and must stay
-		// inside the workspace boundary: an unvalidated MkdirAll here would create
-		// directories anywhere (absolute paths, .. escapes, symlink redirects).
+		// Only create workspace paths. The single-user local native launcher
+		// may keep existing host-folder grants without a service-side MkdirAll.
 		for _, wp := range req.FolderGuard.WritePaths {
 			physicalPath, wpErr := resolveGuardWritePath(wp, docsDir)
 			if wpErr != nil && isExistingHostGrant(wp, docsDir) {
@@ -217,6 +225,9 @@ func ExecuteShellCommand(c *gin.Context) {
 					Error:   wpErr.Error(),
 				})
 				return
+			}
+			if physicalPath == "" {
+				continue
 			}
 			if mkErr := prepareGuardWriteDirectory(physicalPath, docsDir, userSlot != ""); mkErr != nil {
 				if userSlot != "" {

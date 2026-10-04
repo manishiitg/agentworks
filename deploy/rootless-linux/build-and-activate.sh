@@ -111,6 +111,7 @@ MIGRATION_STOPPED_AGENT=0
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
 cleanup_build() {
+  if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
     systemctl --user restart "$PRODUCT-agent" >/dev/null 2>&1 || true
   fi
@@ -120,6 +121,7 @@ trap cleanup_build EXIT
 
 # slotctl/slottmux helpers (slots_build in the build path, slots_install_shim at activation).
 source "$REPO_ROOT/deploy/common/slots.sh"
+source "$REPO_ROOT/deploy/common/vault.sh"
 if [[ -n "$PREBUILT" ]]; then
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did. The carried-over asset cleanup below
@@ -172,6 +174,8 @@ slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
 GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 
+vault_build "$REPO_ROOT" "$BUILD_DIR"
+
 echo "==> [$RELEASE_ID] Building AgentWorks CLI downloads"
 mkdir -p "$BUILD_DIR/downloads"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
@@ -196,6 +200,7 @@ echo "==> [$RELEASE_ID] Building frontend"
 (cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
 cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
 fi
+vault_check_build "$BUILD_DIR"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
 cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
@@ -382,6 +387,8 @@ for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
   [[ -n "$entry" ]] && echo "Environment=$entry" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
 done
 
+vault_prepare "$BUILD_DIR" "$REMOTE_APP" "$REMOTE_APP/data/docs" "$PRODUCT" "$AGENT_PORT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
+
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
 # Drain before the restart: restarting while a turn is running hands the user
@@ -418,6 +425,7 @@ ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 # of leaving the product down.
 MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
+vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
 
 # One-time migration of legacy Workflow Builder chats, if this product opted
 # in. Runs after `current` points at code that understands the new nested
@@ -481,6 +489,7 @@ fi
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
 sleep 2
+vault_start "$PRODUCT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
 systemctl --user restart "$PRODUCT-agent"
 MIGRATION_STOPPED_AGENT=0
 sleep 2

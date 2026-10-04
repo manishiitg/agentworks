@@ -35,6 +35,8 @@ bin/*
 !agent_go/cmd/server/secrets_routes.go
 !agent_go/pkg/orchestrator/**/secrets_*.go
 !agent_go/cmd/server/guidance/templates/system/secret-management.md
+# Vault design documentation contains references and behavior, never secret values.
+!docs/design/vault-secrets.md
 # PLAT-272 shared workflow-secret store: source and its test, no secret values.
 !agent_go/cmd/server/workflow_shared_secrets.go
 !agent_go/cmd/server/workflow_shared_secrets_test.go
@@ -195,3 +197,6 @@ transcript.txt
 
 # Generated private Playwright fixture distributions
 /agent_go/packages/
+
+# MCP Gateway local state (sqlite oauth store)
+/mcp-gateway/var/

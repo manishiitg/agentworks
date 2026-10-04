@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
@@ -69,19 +68,10 @@ func defaultWorkflowCLIStateRoot() (string, error) {
 }
 
 func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string, error) {
-	shared := codingAgentWorkspaceWorkingDir(folder)
-	if !workflowCLIIsolationEnabledForMode(mode) || !isCodingAgentProvider(provider, "") {
-		return shared, nil
+	if !workflowCLIIsolationEnabledForMode(mode) {
+		return codingAgentWorkspaceWorkingDir(folder), nil
 	}
-	stateRoot, err := workflowCLIStateRoot()
-	if err != nil {
-		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
-	}
-	dir, err := cliruntime.PrepareLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, shared, session, provider, mode)
-	if err != nil {
-		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
-	}
-	return dir, nil
+	return linkedProjectCLIWorkingDir(folder, user, session, provider, mode)
 }
 
 func workflowCLIWorkspaceInstructions(folder string) string {

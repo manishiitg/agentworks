@@ -760,7 +760,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectExecutionLLM(
 }
 
 // applyStepConfigToAgentConfig applies step-specific configuration overrides to agent config
-func (hcpo *StepBasedWorkflowOrchestrator) applyStepConfigToAgentConfig(config *agents.OrchestratorAgentConfig, stepConfig *AgentConfigs, isCodeExecutionMode bool, isScripted bool) {
+func (hcpo *StepBasedWorkflowOrchestrator) applyStepConfigToAgentConfig(ctx context.Context, config *agents.OrchestratorAgentConfig, stepConfig *AgentConfigs, isCodeExecutionMode bool, isScripted bool) {
 	workflowServers := hcpo.GetSelectedServers()
 	// Use step-specific servers if provided, filtered against workflow-level servers.
 	// Workflow is the hard cap: if a server was removed from the workflow no step can use it.
@@ -777,7 +777,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyStepConfigToAgentConfig(config *
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config not found - using orchestrator defaults: %v", config.ServerNames))
 		}
 	}
-	hcpo.addPlaceMCPServers(config)
+	hcpo.addPlaceMCPServers(ctx, config)
 	if stepConfig != nil && len(stepConfig.SelectedTools) > 0 {
 		filtered := filterToolsByWorkflow(stepConfig.SelectedTools, workflowServers)
 		config.SelectedTools = filtered
@@ -1411,7 +1411,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	hcpo.setupBrowserDownloadsPathOverride(ctx, config, stepConfig)
 
 	// Apply step-specific overrides
-	hcpo.applyStepConfigToAgentConfig(config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep, stepConfig))
+	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep, stepConfig))
 	if override, ok := ctx.Value(messageSequenceRuntimeSessionOverrideKey{}).(*messageSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
 		config.CodingAgentKeepAlive = true
 		hcpo.GetLogger().Info(fmt.Sprintf("🔁 message_sequence runtime will keep coding-agent session alive: %s", config.MCPSessionID))
@@ -1775,7 +1775,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config not found - using orchestrator defaults: %v", config.ServerNames))
 		}
 	}
-	hcpo.addPlaceMCPServers(config)
+	hcpo.addPlaceMCPServers(ctx, config)
 	if stepConfig != nil && len(stepConfig.SelectedTools) > 0 {
 		filtered := filterToolsByWorkflow(stepConfig.SelectedTools, workflowServersTodo)
 		config.SelectedTools = filtered

@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
@@ -875,7 +876,7 @@ type QueryRequest struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	} `json:"decrypted_secrets,omitempty"`
-	// Selected global secret names to include (if nil/absent, all global secrets are included)
+	// Selected global secret names to include (if nil/absent, no global secrets are included)
 	SelectedGlobalSecrets *[]string `json:"selected_global_secrets,omitempty"`
 	// Workspace paths of workflows to inject context for (via # selector in chat)
 	WorkflowContextPaths []string `json:"workflow_context_paths,omitempty"`
@@ -1080,16 +1081,11 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 	}
 	req.DecryptedSecrets = filtered
 
-	// nil means "inject every global secret", so convert it to an explicit
+	// nil means "no global secrets", so retain an explicit empty
 	// allow-list before removing the notification credentials. Otherwise a
 	// GLOBAL_SECRET_<NAME> webhook would still leak through mergeGlobalSecrets.
 	if req.SelectedGlobalSecrets == nil {
-		allowed := make([]string, 0, len(getGlobalSecrets()))
-		for _, secret := range getGlobalSecrets() {
-			if !wanted[strings.TrimSpace(secret.Name)] {
-				allowed = append(allowed, secret.Name)
-			}
-		}
+		allowed := []string{}
 		req.SelectedGlobalSecrets = &allowed
 	} else {
 		filteredGlobals := *req.SelectedGlobalSecrets
@@ -1137,7 +1133,7 @@ func (api *StreamingAPI) resolveBackendNotificationSecret(ctx context.Context, u
 			return secret.Value, true
 		}
 	}
-	for _, secret := range getGlobalSecrets() {
+	for _, secret := range visibleGlobalSecrets(ctx, userID) {
 		if secret.Name == secretName && strings.TrimSpace(secret.Value) != "" {
 			return secret.Value, true
 		}
@@ -2022,9 +2018,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Initialize Slack service. Notification delivery is registered through
 	// BotConversationManager.RegisterConnector when Slack bot mode is enabled.
 	configureSlackCredentialCodec()
-	slackSvc, err := services.InitSlackService()
+	var slackSvc *services.SlackService
+	if os.Getenv("SLACK_ENABLED") != "false" {
+		slackSvc, err = services.InitSlackService()
+	}
 	if err != nil {
 		log.Printf("⚠️  Failed to initialize Slack service: %v (Slack integration will be disabled)", err)
+	} else if slackSvc == nil {
+		log.Printf("[SLACK] Disabled via SLACK_ENABLED=false — skipping startup connections on this instance")
 	} else {
 		log.Printf("✅ Slack service initialized")
 	}
@@ -2122,6 +2123,16 @@ func runServer(cmd *cobra.Command, args []string) {
 			if err := profileRegistry.RegisterProfile(profile); err != nil {
 				log.Fatalf("Failed to register AgentWorks agent profile: %v", err)
 			}
+		}
+	}
+	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
+		profile := caplayerproduct.BuiltinAgentProfile()
+		profile.Product = "mcp-gateway"
+		if err := profileRegistry.RegisterProfile(profile); err != nil {
+			log.Fatalf("Failed to register CapLayer profile: %v", err)
+		}
+		if err := registerCapLayerDatabaseTools(profileRegistry); err != nil {
+			log.Fatalf("Failed to register CapLayer database tools: %v", err)
 		}
 	}
 	if productEnabled("work") {
@@ -2239,10 +2250,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	runningServerAPI = api
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
+	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
+		if err := caplayerproduct.RegisterRuntime(profileRegistry, api.capLayerConnectionAccess); err != nil {
+			log.Fatalf("Failed to register Vault tools: %v", err)
+		}
+	}
 	projectSecretReader = api.projectSecretValue
-	// Connections switched on for a Code under the old "personal" model become
-	// that Code's own connections (idempotent; see personal_mcp_migrate.go).
-	go api.migrateCodePersonalMCP()
+	// Private MCP stores remain private; do not copy user logins into projects.
 	// Terminal Center's Formatted view and the runtime coordinator now consume
 	// the same accepted structured events. The terminal observer updates the
 	// durable pane snapshot first; retained-turn reconciliation then uses that
@@ -2354,10 +2368,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Auth middleware - applies to all API routes
 	// Note: AuthMiddleware handles skipping auth for public endpoints (login, register, health, shared)
 	router.Use(AuthMiddleware)
+	api.registerVaultOAuthRoutes(router)
 
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
+	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
+	common.ScopeAgentMCP = api.scopeAgentMCP
+	router.HandleFunc("/internal/vault/mcp", api.handleVaultRuntimeMCP).Methods("GET", "POST", "DELETE")
+	router.HandleFunc("/internal/caplayer/oauth-token", api.handleCapLayerOAuthToken).Methods("POST")
 
 	// Authentication API routes (public - no auth required, handled by AuthMiddleware)
 	apiRouter.HandleFunc("/auth/register", api.handleRegister).Methods("POST", "OPTIONS")
@@ -2444,6 +2463,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
 	// The old path, kept for a browser tab still running the previous frontend.
+	apiRouter.HandleFunc("/me/secrets", handlePersonalMCPSecrets).Methods("GET", "POST")
+	apiRouter.HandleFunc("/me/mcp/vault", api.handleMyVaultServers).Methods("GET")
 	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
@@ -2530,7 +2551,12 @@ func runServer(cmd *cobra.Command, args []string) {
 			executorHandlers.HandlePerToolVirtualRequest(w, r, tool)
 			return
 		}
-		executorHandlers.HandlePerToolMCPRequest(w, r, server, tool)
+		ctx, originalTool, err := api.vaultBridgeToolName(r.Context(), strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
+		if err != nil {
+			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		executorHandlers.HandlePerToolMCPRequest(w, r.WithContext(ctx), server, originalTool)
 		api.recordMCPBridgeCall(strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 	}
 
@@ -2606,12 +2632,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/mcp-config/logs", requireAdmin(api.handleGetServerLogs)).Methods("GET")
 
 	// Connector connection state (from oauth_routes.go)
-	apiRouter.HandleFunc("/mcp/connect", requireAdmin(api.handleConnectServer)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/mcp/disconnect", requireAdmin(api.handleDisconnectServer)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/connect", api.handleConnectServer).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/disconnect", api.handleDisconnectServer).Methods("POST", "OPTIONS")
 
 	// Secrets encryption API routes (from secrets_routes.go)
 	apiRouter.HandleFunc("/secrets/encrypt", api.handleEncryptSecret).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/decrypt", api.handleDecryptSecret).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/secrets/vault/access", api.handleVaultSecretAccess).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/global", api.handleGetGlobalSecrets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/global", api.handleManageGlobalSecret).Methods("POST", "PUT", "DELETE")
 	apiRouter.HandleFunc("/secrets/global/reveal", api.handleRevealGlobalSecret).Methods("GET", "OPTIONS")
@@ -2642,10 +2669,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/delegation-tier-config", api.handleLoadDelegationTierConfig).Methods("GET", "OPTIONS")
 
 	// OAuth API routes (from oauth_routes.go)
-	apiRouter.HandleFunc("/oauth/start", requireAdmin(api.handleOAuthStart)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/oauth/start", api.handleOAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/oauth/callback", api.handleOAuthCallback).Methods("GET")
 	apiRouter.HandleFunc("/oauth/status", api.handleOAuthStatus).Methods("GET")
-	apiRouter.HandleFunc("/oauth/logout", requireAdmin(api.handleOAuthLogout)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/oauth/logout", api.handleOAuthLogout).Methods("POST", "OPTIONS")
 
 	// Observer APIs removed - events are now stored by sessionID, no observers needed
 
@@ -3341,53 +3368,6 @@ func latestAssistantTextFromHistory(history []llmtypes.MessageContent) string {
 	return ""
 }
 
-// Scoped (workflow/project/product) secrets take priority on name collision.
-// If selectedGlobalNames is non-nil, only global secrets whose name is in the list are included.
-func mergeGlobalSecrets(scopedSecrets []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}, selectedGlobalNames *[]string) []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-} {
-	globals := getGlobalSecrets()
-	if len(globals) == 0 {
-		return scopedSecrets
-	}
-	// Build filter set from selected global names (nil = include all)
-	var allowedGlobals map[string]bool
-	if selectedGlobalNames != nil {
-		allowedGlobals = make(map[string]bool, len(*selectedGlobalNames))
-		for _, name := range *selectedGlobalNames {
-			allowedGlobals[name] = true
-		}
-	}
-	// Build a set of scoped secret names for dedup
-	scopedNames := make(map[string]bool, len(scopedSecrets))
-	for _, s := range scopedSecrets {
-		scopedNames[s.Name] = true
-	}
-	// Prepend globals that don't collide with scoped secrets and are in the allowed set
-	var merged []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}
-	for _, g := range globals {
-		if scopedNames[g.Name] {
-			continue
-		}
-		if allowedGlobals != nil && !allowedGlobals[g.Name] {
-			continue
-		}
-		merged = append(merged, struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		}{Name: g.Name, Value: g.Value})
-	}
-	merged = append(merged, scopedSecrets...)
-	return merged
-}
-
 func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workflowPath string, selectedNames []string) []struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
@@ -3448,7 +3428,7 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 
 	// A promoted secret keeps working through the source workflow's existing
 	// selected_secrets attachment. Its value now resolves from the global store.
-	for _, secret := range getGlobalSecrets() {
+	for _, secret := range visibleGlobalSecrets(ctx, userID) {
 		if secret.Managed && selectedSet[secret.Name] && !resolved[secret.Name] {
 			addResult(secret.Name, secret.Value)
 			resolved[secret.Name] = true
@@ -3467,7 +3447,7 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 	}
 
 	// Also treat globals as resolved — mergeGlobalSecrets layers these in separately.
-	for _, gs := range getGlobalSecrets() {
+	for _, gs := range visibleGlobalSecrets(ctx, userID) {
 		if selectedSet[gs.Name] {
 			resolved[gs.Name] = true
 		}
@@ -3985,6 +3965,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Scheduled/Chief requests may already carry the configured secret name at
 	// this point. Resolve it for backend delivery and strip it from agent env.
 	api.resolveNotificationSecretForRequest(r.Context(), currentUserID, req.SelectedFolder, &req)
+	if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	// Browser names supplied by an agent (including the conventional "default")
 	// are public aliases. Bind them to the durable conversation workspace:
 	// workflows share one browser across their authorized users, while Crew
@@ -4472,12 +4456,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
-				// If manifest has explicit selection, use it; otherwise leave nil (= all globals included)
+				// If manifest has explicit selection, use it; otherwise leave nil (= none)
 				if req.SelectedGlobalSecrets == nil && manifest.Capabilities.SelectedGlobalSecretNames != nil {
 					req.SelectedGlobalSecrets = manifest.Capabilities.SelectedGlobalSecretNames
 				}
 				// Manifest is the source of truth for workflow-selected secrets too.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, resolvedWPath, manifest.Capabilities.SelectedSecrets)
+				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &manifest.Capabilities.SelectedSecrets); err != nil {
+					http.Error(w, err.Error(), 403)
+					return
+				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -4500,6 +4488,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), manifest.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
+				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+					http.Error(w, err.Error(), http.StatusForbidden)
+					return
+				}
 
 				// Manifest is the source of truth for servers and browser mode.
 				if len(manifest.Capabilities.SelectedServers) > 0 {
@@ -4604,12 +4596,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					serverList = strings.Join(selectedServers, ",")
 				}
 
-				// Global secrets from manifest — if explicit selection, use it; otherwise leave nil (= all globals included)
+				// Global secrets from manifest — if explicit selection, use it; otherwise leave nil (= none)
 				if caps.SelectedGlobalSecretNames != nil {
 					req.SelectedGlobalSecrets = caps.SelectedGlobalSecretNames
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, manifestWorkspacePath, caps.SelectedSecrets)
+				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
+					http.Error(w, err.Error(), 403)
+					return
+				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -4632,6 +4628,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
+				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+					http.Error(w, err.Error(), http.StatusForbidden)
+					return
+				}
 				req.CdpPorts = append([]int(nil), caps.CDPPorts...)
 
 				// Browser mode from manifest
@@ -4780,7 +4780,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Merge global secrets with user-supplied secrets, then set on orchestrator
-		allSecrets := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		allSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(allSecrets) > 0 {
 			entries := make([]orchestrator.SecretEntry, len(allSecrets))
 			for i, s := range allSecrets {
@@ -5596,6 +5596,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			sendError(isolationErr.Error(), true)
 			return
 		}
+		if resolvedProfile != nil && resolvedProfile.Definition.ID == caplayerproduct.ProfileID {
+			var isolationErr error
+			chatWorkingDir, isolationErr = linkedProjectCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, "vault")
+			if isolationErr != nil {
+				sendError(isolationErr.Error(), true)
+				return
+			}
+		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
 		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
@@ -5657,7 +5665,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			req.SelectedGlobalSecrets = &noGlobalSecrets
 		}
 		codingAgentSecretEnvironment := make(map[string]string)
-		for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
 		if req.ExternalBuilderOperationID != "" {
@@ -5733,6 +5741,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer toolGate.logSurface(sessionID)
 		platformBridgeTools := []string{}
+		if resolvedProfile != nil {
+			// Profile-declared native tools still pass normal registration and
+			// admission checks. This does not enable a general shell bridge.
+			platformBridgeTools = append(platformBridgeTools, resolvedProfile.Definition.Runtime.BridgeTools...)
+		}
 		if toolGate.Admit("read_image") {
 			platformBridgeTools = append(platformBridgeTools, "read_image")
 		}
@@ -6005,7 +6018,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// req.DecryptedSecrets is loaded from the workflow manifest above
 			// (workflow_phase), so it picks up secrets attached in earlier turns;
 			// multi-agent chat without loaded secrets yields an empty map (no-op).
-			chatAgentSecrets := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
@@ -7206,7 +7219,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					// Secrets
-					phaseSecrets := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 					if len(phaseSecrets) > 0 {
 						entries := make([]orchestrator.SecretEntry, len(phaseSecrets))
 						for i, s := range phaseSecrets {
@@ -7329,7 +7342,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
-		identitySecrets := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(identitySecrets) > 0 && req.PhaseID == "" {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
@@ -7649,7 +7662,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
 		// Keep that in mind before relying on either one in this block.
 		isWorkflowPhase := req.PhaseID != ""
-		allChatSecrets := mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(allChatSecrets) > 0 && !isWorkflowPhase {
 			// Inject secret values as environment variables for shell execution (SECRET_ prefix)
 			if workspaceEnv == nil {
@@ -11576,7 +11589,10 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			scopedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, workspacePath, manifest.Capabilities.SelectedSecrets)
 		}
 	}
-	allSecrets := mergeGlobalSecrets(scopedSecrets, effectiveGlobalSecretSelection)
+	if err := validateVaultSecretSelection(ctx, currentUserID, scopedSecrets, effectiveGlobalSecretSelection); err != nil {
+		return nil, err
+	}
+	allSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, scopedSecrets, effectiveGlobalSecretSelection)
 	if len(allSecrets) > 0 {
 		entries := make([]orchestrator.SecretEntry, len(allSecrets))
 		for i, s := range allSecrets {
@@ -11667,7 +11683,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	cfg.ListAvailableSecrets = func(ctx context.Context) ([]string, error) {
 		nameSet := make(map[string]bool)
 		// Global secrets from env vars
-		for _, gs := range getGlobalSecrets() {
+		for _, gs := range visibleGlobalSecrets(ctx, currentUserID) {
 			nameSet[gs.Name] = true
 		}
 		if workspacePath != "" {
@@ -11695,7 +11711,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			wanted[n] = true
 		}
 		// Globals first — they set the baseline. Workflow secrets can override by same name.
-		for _, gs := range getGlobalSecrets() {
+		for _, gs := range visibleGlobalSecrets(ctx, currentUserID) {
 			if wanted[gs.Name] {
 				out[gs.Name] = gs.Value
 			}
@@ -12630,22 +12646,27 @@ func (api *StreamingAPI) buildLLMToolsCallbacks() *todo_creation_human.LLMToolsC
 func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
 }, disabled func(string) bool) error {
+	if err := api.registerMCPCallTool(registrar, disabled); err != nil {
+		return err
+	}
 	registerTool := func(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error)) error {
 		if disabled != nil && disabled(name) {
 			return nil
 		}
+		if name == "install_mcp_server" || name == "add_mcp_server" {
+			properties, _ := params["properties"].(map[string]interface{})
+			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate private account. Omit for reconnecting an existing exact connection name."}
+			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
+			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
+		}
 		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
-			original := exec
 			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
 				userID, err := api.mcpToolUserID(ctx)
 				if err != nil {
 					return "", err
 				}
 				ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
-				if (name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server") && !canManageGlobalSecrets(userID) {
-					return "Managing shared MCP connections requires admin access.", nil
-				}
-				return original(ctx, args)
+				return api.privateMCPTool(ctx, userID, name, args)
 			}
 		}
 		return registrar.RegisterCustomTool(name, description, params, exec, "mcp_server_tools")
@@ -12732,7 +12753,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"list_mcp_servers",
-		"List shared platform MCP servers: for each, whether it is connected for AgentWorks (versus merely present in the catalog), whether it is a custom platform server, and whether discovery succeeded. Connecting requires admin access; in single-user setups the user is the admin, so proceed instead of asking for one. Connected credentials are reusable by Work, workflows, chats, and schedules. Use search_mcp_catalog for servers not yet configured.",
+		"List your private MCP connections, your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; select a Vault connection by its exact vault_ name and secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -12847,7 +12868,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 			needle := strings.ToLower(query)
 
-			_, userConfig, err := loadUserConfig()
+			person, err := api.mcpToolUserID(ctx)
 			if err != nil {
 				return "", err
 			}
@@ -12862,13 +12883,16 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				if !strings.Contains(strings.ToLower(name), needle) {
 					continue
 				}
-				status := "available, no sign-in required"
-				if server.OAuth != nil {
-					if _, connected := userConfig.MCPServers[name]; connected {
-						status = "already connected"
+				status := "available template — connect privately in My MCPs"
+				if own, found := privateMCPByCatalog(person, name); found {
+					dir, _ := placeMCPDir(person)
+					if placeMCPServerConnected(dir, person, own) {
+						status = "connected privately for you"
 					} else {
-						status = "not connected yet — connect it from the connector directory"
+						status = "your private connection needs sign-in in My MCPs"
 					}
+				} else if server.OAuth == nil {
+					status = "available template, no OAuth — add privately in My MCPs"
 				}
 				catalogHits = append(catalogHits, fmt.Sprintf("- **%s** [our catalog, vetted] — %s", name, status))
 			}
@@ -12932,7 +12956,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Platform install of an MCP server, shared by AgentWorks, Work, workflows, chats, and schedules. Requires admin access; in single-user setups the user is the admin, so proceed instead of asking for one. Installation does not select the server: workflows use update_workflow_config(add_servers=[name]), while an active Work project uses update_project_mcp_server_selection(action=select, server=name). Before OAuth or API-key setup in multi-user mode, explicitly tell the user that every AgentWorks user will be able to use the connected external account. For a fresh URL, live-probe its auth requirements and verify the provider. To reauthorize an existing OAuth connection, set reconnect=true.",
+		"Connect a catalog server or user-supplied remote MCP URL privately for the authenticated user. Return an actual OAuth sign-in link or direct them to Integrations > My MCPs for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -12950,14 +12974,14 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				},
 				"api_key": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional. For a server that authenticates with a simple bearer API key rather than OAuth, once the user has provided one.",
+					"description": "Deprecated: do not send credentials in chat. Enter a private API key in My MCPs.",
 				},
 				"client_id": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
 				"client_secret": map[string]interface{}{
-					"type": "string", "description": "Required with client_id for registered GitHub and HubSpot OAuth apps. Prefer entering it in the connector directory so it does not enter chat history.",
+					"type": "string", "description": "Deprecated: enter client secrets in My MCPs, never in chat.",
 				},
 			},
 			"required": []string{"name"},
@@ -13112,7 +13136,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a shared platform MCP server configuration, then trigger discovery. Requires admin access; in single-user setups the user is the admin, so proceed instead of asking for one. Every AgentWorks product and user can reuse it; workflows still select servers explicitly.",
+		"Add a private remote MCP server for the authenticated person. Use a catalog name or an HTTPS URL. Enter credentials through My MCPs. Use Vault to share access.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13209,7 +13233,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"edit_mcp_server",
-		"Edit an existing shared platform MCP server configuration, then trigger discovery. Requires admin access; in single-user setups the user is the admin, so proceed instead of asking for one. Base catalog servers cannot be edited from chat.",
+		"Edit your private remote MCP connection. Updating its URL clears its sign-in. Shared Vault connections are managed in Vault.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13305,7 +13329,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"remove_mcp_server",
-		"Remove a shared platform MCP server configuration. Requires admin access; in single-user setups the user is the admin, so proceed instead of asking for one. This affects Work, AgentWorks chats, workflows, and schedules. Base catalog servers cannot be removed from chat.",
+		"Remove your private MCP connection and sign-in. It stops working in your projects. This does not remove any shared Vault connection.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

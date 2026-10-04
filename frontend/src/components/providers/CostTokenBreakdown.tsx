@@ -22,5 +22,10 @@ export default function CostTokenBreakdown({ usage, compact = false }: { usage: 
         ...(writes > 0 ? [['Cache writes', formatTokens(writes)]] : []),
       ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-mono font-semibold text-foreground">{value}</dd></div>)}
     </dl>
+    <details className="mt-3 text-muted-foreground">
+      <summary className="w-fit cursor-pointer hover:text-foreground">Token details</summary>
+      <p className="mt-2">Fresh input{writes > 0 ? ', cache reads and cache writes' : ' and cache reads'} add up to total input; output is separate.</p>
+      {!compact && <p className="mt-1">Cache reuses a matching input prefix. New history, tool results and outputs still require processing. Identical user messages do not guarantee identical full inputs.</p>}
+    </details>
   </section>
 }

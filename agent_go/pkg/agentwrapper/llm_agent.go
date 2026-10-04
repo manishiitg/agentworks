@@ -416,6 +416,18 @@ func NewLLMAgentWrapper(ctx context.Context, config LLMAgentConfig, tracer obser
 // NewLLMAgentWrapperWithTrace creates a wrapper from one immutable definition
 // and one grouped runtime configuration.
 func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tracer observability.Tracer, mainTraceID observability.TraceID, logger loggerv2.Logger) (*LLMAgentWrapper, error) {
+	if common.ScopeAgentMCP != nil {
+		names, overrides, aliases, err := common.ScopeAgentMCP(ctx, config.SessionID, configuredServerNames(config.ServerName), config.RuntimeOverrides)
+		if err != nil {
+			return nil, err
+		}
+		config.ServerName = strings.Join(names, ",")
+		config.RuntimeOverrides = overrides
+		config.SelectedTools = common.RemapMCPToolSelection(config.SelectedTools, aliases)
+		// All OAuth paths were resolved by the host; do not let the SDK replace
+		// them with its legacy per-user catalog paths.
+		config.UserID = ""
+	}
 	if logger == nil {
 		logger = agentlogger.WithContext(loggerv2.NewDefault(), ctx)
 	}
@@ -454,7 +466,13 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 
 	definition := mcpagent.AgentDefinition{}
 	for _, name := range configuredServerNames(config.ServerName) {
+		if common.ScopeAgentMCP != nil && common.IsBuiltinToolCategory(name) {
+			continue
+		}
 		definition.Tools.MCP = append(definition.Tools.MCP, mcpagent.MCPToolSource{Name: name})
+	}
+	if common.ScopeAgentMCP != nil && len(definition.Tools.MCP) == 0 {
+		definition.Tools.MCP = []mcpagent.MCPToolSource{{Name: mcpclient.NoServers}}
 	}
 	runtime := runtimeConfigForLLMAgent(config, model, tracer, traceID, logger)
 	agent, err := mcpagent.NewAgentFromDefinition(ctx, definition, runtime)

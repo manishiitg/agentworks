@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   deploymentDefaultProductSurface,
   enabledProductSurfaces,
+  gatewayAdminUrl,
+  gatewayBaseUrl,
   intersectAllowedProductSurfaces,
   isEnabledProductSurface,
   hasGatewaySSO,
@@ -18,6 +20,21 @@ describe('product surface deployment configuration', () => {
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(hasGatewaySSO()).toBe(false)
+  })
+
+  it('opts into Vault when a gateway URL is configured', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
+    })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'mcp-gateway'])
+  })
+
+  it('removes CapLayer from an explicit allowlist when its endpoint is withdrawn', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { enabledProductSurfaces: ['agentworks', 'mcp-gateway'] },
+    })
+    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+    expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
   it('constrains the dedicated host to AgentWorks and Video Studio', () => {
@@ -64,6 +81,53 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('work')).toBe(true)
     expect(isEnabledProductSurface('dominion')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
+  })
+})
+
+describe('gatewayAdminUrl', () => {
+  it('is null when no gateway is configured', () => {
+    expect(gatewayAdminUrl()).toBeNull()
+  })
+
+  it('links to the configured gateway admin', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'https://mcp.agentworkshq.com/' },
+    })
+    expect(gatewayAdminUrl()).toBe('https://mcp.agentworkshq.com/admin/')
+  })
+
+  it('accepts loopback http for local development', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18080' },
+    })
+    expect(gatewayAdminUrl()).toBe('http://127.0.0.1:18080/admin/')
+  })
+
+  it('rejects non-http(s) values', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'javascript:alert(1)' },
+    })
+    expect(gatewayAdminUrl()).toBeNull()
+  })
+})
+
+describe('gatewayBaseUrl', () => {
+  it('is null when no gateway is configured', () => {
+    expect(gatewayBaseUrl()).toBeNull()
+  })
+
+  it('returns the validated base without a trailing slash', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18080/' },
+    })
+    expect(gatewayBaseUrl()).toBe('http://127.0.0.1:18080')
+  })
+
+  it('rejects non-http(s) values', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'javascript:alert(1)' },
+    })
+    expect(gatewayBaseUrl()).toBeNull()
   })
 })
 

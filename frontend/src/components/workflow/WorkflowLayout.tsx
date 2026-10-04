@@ -2300,7 +2300,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Select an Automation</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Choose an automation from the top bar, or use the plus button to create one. Build it in chat and inspect its plan and dashboard beside the conversation.
+                    Open the workspace selector to choose or create an automation.
                   </p>
                 </div>
               </div>

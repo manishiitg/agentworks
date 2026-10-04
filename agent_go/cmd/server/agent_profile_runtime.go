@@ -306,7 +306,7 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	return &resolvedAgentProfile{Definition: profile}, nil
@@ -334,7 +334,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err != nil {
 		return nil, err
 	}
-	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal
@@ -520,6 +520,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		if len(selectedNames) > 0 {
 			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, workspacePath, selectedNames)
+			if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, &selectedNames); err != nil {
+				return nil, err
+			}
 		} else {
 			req.DecryptedSecrets = nil
 		}
@@ -624,18 +627,21 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
+	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+		return nil, err
+	}
 	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey,
 		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
-		ChatSecrets:     chatSecretNames(req)}, nil
+		ChatSecrets:     api.chatSecretNames(ctx, userID, req)}, nil
 }
 
 // chatSecretNames lists the secrets the turn will expose to the coding CLI, by name only.
-func chatSecretNames(req *QueryRequest) []string {
+func (api *StreamingAPI) chatSecretNames(ctx context.Context, userID string, req *QueryRequest) []string {
 	if req == nil {
 		return nil
 	}
 	var names []string
-	for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 		names = append(names, secret.Name)
 	}
 	return names

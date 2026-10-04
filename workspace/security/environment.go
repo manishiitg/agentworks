@@ -110,6 +110,9 @@ func buildNativeEnvironment() []string {
 	// Env var names (case-insensitive prefix match) that must NOT leak to shell commands.
 	// These are server-internal secrets, not user/agent credentials.
 	blockedPrefixes := []string{
+		"GLOBAL_SECRET_",
+		"CAPLAYER_SERVICE_",
+		"GATEWAY_HUMAN_TOKEN",
 		"DATABASE_URL",
 		"JWT_SECRET",
 		"LANGFUSE_",

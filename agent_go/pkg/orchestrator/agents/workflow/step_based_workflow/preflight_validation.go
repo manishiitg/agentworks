@@ -90,22 +90,15 @@ func validateWorkflowDependencies(ctx context.Context, session *WorkshopChatSess
 		return nil, nil
 	}
 
-	// 2. Build the available-server set from the live merged MCP config.
-	cfg, err := mcpclient.LoadMergedConfig(mcpConfigPath, logger)
-	if err != nil {
-		return nil, fmt.Errorf("preflight: load merged MCP config: %w", err)
+	// 2. Check the run owner's actual private/Vault scope. Standalone users of
+	// this package retain catalog-only validation when no host boundary exists.
+	requiredNames := make([]string, 0, len(required))
+	for name := range required {
+		requiredNames = append(requiredNames, name)
 	}
-	available := map[string]struct{}{}
-	for _, name := range cfg.ListServers() {
-		available[name] = struct{}{}
-		// Mirror MCPConfig.GetServer's normalization: declarations using
-		// underscore must match config entries using hyphen and vice versa.
-		if strings.Contains(name, "-") {
-			available[strings.ReplaceAll(name, "-", "_")] = struct{}{}
-		}
-		if strings.Contains(name, "_") {
-			available[strings.ReplaceAll(name, "_", "-")] = struct{}{}
-		}
+	available, err := workflowMCPAvailability(ctx, session.mainSessionID, requiredNames, mcpConfigPath, logger)
+	if err != nil {
+		return nil, err
 	}
 
 	// 3. Diff. Sort everything so the report is deterministic.
@@ -116,7 +109,7 @@ func validateWorkflowDependencies(ctx context.Context, session *WorkshopChatSess
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if _, ok := available[name]; ok {
+		if _, ok := available[strings.ToLower(name)]; ok {
 			continue
 		}
 		by := make([]string, 0, len(required[name]))
@@ -147,7 +140,31 @@ func formatMissingDependencies(workflowID string, missing []MissingDependency, m
 	for _, m := range missing {
 		b.WriteString(fmt.Sprintf("  • %s %q (required by: %s)\n", m.Kind, m.Name, strings.Join(m.RequiredBy, ", ")))
 	}
-	b.WriteString("\nFix: open an interactive Workflow Builder with write access. Use search_mcp_catalog and install_mcp_server (or add_mcp_server for a custom no-auth server), then select the exact configured name with update_workflow_config.\n")
-	b.WriteString("This check validates configuration names only; it does not test authentication, connectivity, or tool counts. Installation refreshes discovery without a server restart. Wait for discovery, then retry; do not remove a required integration just to bypass this check.\n")
+	b.WriteString("\nFix: open an interactive Workflow Builder with write access. Connect your own account in My MCPs, or ask your administrator to assign a Vault group. Select the exact private or Vault connection name with update_workflow_config.\n")
+	b.WriteString("This check validates the run owner's permitted connections; it does not make a live upstream call. Retry after connecting or receiving Vault access; do not remove a required integration just to bypass this check.\n")
 	return b.String()
+}
+
+func workflowMCPAvailability(ctx context.Context, sessionID string, required []string, configPath string, logger loggerv2.Logger) (map[string]struct{}, error) {
+	available := map[string]struct{}{}
+	if common.ScopeAgentMCP != nil {
+		_, _, aliases, err := common.ScopeAgentMCP(ctx, sessionID, required, nil)
+		if err != nil {
+			return nil, fmt.Errorf("preflight: MCP access unavailable: %w", err)
+		}
+		for name := range aliases {
+			available[strings.ToLower(name)] = struct{}{}
+		}
+		return available, nil
+	}
+	cfg, err := mcpclient.LoadMergedConfig(configPath, logger)
+	if err != nil {
+		return nil, fmt.Errorf("preflight: load MCP configuration: %w", err)
+	}
+	for _, name := range cfg.ListServers() {
+		available[strings.ToLower(name)] = struct{}{}
+		available[strings.ToLower(strings.ReplaceAll(name, "-", "_"))] = struct{}{}
+		available[strings.ToLower(strings.ReplaceAll(name, "_", "-"))] = struct{}{}
+	}
+	return available, nil
 }

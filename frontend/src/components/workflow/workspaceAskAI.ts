@@ -39,9 +39,10 @@ const WORKSPACE_ASK_AI_INSTRUCTIONS: Partial<Record<WorkspaceViewId, string>> = 
 // The Integrations view holds five tabs, so its header Ask AI follows the
 // active tab instead of the view. Same marker-block shape as views: a
 // user-visible plain-words summary plus hidden builder instructions.
-export type IntegrationTabId = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type IntegrationTabId = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; summary: string; instructions?: string }> = {
+  secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
   apps: {
     label: 'Integrations · MCPs',
     summary: "Help me add an app connection for this workflow. Ask what I want to connect, then help me set it up.",

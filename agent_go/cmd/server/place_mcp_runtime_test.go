@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -36,7 +35,7 @@ func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	api := &StreamingAPI{}
-	ctx := context.Background()
+	ctx := personContext("alice")
 	codeX := "_users/alice/Chats/Code/projects/x"
 	codeY := "_users/alice/Chats/Code/projects/y"
 	inX := connectCodeForTest(t, "alice", codeX, "deepwiki")
@@ -104,7 +103,7 @@ func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-	ctx := context.Background()
+	ctx := personContext("alice")
 	internal := connectCodeForTest(t, "owner", codePrivacyOwnerRoot, "deepwiki")
 	if err := pinCodeSession("owner-chat", "owner", codePrivacyOwnerRoot); err != nil {
 		t.Fatal(err)
@@ -130,7 +129,7 @@ func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 func TestPlaceMCPSignInStateChangesTheChatKey(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-	ctx := context.Background()
+	ctx := personContext("alice")
 	root := "_users/alice/Chats/Code/projects/x"
 	store := placeMCPStoreID("alice", root)
 	server := placeMCPServer{

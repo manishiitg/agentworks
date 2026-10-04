@@ -1261,7 +1261,16 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   }
 
   // Synthetic Turn Ready Event (shown when a background task has completed and results are being processed)
-  if (event.type === 'synthetic_turn_ready') {
+  if (isEventType(event, 'synthetic_turn_ready')) {
+    const fields = getEventData(event)
+    if (fields.agent_id?.startsWith('vault-oauth:') || fields.agent_id?.startsWith('private-oauth:')) {
+      const vault = fields.agent_id.startsWith('vault-oauth:')
+      return <CompactWrapper compact={compact}>
+        <div role="status" className={`rounded-md border border-border px-3 py-2 ${compact ? 'text-xs' : 'text-sm'} ${fields.status === 'completed' ? 'text-foreground' : 'text-destructive'}`}>
+          {fields.name || 'MCP server'} {fields.status === 'completed' ? (vault ? 'connected to Vault. Assign access in Groups.' : 'sign-in completed. Your private connection is available from the next agent turn.') : (vault ? 'could not connect to Vault. Try signing in again.' : 'sign-in failed or expired. Try signing in again.')}
+        </div>
+      </CompactWrapper>
+    }
     return null
   }
 

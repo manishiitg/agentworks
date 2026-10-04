@@ -1,20 +1,24 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useProductNavigationSidebar } from './workspace/ProductTopBar'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Check, ChevronDown, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
+import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { CodeMark } from '../products/work/CodeMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
-import { useAppStore } from '../stores/useAppStore'
+import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
-import { isEnabledProductSurface, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
+import { applyRuntimeBranding } from '../runtime-branding'
 import { cn } from '../lib/utils'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
+  /** The gateway's independent build has no AgentWorks app router. */
+  standalone?: boolean
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -34,39 +38,41 @@ const products: Array<{
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
+  { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
 ]
 
-export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
-  const deploymentSurfaces = products.filter((product) => isEnabledProductSurface(product.id)).map((product) => product.id)
-  return intersectAllowedProductSurfaces(deploymentSurfaces, allowedProducts)
-}
-
-export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {
+  const sidebar = useProductNavigationSidebar()
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
-  const setProductSurface = useProductSurfaceStore((state) => state.setProductSurface)
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const visibleProductIDs = visibleProductSurfaceIDs(allowedProducts)
-  const visibleProducts = products.filter((product) => visibleProductIDs.includes(product.id))
-  const currentProduct = visibleProducts.find((product) => product.id === productSurface) ?? visibleProducts[0] ?? products[0]
+  const visibleProductIDs = useMemo(() => visibleProductSurfaceIDs(allowedProducts), [allowedProducts])
+  const gatewayUrl = gatewayAdminUrl()
+  // The gateway renders inside the app like any other surface, but only
+  // exists when a gateway URL is configured for this deployment.
+  const visibleProducts = useMemo(() => standalone
+    ? products.filter(product => product.id === 'mcp-gateway')
+    : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
+  [visibleProductIDs, gatewayUrl, standalone])
+  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
+
+  useEffect(() => {
+    if (standalone || productSurface === 'mcp-gateway') {
+      document.title = 'Vault'
+      const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+      if (favicon) favicon.href = '/vault.svg'
+      return
+    }
+    document.title = 'AgentWorks'
+    applyRuntimeBranding(window.__APP_RUNTIME_CONFIG__ as Parameters<typeof applyRuntimeBranding>[0])
+  }, [productSurface, standalone])
 
   const activateProduct = (product: ProductSurface) => {
     setOpen(false)
-    setProductSurface(product)
-    if (product !== 'agentworks' && product !== 'relays') return
-
-    const presetStore = useGlobalPresetStore.getState()
-    const activePreset = presetStore.getActivePreset('workflow')
-    if (activePreset && (activePreset.workflowKind === 'relay') !== (product === 'relays')) {
-      presetStore.clearActivePreset('workflow')
-      presetStore.setSelectedPresetFolder(null)
-    }
-    const appStore = useAppStore.getState()
-    appStore.setModeCategory('workflow')
-    appStore.setShowWorkflowsOverview(product === 'agentworks')
-    appStore.setShowSchedulesOverview(false)
+    if (standalone) return
+    openProductWorkspace(product)
   }
 
   useEffect(() => {
@@ -84,6 +90,55 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [open])
+
+  if (sidebar) return (
+    <div ref={menuRef} role="group" aria-label="Products"
+      className="relative border-b border-border pb-3"
+      onMouseEnter={() => { if (visibleProducts.length > 1) setOpen(true) }}
+      onMouseLeave={() => setOpen(false)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}>
+      <button type="button" aria-label={`Switch product: ${currentProduct.label}`}
+        aria-haspopup={visibleProducts.length > 1 ? 'menu' : undefined} aria-expanded={open}
+        data-tour-products={visibleProductIDs.join(' ')} data-product-navigation-action
+        title={currentProduct.label}
+        onClick={() => visibleProducts.length > 1 ? setOpen(true) : activateProduct(currentProduct.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && visibleProducts.length > 1) {
+            event.preventDefault(); setOpen(true)
+            requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus())
+          }
+        }}
+        className="relative grid h-9 w-full place-items-center rounded-lg bg-secondary text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <span aria-hidden="true" className="absolute -left-1.5 h-4 w-0.5 rounded-r bg-primary" />
+        <CurrentIcon className="h-5 w-5 shrink-0" title="" />
+      </button>
+      {open && <div className="absolute left-full top-0 z-50 pl-2">
+        <div role="menu" aria-label="Products"
+          className="w-44 max-w-[calc(100vw-5rem)] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          onKeyDown={(event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(event.key)) return
+            event.preventDefault()
+            if (event.key === 'Escape') { setOpen(false); menuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus(); return }
+            const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+            const index = items.indexOf(document.activeElement as HTMLButtonElement)
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length
+            items[next]?.focus()
+          }}>
+          {visibleProducts.map(product => {
+            const Icon = product.icon
+            const active = product.id === currentProduct.id
+            return <button key={product.id} type="button" role="menuitem" aria-label={product.label}
+              aria-current={active ? 'page' : undefined} onClick={() => activateProduct(product.id)}
+              className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-xs font-medium hover:bg-accent focus-visible:bg-accent focus-visible:outline-none">
+              <Icon className="h-5 w-5 shrink-0" title="" />
+              <span className="flex-1">{product.label}</span>
+              {active && <Check className="h-3.5 w-3.5 text-primary" />}
+            </button>
+          })}
+        </div>
+      </div>}
+    </div>
+  )
 
   return (
     <div
@@ -105,29 +160,25 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
         <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div role="menu" aria-label="Products" className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
+        <div role="menu" aria-label="Products" className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 max-w-[calc(100vw-5rem)] rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
           {visibleProducts.map((product) => {
-            const active = productSurface === product.id
+            const active = (standalone ? 'mcp-gateway' : productSurface) === product.id
             const Icon = product.icon
             return (
               <button
                 key={product.id}
                 type="button"
                 role="menuitem"
+                aria-current={active ? 'page' : undefined}
                 onClick={() => {
                   activateProduct(product.id)
                 }}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
-                  active
-                    ? 'bg-violet-50 dark:bg-violet-950/40'
-                    : 'hover:bg-slate-100 dark:hover:bg-slate-800',
-                )}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800"
               >
                 <Icon className="h-8 w-8 shrink-0" title="" />
                 <span className="min-w-0 flex-1">
-                  <strong className={cn('block text-xs', active ? 'text-violet-800 dark:text-violet-200' : 'text-slate-900 dark:text-slate-100')}>{product.label}</strong>
-                  <small className={cn('mt-0.5 block text-[10px]', active ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400')}>
+                  <strong className="block text-xs text-slate-900 dark:text-slate-100">{product.label}</strong>
+                  <small className="mt-0.5 block text-[10px] text-slate-600 dark:text-slate-300">
                     {product.description}
                   </small>
                 </span>

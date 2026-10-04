@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -131,5 +132,30 @@ func TestNativeToolsOnForSlackCrewTurn(t *testing.T) {
 	// No switch any more (2026-09-29): an older Crew's stored "off" is ignored.
 	if mode := crewTurn(`{"capabilities":{"native_agent_tools":false}}`); mode != "full" {
 		t.Fatalf("a Crew with a stored off decided %q, want full: native tools are always on", mode)
+	}
+}
+
+// Exercise handleQuery's shared mode decision, rather than only the profile
+// constant: Vault's prior mcp_only override installed Muse's denying hook.
+func TestVaultBuilderRequestsFullNativeToolsThroughSharedQuery(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	registry := agentprofiles.NewRegistry()
+	profile := caplayerproduct.BuiltinAgentProfile()
+	profile.Product = "mcp-gateway"
+	if err := registry.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	env.api.agentProfiles = registry
+	req := QueryRequest{Query: "Read vault-access", AgentMode: "multi-agent", AgentProfileID: profile.ID, SelectedFolder: caplayerproduct.WorkspaceRoot, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Vault"}, LLMConfig: &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: "us.anthropic.claude-sonnet-4-20250514-v1:0"}}}
+	if mode := env.queryDecidedToolsMode(t, "admin", "vault-native-test", req); mode != "full" {
+		t.Fatalf("Vault Muse query decided %q, want full native tools", mode)
+	}
+	// A retained CLI's launch definition must change, so the old mcp_only hook
+	// cannot survive by resuming the previous provider process.
+	previous := profile
+	previous.Version--
+	previous.Runtime.AgentTools.Mode = "mcp_only"
+	if agentProfileSessionKey(&resolvedAgentProfile{Definition: previous}) == agentProfileSessionKey(&resolvedAgentProfile{Definition: profile}) {
+		t.Fatal("native tool change would reuse the restricted CLI")
 	}
 }

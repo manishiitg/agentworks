@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -31,12 +32,20 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 	if cfg == nil || cfg.WorkspacePath == "" {
 		return nil, fmt.Errorf("MCP scope unavailable for this workshop")
 	}
+	userID := ""
+	if api.eventStore != nil {
+		userID = api.eventStore.GetSessionOwner(sessionID)
+	}
+	if userID == "" {
+		return nil, fmt.Errorf("MCP session owner is unavailable")
+	}
+	ctx = context.WithValue(ctx, common.UserIDKey, userID)
 	// The workflow's own connections: only the ones this place has, never
 	// anyone else's personal server.
 	if isPlaceMCPInternalName(strings.TrimSpace(server)) {
 		_, overrides := attachedMCPServersForRoot(ctx, cfg.WorkspacePath)
 		if override, ok := overrides[strings.TrimSpace(server)]; ok && override.Server != nil {
-			return &executor.ResolvedMCPServer{Name: strings.TrimSpace(server), Config: *override.Server, ConnectionSessionID: "global"}, nil
+			return &executor.ResolvedMCPServer{Name: strings.TrimSpace(server), Config: *override.Server, ConnectionSessionID: strings.TrimSpace(server)}, nil
 		}
 		return nil, errPlaceMCPUnavailable
 	}
@@ -51,58 +60,5 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 	if err != nil {
 		return nil, fmt.Errorf("load current MCP configuration: %w", err)
 	}
-	userID := ""
-	if api.eventStore != nil {
-		userID = api.eventStore.GetSessionOwner(sessionID)
-	}
-	if userID == "" {
-		return nil, fmt.Errorf("MCP session owner is unavailable")
-	}
-	return resolveSelectedMCPServer(catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, userID, server, tool)
-}
-
-func resolveSelectedMCPServer(catalog *mcpclient.MCPConfig, selected, selectedTools []string, userID, server, tool string) (*executor.ResolvedMCPServer, error) {
-	canonical, config, err := catalog.ResolveServer(server)
-	if err != nil {
-		return nil, err
-	}
-	allowed := false
-	for _, name := range selected {
-		if name == mcpclient.NoServers {
-			continue
-		}
-		resolved, _, resolveErr := catalog.ResolveServer(name)
-		if resolveErr == nil && resolved == canonical {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		return nil, fmt.Errorf("Server %q is not available in this session's scope. Selected servers: %v", canonical, selected)
-	}
-	if len(selectedTools) > 0 {
-		toolAllowed := false
-		for _, entry := range selectedTools {
-			name, pattern, ok := strings.Cut(entry, ":")
-			if !ok {
-				continue
-			}
-			resolved, _, resolveErr := catalog.ResolveServer(name)
-			if resolveErr == nil && resolved == canonical && (pattern == "*" || pattern == tool) {
-				toolAllowed = true
-				break
-			}
-		}
-		if !toolAllowed {
-			return nil, fmt.Errorf("Tool %q is not selected for MCP server %q", tool, canonical)
-		}
-	}
-	// MCP credentials are shared platform connections. Existing installations
-	// retain their persisted token path; new connections use _platform.
-	if config.OAuth != nil && strings.TrimSpace(config.OAuth.TokenFile) == "" {
-		oauth := *config.OAuth
-		oauth.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, canonical)
-		config.OAuth = &oauth
-	}
-	return &executor.ResolvedMCPServer{Name: canonical, Config: config, ConnectionSessionID: platformMCPConnectionSessionID}, nil
+	return api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, userID, server, tool)
 }

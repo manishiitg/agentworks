@@ -1,51 +1,61 @@
 ---
 name: work-mcp
-description: Connect and manage MCP servers for {{product}} projects. Use when the user asks to connect a service through MCP, inspect connection or authorization state, select MCP access for a project, refresh tool discovery, or diagnose an MCP server.
+description: Connect and manage private MCP servers and select permitted Vault connections for {{product}} projects.
 ---
 
 # {{product}} MCP
 
-Inspect the current MCP state before changing it, and distinguish platform-level
-connection setup from selection for this project.
+Read this skill before acting on an MCP Connect request. Use the setup tools
+below; a new connection request does not require reading old conversations.
 
-- Use `list_mcp_servers` to inspect installed connection and authorization
-  state. Use `search_mcp_catalog` only to discover a new server.
-- Use `install_mcp_server` for a catalog result or service URL so {{product}} can probe
-  its authentication requirements. Use `add_mcp_server` only for a custom
-  server whose protocol and complete configuration are already known.
-- An installed server is a platform connection shared by AgentWorks, Crew, Code,
-  workflows, chats, schedules, and every user. Only a platform administrator
-  may add, authenticate, reconnect, edit, or remove one. Explain this before
-  starting credential or OAuth setup. A connection is not automatically
-  selected for this project.
-- When the user asks to use an already-connected server in the active {{product}}
-  project, call `update_project_mcp_server_selection` with `action: select`.
-  The selection is written to this project's `workflow.json`; its tools become
-  available on the next user message because the current turn retains its
-  original MCP scope. Do not tell the user to open Setup when this tool can do
-  the selection. Use `action: deselect` when the user asks to remove project
-  access. The same selection remains editable in **Setup > MCP servers**.
-- **Connections with a person's login.** A project can also have its own
-  connections added with someone's own login (their Gmail, Drive, GitHub, ...).
-  Everyone using the project uses them as that person, and they belong to this
-  project only. They are not platform connections, so no admin is needed: anyone
-  who can edit the project connects one under **MCP connections > Available**
-  (search, then **Connect**) and signs in there. You cannot add or sign in to
-  one for them. Point them to that list when they want their own account and
-  no platform connection fits. They appear as servers named `u<id>__<name>` and
-  are already on for this project: never select or deselect them.
-- Never claim server tools are available until the server is connected and
-  selected. After selecting, clearly state the next-message boundary.
-- Use `get_mcp_server_logs` to diagnose a configured server and
-  `trigger_mcp_discovery` when its tool metadata is stale. Removing a server is
-  platform-wide, so identify the exact server and explain that scope first.
+Use `list_mcp_servers` to inspect the caller's private connections and the Vault
+servers their groups permit. Use `search_mcp_catalog` for connection templates.
+
+- New MCP connections are private to the authenticated user. Use
+  `install_mcp_server` for a catalog server or a user-supplied remote MCP URL.
+  Other users of the same project cannot run with that person's credentials.
+- Shared MCPs belong in **Vault**. An administrator connects them there and
+  assigns tools and resource conditions to groups. Connecting grants no access.
+- Use `update_project_mcp_server_selection` to select or deselect a private
+  connection or an exact Vault connection ID for the active project. Project
+  selection is an additional limit; it cannot grant Vault permissions.
+- Vault checks the caller's current permissions on every call, including
+  argument conditions and schema validation. Revoked permissions
+  stop working on retained sessions too. Never suggest a direct upstream URL
+  or another user's connection as a way around a denied call.
+- Use `trigger_mcp_discovery` to refresh an owned or permitted connection.
+  Discover loaded tools with `search_tools(query="<provider or task>")`, then
+  `get_api_spec(tool_name="<returned-name>")` for their argument schemas.
+  Only use a runtime `server_name` returned by `search_tools` when filtering;
+  public connection IDs and private connection names are selection IDs.
+- Tools become available from the next user message. Confirm what was saved,
+  which connection is private or shared, and any remaining sign-in step.
+- For a Connect request, inspect the current inventory first to avoid a duplicate.
+  Install the requested catalog connection, return any real OAuth sign-in link,
+  and select the connection for this project after sign-in. Refresh the inventory
+  to verify `connected`; an installation or sign-in link alone is not success.
+- If a setup or shell tool fails, report the observed error briefly. Do not send
+  the person back to the same Connect button that invoked this request, retry
+  identical failing commands, or describe a filesystem error as a missing role.
+- Never ask for passwords, API keys or OAuth client secrets in chat. Direct
+  users to **Integrations > My MCPs** for secure credential entry. Display
+  OAuth links only when the setup tool actually returns one.
 
 ## Multiple accounts
 
-Use the exact connection IDs from `list_mcp_servers`. Distinct OAuth accounts
-remain separate, for example `Linear-base` and `Linear`; existing selections
-keep their original account. Never infer workspace identity from the connection
-name or credential location. Verify it using that connection's read-only team or
-identity tools. If tools are not loaded, select the explicit connection and verify
-on the next user message. When account choice is unclear, show the IDs and ask
-which to use. Never expose tokens, credential paths, headers or environment values.
+All products support multiple named private connections to one MCP provider.
+Use `install_mcp_server(name="<catalog provider>", catalog="<catalog provider>",
+label="Notion · Engineering")` to create a separate account. A label creates a
+new connection, with a stable generated connection name and independent OAuth
+credentials. Return that exact name with any real sign-in link. For another
+account, pass a different label and authorize the intended upstream account.
+Labels describe the user's choice, not a verified provider identity.
+
+Inspect `list_mcp_servers` first. Reconnect, remove, discover and select using the
+exact connection name, not the catalog provider when there are multiple accounts.
+To reconnect an existing account, omit label. Never replace another account or
+change its selection. Named connections do not share the legacy Google/provider
+group login. Code's `manage_my_mcp_servers` supports the same `catalog` and `label`
+arguments with `action="connect"`, and exact `name` for an existing connection.
+Select each returned connection separately for its project. Shared connections
+continue to be installed in Vault and governed through group grants.

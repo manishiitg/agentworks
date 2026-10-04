@@ -1,3 +1,4 @@
+import { WorkspaceBackButton } from '../workspace/WorkspaceBackButton'
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
 import ConversationsOverview from './ConversationsOverview'
@@ -276,6 +277,11 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900'
             : 'flex h-[min(860px,calc(100vh-1rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-[min(860px,calc(100vh-2.5rem))]'}
         >
+          {embedded && <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-6">
+            <WorkspaceBackButton onBack={closePanel} />
+            <span aria-hidden="true" className="h-4 w-px bg-border" />
+            <h1 className="text-base font-semibold text-foreground">Providers</h1>
+          </header>}
           {error && (
             <div className="mx-4 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 sm:mx-6">
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />

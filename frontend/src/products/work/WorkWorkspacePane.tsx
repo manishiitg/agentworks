@@ -17,8 +17,10 @@ import {
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip'
+import { TooltipProvider } from '../../components/ui/tooltip'
+import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
+import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import { ReportDocumentSwitcher } from '../../components/workflow/ReportDocumentSwitcher'
 import api, { agentApi } from '../../services/api'
 import type { PresetLLMConfig } from '../../services/api-types'
@@ -101,23 +103,6 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
   return count
 }
 
-function WorkToolbarButton({ active, icon: Icon, label, onClick, badge }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void; badge?: number }) {
-  const button = (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-      aria-label={badge ? `${label} (${badge} pending)` : label}
-      aria-pressed={active}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {!!badge && <span className="absolute -right-1 -top-1 min-w-[14px] rounded-full bg-amber-500 px-1 text-[9px] font-semibold leading-[14px] text-white">{badge > 9 ? '9+' : badge}</span>}
-    </button>
-  )
-  if (active) return button
-  return <Tooltip><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent side="bottom"><p>{label}</p></TooltipContent></Tooltip>
-}
-
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
@@ -150,25 +135,25 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
-      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
       <TooltipProvider delayDuration={150}>
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
-        <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
+        <WorkspaceToolbarFrame>
           {/* A Crew shows its views first; a Code shows them (Automation, Costs) after its working tools. */}
           {!isCode && viewsGroup}
           {/* Ops and Setup show their icons only: always open, no label. */}
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
-            <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
+            <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
           {isCode && viewsGroup}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
-            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
+            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
-        </div>
+        </WorkspaceToolbarFrame>
       </TooltipProvider>
     </div>
   )
@@ -400,6 +385,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           }) }}
         />}
         {view === 'mcp' && <WorkIntegrationsPanel
+          selectedSecrets={selectedSecrets}
+          selectedGlobalSecrets={selectedGlobalSecrets}
+          onSelectedSecretsChange={updateSecretSelection}
+          onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}
           workspacePath={workspacePath}
           projectId={projectId}
           projectTitle={projectTitle}

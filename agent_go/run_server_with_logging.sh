@@ -85,6 +85,9 @@ BACKGROUND_MODE=false
 WITH_WORKSPACE=false
 WITH_FRONTEND=false
 ONLY_FRONTEND=false
+WITH_GATEWAY=false
+ONLY_GATEWAY=false
+GATEWAY_EXPLICIT=false
 UPDATE_MMX_CLI=false
 FRONTEND_BUILD_MODE=false
 WITHOUT_ELECTRON=false
@@ -104,6 +107,8 @@ print_usage() {
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
+    printf '%s\n' '  --with-gateway                Start the local MCP Gateway service.'
+    printf '%s\n' '  --only-gateway                Start only the MCP Gateway service.'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
     printf '%s\n' '  --without-electron            Do not launch Electron.'
     printf '%s\n' '  --debug-memory                Electron with heap-snapshot port + RSS sampler.'
@@ -138,6 +143,15 @@ for arg in "$@"; do
         --only-frontend)
             ONLY_FRONTEND=true
             ;;
+        --with-gateway)
+            WITH_GATEWAY=true
+            GATEWAY_EXPLICIT=true
+            ;;
+        --only-gateway)
+            ONLY_GATEWAY=true
+            WITH_GATEWAY=true
+            GATEWAY_EXPLICIT=true
+            ;;
         --build)
             FRONTEND_BUILD_MODE=true
             ;;
@@ -170,11 +184,9 @@ for arg in "$@"; do
     esac
 done
 
-# Default composition: unless the caller picked a stack shape explicitly
-# (--with-workspace / --with-frontend / --only-frontend / --test-connections),
-# run the whole local stack (agent + workspace + frontend). Bare modifiers
-# (--background, --without-electron, ...) keep the default.
-if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
+# Default composition runs the existing AgentWorks stack. --with-gateway is
+# additive, so an explicit alpha run gets the full stack plus CapLayer.
+if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$ONLY_GATEWAY" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
     WITH_WORKSPACE=true
     WITH_FRONTEND=true
 fi
@@ -406,6 +418,100 @@ if [ "$TEST_CONNECTIONS" = true ]; then
     exit $?
 fi
 
+if [ "$ONLY_GATEWAY" = true ]; then
+    echo "🔌 Starting MCP Gateway only — no agent, workspace, or frontend"
+    echo "========================================="
+
+    cd "$SCRIPT_DIR" || {
+        echo "❌ Error: Failed to change to script directory: $SCRIPT_DIR"
+        exit 1
+    }
+
+    GATEWAY_DIR="${SCRIPT_DIR}/../mcp-gateway"
+    if [ ! -f "${GATEWAY_DIR}/go.mod" ]; then
+        echo "❌ Error: gateway module not found: ${GATEWAY_DIR}/go.mod"
+        exit 1
+    fi
+    GATEWAY_PORT="${GATEWAY_PORT:-18745}"
+    if port_in_use "$GATEWAY_PORT"; then
+        echo "❌ Error: Port $GATEWAY_PORT is already in use."
+        echo "   Stop the existing process or set GATEWAY_PORT to another value."
+        exit 1
+    fi
+    LOG_DIR="${AGENTWORKS_LOG_DIR:-logs}"
+    mkdir -p "$LOG_DIR"
+    GATEWAY_LOG_PATH="${LOG_DIR}/gateway_debug.log"
+    export LOCAL_MODE="true"
+    export GATEWAY_PORT
+    export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
+    export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
+    export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
+    export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
+
+    echo "🚀 Starting MCP Gateway..."
+    echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
+    echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
+    echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
+    if [ "$BACKGROUND_MODE" = true ]; then
+        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
+    else
+        (
+            cd "$GATEWAY_DIR" || exit 1
+            exec go run ./cmd/server
+        ) >> "$GATEWAY_LOG_PATH" 2>&1 &
+    fi
+    GATEWAY_PID=$!
+    for _attempt in $(seq 1 60); do
+        if curl -fsS "${GATEWAY_PUBLIC_URL}/healthz" >/dev/null 2>&1; then
+            echo "✅ MCP Gateway is healthy at: ${GATEWAY_PUBLIC_URL}/mcp"
+            break
+        fi
+        if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+            echo "❌ Error: Gateway exited during startup. Check logs: $GATEWAY_LOG_PATH"
+            tail -20 "$GATEWAY_LOG_PATH"
+            exit 1
+        fi
+        sleep 1
+    done
+    if ! curl -fsS "${GATEWAY_PUBLIC_URL}/healthz" >/dev/null 2>&1; then
+        echo "❌ Error: Gateway did not become healthy in time. Check logs: $GATEWAY_LOG_PATH"
+        tail -20 "$GATEWAY_LOG_PATH"
+        exit 1
+    fi
+
+    cleanup_gateway_only() {
+        if [ "$BACKGROUND_MODE" != true ]; then
+            if [ -n "$GATEWAY_PID" ] && kill -0 "$GATEWAY_PID" 2>/dev/null; then
+                print_stop_target "MCP Gateway" "$GATEWAY_PID" "$GATEWAY_PORT"
+                kill_process_tree "$GATEWAY_PID" "MCP Gateway"
+                wait "$GATEWAY_PID" 2>/dev/null
+                print_port_status "$GATEWAY_PORT" "gateway"
+            fi
+        fi
+    }
+    trap cleanup_gateway_only EXIT
+    trap "exit 130" INT TERM
+
+    if [ "$BACKGROUND_MODE" = true ]; then
+        echo ""
+        echo "✅ MCP Gateway running in background (PID: $GATEWAY_PID)"
+        echo "🛑 To stop: kill $GATEWAY_PID"
+        exit 0
+    fi
+    echo ""
+    echo "✅ MCP Gateway running (foreground). Press Ctrl+C to stop."
+    while true; do
+        if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+            echo "❌ MCP Gateway exited. Check logs: $GATEWAY_LOG_PATH"
+            tail -20 "$GATEWAY_LOG_PATH"
+            exit 1
+        fi
+        sleep 1
+    done
+    exit 0
+fi
+
 if [ "$ONLY_FRONTEND" = true ]; then
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
         echo "🎨 Starting frontend only (static build + Electron) — no backend, no workspace"
@@ -515,6 +621,30 @@ if [ "$ONLY_FRONTEND" = true ]; then
     LOG_DIR="${AGENTWORKS_LOG_DIR:-logs}"
     RUNTIME_APP_NAME="$(json_escape_runtime_value "${AGENTWORKS_APP_NAME:-AgentWorks}")"
     RUNTIME_FAVICON_URL="$(json_escape_runtime_value "${AGENTWORKS_FAVICON_URL:-/logo.svg}")"
+    # A frontend-only restart must not drop the gateway switcher entry while
+    # the gateway (started with the backend) is still up. The backend falls
+    # back to a random port in 18100-18199 when the default is busy, so when
+    # the default probe misses (and no explicit GATEWAY_PORT pins the port),
+    # scan that range for a live gateway instead of dropping the entry.
+    ONLY_FRONTEND_GATEWAY_LINE=""
+    ONLY_FRONTEND_GATEWAY_PROBE="${GATEWAY_PORT:-18745}"
+    if ! curl -fsS --max-time 2 "http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}/healthz" >/dev/null 2>&1; then
+        if [ -n "${GATEWAY_PORT:-}" ]; then
+            ONLY_FRONTEND_GATEWAY_PROBE=""
+        else
+            ONLY_FRONTEND_GATEWAY_PROBE=""
+            for probe_port in {18100..18199}; do
+                if curl -fsS --max-time 1 "http://127.0.0.1:${probe_port}/healthz" >/dev/null 2>&1; then
+                    ONLY_FRONTEND_GATEWAY_PROBE="$probe_port"
+                    break
+                fi
+            done
+        fi
+    fi
+    if [ -n "$ONLY_FRONTEND_GATEWAY_PROBE" ]; then
+        ONLY_FRONTEND_GATEWAY_LINE=",
+  gatewayUrl: \"http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}\""
+    fi
     mkdir -p "$LOG_DIR"
     mkdir -p "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
@@ -525,7 +655,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: true,
   enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${RUNTIME_APP_NAME}",
-  faviconUrl: "${RUNTIME_FAVICON_URL}"
+  faviconUrl: "${RUNTIME_FAVICON_URL}"${ONLY_FRONTEND_GATEWAY_LINE}
 };
 EOF
     echo "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
@@ -835,6 +965,36 @@ is_csv_value() {
     return 1
 }
 
+# Gateway port first: the agent/workspace random fallback range (18000-19000)
+# contains the gateway default, so they must exclude the chosen gateway port.
+GATEWAY_PID=""
+GATEWAY_LOG_PATH=""
+GATEWAY_DIR="${SCRIPT_DIR}/../mcp-gateway"
+DEFAULT_GATEWAY_PORT=18745
+if [ "$WITH_GATEWAY" = true ]; then
+    if [ -n "${GATEWAY_PORT:-}" ]; then
+        echo "🔎 Using requested gateway port: $GATEWAY_PORT"
+        if port_in_use "$GATEWAY_PORT"; then
+            echo "❌ Error: Requested GATEWAY_PORT $GATEWAY_PORT is already in use"
+            exit 1
+        fi
+    else
+        echo "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
+        GATEWAY_PORT="$(choose_default_then_random_port "$DEFAULT_GATEWAY_PORT" 18100 18199)"
+        if [ -z "$GATEWAY_PORT" ]; then
+            echo "❌ Error: No free gateway port available in range 18100-18199"
+            exit 1
+        fi
+    fi
+else
+    GATEWAY_PORT="${GATEWAY_PORT:-18745}"
+fi
+export GATEWAY_PORT
+export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
+export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
+export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
+export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
+
 # Kill any orphaned agent server from a previous run on the default port so we can
 # reuse it (avoids accumulating background servers on different random ports).
 if [ -z "${AGENT_PORT:-}" ] && port_in_use "$DEFAULT_AGENT_PORT"; then
@@ -851,7 +1011,7 @@ if [ -n "${AGENT_PORT:-}" ]; then
     fi
 else
     echo "🔎 Selecting agent server port: default ${DEFAULT_AGENT_PORT}, random fallback in range 18000-19000..."
-    AGENT_PORT="$(choose_default_then_random_port "$DEFAULT_AGENT_PORT" 18000 19000)"
+    AGENT_PORT="$(choose_default_then_random_port "$DEFAULT_AGENT_PORT" 18000 19000 "$GATEWAY_PORT")"
     if [ -z "$AGENT_PORT" ]; then
         echo "❌ Error: No free port available in range 18000-19000"
         exit 1
@@ -1101,7 +1261,7 @@ if [ "$WITH_WORKSPACE" = true ]; then
         fi
     else
         echo "🔎 Selecting workspace server port: default ${DEFAULT_WORKSPACE_PORT}, random fallback in range 18000-19000..."
-        WORKSPACE_PORT="$(choose_default_then_random_port "$DEFAULT_WORKSPACE_PORT" 18000 19000 "$AGENT_PORT")"
+        WORKSPACE_PORT="$(choose_default_then_random_port "$DEFAULT_WORKSPACE_PORT" 18000 19000 "$AGENT_PORT,$GATEWAY_PORT")"
         if [ -z "$WORKSPACE_PORT" ]; then
             echo "❌ Error: No free workspace port available in range 18000-19000"
             exit 1
@@ -1138,6 +1298,9 @@ if [ "$WITH_WORKSPACE" = true ]; then
     mkdir -p "$WORKSPACE_DOCS_PATH"
     WORKSPACE_DOCS_PATH="$(cd "$WORKSPACE_DOCS_PATH" && pwd)"
     export WORKSPACE_DOCS_PATH
+    # The local installation has one owner. Keep CapLayer's configuration
+    # database in its chat project; service secrets stay in GATEWAY_STATE_DIR.
+    export GATEWAY_WORKSPACE_DIR="${GATEWAY_WORKSPACE_DIR:-${WORKSPACE_DOCS_PATH}/_users/default/Chats/CapLayer}"
     export WORKSPACE_API_URL="${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}"
     if [ -z "${WORKSPACE_API_TOKEN:-}" ]; then
         WORKSPACE_API_TOKEN="$(/usr/bin/openssl rand -hex 32 2>/dev/null || uuidgen | tr -d '-')"
@@ -1153,12 +1316,18 @@ fi
 write_frontend_runtime_config() {
     local runtime_app_name
     local runtime_favicon_url
+    local gateway_config_line
     local frontend_api_base_url="$MCP_AGENT_SERVER_URL"
     if [ "$WITH_FRONTEND" = true ]; then
         frontend_api_base_url="$FRONTEND_URL"
     fi
     runtime_app_name="$(json_escape_runtime_value "${AGENTWORKS_APP_NAME:-AgentWorks}")"
     runtime_favicon_url="$(json_escape_runtime_value "${AGENTWORKS_FAVICON_URL:-/logo.svg}")"
+    gateway_config_line=""
+    if [ "$WITH_GATEWAY" = true ]; then
+        gateway_config_line=",
+  gatewayUrl: \"$(json_escape_runtime_value "$GATEWAY_PUBLIC_URL")\""
+    fi
     mkdir -p "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
@@ -1168,7 +1337,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: true,
   enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${runtime_app_name}",
-  faviconUrl: "${runtime_favicon_url}"
+  faviconUrl: "${runtime_favicon_url}"${gateway_config_line}
 };
 EOF
     echo "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
@@ -1274,6 +1443,11 @@ if [ "$WITH_FRONTEND" = true ]; then
     > "$ELECTRON_LOG_PATH"
     echo "✅ Frontend log file truncated: $FRONTEND_LOG_PATH"
     echo "✅ Electron log file truncated: $ELECTRON_LOG_PATH"
+fi
+if [ "$WITH_GATEWAY" = true ]; then
+    GATEWAY_LOG_PATH="${LOG_DIR}/gateway_debug.log"
+    > "$GATEWAY_LOG_PATH"
+    echo "✅ Gateway log file truncated: $GATEWAY_LOG_PATH"
 fi
 
 # Workflow Builder chats historically lived directly under conversation/<date>.
@@ -1405,6 +1579,9 @@ log_rotate_daemon() {
             [ -n "$FRONTEND_LOG_PATH" ] && rotate_log_file "$FRONTEND_LOG_PATH"
             [ -n "$ELECTRON_LOG_PATH" ] && rotate_log_file "$ELECTRON_LOG_PATH"
         fi
+        if [ "$WITH_GATEWAY" = true ] && [ -n "$GATEWAY_LOG_PATH" ]; then
+            rotate_log_file "$GATEWAY_LOG_PATH"
+        fi
     done
 }
 log_rotate_daemon &
@@ -1422,6 +1599,20 @@ stop_native_workspace() {
     if [ -n "$WORKSPACE_PORT" ]; then
         kill_process_on_port "$WORKSPACE_PORT" "orphaned workspace server" 50
         print_port_status "$WORKSPACE_PORT" "workspace"
+    fi
+}
+
+stop_mcp_gateway() {
+    if [ -n "$GATEWAY_PID" ] && kill -0 "$GATEWAY_PID" 2>/dev/null; then
+        print_stop_target "MCP Gateway" "$GATEWAY_PID" "$GATEWAY_PORT"
+        kill_process_tree "$GATEWAY_PID" "MCP Gateway"
+        wait "$GATEWAY_PID" 2>/dev/null
+        print_port_status "$GATEWAY_PORT" "gateway"
+    fi
+    # Same go-run orphan fallback as the workspace server.
+    if [ -n "$GATEWAY_PORT" ]; then
+        kill_process_on_port "$GATEWAY_PORT" "orphaned gateway server" 50
+        print_port_status "$GATEWAY_PORT" "gateway"
     fi
 }
 
@@ -1552,6 +1743,9 @@ cleanup_on_exit() {
         stop_frontend_dev
         stop_agent_server
         stop_native_workspace
+        if [ "$WITH_GATEWAY" = true ]; then
+            stop_mcp_gateway
+        fi
     fi
     if [ "$AGENTWORKS_AUTO_TMUX_TMPDIR" = true ]; then
         rm -rf "$TMUX_TMPDIR"
@@ -1622,6 +1816,70 @@ start_native_workspace() {
     WORKSPACE_PID=$!
     echo "✅ Native workspace process started (PID: $WORKSPACE_PID)"
     wait_for_workspace_health
+}
+
+wait_for_gateway_health() {
+    local health_url="${GATEWAY_PUBLIC_URL%/}/healthz"
+    local attempt
+    for attempt in $(seq 1 90); do
+        if curl -fsS "$health_url" >/dev/null 2>&1; then
+            echo "✅ MCP Gateway is healthy at: ${GATEWAY_PUBLIC_URL}/mcp"
+            return 0
+        fi
+        if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+            echo "❌ Error: MCP Gateway exited during startup. Check logs: $GATEWAY_LOG_PATH"
+            tail -20 "$GATEWAY_LOG_PATH"
+            return 1
+        fi
+        sleep 1
+    done
+
+    echo "❌ Error: MCP Gateway did not become healthy in time. Check logs: $GATEWAY_LOG_PATH"
+    tail -20 "$GATEWAY_LOG_PATH"
+    return 1
+}
+
+start_mcp_gateway() {
+    if [ "$WITH_GATEWAY" != true ]; then
+        return 0
+    fi
+
+    if [ ! -f "${GATEWAY_DIR}/go.mod" ]; then
+        echo "❌ Error: gateway module not found: ${GATEWAY_DIR}/go.mod"
+        return 1
+    fi
+
+    if port_in_use "$GATEWAY_PORT"; then
+        echo "❌ Error: Port $GATEWAY_PORT is already in use."
+        echo "   Stop the existing process or set GATEWAY_PORT to another value."
+        return 1
+    fi
+
+    echo "🚀 Starting MCP Gateway..."
+    echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
+    echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
+
+    echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
+    echo "=========================================" >> "$GATEWAY_LOG_PATH"
+    echo "- Port: $GATEWAY_PORT" >> "$GATEWAY_LOG_PATH"
+    echo "- Public URL: $GATEWAY_PUBLIC_URL" >> "$GATEWAY_LOG_PATH"
+    echo "=========================================" >> "$GATEWAY_LOG_PATH"
+    echo "" >> "$GATEWAY_LOG_PATH"
+
+    if [ "$BACKGROUND_MODE" = true ]; then
+        # shellcheck disable=SC2086
+        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
+    else
+        (
+            cd "$GATEWAY_DIR" || exit 1
+            exec go run ./cmd/server
+        ) >> "$GATEWAY_LOG_PATH" 2>&1 &
+    fi
+
+    GATEWAY_PID=$!
+    echo "✅ MCP Gateway process started (PID: $GATEWAY_PID)"
+    wait_for_gateway_health
 }
 
 wait_for_frontend_health() {
@@ -1967,6 +2225,19 @@ fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
     start_native_workspace || exit 1
+fi
+
+if [ "$WITH_GATEWAY" = true ]; then
+    # The gateway is auxiliary: an explicit flag fails the run, but a
+    # default-on failure only warns so one sidecar can't break the stack.
+    if ! start_mcp_gateway; then
+        if [ "$GATEWAY_EXPLICIT" = true ]; then
+            exit 1
+        fi
+        echo "⚠️  Continuing without the MCP Gateway (pass --with-gateway to require it)."
+        WITH_GATEWAY=false
+        write_frontend_runtime_config
+    fi
 fi
 
 # Kill all leftover agent-browser daemon processes from previous runs.

@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 type Consent = { client_name: string; redirect_uri: string; scopes: string[]; editable_workflows?: { id: string; label: string }[] }
 
 const scopeDescriptions: Record<string, string> = {
+  'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
   'relays:write': 'Create, edit, test and publish Relays you can edit; uses your saved Builder model and usage budget',
@@ -17,6 +18,8 @@ const scopeDescriptions: Record<string, string> = {
 }
 
 export function MCPOAuthConsent() {
+  const vault = window.location.pathname === '/oauth/vault'
+  const consentAPI = vault ? '/api/oauth/vault/consent' : '/api/oauth/mcp/consent'
   const request = new URLSearchParams(window.location.search).get('request')
   const [consent, setConsent] = useState<Consent | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -26,17 +29,17 @@ export function MCPOAuthConsent() {
 
   useEffect(() => {
     if (!request || !/^mcp_req_[a-f0-9]{64}$/.test(request)) { setError('This connection request is invalid.'); return }
-    api.get<Consent>('/api/oauth/mcp/consent', { params: { request } })
+    api.get<Consent>(consentAPI, { params: { request } })
       .then(({ data }) => setConsent(data))
       .catch(() => setError('This connection request has expired. Start again in your AI app.'))
-  }, [request])
+  }, [request, consentAPI])
 
   const decide = async (decision: 'approve' | 'deny') => {
     if (!consent || !request) return
     setBusy(true)
     setError(null)
     try {
-      const { data } = await api.post<{ redirect_url: string }>(`/api/oauth/mcp/consent?request=${encodeURIComponent(request)}`, { decision, workflow_ids: builder ? workflowIDs : [] })
+      const { data } = await api.post<{ redirect_url: string }>(`${consentAPI}?request=${encodeURIComponent(request)}`, { decision, workflow_ids: builder ? workflowIDs : [] })
       const destination = new URL(data.redirect_url)
       if (destination.origin !== new URL(consent.redirect_uri).origin || destination.pathname !== new URL(consent.redirect_uri).pathname) {
         throw new Error('The connection response had an unexpected destination.')
@@ -51,8 +54,8 @@ export function MCPOAuthConsent() {
   return <main className="min-h-screen bg-background flex items-center justify-center p-4">
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Connect to AgentWorks</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
+        <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : 'AgentWorks'}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{consent ? (vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
         <ul className="space-y-2 text-sm text-foreground">{consent.scopes.map(scope => <li key={scope} className="rounded-md bg-muted p-3">{scopeDescriptions[scope] || scope}</li>)}</ul>

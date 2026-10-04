@@ -487,7 +487,7 @@ func TestApplyStepConfigToAgentConfigDefaultsCodingAgentTmuxCloseOnCompletion(t 
 	config := agents.NewOrchestratorAgentConfig("step-agent")
 	config.LLMConfig.Primary.Provider = string(mcpllm.ProviderCodexCLI)
 
-	hcpo.applyStepConfigToAgentConfig(config, &AgentConfigs{}, true, false)
+	hcpo.applyStepConfigToAgentConfig(context.Background(), config, &AgentConfigs{}, true, false)
 
 	if config.CodingAgentKeepAlive {
 		t.Fatal("expected workflow step coding-agent tmux lifecycle to close on completion by default")
@@ -499,7 +499,7 @@ func TestApplyStepConfigToAgentConfigSupportsCodingAgentTmuxKeepAlive(t *testing
 	config := agents.NewOrchestratorAgentConfig("step-agent")
 	config.LLMConfig.Primary.Provider = string(mcpllm.ProviderCodexCLI)
 
-	hcpo.applyStepConfigToAgentConfig(config, &AgentConfigs{
+	hcpo.applyStepConfigToAgentConfig(context.Background(), config, &AgentConfigs{
 		CodingAgentTmuxLifecycle: CodingAgentTmuxLifecycleKeepAlive,
 	}, true, false)
 
@@ -528,7 +528,7 @@ func TestApplyStepConfigToAgentConfigEnablesWorkspaceIsolation(t *testing.T) {
 		t.Fatal("OrchestratorAgentConfig must default IsolateCodingAgentWorkspace=false; chat code paths depend on the zero value being safe")
 	}
 
-	hcpo.applyStepConfigToAgentConfig(config, &AgentConfigs{}, true, false)
+	hcpo.applyStepConfigToAgentConfig(context.Background(), config, &AgentConfigs{}, true, false)
 
 	if !config.IsolateCodingAgentWorkspace {
 		t.Fatal("expected workflow step to enable IsolateCodingAgentWorkspace; without it, concurrent steps collide on CodingAgentWorkingDir and the model's built-in tools can mutate operator files")
@@ -1009,7 +1009,7 @@ func TestApplyStepConfigToAgentConfigForcesCodeExecForCLIProviders(t *testing.T)
 	config := agents.NewOrchestratorAgentConfig("test-agent")
 	config.LLMConfig.Primary.Provider = "claude-code"
 
-	hcpo.applyStepConfigToAgentConfig(config, nil, false, false)
+	hcpo.applyStepConfigToAgentConfig(context.Background(), config, nil, false, false)
 
 	if !config.UseCodeExecutionMode {
 		t.Fatalf("expected CLI providers to have code execution mode enabled")

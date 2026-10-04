@@ -95,6 +95,7 @@ export type WorkspacePaneChatResult = {
 }
 
 type WorkspacePaneChatRequest = {
+  notificationId?: string
   message: string
   viewMode?: EventViewMode
 } & (
@@ -160,8 +161,15 @@ export async function sendWorkspacePaneMessageToChat(request: WorkspacePaneChatR
 
   const queuedBehindRunningTurn = targetTab.isStreaming
   const chatStore = useChatStore.getState()
-  const existingQueue = chatStore.getTabConfig(tabId)?.queuedMessages || []
-  chatStore.setTabConfig(tabId, { queuedMessages: [...existingQueue, message] })
+  const config = chatStore.getTabConfig(tabId)
+  if (request.notificationId && config?.mcpOAuthNotificationIDs?.includes(request.notificationId)) {
+    return { tabId, reused, queuedBehindRunningTurn }
+  }
+  const existingQueue = config?.queuedMessages || []
+  chatStore.setTabConfig(tabId, {
+    queuedMessages: [...existingQueue, message],
+    ...(request.notificationId ? { mcpOAuthNotificationIDs: [...(config?.mcpOAuthNotificationIDs ?? []), request.notificationId].slice(-100) } : {}),
+  })
   chatStore.setTabViewMode(tabId, viewMode)
   // A message into the chat already on screen keeps the reader's place when
   // they have scrolled up; into any other chat (or one at the bottom) it lands

@@ -12,6 +12,7 @@ import { AuthWrapper } from "./components/AuthWrapper";
 import { activateTab } from "./utils/activateTab";
 import { Loader2 } from "lucide-react";
 import { WorkflowLayout } from "./components/workflow";
+import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
 import { ModePresetBar } from "./components/ModePresetBar";
 import { TerminalFocusLayout } from './components/TerminalFocusLayout'
 import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useChatStore } from "./stores";
@@ -19,10 +20,12 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
+import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { normalizeEventViewMode, waitForChatStoreHydration, type ChatTab } from "./stores/useChatStore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { ProductSurfaceSwitcher } from './components/ProductSurfaceSwitcher';
 import "./App.css";
 
 // Extend window interface for global functions
@@ -44,15 +47,26 @@ const queryClient = new QueryClient();
 const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
-const VideoStudioSurface = lazy(() => import('./products/video-studio/VideoStudioSurface').then(module => ({ default: module.VideoStudioSurface })))
-const DominionSurface = lazy(() => import('./products/dominion/DominionSurface').then(module => ({ default: module.DominionSurface })))
-const SparkQuillSurface = lazy(() => import('./products/sparkquill/SparkQuillSurface').then(module => ({ default: module.SparkQuillSurface })))
-const WorkSurface = lazy(() => import('./products/work/WorkSurface').then(module => ({ default: module.WorkSurface })))
+const VideoStudioSurface = lazy(() => loadVideoStudioSurface().then(module => ({ default: module.VideoStudioSurface })))
+const DominionSurface = lazy(() => loadDominionSurface().then(module => ({ default: module.DominionSurface })))
+const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ default: module.SparkQuillSurface })))
+const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
+const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
     Loading viewer...
+  </div>
+)
+
+const ProductSurfaceFallback = ({ label }: { label: string }) => (
+  <div className="flex h-screen bg-background">
+    <ProductTopBar sidebar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain></ProductTopBar>
+    <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Opening {label}…
+    </div>
   </div>
 )
 
@@ -100,6 +114,8 @@ function App() {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const mcpAccount = useAuthStore(state => state.isAuthenticated ? state.user?.id : undefined)
+  useEffect(() => { if (mcpAccount) void useMCPStore.getState().refreshTools() }, [mcpAccount])
 
   // A dedicated deployment is an allowlist, not a visual preference. Correct
   // persisted desktop selections before rendering so a stale SparkQuill or
@@ -578,9 +594,6 @@ function App() {
     }
     hasInitializedRef.current = true
 
-    // Initialize MCP store
-    useMCPStore.getState().refreshTools()
-    
     // LLM list is refreshed after loadDefaultsFromBackend() in useLLMDefaults (so supported_providers is set)
     
     // Initialize global preset store
@@ -925,28 +938,28 @@ function App() {
           />
         )}
         {productSurface === 'video-studio' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><VideoStudioSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'dominion' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><DominionSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Dominion" />}><DominionSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><SparkQuillSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'work' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="work" /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'code' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Code" />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
+        ) : productSurface === 'mcp-gateway' ? (
+          <Suspense fallback={<ProductSurfaceFallback label="Vault" />}><GatewaySurface /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />
         <GlobalHumanFeedbackPrompt />
         <TerminalFocusLayout className="h-screen bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
-          {/* AgentWorks contains Automations and Activity. The former left
-              sidebar was removed; its controls now live in the top bar
-              (ModePresetBar → WorkspaceTopBarControls). */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 overflow-hidden">
+          {/* All workspace products reuse the same global navigation. */}
+          <div className="flex-1 flex min-w-0 min-h-0 relative z-10 overflow-hidden">
             {/* Global Mode & Preset Bar - only above middle content area, not sidebars */}
             <ModePresetBar />
             
-            <div className="flex-1 min-h-0 overflow-hidden relative">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative">
                 {hasOpenedWorkflowsOverview && (
                   <div className={showWorkflowsOverview && !showProviders ? 'h-full' : 'hidden'}>
                     <Suspense fallback={<FileSurfaceFallback />}>

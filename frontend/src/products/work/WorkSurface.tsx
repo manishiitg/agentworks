@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, PanelLeftOpen, PanelRightOpen, Sparkles, Trash2 } from 'lucide-react'
+import { Eye, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
 import { ProductIntro } from '../../components/ProductIntro'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
@@ -31,11 +32,11 @@ import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLan
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
-import { resolveWorkSurfaceLayout } from './workSurfaceLayoutResolver'
-import { WorkspaceTopToolbar } from '../../components/workspace/WorkspaceTopToolbar'
+import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
+import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type ProductEngineSelectionDetail, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -100,12 +101,6 @@ function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
 function writeWorkWorkspaceView(projectId: string | undefined, view: WorkWorkspaceView) {
   if (typeof window === 'undefined' || !projectId) return
   try { window.localStorage.setItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`, view) } catch { /* UI preference only. */ }
-}
-
-function clampWorkSplitRatio(ratio: number, width: number): number {
-  const minPaneWidth = 240
-  const minRatio = Math.max(0.15, Math.min(0.5, minPaneWidth / Math.max(width, minPaneWidth * 2)))
-  return Math.max(minRatio, Math.min(Math.min(0.85, 1 - minRatio), ratio))
 }
 
 function readWorkSplitRatio(projectId?: string): number {
@@ -516,66 +511,37 @@ function WorkChatTabs({ projectId, canonicalTabId }: { projectId: string; canoni
 
 function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: ProjectProductConfig }) {
   if (!product.hasIdentity) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
-        <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Start coding
-          </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            This is the chat for this {product.itemNoun}. Ask it to:
-          </p>
-          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <li>• Clone a repository into code/ and explain how it works</li>
-            <li>• Build, run, test and debug in the workspace terminal</li>
-            <li>• Call your Crews and workflows when it needs them</li>
-          </ul>
-        </div>
-      </div>
-    )
+    return <ProductChatLandingCard
+      title="Start coding"
+      description={`This is the chat for this ${product.itemNoun}. Ask it to:`}
+      examples={[
+        'Clone a repository into code/ and explain how it works',
+        'Build, run, test and debug in the workspace terminal',
+        'Call your Crews and workflows when it needs them',
+      ]}
+    />
   }
   if (sharedBy) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
-        <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Explore {sharedBy}’s {product.noun}
-          </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            This {product.noun} is read-only for you. Ask it to:
-          </p>
-          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <li>• Explain how the {product.noun} works and what it can do</li>
-            <li>• Walk through its files, memory, and configuration</li>
-            <li>• Run its attached workflows when you ask</li>
-          </ul>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Your conversation stays private to you — the owner never sees it.
-          </p>
-        </div>
-      </div>
-    )
+    return <ProductChatLandingCard
+      title={`Explore ${sharedBy}’s ${product.noun}`}
+      description={`This ${product.noun} is read-only for you. Ask it to:`}
+      examples={[
+        `Explain how the ${product.noun} works and what it can do`,
+        'Walk through its files, memory, and configuration',
+        'Run its attached workflows when you ask',
+      ]}
+      footer="Your conversation stays private to you — the owner never sees it."
+    />
   }
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
-      <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Start your {product.noun} chat
-        </div>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          This is the persistent conversation for this {product.noun} project. Ask {product.noun} to:
-        </p>
-        <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-          <li>• Research, write, analyze, or plan ongoing work</li>
-          <li>• Work with project files, code, browser, terminal, and connected tools</li>
-          <li>• Create dashboards, schedules, webhooks, bots, or project memory</li>
-        </ul>
-      </div>
-    </div>
-  )
+  return <ProductChatLandingCard
+    title={`Start your ${product.noun} chat`}
+    description={`This is the persistent conversation for this ${product.noun} project. Ask ${product.noun} to:`}
+    examples={[
+      'Research, write, analyze, or plan ongoing work',
+      'Work with project files, code, browser, terminal, and connected tools',
+      'Create dashboards, schedules, webhooks, bots, or project memory',
+    ]}
+  />
 }
 
 function WorkTopBarControl({
@@ -770,7 +736,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [reportPreviewPreference, setReportPreviewPreference] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(selected?.workspacePath))
   // All split classes derive from the shared layout resolver: one decision
   // point for every flag combination (see workSurfaceLayoutResolver.ts).
-  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview: reportPreviewPreference === 'mobile' })
   const { start: startSplitDrag, stop: stopSplitDrag } = usePointerDrag()
   const [createError, setCreateError] = useState<string | null>(null)
   const showProviders = useLLMStore((state) => state.showLLMModal)
@@ -960,24 +925,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     }
   }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
 
-  useEffect(() => {
-    if (!selected) return
-    const handleEngineSelection = (event: Event) => {
-      const detail = (event as CustomEvent<ProductEngineSelectionDetail>).detail
-      const sourceTabId = detail?.tabId || tabId
-      const sourceTab = sourceTabId ? useChatStore.getState().chatTabs[sourceTabId] : undefined
-      if (detail?.profileId !== product.profileId || !detail.engine || !detail.modelId || !sourceTab || !belongsToWorkProject(sourceTab, selected.id)) return
-      void changeWorkRuntime({
-        engine: detail.engine!,
-        provider: detail.provider,
-        modelId: detail.modelId!,
-        reasoningEffort: detail.reasoningEffort,
-      })
-    }
-    window.addEventListener('agentworks:product-engine-selected', handleEngineSelection)
-    return () => window.removeEventListener('agentworks:product-engine-selected', handleEngineSelection)
-  }, [changeWorkRuntime, product.profileId, selected, tabId])
-
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
   const setSplitRatio = useCallback((next: number, persist = false) => {
@@ -1056,7 +1003,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   return (
     <ProjectProductProvider value={product}>
-    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 flex-col bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1101,7 +1048,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       <div
         data-ui-workspace={selected?.workspacePath}
         data-ui-view={selected ? workPresentationView(workspaceView) : undefined}
-        className="relative min-h-0 flex-1 overflow-hidden"
+        className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
       >
         <LlmModalHost />
         {showSchedulesOverview && !showProviders && <SchedulesPage />}
@@ -1139,41 +1086,16 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               )}
             </div>
           ) : (
-            <>
-              {!panelOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen(true)}
-                  title="Show workspace"
-                  aria-label="Show workspace"
-                  className="absolute right-0 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background/95 py-3 pl-1.5 pr-1 text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground md:flex"
-                >
-                  <PanelRightOpen className="h-4 w-4" />
-                  <span className="[writing-mode:vertical-rl] text-[10px] font-semibold uppercase tracking-wider">Workspace</span>
-                </button>
-              ) : null}
-              {!chatOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setChatOpen(true)}
-                  title="Show chat panel"
-                  aria-label="Show chat panel"
-                  className="absolute left-0 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-r-lg border border-l-0 border-border bg-background/95 py-3 pl-1 pr-1.5 text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground md:flex"
-                >
-                  <PanelLeftOpen className="h-4 w-4" />
-                  <span className="[writing-mode:vertical-rl] text-[10px] font-semibold uppercase tracking-wider">Chat</span>
-                </button>
-              ) : null}
-              <div
-                ref={splitLayoutRef}
-                className={layout.gridClassName}
-                style={layout.gridStyle}
-              >
-                <WorkspaceTopToolbar className={layout.toolbarClassName}>
-                  {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
-                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} /> : null}
-                </WorkspaceTopToolbar>
-                {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
+            <ProductWorkspaceShell
+              splitRef={splitLayoutRef}
+              chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={splitRatio}
+              mobilePreview={reportPreviewPreference === 'mobile'}
+              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
+              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
+              toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} />}
+              chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
+              workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
+              chat={<>
                   {/* A Code's privacy notice lives in Setup → General and the
                       Share dialog, not above every chat. */}
                   {product.profileId !== 'code' && selected.shared ? (
@@ -1232,8 +1154,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>
                     </div>
                   )}
-                </main> : null}
-                {layout.showDivider ? (
+              </>}
+              divider={
                   <WorkspaceSplitRail
                     ratio={splitRatio}
                     onPointerDown={handleSplitPointerDown}
@@ -1244,15 +1166,9 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                     onCollapseChat={() => setChatOpen(false)}
                     onCollapseWorkspace={() => setPanelOpen(false)}
                   />
-                ) : null}
-                {layout.showPanel ? (
-                  <aside
-                    data-tour="crew-workspace"
-                    data-ui-workspace={selected.workspacePath}
-                    data-ui-view={workPresentationView(workspaceView)}
-                    className={layout.panelClassName}
-                  >
-                  {tabId ? (
+              }
+              workspace={<>
+                  {tabId || Boolean(selected.shared) ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
@@ -1286,10 +1202,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   ) : (
                     <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening workspace…</div>
                   )}
-                  </aside>
-                ) : null}
-              </div>
-            </>
+              </>}
+            />
           )}
         </div>
       </div>

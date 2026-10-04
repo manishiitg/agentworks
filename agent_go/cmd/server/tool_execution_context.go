@@ -88,6 +88,8 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 		}
 		copy := *bound
+		// A delegated or different product binding must not inherit setup authority.
+		ctx = context.WithValue(ctx, vaultBuilderKey{}, nil)
 		if operationID := virtualtools.FeedbackOperationFromContext(requestCtx); operationID != "" {
 			ctx = virtualtools.WithFeedbackOperation(ctx, operationID)
 		}
@@ -124,6 +126,12 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		if access == WorkflowAccessNone || (!readOnly && access == WorkflowAccessRead) {
 			return nil, fmt.Errorf("%s session permissions changed; start a new turn", tool)
+		}
+		if vaultBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) {
+			if !canUseCapLayerProfile(ctx, req.AgentProfileID) || api.mcpSessionPerson(authoritySession) != copy.UserID {
+				return nil, fmt.Errorf("Vault builder requires an administrator-owned session")
+			}
+			ctx = context.WithValue(ctx, vaultBuilderKey{}, vaultBuilderAuthority{copy.UserID, toolSession})
 		}
 		return ctx, nil
 	}

@@ -119,7 +119,6 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
       <WorkspaceViewHeader
         icon={Brain}
         title="Memory"
-        subtitle="Durable project context that Crew carries across chats, schedules, triggers, and bots."
         actions={<WorkspaceViewActions
           workspacePath={workspacePath}
           message={readOnly
