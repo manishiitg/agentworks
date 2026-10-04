@@ -81,10 +81,7 @@ and RTS only copy and activate it after verifying the manifest; `--build` deploy
 
 ## Named custom Python tools for Relay agents — PLAT-423
 
-[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), fixed on main;
-deployment pending. User-authored run(input) functions register as named tools
-with per-step selection, schemas and the shared sandbox/registry. Published
-versions freeze tool source. The original custom-tool requirement is implemented.
+[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), retired before deployment: replaced by scripted routes as named tools (PLAT-432); Relay agent tools wait for routes on authored-prompt agents.
 
 ## Muse messages ran three or more times: stale refusal notice — PLAT-422
 

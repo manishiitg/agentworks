@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on main; deployment pending |
+| State | retired 2026-10-04 before deployment (code removed) |
 | Date | 2026-10-04 |
 | Owner | coding-agent-bridge |
 
@@ -71,3 +71,13 @@ verify dependencies/connectivity; test those through the step sandbox.
 Arguments are capped at 64 KiB; return values use the existing bounded shell
 output and incomplete JSON fails explicitly. Existing crash-resume and Relay
 JSON repair gaps are separate. PLAT-411's tool errors remain open.
+
+## Retired (2026-10-04)
+
+Removed before it was ever deployed, on the owner's decision to have one way for
+an agent to call a script: scripted routes as named tools (PLAT-432). The
+`pythontools` package, its step binding, the Relay release check and the Relay
+prompt/skill text were removed; no workflow or Relay used it. Relay agents get
+custom tools again once authored-prompt agents can own scripted routes: today
+the delegating runtime drops an authored system prompt, so Relay validation
+still forbids routes on agents.

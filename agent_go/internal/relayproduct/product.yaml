@@ -5,8 +5,6 @@ dependencies: {}
 # and executor. This manifest owns built-in chat prompts, skills, and tool
 # surfaces. An individual Relay's authored step prompts and selected runtime
 # integrations remain in its workflow.json and planning/plan.json.
-# Custom Python tools use this Builder's existing file authoring and
-# update_step_config capability; runtime selection is python_tools:<name>.
 prompt:
   file: prompts/builder.md
   variables: {}

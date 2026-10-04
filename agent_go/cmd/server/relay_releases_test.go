@@ -25,14 +25,11 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	}}}
 	planJSON, _ := json.Marshal(plan)
 	mock := &mockWorkspaceAPI{files: map[string]string{
-		manifestPath(workspace):                             string(manifestJSON),
-		workspace + "/planning/plan.json":                   string(planJSON),
-		workspace + "/variables/variables.json":             `{"variables":[{"name":"INPUT","type":"object"}],"groups":[{"name":"default","enabled":true}]}`,
-		workspace + "/code/answer/main.py":                  "print('draft one')\n",
-		workspace + "/planning/step_config.json":            `{"steps":[{"id":"answer","agent_configs":{"enabled_custom_tools":["python_tools:lookup_customer"]}}]}`,
-		workspace + "/code/tools/lookup_customer/tool.json": `{"description":"Customer lookup","parameters":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}`,
-		workspace + "/code/tools/lookup_customer/main.py":   "def run(input): return {\"version\": 1}\n",
-		workspace + "/runs/iteration-0/output.json":         `{"ignore":true}`,
+		manifestPath(workspace):                     string(manifestJSON),
+		workspace + "/planning/plan.json":           string(planJSON),
+		workspace + "/variables/variables.json":     `{"variables":[{"name":"INPUT","type":"object"}],"groups":[{"name":"default","enabled":true}]}`,
+		workspace + "/code/answer/main.py":          "print('draft one')\n",
+		workspace + "/runs/iteration-0/output.json": `{"ignore":true}`,
 	}}
 	server := httptest.NewServer(mock)
 	defer server.Close()
@@ -42,7 +39,7 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v1.Version != "v1" || v1.Hash == "" || v1.FileCount != 7 {
+	if v1.Version != "v1" || v1.Hash == "" || v1.FileCount != 4 {
 		t.Fatalf("v1 = %+v", v1)
 	}
 	republish, err := publishRelayRelease(ctx, workspace)
@@ -70,7 +67,6 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	}
 	mock.mu.Lock()
 	mock.files[workspace+"/code/answer/main.py"] = "print('draft two')\n"
-	mock.files[workspace+"/code/tools/lookup_customer/main.py"] = "def run(input): return {\"version\": 2}\n"
 	mock.mu.Unlock()
 	v2, err := publishRelayRelease(ctx, workspace)
 	if err != nil {
@@ -83,11 +79,6 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	newCode, _, _ := readFileFromWorkspace(ctx, path.Join(relayReleaseWorkspace(workspace, "v2"), "code/answer/main.py"))
 	if !strings.Contains(oldCode, "draft one") || !strings.Contains(newCode, "draft two") {
 		t.Fatalf("release code changed: v1=%q v2=%q", oldCode, newCode)
-	}
-	oldTool, _, _ := readFileFromWorkspace(ctx, path.Join(root, "code/tools/lookup_customer/main.py"))
-	newTool, _, _ := readFileFromWorkspace(ctx, path.Join(relayReleaseWorkspace(workspace, "v2"), "code/tools/lookup_customer/main.py"))
-	if !strings.Contains(oldTool, `"version": 1`) || !strings.Contains(newTool, `"version": 2`) {
-		t.Fatalf("release tool source changed: v1=%q v2=%q", oldTool, newTool)
 	}
 	active, activeWorkspace, err := activeRelayRelease(ctx, workspace)
 	if err != nil || active.Version != "v2" || activeWorkspace != relayReleaseWorkspace(workspace, "v2") {
