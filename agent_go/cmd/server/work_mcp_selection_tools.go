@@ -20,7 +20,7 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 		return fmt.Errorf("Crew MCP selection requires an active Crew project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect your private connections and permitted Vault servers. Selecting is allowed only when the server is connected privately or granted through Vault; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect your private connections and permitted Vault servers. Vault MCPs are available automatically through the signed-in user/group permissions and cannot be selected or deselected here. Selecting is allowed only for a connected private server; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "server"},
@@ -38,6 +38,10 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 			return "", fmt.Errorf("server is required")
 		}
 
+		if strings.HasPrefix(requested, "vault_") {
+			return "", fmt.Errorf("Vault MCPs are available automatically through your user/group permissions; manage access in Vault")
+		}
+
 		catalog, err := api.loadMergedConfig()
 		if err != nil {
 			return "", fmt.Errorf("load MCP configuration: %w", err)
@@ -47,6 +51,9 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 			resolved, resolveErr := api.resolveGovernedMCP(ctx, userID, requested)
 			if resolveErr != nil {
 				return "", resolveErr
+			}
+			if strings.HasPrefix(resolved.Name, "vault_") {
+				return "", fmt.Errorf("Vault MCPs are available automatically through your user/group permissions; manage access in Vault")
 			}
 			canonical = vaultSelectionName(resolved.Name)
 			if private, found := personalMCPByCatalog(userID, requested); found {

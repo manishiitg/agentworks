@@ -164,7 +164,7 @@ func TestVaultRuntimeNamesSeparateUsersSessionsAndCredentialLifetimes(t *testing
 		}
 		names, overrides, aliases, err := api.scopeAgentMCP(personContext(person), "", []string{"Linear", placeMCPInternalName(person, "linear")}, nil)
 		want := placeMCPInternalName(person, "linear")
-		if err != nil || len(names) != 1 || names[0] != want || overrides[want].Server == nil || aliases["linear"] != want {
+		if err != nil || len(names) != 2 || names[0] != want || overrides[want].Server == nil || aliases["linear"] != want {
 			t.Fatal("private SDK pool retained a shared catalog name")
 		}
 	}
@@ -402,7 +402,7 @@ func TestVaultRuntimeRejectsSessionOwnershipMismatchOrMissingOwner(t *testing.T)
 	}
 }
 
-func TestPrivateMCPBuiltinsAndForeignNamesNeverContactVault(t *testing.T) {
+func TestPrivateMCPBuiltinsPreservedAndForeignNamesDenied(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")
 	var called bool
@@ -419,8 +419,8 @@ func TestPrivateMCPBuiltinsAndForeignNamesNeverContactVault(t *testing.T) {
 	if _, err := api.resolveGovernedMCP(personContext("alice"), "alice", placeMCPInternalName("bob", "linear")); err == nil {
 		t.Fatal("foreign private name accepted")
 	}
-	if called {
-		t.Fatal("unnecessary Vault request delays private/builtin-only agents")
+	if !called {
+		t.Fatal("default Vault inventory was not discovered")
 	}
 }
 
@@ -466,5 +466,59 @@ func TestVaultInventoryAndBuilderShareCallerGroupsAndSecretNames(t *testing.T) {
 				t.Fatalf("leaked value metadata: %s", out)
 			}
 		}
+	}
+}
+
+func TestVaultDefaultsWithoutProjectSelectionAndRevoke(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	allowed := true
+	calls := 0
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		rows := []any{}
+		if allowed && r.Header.Get("X-CapLayer-Actor") == "alice" {
+			for _, id := range []string{"notion-work", "notion-personal"} {
+				rows = append(rows, map[string]any{"id": id, "label": id, "provider": "notion", "tools": []any{map[string]any{"name": "notion__fetch"}}})
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"servers": rows})
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+	api := &StreamingAPI{}
+	for _, selected := range [][]string{nil, {mcpclient.NoServers}, {"workspace"}, {"vault_notion-work"}} {
+		before := calls
+		names, overrides, _, err := api.scopeAgentMCP(personContext("alice"), "", selected, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen := map[string]bool{}
+		for _, name := range names {
+			if strings.HasPrefix(name, "vault_") {
+				seen[vaultSelectionName(name)] = true
+				if overrides[name].Server == nil {
+					t.Fatal("missing runtime override")
+				}
+			}
+		}
+		if len(seen) != 2 || !seen["vault_notion-work"] || !seen["vault_notion-personal"] || calls-before != 1 {
+			t.Fatalf("default named account inventory: %v, requests %d", names, calls-before)
+		}
+	}
+	names, _, _, err := api.scopeAgentMCP(personContext("bob"), "", nil, nil)
+	if err != nil || len(names) != 1 || names[0] != mcpclient.NoServers {
+		t.Fatalf("Bob inherited access: %v %v", names, err)
+	}
+	before := calls
+	names, _, _, err = api.scopeAgentMCP(context.Background(), "", nil, nil)
+	if err != nil || len(names) != 1 || names[0] != mcpclient.NoServers || calls != before {
+		t.Fatal("actorless run inherited Vault access")
+	}
+	allowed = false
+	if _, err := api.resolveScopedGovernedMCP(personContext("alice"), nil, []string{"vault_notion-work"}, nil, "alice", "vault_notion-work", "notion__fetch"); err == nil {
+		t.Fatal("retained project selection bypassed revocation")
 	}
 }

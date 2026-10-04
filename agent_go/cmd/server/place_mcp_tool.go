@@ -21,8 +21,8 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 		"Manage the MCP connections of this Code (added with the owner's own login: Gmail, Drive, GitHub, ...). "+
 			"list: the catalog, this Code's connections, and the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values). Inspect this live inventory before proposing shared setup. "+
 			"connect: add a catalog server (catalog) or an https URL (name + url) to this Code with the owner's own login, and return the sign-in link for them to open. "+
-			"remove: detach a connection from this Code. select/deselect: choose a permitted Vault connection for this Code using its exact server name. Shared connections and grants are managed in Vault. "+
-			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the Integrations > Plugins > Available to finish. Changes apply from the user's next message.",
+			"remove: detach a connection from this Code. Vault MCPs are available automatically through the signed-in user/group permissions; select/deselect are obsolete for Vault. Shared connections and grants are managed in Vault. "+
+			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the Integrations > Available to finish. Changes apply from the user's next message.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
@@ -71,40 +71,11 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 					return "", err
 				}
 				if discovery != nil {
-					return fmt.Sprintf("Added %s to this Code, but this provider needs the user's own OAuth app. Ask them to open Integrations → Plugins → Available, click Sign in on %s, and enter their app's client ID and secret there (never in chat). Callback URL to register on the app: %s", saved.Name, saved.Name, discovery.RedirectURI), nil
+					return fmt.Sprintf("Added %s to this Code, but this provider needs the user's own OAuth app. Ask them to open Integrations → Available, click Sign in on %s, and enter their app's client ID and secret there (never in chat). Callback URL to register on the app: %s", saved.Name, saved.Name, discovery.RedirectURI), nil
 				}
 				return fmt.Sprintf("Added %s to this Code. Ask the user to open this link to sign in with their own account: %s — it is available from their next message after signing in.", saved.Name, authURL), nil
 			case "select", "deselect":
-				if !placeMCPCanAttach(ctx, person, root) {
-					return "", fmt.Errorf("only this Code's owner can select Vault connections")
-				}
-				requested, _ := args["server"].(string)
-				requested = vaultSelectionName(strings.TrimSpace(requested))
-				if !strings.HasPrefix(requested, "vault_") {
-					return "", fmt.Errorf("use an exact Vault connection name returned by list")
-				}
-				if action == "select" {
-					resolved, err := api.resolveGovernedMCP(ctx, person, requested)
-					if err != nil {
-						return "", err
-					}
-					requested = vaultSelectionName(resolved.Name)
-				}
-				if err := updateProductSelectedServers(ctx, "code", root, func(current []string) []string {
-					next := []string{}
-					for _, server := range current {
-						if vaultSelectionName(server) != requested {
-							next = append(next, server)
-						}
-					}
-					if action == "select" {
-						next = append(next, requested)
-					}
-					return next
-				}); err != nil {
-					return "", err
-				}
-				return fmt.Sprintf("%s %s for this Code. Changes apply from the next message; Vault permissions are enforced on every call.", action, requested), nil
+				return "", fmt.Errorf("Vault MCPs are available automatically through your user/group permissions; manage access in Vault instead of selecting or deselecting them for Code")
 			case "remove":
 				if name == "" {
 					return "", fmt.Errorf("name is required")

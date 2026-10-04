@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"sort"
 	"strings"
 )
 
@@ -22,4 +23,27 @@ func RemapMCPToolSelection(tools []string, aliases map[string]string) []string {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// IncludeDefaultVaultTools keeps a project's private tool allowlist while
+// making its authorized Vault connections available. The gateway, rather than
+// workflow.json, is authoritative for Vault tool grants and argument rules.
+func IncludeDefaultVaultTools(tools, scopedServers []string) []string {
+	if len(tools) == 0 {
+		return tools
+	}
+	out := append([]string(nil), tools...)
+	seen := make(map[string]bool)
+	for _, entry := range out {
+		seen[entry] = true
+	}
+	defaults := []string{}
+	for _, server := range scopedServers {
+		if strings.HasPrefix(server, "vault_") && strings.Contains(server, "__scope_") && !seen[server+":*"] {
+			defaults = append(defaults, server+":*")
+			seen[server+":*"] = true
+		}
+	}
+	sort.Strings(defaults)
+	return append(out, defaults...)
 }

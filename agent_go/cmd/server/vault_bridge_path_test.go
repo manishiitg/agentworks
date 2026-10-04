@@ -11,7 +11,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 )
 
-func TestVaultGeneratedBridgePathResolvesLiveConnectorAndKeepsSelection(t *testing.T) {
+func TestVaultGeneratedBridgePathUsesLiveGrantsWithoutProjectSelection(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
@@ -43,8 +43,8 @@ func TestVaultGeneratedBridgePathResolvesLiveConnectorAndKeepsSelection(t *testi
 		t.Fatalf("selected generated path failed: %v", err)
 	}
 	for _, selected := range [][]string{nil, {"vault_c-other"}, {"vault_c_notion_1"}} {
-		if _, err = api.resolveScopedGovernedMCP(ctx, nil, selected, nil, "alice", path, "fetch"); err == nil {
-			t.Fatalf("selection bypass: %v", selected)
+		if _, err = api.resolveScopedGovernedMCP(ctx, nil, selected, []string{"private:other"}, "alice", path, "fetch"); err != nil {
+			t.Fatalf("authorized Vault access was gated by project selection: %v", selected)
 		}
 	}
 	_, tool, toolErr := api.vaultBridgeToolName(ctx, "crew-test", path, "notion_c_notion_1__notion_fetch")

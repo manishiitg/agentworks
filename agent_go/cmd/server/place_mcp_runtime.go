@@ -102,6 +102,12 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		// Anyone else's connection, or one that is no longer here.
 		return nil, true, fmt.Errorf("MCP server %q is not available in this chat", server)
 	}
+	// Exact Vault IDs do not require a project manifest or opt-in. Ownership
+	// is pinned above, and resolveGovernedMCP checks the live user's inventory.
+	if strings.HasPrefix(server, "vault_") {
+		resolved, err := api.resolveGovernedMCP(ctx, pin.Person, server)
+		return resolved, true, err
+	}
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")

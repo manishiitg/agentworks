@@ -204,14 +204,14 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	}
 	redirect := deriveOAuthRedirectURIFromEnv()
 	if redirect == "" {
-		return fmt.Sprintf("Added %s. Finish sign-in in Integrations → Plugins.", saved.Name), nil
+		return fmt.Sprintf("Added %s. Finish sign-in in Integrations.", saved.Name), nil
 	}
 	authURL, discovery, _, err := api.startPlaceMCPSignIn(person, saved.Name, redirect, chatSessionIDFromContext(ctx), nil)
 	if err != nil {
 		return "", err
 	}
 	if discovery != nil {
-		return fmt.Sprintf("Added %s. Finish its OAuth app setup in Integrations → Plugins; never paste credentials into chat.", saved.Name), nil
+		return fmt.Sprintf("Added %s. Finish its OAuth app setup in Integrations; never paste credentials into chat.", saved.Name), nil
 	}
 	return fmt.Sprintf("Added %s. Sign in: %s", saved.Name, authURL), nil
 }

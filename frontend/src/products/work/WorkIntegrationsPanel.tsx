@@ -22,7 +22,7 @@ import { isProjectProductId, useProjectProduct } from './projectProduct'
 export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
-  { value: 'apps', label: 'Plugins' },
+  { value: 'apps', label: 'Connections' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'gmail', label: 'Google apps' },
@@ -78,7 +78,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
-      {vault ? <ProjectVaultPanel selectedServers={selectedServers} onSelectedServersChange={setSelected} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={workspacePath.startsWith('_users/')} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
+      {vault ? <ProjectVaultPanel selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={workspacePath.startsWith('_users/')} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
         selectedServers={selectedServers} onSelectedServersChange={setSelected} />}
     </div>
   )
@@ -140,7 +140,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Server}
-        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={visibleTabs.find(option => option.value === activeTab)?.label ?? 'Plugins'} onBack={() => setIntegrationMenu(true)} />}
+        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={activeTab === 'apps' ? undefined : visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
         helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
         actions={(
           <WorkspaceViewActions
@@ -153,7 +153,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={!integrationMenu && activeTab === 'apps' ? { value: activePluginTab, onChange: value => setPluginTab(value as typeof pluginTab), options: [...pluginTabs], ariaLabel: 'Plugins' } : undefined}
+        tabs={!integrationMenu && activeTab === 'apps' ? { value: activePluginTab, onChange: value => setPluginTab(value as typeof pluginTab), options: [...pluginTabs], ariaLabel: 'Integrations' } : undefined}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {integrationMenu ? <IntegrationSectionPicker options={visibleTabs} onSelect={value => { setTab(value as WorkIntegrationTab); setIntegrationMenu(false) }} /> : <>

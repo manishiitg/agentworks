@@ -42,7 +42,7 @@ export type WorkflowCapabilitySection = CapabilityViewId
 type McpTab = IntegrationTabId
 
 const MCP_TABS: Array<{ value: McpTab; label: string }> = [
-  { value: 'apps', label: 'Plugins' },
+  { value: 'apps', label: 'Connections' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'gmail', label: 'Google apps' },
@@ -294,7 +294,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
       {section !== 'browser' && (
         <WorkspaceViewHeader
           icon={SectionIcon}
-          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Integrations" current={mcpTabs.find(option => option.value === activeMcpTab)?.label ?? 'Plugins'} onBack={() => setIntegrationMenu(true)} /> : copy.title}
+          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Integrations" current={activeMcpTab === 'apps' ? undefined : mcpTabs.find(option => option.value === activeMcpTab)?.label} onBack={() => setIntegrationMenu(true)} /> : copy.title}
           helpTopic={section === 'mcp'
             ? `Integrations · ${mcpTabs.find(option => option.value === activeMcpTab)?.label ?? 'MCPs'}`
             : section === 'identity'
@@ -305,7 +305,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               workspacePath={workspacePath}
               message={section === 'mcp'
                 ? activeMcpTab === 'apps' && pluginTab === 'vault'
-                  ? 'Help me choose from my Vault groups’ permitted connections and secrets for this project. Check current access and project selection; never show secret values.'
+                  ? 'Help me choose from my Vault groups’ permitted connections and secrets for this project. Check current user/group access; Vault MCPs are available automatically; never show secret values.'
                   : relayMode && activeMcpTab === 'apps'
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
                   : relayMode && activeMcpTab === 'gmail'
@@ -328,7 +328,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             />
           )}
           tabs={section === 'mcp'
-            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: [...PROJECT_PLUGIN_TABS], ariaLabel: 'Plugins' } : undefined)
+            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: [...PROJECT_PLUGIN_TABS], ariaLabel: 'Integrations' } : undefined)
             : section === 'identity'
               ? { value: activeIdentityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: identityTabs, ariaLabel: 'Identity' }
               : undefined}
@@ -393,8 +393,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                         })
                       }}
                     />}
-                  vault={<ProjectVaultPanel disabled={!canWriteWorkflow} selectedServers={capabilities.selected_servers} selectedSecrets={capabilities.selected_global_secret_names ?? []}
-                    onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }}
+                  vault={<ProjectVaultPanel disabled={!canWriteWorkflow} selectedSecrets={capabilities.selected_global_secret_names ?? []}
                     onSelectedSecretsChange={async selected_global_secret_names => { const next = { ...latest.current.capabilities, selected_global_secret_names }; await persist(next, true); setCapabilities(next) }} />}
                 />}
                 {!relayMode && activeMcpTab === 'slack' && (

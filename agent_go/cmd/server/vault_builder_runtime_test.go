@@ -70,6 +70,17 @@ func TestVaultBuilderAuthorityIsBoundToAdminProfileAndRevokedLive(t *testing.T) 
 	if err != nil || !strings.Contains(listing, `"vault_users"`) || !strings.Contains(listing, "member@example.com") || strings.Contains(listing, "disabled@example.com") {
 		t.Fatal("shared builder tool lacks active emails", listing, err)
 	}
+	// Automatic defaults retain the existing raw admin builder authority;
+	// ordinary product sessions below still use group-scoped inventory.
+	names, overrides, _, err := api.scopeAgentMCP(ctx, "vault-chat", nil, nil)
+	if err != nil || len(names) != 1 {
+		t.Fatalf("builder defaults: %v %v", names, err)
+	}
+	defaultToken := strings.TrimPrefix(overrides[names[0]].Server.Headers["Authorization"], "Bearer ")
+	defaultGrant, err := verifyVaultDelegation(secret, defaultToken)
+	if err != nil || defaultGrant.Purpose != "vault-builder" || defaultGrant.Session != "vault-chat" {
+		t.Fatal("automatic builder lost raw authority", err)
+	}
 	ordinary, err := vaultAccessFor(executor.WithSessionID(requestCtx, "vault-chat"), "admin")
 	if err != nil || ordinary.Users != nil {
 		t.Fatal("ordinary product inventory exposed directory", ordinary.Users, err)

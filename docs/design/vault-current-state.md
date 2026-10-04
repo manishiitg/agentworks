@@ -725,3 +725,11 @@ plain `./run_agentworks` also starts the frontend and Electron. No gateway
 flag is needed. The optional `--with-gateway` flag makes a gateway startup
 failure fatal; otherwise the launcher reports the failure and continues.
 `--only-frontend` and MCP connection-test mode do not start backend services.
+
+## Automatic Vault MCP access — 2026-10-04
+
+All products add the executing user's live authorized Vault MCP inventory by default at agent construction, even for projects with no selected MCPs. Crew, Code, workflows, Relay and their shared agent constructors use the same scope hook. Existing project MCP/tool selections continue to limit private/place connections; they do not gate Vault. Named accounts remain distinct by exact connector ID. The gateway checks current user/group tool grants, argument/regex restrictions and revocations on every live call; automatic discovery is not an authorization grant. Unknown or inactive users receive no Vault access. Discovery failure does not substitute catalog credentials or interrupt private/place MCPs.
+
+The product Vault tab displays shared connections as automatically available, without project checkboxes. Secrets retain explicit selection and authorization before injection. Builder guidance no longer instructs users to select Vault MCPs; legacy Code/Crew select/deselect actions reject that misleading operation. New permissions appear at the next agent construction; revocation is enforced immediately on retained calls. No data migration is needed for old selected-server references.
+
+The UI uses the Integrations heading and one Connected / Available / Secrets / Skills / Vault tab row. The integration section picker labels this section Connections. Local launches include Vault in their default product list and run the gateway with GOWORK=off so a parent go.work omitting the gateway module cannot prevent startup. Explicit product allowlists are preserved.

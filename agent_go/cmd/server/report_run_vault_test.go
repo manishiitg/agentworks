@@ -51,8 +51,8 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"Notion"}, []string{"Notion:fetch-page"}, "viewer", "Notion", tool); err != nil {
 		t.Fatalf("legacy selected tool was lost: %v", err)
 	}
-	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"Notion"}, []string{"Notion:other-tool"}, "viewer", "Notion", tool); err == nil {
-		t.Fatal("remapping bypassed project tool selection")
+	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"Notion"}, []string{"Notion:other-tool"}, "viewer", "Notion", tool); err != nil {
+		t.Fatal("authorized Vault tools must be independent of project tool selection")
 	}
 	allowed = false
 	if _, err := api.resolveGovernedMCP(context.Background(), "viewer", "vault_c_notion"); err == nil {

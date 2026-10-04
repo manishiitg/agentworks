@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Products the local app offers in its switcher. Code is on by default here too (the frontend's own default
 # leaves it out); override with a JSON array, e.g. AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'.
 # Defined up here: the runtime config is also written by the early exits (e.g. --only-frontend), before the rest of the setup runs.
-ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\"]}"
+ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\"]}"
 
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
@@ -455,11 +455,11 @@ if [ "$ONLY_GATEWAY" = true ]; then
     echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
+        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec env GOWORK=off go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
     else
         (
             cd "$GATEWAY_DIR" || exit 1
-            exec go run ./cmd/server
+            exec env GOWORK=off go run ./cmd/server
         ) >> "$GATEWAY_LOG_PATH" 2>&1 &
     fi
     GATEWAY_PID=$!
@@ -1881,11 +1881,11 @@ start_mcp_gateway() {
 
     if [ "$BACKGROUND_MODE" = true ]; then
         # shellcheck disable=SC2086
-        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
+        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec env GOWORK=off go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
     else
         (
             cd "$GATEWAY_DIR" || exit 1
-            exec go run ./cmd/server
+            exec env GOWORK=off go run ./cmd/server
         ) >> "$GATEWAY_LOG_PATH" 2>&1 &
     fi
 

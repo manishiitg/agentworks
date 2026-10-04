@@ -127,18 +127,18 @@ func TestManageMyMCPServersSelectsVaultThroughOwnerGroups(t *testing.T) {
 	if err := api.registerPlaceMCPTool(reg, "owner", root, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "select", "server": "vault_shared"}); err != nil {
-		t.Fatal(err)
+	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "select", "server": "vault_shared"}); err == nil {
+		t.Fatal("obsolete Vault opt-in was accepted")
 	}
 	selected, _, err := productSelectedServers(context.Background(), "code", root)
-	if err != nil || len(selected) != 2 || selected[0] != "my_private" || selected[1] != "vault_shared" {
+	if err != nil || len(selected) != 1 || selected[0] != "my_private" {
 		t.Fatalf("selection did not preserve private connection: %v %v", selected, err)
 	}
 	granted.Store(false)
 	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "select", "server": "vault_shared"}); err == nil {
 		t.Fatal("Code selection ignored grant revocation")
 	}
-	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "deselect", "server": "vault_shared"}); err != nil {
-		t.Fatal("revoked selection could not be removed")
+	if _, err := reg.exec(context.Background(), map[string]interface{}{"action": "deselect", "server": "vault_shared"}); err == nil {
+		t.Fatal("deselect falsely claimed it could revoke automatic access")
 	}
 }

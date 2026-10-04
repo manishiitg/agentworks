@@ -399,7 +399,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if found {
 		dir, _ := placeMCPDir(person)
 		if !placeMCPServerConnected(dir, person, p) {
-			return nil, errors.New("this MCP connection needs sign-in; connect it in Integrations > Plugins")
+			return nil, errors.New("this MCP connection needs sign-in; connect it in Integrations")
 		}
 		name, cfg, err := placeMCPServerConfig(person, p.Name)
 		if err != nil {
@@ -428,7 +428,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		}
 	}
 	if len(matches) != 1 {
-		return nil, errors.New("MCP is not connected privately or permitted through Vault; select a specific Vault connection")
+		return nil, errors.New("MCP is not connected privately or permitted through Vault; use a specific connection ID from the live inventory")
 	}
 	v := matches[0]
 	cfg, err := api.vaultServerConfig(person, v.ID)
@@ -458,15 +458,15 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		person = owner
 	}
-	// Fetch the caller's Vault inventory at most once per agent construction.
-	// This is only discovery: the gateway still authorizes every live call.
-	for _, name := range names {
-		if name != mcpclient.NoServers && !isPlaceMCPInternalName(name) {
-			if _, found := personalMCPByCatalog(person, name); (inPlace || !found) && !common.IsBuiltinToolCategory(name) {
-				rows, err := vaultServersFor(ctx, person)
-				ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, err})
-				break
-			}
+	// Authorized Vault connections are defaults for every product, even when
+	// the project selects no MCPs. Cache discovery once; live calls still
+	// recheck the actor's current grants and argument rules at the gateway.
+	rows, inventoryErr := vaultServersFor(ctx, person)
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, inventoryErr})
+	names = append([]string(nil), names...)
+	if inventoryErr == nil {
+		for _, row := range rows {
+			names = append(names, vaultServerName(row.ID))
 		}
 	}
 
@@ -525,7 +525,8 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 		cfg := resolved.Config
-		if strings.HasPrefix(resolved.Name, "vault_") && sessionID != "" {
+		_, builder := ctx.Value(vaultBuilderKey{}).(vaultBuilderAuthority)
+		if strings.HasPrefix(resolved.Name, "vault_") && sessionID != "" && !builder {
 			_, secret, secretErr := capLayerServiceConfig()
 			if secretErr != nil {
 				continue
@@ -580,16 +581,15 @@ func (api *StreamingAPI) ownsLegacyPlaceMCP(ctx context.Context, person, interna
 // Kept separate from management authorization: ordinary product users consume
 // Vault tools through group grants without needing the Vault admin product.
 
-// Project selection is an additional limit, never an authorization grant.
+// Project selection limits place/private connections. Vault access is governed
+// by current user/group grants, with tool and regex checks on each live call.
 func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *mcpclient.MCPConfig, selected, tools []string, person, server, tool string) (*executor.ResolvedMCPServer, error) {
 	resolved, err := api.resolveGovernedMCP(ctx, person, server)
 	if err != nil {
 		return nil, err
 	}
-	if strings.HasPrefix(server, "vault_") {
-		// Selection must still refer to the exact live connector ID. Comparing
-		// normalized selection IDs could conflate two different connections.
-		server = vaultSelectionName(resolved.Name)
+	if strings.HasPrefix(resolved.Name, "vault_") {
+		return resolved, nil
 	}
 	allowed := false
 	canonical := func(name string) string {

@@ -424,6 +424,7 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 		config.ServerName = strings.Join(names, ",")
 		config.RuntimeOverrides = overrides
 		config.SelectedTools = common.RemapMCPToolSelection(config.SelectedTools, aliases)
+		config.SelectedTools = common.IncludeDefaultVaultTools(config.SelectedTools, names)
 		// All OAuth paths were resolved by the host; do not let the SDK replace
 		// them with its legacy per-user catalog paths.
 		config.UserID = ""

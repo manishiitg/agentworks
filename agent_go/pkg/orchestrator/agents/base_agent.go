@@ -165,6 +165,7 @@ func NewBaseAgent(
 		serverNames = names
 		runtimeOverrides = overrides
 		selectedTools = common.RemapMCPToolSelection(selectedTools, aliases)
+		selectedTools = common.IncludeDefaultVaultTools(selectedTools, names)
 	}
 	generation := mcpagent.GenerationRuntimeConfig{
 		Provider:    internalLLM.Provider(provider),

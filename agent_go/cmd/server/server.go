@@ -12789,7 +12789,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"list_mcp_servers",
-		"List the MCP connections of this workflow, Relay, Crew or Code (outside a place, your own), your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; select a Vault connection by its exact vault_ name and secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
+		"List the MCP connections of this workflow, Relay, Crew or Code (outside a place, your own), your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; Vault MCPs are available automatically through current user/group permissions; call them using the exact vault_ connection IDs. Select secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -12919,16 +12919,16 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				if !strings.Contains(strings.ToLower(name), needle) {
 					continue
 				}
-				status := "available template — connect it in Integrations > Plugins"
+				status := "available template — connect it in Integrations"
 				if own, found := personalMCPByCatalog(person, name); found {
 					dir, _ := placeMCPDir(person)
 					if placeMCPServerConnected(dir, person, own) {
 						status = "connected privately for you"
 					} else {
-						status = "this connection needs sign-in in Integrations > Plugins"
+						status = "this connection needs sign-in in Integrations"
 					}
 				} else if server.OAuth == nil {
-					status = "available template, no OAuth — add it in Integrations > Plugins"
+					status = "available template, no OAuth — add it in Integrations"
 				}
 				catalogHits = append(catalogHits, fmt.Sprintf("- **%s** [our catalog, vetted] — %s", name, status))
 			}
@@ -12992,7 +12992,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL to this workflow, Relay, Crew or Code with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations > Plugins for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
+		"Connect a catalog server or user-supplied remote MCP URL to this workflow, Relay, Crew or Code with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13010,14 +13010,14 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				},
 				"api_key": map[string]interface{}{
 					"type":        "string",
-					"description": "Deprecated: do not send credentials in chat. Enter the API key in Integrations > Plugins.",
+					"description": "Deprecated: do not send credentials in chat. Enter the API key in Integrations.",
 				},
 				"client_id": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
 				"client_secret": map[string]interface{}{
-					"type": "string", "description": "Deprecated: enter client secrets in Integrations > Plugins, never in chat.",
+					"type": "string", "description": "Deprecated: enter client secrets in Integrations, never in chat.",
 				},
 			},
 			"required": []string{"name"},
@@ -13172,7 +13172,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a remote MCP server to this workflow, Relay, Crew or Code with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations > Plugins. Use Vault for access shared across places.",
+		"Add a remote MCP server to this workflow, Relay, Crew or Code with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. Use Vault for access shared across places.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

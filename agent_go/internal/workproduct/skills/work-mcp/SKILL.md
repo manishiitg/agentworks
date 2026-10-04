@@ -1,6 +1,6 @@
 ---
 name: work-mcp
-description: Connect and manage this project's MCP connections and select permitted Vault connections for {{product}} projects.
+description: Connect and manage this project's MCP connections and use automatically available Vault connections for {{product}} projects.
 ---
 
 # {{product}} MCP
@@ -18,8 +18,8 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
 - MCPs shared across projects belong in **Vault**. An administrator connects them there and
   assigns tools and resource conditions to groups. Connecting grants no access.
 - Use `update_project_mcp_server_selection` to select or deselect a
-  connection or an exact Vault connection ID for the active project. Project
-  selection is an additional limit; it cannot grant Vault permissions.
+  private connection for the active project. Vault MCPs are available automatically
+  through current user/group permissions; project selection does not limit them.
 - Vault checks the caller's current permissions on every call, including
   argument conditions and schema validation. Revoked permissions
   stop working on retained sessions too. Never suggest a direct upstream URL
@@ -39,7 +39,7 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
   the person back to the same Connect button that invoked this request, retry
   identical failing commands, or describe a filesystem error as a missing role.
 - Never ask for passwords, API keys or OAuth client secrets in chat. Direct
-  users to **Integrations > Plugins** for secure credential entry. Display
+  users to **Integrations** for secure credential entry. Display
   OAuth links only when the setup tool actually returns one.
 
 ## Multiple accounts
@@ -60,3 +60,5 @@ group login. Code's `manage_my_mcp_servers` supports the same `catalog` and `lab
 arguments with `action="connect"`, and exact `name` for an existing connection.
 Select each returned connection separately for its project. Shared connections
 continue to be installed in Vault and governed through group grants.
+
+Vault MCPs are available automatically through the executing user's current user/group permissions, independent of project MCP selections. Do not call select/deselect for Vault. Tool grants and regex rules are checked at the gateway on every call. Secrets still require explicit selection by name.

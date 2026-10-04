@@ -18,7 +18,7 @@ interface MCPDetailsModalProps {
 export default function MCPDetailsModal({ onClose, onOpenConfigEditor, selectedServers, onSelectedServersChange }: MCPDetailsModalProps) {
   const inventory = useMCPStore()
   const [testTool, setTestTool] = useState<{ serverName: string; tool: ToolDetail } | null>(null)
-  const vault = useVaultMcpConnections({ selectedServers, onSelectedServersChange })
+  const vault = useVaultMcpConnections()
   useEffect(() => { void inventory.refreshTools?.() }, [inventory.refreshTools])
   const groups = Object.entries(inventory.getServerGroups()).filter(([name]) => !name.startsWith('vault_'))
   const toggle = (name: string) => onSelectedServersChange(selectedServers.includes(name) ? selectedServers.filter(item => item !== name && item !== 'NO_SERVERS') : [...selectedServers.filter(item => item !== 'NO_SERVERS'), name])
