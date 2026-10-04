@@ -82,6 +82,9 @@ var browserRuntime []byte
 //go:embed runtime/agentworks_output.py
 var outputRuntime []byte
 
+//go:embed runtime/agentworks_db.py
+var dbRuntime []byte
+
 // getBaseDir returns the configured base directory or the default
 func (iso *Isolator) getBaseDir() string {
 	if iso.BaseDir != "" {
@@ -211,6 +214,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 			releaseScratch()
 			return nil, nil, fmt.Errorf("prepare slot output helper: %w", err)
 		}
+		if err := os.WriteFile(filepath.Join(helperDir, "agentworks_db.py"), dbRuntime, 0640); err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare slot database helper: %w", err)
+		}
 		local.ReadPaths = append(append([]string{}, iso.ReadPaths...), helperDir)
 		local.ExtraEnv = make(map[string]string, len(iso.ExtraEnv)+1)
 		for key, value := range iso.ExtraEnv {
@@ -229,6 +236,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	if err := os.WriteFile(filepath.Join(tmp, "agentworks_output.py"), outputRuntime, 0600); err != nil {
 		releaseScratch()
 		return nil, nil, fmt.Errorf("prepare structured output helper: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "agentworks_db.py"), dbRuntime, 0600); err != nil {
+		releaseScratch()
+		return nil, nil, fmt.Errorf("prepare database helper: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	browserSocket := local.scopeBrowser()

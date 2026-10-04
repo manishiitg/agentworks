@@ -13,7 +13,7 @@ import (
 
 func TestExplicitSchedulePulseMigration(t *testing.T) {
 	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.40"})
-	if len(plan) != 2 || plan[0].to != workflowContractExplicitSchedulePulseVersion || plan[0].label != "upgrade-explicit-schedule-pulse" || plan[1].to != workflowContractNestedAgentArtifactsVersion {
+	if len(plan) != 3 || plan[0].to != workflowContractExplicitSchedulePulseVersion || plan[0].label != "upgrade-explicit-schedule-pulse" || plan[1].to != workflowContractNestedAgentArtifactsVersion || plan[2].to != workflowContractManagedDBScriptsVersion {
 		t.Fatalf("unexpected migration: %+v", plan)
 	}
 	for _, want := range []string{"pulse_mode_reason", "disabled schedules", "calendar schedules", "retained", "Do not change cron", "Do not execute the workflow", "do not stamp", "token cost", "multiple runs"} {
@@ -33,8 +33,8 @@ func TestRetiredMarkersStillRequireCurrentNestedArtifactMigration(t *testing.T) 
 		workflowContractEvalRetirementVersion,
 	} {
 		plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: version})
-		if len(plan) != 1 || plan[0].label != "upgrade-nested-agent-artifacts" || plan[0].to != workflowContractNestedAgentArtifactsVersion {
-			t.Fatalf("marker %s upgrade plan = %+v, want only nested artifacts", version, plan)
+		if len(plan) != 2 || plan[0].label != "upgrade-nested-agent-artifacts" || plan[0].to != workflowContractNestedAgentArtifactsVersion || plan[1].label != "upgrade-managed-db-scripts" {
+			t.Fatalf("marker %s upgrade plan = %+v, want nested artifacts then managed DB scripts", version, plan)
 		}
 		if workflowContractVersionIsExecutionCompatible(version) {
 			t.Errorf("older contract marker %s unexpectedly remained execution-compatible", version)

@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Scripts use the managed DB layer; `$DB_PATH` is compatibility only
+
+Scripted steps reach the workflow database through the built-in `agentworks_db`
+helper (the same managed query/mutate tools agents use), not `sqlite3`. DDL is a
+Builder migration, never a script statement; a script that no longer matches the
+schema fails and autofix repairs it. Contract 1.0.45 migrates existing scripts and
+blocks execution until done. `$DB_PATH` stays set for old scripts only.
+Ticket: [PLAT-428](bugs/pulse_platform/security-sandbox/plat-428.md).
+
 ### 2026-10-04 — Relay MCP authoring is explicit and execution uses direct graph runs
 
 Relay product.yaml admits its external tools. A relays:write grant can create

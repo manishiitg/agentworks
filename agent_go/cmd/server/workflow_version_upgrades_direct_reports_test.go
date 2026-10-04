@@ -7,7 +7,7 @@ import (
 
 func TestWorkflowVersionUpgradePlanFrom122MigratesReportsThenScheduledRoutes(t *testing.T) {
 	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.22"})
-	if len(plan) != 18 {
+	if len(plan) != 19 {
 		t.Fatalf("plan from 1.0.22 = %d steps, want retained migrations through explicit schedule Pulse: %+v", len(plan), plan)
 	}
 	if plan[0].label != "upgrade-direct-html-reports" || plan[0].to != "1.0.23" {
@@ -35,7 +35,10 @@ func TestWorkflowVersionUpgradePlanFrom122MigratesReportsThenScheduledRoutes(t *
 		t.Fatalf("plan[7] = %+v, want Pulse lifecycle reconciliation migration to current", plan[7])
 	}
 	if plan[17].label != "upgrade-nested-agent-artifacts" || plan[17].to != workflowContractNestedAgentArtifactsVersion {
-		t.Fatalf("final migration = %+v, want nested Agent artifacts", plan[17])
+		t.Fatalf("migration 17 = %+v, want nested Agent artifacts", plan[17])
+	}
+	if last := plan[len(plan)-1]; len(plan) != 19 || last.label != "upgrade-managed-db-scripts" || last.to != workflowContractManagedDBScriptsVersion {
+		t.Fatalf("final migration = %+v (of %d), want managed DB scripts", last, len(plan))
 	}
 }
 

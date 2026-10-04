@@ -31,6 +31,12 @@ versions freeze tool source. The original custom-tool requirement is implemented
 
 [PLAT-421](pulse_platform/coding-agent-bridge/plat-421.md), P1, fixed on `main`; deploy to Excellence and RTS in progress.
 
+## Scripted steps use the managed DB helper — PLAT-428
+
+[PLAT-428](pulse_platform/security-sandbox/plat-428.md), contract 1.0.45: scripts
+read and write through `agentworks_db` (the managed tools), not `sqlite3` /
+`$DB_PATH`; every workflow must be migrated before it runs.
+
 ## Bulk writes and paged reads in the DB tools — PLAT-420
 
 [PLAT-420](pulse_platform/security-sandbox/plat-420.md), fixed on `main`, not

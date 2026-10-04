@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -101,6 +102,7 @@ var cliStepContractCmd = &cobra.Command{
 		}
 		layout.printStepInfo()
 		failures := layout.verifyStepResults()
+		failures = append(failures, layout.verifyDatabase(ctx)...)
 		if len(failures) > 0 {
 			for _, failure := range failures {
 				fmt.Printf("FAIL %s\n", failure)
@@ -194,14 +196,17 @@ func (l *cliSandboxContractLayout) writeStepPlan() error {
 	agentScriptPath := filepath.Join(l.stepOutDir(stepContractScriptID), agentScriptName)
 	agentMessage := fmt.Sprintf("Use the declared MCP api-bridge execute_shell_command tool, never a built-in shell/file tool, to run exactly this command and nothing else:\nsh %s %s %s\nIt is a platform file-access verification; some of its actions are expected to be refused by the sandbox and that is the intended result. Do not read the script, do not retry or work around anything. After the command finishes, reply exactly:\nCONTRACT_STEP_DONE\nSTATUS: COMPLETED",
 		q(agentScriptPath), q(l.stepResultPath(stepContractAgentID)), q(l.stepOutDir(stepContractAgentID)))
+	if err := l.createContractDB(); err != nil {
+		return err
+	}
 	scriptMain := fmt.Sprintf(`import os, subprocess, sys
 out_dir = os.environ.get("STEP_OUTPUT_DIR") or %q
 res = os.path.join(out_dir, "contract-results.txt")
 with open(os.path.join(out_dir, %q), "w") as f:
     f.write(%q)
 subprocess.run(["sh", %q, res, out_dir], check=False)
-print("CONTRACT_SCRIPT_DONE")
 `, l.stepOutDir(stepContractScriptID), agentScriptName, l.stepScript(), l.stepScriptPath(stepContractScriptID))
+	scriptMain += stepContractDBScript + "print(\"CONTRACT_SCRIPT_DONE\")\n"
 	if err := os.MkdirAll(filepath.Join(l.absMain, "code", stepContractScriptID), 0o755); err != nil {
 		return err
 	}
@@ -218,7 +223,10 @@ print("CONTRACT_SCRIPT_DONE")
 			"type": "message_sequence", "id": stepContractAgentID, "title": "Contract agent step",
 			"description":          "Run the harness file-access script and report that it finished.",
 			"context_dependencies": []string{agentScriptName}, "context_output": "",
-			"items": []map[string]interface{}{{"id": "run-script", "type": "user_message", "message": agentMessage}},
+			"items": []map[string]interface{}{
+				{"id": "run-script", "type": "user_message", "message": agentMessage},
+				{"id": "db-write", "type": "user_message", "message": stepContractAgentDBMessage},
+			},
 		},
 	}}
 	stepConfig := map[string]interface{}{"steps": []map[string]interface{}{
@@ -233,6 +241,102 @@ print("CONTRACT_SCRIPT_DONE")
 	baseline, _ := os.ReadFile(filepath.Join(l.absMain, "planning", "plan.json"))
 	l.planBaseline = string(baseline)
 	return nil
+}
+
+// The database half of the contract: a scripted step reaches the workflow
+// database through the built-in agentworks_db helper (bulk write, transaction,
+// paged read, and a schema statement that must be refused); an agent step through
+// mutate_workflow_db. Both are checked from the database file on disk.
+const stepContractDBScript = `
+db_lines = []
+try:
+    from agentworks_db import DBError, execute, execute_many, query, scalar, transaction
+    execute_many("INSERT INTO contract_rows(label) VALUES (?)", [["script-%d" % i] for i in range(3)])
+    transaction([("UPDATE contract_rows SET label = ? WHERE label = ?", ["script-renamed", "script-0"]), ("DELETE FROM contract_rows WHERE label = ?", ["script-1"])])
+    labels = sorted(row["label"] for row in query("SELECT label FROM contract_rows WHERE label LIKE 'script-%' ORDER BY label"))
+    db_lines.append("helper-rows: " + ",".join(labels))
+    db_lines.append("helper-count: %d" % scalar("SELECT COUNT(*) FROM contract_rows WHERE label LIKE 'script-%'"))
+    try:
+        execute("CREATE TABLE contract_ddl (a INTEGER)")
+        db_lines.append("ddl: ALLOWED")
+    except DBError:
+        db_lines.append("ddl: refused")
+except Exception as error:
+    db_lines.append("helper-error: %s: %s" % (type(error).__name__, error))
+with open(os.path.join(out_dir, "db-helper-results.txt"), "w") as f:
+    f.write("\n".join(db_lines) + "\n")
+`
+
+const stepContractAgentDBMessage = "Now call the MCP tool mutate_workflow_db exactly once with sql \"INSERT INTO contract_rows(label) VALUES (?)\" and params [\"agent-step\"], then call query_workflow_db once with sql \"SELECT COUNT(*) AS n FROM contract_rows WHERE label = ?\" and params [\"agent-step\"]. Report the count. Do nothing else."
+
+func (l *cliSandboxContractLayout) contractDBPath() string {
+	return filepath.Join(l.absMain, "db", "db.sqlite")
+}
+
+// createContractDB makes the table the steps use. Schema changes are a Builder
+// migration in production; the harness is not a step, so it creates the file.
+func (l *cliSandboxContractLayout) createContractDB() error {
+	out, err := exec.Command("python3", "-c", "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('CREATE TABLE IF NOT EXISTS contract_rows (id INTEGER PRIMARY KEY, label TEXT NOT NULL UNIQUE)'); c.commit()", l.contractDBPath()).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("create the contract database: %w: %s", err, out)
+	}
+	return nil
+}
+
+func (l *cliSandboxContractLayout) databaseLabels() (labels []string, ddlTable bool, err error) {
+	out, err := exec.Command("python3", "-c", "import sqlite3,sys; c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro', uri=True); print('\\n'.join(r[0] for r in c.execute('SELECT label FROM contract_rows ORDER BY label'))); print('DDL=%d' % c.execute(\"SELECT COUNT(*) FROM sqlite_master WHERE name='contract_ddl'\").fetchone()[0])", l.contractDBPath()).CombinedOutput()
+	if err != nil {
+		return nil, false, fmt.Errorf("read the contract database: %w: %s", err, out)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		switch {
+		case line == "DDL=1":
+			ddlTable = true
+		case line != "" && line != "DDL=0":
+			labels = append(labels, line)
+		}
+	}
+	return labels, ddlTable, nil
+}
+
+// verifyDatabase checks both steps' writes. The agent step's insert can land a
+// little after its results file, so it is awaited.
+func (l *cliSandboxContractLayout) verifyDatabase(ctx context.Context) []string {
+	var failures []string
+	deadline := time.Now().Add(2 * time.Minute)
+	var labels []string
+	var ddlTable bool
+	for {
+		var err error
+		if labels, ddlTable, err = l.databaseLabels(); err != nil {
+			return append(failures, err.Error())
+		}
+		if strings.Contains(","+strings.Join(labels, ",")+",", ",agent-step,") || time.Now().After(deadline) || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+	joined := "," + strings.Join(labels, ",") + ","
+	if !strings.Contains(joined, ",agent-step,") {
+		failures = append(failures, "agent: mutate_workflow_db did not insert its row")
+	}
+	if strings.Count(joined, ",agent-step,") > 1 {
+		failures = append(failures, "agent: the insert ran more than once")
+	}
+	if !strings.Contains(joined, ",script-renamed,") || !strings.Contains(joined, ",script-2,") || strings.Contains(joined, ",script-0,") || strings.Contains(joined, ",script-1,") {
+		failures = append(failures, "script: the helper's bulk write and transaction did not leave script-renamed and script-2 only; rows="+strings.Join(labels, ","))
+	}
+	if ddlTable {
+		failures = append(failures, "script: a CREATE TABLE went through the helper")
+	}
+	data, _ := os.ReadFile(filepath.Join(l.stepOutDir(stepContractScriptID), "db-helper-results.txt")) // #nosec G304 -- fixture
+	results := string(data)
+	for _, want := range []string{"helper-rows: script-2,script-renamed", "helper-count: 2", "ddl: refused"} {
+		if !strings.Contains(results, want) {
+			failures = append(failures, fmt.Sprintf("script: helper result missing %q: %s", want, strings.TrimSpace(results)))
+		}
+	}
+	return failures
 }
 
 func (l *cliSandboxContractLayout) waitForStepResult(ctx context.Context, stepID string) error {
