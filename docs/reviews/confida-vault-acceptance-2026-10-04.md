@@ -43,8 +43,8 @@ route `/api/vault/mcp`.
    work; preserve exact labels/connection identities and existing project choices.
 
 Initial activation and connection migration are complete. Final live acceptance
-is in progress, including the browser configuration and project-secret fixes
-below; Notion remains pending sign-in.
+is in progress; Notion remains pending sign-in and the legacy workflow secret
+selections described below need reconciliation.
 
 ## Migration preparation
 
@@ -138,3 +138,36 @@ fixed/auto-hide preference remains shared across products.
   configuration/credential and project-secret backups remain; reverting to the
   old code requires rebuilding its recorded source revisions and using the
   standard deployer rather than pointing `current` at that removed directory.
+
+## Current live checks and outstanding workflow configuration
+
+- Standard deployment activated `confida-f1405622-20261004141516`, built from
+  `f14056220d9dcb4e86e6e43c377a92d0181bf513`. All four services and agent/Vault
+  health checks passed. Browser inspection confirmed Vault is visible and opens
+  with Confida's branding.
+- Normal runtime calls to Linear `list_teams` and Langfuse `getMetricsSchema`
+  succeeded. Audit records contain the actual actor, connector, input and output.
+  Both existing owners of `Workflow/testingv3` also completed an allowed Linear
+  read using their own Vault runtime identity. Whole workflows were not run.
+- `testingv3` selects Linear and Notion, but its tool selections contain only
+  `Linear:*`. Notion needs sign-in and an explicit tool selection before that
+  workflow can use it. `Workflow/confida-login` selects Resend, which was not
+  installed in the pre-migration shared inventory. Its extra Linear/Langfuse
+  tool entries alone do not select those servers. Seven other inspected workflow
+  manifests do not select external MCP servers.
+- A subsequent `Secret "ADMIN_USER" does not exist` admission error is a
+  separate configuration issue. `Workflow/confida-login` has 13 selected project
+  secrets; all 13 decrypt successfully with the live deployment key and the
+  workflow path as authenticated additional data. Its global-secret selection
+  includes those same 13 names plus `ADMIN_USER`, `LOGIN_PASSWORD`, and
+  `MEMBER_USER`. None of the last three is stored in that workflow, and this
+  deployment has no global secrets. `ADMIN_USER` exists in a separate Crew
+  project; that does not make it available to this workflow.
+- The earlier admission-loading fix does not synthesize missing credentials or
+  import another project's secrets. Previously unresolved names could silently
+  produce empty runtime values; current admission rejects them. Reconcile these
+  selections explicitly: remove obsolete names, or securely store the intended
+  values in the correct project/Vault and assign the necessary group access.
+  Keep the 13 valid project secrets and do not broaden Vault grants as a workaround.
+  This configuration decision is pending; no live secret values or selections
+  were changed during diagnosis.
