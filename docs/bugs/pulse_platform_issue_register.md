@@ -1,3 +1,7 @@
+## A CLI chat said the UI control tools were unavailable (they are bridge tools) — PLAT-429
+
+[PLAT-429](pulse_platform/coding-agent-bridge/plat-429.md), P3, fixed on `main`; deploy pending. The UI-control skill now says how to reach them.
+
 ## Relay creation, Builder editing and versioned runs through platform MCP — PLAT-427
 
 [PLAT-427](pulse_platform/mcp/plat-427.md), fixed on main; deployment pending.
