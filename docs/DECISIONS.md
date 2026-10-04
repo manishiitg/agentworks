@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Product selectors no longer expose the Code inspector
+
+Remove the admin/reviewer workspace inspection button and popup from the
+shared Code/Crew surface at the user's request: the unfamiliar popup failed
+with a Network Error on Excellence. The separate audited review API and
+Providers conversations overview retain their existing authorization.
+Ticket: [PLAT-439](bugs/pulse_platform/frontend-chat/plat-439.md).
+
 ### 2026-10-04 — Scripted steps never self-heal in a run
 
 A run (schedule, webhook/Relay, `run_full_workflow`, a route called by an agent)

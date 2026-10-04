@@ -1,3 +1,9 @@
+## Remove the product workspace inspector popup — PLAT-439
+
+[PLAT-439](pulse_platform/frontend-chat/plat-439.md), fixed on main; deployment
+pending. Remove the admin/reviewer inspection entry and popup from Code/Crew's
+shared product surface after the user reported a Network Error on Excellence.
+
 ## Message-sequence prompts advertised KB read the sandbox denied — PLAT-438
 
 [PLAT-438](pulse_platform/step-execution/plat-438.md), fixed on `main`, not
