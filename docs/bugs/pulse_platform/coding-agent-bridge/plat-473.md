@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on `main` for the prompt (all CLIs) and the hooks of Muse, Claude Code, Cursor and Agy; Codex has no hook; needs a rebuild and restart |
+| State | fixed on `main` for the prompt (all CLIs) and the hooks of Muse, Claude Code, Cursor and Agy (shell, Monitor and fetch tools; Muse cron_create refused); Codex has no hook; needs a rebuild and restart |
 | Date | 2026-10-04 |
 | Owner | coding-agent-bridge |
 | Related | PLAT-468 (Muse had no bridge at all), PLAT-364 (Full CLI) |
@@ -56,6 +56,43 @@ shell and nothing told it so.
   `execute_shell_command`. NOT checked against real Agy: the CLI on the machine is not
   logged in; the hook was run as a subprocess against realistic payloads, the real
   payload's argument key is unconfirmed.
+
+## Second round: fetch tools, Monitor, cron, subagents (provider pinned `c270cb4`)
+
+Owner asked whether the hooks cover all tools and whether the CLIs' own subagents run
+them. Results, each against the real CLI unless noted:
+
+- **Muse** (`75bde61`): the hook also checks `monitor` commands and `web_fetch` URLs
+  (platform route, or the host:port of `MCP_API_URL` when the hook process has it; Muse's
+  own env does not, so only the route match fires in practice) and REFUSES
+  `cron_create` by name, because a Muse cron runs unattended outside the platform's
+  schedule controls (owner decision). `cron_list` and `cron_delete` stay allowed.
+  Subagents run the hook (child `bash` platform curl blocked; tested with delegation
+  "auto", the setting the adapter writes when `subagent_spawn` is allowed).
+- **Claude Code** (`800619c`): matcher is now `Bash|PowerShell|Monitor|WebFetch`.
+  WebFetch is refused for a platform route or an `MCP_API_URL` host:port match. A
+  subagent's native Bash is blocked too. Monitor and PowerShell: unit tests only.
+- **Cursor** (`c270cb4`): the shell script also reads a `url` field and a second
+  `preToolUse` entry covers `Shell|WebFetch|WebSearch`. Cursor fires NO hook for its
+  web tools (fetch runs on Cursor's servers, which cannot reach localhost), so that part
+  is inert today. Subagents run the project `hooks.json` for their shell calls.
+- **Agy and Codex**: unchanged (Agy not checked live; Codex has no hook).
+- Findings not acted on: only the shell and URL tools are hooked; a script file that
+  calls the platform, or another native tool, is not matched. Nothing here protects the
+  token (it never enters those shells); the hooks only turn a call that cannot succeed
+  into a clear instruction.
+
+## Native tools worth restricting (audit, not built)
+
+Claude Code has an explicit tool list and a strict MCP config; Codex disables everything
+except the shell and its own subagents; Pi is bridge-only. Muse in Full CLI mode has NO
+tool list: every tool it ships, and every tool a future Muse update adds, is allowed.
+Candidates for refusal (beyond `cron_create`, done above): `snooze_reminder`,
+`create_goal`/`update_goal`/`get_goal`/`report_progress` (Muse's own autonomy outside
+Goals and Pulse), and to verify first `list_peer_sessions`/`send_session_message` (the
+Muse data folder is shared by all chats) and the memory tools (`read_memory` etc.). The
+structural fix is a Full-mode allowlist for Muse mirroring Claude's list, through the
+existing `WithMuseToolAllowlist`; waiting for the owner's decision.
 
 ## Left
 
