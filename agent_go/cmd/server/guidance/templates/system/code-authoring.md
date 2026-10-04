@@ -70,7 +70,7 @@ For an authorized migration, using `set_code_layout_version`:
 - `from agentworks_db import query, query_one, scalar, iter_query, execute, insert, execute_many, transaction, DBError`
   - Reads: `query(sql, params)` returns every row as a dict (pages are fetched for you); `iter_query` streams a very large result; `query_one` / `scalar` for one row or value. Use `?` placeholders; give a big SELECT an `ORDER BY`.
   - Writes (INSERT, UPDATE, DELETE only): `execute(sql, params)` returns rows affected, `insert` the new id, `execute_many(sql, rows)` writes many rows (2000 per call, each call atomic; `atomic=True` for one transaction of at most 5000), `transaction([(sql, params), ...])` for up to 200 statements that must succeed together.
-  - Every failure raises `DBError` with the platform's message; let it propagate so the step fails and autofix sees it.
+  - Every failure raises `DBError` with the platform's message; let it propagate so the step fails with the real error (a run never rewrites the script; Pulse reports it).
 - DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `apply_workflow_db_migration` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; Pulse reports it) and the Builder repairs it with `execute_step`.
 - Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
@@ -102,6 +102,7 @@ For an authorized migration, using `set_code_layout_version`:
 - If the script writes output without making any external calls or reading real input, it will be rejected.
 
 **Deliberate refusal — fail-closed guards must exit code 2, not 1**
+- In a run, any non-zero exit simply fails the step. The distinction below matters when you run the step yourself with `execute_step`, where a failing script is handed back to you as repair context.
 - Any non-zero exit is treated as a bug by default: the failure is handed back to you as repair context so you fix the script. That is correct for a real error, but wrong for a guard that deliberately detected an unsafe condition (stale data, a write that would overwrite history it could not verify, a precondition that isn't met) and refused to proceed on purpose.
 - Use `sys.exit(2)` — not `sys.exit(1)` or any other code — for that second case. Exit code 2 is reserved and means "this refusal is terminal, do not attempt an agentic workaround." The step fails outright instead of falling back to a relearn turn, and the refusal is never handed to an agent as "here is an error, fix it."
 - Before exiting, print exactly one explicit refusal record on its own stdout line: `AGENTWORKS_REFUSAL: ` followed by JSON with non-empty string fields `reason`, `blocked_action`, and `resolution`. Use `json.dumps` to escape values correctly. For example:

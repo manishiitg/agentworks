@@ -51,7 +51,7 @@ Only saved scripted code has a lock. Learning writes are controlled directly by 
 
 | Lock | Scope | Freezes | Prevents | Use when |
 | --- | --- | --- | --- | --- |
-| `lock_code` | Per-step (scripted only) | `<script-dir>/main.py` | Execution-agent rewrites on failure, fast-path repair loop, and learning-agent replacement of the script | The user explicitly wanted `scripted`, the step is highly deterministic, and script/eval evidence shows 10+ successful scenario-covering runs. Hand-patched scripts still need this evidence before freezing, otherwise keep `lock_code=false` so repair can continue. |
+| `lock_code` | Per-step (scripted only) | `<script-dir>/main.py` | Rewriting of the script by the Builder's own `execute_step` (runs never rewrite scripts whatever this says) | The user asked for it, or the script is proven: 10+ successful scenario-covering runs with eval evidence at target. Otherwise keep `lock_code=false` so you can still repair it with `execute_step`. |
 
 **After hand-editing an artifact**: do not lock it automatically. Verify the edit against real scenario-covering runs first. Lock only when the user explicitly asks or the artifact has enough evidence to be treated as stable; otherwise leave it unlocked so later runs can expose and repair drift. Record the decision in `review_notes`.
 
@@ -127,7 +127,7 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 **4. Validate across groups** — If the workflow has multiple groups, test the fix against other groups too. Check `script_metadata.json` group_stats to see which groups were failing.
 
 **5. Lock code when proven** — After confirming the fix works:
-- `update_step_config(step_id, lock_code=true)` to freeze `<script-dir>/main.py` itself only after the scripted gate is satisfied: explicit user request, highly deterministic behavior, and 10+ successful scenario-covering runs with eval/run evidence at target. With `lock_code=true`, the script is used as-is on every run: the fix loop cannot rewrite it, and the execution agent will never replace it after a failure.
+- `update_step_config(step_id, lock_code=true)` to freeze `<script-dir>/main.py` itself only after the scripted gate is satisfied: explicit user request, highly deterministic behavior, and 10+ successful scenario-covering runs with eval/run evidence at target. Runs always use the saved script as-is and never rewrite it; `lock_code=true` additionally stops your own `execute_step` from rewriting it.
 - **Do not lock code just because you hand-patched it.** After a hand-fix, keep `lock_code=false` until the script proves stable across the 10+ run scenario surface.
 
 **Key principle**: Always edit `<script-dir>/main.py`, never `execution/{step-id}/code/main.py`. In builder/reviewer turns edit canonical source; controller-managed legacy repair instead uses its explicitly supplied execution directory. Only legacy workflows copy source into runs.
@@ -231,7 +231,7 @@ A step's execution mode is its plan type — `regular` is scripted, `message_seq
   - A focused transform that benefits from Python libraries (parsing, calculations, formatting)
 - **Agentic** (`message_sequence` type): the LLM acts each turn and no persistent script is saved. Use it for judgment, synthesis, fuzzy extraction, adaptive discovery, or action selection that genuinely varies with live evidence. A fixed API/CLI call is scripted even when it is only one call; simplicity is a reason to make the script small, not a reason to spend an LLM turn on it. Browser/UI steps should generally stay agentic unless the user explicitly wants scripted browser automation and representative evidence proves the flow stable enough. If an agentic step has leftover `<script-dir>/main.py`, delete it; that file is stale mode debt and should not be patched.
 
-**Mode-selection rule:** Create or convert deterministic API/CLI/SDK/data-fetch/parse/transform/persist work as `scripted` on Workshop's own initiative; this is architecture selection, not freezing. Treat 10+ scenario-covering successful runs (with eval/run evidence at target) as the bar only for **freezing the saved script with `lock_code`**. Keep `lock_code=false` until that evidence exists so the repair loop can fix drift. Keep judgment, adaptive discovery, and browser/UI work agentic.
+**Mode-selection rule:** Create or convert deterministic API/CLI/SDK/data-fetch/parse/transform/persist work as `scripted` on Workshop's own initiative; this is architecture selection, not freezing. Treat 10+ scenario-covering successful runs (with eval/run evidence at target) as the bar only for **freezing the saved script with `lock_code`**. Keep `lock_code=false` until that evidence exists so you can still repair drift with `execute_step`. Keep judgment, adaptive discovery, and browser/UI work agentic.
 
 **There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — a `message_sequence` can use code execution without being scripted.
 
@@ -255,7 +255,7 @@ A step's execution mode is its plan type — `regular` is scripted, `message_seq
 - If you make major changes to the step description, tools, or validation schema, reassess `learnings_access` and clear stale code review state in the same call: `update_step_config(step_id, lock_code=false, description_reviewed=false)`.
 
 **When you lock a scripted step, lock its code only after strong evidence**:
-- `update_step_config(step_id, lock_code=true)` — only after the user explicitly wanted `scripted`, the step is highly deterministic, and `script_metadata.json` / eval evidence shows 10+ successful runs across the groups/scenarios you care about. Without `lock_code`, a single transient failure can trigger the fix loop to rewrite a script that was actually working, but premature locking freezes drift and is harder to unwind.
+- `update_step_config(step_id, lock_code=true)` — only after the user explicitly wanted `scripted`, the step is highly deterministic, and `script_metadata.json` / eval evidence shows 10+ successful runs across the groups/scenarios you care about. Runs never rewrite a script, so a transient failure no longer changes it; locking only stops your own `execute_step` from repairing it, so lock late.
 - Only lock code when the script has been stable across multiple runs AND multiple groups (if the workflow is multi-group). Flaky scripts should be fixed first, not frozen.
 
 **Learning access is independent of `scripted`**: agentic and scripted steps may read the shared skill; grant write access only for a concrete reusable-HOW contribution.

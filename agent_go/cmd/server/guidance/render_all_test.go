@@ -1219,6 +1219,10 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 				"Declare these steps `scripted` from initial design",
 				"No run-history threshold is required",
 				"regular scripted fetcher(s) → message_sequence processor",
+				// PLAT-436: scripts are built by the Builder, not healed by a run.
+				"Scripts are built by you, not healed by the run",
+				"no LLM rewrites",
+				"`execute_step` (the only place an agent may write or repair",
 			},
 		},
 		"message-sequence": {
