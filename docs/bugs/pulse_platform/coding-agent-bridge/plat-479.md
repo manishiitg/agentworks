@@ -38,6 +38,11 @@ scheduled, bot, child and read-only sessions do not get the tool) and these issu
   (the transcript view already closed it). Fixed: one shared `withClosedQuestions` used
   by both views.
 
+- **CI: the new `clarification` prompt section was not declared** in the three
+  `product.yaml` files, which the product-surface contract tests check (AgentWorks and
+  Crew failed). Declared in the AgentWorks, Crew and Code product files next to
+  `native-subagents`; it still applies only to attended builder chats.
+
 ## Done / verified
 
 - Targeted Go tests (Clarification, ClaudeNativeQuestion, PromptSections) and 15 frontend
