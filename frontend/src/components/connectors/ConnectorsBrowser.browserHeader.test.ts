@@ -60,6 +60,10 @@ describe('ConnectorsBrowser header', () => {
     expect(connectors).not.toContain('Need another connection?')
     expect(connectors).not.toContain('Why admin access?')
     expect(connectors).toContain("Can't find the app you need?")
-    expect(connectors).toContain("Why can't I add one?")
+    // Everyone can now connect an app privately, so the "Why can't I add one?"
+    // explainer is gone; the banner says plainly who connects it and how to share.
+    expect(connectors).not.toContain("Why can't I add one?")
+    expect(connectors).toContain('can connect it privately for you. Use Vault to share access.')
+    expect(connectors).toContain('Ask ${assistantLabel} to connect')
   })
 })

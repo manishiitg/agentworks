@@ -214,7 +214,7 @@ describe('Panel walkthroughs', () => {
       Skills: 'GitHub URL',
       Slack: 'xapp-',
       WhatsApp: 'Linked Devices',
-      Gmail: 'Add & sign in',
+      Gmail: 'Connect Google account',
       Connect: 'Remote MCP URL',
     }[topic]
     const host = document.createElement('div')

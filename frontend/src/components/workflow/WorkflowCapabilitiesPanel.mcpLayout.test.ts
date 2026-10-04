@@ -101,7 +101,9 @@ describe('Workflow MCP panel layout', () => {
     expect(slack).not.toContain('Save platform settings')
     expect(readFileSync('src/components/admin/SlackAdminPanel.tsx', 'utf8')).toContain('Shared bot enabled')
     const gmail = readFileSync('src/components/workflow/bots/GmailNotifications.tsx', 'utf8')
-    expect(gmail).toContain('Sending accounts')
+    // The accounts list now lives in the Gmail section, described as "Your Google accounts".
+    expect(gmail).toContain('Your Google accounts for this project')
+    expect(gmail).toContain('<GoogleAccountList')
     expect(gmail).toContain('Ask Builder to set up Gmail')
     expect(gmail).not.toContain('gmailOpen')
     expect(panel).toMatch(/section === 'mcp'[\s\S]*?<WorkflowBotsPanel/)

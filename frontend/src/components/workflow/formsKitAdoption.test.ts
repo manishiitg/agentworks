@@ -31,7 +31,7 @@ describe('settings form kit adoption', () => {
     expect(gmail).toContain("from '../../ui/ToggleRow'")
     expect(gmail).toContain("from '../../ui/FormSection'")
     expect(gmail).toContain("from '../../ui/Input'")
-    expect(gmail).toContain("from '../../ui/checkbox'")
+    expect(gmail).toContain("from '../../ui/Textarea'")
     expect(gmail).not.toContain('peer-checked')
     expect(gmail).not.toContain('<input')
     expect(gmail).not.toContain('<textarea')
@@ -45,8 +45,8 @@ describe('settings form kit adoption', () => {
     ]) {
       const source = read(path)
       expect(source).toContain("from '../ui/Button'")
-      expect(source).toContain("from '../ui/badge'")
-      expect(source).toContain("from '../ui/SettingsCard'")
+      expect(source).toContain("from '../ui/checkbox'")
+      expect(source).toContain("from '../ui/Input'")
       expect(source).not.toContain('bg-amber-600')
       expect(source).not.toContain('focus:ring-amber-500')
       expect(source).not.toContain('dark:bg-gray-800')
@@ -107,7 +107,6 @@ describe('settings form kit adoption', () => {
     const llm = read('src/components/workflow/WorkflowLLMConfigurationPanel.tsx')
 
     expect(llm).toContain("from '../ui/Button'")
-    expect(llm).toContain("from '../ui/Input'")
     expect(llm).toContain('size="xs"')
     // Dense rows keep native radios and disclosure toggles; actions are kit.
     expect(llm).not.toContain('<input')
@@ -126,9 +125,11 @@ describe('settings form kit adoption', () => {
     expect(users).not.toContain('<input')
     expect(users).not.toContain('<button')
     expect(users).not.toContain('window.confirm')
-    // The role dropdowns (each user's, and the Add a user form's) stay native
-    // selects: same behavior, themed classes.
-    expect(rawCount(users)).toBe(2)
+    // The role dropdowns (each user's, and the Add a user form's) now use the
+    // kit Select, so no raw form element is left.
+    expect(users).toContain("from '../ui/select'")
+    expect(users).not.toContain('<select')
+    expect(rawCount(users)).toBe(0)
 
     const share = read('src/components/workflow/WorkflowSharePopup.tsx')
     expect(share).toContain("from '../ui/SettingsCard'")

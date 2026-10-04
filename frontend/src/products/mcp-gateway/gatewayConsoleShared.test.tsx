@@ -68,7 +68,7 @@ it('recovers the real group, membership and permissions loaders from one gateway
       if (url.endsWith('/groups')) body = { groups: [{ ID: 'g', WorkspaceID: 'w', Name: 'Readers' }] }
       else if (url.endsWith('/users')) body = { users: [] }
       else if (url.endsWith('/members')) body = { members: [] }
-      else if (url.endsWith('/connectors')) body = { connectors: [] }
+      else if (url.endsWith('/connectors')) body = { connectors: [{ ID: 'c', Provider: 'docs', Label: 'Docs' }] }
       else if (url.endsWith('/tools')) body = { tools: [] }
       else if (url.endsWith('/servers')) body = { servers: [] }
       else if (url.endsWith('/permissions')) body = { permissions: [] }
@@ -82,14 +82,19 @@ it('recovers the real group, membership and permissions loaders from one gateway
   const panel = (revision: string) => <GatewayFeedbackBoundary><GatewayGroupsPanel base="local" revision={revision} /></GatewayFeedbackBoundary>
   await render(panel('initial'))
   expect(container.textContent).toContain('Readers')
+  // Groups are a list first; opening one loads its members and MCP permissions.
+  await act(async () => (container.querySelector('[aria-label="Select group Readers"]') as HTMLButtonElement).click())
   unavailable = true
   await act(async () => root!.render(panel('changed')))
   expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1)
   const retryButtons = () => [...container.querySelectorAll('button')].filter(button => button.textContent === 'Retry')
   expect(retryButtons()).toHaveLength(1)
-  expect(container.textContent).toContain('Readers')
+  // The opened group stays on screen (its name lives in the rename input).
+  expect((container.querySelector('[data-testid="gateway-group-rename-input"]') as HTMLInputElement).value).toBe('Readers')
   unavailable = false
   await act(async () => retryButtons()[0].click())
   expect(container.querySelector('[role="alert"]')).toBeNull()
-  expect(container.textContent).toContain('Permissions')
+  // The MCP permissions loader recovered too: the server list renders.
+  expect(container.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
+  expect(container.textContent).toContain('Docs')
 })

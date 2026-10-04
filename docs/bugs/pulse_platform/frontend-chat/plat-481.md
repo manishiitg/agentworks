@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | open: the circular import is fixed on `main`; the stale contract tests are being updated |
+| State | fixed on main: `npm test` is green (482 files passed, 2802 tests passed, 1 skipped); `Desktop DMG` run still to be confirmed |
 | Date | 2026-10-04 |
 | Owner | frontend-chat |
 
@@ -24,14 +24,22 @@ runs the whole frontend suite (`npm test`, vitest). On a clean `main` it has 11 
   `9832ca775`) restructured Setup, Integrations, the gateway console and the Gmail / secrets /
   access panels without updating the tests that read those component sources:
   WorkflowResponsiveLayout, formsKitAdoption (4), WorkspacePanelGuideButton, gatewayConsoleShared,
-  WorkWorkspacePane (2), ConnectorsBrowser.browserHeader, WorkflowCapabilitiesPanel.mcpLayout.
-
-## Done
+  WorkWorkspacePane (2), ConnectorsBrowser.browserHeader, Wo## Done
 
 - `llm-config-api.ts` sets the base URL per request (also follows a workspace switch);
   the two import failures and the services tests pass.
+- All 11 stale tests were test-side (no code regression found); each keeps its intent on the new structure:
+  - WorkflowResponsiveLayout: the persistent Chat tab title is now the workflow name, not "Chat".
+  - formsKitAdoption Gmail: kit imports checked are ToggleRow/FormSection/Input/Textarea (no checkbox is used); still zero raw elements.
+  - formsKitAdoption secrets: checks the Button/Checkbox/Input kit imports instead of badge/SettingsCard; still zero raw elements.
+  - formsKitAdoption LLM actions: dropped the `Input` import assertion only (the provider search field was removed in 6c7a648b6); still no raw input.
+  - formsKitAdoption access bodies: the Users role dropdowns now use the kit `Select`, so the assertion is zero raw elements and no `<select`.
+  - WorkspacePanelGuideButton: Gmail how-to answer text is now "Connect Google account".
+  - gatewayConsoleShared: groups are a list first; the test opens the group, then asserts the MCP permissions list (a connector is mocked) and the opened group survive the outage and recover.
+  - WorkWorkspacePane: secret selection moved from Identity to Integrations > Plugins (Secrets/Vault); Identity tabs are General/Connected work/Models; Integrations opens on a section picker with breadcrumbs. Removed the `persistExplicitGlobalSelection`/`allowGlobalPromotion` assertions on Identity (feature moved to the Vault panel).
+  - ConnectorsBrowser banner: the "Why can't I add one?" explainer was removed on purpose (everyone connects privately); the test now asserts it is gone and the plain private-connect/Vault wording.
+  - WorkflowCapabilitiesPanel.mcpLayout: the Gmail section now says "Your Google accounts for this project" and renders `GoogleAccountList`.
 
 ## Left
 
-- Update the 11 stale tests to the current, intended structure (or report a real regression),
-  then confirm `npm test` is green and `Desktop DMG` passes.
+- Confirm `Desktop DMG` passes on `main`.
