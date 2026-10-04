@@ -106,7 +106,8 @@ func ToolDefinitions() []ToolDefinition {
 			props["type"] = map[string]any{"type": "string", "enum": []any{"skill", "note", "fact", "source"}}
 			props["title"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 200}
 			props["description"] = map[string]any{"type": "string", "maxLength": 4000}
-			props["tags"] = map[string]any{"type": "array", "maxItems": 50, "items": map[string]any{"type": "string", "maxLength": 64}}
+			props["tags"] = map[string]any{"type": "array", "maxItems": 50, "uniqueItems": true, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 64}}
+			props["content"] = str("UTF-8 Markdown, max 10 MiB; binary controls and NUL bytes are rejected, CRLF/CR line endings are stored as LF.")
 		case "read_knowledgebase":
 			schema["oneOf"] = oneLocator("entry_id", "path")
 			props["section"] = obj([]string{"heading"}, map[string]any{"heading": str("Exact case-sensitive plain heading text."), "occurrence": map[string]any{"type": "integer", "minimum": 1}})
@@ -114,7 +115,9 @@ func ToolDefinitions() []ToolDefinition {
 			schema["allOf"] = []any{map[string]any{"not": map[string]any{"required": []any{"section", "start_line"}}}, map[string]any{"not": map[string]any{"required": []any{"section", "end_line"}}}}
 		case "update_knowledgebase":
 			schema["oneOf"] = oneLocator("entry_id", "path")
-			props["metadata"] = obj(nil, map[string]any{"title": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": map[string]any{"type": "string", "maxLength": 4000}, "type": map[string]any{"type": "string", "enum": []any{"skill", "note", "fact", "source"}}, "tags": map[string]any{"type": "array", "maxItems": 50, "items": map[string]any{"type": "string", "maxLength": 64}}})
+			props["metadata"] = obj(nil, map[string]any{"title": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": map[string]any{"type": "string", "maxLength": 4000}, "type": map[string]any{"type": "string", "enum": []any{"skill", "note", "fact", "source"}}, "tags": map[string]any{"type": "array", "maxItems": 50, "uniqueItems": true, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 64}}})
+			props["content"] = str("Replacement UTF-8 Markdown, max 10 MiB; binary controls and NUL bytes are rejected, CRLF/CR line endings are stored as LF.")
+			props["diff"] = str("UTF-8 unified diff, max 2 MiB; binary controls and NUL bytes are rejected, CRLF/CR line endings are normalized before matching stored LF text.")
 			schema["allOf"] = []any{map[string]any{"not": map[string]any{"required": []any{"diff", "content"}}}, map[string]any{"anyOf": []any{map[string]any{"required": []any{"diff"}}, map[string]any{"required": []any{"content"}}, map[string]any{"required": []any{"metadata"}}}}}
 		case "delete_knowledgebase":
 			schema["oneOf"] = oneLocator("entry_id", "path")

@@ -28,6 +28,19 @@ async function mount() {
   return { host, render, onAsk }
 }
 describe('Knowledge Base workspace', () => {
+  it('shows a backup failure while content remains readable and clears it after recovery', async () => {
+    mocks.backup.mockResolvedValue({ configured: true, entries: [{ entry_id: 'entry', status: 'pending' }], last_backup_error: 'Push failed before remote publication.' })
+    const { host, render } = await mount()
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Push failed before remote publication.')
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Checkout skill'))!.click() })
+    expect(host.textContent).toContain('Read-only instructions.')
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Git backup needs attention')
+    mocks.backup.mockResolvedValue({ configured: true, entries: [{ entry_id: 'entry', status: 'backed_up' }], last_backup_error: '' })
+    await render({ revision: 1 })
+    expect(host.querySelector('[role="status"]')).toBeNull()
+    expect(host.textContent).toContain('Read-only instructions.')
+    expect(host.textContent).toContain('Backed up')
+  })
   it('reads saved content with attribution and backup status, without content or Git controls', async () => {
     const { host } = await mount()
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Checkout skill'))!.click() })

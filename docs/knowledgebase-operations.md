@@ -52,6 +52,17 @@ To back up, call `commit_knowledgebase` with selected current versions/deletion
 tokens, then `push_knowledgebase` with the returned opaque receipt. Never stage the
 live directory or push a private receipt ref yourself.
 
+Content and diffs must be UTF-8 text. Binary control characters and NUL bytes are
+rejected; CRLF and CR line endings are normalized to LF. Tags must be unique and
+non-empty; an empty tag list clears tags.
+
+Backup status includes a durable, sanitized `last_backup_error` for backend
+failures. Successful publication, confirmed unknown-outcome recovery, or
+administrator reconciliation clears it. Argument and authorization errors do not
+overwrite organization-wide backup status. Backup calls serialize network work
+with a 30-second timeout; a concurrent backup or security mutation can return
+retryable `BACKUP_BUSY`. Live reads and ordinary content saves remain available.
+
 ## Recovery
 
 Git contains plain Markdown from explicitly pushed snapshots. It is insufficient

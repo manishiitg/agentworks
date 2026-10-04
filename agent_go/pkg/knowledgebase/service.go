@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +27,6 @@ type Service struct {
 	cfg           Config
 	db            *sql.DB
 	live, private string
-	mu            sync.Mutex
 }
 type folderRegistry struct {
 	ID        string     `json:"id"`

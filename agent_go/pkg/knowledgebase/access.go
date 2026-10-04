@@ -110,13 +110,44 @@ func (s *Service) SyncPlatformIdentities(ctx context.Context, users []Identity) 
 	if err != nil {
 		return err
 	}
+	if err = s.recover(); err != nil {
+		unlock()
+		return err
+	}
+	_, changed, err := s.platformIdentityUpdate(users)
+	unlock()
+	if err != nil || !changed {
+		return err
+	}
+	// Unchanged snapshots need only the content lock. Security mutations always
+	// acquire publication before content, matching grant changes and pushes.
+	unlockSecurity, err := s.publicationLock()
+	if err != nil {
+		return err
+	}
+	defer unlockSecurity()
+	unlock, err = s.lock(ctx, false)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	if err = s.recover(); err != nil {
 		return err
 	}
+	// Re-read after acquiring both locks: another sync or service-account change
+	// may have completed since the initial comparison.
+	ids, changed, err := s.platformIdentityUpdate(users)
+	if err != nil || !changed {
+		return err
+	}
+	return s.transact([]fileChange{{Access: &accessChange{OnlyGeneration: true, SecurityGeneration: s.nextSecurityGeneration()}}, jsonChange(filepath.Join(s.private, "identities.json"), ids)})
+}
+
+// Called with the content lock held; the returned map is not persisted yet.
+func (s *Service) platformIdentityUpdate(users []Identity) (map[string]Identity, bool, error) {
 	ids, err := s.identities()
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	changed := false
 	seen := map[string]bool{}
@@ -141,15 +172,7 @@ func (s *Service) SyncPlatformIdentities(ctx context.Context, users []Identity) 
 			changed = true
 		}
 	}
-	if !changed {
-		return nil
-	}
-	unlockSecurity, e := s.publicationLock()
-	if e != nil {
-		return e
-	}
-	defer unlockSecurity()
-	return s.transact([]fileChange{{Access: &accessChange{OnlyGeneration: true, SecurityGeneration: s.nextSecurityGeneration()}}, jsonChange(filepath.Join(s.private, "identities.json"), ids)})
+	return ids, changed, nil
 }
 func (s *Service) ValidateServiceTokenIdentity(ctx context.Context, p Principal, id string) error {
 	if !p.IsAdmin || !s.IdentityActive(ctx, p.IdentityID) {
@@ -457,11 +480,12 @@ func (s *Service) registerAdministrator(ctx context.Context, id string) error {
 	if e != nil {
 		return e
 	}
-	defer unlock()
 	if e = s.recover(); e != nil {
+		unlock()
 		return e
 	}
 	ids, e := s.identities()
+	unlock()
 	if e != nil {
 		return e
 	}
@@ -473,6 +497,21 @@ func (s *Service) registerAdministrator(ctx context.Context, id string) error {
 		return e
 	}
 	defer release()
+	unlock, e = s.lock(ctx, false)
+	if e != nil {
+		return e
+	}
+	defer unlock()
+	if e = s.recover(); e != nil {
+		return e
+	}
+	ids, e = s.identities()
+	if e != nil {
+		return e
+	}
+	if _, exists := ids[id]; exists {
+		return nil
+	}
 	ids[id] = Identity{ID: id, Name: id, Type: "user"}
 	return s.transact([]fileChange{{Access: &accessChange{OnlyGeneration: true, SecurityGeneration: s.nextSecurityGeneration()}}, jsonChange(filepath.Join(s.private, "identities.json"), ids)})
 }

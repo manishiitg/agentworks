@@ -23,7 +23,7 @@ export interface KnowledgeAccess { folder_path: string; effective_role: Knowledg
 export interface KnowledgeEvent { id: string; type?: string; action?: string; path?: string; folder_path?: string; identity_id: string; timestamp: string; message?: string }
 export interface KnowledgeBootstrap { organization_id: string; profile_id: string; chat_workspace: string; is_admin: boolean; identity_id: string }
 export interface KnowledgeRead { entry: KnowledgeEntry; content: string; version: string; start_line: number; end_line: number; total_lines: number }
-export interface KnowledgeBackup { configured: boolean; entries: Array<{ entry_id: string; path: string; status: string }>; pending_count?: number }
+export interface KnowledgeBackup { configured: boolean; entries: Array<{ entry_id: string; path: string; status: string }>; pending_count?: number; last_backup_error?: string }
 export interface KnowledgeListQuery { folder_path: string; type?: string; tag?: string; cursor?: string; limit?: number }
 
 type Page = { items?: Record<string, unknown>[]; next_cursor?: string | null }

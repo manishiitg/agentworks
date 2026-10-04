@@ -54,12 +54,14 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	if err := json.Unmarshal([]byte(marshalStructured(t, read)), &body); err != nil || body.Result.Version == "" {
 		t.Fatalf("missing MCP version: %+v %v", read, err)
 	}
-	write := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "update_knowledgebase", "arguments": map[string]any{"path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "# Retries\nSaved through hosted MCP.\n", "request_id": "hosted-save"}})
+	invalid := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "update_knowledgebase", "arguments": map[string]any{"path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "Binary\u0000content", "request_id": "hosted-invalid-text"}})
+	requireRemoteError(t, invalid, "MCP binary content validation", "INVALID_ARGUMENT")
+	write := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "update_knowledgebase", "arguments": map[string]any{"path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "# Retries\r\nSaved through hosted MCP.\r\n", "request_id": "hosted-save"}})
 	requireRemoteSuccess(t, write, "MCP save despite workflow viewer role")
 	r := (&http.Request{}).WithContext(t.Context())
 	p := knowledgebasePrincipal(r, &UserClaims{UserID: "priya", Username: "priya"})
 	live, err := service.Call(t.Context(), p, "read_knowledgebase", map[string]any{"path": "Payments/Checkout/retries.md"})
-	if err != nil || !strings.Contains(live.(map[string]any)["content"].(string), "Saved through hosted MCP") {
+	if err != nil || live.(map[string]any)["content"] != "# Retries\nSaved through hosted MCP.\n" {
 		t.Fatal("save is not live before Git backup", live, err)
 	}
 	denied := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "read_knowledgebase", "arguments": map[string]any{"path": "Payments/Billing/private.md"}})

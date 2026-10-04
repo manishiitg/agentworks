@@ -115,9 +115,6 @@ func (s *Service) backupState() backupState {
 	}
 	return st
 }
-func (s *Service) saveBackupState(st backupState) error {
-	return atomicJSON(filepath.Join(s.private, "backup-state.json"), st)
-}
 func (s *Service) publicationLock() (func(), error) {
 	f, err := os.OpenFile(filepath.Join(s.private, "publication.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -391,7 +388,7 @@ func objects(v any) ([]map[string]any, error) {
 		return nil, badArg("Selections must be arrays of objects.")
 	}
 }
-func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a map[string]any) (any, error) {
+func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a map[string]any) (result any, resultErr error) {
 	reqPath, hash, err := s.requestPath(p, tool, a)
 	if err != nil {
 		return nil, err
@@ -474,6 +471,14 @@ func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a ma
 	if err != nil {
 		return nil, err
 	}
+	// Record backend failures after inner content locks have been released, while
+	// still holding the publication lock. Argument and authorization failures do
+	// not become organization-wide backup errors.
+	defer func() {
+		if err := s.recordBackupError(resultErr); err != nil {
+			resultErr = kbErr("STORAGE_UNAVAILABLE", "Backup error status could not be saved.")
+		}
+	}()
 	netctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err = s.ensureRepo(netctx); err != nil {
@@ -501,6 +506,29 @@ func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a ma
 		return s.prepare(netctx, p, a, sels, tip, reqPath, hash)
 	}
 	return s.push(netctx, p, a, receipt, tip, reqPath, hash)
+}
+
+func (s *Service) recordBackupError(err error) error {
+	failure, ok := err.(*Error)
+	if !ok {
+		return nil
+	}
+	switch failure.Code {
+	case "BACKUP_UNAVAILABLE", "BACKUP_OUTCOME_UNKNOWN", "BACKUP_REMOTE_CHANGED", "BACKUP_BRANCH_ADVANCED":
+	default:
+		return nil
+	}
+	unlock, lockErr := s.lock(context.Background(), false)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
+	if recoverErr := s.recover(); recoverErr != nil {
+		return recoverErr
+	}
+	st := s.backupState()
+	st.LastError = failure.Message
+	return s.transact([]fileChange{jsonChange(filepath.Join(s.private, "backup-state.json"), st)})
 }
 func (s *Service) reconcile(ctx context.Context, tip string) error {
 	st := s.backupState()
@@ -531,10 +559,12 @@ func (s *Service) reconcile(ctx context.Context, tip string) error {
 		if reached {
 			r.State = "PUSHED"
 			r.PushedAt = stamp()
+			r.LastError = ""
 			for _, sel := range r.Selections {
 				st.Paths[sel.Path] = publishedPath{EntryID: sel.EntryID, Sequence: sel.Sequence, Fingerprint: sel.Fingerprint, Deleted: sel.DeletionID != ""}
 			}
 			st.LastSuccessfulAt = r.PushedAt
+			st.LastError = ""
 			changes = append(changes, receiptChange(s, r))
 		} else if tip == r.Base {
 			r.State = "PREPARED"
@@ -602,6 +632,7 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 		}
 		defer unlock()
 		st := s.backupState()
+		st.LastError = ""
 		check := Receipt{IdentityID: p.IdentityID, OrganizationID: s.cfg.OrganizationID, Selections: sels}
 		if err = s.validateGenerations(ctx, p, check); err != nil {
 			return nil, err
@@ -749,6 +780,7 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 		}
 		st.Initialized = true
 		st.LastSuccessfulAt = r.PushedAt
+		st.LastError = ""
 		for _, sel := range r.Selections {
 			st.Paths[sel.Path] = publishedPath{EntryID: sel.EntryID, Sequence: sel.Sequence, Fingerprint: sel.Fingerprint, Deleted: sel.DeletionID != ""}
 		}
@@ -867,7 +899,7 @@ func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
 					}
 				}
 			}
-			m := asMap(e)
+			m := publicEntry(e)
 			m["backup_status"] = state
 			entries = append(entries, m)
 		}
@@ -1005,6 +1037,7 @@ func (s *Service) ReconcileBackup(ctx context.Context, p Principal) (any, error)
 	st.Initialized = true
 	st.ExternalChange = false
 	st.ObservedTip = ""
+	st.LastError = ""
 	if st.Paths == nil {
 		st.Paths = map[string]publishedPath{}
 	}

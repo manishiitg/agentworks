@@ -290,7 +290,7 @@ MVP limits, measured after JSON decoding:
 | Commit message | 1–2,000 Unicode characters. |
 | Request ID | 1–128 ASCII letters, digits, underscores, or hyphens. |
 
-Whole-entry reads can return up to the content limit. Clients should use sections or line ranges for large entries rather than relying on silent response truncation. Store UTF-8 text with LF line endings so reads and generated diffs use the same representation. Validate limits and normalize replacement text before saving; patch context is matched against the stored LF text. Initial limits may be adjusted operationally, but must be advertised in the tool contracts.
+Whole-entry reads can return up to the content limit. Clients should use sections or line ranges for large entries rather than relying on silent response truncation. Store UTF-8 text with LF line endings so reads and generated diffs use the same representation. Reject invalid UTF-8 and control characters except tab, CR, and LF; this includes NUL and binary control bytes. Normalize CRLF and lone CR to LF in creation, replacement text, and diffs before matching patch context. Validate the resulting patched content before saving. Limits apply to decoded input before normalization and to the final stored content. Tags use exact, case-sensitive uniqueness; whitespace-only tags are invalid, and an empty array clears tags. Initial limits may be adjusted operationally, but must be advertised in the tool contracts.
 
 ### 7.3 Reuse of existing MCPBridge patch functionality
 
@@ -400,7 +400,7 @@ If content changes after commit, pushing the earlier snapshot is allowed, but th
 
 ### 9.3 Concurrent publication
 
-Use one shared publication lock per organization/repository/branch across server processes. Preparation briefly acquires the same lock to reconcile remote state and pin a published base, then releases it; it does not hold this lock through the user's later push. A prepared commit may therefore become stale, which is an ordinary explicit retry case. Never hold the lock while waiting for a user to initiate push.
+Use one shared publication lock per organization/repository/branch across server processes. A preparation call holds this lock during bounded remote reconciliation and isolated commit preparation, and releases it before returning; it does not hold this lock through the user's later push. Network operations use a 30-second timeout, and overlapping backup calls return retryable `BACKUP_BUSY`. A prepared commit may therefore become stale, which is an ordinary explicit retry case. Never hold the lock while waiting for a user to initiate push. Security mutations acquire publication before content, consistently with backup calls. Identity synchronization checks for changes under the content lock first, then releases it before acquiring publication and re-reading under both locks. An unchanged identity snapshot needs no publication lock and does not block live reads while a backup is in progress.
 
 An explicit push call:
 
@@ -456,7 +456,7 @@ Show an aggregate only for content the caller can access:
 - **Committed, not pushed:** a matching prepared snapshot exists but has not reached the remote. A receipt of an older version does not make newer content committed.
 - **Backed up:** current live bytes/existence match the latest confirmed remote state for that path. A matching older historical commit alone is insufficient.
 
-Expose `last_backup_error`, `last_successful_backup_at`, and any unknown/stale receipt as separate details rather than replacing content state with a generic failure label. Metadata-only changes do not alter content backup state. A later deletion remains pending even if an older version of its content exists in Git history.
+Expose `last_backup_error`, `last_successful_backup_at`, and any unknown/stale receipt as separate details rather than replacing content state with a generic failure label. Persist sanitized backend failure messages through the private journal, and show them in the read-only app without preventing content reads. Argument and authorization errors do not overwrite the organization-wide error. Confirmed publication, recovered delivery, a no-change preparation that verifies the selected content is already backed up, or administrator reconciliation clears it. Metadata-only changes do not alter content backup state. A later deletion remains pending even if an older version of its content exists in Git history.
 
 Commit and push calls can be retried safely using their request IDs and receipts. Network, credential, and Git failures never undo a successful content write or block readers from using live content.
 

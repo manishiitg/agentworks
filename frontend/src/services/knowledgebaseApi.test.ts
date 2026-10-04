@@ -21,8 +21,10 @@ describe('Knowledge Base viewer wire contract', () => {
     expect(normalizeKnowledgeSearch({ items: [{ entry_id: 'entry', path: 'Payments/checkout.md', snippet: 'Checkout retries', line_number: 3 }] })).toMatchObject([{ entry: { entry_id: 'entry' }, excerpt: 'Checkout retries' }])
   })
   it('uses the actual backup status field and never requests a mutation route', async () => {
-    get.mockResolvedValueOnce({ data: { configured: true, entries: [{ entry_id: 'entry', path: 'note.md', backup_status: 'backed_up' }] } })
-    expect((await knowledgebaseApi.backup('')).entries[0].status).toBe('backed_up')
+    get.mockResolvedValueOnce({ data: { configured: true, entries: [{ entry_id: 'entry', path: 'note.md', backup_status: 'backed_up' }], last_backup_error: 'Git backup is unavailable.' } })
+    const backup = await knowledgebaseApi.backup('')
+    expect(backup.entries[0].status).toBe('backed_up')
+    expect(backup.last_backup_error).toBe('Git backup is unavailable.')
     expect(get).toHaveBeenLastCalledWith('/api/knowledgebase/backup', expect.objectContaining({ params: { folder_path: '' } }))
   })
 })

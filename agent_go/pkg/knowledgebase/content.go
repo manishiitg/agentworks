@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -107,12 +108,38 @@ func validateMetadata(e *Entry) error {
 	if utf8.RuneCountInString(e.Title) > 200 || utf8.RuneCountInString(e.Description) > 4000 || len(e.Tags) > 50 {
 		return kbErr("LIMIT_EXCEEDED", "Metadata exceeds its limit.")
 	}
+	seen := make(map[string]bool, len(e.Tags))
 	for _, t := range e.Tags {
+		if strings.TrimSpace(t) == "" {
+			return badArg("Tags must be non-empty.")
+		}
+		if seen[t] {
+			return badArg("Tags must be unique.")
+		}
+		seen[t] = true
 		if utf8.RuneCountInString(t) > 64 {
 			return kbErr("LIMIT_EXCEEDED", "A tag exceeds 64 characters.")
 		}
 	}
 	return nil
+}
+
+// All content and patch contexts use the same UTF-8, LF representation. Control
+// characters other than ordinary text whitespace indicate binary input.
+func normalizeText(text string, limit int, label string) (string, error) {
+	if len(text) > limit {
+		return "", kbErr("LIMIT_EXCEEDED", label+" exceeds its byte limit.")
+	}
+	if !utf8.ValidString(text) {
+		return "", badArg("%s must be valid UTF-8 text.", label)
+	}
+	for _, r := range text {
+		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
+			return "", badArg("%s must not contain binary control characters or NUL bytes.", label)
+		}
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.ReplaceAll(text, "\r", "\n"), nil
 }
 func tagsArg(v any) ([]string, error) {
 	switch ts := v.(type) {
@@ -157,8 +184,9 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 	if !ok {
 		return nil, nil, nil, badArg("content must be a string.")
 	}
-	if len(content) > 10*1024*1024 {
-		return nil, nil, nil, kbErr("LIMIT_EXCEEDED", "Content exceeds 10 MiB.")
+	content, err = normalizeText(content, 10*1024*1024, "Content")
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	tags := []string{}
 	if v, has := a["tags"]; has {
@@ -243,8 +271,9 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 		if !ok {
 			return nil, nil, nil, badArg("diff must be a string.")
 		}
-		if len(d) > 2*1024*1024 {
-			return nil, nil, nil, kbErr("LIMIT_EXCEEDED", "Diff exceeds 2 MiB.")
+		d, err = normalizeText(d, 2*1024*1024, "Diff")
+		if err != nil {
+			return nil, nil, nil, err
 		}
 		if err = validateDiffTarget(d, e); err != nil {
 			return nil, nil, nil, err
@@ -254,8 +283,9 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 			return nil, nil, nil, kbErr("PATCH_FAILED", "The patch could not be applied completely.")
 		}
 	}
-	if len(content) > 10*1024*1024 {
-		return nil, nil, nil, kbErr("LIMIT_EXCEEDED", "Result exceeds 10 MiB.")
+	content, err = normalizeText(content, 10*1024*1024, "Content")
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	before := e
 	meta, hasMeta := a["metadata"]
@@ -778,7 +808,7 @@ func (s *Service) search(ctx context.Context, p Principal, a map[string]any) (an
 				if len(snippet) > 500 {
 					snippet = snippet[:500]
 				}
-				m := asMap(e)
+				m := publicEntry(e)
 				m["line_number"] = match.Line
 				m["snippet"] = snippet
 				items = append(items, m)

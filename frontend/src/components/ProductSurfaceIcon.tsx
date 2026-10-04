@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { Waypoints } from 'lucide-react'
+import { BookOpen, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { WorkMark } from '../products/work/WorkMark'
 import { CodeMark } from '../products/work/CodeMark'
@@ -12,6 +12,7 @@ import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../products/product
 const icons: Record<ProductSurface, ComponentType<{ className?: string; title?: string }>> = {
   agentworks: RunloopMark, relays: Waypoints, work: WorkMark, code: CodeMark,
   'mcp-gateway': VaultMark, 'video-studio': VideoStudioMark, dominion: DominionMark, sparkquill: SparkQuillMark,
+  knowledgebase: BookOpen,
 }
 
 export function ProductSurfaceIcon({ surface, className = 'h-4 w-4' }: { surface: ProductSurface; className?: string }) {
