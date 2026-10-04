@@ -1,3 +1,7 @@
+## Slot shell commands never worked end to end on RTS — PLAT-478
+
+[PLAT-478](pulse_platform/security-sandbox/plat-478.md), open, P1. Three stacked failures (allowed_cwd, releases/ 0700, Landlock launcher fails closed on an unreadable browser-profile grant); RTS admin slot released as mitigation; slots are canary-stage.
+
 ## slotctl refuses commands that start in the docs tree on RTS — PLAT-476
 
 [PLAT-476](pulse_platform/security-sandbox/plat-476.md), script fixed on main; live RTS config still to be corrected (root). `provision-slots.sh` built `allowed_cwd` from the app folder while the docs live at `/data/video-studio/docs`, so the slot shell tool failed with exit 126 and the Crew fell back to a no-ask native shell.
