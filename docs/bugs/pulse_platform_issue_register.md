@@ -1,3 +1,8 @@
+## Identity is explicit: owner from the manifest, slot named by the platform, Crews at Crew/<id> — PLAT-442
+
+[PLAT-442](pulse_platform/security-sandbox/plat-442.md), open, approved 2026-10-04. Ownership and the run-as slot stop being read from `_users/<id>` paths
+(three copies today); Crews move to a shared root afterwards.
+
 ## Relay agents call saved Python scripts as tools — PLAT-441
 
 [PLAT-441](pulse_platform/plans-contracts/plat-441.md), fixed on `main`, not

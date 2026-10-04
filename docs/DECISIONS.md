@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
+
+- The owner of a Goal, Crew or Code comes from its manifest, and the platform names the slot a CLI runs as. Neither is read from the folder path any more.
+- A Crew Run-mode reader's turn runs as the Crew owner's slot (one Crew agent, the owner's logins). The reader block, tools and folder guards limit the reader.
+- Goals keep running as the app account with Landlock and per-workflow folders. Workflows have several owners, so no single person's slot fits.
+- Crews move to the shared `Crew/<slug>-<id8>` root once the explicit owner and slot are in place. Old paths stay as aliases. Code stays private in its owner's tree.
+- Ticket: [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
+
 ### 2026-10-04 — Relay agents get script tools, never sub-agents; Relays have no DB/KB/learnings
 
 A Relay agent may call saved Python scripts as named tools (scripted routes,
