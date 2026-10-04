@@ -28,8 +28,6 @@ autonomy) are stated in the prompt rather than enforced by a filtered tool set;
 the owner accepted that trade-off.
 Ticket: [PLAT-452](bugs/pulse_platform/plans-contracts/plat-452.md).
 
-### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
-
 ### 2026-10-04 — A slot mismatch refuses the launch
 
 A launch whose script names one slot and whose folder names another is refused:
