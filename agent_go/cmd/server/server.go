@@ -2123,9 +2123,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		if err := registerCapLayerDatabaseTools(profileRegistry); err != nil {
 			log.Fatalf("Failed to register CapLayer database tools: %v", err)
 		}
-		if err := caplayerproduct.RegisterRuntime(profileRegistry, capLayerAgentAccess); err != nil {
-			log.Fatalf("Failed to register CapLayer tools: %v", err)
-		}
 	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
@@ -2242,6 +2239,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	runningServerAPI = api
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
+	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
+		if err := caplayerproduct.RegisterRuntime(profileRegistry, api.capLayerConnectionAccess); err != nil {
+			log.Fatalf("Failed to register Vault tools: %v", err)
+		}
+	}
 	projectSecretReader = api.projectSecretValue
 	// Private MCP stores remain private; do not copy user logins into projects.
 	// Terminal Center's Formatted view and the runtime coordinator now consume
@@ -2355,6 +2357,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Auth middleware - applies to all API routes
 	// Note: AuthMiddleware handles skipping auth for public endpoints (login, register, health, shared)
 	router.Use(AuthMiddleware)
+	api.registerVaultOAuthRoutes(router)
 
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
@@ -5573,6 +5576,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID {
 			var isolationErr error
 			chatWorkingDir, isolationErr = crewCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
+			if isolationErr != nil {
+				sendError(isolationErr.Error(), true)
+				return
+			}
+		}
+		if resolvedProfile != nil && resolvedProfile.Definition.ID == caplayerproduct.ProfileID {
+			var isolationErr error
+			chatWorkingDir, isolationErr = linkedProjectCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, "vault")
 			if isolationErr != nil {
 				sendError(isolationErr.Error(), true)
 				return
@@ -12603,9 +12614,18 @@ func (api *StreamingAPI) buildLLMToolsCallbacks() *todo_creation_human.LLMToolsC
 func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
 }, disabled func(string) bool) error {
+	if err := api.registerMCPCallTool(registrar, disabled); err != nil {
+		return err
+	}
 	registerTool := func(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error)) error {
 		if disabled != nil && disabled(name) {
 			return nil
+		}
+		if name == "install_mcp_server" || name == "add_mcp_server" {
+			properties, _ := params["properties"].(map[string]interface{})
+			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate private account. Omit for reconnecting an existing exact connection name."}
+			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
+			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
 		}
 		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
 			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -12701,7 +12721,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"list_mcp_servers",
-		"List your private MCP connections and shared Vault connections your groups permit. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
+		"List your private MCP connections, your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; select a Vault connection by its exact vault_ name and secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},

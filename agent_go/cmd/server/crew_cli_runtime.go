@@ -6,8 +6,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 func crewCLIMode(readOnly bool) string {
@@ -18,19 +16,7 @@ func crewCLIMode(readOnly bool) string {
 }
 
 func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
-	project := codingAgentWorkspaceWorkingDir(folder)
-	if !isCodingAgentProvider(provider, "") {
-		return project, nil
-	}
-	stateRoot, err := workflowCLIStateRoot()
-	if err != nil {
-		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
-	}
-	dir, err := cliruntime.PrepareLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, session, provider, crewCLIMode(readOnly))
-	if err != nil {
-		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
-	}
-	return dir, nil
+	return linkedProjectCLIWorkingDir(folder, user, session, provider, crewCLIMode(readOnly))
 }
 
 func crewCLIWorkspaceInstructions(folder string) string {

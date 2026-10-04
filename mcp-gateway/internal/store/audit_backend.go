@@ -33,32 +33,24 @@ type AuditInfo struct {
 }
 
 type AuditOptions struct {
-	Provider                                                              string
-	WriteMode                                                             string
-	Local                                                                 bool
-	StateDir                                                              string
-	Retention                                                             time.Duration
-	MaxBytes                                                              int64
-	ClickHouseURL, ClickHouseDatabase, ClickHouseUser, ClickHousePassword string
+	Provider  string
+	WriteMode string
+	Local     bool
+	StateDir  string
+	Retention time.Duration
+	MaxBytes  int64
 }
 
-// Explicit LOCAL_MODE controls defaults, never the bind address or operating system.
+// MVP audit storage is SQLite on both local and server installations.
+// Collection may be disabled; LOCAL_MODE bounds local retention.
 func AuditOptionsFromEnv(stateDir string) (AuditOptions, error) {
 	o := AuditOptions{Local: os.Getenv("LOCAL_MODE") == "true", StateDir: stateDir,
-		Provider:           strings.ToLower(strings.TrimSpace(os.Getenv("VAULT_AUDIT_PROVIDER"))),
-		ClickHouseURL:      os.Getenv("VAULT_AUDIT_CLICKHOUSE_URL"),
-		ClickHouseDatabase: os.Getenv("VAULT_AUDIT_CLICKHOUSE_DATABASE"),
-		ClickHouseUser:     os.Getenv("VAULT_AUDIT_CLICKHOUSE_USER"),
-		ClickHousePassword: os.Getenv("VAULT_AUDIT_CLICKHOUSE_PASSWORD"), MaxBytes: 256 << 20}
+		Provider: strings.ToLower(strings.TrimSpace(os.Getenv("VAULT_AUDIT_PROVIDER"))), MaxBytes: 256 << 20}
 	if o.Provider == "" {
-		if o.Local {
-			o.Provider = "sqlite"
-		} else {
-			o.Provider = "clickhouse"
-		}
+		o.Provider = "sqlite"
 	}
-	if o.Provider != "off" && o.Provider != "sqlite" && o.Provider != "clickhouse" {
-		return o, errors.New("VAULT_AUDIT_PROVIDER must be sqlite, clickhouse, or off")
+	if o.Provider != "off" && o.Provider != "sqlite" {
+		return o, errors.New("VAULT_AUDIT_PROVIDER must be sqlite or off")
 	}
 	if o.Provider == "off" {
 		return o, nil
@@ -70,10 +62,7 @@ func AuditOptionsFromEnv(stateDir string) (AuditOptions, error) {
 	if o.WriteMode != "durable" && o.WriteMode != "async" {
 		return o, errors.New("VAULT_AUDIT_WRITE_MODE must be durable or async")
 	}
-	o.Retention = 30 * 24 * time.Hour
-	if o.Local {
-		o.Retention = 24 * time.Hour
-	}
+	o.Retention = 24 * time.Hour
 	if v := os.Getenv("VAULT_AUDIT_RETENTION"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d < time.Minute || d > 365*24*time.Hour {
@@ -100,8 +89,6 @@ func OpenAuditBackend(o AuditOptions) (AuditBackend, error) {
 		return disabledAudit{}, nil
 	case "sqlite":
 		return openSQLiteAuditMode(filepath.Join(o.StateDir, "audit.sqlite"), o.Retention, o.MaxBytes, true, o.WriteMode)
-	case "clickhouse":
-		return openClickHouseAudit(o)
 	default:
 		return nil, errors.New("unknown audit provider")
 	}

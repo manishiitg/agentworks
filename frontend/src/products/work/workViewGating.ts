@@ -25,7 +25,7 @@ export function isWorkIdentityTabEnabled(tab: WorkIdentityTab, enabledPanels?: S
 export function isWorkIntegrationTabEnabled(tab: WorkIntegrationTab, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
   if (tab === 'secrets') return enabledPanels.has('secrets')
-  if (tab === 'apps') return enabledPanels.has('mcp')
+  if (tab === 'apps') return enabledPanels.has('mcp') || enabledPanels.has('secrets') || enabledPanels.has('skills')
   if (tab === 'skills') return enabledPanels.has('skills')
   if (tab === 'cli') return true
   return enabledPanels.has('bots')

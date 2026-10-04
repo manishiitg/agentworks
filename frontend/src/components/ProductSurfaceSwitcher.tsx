@@ -13,7 +13,6 @@ import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { applyRuntimeBranding } from '../runtime-branding'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { cn } from '../lib/utils'
 
 type ProductSurfaceSwitcherProps = {
@@ -93,29 +92,52 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
   }, [open])
 
   if (sidebar) return (
-    <TooltipProvider delayDuration={200}>
-      <div role="group" aria-label="Products" className="flex flex-col gap-1 border-b border-border pb-3">
-        {visibleProducts.map(product => {
-          const Icon = product.icon
-          const active = product.id === (standalone ? 'mcp-gateway' : productSurface)
-          return <Tooltip key={product.id}>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label={product.label} aria-current={active ? 'page' : undefined}
-                data-tour-products={visibleProductIDs.join(' ')}
-                onClick={() => activateProduct(product.id)}
-                data-product-navigation-action
-                className={`relative grid h-9 w-full place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
-                {active && <span aria-hidden="true" className="absolute -left-2 h-4 w-0.5 rounded-r bg-primary" />}
-                <Icon className="h-5 w-5 shrink-0" title="" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">{product.label}</TooltipContent>
-          </Tooltip>
-        })}
-      </div>
-    </TooltipProvider>
+    <div ref={menuRef} role="group" aria-label="Products"
+      className="relative border-b border-border pb-3"
+      onMouseEnter={() => { if (visibleProducts.length > 1) setOpen(true) }}
+      onMouseLeave={() => setOpen(false)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}>
+      <button type="button" aria-label={`Switch product: ${currentProduct.label}`}
+        aria-haspopup={visibleProducts.length > 1 ? 'menu' : undefined} aria-expanded={open}
+        data-tour-products={visibleProductIDs.join(' ')} data-product-navigation-action
+        title={currentProduct.label}
+        onClick={() => visibleProducts.length > 1 ? setOpen(true) : activateProduct(currentProduct.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && visibleProducts.length > 1) {
+            event.preventDefault(); setOpen(true)
+            requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus())
+          }
+        }}
+        className="relative grid h-9 w-full place-items-center rounded-lg bg-secondary text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <span aria-hidden="true" className="absolute -left-1.5 h-4 w-0.5 rounded-r bg-primary" />
+        <CurrentIcon className="h-5 w-5 shrink-0" title="" />
+      </button>
+      {open && <div className="absolute left-full top-0 z-50 pl-2">
+        <div role="menu" aria-label="Products"
+          className="w-44 max-w-[calc(100vw-5rem)] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          onKeyDown={(event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(event.key)) return
+            event.preventDefault()
+            if (event.key === 'Escape') { setOpen(false); menuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus(); return }
+            const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+            const index = items.indexOf(document.activeElement as HTMLButtonElement)
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length
+            items[next]?.focus()
+          }}>
+          {visibleProducts.map(product => {
+            const Icon = product.icon
+            const active = product.id === currentProduct.id
+            return <button key={product.id} type="button" role="menuitem" aria-label={product.label}
+              aria-current={active ? 'page' : undefined} onClick={() => activateProduct(product.id)}
+              className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-xs font-medium hover:bg-accent focus-visible:bg-accent focus-visible:outline-none">
+              <Icon className="h-5 w-5 shrink-0" title="" />
+              <span className="flex-1">{product.label}</span>
+              {active && <Check className="h-3.5 w-3.5 text-primary" />}
+            </button>
+          })}
+        </div>
+      </div>}
+    </div>
   )
 
   return (

@@ -158,7 +158,7 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
       previewDevice={previewDevice} onPreviewDeviceChange={device => { setPreviewDevice(device); writeReportPreviewPreference(WORKSPACE, device) }}
       onCollapseChat={() => setChatOpen(false)} onCollapseWorkspace={() => setPanelOpen(false)} />}
     workspace={<GatewayWorkspacePane base={base} panel={panel} revision={revision} chatBusy={chatBusy}
-      servers={<GatewayServersPanel base={base} view={panel === 'available-mcps' ? 'available' : 'connected'} onConnected={() => setPanel('servers')} standalone={standalone} onAddCustom={tabId ? addCustomServer : undefined} revision={revision} />} modelSettings={<GatewayModelSettings tabId={tabId} />} />}
+      servers={<GatewayServersPanel chatSessionId={sessionId ?? undefined} base={base} view={panel === 'available-mcps' ? 'available' : 'connected'} onConnected={() => setPanel('servers')} standalone={standalone} onAddCustom={tabId ? addCustomServer : undefined} revision={revision} />} modelSettings={<GatewayModelSettings tabId={tabId} />} />}
   />
 }
 

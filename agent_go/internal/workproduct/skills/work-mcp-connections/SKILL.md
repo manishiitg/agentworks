@@ -39,3 +39,13 @@ Shared MCPs belong in Vault and require group permissions on every tool call.
 - **When a call fails.** "not available in this chat" means the connection was
   removed or its owner lost access. Run `list`, then connect it again. A
   direct tool that is missing is not a failure: use the bridge.
+
+- **Multiple accounts.** Use `connect`, `catalog` and `label` (e.g. "Notion ·
+  Engineering") to create a separate private account. It returns an exact
+  connection `name` with independent credentials. Another labelled request
+  creates another account; do not replace an existing one. Reconnect or attach
+  an existing account with `connect` and its exact `name`, omitting label.
+  Use the exact returned name for removal and selection; never guess from a
+  provider alias when several accounts exist. Named accounts do not reuse the
+  legacy provider-group token. The provider's sign-in screen chooses the real
+  account; labels do not verify account identity.

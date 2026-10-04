@@ -37,8 +37,9 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		return
 	}
 	var in struct {
-		ServerName string `json:"server_name"`
-		URL        string `json:"url"`
+		ServerName   string `json:"server_name"`
+		URL          string `json:"url"`
+		ConnectionID string `json:"connection_id,omitempty"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
 	dec.DisallowUnknownFields()
@@ -56,11 +57,22 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
 		return
 	}
+	if in.ConnectionID != "" {
+		cfg, err = api.vaultOAuthConfig(r.Context(), in.ConnectionID, name, in.URL)
+		if err != nil {
+			writeUsersError(w, 403, "OAuth connection does not match a live Vault connection")
+			return
+		}
+	}
 	copied := *cfg.OAuth
 	if copied.TokenFile == "" {
 		copied.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
 	}
-	mutex := platformMCPOAuthMutex(name)
+	lockKey := name
+	if in.ConnectionID != "" {
+		lockKey = "vault:" + in.ConnectionID
+	}
+	mutex := platformMCPOAuthMutex(lockKey)
 	mutex.Lock()
 	defer mutex.Unlock()
 	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(r.Context())

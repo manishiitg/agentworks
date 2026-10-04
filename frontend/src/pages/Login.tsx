@@ -101,7 +101,7 @@ const providerConfig: Record<string, {
 // here would let a crafted link rewrite history to an attacker's URL.
 function cleanUpLoginUrl() {
   if (typeof window === 'undefined') return
-  if (['/file', '/folder', '/report', '/oauth/consent', '/oauth/cli'].includes(window.location.pathname)) return
+  if (['/file', '/folder', '/report', '/oauth/consent', '/oauth/vault', '/oauth/cli'].includes(window.location.pathname)) return
   const next = new URLSearchParams(window.location.search).get('next')
   const target = next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : '/'
   window.history.replaceState(null, '', target)

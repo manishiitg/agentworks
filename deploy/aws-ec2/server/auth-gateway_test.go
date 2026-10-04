@@ -683,7 +683,7 @@ func TestMCPOAuthDiscoveryAndChallengeReachAgentWithoutGatewaySession(t *testing
 			if r.Header.Get("X-User-ID") != "" {
 				t.Fatalf("spoofed user id reached OAuth route: %s", r.URL.Path)
 			}
-			if r.URL.Path == hostedMCPPath && r.Header.Get("Authorization") == "" {
+			if (r.URL.Path == hostedMCPPath || r.URL.Path == "/api/vault/mcp") && r.Header.Get("Authorization") == "" {
 				w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource/api/external/v1/mcp"`)
 				w.WriteHeader(http.StatusUnauthorized)
 				return
@@ -695,7 +695,9 @@ func TestMCPOAuthDiscoveryAndChallengeReachAgentWithoutGatewaySession(t *testing
 		for _, path := range []string{
 			"/.well-known/oauth-protected-resource/api/external/v1/mcp",
 			"/.well-known/oauth-authorization-server",
+			"/.well-known/oauth-authorization-server/vault", "/.well-known/oauth-protected-resource/api/vault/mcp",
 			"/api/oauth/mcp/register", "/api/oauth/mcp/authorize", "/api/oauth/mcp/token",
+			"/api/oauth/vault/register", "/api/oauth/vault/authorize", "/api/oauth/vault/token",
 			"/api/oauth/cli/device", "/api/oauth/cli/token", "/api/oauth/cli/revoke",
 		} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -719,6 +721,18 @@ func TestMCPOAuthDiscoveryAndChallengeReachAgentWithoutGatewaySession(t *testing
 		g.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("disableGate=%v OAuth bearer got %d", disableGate, w.Code)
+		}
+		for _, token := range []string{"", "aw_vault_test"} {
+			req := httptest.NewRequest(http.MethodPost, "/api/vault/mcp", nil)
+			req.Header.Set("X-User-ID", "spoofed")
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			w := httptest.NewRecorder()
+			g.ServeHTTP(w, req)
+			if (token == "" && (w.Code != 401 || w.Header().Get(authRequiredHeader) != "" || w.Header().Get("WWW-Authenticate") == "")) || (token != "" && w.Code != 200) {
+				t.Fatal("Vault MCP intercepted by browser gate", w.Code)
+			}
 		}
 		req = httptest.NewRequest(http.MethodGet, "/api/external/v1/tools", nil)
 		req.Header.Set("Authorization", "Bearer aw_cli_test")

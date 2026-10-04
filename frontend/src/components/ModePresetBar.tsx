@@ -90,7 +90,10 @@ interface ModePresetBarProps {
 }
 
 export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
+  const productSurface = useProductSurfaceStore(state => state.productSurface)
+  const isRelaySurface = productSurface === 'relays'
+  const hasProductActivity = productSurface === 'agentworks'
+  const hasProductSchedules = ['agentworks', 'work'].includes(productSurface)
   const { selectedModeCategory, setModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
     setModeCategory: state.setModeCategory,
@@ -773,36 +776,27 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 return null
               })()}
             </div>
-          </ProductTopBarMain>
-
-          {/* Right: icons */}
-          <TooltipProvider delayDuration={400}>
-            <ProductTopBarActions>
-              <GlobalActivityMonitor />
-
-              <ProvidersControl />
-
-              <McpControl />
-
-              <UsersControl />
-
-              {!reduced && !isRelaySurface && <GlobalActivityButton
+            {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
+              <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col gap-1 border-t border-border pt-3">
+              {hasProductActivity && <GlobalActivityButton
                 workspacePaths={workflowActivityPaths}
                 active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
                 onOpen={() => {
                   useLLMStore.getState().setShowLLMModal(false)
+                  setAdminPage(null)
                   setShowSchedulesOverview(false)
                   setActivityWorkflowPath(null)
                   setShowWorkflowsOverview(true)
                 }}
               />}
 
-              {!isRelaySurface && <Tooltip>
+              {hasProductSchedules && <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     onClick={() => {
                       useLLMStore.getState().setShowLLMModal(false)
+                      setAdminPage(null)
                       setShowWorkflowsOverview(false)
                       setShowSchedulesOverview(true)
                     }}
@@ -821,8 +815,23 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                     )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
+                <TooltipContent side="right">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
               </Tooltip>}
+
+              </div>
+            </TooltipProvider>}
+          </ProductTopBarMain>
+
+          {/* Shared actions remain at the bottom in every product. */}
+          <TooltipProvider delayDuration={400}>
+            <ProductTopBarActions>
+              <GlobalActivityMonitor />
+
+              <ProvidersControl />
+
+              <McpControl />
+
+              <UsersControl />
 
               <span className="mx-0.5 h-px w-full bg-border" />
               <WorkspaceTopBarControls

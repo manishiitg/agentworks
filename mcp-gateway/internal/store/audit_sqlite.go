@@ -429,39 +429,6 @@ func (a *sqliteAudit) Summary(ctx context.Context, f AuditFilter) (AuditSummary,
 	}
 	return out, nil
 }
-func (a *sqliteAudit) pending(ctx context.Context, limit int) ([]AuditEvent, error) {
-	rows, err := a.db.QueryContext(ctx, "SELECT Event FROM audit_events ORDER BY TimestampMs,ID LIMIT ?", limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []AuditEvent{}
-	for rows.Next() {
-		var raw string
-		var e AuditEvent
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(raw), &e); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-func (a *sqliteAudit) delivered(ctx context.Context, events []AuditEvent) error {
-	tx, err := a.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, e := range events {
-		if _, err = tx.ExecContext(ctx, "DELETE FROM audit_events WHERE ID=?", e.ID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
 func (a *sqliteAudit) Close() error {
 	a.closeOnce.Do(func() {
 		a.mu.Lock()

@@ -2,9 +2,15 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -109,5 +115,68 @@ func TestSharedSetupToolEndpointCannotPublishAndRecordsActor(t *testing.T) {
 	events := s.ListPolicyEvents("w")
 	if len(events) != 1 || events[0].Actor != "product-admin" {
 		t.Fatalf("incorrect policy attribution: %+v", events)
+	}
+}
+
+func TestSetupToolCreatesSeparateNamedCatalogAccounts(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	gw := mcpserver.New(st, nil, map[string]*upstream.Client{}, nil, upstream.DialOptions{})
+	gw.SetSharedOAuth(func(context.Context, string, string, string) (string, error) {
+		t.Fatal("connection creation requested another account's credential")
+		return "", nil
+	})
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers":{"Notion":{"url":"https://mcp.notion.com/mcp","oauth":{"client_id":"app"}}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := catalog.LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &Admin{Store: st, Gateway: gw, WorkspaceID: "w", Catalog: cat}
+	for _, label := range []string{"Notion · Engineering", "Notion · Sales"} {
+		payload, _ := json.Marshal(map[string]string{"provider": "Notion", "label": label})
+		result, err := a.setupTool(context.Background(), "connect_server", payload, "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := result.(map[string]any)
+		c := row["connector"].(store.Connector)
+		if c.Label != label || c.OAuthCredentialID != c.ID || c.Status != store.StatusAuthRequired || row["group_access_assigned"] != false || row["sign_in_required"] != true {
+			t.Fatal("chat created an incorrect connection")
+		}
+	}
+	connections := st.ListConnectors("w")
+	if len(connections) != 2 || connections[0].InstanceSlug == connections[1].InstanceSlug {
+		t.Fatal("chat replaced an existing account")
+	}
+	if _, err := a.setupTool(context.Background(), "connect_server", json.RawMessage(`{"provider":"Notion","url":"https://evil.example/mcp"}`)); err == nil {
+		t.Fatal("catalog URL override accepted")
+	}
+	if _, err := a.setupTool(context.Background(), "connect_server", json.RawMessage(`{"provider":"Notion","token":"credential"}`)); err == nil {
+		t.Fatal("chat accepted credentials")
+	}
+}
+
+func TestSetupInspectionReturnsLiveToolSchemaAndAnnotations(t *testing.T) {
+	s := store.NewMemoryStore()
+	s.AddWorkspace(store.Workspace{ID: "w"})
+	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
+	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "notion__read", Fingerprint: "v1", Description: "Retrieve a page", InputSchema: []byte(`{"type":"object","properties":{"page_id":{"type":"string"}}}`), Annotations: []byte(`{"readOnlyHint":true,"destructiveHint":false}`)})
+	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	a := &Admin{Store: s, WorkspaceID: "w", Catalog: &catalog.Catalog{}}
+	for _, op := range []string{"inspect_environment", "inspect_tool"} {
+		result, err := a.setupTool(context.Background(), op, json.RawMessage(`{"public_name":"notion__read"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := json.Marshal(result)
+		if err != nil || !strings.Contains(string(raw), `"readOnlyHint":true`) {
+			t.Fatalf("missing live annotations: %s %v", raw, err)
+		}
+		if op == "inspect_tool" && !strings.Contains(string(raw), `"page_id"`) {
+			t.Fatal("missing actual input schema")
+		}
 	}
 }

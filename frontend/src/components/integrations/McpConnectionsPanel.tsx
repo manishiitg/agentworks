@@ -27,7 +27,7 @@ export interface McpConnectionRow {
 }
 export interface McpCatalogRow {
   id: string; name: string; description?: string; category?: string
-  connect?: McpAction; connectControl?: ReactNode; testId?: string
+  connect?: McpAction; connectControl?: ReactNode; testId?: string; details?: ReactNode
   batch?: { id: string; name: string; connect: (ids: string[]) => void | Promise<unknown> }
 }
 export interface McpPanelNotice { message: string; retry?: () => void; tone?: 'error' | 'info' }
@@ -80,12 +80,12 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
           const selected = batch ? picks[batch.id] ?? [] : []
           return <section key={group} aria-label={group} className="space-y-2">
             <h4 className="font-medium text-muted-foreground">{GROUP_ORDER.find(item => item.id === group)?.label || group}</h4>
-            <div className="space-y-2">{items.map(item => <div key={item.id} className="flex items-center gap-3 rounded-md border border-border p-3">
+            <div className="space-y-2">{items.map(item => <div key={item.id} className="rounded-md border border-border p-3"><div className="flex items-center gap-3">
               {batch && <input type="checkbox" aria-label={`Add ${item.name}`} disabled={item.connect?.disabled} checked={selected.includes(item.id)} onChange={() => setPicks(value => ({ ...value, [batch.id]: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }))} />}
               <ConnectionIcon icon={brandSlugFor(item.name)} name={item.name} size="xs" />
               <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{item.name}</p>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
-              {!batch && (item.connectControl || (item.connect && <Button variant="outline" size="sm" disabled={item.connect.disabled} aria-label={item.connect.ariaLabel} data-testid={item.testId} onClick={() => void item.connect!.run()}>{item.connect.icon || <Plus />}{item.connect.label}</Button>))}
-            </div>)}</div>
+              {(item.connectControl || (item.connect && <Button variant="outline" size="sm" disabled={item.connect.disabled} aria-label={item.connect.ariaLabel} data-testid={item.testId} onClick={() => void item.connect!.run()}>{item.connect.icon || <Plus />}{item.connect.label}</Button>))}
+            </div>{item.details && <div className="mt-3">{item.details}</div>}</div>)}</div>
             {batch && selected.length > 0 && <Button size="sm" disabled={items.some(item => item.connect?.disabled)} onClick={() => { void Promise.resolve(batch.connect(selected)).then(result => { if (result !== false) setPicks(value => ({ ...value, [batch.id]: [] })) }) }}>Connect {selected.length} {selected.length === 1 ? 'service' : 'services'}</Button>}
           </section>
         })}
@@ -97,7 +97,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   </div>
 }
 
-function McpConnectionCard({ server, showTools }: { server: McpConnectionRow; showTools: boolean }) {
+export function McpConnectionCard({ server, showTools }: { server: McpConnectionRow; showTools: boolean }) {
   const [open, setOpen] = useState(false)
   const [tools, setTools] = useState<McpToolRow[] | null>(null)
   const [loading, setLoading] = useState(false)

@@ -114,3 +114,68 @@ func TestPlatformRuntimeBindingRequiresTrustedServiceAndUsesExplicitDefaultGrant
 		t.Fatal("built-in group renamed")
 	}
 }
+
+func TestRuntimeInventoryGroupsAreCallerScopedAndRevocationIsLive(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	st.AddUser(store.User{ID: "alice", WorkspaceID: "w"})
+	st.AddUser(store.User{ID: "bob", WorkspaceID: "w"})
+	for _, gid := range []string{"engineering", "finance", "empty"} {
+		st.AddGroup(store.Group{ID: gid, WorkspaceID: "w", Name: gid})
+	}
+	st.AddMember("engineering", "alice")
+	st.AddMember("empty", "alice")
+	st.AddMember("finance", "bob")
+	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "Shared Notion", Provider: "notion", Status: store.StatusActive, UpstreamURL: "https://credential.example/mcp"})
+	for _, name := range []string{"notion__read", "notion__write"} {
+		t := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
+		st.ApproveTool("w", t.PublicName, t.Fingerprint, t.Version)
+	}
+	st.AddGroupGrant(store.GroupGrant{GroupID: "engineering", PublicName: "notion__read"})
+	st.AddGroupGrant(store.GroupGrant{GroupID: "finance", PublicName: "notion__write"})
+	if err := st.RegisterSecrets("w", []store.SecretResource{{Name: "TEAM_KEY"}, {Name: "FINANCE_KEY"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSecretGrant("w", "engineering", "TEAM_KEY", "admin", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSecretGrant("w", "finance", "FINANCE_KEY", "admin", true); err != nil {
+		t.Fatal(err)
+	}
+	a := &Admin{Store: st, WorkspaceID: "w", HumanToken: "service-secret"}
+	mux := http.NewServeMux()
+	a.runtimeRoutes(mux)
+	request := func(actor string) string {
+		r := httptest.NewRequest("GET", "/api/admin/runtime/servers?user=bob", nil)
+		r.Header.Set("Authorization", "Bearer service-secret")
+		r.Header.Set("X-CapLayer-Actor", actor)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	body := request("alice")
+	for _, want := range []string{"engineering", "empty", "notion__read", "TEAM_KEY"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing authorized metadata %s: %s", want, body)
+		}
+	}
+	for _, deny := range []string{"finance", "FINANCE_KEY", "notion__write", "credential.example", "service-secret"} {
+		if strings.Contains(body, deny) {
+			t.Fatalf("leaked %s: %s", deny, body)
+		}
+	}
+	st.RevokeGroupGrant("engineering", "notion__read")
+	if err := st.SetSecretGrant("w", "engineering", "TEAM_KEY", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	body = request("alice")
+	if strings.Contains(body, "notion__read") || strings.Contains(body, "TEAM_KEY") {
+		t.Fatalf("revoked resources remain visible: %s", body)
+	}
+	if body = request("bob"); !strings.Contains(body, "FINANCE_KEY") || !strings.Contains(body, "notion__write") || strings.Contains(body, "engineering") {
+		t.Fatal(body)
+	}
+}

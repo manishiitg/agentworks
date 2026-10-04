@@ -1,9 +1,19 @@
 # Vault: implementation status
 
-Updated **2026-10-03** for the local work on `fix/gateway-review-1`. This document
+Updated **2026-10-04** for the local work on `fix/gateway-review-1`. This document
 summarizes the implementation and verification completed so far. Dated execution
 records in the linked documents describe earlier versions; this summary describes
 the current behavior. The product remains a single-user, loopback alpha.
+
+## MVP scope — 2026-10-04
+
+- Local and server installations use the same Vault functionality.
+- Crew, Code, workflows and Relays retain their own private MCP connections and project secrets.
+- Shared MCPs and secrets are managed in Vault and granted through the built-in Platform group. Projects explicitly select shared resources; connections and secret creation do not automatically grant use.
+- MCP installation supports named accounts, OAuth and custom servers. Tool grants and argument conditions (exact equality or full-string regex) remain deterministic gateway checks on each call.
+- Regex only constrains schema-visible string arguments; opaque IDs and query languages need upstream scope enforcement or an adapter.
+- Audit logs use SQLite by default for both local and MVP server installs. SQLite is the only MVP audit storage backend; collection can be disabled. Asynchronous logging, bounded storage and local 24-hour retention remain available.
+- PII detection, scanning, masking and custom PII rules are removed.
 
 ## Product and shared interface
 
@@ -16,7 +26,7 @@ the current behavior. The product remains a single-user, loopback alpha.
   Global pages have return controls; runtime health is under the account menu.
   Relay is included through the main integration.
 - Chat is on the left. The right workspace has Access, Connected MCPs,
-  Available MCPs, Secrets, People, Audit, PII, Models and Connect.
+  Available MCPs, Secrets, People, Audit, Models and Connect.
 - The model selector is in the shared right-side Models panel. The obsolete
   composer model selector and extra new-chat button were removed.
 - Shared `hideHeader` and unboxed settings options reduce repeated headings,
@@ -35,6 +45,44 @@ and connection actions. Custom server setup starts through chat from the bottom
 of Available MCPs. OAuth reuses the existing registration, sign-in, callback,
 sealed credential store and refresh implementation. Credentials are entered in
 secure UI controls rather than chat.
+
+UI OAuth connections bind the callback to the initiating Vault chat. The backend
+accepts only a chat owned by the signed-in user, including a restored product
+conversation from that user's registry. Every sign-in attempt gets a unique
+notification ID, so reconnects produce a fresh notice. Success/failure is recorded
+as a compact chat event even if no resident agent is available after a restart;
+the shared browser chat queue starts the follow-up through `sendWorkspacePaneMessageToChat()` and the normal product query contract. No retained backend agent is required.
+Requests without a chat ID still connect but do not inject a chat turn. Connecting
+a server does not assign group permissions.
+
+The shared private MCP flow now also carries the initiating chat for Crew, Code,
+workflow and Relay UI sign-ins and their agent setup tools. Private callbacks
+record success/failure notices with a unique ID per attempt. The shared chat
+consumer delivers them through the same browser queue as right-pane actions. HTTP routes verify chat ownership before starting OAuth. Workflow
+and Relay panes select an interactive chat for the matching workflow; view-only,
+scheduled and bot tabs are excluded. Missing chat IDs remain compatible for
+callers without a conversation. Private sign-in does not grant Vault access.
+Browser focus still refreshes connection state, but does not send a second chat
+request for OAuth connections already handled by the callback (including custom
+servers and unavailable catalogs). Non-OAuth and older callers retain the focus
+notification fallback.
+
+OAuth notices are fetched on chat mount and browser focus, with bounded polling
+while a UI sign-in is pending. Returning from an agent-provided sign-in link also
+watches for the delayed callback. Queue receipts are persisted with the tab config
+so focus, remounts and reconnect polling cannot submit the same callback again.
+A busy chat queues the notice behind its current turn. Older callbacks already
+continued by the backend are detected and not replayed. The browser performs the
+model continuation; a closed browser receives the stored notice when its chat is
+opened, subject to normal event retention. Notices contain provider/status data,
+not credentials or raw callback errors.
+
+Live check on 2026-10-04: Notion sign-in at 10:06 succeeded and discovered 44 tools,
+but after a backend restart its notification had no resident agent and was not
+fetched by the idle chat. The shared consumer recovered that actual callback;
+`sendWorkspacePaneMessageToChat()` submitted an automatic turn at 10:12 and the
+assistant confirmed “Notion is connected to Vault. No group access assigned.”
+This is an observed browser completion, not only an event-rendering test.
 
 An administrator connecting a server approves its **initial tool definitions**.
 It grants no user or group access. Later syncs preserve unchanged approvals and
@@ -74,9 +122,10 @@ The two Sentry approaches are documented in [SENTRY_ACCESS.md](../../mcp-gateway
 
 The [Platform group implementation review](../reviews/vault-platform-group-review-2026-10-03.md)
 verifies bootstrap, persistence, automatic membership and shared runtime grants.
-It also records that the standard RTS/Excellence deploy scripts do not yet install
-or start Vault; the standalone installer initializes it and gateway startup
-repeats the initialization. Existing authentication gateways are separate.
+RTS and Excellence now build and bootstrap a private Vault service and configure
+the product proxy through the shared deployment helper. Startup repeats the
+idempotent Platform initialization. Their existing authentication gateways
+remain separate. See [server installation](vault-server-installation.md).
 
 Vault uses the platform's SSO/account directory for both administrators and MCP
 consumers. People > Users reuses the existing Users & access editor; there is no
@@ -113,19 +162,32 @@ editors and the existing account API still do not check slot provisioning.
 Slot deployments need read-only provisioning status and backend checks on
 product/role changes that confer execution access. Root provisioning remains
 outside the web process. The Admin role's implicit all-products access must be
-covered by those checks too. Individual SSO-to-MCP consent binding also remains
-unfinished as described below.
+covered by those checks too. Vault MCP consent itself uses the platform identity
+as described below.
 
 A person may use the Vault MCP endpoint from Claude without using Crew, Code or
 workflows, but authenticates through the same platform identity provider. Product
 access and administrator status remain separate from grants to MCP tools/secrets.
-This is the confirmed identity design, not a claim that the external OAuth consent
-bridge is finished: the current alpha still uses its single local consent identity.
-The remaining work is to bind each MCP OAuth grant to the verified platform SSO
-identity and check disabled/revoked users on subsequent requests. The existing
-SSO screen was verified in the browser after withdrawing the separate-directory
-changes; the directory identity regression, TypeScript and 24 shared surface/group
-tests passed. No new external accounts or grants were created.
+The product now publishes `/api/vault/mcp`. OAuth consent at `/oauth/vault`
+uses the platform login and binds each grant to its verified account ID.
+The grant uses a dedicated `vault:mcp` scope and token/store namespace; it cannot
+access workflow APIs or the management console. Calls, initial token exchanges
+and refreshes recheck the active directory account and Vault entitlement.
+The gateway rechecks current groups and tool/argument policies on every call.
+Disconnecting a client revokes its grant and token family. Audit records contain
+the actual user and OAuth client IDs.
+
+Managed services use `GATEWAY_AUTH_MODE=platform`. Their listener exposes only
+private administration/runtime routes and health; it has no static `u1` OAuth
+endpoint or token-entry console. The product replaces incoming identity headers
+and forwards its private service credential plus the verified actor. Direct
+local debugging mode retains its legacy static-user OAuth and group keys, which
+are not accepted by the public platform endpoint or advertised in the shared UI.
+
+Focused regressions exercise two different users, account disablement, consent,
+PKCE, refresh, revocation, spoofed headers, group removal and audit attribution.
+These tests and local preview checks do not establish a deployed Linux/IdP
+end-to-end result or production capacity.
 
 ## Setup assistant
 
@@ -163,7 +225,7 @@ Crew / Code / workflow agent
 Native agents receive restricted, expiring delegation credentials rather than
 upstream tokens or the deployment's service secret. Connection pools isolate
 private users and Vault delegations. Each shared call checks current account,
-group, tool approval, schema, resource conditions and PII policy. Revocation is
+group, tool approval, schema and resource conditions. Revocation is
 checked on the next call even when a connection is warm.
 
 Legacy globally shared connections require migration to Vault grants or private
@@ -174,13 +236,12 @@ grant. See [MCP ownership](vault-mcp-ownership.md) for the enforcement paths.
 
 | Data | Location and behavior |
 |---|---|
-| Configuration, identities, groups, grants, tool approvals, drafts, published policies, history and PII rules | `<WORKSPACE_DOCS_PATH>/_users/default/Chats/CapLayer/db/gateway.sqlite` in the full local launcher. Standalone fallback: `GATEWAY_STATE_DIR/gateway.sqlite`. Automatically committed after mutations. |
+| Configuration, identities, groups, grants, tool approvals, drafts, published policies, history | `<WORKSPACE_DOCS_PATH>/_users/default/Chats/CapLayer/db/gateway.sqlite` in the full local launcher. Standalone fallback: `GATEWAY_STATE_DIR/gateway.sqlite`. Automatically committed after mutations. |
 | Authoritative configuration | AES-256-GCM encrypted snapshot in SQLite; normalized SQL metadata is readable within the private file. |
 | Gateway configuration key | `GATEWAY_STATE_DIR/gateway.sqlite.key`, outside the chat project. Database/key permissions are `0600`. |
 | Shared secret values | Existing encrypted host store at `_users/_system_global_secrets/secrets.json`; project SQLite stores names and grants only. |
 | Private and shared upstream OAuth credentials | Product-owned sealed stores, including the private user's namespace. Gateway resolves current tokens through a service-only exact-URL broker. |
 | Audit events | Separate configured provider/state files, described below. |
-| Pending PII reviews | Bounded memory only; not durable yet. |
 
 Configuration writes update committed storage and live enforcement together.
 Storage failures restore the prior committed state and deny authorization until
@@ -220,30 +281,29 @@ CSV/JSON export and refresh use the same filters. Calling app identifies the MCP
 client, such as AgentWorks; it is separate from the upstream MCP server and user.
 Group API keys attribute a call to a group/key rather than an individual human.
 
-Events contain identity, MCP/tool, decision, outcome, timing and PII metadata.
+Events contain identity, MCP/tool, decision, outcome and timing metadata.
 They contain no raw arguments, outputs or secret values. Requests rejected before
-tool dispatch are not tool-call events. Dedicated PII detail columns are not yet
-displayed in the log table.
+tool dispatch are not tool-call events.
 
 | Setting | Local default | Server default |
 |---|---|---|
-| `VAULT_AUDIT_PROVIDER` | `sqlite` | `clickhouse` |
-| `VAULT_AUDIT_RETENTION` | `24h`; local values cannot exceed 24h | `720h` |
+| `VAULT_AUDIT_PROVIDER` | `sqlite` | `sqlite` (MVP) |
+| `VAULT_AUDIT_RETENTION` | `24h`; local values cannot exceed 24h | `24h` |
 | `VAULT_AUDIT_WRITE_MODE` | `durable` | `durable` |
-| `VAULT_AUDIT_MAX_MB` | `256` for SQLite pages | `256` for the local delivery spool |
+| `VAULT_AUDIT_MAX_MB` | `256` for SQLite pages | `256` for SQLite pages |
 
 `VAULT_AUDIT_PROVIDER=off` disables collection/querying without deleting old
 files. SQLite uses WAL, batched commits, indexed queries and retention cleanup.
-ClickHouse uses a persistent SQLite delivery spool, background batches, retries,
-stable event IDs and deduplicated reads. Missing server configuration fails startup.
+Unsupported storage providers fail startup. ClickHouse is deferred until after
+the MVP release.
 Server provider defaults do not remove the alpha's public-exposure guard.
 
 Opt-in `VAULT_AUDIT_WRITE_MODE=async` uses this path:
 
 ```text
-MCP request → permission/PII checks → upstream/result checks
+MCP request → permission/schema/argument checks → upstream/result
             → copy metadata into bounded queue → return
-background worker → batch SQLite commit → ClickHouse delivery if configured
+background worker → batch SQLite commit
 ```
 
 No worker is created per call. The queue holds 1,024 waiting events plus at most
@@ -255,28 +315,7 @@ An already accepted asynchronous event cannot retroactively fail its caller.
 SIGINT/SIGTERM stop requests, wait up to 45 seconds for active handlers, then
 drain accepted events. A flush error is reported. Crash/SIGKILL/power loss can
 lose uncommitted in-memory events. Durable mode waits for persistent admission;
-ClickHouse delivery remains asynchronous after spool commit. Async reduces the
-request's storage wait, not total CPU/disk work. Full details: [gateway README](../../mcp-gateway/README.md#audit-storage).
-
-## Deterministic PII protection
-
-Protection, Test and Reviews are separate subtabs. The default rules are compact;
-test results show the action and masked preview. Custom rule creation/editing
-controls were removed as requested. Existing custom rules are read-only in the
-UI; backend custom-rule APIs remain available.
-
-Detection uses regex and deterministic validation, not a model. Default email
-and US phone patterns mask; valid US SSNs, Luhn-valid card numbers and supported
-API-key patterns block. Rules can scope group, connector, tool and direction.
-Patterns compile once; JSON scanning is limited to 256 KiB and scans string
-values, not numeric values or keys. Opaque binary/image payloads fail closed.
-
-Input enforcement must finish before upstream execution; output enforcement
-must finish before returning data. Moving these checks behind the response would
-allow leakage. Output blocking cannot undo an upstream side effect. Audit stores
-PII metadata only, so logging does not repeat a full-payload cleaning pass.
-Input review approval permits one matching retry. Review state expires after
-24 hours, is bounded, stores hashes/metadata, and is lost on restart.
+Async reduces the request's storage wait, not total CPU/disk work. Full details: [gateway README](../../mcp-gateway/README.md#audit-storage).
 
 ## Verification completed
 
@@ -285,15 +324,15 @@ plus a synthetic OAuth Memory provider for registration, PKCE and refresh.
 Filesystem access is limited to the test folder. See [local MCP setup](../../mcp-gateway/LOCAL_MCPS.md).
 Real Notion/Asana authorization has not been demonstrated by these fixture tests.
 
-Latest audit/PII verification on **2026-10-03**:
+Audit verification before the feature removal on **2026-10-03**:
 
-- `go test -race ./internal/store ./internal/pii ./internal/mcpserver ./internal/admin ./cmd/server` passed in `mcp-gateway`; frontend `npx tsc -b` and the gateway build passed.
+- `go test -race ./internal/store ./internal/mcpserver ./internal/admin ./cmd/server` passed in `mcp-gateway`; frontend `npx tsc -b` and the gateway build passed.
 - Tests cover nonblocking async admission during a blocked database write,
   metadata copying, bounded overload, retained/retried failed batches, rejection
   while unhealthy, recovery without duplicate events, flush errors, and restart.
 - A granted local OAuth Memory empty-observations call succeeded. A synthetic
-  SSN input was blocked before execution; audit recorded its action/type without
-  retaining the value. Graceful shutdown exited with code 0; all five observed
+  payload check was exercised by the former scanner (since removed). Graceful
+  shutdown exited with code 0; all five observed
   events remained after restart, with no pending writes or write failures.
 - In-app browser showed **SQLite · Async · 24h retention** and the persisted
   events. The current preview explicitly enables async; installation defaults
@@ -301,7 +340,7 @@ Latest audit/PII verification on **2026-10-03**:
 - Earlier provider checks exercised real disposable ClickHouse 25.8 for filters,
   aggregation, TTL and replay deduplication, and confirmed Off creates no audit DB.
 - Earlier browser checks verified shared layout, server/group JSON schemas,
-  audit filters/analysis, and PII masking. Focused frontend and backend regressions
+  audit filters/analysis. Focused frontend and backend regressions
   are recorded in the [test plan](../../mcp-gateway/TEST_PLAN.md) and [review](../reviews/caplayer-ui-review-2026-09-30.md).
 
 Measured on Apple M3, 200 iterations per isolated stage:
@@ -310,23 +349,20 @@ Measured on Apple M3, 200 iterations per isolated stage:
 |---|---:|---:|---:|
 | Async audit admission | 0.199 µs | 0.208 µs | 0.292 µs |
 | Durable audit admission | 5.01 ms | 6.23 ms | 6.58 ms |
-| PII JSON scan, approximately 1 KiB | 0.105 ms | 0.111 ms | 0.121 ms |
-| PII JSON scan, approximately 4 KiB | 0.427 ms | 0.441 ms | 0.464 ms |
-| PII JSON scan, approximately 64 KiB | 6.98 ms | 7.27 ms | 7.36 ms |
 
-These are admission/scan benchmarks, not end-to-end latency or a supported RPS.
-Input and output can each require a scan. No complete current platform suite or
+These are audit admission benchmarks, not end-to-end latency or a supported RPS. No complete current platform suite or
 running Linux deployment pass is claimed; earlier broad host tests had unrelated
 catalog/Pulse failures and timeouts.
 
 ## Remaining work and release boundary
 
-- External MCP OAuth consent still maps to the local human. Individual enterprise
-  MCP identity/consent and public/team deployment remain unfinished; public binds
-  and URLs remain guarded. A standalone frontend does not change that boundary.
+- The managed SSO endpoint and server installation hooks are implemented locally.
+  Real Linux deployment and production IdP/client acceptance
+  testing remain required. Direct service listeners must stay private; the public
+  endpoint belongs to the platform product.
 - Configuration uses full snapshots and rebuilt metadata projections with one
   process per database. Large deployments need shared incremental governance
-  storage, cross-worker invalidation, durable reviews and workload-specific load tests.
+  storage, cross-worker invalidation and workload-specific load tests.
 - AUTH_SECRET rotation does not yet rekey all OAuth credential stores. Legacy
   plaintext migration failures/custom token-path coverage remain open findings.
 - Async audit crash loss and secret-copy revocation limits are inherent to the
@@ -342,3 +378,189 @@ catalog/Pulse failures and timeouts.
 - [Private MCP ownership and Vault enforcement](vault-mcp-ownership.md)
 - [Shared secrets, installation and revocation](vault-secrets.md)
 - [Chronological UI and security review](../reviews/caplayer-ui-review-2026-09-30.md)
+
+## Platform deployment and individual MCP OAuth follow-up — 2026-10-03
+
+Merged `origin/main` at `49a1e6761` before applying these fixes. Shared deployment
+helpers build the Linux Vault binary, render persistent private credentials and
+systemd units, initialize Platform before activation, health-check startup and
+recover service startup after an interrupted deployment. No grants are seeded.
+MVP server audit defaults to SQLite, as local installations do. SQLite is the only MVP audit storage backend; `off` disables collection. These helpers select
+async audit mode. The general local launcher still defaults to durable unless
+explicitly configured otherwise.
+
+The local preview now runs fresh product and managed gateway binaries.
+Verification details and boundaries are recorded in the updated
+[Platform review](../reviews/vault-platform-group-review-2026-10-03.md).
+
+## Multiple accounts for one MCP provider (2026-10-04)
+
+Vault now supports separately named catalog connections to the same provider and MCP URL, through both the shared UI and its chat builder.
+
+Named private accounts are also supported by the shared Crew, Code, workflow and
+Relay MCP panel and setup tools. Providers stay available after connection, each
+account shows its label, and sign-in/removal target the exact connection name.
+Vault connections remain shared through group permissions; private accounts use
+the caller's private store. Both use the shared named-connection form and MCP
+browser components.
+
+### UI
+
+1. Open **Available MCPs** and choose **Add connection**. Providers remain available after their first connection.
+2. Name the connection, for example **Notion · Engineering** or **Notion · Sales**.
+3. The new row appears in **Connected MCPs** with **Sign-in required**. Click its **Sign in** button and choose the intended provider account/workspace.
+4. OAuth completion discovers that connection’s tools. Assign its tools to groups in **Access**; connection/sign-in never grants group access automatically.
+
+Connection settings reauthorize only that row. Disconnect removes that connection and its permissions. Other connections to the same provider retain their own credentials, sessions and grants. Labels describe accounts chosen by the administrator; they are not verified account identities returned by providers. The provider controls account selection during authorization; use its account chooser or a separate browser session if it automatically selects an existing login.
+
+### Chat builder
+
+`manage_caplayer_access` supports:
+
+| Operation | Arguments | Result |
+| --- | --- | --- |
+| `inspect_environment` | `{}` | Actual catalog providers, connectors, groups and tools |
+| `connect_server` | `{provider, label, instance?}` | Create a named catalog connection; OAuth starts pending |
+| `connect_server` | `{name, url, instance?}` | Existing custom-server flow; credentials stay outside chat |
+| `sign_in_connection` | `{connection_id}` | Same OAuth flow as the UI; returns an authorization link or directs client-app setup to the secure form |
+| `connection_status` | `{connection_id}` | Authentication/connection metadata, never tokens |
+| `sync_connection` | `{connection_id}` | Rediscover this connection’s tools |
+| `disconnect_connection` | `{connection_id}` | Remove the explicitly requested connection and its permissions |
+
+The embedded system prompt and `caplayer-access` skill describe this lifecycle, independent account naming, provider account selection, completion verification and separate group assignments. Chat sign-in uses `PUBLIC_URL` for its callback and reports completion/failure back to its initiating chat. Administrator access is checked on every tool call and again before OAuth token exchange. Passwords, API keys and OAuth client secrets are never requested through chat.
+
+### Storage and enforcement
+
+- New OAuth connectors persist `OAuthCredentialID = connector.ID`. Their provider and instance form a distinct, stable tool namespace. An omitted instance gets a unique generated identifier for OAuth connections.
+- Tokens, dynamic client registrations and OAuth metadata are encrypted by the existing platform credential sealer, in separate `_platform/vault_<connection-id>` files under the configured MCP token root. The token-root helpers use the same local/Linux deployment paths as the platform’s other encrypted MCP credentials.
+- The service-only token broker receives the connection ID and checks the live connector, exact provider and configured upstream URL. Unknown/deleted/disabled IDs cannot reuse another account’s token. Refresh is serialized per connection.
+- Sign-in suspends that connection’s previous MCP session; completion opens a fresh session for its new account. Initial definitions are approved only after successful discovery. Later changed/new definitions retain the normal review behavior. Group access remains separate.
+- OAuth completion polling is bound to the connection ID **and** the newly started flow state, so an older valid token cannot complete a replacement login.
+- Logout/removal cancels pending sign-in generations. The product removes that connection’s credential files; direct private-service removal also makes remaining orphaned credentials unusable because the broker requires a live connector.
+- Existing connectors without `OAuthCredentialID` retain their legacy provider login and namespaces. No credentials or grants are silently migrated. Add a new named connection for a separately authenticated account.
+
+### Verification
+
+- Product race tests cover separate encrypted OAuth tokens and dynamic client registrations, refresh isolation, chat status/sign-in, cancelled-login protection, deleted/forged IDs and current administrator authorization. Existing provider OAuth tests remain green.
+- Gateway race tests cover pending connection creation, distinct namespaces, independent discovery, actual MCP `tools/list`/`tools/call`, group isolation and continued operation of the other account after suspension/deletion.
+- Frontend tests cover the shared naming form, providers remaining available, connection-specific OAuth start/polling and the existing Vault panels.
+- Local in-app browser created two disposable Notion rows with separate IDs, namespaces and sign-in controls. Only those test rows were removed afterward; existing MCPs and permissions were preserved.
+- Actual sign-in to two real Notion accounts has not been performed. OAuth isolation is exercised with a synthetic issuer and real MCP protocol test server.
+
+
+## PII feature deferred — 2026-10-04
+
+Removed the PII section, scanner, rule/review APIs and standalone admin pages,
+review queues, persisted rule fields, and audit action/type fields. MCP payloads
+pass through without PII masking, blocking or review. Authentication, tool grants,
+approved schemas, resource argument conditions and metadata-only audit logging
+remain active. Audit never stores raw tool arguments or results.
+
+Existing encrypted SQLite snapshots still load: legacy PII fields are ignored
+and omitted on the next saved configuration mutation. Historical audit rows are
+retained; obsolete fields are ignored when read. No configuration reset is needed.
+PII can be designed again in a future release.
+
+Removal verification: all gateway race tests, frontend typecheck and 42 focused
+frontend tests passed. The local gateway was rebuilt and restarted with the
+existing configuration; 3 groups and 4 connectors loaded. Audit stayed healthy
+and the browser retained its 5 existing events. Removed endpoints return 404.
+
+## Vault chat tool recovery — 2026-10-04
+
+The api-bridge contained all governance tools, but Muse 1.4.2's interactive MCP
+configuration loader failed when launched directly in the protected Vault project.
+The agent therefore saw no bridge tools and tried its blocked native read_skill.
+Vault now uses the same private CLI projection as Crew/workflows, linked to the
+authoritative project. Native tools remain disabled; the governance tools, SQL
+checks, OAuth isolation and tool fingerprints are unchanged. The prompt identifies
+the bridge read_skill tool explicitly and instructs inventory requests to inspect
+live tools instead of treating old assistant failures as current availability.
+
+Inspection now returns stored tool annotations alongside the schema, description
+and approved fingerprint. The existing chat inspected all 44 Notion tools and
+returned 26 read tools and 18 write tools, with destructive hints called out.
+No upstream action or group permission change was executed.
+
+Named OAuth reconnect previously happened before the gateway listener started;
+the product credential broker's live-connector check could not call back into it.
+Reconnect now runs after the authenticated connector routes are serving. The same
+Notion account rediscovered all 44 tools after a graceful gateway restart, without
+another provider login. Focused server/admin race tests and six installation tests
+passed; the private CLI projection test covers all five CLI providers and durable
+project linkage without shared provider configuration.
+
+## Shared runtime maintenance — 2026-10-04
+
+Vault, Crew and workflow/Relay chats now call the single
+linkedProjectCLIWorkingDir implementation for private provider configuration,
+project linkage and stable runtime identity. The separate Vault setup helper was
+removed. Existing Crew Run/Builder selection and workflow isolation settings stay
+in their product policy adapters; the file preparation and provider checks are
+shared. Code uses its coding workspace as its provider cwd; its MCP bridge,
+provider adapters, tool admission and conversation machinery are the same shared
+platform components. This layout difference is explicit workspace policy, not a
+separate MCP integration.
+
+All ChatArea consumers use the shared OAuth notification hook and
+sendWorkspacePaneMessageToChat queue. Product-specific system prompts, skills,
+governance tools and permission boundaries describe each product's job; transport,
+OAuth storage/refresh, schema discovery and tool fingerprint validation are shared.
+
+## SQLite-only MVP audit storage — 2026-10-04
+
+ClickHouse audit storage, delivery spool helpers, installer settings and UI provider
+labels have been removed. Local and server installations use SQLite by default;
+`off` remains available to disable collection. Unsupported providers fail explicitly
+rather than switching storage silently. Existing audit files are not deleted.
+Async batching, durable write mode, retention and storage bounds remain supported.
+Earlier ClickHouse test records in this document describe a superseded implementation.
+
+## Named MCP accounts across products — 2026-10-04
+
+- The shared private MCP adapter uses `McpNamedConnectionForm`, already used by
+  Vault. Each catalog row offers Add connection; label submission uses the normal
+  panel-to-chat function in Crew/Code, or the private API in workflow/Relay panes.
+  Grouped legacy provider setup remains available for one shared provider login.
+- Private accounts persist a display `label` and a generated stable `name`.
+  Tokens/client registrations, cached sessions and tool namespaces stay distinct
+  per user and connection. Named accounts cannot reuse the legacy provider-group
+  OAuth token, including for grouped Google providers.
+- `ensurePrivateMCP` is shared by project HTTP creation, Code setup and
+  Crew/workflow/Relay builder setup. `install_mcp_server` and `add_mcp_server`
+  accept `catalog` and `label`; Code's `manage_my_mcp_servers(connect)` accepts
+  the same fields. Exact-name reuse preserves existing credentials. Labelled
+  creation adds an account without replacing another.
+- Inventory returns labels and exact names. Sign-in again, discovery, removal and
+  project selection target exact names. Ambiguous provider aliases are rejected;
+  runtime construction cannot collapse two accounts into one provider alias.
+  Project selection of one account does not authorize another.
+- Existing IDs, sealed credential paths and unlabelled provider-group logins
+  remain unchanged. Provider account selection still occurs in its OAuth screen;
+  a display label is not verified upstream identity.
+- Verified: shared frontend tests cover all four private product names, multiple
+  rows, reauthorization/removal targeting and OAuth chat notifications. Backend
+  regressions cover two persisted accounts, separate encrypted client/token paths,
+  independent runtime namespaces, project selection, foreign-user rejection,
+  reuse and removing one account without breaking another. Live Crew UI form
+  verified locally; real two-account provider OAuth requires user sign-in.
+
+
+## Plugins and caller-scoped Vault inventory — 2026-10-04
+
+Crew, Code, workflows and Relay reuse `ProjectPluginsPanel`. Integrations now has a Plugins tab. A shared **Integrations → Plugins** breadcrumb returns to the integration section picker. The only tab row is in the shared header and contains **Connected**, **Available**, **Secrets**, **Skills** and **Vault**. There is no third Connected/Available navigation level. Private connection setup and multiple named accounts use the same connection browser; project secrets and skills retain the existing shared editors.
+
+Vault displays the authenticated user's groups, their permitted shared connections and secret names, including the built-in Platform group. The host's `/api/me/mcp/vault` calls the service-only gateway inventory with a server-owned actor identity. It does not accept a user/email override. Group rows include only the caller's memberships and currently visible tools; upstream URLs, credentials and secret values are excluded. Direct grants outside groups remain visible as Other access. Revoked project selections can be removed.
+
+The shared builder `list_mcp_servers` and Code `manage_my_mcp_servers(action="list")` expose this same metadata in `vault`, `vault_groups` and `vault_secrets`. Product prompts and the integration reference instruct agents to inspect these fields before setup, use exact connection names, and never request secret values. Availability appears automatically based on live user grants; project MCP and secret selection remains explicit and durable. Selection never grants additional access: execution still enforces current tool grants, schema fingerprints and argument/regex rules. The secret runtime rechecks current grants before injecting selected values. Authentication remains the existing platform identity on local and server deployments.
+
+Verification covers caller and group isolation, metadata-only secret responses, live revocation, both builder inventories, exact resource selection, viewer controls and the shared tab hierarchy.
+
+
+### Vault builder chat: live MCP resource lookup
+
+Vault profile v2 exposes the shared `list_mcp_servers` and `call_mcp_tool` through api-bridge alongside its governance/SQLite tools. The agent can search/fetch permitted resources to resolve canonical IDs before drafting equality or regex conditions. It uses the same MCP executor and live Vault proxy as other products, including tool grants, fingerprints, argument conditions, revocation and gateway audit logging. No provider-specific Notion execution path exists.
+
+Connecting a server gives management metadata, not runtime permission. The builder chat lists the signed-in user's permitted Vault connections (plus their private connection metadata), and every call resolves its user/session from host-owned state. Calls cannot nominate another user/session, supply a URL, bypass policies, retrieve Vault secret values or enable native shell/file tools. A query request does not authorize upstream mutations or self-grants. Existing project selections for Crew, Code and workflows remain separate and enforced by their shared resolver.
+
+The narrow `manage_caplayer_access` tool still cannot execute upstream tools; resource reads use `call_mcp_tool` instead. Updated prompt and skill tell the agent to try live authorized search/fetch before asking for copied IDs, return only relevant identifiers, and explain an actual missing grant rather than saying Vault cannot execute MCPs.

@@ -8,8 +8,8 @@ import { MCPOAuthConsent } from './MCPOAuthConsent'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.resetAllMocks())
 
-async function mount(scopes: string[], workflows = [{ id: 'invoices', label: 'Invoices' }]) {
-  window.history.replaceState({}, '', `/oauth/consent?request=mcp_req_${'a'.repeat(64)}`)
+async function mount(scopes: string[], workflows = [{ id: 'invoices', label: 'Invoices' }], path = '/oauth/consent') {
+  window.history.replaceState({}, '', `${path}?request=mcp_req_${'a'.repeat(64)}`)
   api.get.mockResolvedValue({ data: { client_name: 'Test app', redirect_uri: 'https://client.example/callback', scopes, editable_workflows: workflows } })
   // Keep the response pending: this test checks authorization payload, not navigation.
   api.post.mockImplementation(() => new Promise(() => {}))
@@ -61,5 +61,18 @@ it('explains explicit Relay authoring without requiring an existing workflow sel
     expect(view.host.querySelector('input[type="checkbox"]')).toBeNull()
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     expect(allow.disabled).toBe(false)
+  } finally { await view.cleanup() }
+})
+
+it('uses the Vault consent API with the shared platform login page', async () => {
+  const view = await mount(['vault:mcp'], [], '/oauth/vault')
+  try {
+    expect(api.get).toHaveBeenCalledWith('/api/oauth/vault/consent', expect.any(Object))
+    expect(view.host.textContent).toContain('Connect to Vault')
+    expect(view.host.textContent).toContain('your current Vault groups')
+    expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
+    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    await act(async () => allow.click())
+    expect(api.post).toHaveBeenCalledWith(expect.stringContaining('/api/oauth/vault/consent?request='), { decision: 'approve', workflow_ids: [] })
   } finally { await view.cleanup() }
 })

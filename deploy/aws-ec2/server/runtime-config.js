@@ -5,7 +5,8 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "/api/wp",
   cdpEnabled: false,
   defaultProductSurface: "video-studio",
-  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code"],
+  gatewayUrl: "https://video.realtrainingsys.com",
+  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway"],
   // REAL Training Systems branding (brand/: name and colors from
   // realtrainingsys.com, which has a text wordmark and no logo file). The
   // brand color is their teal #305b6e lightened so it reads on dark screens.

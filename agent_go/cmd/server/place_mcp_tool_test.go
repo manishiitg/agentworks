@@ -58,7 +58,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 		t.Fatalf("list = %s", out)
 	}
 	out := call(map[string]interface{}{"action": "connect", "catalog": "AcmeMail"})
-	if !strings.Contains(out, "MCP") || !strings.Contains(out, "api/oauth/callback") {
+	if !strings.Contains(out, "Integrations → Plugins → Available") || !strings.Contains(out, "api/oauth/callback") {
 		t.Fatalf("connect = %s", out)
 	}
 	if attached, _ := placeMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "acmemail" || attached[0].Owner != "owner" {

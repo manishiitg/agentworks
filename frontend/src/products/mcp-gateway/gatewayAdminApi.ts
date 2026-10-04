@@ -27,6 +27,7 @@ export interface GatewayConnector {
   Label: string
   UpstreamURL: string
   OAuthServer?: string
+  OAuthCredentialID?: string
   Status: string
 }
 
@@ -49,7 +50,7 @@ export interface GatewayTool {
 }
 
 export interface GatewayAuditSettings {
-  provider: 'sqlite' | 'clickhouse' | 'off' | 'memory'
+  provider: 'sqlite' | 'off' | 'memory'
   enabled: boolean
   retention_seconds: number
   write_mode?: 'async' | 'durable'
@@ -76,8 +77,6 @@ export interface GatewayAuditEvent {
   Outcome: string
   DurationMs: number
   ErrorText: string
-  PIIAction?: string
-  PIIDataTypes?: string[]
 }
 
 export interface GatewayUsageSummary {
@@ -88,28 +87,6 @@ export interface GatewayUsageSummary {
   AvgDurationMs: number
   ByDay: { Key: string; Count: number; Denied: number; UpstreamErrors: number }[]
   ByTool: { Key: string; Count: number; Denied: number; UpstreamErrors: number }[]
-}
-
-export interface GatewayPIIRule {
-  ID: string
-  WorkspaceID: string
-  GroupID: string
-  ConnectorID: string
-  PublicName: string
-  DataType: string
-  Direction: string
-  Action: string
-}
-
-export interface GatewayPIIReview {
-  ID: string
-  UserID: string
-  ConnectorID: string
-  PublicName: string
-  Direction: string
-  DataTypes: string[]
-  Status: string
-  CreatedAt: string
 }
 
 export interface GatewayProvider {
@@ -350,33 +327,6 @@ export function getUsage(base: string, filter: GatewayAuditFilter = {}): Promise
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
   return request(base, `/api/admin/usage?${params.toString()}`)
-}
-
-export function listPIIRules(base: string): Promise<{ rules: GatewayPIIRule[] }> {
-  return request(base, '/api/admin/pii/rules')
-}
-
-export function savePIIRule(base: string, rule: Partial<GatewayPIIRule>): Promise<GatewayPIIRule> {
-  return post(base, '/api/admin/pii/rules', rule)
-}
-
-export function deletePIIRule(base: string, id: string): Promise<void> {
-  return request(base, `/api/admin/pii/rules/${encodeURIComponent(id)}`, { method: 'DELETE' })
-}
-
-export function testPII(base: string, sample: string, direction: string, scope: { GroupIDs?: string[]; ConnectorID?: string; PublicName?: string }): Promise<{
-  decision: { action: string; data_types: string[]; match_count: number }
-  masked_preview: string
-}> {
-  return post(base, '/api/admin/pii/test', { Sample: sample, Direction: direction, ...scope })
-}
-
-export function listPIIReviews(base: string): Promise<{ reviews: GatewayPIIReview[] }> {
-  return request(base, '/api/admin/pii/reviews')
-}
-
-export function approvePIIReview(base: string, id: string): Promise<{ status: string }> {
-  return post(base, `/api/admin/pii/reviews/${encodeURIComponent(id)}/approve`, {})
 }
 
 export function listCatalog(base: string): Promise<{ providers: GatewayProvider[] }> {

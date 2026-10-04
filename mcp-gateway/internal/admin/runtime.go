@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/policy"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"net/http"
+	"strings"
 )
 
 // Only service-authenticated requests may bind a centrally validated user.
@@ -32,6 +33,14 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 		return auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: "agentworks"}, r.Header.Get("X-Vault-Connector"), valid
 	}
 	if a.Gateway != nil {
+		mux.Handle("/api/admin/runtime/external-mcp", a.Gateway.ExternalProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
+			actor, client := r.Header.Get("X-CapLayer-Actor"), r.Header.Get("X-Vault-OAuth-Client")
+			valid := serviceAuth(r) && validID.MatchString(actor) && strings.HasPrefix(client, "mcp_client_") && len(client) == 75 && r.Header.Get("X-Vault-Platform-User") == "1"
+			if valid && a.bindPlatformUser(r) != nil {
+				valid = false
+			}
+			return auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: client}, "", valid
+		}))
 		mux.Handle("/api/admin/runtime/mcp", a.Gateway.ProductHandler(identity))
 	} else {
 		mux.HandleFunc("/api/admin/runtime/mcp", func(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +73,28 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 			Provider string `json:"provider"`
 			Tools    []tool `json:"tools"`
 		}
+		type group struct {
+			ID          string                 `json:"id"`
+			Name        string                 `json:"name"`
+			Description string                 `json:"description"`
+			Servers     []row                  `json:"servers"`
+			Secrets     []store.SecretResource `json:"secrets"`
+		}
+		if a.Store.PersistenceError() != nil {
+			http.Error(w, "permissions unavailable", 503)
+			return
+		}
+		groups := []group{}
+		memberships := []string{}
+		if user, ok := a.Store.GetUser(actor); ok && user.WorkspaceID == a.WorkspaceID {
+			memberships = a.Store.GroupsOf(actor)
+		}
+		for _, gid := range memberships {
+			g, ok := a.Store.GetGroup(gid)
+			if ok && g.WorkspaceID == a.WorkspaceID {
+				groups = append(groups, group{ID: g.ID, Name: g.Name, Description: g.Description, Servers: []row{}, Secrets: a.Store.ListSecrets(a.WorkspaceID, actor, gid, false)})
+			}
+		}
 		rows := []row{}
 		tools := a.Store.ListTools(a.WorkspaceID)
 		for _, c := range a.Store.ListConnectors(a.WorkspaceID) {
@@ -78,9 +109,22 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 			}
 			if len(item.Tools) > 0 {
 				rows = append(rows, item)
+				for i := range groups {
+					groupItem := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
+					groupIdentity := id
+					groupIdentity.ViaGroup = groups[i].ID
+					for _, t := range item.Tools {
+						if policy.Visible(a.Store, groupIdentity, t.Name) {
+							groupItem.Tools = append(groupItem.Tools, t)
+						}
+					}
+					if len(groupItem.Tools) > 0 {
+						groups[i].Servers = append(groups[i].Servers, groupItem)
+					}
+				}
 			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, 200, map[string]any{"servers": rows})
+		writeJSON(w, 200, map[string]any{"servers": rows, "groups": groups, "secrets": a.Store.ListSecrets(a.WorkspaceID, actor, "", false)})
 	})
 }

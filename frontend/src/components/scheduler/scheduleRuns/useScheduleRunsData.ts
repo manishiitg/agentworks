@@ -48,6 +48,7 @@ export type UseScheduleRunsDataArgs = {
   workflowScope?: WorkflowScope
   entityType?: 'workflow' | 'product'
   productProfileId?: string
+  workflowKind?: 'workflow' | 'relay'
   canManage?: boolean
 }
 
@@ -61,7 +62,7 @@ function retainDurationAverage(updated: ScheduledJob, previous: ScheduledJob): S
   }
 }
 
-export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, canManage, active = true }: UseScheduleRunsDataArgs) {
+export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, workflowKind, canManage, active = true }: UseScheduleRunsDataArgs) {
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -128,8 +129,10 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   )
 
   const panelJobs = useMemo(() => {
-    return jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap))
-  }, [jobs, stableScope, presetMap])
+    return jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap)
+      && (!workflowKind || workflowPresets.some(preset => (preset.workflowKind || 'workflow') === workflowKind
+        && jobMatchesWorkflowScope(job, { workflowId: preset.id, presetQueryId: preset.id, workspacePath: preset.selectedFolder?.filepath }, presetMap))))
+  }, [jobs, stableScope, presetMap, workflowKind, workflowPresets])
 
   const panelTitle = useMemo(() => {
     if (!isWorkflowScoped) return 'Automation Schedules'

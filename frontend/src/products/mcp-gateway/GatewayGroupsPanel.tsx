@@ -1,10 +1,11 @@
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { secretsApi } from '../../api/secrets'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, KeyRound, Loader2, Pencil, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Copy, KeyRound, Loader2, Pencil, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { SettingsCard, SettingsCount, SettingsEmpty } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Checkbox } from '../../components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
 import { Input } from '../../components/ui/Input'
 import { Textarea } from '../../components/ui/Textarea'
 import { WorkspaceViewTabs } from '../../components/workflow/WorkspaceViewTabs'
@@ -44,11 +45,10 @@ import {
   useGatewayLoader,
 } from './gatewayConsoleUtils'
 
-const selectClass =
-  'h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+const memberLabel = (id: string, email?: string) => email || (id === 'default' ? 'Local account' : id)
 
-export function GatewayGroupsPanel({ base, revision, chatBusy = false, directoryOnly = false }: {
-  base: string; revision?: string; chatBusy?: boolean; directoryOnly?: boolean
+export function GatewayGroupsPanel({ base, revision, chatBusy = false, directoryOnly = false, allowLegacyAPIKeys = false }: {
+  base: string; revision?: string; chatBusy?: boolean; directoryOnly?: boolean; allowLegacyAPIKeys?: boolean
 }) {
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
@@ -192,13 +192,13 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   return (
     <div className="space-y-4" data-testid="gateway-groups">
       {error && <ConsoleStale message={error} onRetry={bump} />}
-      <SettingsCard
+      {!(directoryOnly && showCreate) && <SettingsCard
         icon={<UsersRound className="h-4 w-4 text-primary" />}
         title="Groups"
         count={<SettingsCount>{plural(data.groups.length, 'group')}</SettingsCount>}
         description={directoryOnly ? 'Manage members here. Set permissions in Access.' : undefined}
         actions={
-          directoryOnly ? <Button variant="outline" size="xs" onClick={() => setShowCreate(v => !v)}>New group</Button> : undefined
+          directoryOnly ? <Button variant="outline" size="xs" onClick={() => { setAddError(null); setShowCreate(true) }}>New group</Button> : undefined
         }
       >
         {data.groups.length > 0 && <div className="space-y-2" data-testid="gateway-group-select" aria-label="Choose a group">
@@ -265,7 +265,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                 <ul className="flex flex-wrap gap-1.5">
                   {members.map((m) => (
                     <li key={m} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px]">
-                      {data.users.find(u => u.ID === m)?.Email || m}
+                      {memberLabel(m, data.users.find(u => u.ID === m)?.Email)}
                       {directoryOnly && !group.BuiltIn && <button
                         onClick={() => void onRemoveMember(m)}
                         disabled={memberBusy || membersLoading}
@@ -280,27 +280,24 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
               )}
               {directoryOnly && !group.BuiltIn && candidates.length > 0 && (
                 <div className="mt-2 flex items-center gap-2">
-                  <select
-                    aria-label={`Add member to ${group.ID}`}
-                    className={selectClass}
-                    value={memberPick}
-                    onChange={(e) => setMemberPick(e.target.value)}
-                  >
-                    <option value="">Add a member…</option>
-                    {candidates.map((u) => (
-                      <option key={u.ID} value={u.ID}>
-                        {u.Email || u.ID}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={memberPick} onValueChange={setMemberPick} disabled={memberBusy || membersLoading}>
+                    <SelectTrigger aria-label={`Add member to ${group.ID}`} className="h-8 min-w-0 flex-1 bg-background text-xs">
+                      <SelectValue placeholder="Choose a member…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidates.map(u => <SelectItem key={u.ID} value={u.ID} className="text-xs">
+                        {memberLabel(u.ID, u.Email)}
+                      </SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   <Button variant="outline" size="xs" disabled={memberBusy || membersLoading || !memberPick} onClick={() => void onAddMember()}>
                     <UserPlus />
                     Add
                   </Button>
                 </div>
               )}
-              {directoryOnly && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
-              {showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
+              {directoryOnly && allowLegacyAPIKeys && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
+              {allowLegacyAPIKeys && showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
             </div>}
             {!directoryOnly && detailTab === 'permissions' && <div role="tabpanel" aria-label="Group permissions" className="mt-4 space-y-6">
               <GroupSecretPermissions key={`secrets:${group.ID}`} base={base} groupId={group.ID} attempt={attempt} onChanged={bump} />
@@ -309,19 +306,23 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             </div>}
           </div>
         )}
-      </SettingsCard>
+      </SettingsCard>}
 
-      {directoryOnly && (showCreate || data.groups.length === 0) && <SettingsCard title="Create a group" description="Name your group and choose members.">
+      {directoryOnly && showCreate && <div className="space-y-3">
+        <Button variant="ghost" size="xs" disabled={adding} onClick={() => { setShowCreate(false); setAddError(null) }} aria-label="Back to groups">
+          <ArrowLeft />Back
+        </Button>
+        <SettingsCard title="New group">
         <div>
           <Input
             aria-label="New group name"
             placeholder="Group name (e.g. Support engineers)"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            className="max-w-md"
+            className="w-full"
             data-testid="gateway-group-name-input"
           />
-          <Textarea aria-label="New group description" placeholder="Description (optional)" value={groupDescription} onChange={e => setGroupDescription(e.target.value)} maxLength={1000} rows={2} disabled={adding} className="mt-2 max-w-md text-xs md:text-xs" />
+          <Textarea aria-label="New group description" placeholder="Description (optional)" value={groupDescription} onChange={e => setGroupDescription(e.target.value)} maxLength={1000} rows={2} disabled={adding} className="mt-2 w-full text-xs md:text-xs" />
           {derivedId && <p className="mt-1 text-muted-foreground">id: <span className={codeClass}>{derivedId}</span></p>}
         </div>
         {data.users.length > 0 && (
@@ -342,7 +343,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                     }
                     aria-label={`Include ${u.ID}`}
                   />
-                  {u.ID}
+                  {memberLabel(u.ID, u.Email)}
                 </label>
               ))}
             </div>
@@ -359,7 +360,8 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             Create group
           </Button>
         </div>
-      </SettingsCard>}
+        </SettingsCard>
+      </div>}
     </div>
   )
 }

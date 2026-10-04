@@ -15,7 +15,7 @@ import (
 
 // SharedOAuth reuses the host product's credential store/refresh manager.
 // Only this fixed, operator-configured origin receives the service secret.
-func SharedOAuth(origin, secret string) (func(context.Context, string, string) (string, error), error) {
+func SharedOAuth(origin, secret string) (func(context.Context, string, string, string) (string, error), error) {
 	u, err := url.Parse(strings.TrimRight(origin, "/"))
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
 		return nil, errors.New("GATEWAY_PRODUCT_URL must be an HTTPS or loopback origin")
@@ -29,8 +29,8 @@ func SharedOAuth(origin, secret string) (func(context.Context, string, string) (
 	}
 	u.Path = "/internal/caplayer/oauth-token"
 	client := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return func(ctx context.Context, name, resource string) (string, error) {
-		payload, _ := json.Marshal(map[string]string{"server_name": name, "url": resource})
+	return func(ctx context.Context, name, resource, connectionID string) (string, error) {
+		payload, _ := json.Marshal(map[string]string{"server_name": name, "url": resource, "connection_id": connectionID})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
 		if err != nil {
 			return "", err

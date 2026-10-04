@@ -1,12 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
-import { BarChart3, BrainCircuit, KeyRound, Plus, PlugZap, ScrollText, Server, ShieldAlert, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
+import { BarChart3, BrainCircuit, KeyRound, Plus, PlugZap, ScrollText, Server, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { SettingsCardLayout } from '../../components/ui/SettingsCard'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
-import { GatewayPIIPanel } from './GatewayPIIPanel'
 import { GatewayConnectPanel } from './GatewayConnectPanel'
 import { GatewayFeedbackBoundary } from './gatewayConsoleShared'
 
@@ -17,7 +16,6 @@ export const gatewayPanels = [
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'people', label: 'People', icon: UsersRound },
   { id: 'audit', label: 'Audit', icon: ScrollText },
-  { id: 'pii', label: 'PII', icon: ShieldAlert },
   { id: 'models', label: 'Models', icon: BrainCircuit },
   { id: 'connect', label: 'Connect', icon: PlugZap },
 ] as const
@@ -46,7 +44,6 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
       {panel === 'people' && (peopleTab === 'users' ? <GatewayUsersPanel base={base} /> : <GatewayGroupsPanel base={base} directoryOnly revision={revision} />)}
       {panel === 'secrets' && <SecretSelectionSection key={revision} mode="vault" selectedSecrets={[]} onSecretChange={() => {}} />}
       {panel === 'audit' && <GatewayAuditPanel base={base} tab={auditTab} />}
-      {panel === 'pii' && <GatewayPIIPanel base={base} />}
       {panel === 'models' && modelSettings}
       {panel === 'connect' && <GatewayConnectPanel base={base} />}
       </GatewayFeedbackBoundary>

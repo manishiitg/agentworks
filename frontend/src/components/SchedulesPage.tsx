@@ -12,13 +12,10 @@ import type { TriggerOwner } from './scheduler/GlobalTriggersView'
 
 const Schedules = lazy(() => import('./scheduler/WorkflowScheduleRunsPanel'))
 const Triggers = lazy(() => import('./scheduler/GlobalTriggersView'))
-type OverviewTab = 'workflow-schedules' | 'crew-schedules' | 'workflow-triggers' | 'crew-triggers'
-
-const tabs: { id: OverviewTab; label: string; icon: typeof CalendarClock }[] = [
-  { id: 'workflow-schedules', label: 'Workflow schedules', icon: CalendarClock },
-  { id: 'crew-schedules', label: 'Crew schedules', icon: CalendarClock },
-  { id: 'workflow-triggers', label: 'Workflow triggers', icon: Webhook },
-  { id: 'crew-triggers', label: 'Crew triggers', icon: Webhook },
+type OverviewTab = 'schedules' | 'triggers'
+const tabs = [
+  { id: 'schedules' as const, label: 'Schedules', icon: CalendarClock },
+  { id: 'triggers' as const, label: 'Triggers', icon: Webhook },
 ]
 
 /** Shared schedules and triggers overview, opened from the top-bar icon. */
@@ -27,7 +24,9 @@ export default function SchedulesPage() {
   const showProviders = useLLMStore(state => state.showLLMModal)
   const setShowSchedulesOverview = useAppStore(state => state.setShowSchedulesOverview)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
-  const [activeTab, setActiveTab] = useState<OverviewTab>(() => productSurface === 'work' ? 'crew-schedules' : 'workflow-schedules')
+  const [activeTab, setActiveTab] = useState<OverviewTab>('schedules')
+  const isCrew = productSurface === 'work'
+  const workflowKind = 'workflow'
 
   const openTriggerOwner = (owner: TriggerOwner) => {
     setShowSchedulesOverview(false)
@@ -73,10 +72,11 @@ export default function SchedulesPage() {
       </header>
       <div role="tabpanel" className="min-h-0 flex-1">
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
-          {activeTab === 'workflow-schedules' && <Schedules embedded active={showSchedules && !showProviders} onClose={() => setShowSchedulesOverview(false)} />}
-          {activeTab === 'crew-schedules' && <Schedules embedded active={showSchedules && !showProviders} onClose={() => setShowSchedulesOverview(false)} entityType="product" productProfileId="work" />}
-          {activeTab === 'workflow-triggers' && <Triggers kind="workflow" onOpen={openTriggerOwner} />}
-          {activeTab === 'crew-triggers' && <Triggers kind="crew" onOpen={openTriggerOwner} />}
+          {activeTab === 'schedules' && <Schedules key={productSurface} embedded active={showSchedules && !showProviders}
+            onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'}
+            productProfileId={isCrew ? 'work' : undefined} workflowKind={isCrew ? undefined : workflowKind} />}
+          {activeTab === 'triggers' && <Triggers key={productSurface} kind={isCrew ? 'crew' : 'workflow'}
+            workflowKind={isCrew ? undefined : workflowKind} onOpen={openTriggerOwner} />}
         </Suspense>
       </div>
     </section>

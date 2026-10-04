@@ -6,6 +6,10 @@ import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
+import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
+import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
+import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectMcpPanel } from '../../components/integrations/ProjectMcpPanel'
 import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
@@ -18,9 +22,7 @@ import { isProjectProductId, useProjectProduct } from './projectProduct'
 export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
-  { value: 'apps', label: 'MCPs' },
-  { value: 'secrets', label: 'Secrets' },
-  { value: 'skills', label: 'Skills' },
+  { value: 'apps', label: 'Plugins' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'gmail', label: 'Google apps' },
@@ -45,13 +47,18 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 // Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
 const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
-export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
+export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
+  view?: 'connected' | 'available'
+  vault?: boolean
+  selectedSecrets?: string[]
+  onSelectedSecretsChange?: (names: string[]) => Promise<unknown> | void
   tabId: string
   projectId: string
   workspacePath: string
   onAsk: (message: string) => Promise<void>
   onSelectedServersChange: (servers: string[]) => Promise<unknown>
 }) {
+  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const setSelected = async (servers: string[]) => {
     const store = useChatStore.getState()
@@ -71,8 +78,8 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
-      <ProjectMcpPanel workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
-        selectedServers={selectedServers} onSelectedServersChange={setSelected} />
+      {vault ? <ProjectVaultPanel selectedServers={selectedServers} onSelectedServersChange={setSelected} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={workspacePath.startsWith('_users/')} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
+        selectedServers={selectedServers} onSelectedServersChange={setSelected} />}
     </div>
   )
 }
@@ -103,6 +110,11 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
+  const [integrationMenu, setIntegrationMenu] = useState(false)
+  const [pluginTab, setPluginTab] = useProjectPluginTab()
+  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
+  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
@@ -128,25 +140,25 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Server}
-        title="Integrations"
+        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={visibleTabs.find(option => option.value === activeTab)?.label ?? 'Plugins'} onBack={() => setIntegrationMenu(true)} />}
         helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={integrationTabAskAIMessage(product.noun)[activeTab]}
+            message={activeTab === 'apps' && activePluginTab === 'vault'
+              ? `Help me choose from my Vault groups' permitted connections and secrets for this ${product.noun} project. Check my current access and selection; never show secret values.`
+              : integrationTabAskAIMessage(product.noun)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
+        tabs={!integrationMenu && activeTab === 'apps' ? { value: activePluginTab, onChange: value => setPluginTab(value as typeof pluginTab), options: [...pluginTabs], ariaLabel: 'Plugins' } : undefined}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'apps' && product.profileId === 'code' && (
-          // A Code is a place like a Crew: its connections are its own, added
-          // by its owner (a shared Code arrives under the owner's _users/ path).
-          <>
-            <ProjectMcpPanel workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
+        {integrationMenu ? <IntegrationSectionPicker options={visibleTabs} onSelect={value => { setTab(value as WorkIntegrationTab); setIntegrationMenu(false) }} /> : <>
+        {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
+          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
               await onSelectedServersChange(servers)
               const store = useChatStore.getState()
               for (const chat of Object.values(store.chatTabs)) {
@@ -155,18 +167,15 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
                   store.setTabMetadata(chat.tabId, { agentProfileRuntimeDirty: true, agentProfileMCPSelectionInitialized: true })
                 }
               }
-            }} />
-          </>
-        )}
-        {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody
+            }} />) : (<WorkMCPTabBody view={view}
           tabId={tabId}
           projectId={projectId}
           workspacePath={workspacePath}
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
-        />}
-        {activeTab === 'secrets' && <SecretSelectionSection selectedSecrets={selectedSecrets} selectedGlobalSecrets={selectedGlobalSecrets} workflowPath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)} onGlobalSecretChange={names => onSelectedGlobalSecretsChange?.(names ?? [])} />}
-        {activeTab === 'skills' && <SkillsManagerPanel
+        />)) : undefined}
+          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <SecretSelectionSection showGlobalSecrets={false} selectedSecrets={selectedSecrets} workflowPath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)} /> : undefined}
+          skills={(!enabledPanels || enabledPanels.has('skills')) ? (<SkillsManagerPanel
           compact
           selectedOnly
           manageOwnScroll={false}
@@ -175,6 +184,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
           selectionScopeLabel="project"
           emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
+        />) : undefined}
+          vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
@@ -205,6 +216,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           </>
         )}
         {activeTab === 'cli' && <CliMcpSetupPanel />}
+        </>}
       </div>
     </div>
   )

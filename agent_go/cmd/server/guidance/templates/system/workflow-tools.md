@@ -278,3 +278,10 @@ Do **not** give boilerplate advice like `"rotate this secret"` after a normal us
 Secret VALUES are never rendered into prompts, logs, or tool outputs. Builder and step agents consume them only through `$SECRET_<NAME>` in `execute_shell_command`. Never echo, print, or hardcode a secret value in descriptions, learnings, or `main.py`.
 
 {{end}}
+
+For multiple accounts of one MCP provider, install with `catalog` and `label`
+(e.g. `install_mcp_server(name="Notion", catalog="Notion", label="Notion · Sales")`).
+Use the returned exact connection name in `selected_servers`. Each labelled
+connection has independent sign-in and credentials. Reconnect/remove/discover an
+existing account by its exact name without label; keep other accounts unchanged.
+This also applies to Relay projects through the shared workflow MCP tools.

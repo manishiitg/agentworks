@@ -124,31 +124,58 @@ type vaultInventory struct {
 	err     error
 }
 
+// Metadata inventory is always scoped to the centrally verified caller. Never contains values.
+type vaultAccessInventory struct {
+	Servers []vaultRuntimeServer  `json:"servers"`
+	Groups  []vaultAccessGroup    `json:"groups"`
+	Secrets []vaultSecretMetadata `json:"secrets"`
+}
+type vaultSecretMetadata struct {
+	Name string `json:"name"`
+}
+type vaultAccessGroup struct {
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Servers     []vaultRuntimeServer  `json:"servers"`
+	Secrets     []vaultSecretMetadata `json:"secrets"`
+}
+
+func vaultAccessFor(ctx context.Context, person string) (vaultAccessInventory, error) {
+	out := vaultAccessInventory{Servers: []vaultRuntimeServer{}, Groups: []vaultAccessGroup{}, Secrets: []vaultSecretMetadata{}}
+	data, err := vaultRuntimeRequest(ctx, person, "/api/admin/runtime/servers")
+	if err != nil {
+		return out, err
+	}
+	if err = json.Unmarshal(data, &out); err != nil {
+		return out, err
+	}
+	for i := range out.Servers {
+		out.Servers[i].Name = vaultServerName(out.Servers[i].ID)
+	}
+	for i := range out.Groups {
+		for j := range out.Groups[i].Servers {
+			out.Groups[i].Servers[j].Name = vaultServerName(out.Groups[i].Servers[j].ID)
+		}
+	}
+	return out, nil
+}
+
 func vaultServersFor(ctx context.Context, person string) ([]vaultRuntimeServer, error) {
 	if cached, ok := ctx.Value(vaultInventoryKey{}).(vaultInventory); ok && cached.person == person {
 		return cached.servers, cached.err
 	}
-	data, err := vaultRuntimeRequest(ctx, person, "/api/admin/runtime/servers")
-	if err != nil {
-		return nil, err
-	}
-	var out struct {
-		Servers []vaultRuntimeServer `json:"servers"`
-	}
-	err = json.Unmarshal(data, &out)
-	for i := range out.Servers {
-		out.Servers[i].Name = vaultServerName(out.Servers[i].ID)
-	}
+	out, err := vaultAccessFor(ctx, person)
 	return out.Servers, err
 }
 func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	rows, err := vaultServersFor(r.Context(), mcpCaller(r.Context()))
+	rows, err := vaultAccessFor(r.Context(), mcpCaller(r.Context()))
 	if err != nil {
 		writeUsersError(w, 503, err.Error())
 		return
 	}
-	writeUsersJSON(w, 200, map[string]any{"servers": rows})
+	writeUsersJSON(w, 200, rows)
 }
 
 type vaultDelegation struct {
@@ -249,20 +276,28 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
-	private, _ := listPlaceMCPServers(person)
-	for _, p := range private {
-		internal := placeMCPInternalName(person, p.Name)
-		if strings.EqualFold(server, p.Name) || strings.EqualFold(server, p.Catalog) || server == internal {
-			dir, _ := placeMCPDir(person)
-			if !placeMCPServerConnected(dir, person, p) {
-				return nil, errors.New("your private MCP needs sign-in; connect it in My MCPs")
-			}
-			name, cfg, err := placeMCPServerConfig(person, p.Name)
-			if err != nil {
-				return nil, err
-			}
-			return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
+	selector := server
+	if isPlaceMCPInternalName(server) {
+		plain := placeMCPPlainName(server)
+		if placeMCPInternalName(person, plain) != server {
+			return nil, errors.New("private MCP does not belong to this user")
 		}
+		selector = plain
+	}
+	p, found, lookupErr := lookupPrivateMCP(person, selector)
+	if lookupErr != nil {
+		return nil, lookupErr
+	}
+	if found {
+		dir, _ := placeMCPDir(person)
+		if !placeMCPServerConnected(dir, person, p) {
+			return nil, errors.New("your private MCP needs sign-in; connect it in My MCPs")
+		}
+		name, cfg, err := placeMCPServerConfig(person, p.Name)
+		if err != nil {
+			return nil, err
+		}
+		return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
 	}
 	if isPlaceMCPInternalName(server) {
 		return nil, errors.New("private MCP does not belong to this user")
@@ -373,6 +408,9 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			plain := placeMCPPlainName(runtimeName)
 			aliases[strings.ToLower(plain)] = runtimeName
 			if own, found := privateMCPByCatalog(person, plain); found && own.Catalog != "" {
+				if unambiguous, ok := privateMCPByCatalog(person, own.Catalog); !ok || unambiguous.Name != own.Name {
+					continue
+				}
 				aliases[strings.ToLower(own.Catalog)] = runtimeName
 			}
 		}

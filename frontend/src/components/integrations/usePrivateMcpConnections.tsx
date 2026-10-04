@@ -4,11 +4,12 @@ import { placeMcpApi, type PlaceMcpCustomServer, type PlaceMcpServer } from '../
 import api from '../../services/api'
 import { descriptionFor, groupFor } from '../connectors/catalog'
 import { providerGroupLabel, providerGroups } from '../../products/work/mcpGroups'
-import { McpOAuthClientForm, McpCustomServerForm } from './McpConnectionForms'
+import { McpOAuthClientForm, McpCustomServerForm, McpNamedConnectionForm } from './McpConnectionForms'
 import type { McpConnectionRow, McpCatalogRow } from './McpConnectionsPanel'
 
 const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: string } } })?.response?.data?.error || (cause instanceof Error ? cause.message : fallback)
-export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk }: {
+export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId }: {
+  chatSessionId?: string
   workspacePath: string
   /** "Code", "Crew" or "workflow", for the wording. */
   placeNoun: string
@@ -29,6 +30,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
   const [message, setMessage] = useState<string | null>(null)
   const [clientPrompt, setClientPrompt] = useState<{ server: string; redirectUri?: string } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
+  const [namingProvider, setNamingProvider] = useState<string | null>(null)
   const groups = useMemo(() => providerGroups(catalog), [catalog])
 
   const refresh = useCallback(async () => {
@@ -73,20 +75,22 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
   const connectedBefore = useRef<{ path: string; names: Set<string> } | null>(null)
   useEffect(() => {
     if (loading) return
-    const now = new Set(servers.filter(item => item.mine && item.active && item.connected).map(item => item.catalog || item.name))
+    const now = new Set(servers.filter(item => item.mine && item.active && item.connected).map(item => item.name))
     const before = connectedBefore.current?.path === workspacePath ? connectedBefore.current.names : null
     connectedBefore.current = { path: workspacePath, names: now }
     if (!before || !onAsk) return
-    const added = [...now].filter(name => !before.has(name))
+    // OAuth outcomes are delivered by the backend to this chat, even while
+    // this panel is unmounted. Keep the focus fallback for other connections.
+    const oauthNames = new Set(servers.filter(item => item.sign_in || catalog.some(provider => provider.catalog === item.catalog && provider.sign_in)).map(item => item.name))
+    const added = [...now].filter(name => !before.has(name) && !(chatSessionId && oauthNames.has(name)))
     if (added.length > 0) {
-      void onAsk(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Check it now through the API bridge (its tools may not be in your direct tool list yet, that is fine) and tell me briefly what you can do with it.`)
+      void onAsk(`${added.map(name => { const server = servers.find(item => item.name === name); return server?.label || server?.catalog || name }).join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Check it now through the API bridge (its tools may not be in your direct tool list yet, that is fine) and tell me briefly what you can do with it.`)
     }
-  }, [servers, loading, onAsk, placeNoun, workspacePath])
+  }, [servers, loading, onAsk, placeNoun, workspacePath, catalog, chatSessionId])
 
-  const mineByCatalog = useMemo(() => new Set(servers.filter(s => s.mine).map(s => s.catalog || s.name)), [servers])
 
   const signIn = async (name: string, client?: { clientId: string; clientSecret?: string }) => {
-    const result = await placeMcpApi.connect(workspacePath, name, client)
+    const result = await placeMcpApi.connect(workspacePath, name, client, chatSessionId)
     if (result.auth_url) {
       setClientPrompt(null)
       window.open(result.auth_url, '_blank', 'noopener')
@@ -116,13 +120,15 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
   // Connect hands the request to the agent in this project's chat (the same path as "Ask the
   // agent"): it adds the connection with the person's login and sends back the sign-in link, so
   // the chat shows what happened and the person can adjust it in words.
-  const add = (entry: McpCatalogServer) => run(entry.catalog, async () => {
+  const add = (entry: McpCatalogServer, label: string) => run(entry.catalog, async () => {
     if (onAsk) {
       const setupSkill = placeNoun === 'workflow' ? 'the MCP management guidance in the system-tools skill' : 'the attached work-mcp skill'
-      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} with my login. First read ${setupSkill}, then use its setup tools. If sign-in is required, give me the link returned by the tool. Check the connection status before saying it is connected.`)
+      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} as a new private account named ${JSON.stringify(label)} with my login. Pass catalog=${JSON.stringify(entry.catalog)} and label=${JSON.stringify(label)} to the setup tool. Preserve my other accounts. First read ${setupSkill}, then use its setup tools. If sign-in is required, give me the link returned by the tool. Check the connection status before saying it is connected.`)
+      setNamingProvider(null)
       return
     }
-    const saved = await placeMcpApi.add(workspacePath, entry.catalog)
+    const saved = await placeMcpApi.add(workspacePath, { catalog: entry.catalog, label })
+    setNamingProvider(null)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
   }, 'Could not add the connection.')
@@ -158,7 +164,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
       ...(catalogState === 'failed' ? [{ message: 'Could not load the list of connectors.', retry: loadCatalog }] : []),
     ],
     servers: servers.map(server => ({
-      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.catalog || server.name, source: 'My MCPs · your login',
+      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.label || server.catalog || server.name, source: server.label && server.catalog ? `My MCPs · ${server.catalog}` : 'My MCPs · your login',
       status: !server.active ? 'Paused' : server.connected ? 'Connected' : 'Sign-in required', statusDot: server.active && server.connected ? 'bg-green-500' : 'bg-muted-foreground',
       loadTools: server.active && server.connected ? async () => {
         const result = await placeMcpApi.tools(server.name)
@@ -166,13 +172,14 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
         return (result.tools ?? []).map(tool => ({ id: tool.name, name: tool.name, description: tool.description, rawSchema: tool.parameters ? { type: 'object', properties: tool.parameters, ...(tool.required ? { required: tool.required } : {}) } : undefined }))
       } : undefined,
       actions: [
-        ...(server.mine && !server.connected ? [{ label: 'Sign in', disabled: busy !== null, run: () => run(server.name, () => signIn(server.name), 'Could not start sign-in.') }] : []),
-        ...(server.mine || canEdit ? [{ label: 'Remove from this project', ariaLabel: `Remove ${server.catalog || server.name}`, destructive: true, disabled: busy !== null, run: () => remove(server) }] : []),
+        ...(server.mine && (!server.connected || server.sign_in) ? [{ label: server.connected ? 'Sign in again' : 'Sign in', disabled: busy !== null, run: () => run(server.name, () => signIn(server.name), 'Could not start sign-in.') }] : []),
+        ...(server.mine || canEdit ? [{ label: 'Remove from this project', ariaLabel: `Remove ${server.label || server.catalog || server.name}`, destructive: true, disabled: busy !== null, run: () => remove(server) }] : []),
       ],
     })) satisfies McpConnectionRow[],
-    catalog: canEdit ? catalog.filter(entry => !mineByCatalog.has(entry.catalog)).map(entry => ({
+    catalog: canEdit ? catalog.map(entry => ({
       id: entry.catalog, name: entry.catalog, description: entry.description || descriptionFor(entry.catalog), category: groupFor(entry.catalog),
-      connect: { label: 'Connect', disabled: busy !== null, run: () => add(entry) },
+      connect: { label: 'Add connection', disabled: busy !== null, run: () => setNamingProvider(entry.catalog) },
+      details: namingProvider === entry.catalog ? <McpNamedConnectionForm provider={entry.catalog} busy={busy !== null} cancel={() => setNamingProvider(null)} submit={label => add(entry, label)} /> : undefined,
       ...(entry.group && groups.has(entry.group) ? { batch: { id: entry.group, name: providerGroupLabel(entry.group), connect: (picks: string[]) => addGroup(entry.group!, picks) } } : {}),
     })) satisfies McpCatalogRow[] : [],
     addCustom: canEdit ? { label: 'Add custom server', disabled: busy !== null, run: () => onAsk ? onAsk('Help me connect one of my own MCP servers in this ' + placeNoun + '. First read the relevant MCP setup skill. Ask which app or service I want, then use its setup tools and give me any returned sign-in link. Verify the connection status.') : setShowCustom(true) } : undefined,

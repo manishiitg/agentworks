@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 )
 
 // Statuses for connectors and tool snapshots.
 const (
-	StatusActive      = "active"
-	StatusDisabled    = "disabled"
-	StatusQuarantined = "quarantined"
+	StatusAuthRequired = "authentication_required"
+	StatusActive       = "active"
+	StatusDisabled     = "disabled"
+	StatusQuarantined  = "quarantined"
 )
 
 type Workspace struct {
@@ -38,14 +38,15 @@ type User struct {
 // Connector is one upstream MCP server instance. A workspace may hold N
 // instances of the same provider with different labels/credentials.
 type Connector struct {
-	ID           string
-	WorkspaceID  string
-	Provider     string // e.g. "linear" (catalog key)
-	InstanceSlug string // e.g. "acme" (empty while single instance)
-	Label        string
-	UpstreamURL  string
-	OAuthServer  string // shared product OAuth identity; never an access/refresh token
-	Status       string
+	ID                string
+	WorkspaceID       string
+	Provider          string // e.g. "linear" (catalog key)
+	InstanceSlug      string // e.g. "acme" (empty while single instance)
+	Label             string
+	UpstreamURL       string
+	OAuthServer       string // catalog provider; never an access/refresh token
+	OAuthCredentialID string // connection-scoped identity; empty preserves legacy provider credentials
+	Status            string
 }
 
 // ToolSnapshot is one discovered upstream tool plus its gateway identity.
@@ -116,8 +117,6 @@ type AuditEvent struct {
 	Outcome      string
 	DurationMs   int64
 	ErrorText    string
-	PIIAction    string
-	PIIDataTypes []string
 }
 
 type AuditFilter struct {
@@ -195,18 +194,15 @@ type MemoryStore struct {
 	groupGrants     map[string]map[string]bool // group ID -> public names
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
-	groupServers    map[string]map[string]bool // group ID -> connector IDs
-	packageDrafts   map[string]access.Package
-	packageLive     map[string]access.Package
-	governedTools   map[string]map[string]bool // workspace -> names ever governed by a live package
-	policyEvents    map[string][]PolicyEvent
-	apiKeys         map[string]APIKey // by SHA-256 of token
-	auditBinding    auditBinding
-	audit           []AuditEvent
-	auditStart      int // oldest event in the bounded ring after it fills
-	piiRules        map[string]pii.Rule
-	piiReviews      map[string]PIIReview
-	lastReviewPrune time.Time
+	groupServers  map[string]map[string]bool // group ID -> connector IDs
+	packageDrafts map[string]access.Package
+	packageLive   map[string]access.Package
+	governedTools map[string]map[string]bool // workspace -> names ever governed by a live package
+	policyEvents  map[string][]PolicyEvent
+	apiKeys       map[string]APIKey // by SHA-256 of token
+	auditBinding  auditBinding
+	audit         []AuditEvent
+	auditStart    int // oldest event in the bounded ring after it fills
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -229,8 +225,6 @@ func NewMemoryStore() *MemoryStore {
 		governedTools:   map[string]map[string]bool{},
 		policyEvents:    map[string][]PolicyEvent{},
 		apiKeys:         map[string]APIKey{},
-		piiRules:        map[string]pii.Rule{},
-		piiReviews:      map[string]PIIReview{},
 	}
 }
 
@@ -373,6 +367,9 @@ func ConnectorNamespacePrefix(provider, slug string) string {
 func (s *MemoryStore) AddConnectorUnique(c Connector) bool {
 	s.mu.Lock()
 	defer s.persistUnlock()
+	if _, exists := s.connectors[c.ID]; exists {
+		return false
+	}
 	want := ConnectorNamespacePrefix(c.Provider, c.InstanceSlug)
 	for _, existing := range s.connectors {
 		if existing.WorkspaceID == c.WorkspaceID && ConnectorNamespacePrefix(existing.Provider, existing.InstanceSlug) == want {
@@ -419,16 +416,6 @@ func (s *MemoryStore) DeleteConnector(id string) {
 	}
 	for _, servers := range s.groupServers {
 		delete(servers, id)
-	}
-	for ruleID, rule := range s.piiRules {
-		if rule.ConnectorID == id || names[rule.PublicName] {
-			delete(s.piiRules, ruleID)
-		}
-	}
-	for reviewID, review := range s.piiReviews {
-		if review.ConnectorID == id || names[review.PublicName] {
-			delete(s.piiReviews, reviewID)
-		}
 	}
 	for packageID, p := range s.packageDrafts {
 		kept := make([]access.ToolRule, 0, len(p.Rules))
@@ -1040,7 +1027,6 @@ func (s *MemoryStore) AppendAudit(e AuditEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
-	e.PIIDataTypes = append([]string(nil), e.PIIDataTypes...)
 	// Keep the local alpha's in-memory history bounded under repeated calls.
 	// Durable, full-history audit storage remains a separate requirement.
 	const maxAuditEvents = 50_000
@@ -1060,7 +1046,6 @@ func (s *MemoryStore) auditAt(i int) AuditEvent {
 
 func cloneAuditEvent(e AuditEvent) AuditEvent {
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
-	e.PIIDataTypes = append([]string(nil), e.PIIDataTypes...)
 	return e
 }
 
@@ -1163,148 +1148,6 @@ func (s *MemoryStore) SummarizeAudit(f AuditFilter) AuditSummary {
 		return summary.ByTool[i].Key < summary.ByTool[j].Key
 	})
 	return summary
-}
-
-func (s *MemoryStore) PutPIIRule(rule pii.Rule) {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	s.piiRules[rule.ID] = rule
-}
-
-func (s *MemoryStore) DeletePIIRule(workspaceID, id string) bool {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	rule, ok := s.piiRules[id]
-	if !ok || rule.WorkspaceID != workspaceID {
-		return false
-	}
-	delete(s.piiRules, id)
-	return true
-}
-
-func (s *MemoryStore) ListPIIRules(workspaceID string) []pii.Rule {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := []pii.Rule{}
-	for _, rule := range s.piiRules {
-		if rule.WorkspaceID == workspaceID {
-			out = append(out, rule)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
-// PIIReview stores only a payload hash and metadata. The original content is
-// never retained, and an approval authorizes one matching client retry.
-type PIIReview struct {
-	ID          string
-	WorkspaceID string
-	UserID      string
-	ConnectorID string
-	PublicName  string
-	Direction   string
-	PayloadHash string
-	DataTypes   []string
-	Status      string
-	CreatedAt   time.Time
-}
-
-const piiReviewLifetime = 24 * time.Hour
-
-func reviewExpired(review PIIReview, now time.Time) bool {
-	return review.CreatedAt.IsZero() || !now.Before(review.CreatedAt.Add(piiReviewLifetime))
-}
-
-// AddPIIReview refuses new work when the bounded local queue is full. Calls
-// stay blocked, and the caller can report that no review was queued.
-func (s *MemoryStore) AddPIIReview(review PIIReview) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	const maxPIIReviews = 10_000
-	const maxActiveReviewsPerUser = 100
-	if review.UserID != "" {
-		now := time.Now()
-		active := 0
-		for id, existing := range s.piiReviews {
-			if existing.WorkspaceID != review.WorkspaceID || existing.UserID != review.UserID {
-				continue
-			}
-			if reviewExpired(existing, now) || existing.Status == "consumed" {
-				delete(s.piiReviews, id)
-				continue
-			}
-			if existing.Status == "pending" || existing.Status == "approved" {
-				active++
-			}
-		}
-		if active >= maxActiveReviewsPerUser {
-			return false
-		}
-	}
-	if len(s.piiReviews) >= maxPIIReviews {
-		now := time.Now()
-		if now.Sub(s.lastReviewPrune) >= time.Minute {
-			for id, existing := range s.piiReviews {
-				if reviewExpired(existing, now) || existing.Status == "consumed" {
-					delete(s.piiReviews, id)
-				}
-			}
-			s.lastReviewPrune = now
-		}
-		if len(s.piiReviews) >= maxPIIReviews {
-			return false
-		}
-	}
-	if _, exists := s.piiReviews[review.ID]; exists {
-		return false
-	}
-	review.DataTypes = append([]string(nil), review.DataTypes...)
-	s.piiReviews[review.ID] = review
-	return true
-}
-
-func (s *MemoryStore) ListPIIReviews(workspaceID string) []PIIReview {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []PIIReview{}
-	for id, review := range s.piiReviews {
-		if review.WorkspaceID == workspaceID {
-			if review.Status != "consumed" && reviewExpired(review, time.Now()) {
-				review.Status = "expired"
-				s.piiReviews[id] = review
-			}
-			out = append(out, review)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
-	return out
-}
-
-func (s *MemoryStore) ApprovePIIReview(workspaceID, id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	review, ok := s.piiReviews[id]
-	if !ok || review.WorkspaceID != workspaceID || review.Status != "pending" || reviewExpired(review, time.Now()) {
-		return false
-	}
-	review.Status = "approved"
-	s.piiReviews[id] = review
-	return true
-}
-
-func (s *MemoryStore) ConsumePIIReview(workspaceID, userID, publicName, direction, payloadHash string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id, review := range s.piiReviews {
-		if review.WorkspaceID == workspaceID && review.UserID == userID && review.PublicName == publicName &&
-			review.Direction == direction && review.PayloadHash == payloadHash && review.Status == "approved" && !reviewExpired(review, time.Now()) {
-			review.Status = "consumed"
-			s.piiReviews[id] = review
-			return true
-		}
-	}
-	return false
 }
 
 func contains(items []string, want string) bool {

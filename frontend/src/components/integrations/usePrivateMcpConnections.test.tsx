@@ -35,11 +35,11 @@ catalogFn.mockImplementation(async () => catalogMock.entries)
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogFn.mockImplementation(async () => catalogMock.entries); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
 
-async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk?: (message: string) => Promise<void>) {
+async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk?: (message: string) => Promise<void>, chatSessionId?: string) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<TooltipProvider><PrivateBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} /></TooltipProvider>) })
+  await act(async () => { root.render(<TooltipProvider><PrivateBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} chatSessionId={chatSessionId} /></TooltipProvider>) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   if (canEdit) { await act(async () => { host.querySelector<HTMLButtonElement>('button[role="tab"][title="Available"]')!.click() }) }
   return host
@@ -70,11 +70,19 @@ it('Connect sends the request to the agent chat, no popup, and says whose login 
   await act(async () => { host.querySelector('[aria-label="Available servers"] button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await settle()
   expect(document.body.textContent).not.toContain('with my login')
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="GoogleDrive connection name"]')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Drive · Engineering')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => { host.querySelector<HTMLButtonElement>('form button[type="submit"]')!.click() })
+  await settle()
   // The chat does the connecting (and sends back any sign-in link); the screen adds nothing itself.
   expect(onAsk).toHaveBeenCalledTimes(1)
   expect(String(onAsk.mock.calls[0][0])).toContain('Connect GoogleDrive')
   expect(String(onAsk.mock.calls[0][0])).toContain('First read the attached work-mcp skill')
   expect(String(onAsk.mock.calls[0][0])).toContain('Check the connection status')
+  expect(String(onAsk.mock.calls[0][0])).toContain('label="Drive · Engineering"')
   expect(placeMock.add).not.toHaveBeenCalled()
 })
 
@@ -96,7 +104,7 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   expect(placeMock.add.mock.calls).toEqual([['Chats/Code/projects/p1', 'GoogleDrive'], ['Chats/Code/projects/p1', 'GoogleCalendar']])
   // One sign-in covers both.
   expect(placeMock.connect).toHaveBeenCalledTimes(1)
-  expect(placeMock.connect).toHaveBeenCalledWith('Chats/Code/projects/p1', 'googledrive', undefined)
+  expect(placeMock.connect).toHaveBeenCalledWith('Chats/Code/projects/p1', 'googledrive', undefined, undefined)
 })
 
 it('asks for your own OAuth app when the provider has none registered', async () => {
@@ -115,7 +123,7 @@ it('asks for your own OAuth app when the provider has none registered', async ()
   await act(async () => { set('OAuth client ID', 'cid.apps.googleusercontent.com'); set('OAuth client secret', 'shh') })
   await act(async () => { [...host.querySelectorAll('[data-testid="mcp-client-prompt"] button')].find(b => b.textContent === 'Sign in')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await settle()
-  expect(placeMock.connect).toHaveBeenLastCalledWith('Chats/Code/projects/p1', 'gmail', { clientId: 'cid.apps.googleusercontent.com', clientSecret: 'shh' })
+  expect(placeMock.connect).toHaveBeenLastCalledWith('Chats/Code/projects/p1', 'gmail', { clientId: 'cid.apps.googleusercontent.com', clientSecret: 'shh' }, undefined)
   placeMock.list.mockResolvedValue([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://gmailmcp.googleapis.com/mcp/v1', owner: 'u1', owner_name: 'manish', mine: true, connected: true, active: true }])
 })
 
@@ -210,4 +218,58 @@ it('discovers private tools only when expanded and shows the shared JSON schema 
   await act(async () => { args.click() })
   expect(host.querySelector('pre[aria-label="Input JSON schema"]')?.textContent).toContain('"path"')
   expect(host.querySelector('pre')?.textContent).toContain('"required"')
+})
+
+it('binds private sign-in to the product chat and avoids a duplicate focus notification', async () => {
+  const listed = [{ name: 'notion', catalog: 'Notion', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: false, active: true, sign_in: true }]
+  placeMock.list.mockImplementation(async () => [...listed])
+  catalogMock.entries = []
+  placeMock.connect.mockResolvedValueOnce({ auth_url: 'https://example.com/authorize' } as never)
+  const popup = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const onAsk = vi.fn(async (_message: string) => undefined)
+  const host = await render(true, 'Crew', 'Chats/Work/projects/p2', onAsk, 'crew-chat')
+  await act(async () => { button(host, 'Connected').click() })
+  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Actions for Notion"]')!.click() })
+  await act(async () => { button(host, 'Sign in').click() })
+  await settle()
+  expect(placeMock.connect).toHaveBeenCalledWith('Chats/Work/projects/p2', 'notion', undefined, 'crew-chat')
+  listed[0] = { ...listed[0], connected: true }
+  await act(async () => { window.dispatchEvent(new Event('focus')) })
+  await settle()
+  expect(onAsk).not.toHaveBeenCalled()
+  expect(host.textContent).toContain('Connected')
+  popup.mockRestore()
+})
+
+
+it.each(['Crew', 'Code', 'workflow', 'Relay'])('adds multiple named accounts through the shared UI in %s', async noun => {
+  catalogMock.entries = [{ name: 'notion', catalog: 'Notion', sign_in: true, needs_client: false }]
+  placeMock.list.mockResolvedValue([
+    { name: 'notion_a', label: 'Notion · Engineering', catalog: 'Notion', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: true, active: true, sign_in: true },
+    { name: 'notion_b', label: 'Notion · Sales', catalog: 'Notion', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: true, active: true, sign_in: true },
+  ] as never)
+  placeMock.add.mockResolvedValueOnce({ name: 'notion_c', oauth: true })
+  const host = await render(true, noun, 'Workflow/w', undefined, 'chat-1')
+  expect(host.textContent).toContain('Notion') // provider stays available for another account
+  await act(async () => { button(host, 'Add connection').click() })
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="Notion connection name"]')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Notion · Support')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => { host.querySelector<HTMLButtonElement>('form button[type="submit"]')!.click() })
+  await settle()
+  expect(placeMock.add).toHaveBeenCalledWith('Workflow/w', { catalog: 'Notion', label: 'Notion · Support' })
+  expect(placeMock.connect).toHaveBeenCalledWith('Workflow/w', 'notion_c', undefined, 'chat-1')
+  await act(async () => { button(host, 'Connected').click() })
+  expect(host.textContent).toContain('Notion · Engineering')
+  expect(host.textContent).toContain('Notion · Sales')
+  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Actions for Notion · Sales"]')!.click() })
+  await act(async () => { button(document.body, 'Sign in again').click() })
+  await settle()
+  expect(placeMock.connect).toHaveBeenLastCalledWith('Workflow/w', 'notion_b', undefined, 'chat-1')
+  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Actions for Notion · Engineering"]')!.click() })
+  await act(async () => { button(document.body, 'Remove from this project').click() })
+  await settle()
+  expect(placeMock.remove).toHaveBeenCalledWith('Workflow/w', 'notion_a', 'u1')
 })

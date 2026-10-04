@@ -14,6 +14,7 @@
 package mcpoauth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -110,6 +111,8 @@ type Config struct {
 	// CurrentUser resolves the logged-in human for consent/connections.
 	// Returning ok=false denies with access_denied.
 	CurrentUser func(r *http.Request) (*User, bool)
+	// GrantActive rechecks current account entitlement on calls and token issue/refresh.
+	GrantActive func(context.Context, Grant) bool
 	// FilterScopes narrows requested scopes for the consenting human. Hosts
 	// use it for role-gated scopes; it must never add scopes.
 	FilterScopes func(r *http.Request, scopes []string) []string

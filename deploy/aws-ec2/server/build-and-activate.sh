@@ -43,12 +43,12 @@ fi
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
 # building or touching the server if either checked-in allowlist drifts.
-grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code"]' "$SCRIPT_DIR/server/runtime-config.js" || {
-  echo "RTS deployment must expose exactly AgentWorks, Video Studio, Work, and Code" >&2
+grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway"]' "$SCRIPT_DIR/server/runtime-config.js" || {
+  echo "RTS deployment must expose AgentWorks, Video Studio, Work, Code, and Vault" >&2
   exit 1
 }
-grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
-  echo "RTS deployment must load the video-studio, work and code product backends" >&2
+grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
+  echo "RTS deployment must load the video-studio, work, code and Vault product backends" >&2
   exit 1
 }
 grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
@@ -80,16 +80,20 @@ BUILD_DIR="$REMOTE_RELEASE"
 mkdir -p "$BUILD_DIR"
 touch "$BUILD_DIR/.deploying"
 cleanup_build() {
+  if declare -F vault_recover >/dev/null; then vault_recover; fi
   rm -f "$GLOBAL_FILE" "$REMOTE_APP/.globals-$RELEASE_ID" "$BUILD_DIR/.deploying"
   if [[ "$(readlink -f "$REMOTE_APP/current")" != "$BUILD_DIR" ]]; then rm -rf "$BUILD_DIR"; fi
 }
 trap cleanup_build EXIT
+VAULT_ENABLED=true
+VAULT_PORT="${VAULT_PORT:-8083}"
 # All commands below run on this Linux server; there is no artifact upload.
 run_local() { if [[ $# == 1 ]]; then bash -c "$1"; else "$@"; fi; }
 SSH=(run_local)
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs" "$BUILD_DIR/systemd" "$BUILD_DIR/claude-skills" "$BUILD_DIR/browser" "$BUILD_DIR/playbooks" "$BUILD_DIR/migrations"
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the rootless-linux build).
 source "$REPO_ROOT/deploy/common/slots.sh"
+source "$REPO_ROOT/deploy/common/vault.sh"
 if [[ -n "$PREBUILT" ]]; then
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did (the carried-over asset cleanup works by age).
@@ -119,12 +123,14 @@ bash "$SCRIPT_DIR/build/build-linux-agent.sh" "$BUILD_DIR" "$BUILDER_REPO_ROOT/a
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$BUILDER_REPO_ROOT" "$BUILD_DIR"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-gateway" "$SCRIPT_DIR/server/auth-gateway.go"
+vault_build "$REPO_ROOT" "$BUILD_DIR"
 if [[ ! -x "$REPO_ROOT/frontend/node_modules/.bin/tsc" ]]; then
   (cd "$REPO_ROOT/frontend" && npm ci)
 fi
 (cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
 cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
 fi
+vault_check_build "$BUILD_DIR"
 node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/frontend"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
@@ -357,7 +363,12 @@ echo "activation: immediate breaking deploy (logical-session drain disabled)"
 # Migrate a legacy release-local overlay before swapping current. Never replace
 # an existing durable overlay; only the base catalog is refreshed on startup.
 "${SSH[@]}" 'set -e; state="$HOME/.local/state/agentworks/mcp"; old="$HOME/video-studio/current/configs/mcp_servers_video_studio_user.json"; install -d -m 0700 "$state"; if [ -f "$old" ] && [ ! -e "$state/mcp_servers_video_studio_user.json" ]; then cp -n "$old" "$state/mcp_servers_video_studio_user.json"; chmod 600 "$state/mcp_servers_video_studio_user.json"; fi'
+vault_prepare "$BUILD_DIR" "$REMOTE_APP" /data/video-studio/docs video-studio 8000 "$VAULT_PORT"
+vault_install "$BUILD_DIR" "$REMOTE_APP" video-studio
+
 "${SSH[@]}" "set -e; stopped=0; trap 'if [ \"\$stopped\" = 1 ]; then systemctl --user restart video-studio-workspace video-studio-agent video-studio-gateway || true; fi' EXIT; browser_dir='$(dirname "$REMOTE_BROWSER_PATH")'; browser_wrapper=\"\$browser_dir/agentworks-chrome-headless\"; install -m 0755 '$REMOTE_RELEASE/browser/agentworks-chrome-headless' \"\$browser_wrapper\"; env_file='$REMOTE_APP/.env'; global_file='$REMOTE_APP/.globals-$RELEASE_ID'; awk '!/^GLOBAL_SECRET_|^CLAUDE_CODE_OAUTH_TOKEN=|^CURSOR_API_KEY=|^AGENT_BROWSER_EXECUTABLE_PATH=/' \"\$env_file\" > \"\$env_file.next\"; echo \"AGENT_BROWSER_EXECUTABLE_PATH=\$browser_wrapper\" >> \"\$env_file.next\"; grep -q '^MCP_API_URL=' \"\$env_file.next\" || echo 'MCP_API_URL=http://127.0.0.1:8000' >> \"\$env_file.next\"; cat \"\$global_file\" >> \"\$env_file.next\"; chmod 600 \"\$env_file.next\"; mv \"\$env_file.next\" \"\$env_file\"; rm -f \"\$global_file\"; find /data/video-studio/docs/_users -type d -path '*/Chats/Video Studio/projects' -print0 | while IFS= read -r -d '' projects_root; do find \"\$projects_root\" -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d '' project; do install -d -m 0755 \"\$project/.claude/skills\"; rsync -a --delete '$REMOTE_RELEASE/claude-skills/' \"\$project/.claude/skills/\"; rm -rf \"\$project/skills/video-studio\"; done; done; install -d -m 0755 \"\$HOME/.config/systemd/user\" '$REMOTE_APP/state'; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-workspace.service' \"\$HOME/.config/systemd/user/video-studio-workspace.service\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-agent.service' \"\$HOME/.config/systemd/user/video-studio-agent.service\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-gateway.service' \"\$HOME/.config/systemd/user/video-studio-gateway.service\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-logrotate.conf' '$REMOTE_APP/state/logrotate.conf'; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-logrotate.service' \"\$HOME/.config/systemd/user/video-studio-logrotate.service\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-logrotate.timer' \"\$HOME/.config/systemd/user/video-studio-logrotate.timer\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-cli-update.service' \"\$HOME/.config/systemd/user/video-studio-cli-update.service\"; install -m 0644 '$REMOTE_RELEASE/systemd/video-studio-cli-update.timer' \"\$HOME/.config/systemd/user/video-studio-cli-update.timer\"; systemctl --user daemon-reload; systemctl --user enable --now video-studio-logrotate.timer; systemctl --user disable --now video-studio-cli-update.timer || true; stopped=1; systemctl --user stop video-studio-agent; ln -sfn '$REMOTE_RELEASE' '$REMOTE_APP/current'; migration_state='$REMOTE_APP/state/migrations'; migration_marker=\"\$migration_state/workflow-builder-chats-v1.done\"; install -d -m 0700 \"\$migration_state\"; if [ ! -f \"\$migration_marker\" ]; then python3 '$REMOTE_RELEASE/migrations/migrate_workflow_builder_chats.py' --workspace-root /data/video-studio/docs --owner-map '$REMOTE_RELEASE/migrations/workflow-builder-chat-owners-v1.json' --apply; marker_tmp=\$(mktemp \"\$migration_state/.workflow-builder-chats-v1.XXXXXX\"); printf 'release=%s\\ncompleted_at=%s\\n' '$RELEASE_ID' \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > \"\$marker_tmp\"; chmod 0600 \"\$marker_tmp\"; mv \"\$marker_tmp\" \"\$migration_marker\"; fi; secrets_marker=\"\$migration_state/product-secrets-v1.done\"; install -d -m 0700 \"\$migration_state\"; if [ ! -f \"\$secrets_marker\" ]; then ( set -a; . '$REMOTE_APP/.env'; set +a; exec '$REMOTE_RELEASE/bin/video-studio-agent' server migrate-product-secrets --product video-studio --apply ); secrets_tmp=\$(mktemp \"\$migration_state/.product-secrets-v1.XXXXXX\"); printf 'release=%s\\ncompleted_at=%s\\n' '$RELEASE_ID' \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > \"\$secrets_tmp\"; chmod 0600 \"\$secrets_tmp\"; mv \"\$secrets_tmp\" \"\$secrets_marker\"; fi; if ! '$REMOTE_RELEASE/bin/video-studio-agent' server migrate-chat-events --docs-root /data/video-studio/docs --state-root '$REMOTE_APP/state'; then echo 'WARNING: legacy chat import failed; the agent retries it at startup' >&2; fi; systemctl --user restart video-studio-workspace video-studio-agent video-studio-gateway; stopped=0; systemctl --user is-active video-studio-agent video-studio-workspace video-studio-gateway; grep -Fq 'apiBaseUrl: \"\",' '$REMOTE_APP/current/frontend/runtime-config.js'; grep -Fq 'workspaceApiBaseUrl: \"/api/wp\",' '$REMOTE_APP/current/frontend/runtime-config.js'"
+
+vault_start video-studio "$VAULT_PORT"
 
 "${SSH[@]}" "set -e; test -s '$REMOTE_APP/logs/agent.log'; tail -n 5 '$REMOTE_APP/logs/agent.log'"
 

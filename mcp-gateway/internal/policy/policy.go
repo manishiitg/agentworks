@@ -1,7 +1,7 @@
 // Package policy evaluates the gateway's deny-by-default authorization.
 //
 // Rule order: disabled connector/tool → missing grant (direct or via group).
-// M1 adds PII policy and schema validation ahead of the upstream call.
+// Approved schema and argument conditions are checked ahead of the upstream call.
 package policy
 
 import (

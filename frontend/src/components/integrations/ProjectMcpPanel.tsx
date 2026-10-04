@@ -1,18 +1,17 @@
-import { OpenVaultButton } from './OpenVaultButton'
 import { McpConnectionsPanel } from './McpConnectionsPanel'
 import { usePrivateMcpConnections } from './usePrivateMcpConnections'
-import { useVaultMcpConnections } from './useVaultMcpConnections'
 
 /** Project adapter. All MCP presentation is owned by McpConnectionsPanel. */
-export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, selectedServers, onSelectedServersChange }: {
+export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId, view }: {
+  view?: 'connected' | 'available'
+  chatSessionId?: string
   workspacePath: string; placeNoun: string; canEdit: boolean; onAsk?: (message: string) => Promise<void>
   selectedServers: string[]; onSelectedServersChange: (servers: string[]) => Promise<unknown> | void
 }) {
-  const personal = usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk })
-  const vault = useVaultMcpConnections({ selectedServers, onSelectedServersChange, disabled: !canEdit })
-  return <McpConnectionsPanel servers={[...personal.servers, ...vault.servers]} catalog={personal.catalog} showTools={false} headerActions={<OpenVaultButton panel="servers"/>}
-    loading={personal.loading || vault.loading} notices={[...personal.notices, ...vault.notices]}
-    refresh={() => { void personal.refresh(); void vault.refresh() }} addCustom={personal.addCustom} help={personal.help}>
+  const personal = usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId })
+  return <McpConnectionsPanel view={view} servers={personal.servers} catalog={personal.catalog} showTools={false}
+    loading={personal.loading} notices={personal.notices}
+    refresh={() => { void personal.refresh() }} addCustom={personal.addCustom} help={personal.help}>
     {personal.dialogs}
   </McpConnectionsPanel>
 }

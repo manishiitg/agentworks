@@ -1,15 +1,20 @@
-# Vault MCP Gateway (local alpha)
+# Vault MCP Gateway (alpha)
 
 For the complete current implementation summary, see [Vault implementation status](../docs/design/vault-current-state.md).
 
 For the proposed centrally managed Sentry access model, see [SENTRY_ACCESS.md](SENTRY_ACCESS.md). It covers Sentry-scoped MCP connections and Vault argument policies.
 
-This module is an opt-in, single-user local alpha. It serves a governed MCP endpoint and a Vault admin console. Startup rejects public URLs and non-loopback binds while individual MCP client sign-in/consent and the team deployment boundary remain unfinished.
-Do not put a reverse proxy or tunnel in front of its loopback listener; the process cannot detect a proxy configured outside it.
+Vault supports a managed platform deployment and a direct local debugging mode.
+Managed installations keep this service private with `GATEWAY_AUTH_MODE=platform`
+and publish the product's `/api/vault/mcp` endpoint with individual platform OAuth.
+The direct local mode retains static-human consent and must stay on loopback; do
+not expose that listener through a tunnel or reverse proxy. Configuration still
+supports one service process per database. See
+[server installation](../docs/design/vault-server-installation.md).
 
 ## Start locally
 
-Run the AgentWorks launcher with the gateway enabled, or start `LOCAL_MODE=true go run ./cmd/server` from this directory. The gateway generates a fresh admin token on each start in `<GATEWAY_STATE_DIR>/admin-token` (default `./var/admin-token`, mode `0600`). The launcher prints the file path. The token is a backend service credential. Configure the product API with `CAPLAYER_SERVICE_URL` (the gateway origin) and `CAPLAYER_SERVICE_TOKEN_FILE` (that token file). Vault uses the existing product login; users never enter this gateway secret in the React console. An explicitly supplied `GATEWAY_HUMAN_TOKEN` must be unique and at least 32 characters; the old `GATEWAY_LOCAL_ADMIN=1` bypass is rejected.
+Run the AgentWorks launcher with the gateway enabled, or start `LOCAL_MODE=true go run ./cmd/server` from this directory. The gateway generates a fresh admin token on each start in `<GATEWAY_STATE_DIR>/admin-token` (default `./var/admin-token`, mode `0600`). The launcher prints the file path. The token is a backend service credential. Configure the product API with `CAPLAYER_SERVICE_URL` (the gateway origin) and `CAPLAYER_SERVICE_TOKEN_FILE` (that token file). Vault uses the existing product login; users never enter this gateway secret in the React console. Set `GATEWAY_AUTH_MODE=platform` and `GATEWAY_PRODUCT_URL` to use the product OAuth endpoint locally; `GATEWAY_HUMAN_TOKEN_FILE` can supply a persistent private service credential. An explicitly supplied `GATEWAY_HUMAN_TOKEN` must be unique and at least 32 characters; the old `GATEWAY_LOCAL_ADMIN=1` bypass is rejected.
 
 Private-network upstream MCP servers are disabled by default. Set `GATEWAY_ALLOW_PRIVATE_UPSTREAMS=1` only when that access is intentional. OAuth providers reuse the shared product sign-in and token refresh service (configuration below). The gateway does not store their OAuth tokens.
 Upstream URLs with query parameters are rejected so credentials cannot be stored in connector URLs or returned by the admin API.
@@ -39,13 +44,13 @@ The embedded and standalone React consoles use `AuthWrapper`, the existing accou
 
 Management calls go to the product API at `/api/caplayer/api/admin/*`. The product API validates its JWT and current administrator/product permissions before forwarding to the fixed `CAPLAYER_SERVICE_URL`; it supplies the private service credential from `CAPLAYER_SERVICE_TOKEN_FILE` (or `CAPLAYER_SERVICE_TOKEN`). Browser JWTs, cookies and identity headers are not forwarded to the gateway. Disabled users and role changes follow the existing account middleware and directory cache. A gateway service credential failure returns a deployment error, without triggering another product login.
 
-The People → Users tab reuses the shared account editor in Vault-only mode. New users receive only `mcp-gateway` access with the Viewer platform role; the form has no other product or platform-role choices. Existing account roles/products are read-only in Vault. Configure MCP and secret permissions through groups. Group membership selectors use active directory IDs; assigning a group binds that central identity to a gateway user record. These bindings have no separate passwords or account roles. MCP consumers use the same platform SSO identity even when they only use Vault from Claude; individual MCP OAuth consent binding is still unfinished in this alpha. Account creation does not provision Linux execution slots; RTS/Excellence execution access still requires the root provisioning scripts, and server-wide slot checks on account grants remain pending. The legacy `/admin` token console remains an internal local debugging interface; keep the gateway bound to loopback behind the product API.
+The People → Users tab reuses the shared account editor in Vault-only mode. New users receive only `mcp-gateway` access with the Viewer platform role; the form has no other product or platform-role choices. Existing account roles/products are read-only in Vault. Configure MCP and secret permissions through groups. Group membership selectors use active directory IDs; assigning a group binds that central identity to a gateway user record. These bindings have no separate passwords or account roles. MCP consumers use the same platform SSO identity even when they only use Vault from Claude; each public MCP OAuth grant now binds to that verified account. Account creation does not provision Linux execution slots; RTS/Excellence execution access still requires the root provisioning scripts, and server-wide slot checks on account grants remain pending. The legacy `/admin` token console remains an internal local debugging interface; keep the gateway bound to loopback behind the product API.
 
 Access is organized by existing group, with Users and Permissions tabs. Choose from visible group rows, with a highlighted selection and search when there are multiple groups. Create, rename and manage membership under People → Groups. Expand an MCP to assign tools, then open a tool's Permissions to inspect its restrictions or prepare a draft through chat. Draft review, simulation, publishing and revocation are scoped to the selected group; publishing checks the draft version reviewed by the administrator. Tool access indicators use runtime authorization, so published or revoked policies take precedence over older tool and whole-server grants.
 
 For standalone hosting, configure the product API's CORS and OAuth return URL for that frontend, or serve both behind the same origin. A separate UI deployment reuses the account service; it does not introduce another identity system. Do not put the service token in frontend runtime configuration.
 
-MCP client consent still uses the local alpha consent implementation. This change integrates console authentication and account roles; enterprise MCP identity/consent, durable PII reviews and deployment hardening remain required before team deployment. Configuration already persists in SQLite.
+Managed MCP client consent uses the shared platform login at `/oauth/vault`. The public endpoint accepts only its dedicated Vault OAuth access tokens. Account disablement, removed Vault entitlement and disconnected clients deny subsequent calls and refresh. Current group policy is evaluated for each call; the actual account and client IDs appear in audit. Group keys are legacy local-only credentials and are hidden in the shared UI. Configuration persists in SQLite. Real Linux/IdP acceptance testing and operational/load verification remain deployment gates.
 
 ## Local development in the shared app
 
@@ -71,7 +76,7 @@ Argument filters are only appropriate when an audited connector contract proves 
 
 ## Configuration persistence
 
-The full local launcher sets `GATEWAY_WORKSPACE_DIR` to the Vault chat project and stores configuration at `Chats/CapLayer/db/gateway.sqlite` (physical local path: `<WORKSPACE_DOCS_PATH>/_users/default/Chats/CapLayer/db/gateway.sqlite`). An explicit `GATEWAY_WORKSPACE_DIR` overrides this project location. Standalone launches without a workspace keep `GATEWAY_STATE_DIR/gateway.sqlite` (default `./var/gateway.sqlite`). Existing state-directory configuration migrates using SQLite when the project database does not yet exist; migration refuses to copy an active gateway. Groups, users, membership, direct and group tool assignments, existing server grants, connector configuration and approvals, access drafts, published policies, revocation tombstones, policy history, API key hashes, and PII rules save automatically after each configuration mutation. A separate final JSON file is not required.
+The full local launcher sets `GATEWAY_WORKSPACE_DIR` to the Vault chat project and stores configuration at `Chats/CapLayer/db/gateway.sqlite` (physical local path: `<WORKSPACE_DOCS_PATH>/_users/default/Chats/CapLayer/db/gateway.sqlite`). An explicit `GATEWAY_WORKSPACE_DIR` overrides this project location. Standalone launches without a workspace keep `GATEWAY_STATE_DIR/gateway.sqlite` (default `./var/gateway.sqlite`). Existing state-directory configuration migrates using SQLite when the project database does not yet exist; migration refuses to copy an active gateway. Groups, users, membership, direct and group tool assignments, existing server grants, connector configuration and approvals, access drafts, published policies, revocation tombstones, policy history, and API key hashes save automatically after each configuration mutation. A separate final JSON file is not required.
 
 The SQLite row contains a versioned, AES-256-GCM encrypted configuration snapshot. The encryption key remains at `GATEWAY_STATE_DIR/gateway.sqlite.key`, outside the chat project; database and key have mode `0600`. Service tokens and the MCP OAuth database also remain in the backend state directory. Back up the database **and key** using a SQLite-consistent backup, or stop the service before copying them (include any remaining WAL files). Keep these files on a persistent volume outside disposable checkout/temp directories. Upstream bearer credentials are encrypted in this snapshot; shared OAuth refresh credentials remain in the product token store.
 
@@ -89,33 +94,33 @@ The tools recheck the current product administrator on each call. Direct externa
 
 ## Current limits
 
-- MCP client OAuth consent still maps to one local human. The API supports groups and users, but this is not individual team sign-in.
-- Configuration and policy history persist in SQLite as described above. Public/team deployment still requires per-user MCP identity and consent, durable PII review storage, production admin authorization, and operational credential management. The standalone frontend does not remove the local-alpha exposure guard.
-- Runtime call audits use the configured provider and durable/async write mode described below. The PII review queue is still in memory, holds at most 10,000 entries, and limits each caller to 100 active reviews.
+- Direct local debugging OAuth still maps to one local human. Managed installations use individual platform OAuth through `/api/vault/mcp`.
+- Configuration and policy history persist in SQLite with one writer. Production rollout still needs real IdP/client acceptance, operational credential management and capacity tests. The private service exposure guard remains in both modes.
+- Runtime call audits use the configured provider and durable/async write mode described below.
 - The bundled MCP SDK's `ListTools` method follows upstream `NextCursor` pages automatically.
 
 ## Review fixes in this branch
 
-Connector deletion now removes its tool grants, group-server grants, PII rules, review requests, and version history so a new connector cannot inherit them. The admin console requires a secret on loopback, and the standalone admin cookie contains a short-lived session ID instead of the master token. Connector add, resync, and removal are serialized to prevent stale sessions from returning after deletion.
+Connector deletion now removes its tool grants, group-server grants and version history so a new connector cannot inherit them. The admin console requires a secret on loopback, and the standalone admin cookie contains a short-lived session ID instead of the master token. Connector add, resync, and removal are serialized to prevent stale sessions from returning after deletion.
 
 ## Audit storage
 
-Call metadata (user/group/client, MCP server and tool, decision, outcome, timing,
-PII action) uses a separate provider from permission configuration. Raw arguments,
+Call metadata (user/group/client, MCP server and tool, decision, outcome and timing) uses a separate provider from permission configuration. Raw arguments,
 results and secret values are not stored. Every audit/usage/export endpoint uses
 the configured provider. Query failures return 503; they never appear as empty history.
 
 | Setting | Local (`LOCAL_MODE=true`) | Server (otherwise) |
 |---|---|---|
-| Default provider | SQLite | ClickHouse |
-| Default retention | Rolling 24 hours | 720 hours / 30 days |
+| Default provider | SQLite | SQLite (MVP default) |
+| Default retention | Rolling 24 hours | Rolling 24 hours |
 | Default write mode | Durable | Durable |
 | Disable collection | `VAULT_AUDIT_PROVIDER=off` | Same explicit setting |
 
-Set `VAULT_AUDIT_PROVIDER=sqlite`, `clickhouse`, or `off` before starting Vault.
+SQLite is the only audit storage backend in the MVP. Set
+`VAULT_AUDIT_PROVIDER=sqlite` (default), or `off` to disable collection.
 The local launcher sets `LOCAL_MODE=true`, including gateway-only launches.
-Standalone local launches must set it explicitly. Missing server ClickHouse
-configuration fails startup; there is no silent fallback to memory or SQLite.
+Standalone local launches must set it explicitly. Unsupported provider choices
+fail startup. ClickHouse is deferred until after the MVP release.
 Turning auditing off stops collection and querying, but does **not** delete earlier
 stored data. Retention cleanup resumes when that provider is enabled again.
 
@@ -130,7 +135,7 @@ cannot clean files; expired rows are removed on the next startup.
 
 `VAULT_AUDIT_RETENTION=24h` changes retention (minimum 1m, maximum 8760h).
 Local mode rejects values above 24h. `VAULT_AUDIT_MAX_MB=256` bounds SQLite database
-pages, including the server delivery queue; indexes count toward this limit. WAL
+pages; indexes count toward this limit. WAL
 and lock files add bounded operational overhead. A full disk/queue produces an
 explicit tool error rather than dropping accepted events. This cap is a protection,
 not a promise that a 24-hour history at any request rate fits on disk.
@@ -139,9 +144,8 @@ not a promise that a 24-hour history at any request rate fits on disk.
 
 Set `VAULT_AUDIT_WRITE_MODE=async` to return from logging immediately after admission
 to a bounded in-memory queue (1,024 waiting events plus at most 256 being written).
-One background worker writes batches to SQLite, including the local ClickHouse
-delivery spool. No goroutine is created per call. MCP calls do not wait for the
-batch timer, SQLite commit, or ClickHouse network delivery in this mode.
+One background worker writes batches to SQLite. No goroutine is created per call.
+MCP calls do not wait for the batch timer or SQLite commit in this mode.
 
 A full queue returns an explicit tool error. A failed SQLite batch remains in memory
 and retries with backoff from 50ms to 5s; new admissions are rejected while the writer
@@ -154,49 +158,28 @@ then drain accepted audit events. Give deployments at least 60 seconds of termin
 grace. A shutdown flush error is reported rather than claiming success. A crash,
 SIGKILL, or power loss can lose events still in memory. Set
 `VAULT_AUDIT_WRITE_MODE=durable` when calls must wait for persistent audit admission.
-Durable remains the installation default, including server deployments.
+Standalone starts default to durable mode. The shared server installer selects
+async mode unless explicitly configured otherwise.
 
-PII enforcement always remains synchronous before forwarding input or returning
-output. Regexes are compiled once and payloads are bounded to 256 KiB. Raw tool
-arguments/results are excluded from audit events, so logging does not rescan the
-full payload. Async moves storage work off request handlers; it does not eliminate
-total CPU or disk usage.
-
-Run bounded caller-latency and PII benchmarks with:
+Run bounded caller-latency benchmarks with:
 
 ```sh
-go test ./internal/store ./internal/pii -run '^$' -bench 'Benchmark(AuditAdmission|PIIScanJSON)$' -benchtime=200x -count=1
+go test ./internal/store -run '^$' -bench 'BenchmarkAuditAdmission$' -benchtime=200x -count=1
 ```
 
-These report p95/p99 for isolated audit admission and individual PII scans, not
+These report p95/p99 for isolated audit admission, not
 end-to-end MCP latency or a supported request-rate limit.
 
-For servers configure:
+Local and server installations use the same SQLite backend:
 
 ```sh
-VAULT_AUDIT_PROVIDER=clickhouse
-VAULT_AUDIT_CLICKHOUSE_URL=https://clickhouse.internal.example:8443
-VAULT_AUDIT_CLICKHOUSE_DATABASE=default
-VAULT_AUDIT_CLICKHOUSE_USER=vault_audit
-VAULT_AUDIT_CLICKHOUSE_PASSWORD=<injected-by-deployment>
-VAULT_AUDIT_RETENTION=720h
+VAULT_AUDIT_PROVIDER=sqlite
+VAULT_AUDIT_RETENTION=24h
 VAULT_AUDIT_MAX_MB=256
 ```
 
-The configured database must already exist. The service creates
-`vault_audit_events` and updates its TTL, requiring CREATE/ALTER, INSERT and SELECT
-permissions. HTTPS is required except on loopback; credentials are sent in headers,
-never embedded in the URL or logged. No redirects are followed. Provide each
-Vault instance a private persistent `GATEWAY_STATE_DIR`.
-
-ClickHouse delivery uses a durable SQLite queue at
-`GATEWAY_STATE_DIR/audit-clickhouse-queue.sqlite`. In durable mode calls acknowledge the queue's
-committed write; async mode acknowledges in-memory admission first. A worker sends up to 1,000 events per batch with retries and
-bounded backoff. Events are deleted from the queue only after ClickHouse acknowledges
-insertion. ReplacingMergeTree plus stable event IDs and FINAL reads deduplicate
-replays. Events committed to the spool survive restarts and never expire before delivery. Audit
-queries/usage summaries become visible after ingestion (normally about a second).
-TTL removes expired server rows asynchronously; queries enforce the cutoff immediately.
+Audit events persist at `GATEWAY_STATE_DIR/audit.sqlite`. Give each Vault instance
+private persistent storage. No additional database service is required.
 
 Audit errors are surfaced to callers. A persistence error after upstream execution
 cannot undo that execution; the error explicitly warns against automatic retry.
@@ -207,3 +190,13 @@ Use personal OAuth credentials when individual attribution is required.
 
 These are throughput-oriented implementations, not a claim of a measured RPS limit.
 Load-test the intended rate, retention, event sizes and storage hardware before rollout.
+
+
+### PII deferred
+
+PII scanning, masking/blocking, custom rules, reviews and UI/API surfaces were
+removed on 2026-10-04. Tool payloads pass through unchanged after normal permission,
+schema and argument-condition checks. Audit remains metadata-only and does not
+store arguments/results. Older configuration snapshots load without their removed
+PII fields; the next mutation saves only the current configuration. Historical audit
+rows remain available.

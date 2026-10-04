@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLocalAdminTokenRotatesAndStaysPrivate(t *testing.T) {
@@ -136,5 +142,55 @@ func TestGatewayConfigurationLivesInChatWhenConfigured(t *testing.T) {
 	path, _ = gatewayConfigurationPaths("/private/gateway")
 	if path != "/private/gateway/gateway.sqlite" {
 		t.Fatal("standalone location changed")
+	}
+}
+
+func TestManagedGatewayHasNoStaticConsentOrPublicMCP(t *testing.T) {
+	gw := mcpserver.New(store.NewMemoryStore(), nil, nil, nil)
+	handler := gatewayRoutes(gw, true)
+	for _, path := range []string{"/mcp", "/oauth/consent", "/admin", "/oauth/authorize", "/.well-known/oauth-authorization-server"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 404 {
+			t.Fatalf("managed static route %s: %d", path, w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+}
+
+func TestReconnectInitializationCanReadLiveConnectorRoutes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	srv := &http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/connectors/connection" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})}
+	initialized := false
+	err := serveUntilStopped(ctx, srv, func(parent context.Context, address string) error {
+		req, err := http.NewRequestWithContext(parent, http.MethodGet, "http://"+address+"/api/admin/connectors/connection", nil)
+		if err != nil {
+			return err
+		}
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("connector validation unavailable: %d", response.StatusCode)
+		}
+		initialized = true
+		cancel()
+		return nil
+	})
+	if err != nil || !initialized {
+		t.Fatalf("listener was not ready before reconnect: %v", err)
 	}
 }

@@ -14,12 +14,11 @@ import (
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	_ "modernc.org/sqlite"
 )
 
 // Configuration snapshots keep related records and policy tombstones in one
-// SQLite transaction. High-volume call audits/review queues remain separate.
+// SQLite transaction. High-volume call audits remain separate.
 type durableState struct {
 	SecretResources map[string]SecretResource
 	SecretGrants    map[string]map[string]bool
@@ -40,7 +39,6 @@ type durableState struct {
 	Governed        map[string]map[string]bool
 	History         map[string][]PolicyEvent
 	Keys            map[string]APIKey
-	PII             map[string]pii.Rule
 }
 type sqlitePersistence struct {
 	db           *sql.DB
@@ -54,14 +52,14 @@ type sqlitePersistence struct {
 }
 
 func (s *MemoryStore) durableState() durableState {
-	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.piiRules}
+	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys}
 }
 func (s *MemoryStore) restore(data []byte) error {
 	var state durableState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return err
 	}
-	if state.Format != 1 || state.Workspaces == nil || state.Users == nil || state.Groups == nil || state.Members == nil || state.Connectors == nil || state.Bearers == nil || state.Tools == nil || state.ToolVersions == nil || state.Grants == nil || state.GroupGrants == nil || state.GroupServers == nil || state.Drafts == nil || state.Live == nil || state.Governed == nil || state.History == nil || state.Keys == nil || state.PII == nil {
+	if state.Format != 1 || state.Workspaces == nil || state.Users == nil || state.Groups == nil || state.Members == nil || state.Connectors == nil || state.Bearers == nil || state.Tools == nil || state.ToolVersions == nil || state.Grants == nil || state.GroupGrants == nil || state.GroupServers == nil || state.Drafts == nil || state.Live == nil || state.Governed == nil || state.History == nil || state.Keys == nil {
 		return errors.New("unsupported or incomplete gateway configuration")
 	}
 	if state.SecretResources == nil {
@@ -73,7 +71,7 @@ func (s *MemoryStore) restore(data []byte) error {
 	s.secretResources, s.secretGrants = state.SecretResources, state.SecretGrants
 	s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer = state.Workspaces, state.Users, state.Groups, state.Members, state.Connectors, state.Bearers
 	s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers = state.Tools, state.ToolVersions, state.Grants, state.GroupGrants, state.GroupServers
-	s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.piiRules = state.Drafts, state.Live, state.Governed, state.History, state.Keys, state.PII
+	s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys = state.Drafts, state.Live, state.Governed, state.History, state.Keys
 	return nil
 }
 

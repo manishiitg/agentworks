@@ -20,7 +20,7 @@ go run ./cmd/local-mcps -data-dir /tmp/caplayer-reference-mcps -runtime-dir /tmp
 | Filesystem | `http://127.0.0.1:18164/filesystem/mcp` | Only `/tmp/caplayer-reference-mcps/files` | 14 |
 | Memory | `http://127.0.0.1:18164/memory/mcp` | `/tmp/caplayer-reference-mcps/memory.jsonl` | 9 |
 
-The filesystem server creates a sample `README.md` once. Existing test files are preserved. Memory is the reference knowledge graph: entities, relations and observations. Both keep data across bridge restarts; gateway configuration and grants persist in SQLite, and saved active connectors reconnect on gateway startup. Pending PII reviews remain in memory. Restarting the synthetic OAuth fixture separately invalidates its test credentials, as described below.
+The filesystem server creates a sample `README.md` once. Existing test files are preserved. Memory is the reference knowledge graph: entities, relations and observations. Both keep data across bridge restarts; gateway configuration and grants persist in SQLite, and saved active connectors reconnect on gateway startup. Restarting the synthetic OAuth fixture separately invalidates its test credentials, as described below.
 
 ## Connect to Vault
 
@@ -40,7 +40,7 @@ Set `GATEWAY_STATE_DIR` to the running gateway’s state directory before using 
 2. Use filesystem `list_directory` and `read_text_file` on the test folder/README. `write_file` and `edit_file` provide write tests.
 3. Create a read-only group for those read tools; test that writes are denied. Add a `path` condition to further restrict a tool. File access is also bounded by the reference server's allowed directory.
 4. Use memory `create_entities`, `add_observations`, `search_nodes` and `read_graph` to test separate read/write grants.
-5. The README contains a synthetic email for regex PII tests. Observe allowed/denied calls in Audit when calling through the gateway.
+5. Observe allowed/denied calls in Audit when calling through the gateway.
 
 The Vault setup assistant inspects schemas and drafts permissions; it does not itself run these upstream tools. Use a gateway MCP client to test the published policy.
 

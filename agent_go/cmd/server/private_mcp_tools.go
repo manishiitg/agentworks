@@ -19,14 +19,14 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		rows := []map[string]any{}
 		for _, s := range private {
 			dir, _ := placeMCPDir(person)
-			rows = append(rows, map[string]any{"name": s.Name, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, person, s)})
+			rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, person, s)})
 		}
-		vault, err := vaultServersFor(ctx, person)
+		vault, err := vaultAccessFor(ctx, person)
 		vaultError := ""
 		if err != nil {
 			vaultError = err.Error()
 		}
-		data, _ := json.Marshal(map[string]any{"private": rows, "vault": vault, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": "Private connections run only for their owner. Shared MCPs require Vault group permissions."})
+		data, _ := json.Marshal(map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": "Private connections run only for their owner. Shared MCPs require Vault group permissions."})
 		return string(data), nil
 	}
 	name, _ := args["name"].(string)
@@ -38,7 +38,10 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		return "", fmt.Errorf("name is required")
 	}
 	if operation == "remove_mcp_server" {
-		saved, found := privateMCPByCatalog(person, name)
+		saved, found, lookupErr := lookupPrivateMCP(person, name)
+		if lookupErr != nil {
+			return "", lookupErr
+		}
 		if !found {
 			return "", fmt.Errorf("private MCP not found")
 		}
@@ -74,17 +77,44 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 			return "", fmt.Errorf("private remote MCP setup accepts a URL; enter credentials in the MCP UI")
 		}
 	}
-	saved, found := privateMCPByCatalog(person, name)
-	if !found || operation == "edit_mcp_server" {
-		catalog := name
+	label, _ := args["label"].(string)
+	catalog, _ := args["catalog"].(string)
+	if catalog == "" && url == "" {
+		catalog = name
+	}
+	var saved placeMCPServer
+	var err error
+	if operation == "edit_mcp_server" {
+		if label != "" {
+			return "", fmt.Errorf("use install_mcp_server with label for a new account")
+		}
+		existing, found, lookupErr := lookupPrivateMCP(person, name)
+		if lookupErr != nil {
+			return "", lookupErr
+		}
+		if !found {
+			return "", fmt.Errorf("private MCP not found; use its exact connection name")
+		}
+		body := existing
 		if url != "" {
+			body.URL = url
 			catalog = ""
+		} else {
+			catalog = existing.Catalog
 		}
-		var err error
-		saved, _, err = api.addPlaceMCP(ctx, person, placeMCPServer{Name: strings.ToLower(name), URL: url}, catalog)
-		if err != nil {
-			return "", err
+		// Updating an exact account must retain its ID and isolated-login marker.
+		saved, _, err = api.addPlaceMCP(ctx, person, body, catalog)
+	} else {
+		body := placeMCPServer{Label: label, URL: url}
+		if catalog == "" {
+			body.Name = strings.ToLower(name)
+		} else if label == "" {
+			body.Name = name
 		}
+		saved, _, err = api.ensurePrivateMCP(ctx, person, body, catalog)
+	}
+	if err != nil {
+		return "", err
 	}
 	// Remember this project attachment for the owner's Integrations panel.
 	// Other users of the project never inherit this private account.
@@ -113,7 +143,7 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 	if redirect == "" {
 		return fmt.Sprintf("Added %s privately. Finish sign-in in Integrations → My MCPs.", saved.Name), nil
 	}
-	authURL, discovery, _, err := api.startPlaceMCPSignIn(person, saved.Name, redirect, nil)
+	authURL, discovery, _, err := api.startPlaceMCPSignIn(person, saved.Name, redirect, chatSessionIDFromContext(ctx), nil)
 	if err != nil {
 		return "", err
 	}

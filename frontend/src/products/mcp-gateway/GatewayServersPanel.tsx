@@ -3,7 +3,7 @@ import { KeyRound, RefreshCw, Trash2 } from 'lucide-react'
 import OAuthStatusBadge from '../../components/OAuthStatusBadge'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { McpConnectionsPanel, type McpConnectionRow, type McpCatalogRow } from '../../components/integrations/McpConnectionsPanel'
-import { McpCredentialSettings } from '../../components/integrations/McpConnectionForms'
+import { McpCredentialSettings, McpNamedConnectionForm } from '../../components/integrations/McpConnectionForms'
 import { descriptionFor, groupFor, statusIndicator } from '../../components/connectors/catalog'
 import { useMCPStore } from '../../stores/useMCPStore'
 import { agentApi } from '../../services/api'
@@ -44,13 +44,14 @@ function gatewayStatusDot(status: string): string {
   return 'bg-gray-400'
 }
 
-export function GatewayServersPanel({ base, standalone = false, view = 'connected', onConnected, onAddCustom, revision }: {
+export function GatewayServersPanel({ base, standalone = false, view = 'connected', onConnected, onAddCustom, revision, chatSessionId }: {
   base: string
   standalone?: boolean
   view?: 'connected' | 'available'
   onConnected?: () => void
   onAddCustom?: () => Promise<void>
   revision?: string
+  chatSessionId?: string
 }) {
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
@@ -66,6 +67,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     if (!standalone) void refreshTools()
   }, [refreshTools, standalone])
 
+  const [namingKey, setNamingKey] = useState<string | null>(null)
   const [addingKey, setAddingKey] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [approving, setApproving] = useState<string | null>(null)
@@ -110,12 +112,13 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     return byId
   }, [data])
 
-  async function onAddToGateway(row: ServerRow) {
+  async function onAddToGateway(row: ServerRow, label: string) {
     if (!row.catalogMatch) return
     setAddingKey(row.key)
     setActionError(null)
     try {
-      await createConnector(base, { Provider: row.catalogMatch.Name, Label: '', Slug: '', URL: '' })
+      await createConnector(base, { Provider: row.catalogMatch.Name, Label: label, Slug: '', URL: '' })
+      setNamingKey(null)
       bump()
       if (row.catalogMatch.OAuth && !standalone) void refreshTools()
       onConnected?.()
@@ -189,10 +192,11 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       const needsReview = tools.filter(tool => tool.Status === 'quarantined').length
       const approved = tools.filter(tool => tool.Status === 'active').length
       return {
-        id: c.ID, name, source: 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status,
-        statusDot: gatewayStatusDot(c.Status), toolCount: tools.length,
+        id: c.ID, name, source: c.OAuthCredentialID ? `Vault · ${c.OAuthServer}` : 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
+        statusDot: gatewayStatusDot(c.Status), toolCount: c.Status === 'authentication_required' ? undefined : tools.length,
+        controls: c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
         toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${name}`,
-        tools: tools.map(tool => ({ id: tool.PublicName, name: tool.UpstreamName, description: tool.Description, schema: tool.InputSchema,
+        tools: c.Status === 'authentication_required' && tools.length === 0 ? undefined : tools.map(tool => ({ id: tool.PublicName, name: tool.UpstreamName, description: tool.Description, schema: tool.InputSchema,
           status: tool.Status === 'quarantined' ? 'Needs review' : tool.Status === 'active' ? 'Approved' : tool.Status === 'disabled' ? 'Disabled' : tool.Status,
           details: <GatewayToolReviewActions tool={tool} base={base} onApprove={onApprove} approving={approving === tool.PublicName} />,
         })),
@@ -204,7 +208,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
         ],
         settings: credentialFor === c.ID ? <McpCredentialSettings name={name} value={credentialValue} change={setCredentialValue} save={() => void onRotateCredential(c.ID)} busy={credentialBusy}
           close={() => { setCredentialFor(null); setCredentialValue('') }}
-          oauthControl={c.OAuthServer ? <OAuthStatusBadge scope="vault" serverName={c.OAuthServer} requiresOAuth connection="available" connectLabel="Sign in again" onAuthChange={valid => { if (valid) void onSync(c.ID) }} /> : undefined} /> : undefined,
+          oauthControl={c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in again" onAuthChange={valid => { if (valid) { if (c.OAuthCredentialID) bump(); else void onSync(c.ID) } }} /> : undefined} /> : undefined,
       }
     })
     const personal = !standalone && row.agentworks?.connection === 'connected' ? [{
@@ -219,10 +223,10 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     }] : []
     return [...central, ...personal]
   })
-  const catalog: McpCatalogRow[] = rows.filter(row => row.gateway.length === 0 && row.agentworks?.connection !== 'connected' && row.catalogMatch).map(row => ({
-    id: row.key, name: displayName(row), description: descriptionFor(displayName(row)), category: groupFor(displayName(row)), testId: `gateway-add-${row.key}`,
-    connect: { label: 'Connect', disabled: addingKey === row.key, run: () => onAddToGateway(row) },
-    connectControl: row.catalogMatch!.OAuth ? <OAuthStatusBadge scope="vault" serverName={row.catalogMatch!.Name} requiresOAuth connection="available" reuseAuthentication connectLabel="Connect with OAuth" readOnly={addingKey === row.key} onAuthChange={valid => { if (valid) void onAddToGateway(row) }} /> : undefined,
+  const catalog: McpCatalogRow[] = rows.filter(row => row.catalogMatch).map(row => ({
+    id: row.key, name: row.catalogMatch!.Name, description: descriptionFor(row.catalogMatch!.Name), category: groupFor(row.catalogMatch!.Name), testId: `gateway-add-${row.key}`,
+    connect: namingKey === row.key ? undefined : { label: 'Add connection', disabled: addingKey === row.key, run: () => setNamingKey(row.key) },
+    details: namingKey === row.key ? <McpNamedConnectionForm provider={row.catalogMatch!.Name} busy={addingKey === row.key} cancel={() => setNamingKey(null)} submit={name => onAddToGateway(row, name)} /> : undefined,
   }))
   return <McpConnectionsPanel servers={servers} catalog={catalog} view={view} loading={loading} refresh={bump} searchTestId="gateway-servers-search"
     notices={[

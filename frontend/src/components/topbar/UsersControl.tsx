@@ -6,17 +6,15 @@ import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 
 /**
- * UsersControl - top-bar icon for admins on a multi-user server: opens the
- * Users & access full page (add people by email, roles, products). Nothing
- * renders for anyone else, and the server refuses the admin routes to
- * non-admins anyway.
+ * Shared navigation entry for administrators in local and server installs.
+ * The directory API independently enforces administrator access.
  */
 export default function UsersControl() {
   const sidebar = useProductNavigationSidebar()
-  const { user, isMultiUserMode } = useAuthStore()
+  const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'users')
   const setAdminPage = useAppStore(state => state.setAdminPage)
-  if (!user || user.is_admin !== true || !isMultiUserMode) return null
+  if (!user || user.is_admin !== true) return null
   return (
     <Tooltip>
       <TooltipTrigger asChild>

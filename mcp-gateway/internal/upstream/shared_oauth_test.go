@@ -31,7 +31,7 @@ func TestSharedOAuthBrokerAndPerRequestCredentials(t *testing.T) {
 	seen := []string{}
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = append(seen, r.Header.Get("Authorization")) }))
 	defer target.Close()
-	client := safeHTTPClient(DialOptions{AllowPrivate: true, AccessToken: func(ctx context.Context) (string, error) { return resolve(ctx, "Test", "https://example.com/mcp") }})
+	client := safeHTTPClient(DialOptions{AllowPrivate: true, AccessToken: func(ctx context.Context) (string, error) { return resolve(ctx, "Test", "https://example.com/mcp", "") }})
 	for _, value := range []string{"first", "refreshed"} {
 		token = value
 		resp, err := client.Get(target.URL)
@@ -59,7 +59,7 @@ func TestSharedOAuthNeverForwardsServiceSecretThroughRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolve(context.Background(), "Test", "https://example.com/mcp"); err == nil || calls != 0 {
+	if _, err := resolve(context.Background(), "Test", "https://example.com/mcp", ""); err == nil || calls != 0 {
 		t.Fatal("redirect followed")
 	}
 	for _, url := range []string{"http://example.com", "https://user:secret@example.com", "https://example.com/path", "https://example.com?token=s"} {

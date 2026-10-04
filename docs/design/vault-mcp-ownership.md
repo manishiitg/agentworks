@@ -67,7 +67,7 @@ transport is stateless and accepts service authentication only; browser cookies
 cannot authenticate it.
 
 The gateway filters `tools/list` and rechecks group membership, active connector,
-approved schema, argument conditions and regex PII policy on `tools/call`.
+approved schema and argument conditions on `tools/call`.
 Connector scope prevents calling another connector even when the user has
 permissions for both. Removing a grant stops the next call on a warm connection.
 All calls retain the existing audit trail.

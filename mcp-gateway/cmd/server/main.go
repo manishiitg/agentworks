@@ -1,11 +1,6 @@
-// Command server runs the local-alpha MCP Gateway: one workspace's governed
-// remote MCP endpoint plus the admin API.
-//
-// M0 configuration is static: one workspace, one human, one upstream
-// connector, grants named by GATEWAY_GRANT_TOOLS (comma-separated upstream
-// tool names, granted after discovery). MCP clients sign in through the
-// shared OAuth authorization server; the local human approves consent with
-// GATEWAY_HUMAN_TOKEN until individual sign-in lands.
+// Command server runs the governed Vault policy service. Managed installations
+// use GATEWAY_AUTH_MODE=platform and expose MCP through the product's individual
+// OAuth endpoint. The direct local debugging mode retains static-human consent.
 package main
 
 import (
@@ -82,16 +77,14 @@ func validatePublicURL(raw, humanToken string) error {
 }
 
 func validateExposure(bind, publicURL string) error {
-	// This release has one static OAuth human and local governance. Keep
-	// the alpha on the same machine until individual MCP OAuth identity and
-	// production deployment requirements are implemented. This check cannot detect an independently configured
-	// reverse proxy, which operators must keep private.
+	// The service and its local debugging OAuth must stay private. Managed
+	// installations publish the product's SSO-bound /api/vault/mcp endpoint.
 	if !loopbackURL(publicURL) {
-		return errors.New("public Vault is unavailable until individual MCP sign-in and production deployment requirements are configured")
+		return errors.New("Vault service must stay private; publish the product /api/vault/mcp endpoint")
 	}
 	ip := net.ParseIP(bind)
 	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return errors.New("Vault alpha must bind to loopback")
+		return errors.New("Vault service must bind to loopback")
 	}
 	return nil
 }
@@ -140,6 +133,23 @@ func run() (runErr error) {
 		return err
 	}
 	humanToken := os.Getenv("GATEWAY_HUMAN_TOKEN")
+	if tokenFile := os.Getenv("GATEWAY_HUMAN_TOKEN_FILE"); tokenFile != "" {
+		data, err := os.ReadFile(tokenFile)
+		if err != nil {
+			return fmt.Errorf("read service credential: %w", err)
+		}
+		humanToken = strings.TrimSpace(string(data))
+	}
+	managed := os.Getenv("GATEWAY_AUTH_MODE") == "platform"
+	if mode := os.Getenv("GATEWAY_AUTH_MODE"); mode != "" && mode != "local" && mode != "platform" {
+		return errors.New("GATEWAY_AUTH_MODE must be local or platform")
+	}
+	if managed && strings.TrimSpace(os.Getenv("GATEWAY_PRODUCT_URL")) == "" {
+		return errors.New("platform mode requires GATEWAY_PRODUCT_URL")
+	}
+	if managed && (os.Getenv("GATEWAY_DEMO") != "" || strings.TrimSpace(os.Getenv("GATEWAY_GRANT_TOOLS")) != "") {
+		return errors.New("platform mode cannot seed static-user demo grants")
+	}
 	if humanToken == "" && loopbackURL(publicURL) {
 		var err error
 		humanToken, err = localAdminToken(stateDir)
@@ -186,7 +196,9 @@ func run() (runErr error) {
 	}
 	defer st.Close()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "m0"})
-	st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
+	if !managed {
+		st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
+	}
 	if err := st.EnsurePlatformGroup("w1"); err != nil {
 		return fmt.Errorf("initialize Platform group: %w", err)
 	}
@@ -225,8 +237,6 @@ func run() (runErr error) {
 		gw.SetSharedOAuth(resolve)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 	newInitialConnector := false
 	if upstreamURL != "" && upstreamURL != "none" {
 		if _, exists := st.GetConnector("c1"); !exists {
@@ -236,37 +246,6 @@ func run() (runErr error) {
 				Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
 			})
 		}
-	}
-	for _, c := range st.ListConnectors("w1") {
-		if c.Status != store.StatusActive {
-			continue
-		}
-		var reconnectErr error
-		if c.ID == "c1" && newInitialConnector {
-			reconnectErr = gw.AddConnector(ctx, c)
-		} else {
-			reconnectErr = gw.Resync(ctx, c)
-		}
-		if err := reconnectErr; err != nil {
-			// An unavailable upstream must not discard saved permissions.
-			log.Printf("gateway: could not reconnect %s: %v", c.ID, err)
-		}
-	}
-	if err := st.PersistenceError(); err != nil {
-		return err
-	}
-	for _, name := range grants {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		public := mcpserver.PublicName(provider, "", name)
-		if _, ok := st.GetTool(public); !ok {
-			log.Printf("gateway: grant target %q not discovered, skipping", name)
-			continue
-		}
-		st.AddGrant(store.Grant{UserID: human.ID, PublicName: public})
-		log.Printf("gateway: granted %s (tool still requires admin approval)", public)
 	}
 
 	adm := &admin.Admin{
@@ -280,9 +259,11 @@ func run() (runErr error) {
 		}
 		adm.SetupAgent = &setupagent.Agent{Endpoint: endpoint, APIKey: os.Getenv("CAPLAYER_AGENT_API_KEY"), Model: os.Getenv("CAPLAYER_AGENT_MODEL"), AvailableModels: strings.Split(os.Getenv("CAPLAYER_AGENT_MODELS"), ",")}
 	}
-	mux := gw.Handler()
+	mux := gatewayRoutes(gw, managed)
 	adm.APIRoutes(mux)
-	adm.UIRoutes(mux)
+	if !managed {
+		adm.UIRoutes(mux)
+	}
 	if staticDir := os.Getenv("CAPLAYER_STATIC_DIR"); staticDir != "" {
 		productAPI, err := productAPIBase(os.Getenv("CAPLAYER_PRODUCT_API_URL"))
 		if err != nil {
@@ -316,14 +297,63 @@ func run() (runErr error) {
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	srv := &http.Server{Addr: net.JoinHostPort(bind, port), Handler: admin.LocalhostCORS(mux)}
-	return serveUntilStopped(shutdownCtx, srv)
+	// Named OAuth credentials are resolved by the product, which rechecks the
+	// live connector through this listener. Reconnect only after routes serve.
+	return serveUntilStopped(shutdownCtx, srv, func(parent context.Context, _ string) error {
+		ctx, cancel := context.WithTimeout(parent, 120*time.Second)
+		defer cancel()
+		for _, c := range st.ListConnectors("w1") {
+			if c.Status != store.StatusActive {
+				continue
+			}
+			var reconnectErr error
+			if c.ID == "c1" && newInitialConnector {
+				reconnectErr = gw.AddConnector(ctx, c)
+			} else {
+				reconnectErr = gw.Resync(ctx, c)
+			}
+			if err := reconnectErr; err != nil {
+				// An unavailable upstream must not discard saved permissions.
+				log.Printf("gateway: could not reconnect %s: %v", c.ID, err)
+			}
+		}
+		if err := st.PersistenceError(); err != nil {
+			return err
+		}
+		for _, name := range grants {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			public := mcpserver.PublicName(provider, "", name)
+			if _, ok := st.GetTool(public); !ok {
+				log.Printf("gateway: grant target %q not discovered, skipping", name)
+				continue
+			}
+			st.AddGrant(store.Grant{UserID: human.ID, PublicName: public})
+			log.Printf("gateway: granted %s (tool still requires admin approval)", public)
+		}
+
+		return st.PersistenceError()
+	})
 }
 
 // Stop accepting calls, finish in-flight handlers, then let run's defer drain
 // audit writes. SIGKILL/power loss can still lose uncommitted async events.
-func serveUntilStopped(ctx context.Context, srv *http.Server) error {
+func serveUntilStopped(ctx context.Context, srv *http.Server, ready ...func(context.Context, string) error) error {
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
 	done := make(chan error, 1)
-	go func() { done <- srv.ListenAndServe() }()
+	go func() { done <- srv.Serve(listener) }()
+	for _, initialize := range ready {
+		if err := initialize(ctx, listener.Addr().String()); err != nil {
+			_ = srv.Close()
+			<-done
+			return err
+		}
+	}
 	select {
 	case err := <-done:
 		if errors.Is(err, http.ErrServerClosed) {
@@ -385,4 +415,15 @@ func gatewayConfigurationPaths(stateDir string) (string, string) {
 		path = filepath.Join(root, "db", "gateway.sqlite")
 	}
 	return path, filepath.Join(stateDir, "gateway.sqlite.key")
+}
+
+// A managed service never exposes the static-human OAuth or token-entry UI.
+// Public clients connect through the platform's SSO-bound /api/vault/mcp.
+func gatewayRoutes(gw *mcpserver.Gateway, managed bool) *http.ServeMux {
+	if !managed {
+		return gw.Handler()
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	return mux
 }

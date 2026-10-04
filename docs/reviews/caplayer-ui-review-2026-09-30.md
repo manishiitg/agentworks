@@ -1,3 +1,10 @@
+> Historical review: PII was removed on 2026-10-04. Its findings and test results below describe the earlier implementation, not the current release.
+
+> Updated scope, 2026-10-04: audit storage is SQLite-only for the local/server MVP,
+> with collection-off mode. ClickHouse references in earlier review records are
+> superseded; ClickHouse is deferred until after the MVP release.
+
+
 # CapLayer UI review — 2026-09-30
 
 Current behavior and remaining limits: [Vault implementation status](../design/vault-current-state.md), updated 2026-10-03. Entries below are chronological; later fixes supersede earlier findings.

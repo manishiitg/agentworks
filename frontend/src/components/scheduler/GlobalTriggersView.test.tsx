@@ -55,6 +55,21 @@ describe('global triggers overview', () => {
     } finally { await act(async () => root.unmount()) }
   })
 
+  it.each(['workflow', 'relay'] as const)('requests triggers only for the selected %s product', async (workflowKind) => {
+    mocks.listWorkflows.mockResolvedValue({ workflows: [
+      { workspace_path: '/workflows/alpha', manifest: { id: 'alpha', label: 'Alpha' } },
+      { workspace_path: '/relays/inbox', manifest: { id: 'inbox', label: 'Inbox', kind: 'relay' } },
+    ] })
+    const host = document.createElement('div'); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<GlobalTriggersView kind="workflow" workflowKind={workflowKind} onOpen={() => {}} />))
+      expect(mocks.listWorkflowTriggers).toHaveBeenCalledTimes(1)
+      expect(mocks.listWorkflowTriggers).toHaveBeenCalledWith(workflowKind === 'relay' ? '/relays/inbox' : '/workflows/alpha')
+      expect(host.textContent).toContain(workflowKind === 'relay' ? 'Inbox' : 'Alpha')
+      expect(host.textContent).not.toContain(workflowKind === 'relay' ? 'Alpha' : 'Inbox')
+    } finally { await act(async () => root.unmount()) }
+  })
+
   it('loads Crew triggers from owned projects', async () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

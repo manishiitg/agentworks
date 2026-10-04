@@ -8,22 +8,53 @@ import (
 	"strings"
 )
 
+// Exact connection IDs always win. Provider aliases are accepted only when
+// they identify one account, so runtime and management never guess an account.
 func privateMCPByCatalog(person, name string) (placeMCPServer, bool) {
-	servers, _ := listPlaceMCPServers(person)
+	saved, found, _ := lookupPrivateMCP(person, name)
+	return saved, found
+}
+
+func lookupPrivateMCP(person, name string) (placeMCPServer, bool, error) {
+	servers, err := listPlaceMCPServers(person)
+	if err != nil {
+		return placeMCPServer{}, false, err
+	}
 	for _, s := range servers {
-		if strings.EqualFold(s.Name, name) || strings.EqualFold(s.Catalog, name) {
-			return s, true
+		if strings.EqualFold(s.Name, name) {
+			return s, true, nil
 		}
 	}
-	return placeMCPServer{}, false
+	var match placeMCPServer
+	count := 0
+	for _, s := range servers {
+		if name != "" && strings.EqualFold(s.Catalog, name) {
+			match = s
+			count++
+		}
+	}
+	if count > 1 {
+		return placeMCPServer{}, false, fmt.Errorf("multiple accounts for %q; use the exact connection name returned by list_mcp_servers", name)
+	}
+	return match, count == 1, nil
 }
+
 func (api *StreamingAPI) startPrivateOAuth(w http.ResponseWriter, r *http.Request, req OAuthLoginRequest) {
 	person := mcpCaller(r.Context())
 	if !activeMCPPerson(person) {
 		writeUsersError(w, 401, "sign in first")
 		return
 	}
-	saved, found := privateMCPByCatalog(person, req.ServerName)
+	sessionID, sessionErr := api.oauthNotificationSession(r, req.SessionID)
+	if sessionErr != nil {
+		writeUsersError(w, http.StatusForbidden, "chat session not found or access denied")
+		return
+	}
+	saved, found, lookupErr := lookupPrivateMCP(person, req.ServerName)
+	if lookupErr != nil {
+		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
+		return
+	}
 	if !found {
 		var status int
 		var err error
@@ -37,7 +68,7 @@ func (api *StreamingAPI) startPrivateOAuth(w http.ResponseWriter, r *http.Reques
 	if req.ClientID != "" {
 		entered = &registeredClient{ClientID: req.ClientID, ClientSecret: req.ClientSecret}
 	}
-	authURL, discovery, status, err := api.startPlaceMCPSignIn(person, saved.Name, deriveOAuthRedirectURI(r), entered)
+	authURL, discovery, status, err := api.startPlaceMCPSignIn(person, saved.Name, deriveOAuthRedirectURI(r), sessionID, entered)
 	if err != nil {
 		writeUsersError(w, status, err.Error())
 		return
@@ -64,7 +95,11 @@ func (api *StreamingAPI) connectPrivateCatalog(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, 401, "sign in first")
 		return
 	}
-	saved, found := privateMCPByCatalog(person, req.ServerName)
+	saved, found, lookupErr := lookupPrivateMCP(person, req.ServerName)
+	if lookupErr != nil {
+		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
+		return
+	}
 	if !found {
 		var status int
 		var err error
@@ -95,7 +130,11 @@ func (api *StreamingAPI) connectPrivateCatalog(w http.ResponseWriter, r *http.Re
 }
 func disconnectPrivateCatalog(w http.ResponseWriter, r *http.Request, name string) {
 	person := mcpCaller(r.Context())
-	saved, found := privateMCPByCatalog(person, name)
+	saved, found, lookupErr := lookupPrivateMCP(person, name)
+	if lookupErr != nil {
+		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
+		return
+	}
 	if found {
 		if err := forgetPlaceMCPLogin(person, saved.Name); err != nil {
 			writeUsersError(w, 500, "could not clear private sign-in")
@@ -113,7 +152,7 @@ func disconnectPrivateCatalog(w http.ResponseWriter, r *http.Request, name strin
 // The legacy platform namespace is now a Vault credential store only. An
 // explicit scope plus central admin permission is required to manage it.
 func vaultOAuthScope(w http.ResponseWriter, r *http.Request, scope string) bool {
-	if scope == "vault" && currentUserIsAdmin(r) {
+	if scope == "vault" && currentUserIsAdmin(r) && userAllowedProduct(GetUserFromContext(r.Context()), "mcp-gateway") {
 		return true
 	}
 	writeUsersError(w, 403, fmt.Sprintf("invalid MCP scope %q; Vault sign-in requires an administrator", scope))

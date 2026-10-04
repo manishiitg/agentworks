@@ -10,7 +10,8 @@ export function openProductWorkspace(surface: ProductSurface) {
   useLLMStore.getState().setShowLLMModal(false)
   app.setShowSchedulesOverview(false)
   app.setAdminPage(null)
-  app.setShowWorkflowsOverview(surface === 'agentworks')
+  app.setShowWorkflowsOverview(false)
+  app.setActivityWorkflowPath(null)
   if (surface === 'agentworks' || surface === 'relays') {
     const presets = useGlobalPresetStore.getState()
     const activePreset = presets.getActivePreset('workflow')

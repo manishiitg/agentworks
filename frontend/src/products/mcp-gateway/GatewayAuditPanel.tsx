@@ -118,7 +118,7 @@ export function GatewayAuditPanel({ base, tab = 'logs' }: { base: string; tab?: 
       {error && <ConsoleStale message={error} onRetry={bump} />}
       {data.settings && <div className="text-xs text-muted-foreground" role="status">
         {data.settings.enabled
-          ? `${data.settings.provider === 'sqlite' ? 'SQLite' : data.settings.provider === 'clickhouse' ? 'ClickHouse' : 'Memory'}${data.settings.write_mode === 'async' ? ' · Async' : ''}${data.settings.retention_seconds ? ` · ${data.settings.retention_seconds / 3600}h retention` : ''}`
+          ? `${data.settings.provider === 'sqlite' ? 'SQLite' : 'Memory'}${data.settings.write_mode === 'async' ? ' · Async' : ''}${data.settings.retention_seconds ? ` · ${data.settings.retention_seconds / 3600}h retention` : ''}`
           : 'Auditing is off. New calls are not recorded.'}
       </div>}
       {data.settings?.enabled && data.settings.write_healthy === false && <p role="alert" className="text-xs text-destructive">Audit writes are delayed; queued events are awaiting retry.</p>}

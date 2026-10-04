@@ -1,18 +1,11 @@
 package store
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -26,12 +19,22 @@ func TestAuditProviderDefaultsAndOff(t *testing.T) {
 	}
 	dir := t.TempDir()
 	o, err := AuditOptionsFromEnv(dir)
-	if err != nil || o.Provider != "clickhouse" || o.WriteMode != "durable" {
+	if err != nil || o.Provider != "sqlite" || o.WriteMode != "durable" || o.Retention != 24*time.Hour {
 		t.Fatalf("server default: %+v %v", o, err)
 	}
-	if _, err = OpenAuditBackend(o); err == nil {
-		t.Fatal("missing ClickHouse silently accepted")
+	backend, err := OpenAuditBackend(o)
+	if err != nil {
+		t.Fatal(err)
 	}
+	backend.Close()
+	t.Setenv("VAULT_AUDIT_PROVIDER", "clickhouse")
+	if _, err = AuditOptionsFromEnv(dir); err == nil {
+		t.Fatal("deferred audit provider accepted")
+	}
+	if _, err = OpenAuditBackend(AuditOptions{Provider: "clickhouse", StateDir: dir}); err == nil {
+		t.Fatal("deferred audit backend accepted")
+	}
+	t.Setenv("VAULT_AUDIT_PROVIDER", "")
 	t.Setenv("LOCAL_MODE", "true")
 	o, err = AuditOptionsFromEnv(dir)
 	if err != nil || o.Provider != "sqlite" || o.Retention != 24*time.Hour {
@@ -43,6 +46,7 @@ func TestAuditProviderDefaultsAndOff(t *testing.T) {
 	}
 	t.Setenv("VAULT_AUDIT_RETENTION", "")
 	t.Setenv("VAULT_AUDIT_PROVIDER", "off")
+	dir = t.TempDir() // Off must not create a database in a fresh state directory.
 	o, err = AuditOptionsFromEnv(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -171,141 +175,5 @@ func TestSQLiteAuditConcurrentDurableWritesAndReplay(t *testing.T) {
 	s, err := a.Summary(ctx, AuditFilter{WorkspaceID: "w"})
 	if err != nil || s.Total != 128 {
 		t.Fatalf("concurrency/replay: %+v %v", s, err)
-	}
-}
-func TestClickHouseAuditQueuePersistsFailedDelivery(t *testing.T) {
-	var failing atomic.Bool
-	failing.Store(true)
-	var inserts atomic.Int32
-	var mu sync.Mutex
-	var bodies []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-ClickHouse-Key") != "private-test-key" || r.URL.Query().Get("password") != "" {
-			t.Error("credentials not restricted to headers")
-		}
-		if strings.HasPrefix(r.URL.Query().Get("query"), "INSERT") {
-			inserts.Add(1)
-			raw, _ := io.ReadAll(r.Body)
-			mu.Lock()
-			bodies = append(bodies, string(raw))
-			mu.Unlock()
-			if failing.Load() {
-				http.Error(w, "failure with secret details", 500)
-				return
-			}
-			return
-		}
-		raw, _ := io.ReadAll(r.Body)
-		q := string(raw)
-		if strings.HasPrefix(q, "SELECT Event") {
-			if !strings.Contains(q, " FINAL") || r.URL.Query().Get("param_workspace") != "w' OR 1=1 --" || strings.Contains(q, "w' OR") {
-				t.Error("query lost deduplication or parameterization")
-			}
-			json.NewEncoder(w).Encode(map[string]string{"Event": string(mustAuditJSON(t, auditTestEvent("a", "w")))})
-		}
-	}))
-	defer server.Close()
-	opts := AuditOptions{Provider: "clickhouse", StateDir: t.TempDir(), Retention: 30 * 24 * time.Hour, MaxBytes: 16 << 20, ClickHouseURL: server.URL, ClickHousePassword: "private-test-key"}
-	a, err := openClickHouseAudit(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	e := auditTestEvent("a", "w")
-	if err = a.Append(ctx, e); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = a.flush(ctx); err == nil || strings.Contains(err.Error(), "secret details") {
-		t.Fatal("failure or sensitive response mishandled")
-	}
-	if err = a.Close(); err != nil {
-		t.Fatal(err)
-	}
-	a, err = openClickHouseAudit(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer a.Close()
-	pending, err := a.spool.pending(ctx, 100)
-	if err != nil || len(pending) != 1 || pending[0].ID != "a" {
-		t.Fatal("delivery failure lost queued event")
-	}
-	failing.Store(false)
-	if _, err = a.flush(ctx); err != nil {
-		t.Fatal(err)
-	}
-	pending, err = a.spool.pending(ctx, 100)
-	if err != nil || len(pending) != 0 {
-		t.Fatal("acknowledged event stayed queued")
-	}
-	rows, err := a.Query(ctx, AuditFilter{WorkspaceID: "w' OR 1=1 --", Limit: 1})
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("read: %+v %v", rows, err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if inserts.Load() != 2 || len(bodies) != 2 || !bytes.Equal([]byte(bodies[0]), []byte(bodies[1])) {
-		t.Fatal("replay changed event")
-	}
-}
-func mustAuditJSON(t *testing.T, e AuditEvent) []byte {
-	t.Helper()
-	b, err := json.Marshal(e)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-// Opt-in test against a disposable ClickHouse instance, never a production DB.
-func TestClickHouseAuditLive(t *testing.T) {
-	endpoint := os.Getenv("VAULT_TEST_CLICKHOUSE_URL")
-	if endpoint == "" {
-		t.Skip("no disposable ClickHouse instance")
-	}
-	a, err := openClickHouseAudit(AuditOptions{Provider: "clickhouse", StateDir: t.TempDir(), Retention: 30 * 24 * time.Hour, MaxBytes: 16 << 20, ClickHouseURL: endpoint, ClickHouseUser: "default", ClickHousePassword: os.Getenv("VAULT_TEST_CLICKHOUSE_PASSWORD")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer a.Close()
-	ctx := context.Background()
-	workspace := fmt.Sprintf("live-audit-%d", time.Now().UnixNano())
-	first := auditTestEvent("allowed", workspace)
-	first.UserID = "alice' OR 1=1 --"
-	second := auditTestEvent("denied", workspace)
-	second.Decision = DecisionDeny
-	second.Outcome = OutcomeDenied
-	second.DurationMs = 20
-	old := auditTestEvent("expired", workspace)
-	old.Timestamp = time.Now().Add(-31 * 24 * time.Hour)
-	for _, e := range []AuditEvent{first, second, old} {
-		if err = a.Append(ctx, e); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err = a.flush(ctx); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := a.Query(ctx, AuditFilter{WorkspaceID: workspace, GroupID: "g", UserID: first.UserID, PublicName: "READ", Limit: 1})
-	if err != nil || len(rows) != 1 || rows[0].ID != first.ID {
-		t.Fatalf("live filters: %+v %v", rows, err)
-	}
-	summary, err := a.Summary(ctx, AuditFilter{WorkspaceID: workspace})
-	if err != nil || summary.Total != 2 || summary.Allowed != 1 || summary.Denied != 1 || summary.AvgDurationMs != 15 {
-		t.Fatalf("live summary: %+v %v", summary, err)
-	}
-	// Retry the exact event after ingestion: FINAL must remove duplicate counts.
-	if err = a.Append(ctx, first); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = a.flush(ctx); err != nil {
-		t.Fatal(err)
-	}
-	summary, err = a.Summary(ctx, AuditFilter{WorkspaceID: workspace})
-	if err != nil || summary.Total != 2 {
-		t.Fatalf("live replay duplicated usage: %+v %v", summary, err)
-	}
-	if len(summary.ByTool) != 1 || summary.ByTool[0].Count != 2 || len(summary.ByDay) != 1 {
-		t.Fatal("live buckets wrong")
 	}
 }

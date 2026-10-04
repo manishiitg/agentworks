@@ -2,8 +2,8 @@ package store
 
 import (
 	"bytes"
+	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,7 +27,6 @@ func TestSQLiteConfigurationSurvivesRestart(t *testing.T) {
 	s.AddGroupServerGrant("g", "c")
 	s.AddGrant(Grant{UserID: "u", PublicName: tool.PublicName})
 	s.AddAPIKey(APIKey{ID: "key", GroupID: "g", Token: "group-api-secret"})
-	s.PutPIIRule(pii.Rule{ID: "pii", WorkspaceID: "w"})
 	p, _ := s.SavePackageDraft(access.Package{ID: "p", WorkspaceID: "w", GroupID: "g", Name: "Restricted", Rules: []access.ToolRule{{PublicName: tool.PublicName, Fingerprint: tool.Fingerprint}}}, 0)
 	s.PublishPackage("w", p.ID, p.Version)
 	draft, _ := s.SavePackageDraft(p, p.Version)
@@ -56,8 +55,8 @@ func TestSQLiteConfigurationSurvivesRestart(t *testing.T) {
 	if restored.ApprovedFingerprint != "f1" {
 		t.Fatal("tool approval lost")
 	}
-	if len(s.ListPIIRules("w")) != 1 || len(s.ListPolicyEvents("w")) != 1 {
-		t.Fatal("PII or policy history lost")
+	if len(s.ListPolicyEvents("w")) != 1 {
+		t.Fatal("policy history lost")
 	}
 	got, ok := s.GetPackageDraft("w", "p")
 	if !ok || got.Version != draft.Version {
@@ -176,5 +175,64 @@ func TestSQLiteRelocationKeepsConfigurationAndKeyOutsideChat(t *testing.T) {
 	}
 	if _, err := os.Stat(newPath + ".key"); !os.IsNotExist(err) {
 		t.Fatal("private key copied into chat")
+	}
+}
+
+// Old snapshots may contain removed fields. They must still restore identities,
+// permissions and credentials and omit those fields on the next saved mutation.
+func TestSQLiteLoadsLegacySnapshotAfterFeatureRemoval(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.sqlite")
+	s, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AddWorkspace(Workspace{ID: "w"})
+	s.AddUser(User{ID: "u", WorkspaceID: "w"})
+	s.AddGroup(Group{ID: "g", WorkspaceID: "w", Name: "Readers"})
+	s.AddMember("g", "u")
+	s.AddConnector(Connector{ID: "c", WorkspaceID: "w", Status: StatusActive})
+	s.SetConnectorBearer("c", "fixture-credential")
+	s.AddGroupGrant(GroupGrant{GroupID: "g", PublicName: "memory__read"})
+	data, err := json.Marshal(s.durableState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy map[string]any
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	legacy["PII"] = map[string]any{"old-rule": map[string]any{"ID": "old-rule", "WorkspaceID": "w", "DataType": "email", "Action": "block"}}
+	data, err = json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := s.persistence.seal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.persistence.db.Exec("UPDATE gateway_configuration SET payload=? WHERE id=1", sealed); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !s.GroupHasTool("g", "memory__read") || len(s.MembersOf("g")) != 1 || s.ConnectorBearer("c") != "fixture-credential" {
+		t.Fatal("legacy migration lost active configuration")
+	}
+	s.AddGroup(Group{ID: "other", WorkspaceID: "w", Name: "Other"})
+	if err := s.PersistenceError(); err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(s.persistence.saved, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := saved["PII"]; exists {
+		t.Fatal("removed feature configuration was saved again")
 	}
 }

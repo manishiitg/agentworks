@@ -4,7 +4,6 @@ package mcpserver
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,7 +19,6 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/policy"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
@@ -51,7 +49,7 @@ type Gateway struct {
 	oauth           *mcpoauth.Server
 	mcp             *server.MCPServer
 	upstreamOptions upstream.DialOptions
-	sharedOAuth     func(context.Context, string, string) (string, error)
+	sharedOAuth     func(context.Context, string, string, string) (string, error)
 	schemas         sync.Map // approved fingerprint -> compiled input schema
 }
 
@@ -191,7 +189,7 @@ func (g *Gateway) ValidateUpstreamURL(raw string) error {
 
 // The host owns authorization, encrypted storage and refresh. The gateway
 // binds the shared identity to this connector's exact upstream URL.
-func (g *Gateway) SetSharedOAuth(resolve func(context.Context, string, string) (string, error)) {
+func (g *Gateway) SetSharedOAuth(resolve func(context.Context, string, string, string) (string, error)) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.sharedOAuth = resolve
@@ -214,7 +212,9 @@ func (g *Gateway) connectorOptions(c store.Connector) (upstream.DialOptions, err
 			return opts, fmt.Errorf("shared OAuth service is not configured")
 		}
 		opts.BearerToken = ""
-		opts.AccessToken = func(ctx context.Context) (string, error) { return resolve(ctx, c.OAuthServer, c.UpstreamURL) }
+		opts.AccessToken = func(ctx context.Context) (string, error) {
+			return resolve(ctx, c.OAuthServer, c.UpstreamURL, c.OAuthCredentialID)
+		}
 	}
 	return opts, nil
 }
@@ -301,10 +301,21 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 	defer g.lockConnector(c.ID)()
 	current, ok := g.store.GetConnector(c.ID)
-	if !ok || current.Status != store.StatusActive || current.WorkspaceID != c.WorkspaceID {
+	if !ok || (current.Status != store.StatusActive && current.Status != store.StatusAuthRequired) || current.WorkspaceID != c.WorkspaceID {
 		return fmt.Errorf("connector %s is no longer active", c.ID)
 	}
 	c = current
+	// OAuth reauthorization may change accounts. Never retain the previous
+	// account's MCP session when discovering tools for the replacement.
+	if c.OAuthCredentialID != "" {
+		g.mu.Lock()
+		old := g.upstreams[c.ID]
+		delete(g.upstreams, c.ID)
+		g.mu.Unlock()
+		if old != nil {
+			old.Close()
+		}
+	}
 	if _, ok := g.upstreamFor(c.ID); !ok {
 		opts, err := g.connectorOptions(c)
 		if err != nil {
@@ -318,7 +329,31 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 		g.upstreams[c.ID] = up
 		g.mu.Unlock()
 	}
-	return g.syncConnector(ctx, c, false)
+	initial := c.Status == store.StatusAuthRequired && len(g.store.ListToolsForConnector(c.ID)) == 0
+	if err := g.syncConnector(ctx, c, initial); err != nil {
+		return err
+	}
+	c.Status = store.StatusActive
+	g.store.AddConnector(c)
+	return nil
+}
+
+// SuspendOAuth preserves grants while preventing calls and dropping the session.
+func (g *Gateway) SuspendOAuth(c store.Connector) {
+	defer g.lockConnector(c.ID)()
+	current, ok := g.store.GetConnector(c.ID)
+	if !ok || current.OAuthCredentialID == "" {
+		return
+	}
+	current.Status = store.StatusAuthRequired
+	g.store.AddConnector(current)
+	g.mu.Lock()
+	up := g.upstreams[c.ID]
+	delete(g.upstreams, c.ID)
+	g.mu.Unlock()
+	if up != nil {
+		up.Close()
+	}
 }
 
 // ReplaceConnectorCredentials atomically swaps a tested new upstream session.
@@ -413,25 +448,6 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if id.ViaGroup != "" {
 		groups = []string{id.ViaGroup}
 	}
-	queueReview := func(direction string, payload any, found pii.Decision) (approved, queued bool) {
-		encoded, err := json.Marshal(payload)
-		if err != nil {
-			return false, false
-		}
-		hash := sha256.Sum256(append([]byte(id.WorkspaceID+"\x00"+id.UserID+"\x00"+snap.PublicName+"\x00"+direction+"\x00"), encoded...))
-		key := hex.EncodeToString(hash[:])
-		if g.store.ConsumePIIReview(id.WorkspaceID, id.UserID, snap.PublicName, direction, key) {
-			return true, false
-		}
-		queued = g.store.AddPIIReview(store.PIIReview{
-			ID: callID, WorkspaceID: id.WorkspaceID, UserID: id.UserID,
-			ConnectorID: snap.ConnectorID, PublicName: snap.PublicName,
-			Direction: direction, PayloadHash: key, DataTypes: found.DataTypes,
-			Status: "pending", CreatedAt: start.UTC(),
-		})
-		return false, queued
-	}
-
 	deny := func(err error) (*mcp.CallToolResult, error) {
 		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
@@ -472,34 +488,6 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if err := policy.AuthorizeArguments(g.store, id, current, args); err != nil {
 		return deny(err)
 	}
-	rules := g.store.ListPIIRules(id.WorkspaceID)
-	scope := pii.Scope{WorkspaceID: id.WorkspaceID, GroupIDs: groups, ConnectorID: snap.ConnectorID, PublicName: snap.PublicName, Direction: pii.Input}
-	inspectedArgs, inputDecision, scanErr := pii.ScanJSON(args, scope, rules)
-	inputReviewApproved, inputReviewQueued := false, false
-	if inputDecision.Action == pii.Review {
-		inputReviewApproved, inputReviewQueued = queueReview(pii.Input, args, inputDecision)
-	}
-	if scanErr != nil || inputDecision.Action == pii.Block || (inputDecision.Action == pii.Review && !inputReviewApproved) {
-		action := inputDecision.Action
-		if scanErr != nil {
-			action = pii.Block
-		}
-		appendAudit(store.AuditEvent{
-			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
-			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
-			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
-			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
-			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: inputDecision.DataTypes,
-		})
-		if action == pii.Review {
-			if !inputReviewQueued {
-				return nil, fmt.Errorf("input blocked: admin review capacity reached (call %s)", callID)
-			}
-			return nil, fmt.Errorf("input requires admin review; retry after approval (call %s)", callID)
-		}
-		return nil, fmt.Errorf("input blocked by PII policy (call %s)", callID)
-	}
-	args = inspectedArgs.(map[string]any)
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	res, err := up.Call(callCtx, snap.UpstreamName, args)
@@ -515,22 +503,6 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		})
 		return nil, fmt.Errorf("upstream call failed (call %s)", callID)
 	}
-	scope.Direction = pii.Output
-	outputDecision, scanErr := inspectResult(res, scope, rules)
-	if scanErr != nil || outputDecision.Action == pii.Block || outputDecision.Action == pii.Review {
-		action := outputDecision.Action
-		if scanErr != nil || action == pii.Review {
-			action = pii.Block
-		}
-		appendAudit(store.AuditEvent{
-			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
-			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
-			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
-			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
-			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: outputDecision.DataTypes,
-		})
-		return nil, fmt.Errorf("output blocked by PII policy (call %s)", callID)
-	}
 	outcome, auditError := store.OutcomeOK, ""
 	if res != nil && res.IsError {
 		outcome, auditError = store.OutcomeUpstreamError, "upstream tool reported error"
@@ -542,68 +514,9 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		ConnectorID: snap.ConnectorID,
 		PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
 		Decision: store.DecisionAllow, Outcome: outcome, ErrorText: auditError,
-		DurationMs:   time.Since(start).Milliseconds(),
-		PIIAction:    combinedPIIAction(inputDecision.Action, outputDecision.Action),
-		PIIDataTypes: append(inputDecision.DataTypes, outputDecision.DataTypes...),
+		DurationMs: time.Since(start).Milliseconds(),
 	})
 	return res, nil
-}
-
-func combinedPIIAction(first, second string) string {
-	if first == pii.Review || second == pii.Review {
-		return pii.Review
-	}
-	if first == pii.Mask || second == pii.Mask {
-		return pii.Mask
-	}
-	return pii.Allow
-}
-
-// inspectResult modifies only inspectable text/JSON. Opaque content is denied
-// because regex inspection cannot establish what it contains.
-func inspectResult(res *mcp.CallToolResult, scope pii.Scope, rules []pii.Rule) (pii.Decision, error) {
-	encoded, err := json.Marshal(res)
-	if err != nil || len(encoded) > pii.MaxPayloadBytes {
-		return pii.Decision{Action: pii.Block}, pii.ErrPayloadTooLarge
-	}
-	decision := pii.Decision{Action: pii.Allow}
-	merge := func(found pii.Decision) {
-		if found.Action == pii.Block || (found.Action == pii.Review && decision.Action != pii.Block) {
-			decision.Action = found.Action
-		} else if found.Action == pii.Mask && decision.Action == pii.Allow {
-			decision.Action = pii.Mask
-		}
-		decision.MatchCount += found.MatchCount
-		decision.DataTypes = append(decision.DataTypes, found.DataTypes...)
-	}
-	for index, item := range res.Content {
-		var textContent mcp.TextContent
-		switch content := item.(type) {
-		case mcp.TextContent:
-			textContent = content
-		case *mcp.TextContent:
-			textContent = *content
-		default:
-			return pii.Decision{Action: pii.Block}, fmt.Errorf("opaque MCP result content cannot be inspected")
-		}
-		masked, found, err := pii.ScanText(textContent.Text, scope, rules)
-		if err != nil {
-			return pii.Decision{Action: pii.Block}, err
-		}
-		merge(found)
-		textContent.Text = masked
-		res.Content[index] = textContent
-	}
-	if res.StructuredContent != nil {
-		masked, found, err := pii.ScanJSON(res.StructuredContent, scope, rules)
-		if err != nil {
-			return pii.Decision{Action: pii.Block}, err
-		}
-		merge(found)
-		res.StructuredContent = masked
-		res.RawStructuredContent = nil
-	}
-	return decision, nil
 }
 
 // OAuth endpoint paths for this deployment.
@@ -795,7 +708,16 @@ func outputSchemaBytes(t mcp.Tool) []byte {
 type connectorKey struct{}
 
 func (g *Gateway) ProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
-	transport := server.NewStreamableHTTPServer(g.mcp, server.WithEndpointPath("/api/admin/runtime/mcp"), server.WithStateLess(true),
+	return g.productHandler("/api/admin/runtime/mcp", identity)
+}
+
+// ExternalProductHandler exposes all permitted connectors for a verified platform OAuth user.
+func (g *Gateway) ExternalProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
+	return g.productHandler("/api/admin/runtime/external-mcp", identity)
+}
+
+func (g *Gateway) productHandler(path string, identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
+	transport := server.NewStreamableHTTPServer(g.mcp, server.WithEndpointPath(path), server.WithStateLess(true),
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context { return r.Context() }))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, connector, ok := identity(r)
@@ -804,7 +726,9 @@ func (g *Gateway) ProductHandler(identity func(*http.Request) (auth.Identity, st
 			return
 		}
 		ctx := auth.WithIdentity(r.Context(), id)
-		ctx = context.WithValue(ctx, connectorKey{}, connector)
+		if connector != "" {
+			ctx = context.WithValue(ctx, connectorKey{}, connector)
+		}
 		transport.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

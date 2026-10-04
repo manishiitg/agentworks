@@ -421,3 +421,48 @@ func TestPrivateMCPBuiltinsAndForeignNamesNeverContactVault(t *testing.T) {
 		t.Fatal("unnecessary Vault request delays private/builtin-only agents")
 	}
 }
+
+func TestVaultInventoryAndBuilderShareCallerGroupsAndSecretNames(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-CapLayer-Actor") != "alice" {
+			t.Error("caller identity changed")
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"servers": []any{map[string]any{"id": "c", "label": "Notion", "tools": []any{map[string]any{"name": "notion__read"}}}},
+			"groups":  []any{map[string]any{"id": "eng", "name": "Engineering", "servers": []any{map[string]any{"id": "c", "label": "Notion"}}, "secrets": []any{map[string]any{"name": "TEAM_KEY"}}}},
+			"secrets": []any{map[string]any{"name": "TEAM_KEY", "value": "must-not-leak", "encrypted_value": "also-must-not-leak"}},
+		})
+	}))
+	defer upstream.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", upstream.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	api := &StreamingAPI{}
+	ctx := personContext("alice")
+	r := httptest.NewRequest("GET", "/api/me/mcp/vault?user=bob", nil).WithContext(ctx)
+	r.Header.Set("X-CapLayer-Actor", "bob")
+	w := httptest.NewRecorder()
+	api.handleMyVaultServers(w, r)
+	builder, err := api.privateMCPTool(ctx, "alice", "list_mcp_servers", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := api.placeMCPToolList(ctx, "alice", "Chats/Code/projects/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, out := range []string{w.Body.String(), builder, code} {
+		for _, want := range []string{"Engineering", "TEAM_KEY", "vault_c"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %s: %s", want, out)
+			}
+		}
+		for _, deny := range []string{"must-not-leak", "encrypted_value"} {
+			if strings.Contains(out, deny) {
+				t.Fatalf("leaked value metadata: %s", out)
+			}
+		}
+	}
+}

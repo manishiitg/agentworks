@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const auth = vi.hoisted(() => ({ allowed: null as string[] | null }))
-const app = vi.hoisted(() => ({ setModeCategory: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: vi.fn(), setAdminPage: vi.fn() }))
+const app = vi.hoisted(() => ({ setModeCategory: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: vi.fn(), setAdminPage: vi.fn(), setActivityWorkflowPath: vi.fn() }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ user: { allowed_products: auth.allowed } }) }))
 vi.mock('../stores/useLLMStore', () => ({ useLLMStore: { getState: () => ({ setShowLLMModal: vi.fn() }) } }))
 vi.mock('../stores/useAppStore', () => ({ useAppStore: { getState: () => app } }))
@@ -23,30 +23,48 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete window.__APP_RUNTIME_CONFIG__; vi.clearAllMocks() })
 afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
-describe('direct product navigation', () => {
-  it('shows permitted products directly and switches without opening a menu', async () => {
+describe('collapsible product navigation', () => {
+  it('shows the current icon and reveals permitted products on hover', async () => {
     await render()
-    const buttons = Array.from(host.querySelectorAll('button'))
-    expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Code', 'Vault'])
-    expect(host.querySelector('[role="menu"]')).toBeNull()
-    expect(host.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe('Crew')
-    await act(async () => buttons.find(b => b.getAttribute('aria-label') === 'Code')!.click())
+    expect(host.querySelectorAll('button').length).toBe(1)
+    const trigger = host.querySelector<HTMLButtonElement>('button')!
+    expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
+    const group = host.querySelector('[role="group"]')!
+    await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Code', 'Vault'])
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Code"]')!.click())
     expect(useProductSurfaceStore.getState().productSurface).toBe('code')
-    expect(host.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe('Code')
-    await act(async () => buttons.find(b => b.getAttribute('aria-label') === 'Goals')!.click())
+    expect(host.querySelector('[role="menu"]')).toBeNull()
+    await act(async () => trigger.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!.click())
     expect(app.setShowSchedulesOverview).toHaveBeenCalledWith(false)
     expect(app.setAdminPage).toHaveBeenCalledWith(null)
     expect(app.setModeCategory).toHaveBeenCalledWith('workflow')
-    expect(app.setShowWorkflowsOverview).toHaveBeenCalledWith(true)
+    expect(app.setShowWorkflowsOverview).toHaveBeenCalledWith(false)
   })
-  it('keeps the account product allowlist applied to the direct buttons', async () => {
-    auth.allowed = ['work']
+  it('hides the flyout on mouse leave and supports click and Escape', async () => {
     await render()
-    expect(Array.from(host.querySelectorAll('button')).map(b => b.getAttribute('aria-label'))).toEqual(['Crew'])
+    const group = host.querySelector('[role="group"]')!
+    await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(host.querySelector('[role="menu"]')).not.toBeNull()
+    await act(async () => group.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })))
+    expect(host.querySelector('[role="menu"]')).toBeNull()
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(host.querySelector('[role="menu"]')).not.toBeNull()
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(host.querySelector('[role="menu"]')).toBeNull()
+  })
+  it('keeps the account product allowlist applied', async () => {
+    auth.allowed = ['work']; await render()
+    expect(host.querySelectorAll('button').length).toBe(1)
+    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Switch product: Crew')
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(host.querySelector('[role="menu"]')).toBeNull()
   })
   it('hides Vault when the deployment has no gateway', async () => {
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'] }
     await render()
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
     expect(host.querySelector('button[aria-label="Vault"]')).toBeNull()
   })
 })

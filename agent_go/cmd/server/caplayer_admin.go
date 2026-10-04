@@ -114,6 +114,13 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		r.Body = io.NopCloser(bytes.NewReader(data))
 		r.ContentLength = int64(len(data))
 	}
+	deletingConnectionID := ""
+	if r.Method == http.MethodDelete && strings.HasPrefix(path, "/api/admin/connectors/") {
+		id := strings.TrimPrefix(path, "/api/admin/connectors/")
+		if vaultConnectionID.MatchString(id) {
+			deletingConnectionID = id
+		}
+	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
@@ -133,6 +140,13 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		},
 		Transport: capLayerTransport,
 		ModifyResponse: func(resp *http.Response) error {
+			if deletingConnectionID != "" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				mutex := platformMCPOAuthMutex("vault:" + deletingConnectionID)
+				mutex.Lock()
+				advanceVaultOAuthGeneration(deletingConnectionID)
+				removeVaultCredentialFiles(deletingConnectionID)
+				mutex.Unlock()
+			}
 			resp.Header.Del("Set-Cookie")
 			// A service credential failure is a deployment error, not a failed
 			// product login. Avoid sending the browser into an auth retry loop.

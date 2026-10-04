@@ -243,7 +243,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
       case 'playbooks':
       case 'mcp':
       case 'browser':
-        return <WorkflowCapabilitiesPanel section={view} workspacePath={workspacePath} relayMode={relayMode} />
+        return <WorkflowCapabilitiesPanel section={view} workspacePath={workspacePath} presetQueryId={presetQueryId} relayMode={relayMode} />
       default:
         return assertNeverView(view)
     }

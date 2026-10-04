@@ -18,6 +18,10 @@ const notify = (message: string, type: 'success' | 'info' | 'error') =>
 
 interface OAuthStatusBadgeProps {
   serverName: string;
+  /** Vault connection identity; absent for existing private/legacy connections. */
+  connectionId?: string;
+  /** Conversation that should receive the OAuth outcome. */
+  chatSessionId?: string;
   scope?: 'private' | 'vault';
   requiresOAuth?: boolean; // Read from server config (presence of an oauth block)
   /**
@@ -46,6 +50,8 @@ interface OAuthStatusBadgeProps {
 
 export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   serverName,
+  connectionId,
+  chatSessionId,
   scope = 'private',
   requiresOAuth,
   connection,
@@ -87,7 +93,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     loginTimeoutRef.current = null;
     loginGenerationRef.current++;
   };
-  useEffect(() => () => stopLoginPoll(), [serverName]);
+  useEffect(() => () => stopLoginPoll(), [serverName, connectionId]);
 
   // Connection ownership when supplied, token validity otherwise.
   const isConnected = connectionDriven ? connection === 'connected' : tokenValid;
@@ -105,7 +111,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   const checkTokenStatus = React.useCallback(async () => {
     try {
       console.log(`[OAuthStatusBadge] Checking status for ${serverName}...`);
-      const status = await oauthApi.getOAuthStatus(serverName, scope);
+      const status = await oauthApi.getOAuthStatus(serverName, scope, connectionId);
       console.log(`[OAuthStatusBadge] Status for ${serverName}:`, status);
 
       // Trigger refresh when auth becomes valid, including the first status
@@ -133,7 +139,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
       setTokenValid(false);
       prevTokenValidRef.current = false;
     }
-  }, [serverName, requiresOAuth, onAuthChange, scope]);
+  }, [serverName, requiresOAuth, onAuthChange, scope, connectionId]);
 
   useEffect(() => {
     // If requiresOAuth is explicitly passed (read from config), use it immediately
@@ -154,7 +160,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     if (reuseAuthentication && !clientId) {
       setLoading(true);
       try {
-        const status = await oauthApi.getOAuthStatus(serverName, scope);
+        const status = await oauthApi.getOAuthStatus(serverName, scope, connectionId);
         if (status.valid) { onAuthChange?.(true); setLoading(false); return; }
       } catch { /* The existing sign-in flow reports actionable setup errors. */ }
       setLoading(false);
@@ -168,7 +174,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     console.log(`[OAuthStatusBadge] Starting OAuth login for ${serverName}${clientId ? ' with client_id' : ''}`);
     try {
       // Start OAuth flow and get authorization URL
-      const response = await oauthApi.startOAuthFlow(serverName, clientId, clientSecret, scope);
+      const response = await oauthApi.startOAuthFlow(serverName, clientId, clientSecret, scope, connectionId, chatSessionId);
       if (generation !== loginGenerationRef.current) return;
 
       // Check if the server needs a client_id
@@ -196,7 +202,8 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
         pollCount++;
         try {
           console.log(`[OAuthStatusBadge] Polling OAuth status for ${serverName} (attempt ${pollCount})`);
-          const status = await oauthApi.getOAuthStatus(serverName, scope);
+          const status = await oauthApi.getOAuthStatus(serverName, scope, connectionId, startResponse.state);
+          if (status.flow_status === 'failed') { stopLoginPoll(); setLoading(false); notify(`Could not finish signing in to ${serverName}`, 'error'); return; }
           if (generation !== loginGenerationRef.current) return;
           if (status.valid) {
             console.log(`[OAuthStatusBadge] OAuth completed for ${serverName}!`);
@@ -273,7 +280,8 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     if (!window.confirm(disconnectConfirmation)) return;
     setLoading(true);
     try {
-      await mcpConfigApi.disconnectServer(serverName, scope);
+      if (connectionId) await oauthApi.logout(serverName, scope, connectionId);
+      else await mcpConfigApi.disconnectServer(serverName, scope);
       setTokenValid(false);
       prevTokenValidRef.current = false;
       notify(`Disconnected from ${serverName}`, 'info');
@@ -315,7 +323,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     if (!window.confirm(disconnectConfirmation)) return;
     setLoading(true);
     try {
-      await oauthApi.logout(serverName, scope);
+      await oauthApi.logout(serverName, scope, connectionId);
       setTokenValid(false);
       prevTokenValidRef.current = false;
       notify(`Disconnected from ${serverName}`, 'info');

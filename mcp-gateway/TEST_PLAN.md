@@ -1,3 +1,5 @@
+> Current release: PII has been removed as of 2026-10-04. Earlier PII results below are historical. See the removal regression gates at the end of this plan.
+
 # Vault MCP Gateway local test plan
 
 Current behavior: [Vault implementation status](../docs/design/vault-current-state.md). Earlier execution records below are historical and do not certify the current full product.
@@ -16,7 +18,7 @@ Live upstreams: Context7 is the full read-only call target. DeepWiki and Microso
 | A2 | Gateway OAuth | In-process MCP client completes OAuth and calls approved tool | Client sees only its granted tools; allowed call succeeds. |
 | A3 | Live MCP | Context7 discovery, approval, grant, `tools/list`, `resolve-library-id`, audit | Both Context7 tools discovered; only granted tool listed; call succeeds; allow/OK audit event recorded. |
 | A4 | Other MCPs | Connect and discover DeepWiki and Microsoft Learn | Valid reachable servers expose tool snapshots; failures include the upstream reason. |
-| B1 | Browser startup | Open embedded Vault on this branch | Access, Connected MCPs, Available MCPs, Secrets, People, Audit, PII, Models and Connect sections render in the shared application. |
+| B1 | Browser startup | Open embedded Vault on this branch | Access, Connected MCPs, Available MCPs, Secrets, People, Audit, Models and Connect sections render in the shared application. |
 | B2 | Browser auth | Open console with the existing product account; probe anonymous/non-admin management requests | Local mode uses the local account without a gateway token prompt; only authorized product admins can manage Vault. Service credentials stay on the backend. |
 | B3 | Browser connect | Add Context7 from catalog, inspect server and tool list | Server shows connected; initial discovered tools are approved automatically, with no user/group access granted. |
 | B4 | Browser review | Resync a connected tool | Initial approval persists through resync if schema is unchanged. |
@@ -30,7 +32,7 @@ Live upstreams: Context7 is the full read-only call target. DeepWiki and Microso
 | C6 | Security | Probe admin without token, unsafe URL/query, private egress, public bind | Each fails closed by default. Catalog OAuth uses the shared sign-in/refresh flow; local fixture egress requires explicit private-upstream opt-in. |
 | C7 | Stability | Concurrent resync/remove; bounded audit and review queues | No leaked active connector; queues stay within limits. |
 | C8 | Pagination | Upstream returns multiple `tools/list` pages | All pages are discovered before the gateway disables missing tools. |
-| D1 | Restart | Restart local gateway | Users, groups, memberships, assignments, approved tool fingerprints, drafts, published policies and revoked-policy denial survive restart from SQLite. Committed audit events survive with SQLite/ClickHouse; async events must drain before restart. Off stores no events. Pending PII review queues remain ephemeral. |
+| D1 | Restart | Restart local gateway | Users, groups, memberships, assignments, approved tool fingerprints, drafts, published policies and revoked-policy denial survive restart from SQLite. Committed audit events survive with SQLite; async events must drain before restart. Off stores no events. Pending PII review queues remain ephemeral. |
 
 ## Execution record
 
@@ -180,8 +182,8 @@ An admin connecting a server approves the initial tool list. Group/tool assignme
 - Force a failed batch: accepted events remain queued, new writes are rejected
   while unhealthy, repair recovers without duplicates, failed shutdown reports error.
 - Confirm graceful shutdown drains; document that crash/SIGKILL can lose memory events.
-- Check provider settings, Off behavior, local retention <=24h and missing server
-  ClickHouse configuration failure. Query failures must not appear as empty logs.
+- Check provider settings, Off behavior, local retention <=24h and unsupported
+  storage provider rejection. Query failures must not appear as empty logs.
 - Verify raw values stay out of audit storage and that input/output PII enforcement
   remains synchronous. Rule management is absent from the UI, not the backend API.
 - Verify People uses the shared platform directory, separate account creation is
@@ -225,3 +227,165 @@ Vault-only user form described in the next section.
 - This does not verify SSO-to-MCP OAuth consent or server-wide slot enforcement.
   Account APIs/global editors still need provisioning checks. Slot assignment
   remains a root-run deployment operation.
+
+### Platform installation and individual Vault MCP OAuth — 2026-10-03
+
+- Merged main `49a1e6761`, preserving the shared left product strip and removing
+  the chat-input model selector. Provider-switch race regressions passed.
+- Product OAuth regressions: two identities per client; valid/invalid PKCE;
+  one-use codes; disabled account and removed entitlement; resource isolation;
+  refresh; connection revocation; service/group/JWT/refresh/query-token rejection;
+  management/consent isolation; stripped caller identity/cookies. Passed.
+- Gateway runtime regressions: filtered inventory, live grant removal, unknown
+  service rejection and actual user/client attribution. Gateway and shared OAuth
+  race suites passed.
+- Hosted auth-gateway discovery/challenge/token forwarding passed with and
+  without its shared password gate. Six deployment helper tests passed, including
+  repeat credentials, failed-bootstrap recovery and matching product allowlists.
+- TypeScript passed; 31 focused frontend tests passed across Connect, groups,
+  shared consent, safe login returns and integration layout. Legacy group keys
+  are hidden by default in favor of individual platform sign-in.
+- Linux amd64 gateway built. Disposable native managed bootstrap repeated twice
+  produced one Platform group, zero static users and no resource grants.
+- Real remote installation/SSO/Claude acceptance is still pending.
+  The broader rootless suite retains its existing stale `PERSIST_MCP_STATE`
+  shared-builder assertion, also absent in origin/main. It is not a passing gate.
+
+- Browser showed the configured `http://127.0.0.1:18162/api/vault/mcp` endpoint
+  and “Endpoint reachable — sign-in required.” Discovery metadata also returned
+  the correct resource/issuer through Vite. Kept the browser open.
+- Live protocol smoke traversed the actual frontend/product/private gateway:
+  registration, PKCE, local-platform consent, token exchange, initialize/list
+  and revoked-token rejection passed. Test grant was disconnected afterward.
+  No upstream calls or group permission changes were made. The live inventory
+  was empty: the granted OAuth Memory fixture needs upstream reauthorization,
+  already recorded before these changes. Positive MCP call tests use disposable
+  granted fixtures. Real provider/IdP acceptance is still pending.
+
+## Multiple account connections
+
+- Add two named catalog connections to the same OAuth MCP URL; verify independent connection/credential IDs and public namespaces, pending state and no group grants.
+- Complete each sign-in with different accounts. Verify separately encrypted token/config/client-registration files and separate MCP sessions.
+- Grant one account’s tools to a group. Confirm `tools/list` hides the other account and a granted `tools/call` reaches the correct upstream identity.
+- Refresh or reauthorize one account; verify the other still works. A replacement login must wait for its own OAuth flow, not an old valid token.
+- Suspend/delete one connection and verify calls fail for it while the other remains callable. A pending callback after logout/deletion must not restore usable credentials.
+- Through chat: inspect providers, create named catalog connections, obtain sign-in links, inspect connection status, sync and explicitly disconnect one connection. Reject credential/path arguments and revoked administrators.
+- Preserve a legacy provider-scoped connector through restart; adding a new account must not overwrite its credential or grant namespace.
+- Verify UI catalog remains available after adding the first connection, both rows offer separate sign-in/settings, and pending rows do not imply tool discovery or group access.
+
+Automated: `TestVaultConnectionOAuthAccountsAreIsolated`, `TestVaultConnectionChatRechecksAdministratorAccess`, `TestSetupToolCreatesSeparateNamedCatalogAccounts`, `TestSharedOAuthTwoConnectionsKeepAccountsAndGrantsSeparate`, `GatewayServersPanel.test.tsx`, `OAuthStatusBadge.test.tsx`. Real-provider acceptance still requires two administrator-selected provider accounts.
+
+
+## PII removal — 2026-10-04
+
+The PII scenarios and results above are historical; their scanner, UI, rule APIs,
+review queue and benchmarks are removed from this release. Current regression gates:
+
+- Open Vault and verify there is no PII navigation/section.
+- Former PII REST and standalone-admin routes are absent.
+- Granted text/image/structured MCP results pass through unchanged; ungranted
+  calls still deny before upstream execution. Audit retains caller/MCP metadata,
+  never raw payloads.
+- Load a pre-removal SQLite snapshot, verify membership, credentials and grants
+  survive, then mutate configuration and verify obsolete fields are omitted.
+- Run gateway tests (including audit, OAuth and argument-policy suites), frontend
+  typecheck and focused Vault tests.
+
+Verification: gateway `go test -race ./...` passed; frontend typecheck and 42
+focused group/audit/server/feedback tests passed. Restarted the local gateway
+from the existing database: 3 groups and 4 connectors loaded, SQLite async audit
+was healthy with zero pending writes, and former rule/review/admin-page endpoints
+returned 404. In-app browser showed the existing 5 audit events and no PII section.
+
+
+## Vault UI OAuth chat notification — 2026-10-04
+
+- Start sign-in from a connected/pending named account row and include its Vault
+  chat session ID in `/api/oauth/start`.
+- Deliver a local fixture callback through the UI handler; verify a completed
+  notification is stored in the target chat. Reconnect the same account and verify
+  a new notification ID prevents event deduplication.
+- Reject another user's session before starting the connector flow. Accept the
+  caller's active, retained or restored product chat. Preserve callers without a
+  chat ID.
+- Render completed/failed notices without exposing internal agent instructions.
+  Preserve hidden synthetic events for unrelated background agents.
+
+Verification: focused server tests passed under `go test -race`, including the
+UI-handler fixture callback, reconnect IDs and chat ownership tests. Frontend
+OAuth badge/server/event rendering suites passed (18 tests); TypeScript passed.
+Real Notion reauthorization was not performed for this regression test.
+
+
+## Private MCP OAuth chat notification — 2026-10-04
+
+- Crew/Code pass the product tab's session to the shared MCP panel. Workflow and
+  Relay panels select their matching interactive workflow chat.
+- Both private HTTP sign-in routes reject another user's notification session
+  before creating a flow. Existing callers may omit the session.
+- Code's `manage_my_mcp_servers` and builder `install_mcp_server` use the chat
+  context when starting private OAuth.
+- Local fixture callback errors reach that chat; repeated sign-ins get distinct
+  IDs. Success notices render even when no resident agent can continue. Browser
+  focus updates status without duplicating a callback notification, including
+  custom OAuth servers or an unavailable catalog.
+
+Verification: private callback tests exercise both HTTP routes and both agent
+setup tools without an external provider. Focused server suites passed with the
+race detector. Shared private MCP, event, badge and product/workflow layout suites
+passed (25 tests), plus frontend TypeScript. Real-provider sign-in was not repeated.
+
+
+## OAuth delivery through the shared chat queue — 2026-10-04
+
+The earlier callback/event tests missed the idle-chat consumer and a missing
+resident backend agent. Continuation now uses `sendWorkspacePaneMessageToChat()`
+from a shared ChatArea consumer. The backend records the outcome and does not
+start a competing model turn for private/named Vault connections.
+
+- Restore an idle chat after restarting the backend; complete OAuth and verify
+  an actual assistant reply, not just a stored `synthetic_turn_ready` event.
+- Verify mount/focus and sign-in polling deliver the event to the exact session.
+- Queue behind an active turn; persist callback receipts with queued messages;
+  repeat fetch/remount and verify only one request. A new reconnect ID still runs.
+- Ignore a late response after a tab changes sessions, and avoid replaying an
+  outcome already injected by an older backend.
+
+Verification: 33 focused frontend tests passed, including the actual shared queue
+in the idle/restored and busy cases; TypeScript and focused server race tests
+passed. In-app browser recovered the user's real Notion callback (44 discovered
+tools) and displayed the assistant's connection confirmation without another
+provider login. Group permissions stayed unchanged.
+
+### Vault bridge recovery and MVP defaults — 2026-10-04
+
+- Reproduced Muse interactive MCP loader failure in the protected project, while headless discovery listed seven governance tools.
+- Reused the Crew/workflow private CLI runtime for Vault. Regression checks stable runtime identity, user/provider separation, authoritative project linkage and refusal of runtime state inside workspace data.
+- Live browser chat called bridge read_skill, inspect_environment and inspect_tool for all 44 Notion tools; result: 26 read, 18 write, destructive annotations identified. No provider action or grant change.
+- Inspection responses retain the actual schema and readOnlyHint/destructiveHint annotations.
+- Listener-before-reconnect regression lets startup validation read a live authenticated connector route; named Notion OAuth recovery was verified across a graceful gateway restart without reauthorization.
+- Installer uses SQLite by default for MVP local/server audit logs and supports explicitly disabling collection. Six installer tests and server/admin race tests passed.
+
+### SQLite-only audit MVP — 2026-10-04
+
+This supersedes earlier ClickHouse provider execution records. The MVP includes
+only SQLite audit storage and collection-off mode. Regressions cover unsupported
+provider rejection in runtime and installer, installer preserving existing files
+on rejected settings, restart persistence, filters, retention, bounded async
+admission, concurrent writes and graceful drain. ClickHouse delivery code and its
+tests have been removed; it is deferred until after the MVP release.
+
+### Platform-wide named private MCP connections — 2026-10-04
+
+- Add two accounts of one catalog provider in the shared private MCP panel.
+  Verify both display labels, that the provider remains available, and that the
+  same named form is used in Crew, Code, workflow and Relay.
+- Reauthorize/remove the intended row by stable connection name; preserve the
+  other row and its login. Reuse an exact ID across projects without erasing tokens.
+- Inspect builder schemas for catalog/label support and create accounts through
+  both the general builder and Code setup tool.
+- Verify independent sealed OAuth/client files, runtime names, cache identities,
+  provider-group exclusion and exact project selection. Reject ambiguous provider
+  aliases and foreign-user runtime IDs. Existing legacy accounts keep their paths.
+- Provider sign-in chooses the actual account. A label is not verified identity;
+  two-account real OAuth acceptance still requires user authorization.

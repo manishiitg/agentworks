@@ -384,7 +384,7 @@ func (s *Server) AuthenticateRequest(ctx context.Context, raw string) (Grant, er
 	if err != nil {
 		return Grant{}, err
 	}
-	if grant.Resource != resource || len(grant.Scopes) == 0 {
+	if grant.Resource != resource || len(grant.Scopes) == 0 || (s.cfg.GrantActive != nil && !s.cfg.GrantActive(ctx, grant)) {
 		return Grant{}, errors.New("invalid token")
 	}
 	return grant, nil

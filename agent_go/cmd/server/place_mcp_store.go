@@ -51,6 +51,7 @@ var placeMCPNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_]{0,39}$`)
 // credential headers name a personal secret, resolved at connect time.
 type placeMCPServer struct {
 	Name      string                    `json:"name"`
+	Label     string                    `json:"label,omitempty"` // named accounts keep independent credentials
 	URL       string                    `json:"url"`
 	Transport string                    `json:"transport"` // "http" or "sse"
 	OAuth     *oauth.OAuthConfig        `json:"oauth,omitempty"`
@@ -199,6 +200,10 @@ func writePlaceMCPJSON(path string, value any) error {
 // a remote transport and a public https URL. Headers may name only a secret
 // (resolved from this person's own secrets), never carry a value.
 func validatePlaceMCPServer(server *placeMCPServer) error {
+	server.Label = strings.TrimSpace(server.Label)
+	if len([]rune(server.Label)) > 100 || strings.ContainsAny(server.Label, "\r\n\x00") {
+		return fmt.Errorf("connection label must be at most 100 characters on one line")
+	}
 	server.Name = strings.ToLower(strings.TrimSpace(server.Name))
 	if !placeMCPNamePattern.MatchString(server.Name) {
 		return fmt.Errorf("server name must be 1-40 lowercase letters, digits or underscores")

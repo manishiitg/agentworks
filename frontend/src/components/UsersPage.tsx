@@ -3,9 +3,8 @@ import { Users } from 'lucide-react'
 import UsersAdminPanel from './admin/UsersAdminPanel'
 
 /**
- * Users & access as a full page, opened from the top-bar Users icon (admins):
- * add people by email, set roles and products, reset passwords, disable or
- * delete. The same panel as Access → Users inside a workflow.
+ * Shared directory opened from every product's navigation rail.
+ * Invitations grant Vault access; other products use platform provisioning.
  */
 export default function UsersPage() {
   return (
@@ -20,7 +19,7 @@ export default function UsersPage() {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
-          <UsersAdminPanel />
+          <UsersAdminPanel vaultOnly />
         </div>
       </div>
     </section>

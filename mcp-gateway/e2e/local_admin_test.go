@@ -88,50 +88,6 @@ func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
 	}
 }
 
-func TestPIIRuleAndSampleAPI(t *testing.T) {
-	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
-	defer srv.Close()
-	page, err := http.Get(srv.URL + "/admin/pii")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pageBody, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	if page.StatusCode != http.StatusOK || !strings.Contains(string(pageBody), "Test a sample") || strings.Contains(string(pageBody), "template:") {
-		t.Fatalf("standalone PII page status %d: %s", page.StatusCode, pageBody)
-	}
-	resp, err := http.Post(srv.URL+"/api/admin/pii/rules", "application/json", strings.NewReader(`{"DataType":"email","Direction":"input","Action":"block"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("rule status %d: %s", resp.StatusCode, body)
-	}
-	var rule struct{ ID string }
-	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil || rule.ID == "" {
-		t.Fatalf("created rule: %+v, %v", rule, err)
-	}
-	resp, err = http.Post(srv.URL+"/api/admin/pii/test", "application/json", strings.NewReader(`{"Sample":"alice@example.com","Direction":"input"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Decision struct {
-			Action string `json:"action"`
-		}
-		MaskedPreview string `json:"masked_preview"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Decision.Action != "block" || result.MaskedPreview != "" {
-		t.Fatalf("test result: %+v", result)
-	}
-}
-
 func TestStandaloneAuditPageRendersFilters(t *testing.T) {
 	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
 	defer srv.Close()
@@ -556,5 +512,20 @@ func TestLocalhostCORS(t *testing.T) {
 	}
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("foreign GET passthrough: got %d, want 418", rec.Code)
+	}
+}
+
+func TestRemovedInspectionRoutesAreUnavailable(t *testing.T) {
+	mux := authenticatedMux(localAdminMux())
+	for _, path := range []string{"/api/admin/pii/rules", "/api/admin/pii/rules/old", "/api/admin/pii/test", "/api/admin/pii/reviews", "/api/admin/pii/reviews/old/approve", "/admin/pii", "/admin/pii/rules/save", "/admin/pii/rules/delete", "/admin/pii/test", "/admin/pii/reviews/approve"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+			t.Run(method+path, func(t *testing.T) {
+				res := httptest.NewRecorder()
+				mux.ServeHTTP(res, httptest.NewRequest(method, path, nil))
+				if res.Code != http.StatusNotFound {
+					t.Fatalf("removed route is reachable: %d", res.Code)
+				}
+			})
+		}
 	}
 }

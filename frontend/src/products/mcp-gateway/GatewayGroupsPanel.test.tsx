@@ -72,14 +72,14 @@ describe('GatewayGroupsPanel', () => {
     vi.restoreAllMocks()
   })
 
-  async function renderPanel(fetchMock?: ReturnType<typeof vi.fn>, directoryOnly = false): Promise<ReturnType<typeof vi.fn>> {
+  async function renderPanel(fetchMock?: ReturnType<typeof vi.fn>, directoryOnly = false, allowLegacyAPIKeys = false): Promise<ReturnType<typeof vi.fn>> {
     const mock = fetchMock ?? vi.fn(healthyFetch())
     vi.stubGlobal('fetch', mock)
     container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
     await act(async () => {
-      root.render(<GatewayGroupsPanel base={BASE} directoryOnly={directoryOnly} />)
+      root.render(<GatewayGroupsPanel base={BASE} directoryOnly={directoryOnly} allowLegacyAPIKeys={allowLegacyAPIKeys} />)
     })
     await act(async () => {})
     await act(async () => {})
@@ -302,9 +302,14 @@ describe('GatewayGroupsPanel', () => {
     }
   })
 
-  it('creates an API key and shows the token once', async () => {
+  it('uses SSO by default without advertising group API keys', async () => {
+    await renderPanel(undefined, true)
+    expect(container!.textContent).not.toContain('Group API keys')
+  })
+
+  it('creates a legacy local API key only when explicitly enabled', async () => {
     const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock, true)
+    await renderPanel(fetchMock, true, true)
     await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent === 'Group API keys') as HTMLButtonElement).click() })
 
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {

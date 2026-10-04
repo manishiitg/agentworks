@@ -18,6 +18,8 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 	switch name {
 	case "connect_server":
 		var in struct {
+			Provider string `json:"provider,omitempty"`
+			Label    string `json:"label,omitempty"`
 			Name     string `json:"name"`
 			URL      string `json:"url"`
 			Instance string `json:"instance,omitempty"`
@@ -31,23 +33,32 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			return nil, errors.New("expected one connection object")
 		}
 		in.Name, in.URL = strings.TrimSpace(in.Name), strings.TrimSpace(in.URL)
-		if in.Name == "" || len(in.Name) > 100 || in.URL == "" || len(in.URL) > 2048 || len(in.Instance) > 100 {
+		if in.Provider == "" && (in.Name == "" || len(in.Name) > 100 || in.URL == "" || len(in.URL) > 2048 || len(in.Instance) > 100) {
 			return nil, errors.New("provide a server name and MCP URL")
 		}
 		// Use the same URL, private-network, uniqueness and discovery checks as
 		// manual connections. Credentials never pass through the model tool.
-		c, err := a.AddConnectorCustom(ctx, in.Name, in.Name, in.Instance, in.URL)
+		var c store.Connector
+		var err error
+		if in.Provider != "" {
+			if in.URL != "" || len(in.Label) > 100 || len(in.Instance) > 100 {
+				return nil, errors.New("catalog connections accept provider, label and instance only")
+			}
+			c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Instance)
+		} else {
+			c, err = a.AddConnectorCustom(ctx, in.Name, in.Name, in.Instance, in.URL)
+		}
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"connector": c, "tool_count": len(a.Store.ListToolsForConnector(c.ID)), "group_access_assigned": false}, nil
+		return map[string]any{"connector": c, "tool_count": len(a.Store.ListToolsForConnector(c.ID)), "group_access_assigned": false, "sign_in_required": c.Status == store.StatusAuthRequired}, nil
 	case "inspect_environment":
 		tools := a.Store.ListTools(a.WorkspaceID)
 		brief := make([]map[string]any, 0, len(tools))
 		for _, t := range tools {
-			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "fingerprint": t.Fingerprint, "description": t.Description})
+			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "fingerprint": t.Fingerprint, "description": t.Description, "annotations": json.RawMessage(t.Annotations)})
 		}
-		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListPackages(a.WorkspaceID)}, nil
+		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListPackages(a.WorkspaceID), "providers": a.Catalog.Providers}, nil
 	case "inspect_tool":
 		var in struct {
 			PublicName string `json:"public_name"`
@@ -59,7 +70,7 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 		if !ok || t.WorkspaceID != a.WorkspaceID {
 			return nil, errors.New("tool not found")
 		}
-		return map[string]any{"public_name": t.PublicName, "description": t.Description, "status": t.Status, "fingerprint": t.Fingerprint, "input_schema": json.RawMessage(t.InputSchema)}, nil
+		return map[string]any{"public_name": t.PublicName, "description": t.Description, "status": t.Status, "fingerprint": t.Fingerprint, "input_schema": json.RawMessage(t.InputSchema), "annotations": json.RawMessage(t.Annotations)}, nil
 	case "save_draft":
 		var in access.Package
 		if err := json.Unmarshal(raw, &in); err != nil {

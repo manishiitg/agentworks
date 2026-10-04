@@ -24,7 +24,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/setupagent"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
@@ -226,13 +225,35 @@ func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string, oauth
 	if label == "" {
 		label = provider
 	}
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return store.Connector{}, errors.New("could not create connection identity")
+	}
 	c := store.Connector{
-		ID: newID("c"), WorkspaceID: a.WorkspaceID, Provider: provider,
+		ID: "c-" + hex.EncodeToString(identity[:]), WorkspaceID: a.WorkspaceID, Provider: provider,
 		InstanceSlug: strings.TrimSpace(slug), Label: label,
 		UpstreamURL: upstreamURL, Status: store.StatusActive,
 	}
+	if len(label) > 100 || len(c.InstanceSlug) > 100 {
+		return store.Connector{}, errors.New("connection name and instance must be at most 100 characters")
+	}
+	if len(oauthServer) > 0 && c.InstanceSlug == "" {
+		for _, existing := range a.Store.ListConnectors(a.WorkspaceID) {
+			if existing.Provider == provider {
+				c.InstanceSlug = c.ID
+				break
+			}
+		}
+	}
 	if len(oauthServer) > 0 {
 		c.OAuthServer = oauthServer[0]
+		if c.OAuthServer != "" {
+			c.OAuthCredentialID = c.ID
+			c.Status = store.StatusAuthRequired
+			if c.InstanceSlug == "" {
+				c.InstanceSlug = c.ID
+			}
+		}
 	}
 	if !a.Store.AddConnectorUnique(c) {
 		return store.Connector{}, errors.New("a connector with this provider and instance name already exists")
@@ -262,6 +283,9 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	c, err := a.addConnectorRow(p.Key, label, slug, p.URL, oauthServer)
 	if err != nil {
 		return store.Connector{}, err
+	}
+	if c.OAuthCredentialID != "" {
+		return c, nil
 	}
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
@@ -293,6 +317,9 @@ func (a *Admin) AddConnectorCustomWithBearer(ctx context.Context, provider, labe
 		return store.Connector{}, errors.New("invalid bearer token")
 	}
 	a.Store.SetConnectorBearer(c.ID, bearerToken)
+	if c.OAuthCredentialID != "" {
+		return c, nil
+	}
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
 		return store.Connector{}, err
@@ -328,52 +355,6 @@ func (a *Admin) ApproveTool(publicName, fingerprint string, version int) (store.
 		return store.ToolSnapshot{}, errors.New("tool changed, was removed, or is not awaiting review; refresh and try again")
 	}
 	return t, nil
-}
-
-func (a *Admin) SavePIIRule(rule pii.Rule) (pii.Rule, error) {
-	rule.WorkspaceID = a.WorkspaceID
-	if rule.ID == "" {
-		rule.ID = newID("pii")
-	} else {
-		found := false
-		for _, existing := range a.Store.ListPIIRules(a.WorkspaceID) {
-			if existing.ID == rule.ID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return pii.Rule{}, errors.New("unknown PII rule")
-		}
-	}
-	if !containsString([]string{"email", "phone", "ssn", "credit_card", "api_key"}, rule.DataType) ||
-		!containsString([]string{pii.Allow, pii.Mask, pii.Block, pii.Review}, rule.Action) ||
-		!containsString([]string{pii.Input, pii.Output, pii.Both}, rule.Direction) {
-		return pii.Rule{}, errors.New("invalid PII type, action, or direction")
-	}
-	if rule.Action == pii.Review && rule.Direction != pii.Input {
-		return pii.Rule{}, errors.New("require_review is available for input only; reviewing output would repeat the upstream call")
-	}
-	if rule.GroupID != "" {
-		g, ok := a.Store.GetGroup(rule.GroupID)
-		if !ok || g.WorkspaceID != a.WorkspaceID {
-			return pii.Rule{}, errors.New("unknown group")
-		}
-	}
-	if rule.ConnectorID != "" {
-		c, ok := a.Store.GetConnector(rule.ConnectorID)
-		if !ok || c.WorkspaceID != a.WorkspaceID {
-			return pii.Rule{}, errors.New("unknown connector")
-		}
-	}
-	if rule.PublicName != "" {
-		t, ok := a.Store.GetTool(rule.PublicName)
-		if !ok || t.WorkspaceID != a.WorkspaceID {
-			return pii.Rule{}, errors.New("unknown tool")
-		}
-	}
-	a.Store.PutPIIRule(rule)
-	return rule, nil
 }
 
 func containsString(items []string, wanted string) bool {
@@ -848,7 +829,29 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 	}))
+	mux.HandleFunc("/api/admin/connectors/{id}/oauth/disconnect", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+		c, ok := a.Store.GetConnector(r.PathValue("id"))
+		if !ok || c.WorkspaceID != a.WorkspaceID || c.OAuthCredentialID == "" {
+			writeErr(w, 404, errors.New("OAuth connection not found"))
+			return
+		}
+		a.Gateway.SuspendOAuth(c)
+		writeJSON(w, 200, map[string]string{"status": store.StatusAuthRequired})
+	}))
 	mux.HandleFunc("/api/admin/connectors/{id}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			c, ok := a.Store.GetConnector(r.PathValue("id"))
+			if !ok || c.WorkspaceID != a.WorkspaceID {
+				writeErr(w, 404, errors.New("connector not found"))
+				return
+			}
+			writeJSON(w, 200, c)
+			return
+		}
 		if r.Method != http.MethodDelete {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -898,88 +901,6 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, t)
-	}))
-	mux.HandleFunc("/api/admin/pii/rules", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(w, http.StatusOK, map[string]any{"rules": a.Store.ListPIIRules(a.WorkspaceID)})
-		case http.MethodPost:
-			var rule pii.Rule
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&rule); err != nil {
-				writeErr(w, http.StatusBadRequest, err)
-				return
-			}
-			saved, err := a.SavePIIRule(rule)
-			if err != nil {
-				writeErr(w, http.StatusBadRequest, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, saved)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	}))
-	mux.HandleFunc("/api/admin/pii/rules/{id}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		if !a.Store.DeletePIIRule(a.WorkspaceID, r.PathValue("id")) {
-			writeErr(w, http.StatusNotFound, errors.New("unknown PII rule"))
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/admin/pii/test", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		var in struct {
-			Sample      string
-			Direction   string
-			GroupIDs    []string
-			ConnectorID string
-			PublicName  string
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, pii.MaxPayloadBytes)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		if in.Direction != pii.Input && in.Direction != pii.Output {
-			writeErr(w, http.StatusBadRequest, errors.New("invalid direction"))
-			return
-		}
-		masked, decision, err := pii.ScanText(in.Sample, pii.Scope{
-			WorkspaceID: a.WorkspaceID, GroupIDs: in.GroupIDs, ConnectorID: in.ConnectorID, PublicName: in.PublicName, Direction: in.Direction,
-		}, a.Store.ListPIIRules(a.WorkspaceID))
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		preview := ""
-		if decision.Action == pii.Mask {
-			preview = masked
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"decision": decision, "masked_preview": preview})
-	}))
-	mux.HandleFunc("/api/admin/pii/reviews", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"reviews": a.Store.ListPIIReviews(a.WorkspaceID)})
-	}))
-	mux.HandleFunc("/api/admin/pii/reviews/{id}/approve", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		if !a.Store.ApprovePIIReview(a.WorkspaceID, r.PathValue("id")) {
-			writeErr(w, http.StatusConflict, errors.New("review missing or already decided"))
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 	}))
 	mux.HandleFunc("/api/admin/grants", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

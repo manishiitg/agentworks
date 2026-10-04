@@ -22,7 +22,7 @@ Use `install_mcp_server(name, url=...)` for a new verified URL. It probes the en
 
 ### A person's own account (Gmail, Drive, GitHub, ...)
 
-When the user wants the workflow to use **their own account** of a service in the catalog (their Gmail rather than a shared mailbox), there is a separate path: someone who can edit the workflow adds it under **Capabilities → MCP → MCP connections → Available** (search, then **Connect**), and signs in there. Every chat and run of this workflow then uses it with their login, schedules and Slack included. It belongs to this workflow only and needs no admin. You cannot add it or sign in for them: point them to that button, and explain that everyone who uses the workflow acts with their login. Its servers are named `u<id>__<name>` and are already on for the workflow: never add them to `selected_servers`.
+Private accounts are configured under **Integrations → Plugins → Available** and listed under **Connected**. Use the registered private connection tools and the `work-mcp` skill; return the actual sign-in link for the user to complete. Credentials are owned by the verified user; sharing a project does not share a private login. Shared accounts are managed through Vault groups. Use exact connection names for selection and discovery.
 
 ### Reporting back to the user
 
@@ -54,3 +54,21 @@ integration is not yet callable in the current turn, state that distinction.
 A full-run missing-dependency error only checks configured names, not auth,
 connectivity, or tool counts. Repair the missing integration instead of removing
 a required server to make validation pass.
+
+### Multiple private accounts
+
+Private MCP setup is shared by Crew, Code, workflows and Relays. For another
+account of a catalog provider, use `install_mcp_server(name=<provider>,
+catalog=<provider>, label=<account label>)`. Each labelled install creates a new
+connection and returns its exact name plus its own sign-in step. Inspect the
+inventory first, preserve existing accounts, and use exact connection names for
+reconnect, discovery, removal and project selection. Do not pass label when
+reconnecting. A provider alias may be ambiguous; never pick an account silently.
+Credentials belong in the secure Integrations UI. Named accounts sign in
+independently rather than sharing the legacy provider-group login.
+
+### Vault access in all products
+
+Integrations → Plugins has Connected, Available, Secrets, Skills and Vault in one row. Connected/Available manage private MCP accounts; Secrets manages project secrets. Vault shows the signed-in user's existing groups and their permitted shared MCPs and secret names, including explicit Platform grants. The backend resolves identity from the authenticated session; an email typed in chat never changes the caller.
+
+Before connecting a duplicate or answering what is available, call `list_mcp_servers` (Code: `manage_my_mcp_servers(action="list")`). Its `vault_groups`, `vault`, and `vault_secrets` fields are live authorized metadata. Inspect the real descriptions/schemas before classifying read/write tools. Select permitted connections with their exact `vault_<id>` names and permitted secret names through the existing project configuration tools. Availability appears automatically; project selection determines what a run uses. Neither project selection nor a prompt grants new Vault access. The gateway checks tool and argument/regex permissions on every call, and secret access is checked before injecting a selected secret. Never include values in chat, prompts, logs or configuration.

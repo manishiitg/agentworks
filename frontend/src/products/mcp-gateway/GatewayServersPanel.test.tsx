@@ -105,11 +105,11 @@ describe('GatewayServersPanel', () => {
     const available = container!.querySelector('[aria-label="Available servers"]')!
     expect(container!.querySelector('[aria-label="Connected servers"]')).toBeNull()
     expect(available.textContent).not.toContain('WorkOS')
-    expect(available.textContent).not.toContain('Notion')
+    expect(available.textContent).toContain('Notion')
     expect(available.textContent).toContain('Linear')
-    expect(available.textContent).toContain('Connect with OAuth')
-    expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Connect')
-    expect(container!.textContent).toContain('2 results')
+    expect(available.textContent).toContain('Add connection')
+    expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Add connection')
+    expect(container!.textContent).toContain('3 results')
   })
 
   it('discovers and shows tools for an AgentWorks-only connected server', async () => {
@@ -310,16 +310,20 @@ describe('GatewayServersPanel', () => {
     expect(fetchMock.mock.calls.length).toBe(callsBefore)
   })
 
-  it('connects OAuth catalog servers after shared authorization', async () => {
-    const fetchMock = vi.fn(healthyFetch())
+  it('creates a named OAuth connection before sign-in without reusing provider authentication', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => init?.method === 'POST'
+      ? Promise.resolve(jsonResponse(201, { ID: 'c-new', OAuthCredentialID: 'c-new', Status: 'authentication_required' })) : healthyFetch()(url))
     await renderPanel(fetchMock, undefined, 'available')
-
-    // Slack is in neither AgentWorks nor the gateway: it still gets a row.
-    expect(container!.textContent).toContain('Slack')
-    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).toBeNull()
-    expect(container!.textContent).toContain('Connect with OAuth')
-    await act(async () => { (container!.querySelector('[aria-label="OAuth Slack"]') as HTMLButtonElement).click() })
-    expect(fetchMock.mock.calls.some(([url, init]) => url.endsWith('/api/admin/connectors') && init?.method === 'POST' && JSON.parse(init.body as string).Provider === 'Slack')).toBe(true)
+    await act(async () => { (container!.querySelector('[data-testid="gateway-add-slack"]') as HTMLButtonElement).click() })
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+    const input = container!.querySelector('[aria-label="Slack connection name"]') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Slack · Engineering')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/connectors`, expect.objectContaining({ method: 'POST', body: JSON.stringify({ Provider: 'Slack', Label: 'Slack · Engineering', Slug: '', URL: '' }) }))
+    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).not.toBeNull()
   })
 
   it('warns on stale data when a refetch fails instead of hiding it', async () => {
@@ -364,13 +368,18 @@ describe('GatewayServersPanel', () => {
     await act(async () => {
       ;(container!.querySelector('[data-testid="gateway-add-linear"]') as HTMLButtonElement).click()
     })
-    await act(async () => {})
+    const input = container!.querySelector('[aria-label="Linear connection name"]') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Linear · Work')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE}/api/caplayer/api/admin/connectors`,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ Provider: 'Linear', Label: '', Slug: '', URL: '' }),
+        body: JSON.stringify({ Provider: 'Linear', Label: 'Linear · Work', Slug: '', URL: '' }),
       }),
     )
   })

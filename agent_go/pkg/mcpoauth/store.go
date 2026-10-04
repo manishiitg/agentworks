@@ -239,6 +239,9 @@ func (s *Store) ExchangeCode(ctx context.Context, raw, clientID, redirectURI, re
 }
 
 func (s *Store) issuePair(ctx context.Context, tx *sql.Tx, grant *Grant) (string, string, error) {
+	if s.cfg.GrantActive != nil && !s.cfg.GrantActive(ctx, *grant) {
+		return "", "", errors.New("account access revoked")
+	}
 	accessPrefix, refreshPrefix := s.cfg.AccessPrefix, s.cfg.RefreshPrefix
 	if s.isCLI(grant.ClientID) {
 		accessPrefix, refreshPrefix = s.cfg.CLIAccessPrefix, s.cfg.CLIRefreshPrefix

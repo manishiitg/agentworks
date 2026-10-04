@@ -1,3 +1,4 @@
+import { announceMcpOAuthStart } from '../utils/mcpOAuthNotification'
 /**
  * OAuth API Service
  * Handles OAuth authentication flows for MCP servers
@@ -17,6 +18,7 @@ function getAuthHeaders(): HeadersInit {
 
 export interface OAuthStartRequest {
   server_name: string;
+  session_id?: string;
   client_id?: string;
   client_secret?: string;
 }
@@ -44,6 +46,7 @@ export interface OAuthDiscoveryResponse {
 export interface OAuthStatusResponse {
   server_name: string;
   valid: boolean;
+  flow_status?: string;
   /** False for servers with no oauth block. Absent on older responses. */
   has_oauth?: boolean;
   expires_in?: string;
@@ -65,8 +68,8 @@ export class OAuthApi {
    * Start OAuth flow for a server
    * Returns OAuthDiscoveryResponse if server needs a client_id, otherwise OAuthStartResponse
    */
-  async startOAuthFlow(serverName: string, clientId?: string, clientSecret?: string, scope: 'private' | 'vault' = 'private'): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
-    const body = { server_name: serverName, scope } as OAuthStartRequest & { scope: string };
+  async startOAuthFlow(serverName: string, clientId?: string, clientSecret?: string, scope: 'private' | 'vault' = 'private', connectionId?: string, chatSessionId?: string): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
+    const body = { server_name: serverName, scope, ...(chatSessionId ? { session_id: chatSessionId } : {}), ...(connectionId ? { connection_id: connectionId } : {}) } as OAuthStartRequest & { scope: string };
     if (clientId) {
       body.client_id = clientId;
       if (clientSecret) body.client_secret = clientSecret;
@@ -83,15 +86,17 @@ export class OAuthApi {
       throw new Error(`OAuth start failed: ${error}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    if (result.auth_url && result.status !== 'needs_client_id') announceMcpOAuthStart(chatSessionId);
+    return result;
   }
 
   /**
    * Get OAuth token status for a server
    */
-  async getOAuthStatus(serverName: string, scope: 'private' | 'vault' = 'private'): Promise<OAuthStatusResponse> {
+  async getOAuthStatus(serverName: string, scope: 'private' | 'vault' = 'private', connectionId?: string, state?: string): Promise<OAuthStatusResponse> {
     const response = await fetch(
-      `${this.baseUrl}/api/oauth/status?server_name=${encodeURIComponent(serverName)}&scope=${scope}`,
+      `${this.baseUrl}/api/oauth/status?server_name=${encodeURIComponent(serverName)}&scope=${scope}${connectionId ? `&connection_id=${encodeURIComponent(connectionId)}` : ''}${state && connectionId ? `&state=${encodeURIComponent(state)}` : ''}`,
       { headers: getAuthHeaders() }
     );
 
@@ -106,11 +111,11 @@ export class OAuthApi {
   /**
    * Logout from OAuth (remove token)
    */
-  async logout(serverName: string, scope: 'private' | 'vault' = 'private'): Promise<void> {
+  async logout(serverName: string, scope: 'private' | 'vault' = 'private', connectionId?: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/api/oauth/logout`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ server_name: serverName, scope }),
+      body: JSON.stringify({ server_name: serverName, scope, ...(connectionId ? { connection_id: connectionId } : {}) }),
     });
 
     if (!response.ok) {

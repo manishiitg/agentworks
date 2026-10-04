@@ -12,6 +12,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 const backendUrl = process.env.MCP_AGENT_SERVER_URL || 'http://127.0.0.1:18743'
 const backendProxy = {
   '/api': { target: backendUrl, changeOrigin: true, ws: true },
+  '/.well-known/oauth-': { target: backendUrl, changeOrigin: true },
 }
 
 const isolatedRuntimeConfigPath = process.env.AGENTWORKS_RUNTIME_CONFIG_PATH

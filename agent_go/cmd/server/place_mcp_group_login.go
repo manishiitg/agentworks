@@ -36,7 +36,7 @@ func fileExists(path string) bool {
 // placeMCPGroupOf is the login group of one of the person's servers, or
 // "" when it signs in on its own.
 func placeMCPGroupOf(dir, userID string, server placeMCPServer) string {
-	if server.OAuth == nil {
+	if server.OAuth == nil || server.Label != "" {
 		return ""
 	}
 	group := placeMCPAppKey(server)

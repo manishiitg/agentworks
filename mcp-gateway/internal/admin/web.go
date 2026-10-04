@@ -3,14 +3,12 @@ package admin
 import (
 	"context"
 	"crypto/subtle"
-	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
@@ -18,7 +16,7 @@ import (
 func (a *Admin) UIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/login", a.uiLogin)
 	mux.HandleFunc("/admin/logout", a.requireUI(a.uiLogout))
-	mux.HandleFunc("/admin/", a.requireUI(a.uiDashboard))
+	mux.HandleFunc("/admin/{$}", a.requireUI(a.uiDashboard))
 	mux.HandleFunc("/admin/users", a.requireUI(a.uiUsers))
 	mux.HandleFunc("/admin/users/add", a.requireUI(a.uiUsersAdd))
 	mux.HandleFunc("/admin/groups", a.requireUI(a.uiGroups))
@@ -32,11 +30,6 @@ func (a *Admin) UIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/tools/approve", a.requireUI(a.uiToolsApprove))
 	mux.HandleFunc("/admin/grants/set", a.requireUI(a.uiGrantsSet))
 	mux.HandleFunc("/admin/audit", a.requireUI(a.uiAudit))
-	mux.HandleFunc("/admin/pii", a.requireUI(a.uiPII))
-	mux.HandleFunc("/admin/pii/rules/save", a.requireUI(a.uiPIIRuleSave))
-	mux.HandleFunc("/admin/pii/rules/delete", a.requireUI(a.uiPIIRuleDelete))
-	mux.HandleFunc("/admin/pii/reviews/approve", a.requireUI(a.uiPIIReviewApprove))
-	mux.HandleFunc("/admin/pii/test", a.requireUI(a.uiPIITest))
 }
 
 func (a *Admin) requireUI(next http.HandlerFunc) http.HandlerFunc {
@@ -306,90 +299,6 @@ func (a *Admin) uiAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render(w, "audit", map[string]any{"Rows": rows, "Usage": usage, "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
-}
-
-func (a *Admin) renderPII(w http.ResponseWriter, r *http.Request, result string) {
-	selected := pii.Rule{DataType: "email", Direction: pii.Both, Action: pii.Mask}
-	for _, rule := range a.Store.ListPIIRules(a.WorkspaceID) {
-		if rule.ID == r.URL.Query().Get("edit") {
-			selected = rule
-			break
-		}
-	}
-	render(w, "pii", map[string]any{
-		"Rules": a.Store.ListPIIRules(a.WorkspaceID), "Reviews": a.Store.ListPIIReviews(a.WorkspaceID),
-		"Groups": a.Store.ListGroups(a.WorkspaceID), "Connectors": a.Store.ListConnectors(a.WorkspaceID),
-		"Tools": a.Store.ListTools(a.WorkspaceID), "Edit": selected,
-		"Result": result, "Err": r.URL.Query().Get("err"),
-	})
-}
-
-func (a *Admin) uiPII(w http.ResponseWriter, r *http.Request) { a.renderPII(w, r, "") }
-
-func (a *Admin) uiPIIRuleSave(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		back(w, r, "/admin/pii", err)
-		return
-	}
-	_, err := a.SavePIIRule(pii.Rule{
-		ID: r.PostForm.Get("id"), GroupID: r.PostForm.Get("group"), ConnectorID: r.PostForm.Get("connector"),
-		PublicName: r.PostForm.Get("tool"), DataType: r.PostForm.Get("type"),
-		Direction: r.PostForm.Get("direction"), Action: r.PostForm.Get("action"),
-	})
-	back(w, r, "/admin/pii", err)
-}
-
-func (a *Admin) uiPIIRuleDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	_ = r.ParseForm()
-	if !a.Store.DeletePIIRule(a.WorkspaceID, r.PostForm.Get("id")) {
-		back(w, r, "/admin/pii", errors.New("unknown PII rule"))
-		return
-	}
-	back(w, r, "/admin/pii", nil)
-}
-
-func (a *Admin) uiPIIReviewApprove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	_ = r.ParseForm()
-	if !a.Store.ApprovePIIReview(a.WorkspaceID, r.PostForm.Get("id")) {
-		back(w, r, "/admin/pii", errors.New("review missing or already decided"))
-		return
-	}
-	back(w, r, "/admin/pii", nil)
-}
-
-func (a *Admin) uiPIITest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		back(w, r, "/admin/pii", err)
-		return
-	}
-	masked, decision, err := pii.ScanText(r.PostForm.Get("sample"), pii.Scope{
-		WorkspaceID: a.WorkspaceID, Direction: r.PostForm.Get("direction"),
-	}, a.Store.ListPIIRules(a.WorkspaceID))
-	if err != nil {
-		back(w, r, "/admin/pii", err)
-		return
-	}
-	result := decision.Action + " — " + strconv.Itoa(decision.MatchCount) + " match(es)"
-	if decision.Action == pii.Mask {
-		result += ": " + masked
-	}
-	a.renderPII(w, r, result)
 }
 
 func auditCount(s *store.MemoryStore, workspace string) int {

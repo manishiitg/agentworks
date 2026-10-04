@@ -21,6 +21,8 @@ import (
 // OAuthFlowState tracks ongoing OAuth flows
 type OAuthFlowState struct {
 	ServerName   string
+	ConnectionID string
+	Outcome      string // guarded by oauthFlowsMu
 	State        string
 	CodeChan     chan string
 	ErrChan      chan error
@@ -107,9 +109,11 @@ func deriveOAuthRedirectURIFromEnv() string {
 
 // OAuthLoginRequest represents a request to start OAuth flow
 type OAuthLoginRequest struct {
-	Scope      string `json:"scope,omitempty"`
-	ServerName string `json:"server_name"`
-	ClientID   string `json:"client_id,omitempty"` // User-provided client_id for servers without DCR
+	SessionID    string `json:"session_id,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
+	ServerName   string `json:"server_name"`
+	ClientID     string `json:"client_id,omitempty"` // User-provided client_id for servers without DCR
 	// ClientSecret goes with ClientID for providers whose OAuth apps are
 	// confidential clients (Google, GitHub).
 	ClientSecret string `json:"client_secret,omitempty"`
@@ -118,9 +122,10 @@ type OAuthLoginRequest struct {
 // MCPConnectRequest represents a request to connect a server. APIKey is optional
 // and only meaningful for servers with no oauth block.
 type MCPConnectRequest struct {
-	Scope      string `json:"scope,omitempty"`
-	ServerName string `json:"server_name"`
-	APIKey     string `json:"api_key,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
+	ServerName   string `json:"server_name"`
+	APIKey       string `json:"api_key,omitempty"`
 }
 
 // OAuthDiscoveryResponse is returned when the server doesn't support DCR and needs a client_id
@@ -155,8 +160,9 @@ type OAuthStatusResponse struct {
 
 // OAuthLogoutRequest represents a request to logout (remove token)
 type OAuthLogoutRequest struct {
-	Scope      string `json:"scope,omitempty"`
-	ServerName string `json:"server_name"`
+	Scope        string `json:"scope,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
+	ServerName   string `json:"server_name"`
 }
 
 // handleOAuthCallback handles GET /api/oauth/callback - receives OAuth authorization code
@@ -485,11 +491,16 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 // registration is cached, the HTTP client for discovery and registration
 // (public-only for a personal server), and what to do once connected.
 type oauthFlowTarget struct {
-	Name       string
-	Config     mcpclient.MCPServerConfig
-	ClientFile string
-	Discoverer oauth.Discoverer
-	OnSuccess  func(flow *OAuthFlowState)
+	Name           string
+	Config         mcpclient.MCPServerConfig
+	ClientFile     string
+	Discoverer     oauth.Discoverer
+	OnSuccess      func(flow *OAuthFlowState)
+	ConnectionID   string
+	LockKey        string
+	BeforeExchange func(*OAuthFlowState) error
+	AfterExchange  func(*OAuthFlowState) error
+	Notify         func(bool, string)
 }
 
 // runOAuthFlow is the OAuth connect shared by platform and personal servers:
@@ -498,6 +509,13 @@ type oauthFlowTarget struct {
 func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oauthFlowTarget) (*OAuthStartResponse, *OAuthDiscoveryResponse, error) {
 	serverName := target.Name
 	serverConfig := target.Config
+	outcome := func(success bool, detail string) {
+		if target.Notify != nil {
+			target.Notify(success, detail)
+		} else {
+			api.notifyOAuthFlowOutcome(sessionID, serverName, success, detail)
+		}
+	}
 
 	// A server with no client_id in config either issues one through Dynamic
 	// Client Registration or needs one registered by hand. Try DCR first, so
@@ -546,6 +564,7 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 
 	// Register the OAuth flow state
 	flow := &OAuthFlowState{
+		ConnectionID: target.ConnectionID,
 		ServerName:   serverName,
 		State:        state,
 		CodeChan:     make(chan string, 1),
@@ -566,6 +585,16 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		oauthFlowsMu.Unlock()
 	}()
 
+	finish := func(success bool, detail string) {
+		oauthFlowsMu.Lock()
+		if success {
+			flow.Outcome = "completed"
+		} else {
+			flow.Outcome = "failed"
+		}
+		oauthFlowsMu.Unlock()
+		outcome(success, detail)
+	}
 	// Start OAuth flow in background goroutine
 	go func() {
 		// Recover from panics so the goroutine doesn't die silently
@@ -587,34 +616,51 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 			api.logger.Info(fmt.Sprintf("📥 Received authorization code for %s (code length: %d)", serverName, len(code)))
 		case err := <-flow.ErrChan:
 			api.logger.Error(fmt.Sprintf("OAuth flow failed for %s: %v", serverName, err), err)
-			api.notifyOAuthFlowOutcome(sessionID, serverName, false, err.Error())
+			finish(false, err.Error())
 			return
 		case <-ctx.Done():
 			api.logger.Error(fmt.Sprintf("OAuth flow timed out for %s", serverName), ctx.Err())
-			api.notifyOAuthFlowOutcome(sessionID, serverName, false, "the user did not complete authorization within 5 minutes")
+			finish(false, "the user did not complete authorization within 5 minutes")
 			return
 		}
 
 		// Exchange code for token
 		api.logger.Info(fmt.Sprintf("🔄 Exchanging authorization code for token for %s (redirect_uri: %s, token_url: %s)",
 			serverName, oauthMgr.GetRedirectURI(), oauthMgr.GetTokenURL()))
-		mutex := platformMCPOAuthMutex(serverName)
+		lockKey := target.LockKey
+		if lockKey == "" {
+			lockKey = serverName
+		}
+		mutex := platformMCPOAuthMutex(lockKey)
 		mutex.Lock()
+		if target.BeforeExchange != nil {
+			if err := target.BeforeExchange(flow); err != nil {
+				mutex.Unlock()
+				finish(false, err.Error())
+				return
+			}
+		}
 		token, err := oauthMgr.ExchangeCodeForToken(ctx, code)
 		mutex.Unlock()
 		if err != nil {
 			api.logger.Error(fmt.Sprintf("❌ Failed to exchange code for token for %s: %v", serverName, err), err)
-			api.notifyOAuthFlowOutcome(sessionID, serverName, false, fmt.Sprintf("token exchange failed: %v", err))
+			finish(false, fmt.Sprintf("token exchange failed: %v", err))
 			return
 		}
 
 		api.logger.Info(fmt.Sprintf("✅ OAuth token obtained for %s, expires: %s, has_refresh: %v",
 			serverName, token.Expiry, token.RefreshToken != ""))
 
+		if target.AfterExchange != nil {
+			if err := target.AfterExchange(flow); err != nil {
+				finish(false, err.Error())
+				return
+			}
+		}
 		if target.OnSuccess != nil {
 			target.OnSuccess(flow)
 		}
-		api.notifyOAuthFlowOutcome(sessionID, serverName, true, "")
+		finish(true, "")
 	}()
 
 	return &OAuthStartResponse{
@@ -631,7 +677,7 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 // already returned "give the user this link" long before this runs. Injects
 // a synthetic turn so the resident agent for sessionID actually tells the
 // user, instead of the outcome only ever being visible in server logs.
-// No-op when sessionID is "" (a UI-driven connect has no chat session).
+// No-op when sessionID is "" (the caller did not bind a chat session).
 func (api *StreamingAPI) notifyOAuthFlowOutcome(sessionID, serverName string, success bool, detail string) {
 	if sessionID == "" {
 		return
@@ -682,9 +728,21 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 	// Derive redirect URI from PUBLIC_URL env var (for production) or incoming request (for local)
 	redirectURI := deriveOAuthRedirectURI(r)
 
-	// No chat session behind a UI-driven connect — "" disables the
-	// synthetic-turn completion notification in beginOAuthFlow.
-	startResp, discoveryResp, err := api.beginOAuthFlow(userID, "", req.ServerName, redirectURI, req.ClientID, req.ClientSecret, nil)
+	// UI sign-in binds completion to its initiating conversation. Never accept
+	// another user's session as a notification target.
+	sessionID, sessionErr := api.oauthNotificationSession(r, req.SessionID)
+	if sessionErr != nil {
+		http.Error(w, "chat session not found or access denied", http.StatusForbidden)
+		return
+	}
+	var startResp *OAuthStartResponse
+	var discoveryResp *OAuthDiscoveryResponse
+	var err error
+	if req.ConnectionID != "" {
+		startResp, discoveryResp, err = api.beginVaultConnectionOAuth(r.Context(), userID, sessionID, req.ConnectionID, req.ServerName, redirectURI, req.ClientID, req.ClientSecret)
+	} else {
+		startResp, discoveryResp, err = api.beginOAuthFlow(userID, sessionID, req.ServerName, redirectURI, req.ClientID, req.ClientSecret, nil)
+	}
 	if err != nil {
 		status := http.StatusInternalServerError
 		var se *oauthStartError
@@ -720,6 +778,10 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if id := r.URL.Query().Get("connection_id"); id != "" {
+		api.vaultConnectionOAuthStatus(w, r, id, serverName)
+		return
+	}
 	api.logger.Info(fmt.Sprintf("🔍 Platform OAuth status check for server %s", serverName))
 
 	// Load server config
@@ -823,6 +885,14 @@ func (api *StreamingAPI) handleOAuthLogout(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if req.ConnectionID != "" {
+		if err := api.logoutVaultConnection(r.Context(), GetUserIDFromContext(r.Context()), req.ConnectionID, req.ServerName); err != nil {
+			writeUsersError(w, 400, err.Error())
+			return
+		}
+		writeUsersJSON(w, 200, map[string]string{"status": "disconnected"})
+		return
+	}
 	userID := GetUserIDFromContext(r.Context())
 	api.logger.Info(fmt.Sprintf("🔐 Platform OAuth logout for server %s, initiated_by %s", req.ServerName, userID))
 

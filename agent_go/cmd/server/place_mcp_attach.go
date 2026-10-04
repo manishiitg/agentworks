@@ -355,12 +355,14 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 	}
 	type row struct {
 		Name      string `json:"name"`
+		Label     string `json:"label,omitempty"`
 		Catalog   string `json:"catalog,omitempty"`
 		URL       string `json:"url"`
 		Owner     string `json:"owner"`
 		OwnerName string `json:"owner_name"`
 		Mine      bool   `json:"mine"`
 		Connected bool   `json:"connected"`
+		SignIn    bool   `json:"sign_in"`
 		// Active is false once the person who added it can no longer edit
 		// this place: it is then skipped at runtime.
 		Active  bool   `json:"active"`
@@ -392,8 +394,8 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		rows = append(rows, row{
-			Name: a.Server, Catalog: server.Catalog, URL: redactedURL(server.URL),
-			Owner: a.Owner, OwnerName: ownerName, Mine: a.Owner == userID, Connected: connected,
+			Name: a.Server, Label: server.Label, Catalog: server.Catalog, URL: redactedURL(server.URL),
+			Owner: a.Owner, OwnerName: ownerName, Mine: a.Owner == userID, Connected: connected, SignIn: server.OAuth != nil,
 			Active: placeMCPCanAttach(r.Context(), a.Owner, root), AddedAt: a.AttachedAt,
 		})
 	}
@@ -430,13 +432,11 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 	}
 	// Credential headers are built from the adder's own personal secrets
 	// (Setup > Secrets), resolved when the connection is made.
-	store := privateStoreForAttachment(userID, request.Name, root)
-	saved, exists := privateMCPByCatalog(userID, request.Catalog)
-	var status int
-	var err error
-	if request.Catalog == "" || !exists {
-		saved, status, err = api.addPlaceMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
+	store := userID
+	if strings.TrimSpace(request.Label) == "" {
+		store = privateStoreForAttachment(userID, request.Name, root)
 	}
+	saved, status, err := api.ensurePrivateMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
@@ -446,7 +446,7 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	log.Printf("[PLACE_MCP] %s added %s to %s", userID, saved.Name, root)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "oauth": saved.OAuth != nil})
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "label": saved.Label, "oauth": saved.OAuth != nil})
 }
 
 // POST /api/mcp/place/{name}/connect?workspace_path= {client_id?}: sign in to
@@ -469,15 +469,21 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var body struct {
+		SessionID    string `json:"session_id,omitempty"`
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
+	sessionID, sessionErr := api.oauthNotificationSession(r, body.SessionID)
+	if sessionErr != nil {
+		writeAgentProfileError(w, http.StatusForbidden, "chat session not found or access denied")
+		return
+	}
 	var entered *registeredClient
 	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
 		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
 	}
-	authURL, discovery, status, err := api.startPlaceMCPSignIn(privateStoreForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
+	authURL, discovery, status, err := api.startPlaceMCPSignIn(privateStoreForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), sessionID, entered)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return

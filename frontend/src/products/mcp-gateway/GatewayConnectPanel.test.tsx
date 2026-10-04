@@ -2,6 +2,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import api from '../../services/api'
 import { GatewayConnectPanel } from './GatewayConnectPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -18,7 +19,8 @@ describe('GatewayConnectPanel', () => {
     vi.restoreAllMocks()
   })
 
-  async function renderPanel(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
+  async function renderPanel(fetchMock: ReturnType<typeof vi.fn>, connections: { id: string; client_name: string }[] = []): Promise<void> {
+    vi.mocked(api.get).mockImplementation(async path => ({ data: path === '/api/vault/connection' ? { endpoint: `${BASE}/api/vault/mcp` } : { connections } }) as never)
     vi.stubGlobal('fetch', fetchMock)
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -41,9 +43,9 @@ describe('GatewayConnectPanel', () => {
   it('shows the workspace endpoint with client instructions', async () => {
     await renderPanel(vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 
-    expect(container!.querySelector('[data-testid="gateway-connect-url"]')?.textContent).toBe(`${BASE}/mcp`)
+    expect(container!.querySelector('[data-testid="gateway-connect-url"]')?.textContent).toBe(`${BASE}/api/vault/mcp`)
     expect(container!.textContent).toContain('Connect Claude')
-    expect(container!.textContent).toContain('Connect with an API key')
+    expect(container!.textContent).toContain('Sign in with your platform account')
   })
 
   it('does not report Copied when clipboard access is rejected', async () => {
@@ -67,6 +69,18 @@ describe('GatewayConnectPanel', () => {
     expect(container!.textContent).toContain('Endpoint reachable')
   })
 
+  it('disconnects the selected OAuth client and updates the list', async () => {
+    vi.mocked(api.delete).mockResolvedValue({ status: 204 } as never)
+    await renderPanel(vi.fn(), [{ id: 'family_test', client_name: 'Claude test' }])
+    expect(container!.textContent).toContain('Claude test')
+    await act(async () => {
+      const button = [...container!.querySelectorAll('button')].find(b => b.textContent?.includes('Disconnect'))!
+      button.click()
+    })
+    expect(api.delete).toHaveBeenCalledWith('/api/oauth/vault/connections/family_test')
+    expect(container!.textContent).not.toContain('Claude test')
+  })
+
   it('reports unreachable when the probe fails', async () => {
     await renderPanel(vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 
@@ -79,4 +93,4 @@ describe('GatewayConnectPanel', () => {
   })
 })
 
-vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt' }))
+vi.mock('../../services/api', () => ({ default: { get: vi.fn(), delete: vi.fn() } }))

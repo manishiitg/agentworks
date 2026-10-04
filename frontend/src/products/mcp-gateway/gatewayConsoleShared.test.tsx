@@ -73,6 +73,7 @@ it('recovers the real group, membership and permissions loaders from one gateway
       else if (url.endsWith('/servers')) body = { servers: [] }
       else if (url.endsWith('/permissions')) body = { permissions: [] }
       else if (url.endsWith('/packages')) body = { packages: [] }
+      else if (url.endsWith('/secrets')) body = { secrets: [] }
       else if (url.endsWith('/history')) body = { events: [] }
       else throw new Error(`Unexpected read: ${url}`)
     }
