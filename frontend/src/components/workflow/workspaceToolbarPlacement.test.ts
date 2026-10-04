@@ -37,8 +37,9 @@ describe('workflow Ask AI placement', () => {
   it('keeps report separate, Knowledge visible, Costs and Execution logs in Ops, and Playbooks in Setup', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
 
-    expect(toolbar).toContain("new Set<WorkspaceViewId>(['pulse', 'flow', 'browser'])")
-    expect(toolbar).toContain("new Set<WorkspaceViewId>(['workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])")
+    // Views keeps only Pulse; Plan and Browser live in Ops (a Relay keeps its Graph in Views).
+    expect(toolbar).toContain("PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse'])")
+    expect(toolbar).toContain("new Set<WorkspaceViewId>(['flow', 'browser', 'workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])")
     expect(toolbar).toContain("playbooks: 'Playbooks'")
     expect(toolbar).toContain("mcp: 'Integrations'")
     expect(toolbar).toContain("identity: 'Identity'")
@@ -48,6 +49,7 @@ describe('workflow Ask AI placement', () => {
     expect(toolbar).not.toContain("folders: 'Folders'")
     expect(toolbar).toContain("view.toolbarGroup === 'capabilities'")
     expect(toolbar).toContain('PRIMARY_TOOLBAR_VIEW_IDS.has(view.id)')
+    expect(toolbar).toContain("relayMode ? view.id === 'flow'")
     expect(toolbar.indexOf('<ReportDocumentSwitcher')).toBeLessThan(toolbar.indexOf('aria-label={pendingDecisionCount'))
     expect(toolbar.indexOf('<WorkflowActivityButton')).toBeGreaterThan(toolbar.indexOf('aria-label={pendingDecisionCount'))
     expect(toolbar.indexOf('<WorkflowActivityButton')).toBeLessThan(toolbar.indexOf('workspaceViewDefinitions.map'))

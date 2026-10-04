@@ -1,3 +1,9 @@
+## Plan and Browser move into the workflow toolbar's Ops group — PLAT-453
+
+[PLAT-453](pulse_platform/frontend-chat/plat-453.md), fixed on `main`, not deployed:
+Views keeps Pulse, Needs you and Activity; Plan and Browser are in Ops (a Relay keeps
+its Graph in Views); the collapsed Ops label highlights when one of them is active.
+
 ## Remove the Builder/Pulse run_in_background tool — PLAT-452
 
 [PLAT-452](pulse_platform/plans-contracts/plat-452.md), on `main`, not deployed, not
