@@ -108,14 +108,38 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("make mounts private: %w", err)
 	}
-	// Hold every granted path under /tmp before the tmpfs hides it.
+	if err := maskDir("/tmp", "mode=1777", privateTmpKeepPaths(policy)); err != nil {
+		return fmt.Errorf("mount private /tmp: %w", err)
+	}
+	for _, root := range policy.PrivateRoots {
+		root = filepath.Clean(root)
+		if err := maskDir(root, "mode=0711", keepPathsUnder(policy, root)); err != nil {
+			return fmt.Errorf("hide %s: %w", root, err)
+		}
+	}
+	if err := applyReadOnlyOverlays(policy.ReadOnlyOverlays); err != nil {
+		return err
+	}
+	if err := applyHiddenPaths(policy.HiddenPaths); err != nil {
+		return err
+	}
+	// The mount capability is for the steps above only.
+	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
+		return fmt.Errorf("clear ambient capabilities: %w", err)
+	}
+	return nil
+}
+
+// maskDir replaces what a folder shows with an empty tmpfs, keeping only the listed paths inside it: each is held
+// open before the tmpfs hides it, recreated, and bound back onto itself. A missing path stays missing.
+func maskDir(target, options string, keepPaths []string) error {
 	type held struct {
 		path string
 		fd   int
 		dir  bool
 	}
 	var keep []held
-	for _, path := range privateTmpKeepPaths(policy) {
+	for _, path := range keepPaths {
 		fd, err := unix.Open(path, unix.O_PATH|unix.O_CLOEXEC, 0)
 		if err != nil {
 			continue // a missing grant stays missing, as without the tmpfs
@@ -127,8 +151,8 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 		}
 		keep = append(keep, held{path: path, fd: fd, dir: st.Mode&unix.S_IFMT == unix.S_IFDIR})
 	}
-	if err := unix.Mount("tmpfs", "/tmp", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777"); err != nil {
-		return fmt.Errorf("mount private /tmp: %w", err)
+	if err := unix.Mount("tmpfs", target, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, options); err != nil {
+		return err
 	}
 	for _, h := range keep {
 		if h.dir {
@@ -150,29 +174,26 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 		}
 		_ = unix.Close(h.fd)
 	}
-	if err := applyReadOnlyOverlays(policy.ReadOnlyOverlays); err != nil {
-		return err
-	}
-	if err := applyHiddenPaths(policy.HiddenPaths); err != nil {
-		return err
-	}
-	// The mount capability is for the steps above only.
-	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
-		return fmt.Errorf("clear ambient capabilities: %w", err)
-	}
 	return nil
 }
 
 // privateTmpKeepPaths lists the policy paths under /tmp, outermost only.
 func privateTmpKeepPaths(policy LandlockPolicy) []string {
-	candidates := append(append(append([]string{}, policy.ReadPaths...), policy.WritePaths...), policy.WorkDir)
+	var extra []string
 	if !policy.BrowserScoped {
-		candidates = append(candidates, browserSocketDir)
+		extra = append(extra, browserSocketDir)
 	}
+	return keepPathsUnder(policy, "/tmp", extra...)
+}
+
+// keepPathsUnder lists the policy paths (read, write, working folder, extra) strictly inside root, outermost only.
+func keepPathsUnder(policy LandlockPolicy, root string, extra ...string) []string {
+	root = filepath.Clean(root)
+	candidates := append(append(append(append([]string{}, policy.ReadPaths...), policy.WritePaths...), policy.WorkDir), extra...)
 	var under []string
 	for _, path := range candidates {
 		clean := filepath.Clean(path)
-		if clean != "/tmp" && strings.HasPrefix(clean, "/tmp/") {
+		if clean != root && strings.HasPrefix(clean, root+"/") {
 			under = append(under, clean)
 		}
 	}

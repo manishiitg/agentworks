@@ -31,6 +31,10 @@ type LandlockPolicy struct {
 	// from a subpath either, so the launcher mounts an empty, unreadable, read-only placeholder over each one in its
 	// own mount namespace: the command can neither read nor change the real file or folder.
 	HiddenPaths []string `json:"hidden_paths,omitempty"`
+	// PrivateRoots are folders the command must not see into at all (a slot's tmux sockets, PLAT-480): the launcher
+	// mounts an empty tmpfs over each in its own mount namespace and binds back only the policy paths (read, write,
+	// working folder) that lie inside it. Requires PrivateTmp (the namespaces).
+	PrivateRoots []string `json:"private_roots,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

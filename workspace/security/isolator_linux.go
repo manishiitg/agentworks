@@ -25,7 +25,7 @@ var sandboxCapability SandboxCapability
 func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command string, args []string) (*exec.Cmd, func(), error) {
 	if abi, err := landlockABI(); err == nil && abi >= 1 {
 		policy, policyErr := iso.landlockPolicy()
-		if policyErr == nil && (len(policy.ReadOnlyOverlays) > 0 || len(policy.HiddenPaths) > 0) && !landlockNamespacesAvailable() {
+		if policyErr == nil && (len(policy.ReadOnlyOverlays) > 0 || len(policy.HiddenPaths) > 0 || len(policy.PrivateRoots) > 0) && !landlockNamespacesAvailable() {
 			policyErr = fmt.Errorf("blocked paths inside granted paths need the launcher's namespaces")
 		}
 		if policyErr != nil {
@@ -117,16 +117,18 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 
 	// A slot command must not reach its slot's tmux server (PLAT-480, F1): Landlock does not govern connect() on
 	// pathname Unix sockets (no such right below ABI 9), and the socket belongs to the same account. The launcher
-	// hides the slot run folder behind an empty one in the command's own mount namespace. When the host cannot give
+	// shows an empty slot run folder in the command's own mount namespace, except the folders the command was
+	// granted inside it (its terminal's folder, the output helper). When the host cannot give
 	// the command that namespace the command is refused (executeIsolatedLinuxPlatform), never run with the socket in view.
+	var privateRoots []string
 	if root := slotRunRootToHide(iso.Slot); root != "" {
-		hidden = append(hidden, root)
+		privateRoots = append(privateRoots, root)
 	}
 
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "" || iso.Slot != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays, HiddenPaths: hidden}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "" || iso.Slot != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays, HiddenPaths: hidden, PrivateRoots: privateRoots}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {

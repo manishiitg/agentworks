@@ -158,10 +158,12 @@ out="$(sudo -u slot01 "$REL/bin/video-studio-landlock-runner" --config /tmp/poli
 echo "control (launcher without the hide): $out"
 [[ "$out" == *probe* ]] && echo "OK   control: Landlock alone leaves the socket reachable (the hole this step closes)" || { echo "BAD  control did not reproduce the hole: $out"; fails=$((fails + 1)); }
 
+install -d -o vs -g slot01 -m 2770 "$APP/slots/run/slot01/shells" "$APP/slots/run/slot01/shells/e2e" "$APP/slots/run/slot01/shells/other"
+echo OTHER > "$APP/slots/run/slot01/shells/other/secret" && chown vs:slot01 "$APP/slots/run/slot01/shells/other/secret"
 echo "==> 5. the chain, negative reads"
 expect 0 "TestRealSlotChain" -- as_vs env AGENTWORKS_SLOT_CHAIN_E2E=1 E2E_DOCS="$DOCS" E2E_APP="$APP" E2E_PROFILE="$PROFILE" \
   E2E_OTHER_PROJECT="$DOCS/_users/u2/Chats/Work/projects/u2crew" E2E_CREW="$DOCS/_users/u1/Chats/Work/projects/u1crew" \
-  E2E_NOT_GRANTED="$DOCS/Workflow/wf2/public.txt" E2E_TMUX_SOCKET="$SOCK" E2E_RUNNER="$REL/bin/video-studio-landlock-runner" \
+  E2E_NOT_GRANTED="$DOCS/Workflow/wf2/public.txt" E2E_TMUX_SOCKET="$SOCK" E2E_RUN_KEEP="$APP/slots/run/slot01/shells/e2e" E2E_RUNNER="$REL/bin/video-studio-landlock-runner" \
   AGENTWORKS_LANDLOCK_RUNNER="$REL/bin/video-studio-landlock-runner" "$REL/bin/slotcheck.test" -test.run TestRealSlotChain -test.v
 
 if [[ -f /src/deploy/slotcheck.sh ]]; then

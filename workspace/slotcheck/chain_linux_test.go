@@ -80,6 +80,35 @@ func TestRealSlotChain(t *testing.T) {
 			}
 		})
 	}
+	// The slot run root looks empty to a command except for the folders it was granted inside it: the Code terminal's
+	// own shell folder (its tmux server runs in the sandbox with its socket there) and the output helper.
+	if keep := os.Getenv("E2E_RUN_KEEP"); keep != "" {
+		granted := base
+		granted.ReadPaths = append(append([]string{}, base.ReadPaths...), keep)
+		granted.WritePaths = append(append([]string{}, base.WritePaths...), keep)
+		t.Run("a granted folder inside the slot run root still works", func(t *testing.T) {
+			out, errOut, err := runThroughShellTool(ctx, granted, "touch "+filepath.Join(keep, "made-by-command")+" && echo ok")
+			if err != nil || strings.TrimSpace(out) != "ok" {
+				t.Fatalf("write into the granted folder: out=%q err=%v stderr=%q", out, err, errOut)
+			}
+			// The other shells' folders and sockets in the same run folder are not there.
+			other := filepath.Join(filepath.Dir(keep), "other", "secret")
+			out, errOut, err = runThroughShellTool(ctx, granted, "cat "+other)
+			if err == nil || strings.Contains(out, "OTHER") {
+				t.Errorf("another shell's folder is visible: out=%q err=%v", out, err)
+			}
+			out, errOut, err = runThroughShellTool(ctx, granted, "ls -A "+filepath.Join(filepath.Dir(keep), "other")+" 2>&1; test -e "+filepath.Join(filepath.Dir(filepath.Dir(keep)), "tmux.sock"))
+			if err == nil {
+				t.Errorf("the slot's tmux socket is visible next to the granted folder: out=%q", out)
+			}
+		})
+		t.Run("the output helper is still importable from a slot command", func(t *testing.T) {
+			out, errOut, err := runThroughShellTool(ctx, base, `for d in $(echo "$PYTHONPATH" | tr ':' ' '); do if test -f "$d/agentworks_output.py"; then echo "$d"; exit 0; fi; done; exit 1`)
+			if err != nil || !strings.Contains(out, "output-helper-") {
+				t.Fatalf("output helper not reachable: out=%q err=%v stderr=%q", out, err, errOut)
+			}
+		})
+	}
 	t.Run("the whole self-test passes on the fixed layout", func(t *testing.T) {
 		gids := []int{os.Getgid()}
 		if groups, err := os.Getgroups(); err == nil {

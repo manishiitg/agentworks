@@ -38,10 +38,10 @@ func TestSlotCommandPolicyHidesTheSlotRunRoot(t *testing.T) {
 		return policy
 	}
 	want := canonicalPath(runRoot)
-	if got := policyFor("slot01").HiddenPaths; len(got) != 1 || got[0] != want {
-		t.Errorf("slot command HiddenPaths = %v, want [%s]", got, want)
+	if got := policyFor("slot01").PrivateRoots; len(got) != 1 || got[0] != want {
+		t.Errorf("slot command PrivateRoots = %v, want [%s]", got, want)
 	}
-	if got := policyFor("").HiddenPaths; len(got) != 0 {
+	if got := policyFor("").PrivateRoots; len(got) != 0 {
 		t.Errorf("a command that is not run as a slot must hide nothing, got %v", got)
 	}
 }
