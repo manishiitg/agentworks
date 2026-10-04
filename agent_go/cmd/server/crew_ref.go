@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"path"
 	"strings"
@@ -103,6 +104,15 @@ func resolveCrewPath(ctx context.Context, callerID, raw string) (crewPathRef, bo
 	}
 	if ref.Shared && ref.OwnerID == "" {
 		ref.OwnerID = crewOwners.owner(ctx, ref.Root)
+	} else if !ref.Shared && ref.OwnerID != "" {
+		// PLAT-442: the manifest's owner_id wins; the path owner is the fallback. A disagreement is
+		// logged and the manifest is used (it is what the Crew move relies on).
+		manifestOwner := crewOwners.owner(ctx, ref.Root)
+		owner, mismatch := pickProjectOwner(manifestOwner, ref.OwnerID)
+		if mismatch {
+			log.Printf("[OWNER_MISMATCH] %s: product.json owner_id %q differs from the path owner %q; using the manifest", ref.Root, manifestOwner, ref.OwnerID)
+		}
+		ref.OwnerID = owner
 	}
 	return ref, true
 }
@@ -178,7 +188,7 @@ func readCrewManifestOwner(ctx context.Context, root string) string {
 	if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), "work") {
 		return ""
 	}
-	return sanitizeUserIDForPath(strings.TrimSpace(manifest.OwnerID))
+	return cleanManifestOwner(manifest.OwnerID)
 }
 
 // crewPathAliases maps a migrated legacy crew root to its Crew/<id> root. The

@@ -143,6 +143,8 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	store := defaultProductProjectStore()
 	if binding, err := resolveProductProjectBindingWithStore(ctx, callerID, profile, projectID, store); err == nil {
+		// PLAT-442: the owner opening a project writes owner_id into its product.json once.
+		ensureProjectOwnerID(ctx, binding.WorkspacePath, callerID)
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}
 	// Code never resolves under another owner, including legacy shares.

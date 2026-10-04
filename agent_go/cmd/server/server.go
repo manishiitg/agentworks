@@ -1774,6 +1774,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	// interactive Pulse sessions can write. This is intentionally repeated at
 	// startup: the version receipt makes it a no-op after the first successful
 	// deployment, while the lazy open guard covers laptops that were offline.
+	// PLAT-442: a Crew's or Code's owner is written in its product.json (idempotent; never overwrites).
+	if ownerReport := migrateProductOwners(fsutil.WorkspaceDocsRoot()); ownerReport.Scanned > 0 || len(ownerReport.Failures) > 0 {
+		log.Printf("[OWNER_BACKFILL] scanned=%d stamped=%d current=%d skipped=%d mismatched=%d failures=%d",
+			ownerReport.Scanned, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, len(ownerReport.Failures))
+		for _, failure := range ownerReport.Failures {
+			log.Printf("[OWNER_BACKFILL] failure: %s", failure)
+		}
+	}
 	pulseMigrationCtx, cancelPulseMigration := context.WithTimeout(context.Background(), 10*time.Minute)
 	pulseMigrationReport, pulseMigrationErr := pulsestore.MigrateWorkspaceDatabases(pulseMigrationCtx, fsutil.WorkspaceDocsRoot())
 	cancelPulseMigration()

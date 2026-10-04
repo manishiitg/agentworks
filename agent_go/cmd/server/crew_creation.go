@@ -463,6 +463,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	manifest := map[string]interface{}{
 		"schema_version": 1,
 		"product":        profileID,
+		"owner_id":       sanitizeUserIDForPath(userID),
 		"id":             crewID,
 		"title":          title,
 		"description":    purpose,

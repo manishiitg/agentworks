@@ -40,6 +40,7 @@ var literalAllowlist = map[string]string{
 var usersDirAllowlist = map[string]string{
 	"cmd/server/auth_rotate_cmd.go":                "globs the per-user directories on disk to rotate stored credentials",
 	"cmd/server/product_secrets_migration.go":      "one-shot on-disk migration of per-user secrets files",
+	"cmd/server/product_owner.go":                  "startup scan stamping owner_id into Crew/Code product.json from the on-disk per-user tree (PLAT-442)",
 	"cmd/server/durable_chat_migration_command.go": "one-shot migration reading the owner out of legacy on-disk chat paths",
 	"cmd/server/virtual-tools/delegation_tools.go": "const fallback Chats folder; a const cannot call PhysicalPath",
 	"internal/videoproduct/managed_skills.go":      "walks the per-user directories on disk",
