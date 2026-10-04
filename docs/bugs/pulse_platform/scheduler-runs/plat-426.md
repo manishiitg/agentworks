@@ -149,3 +149,8 @@ known-good build from being pruned by later builds. `./deploy.sh build` only bui
 One build per commit; `./deploy.sh excellence` with a prebuilt release spends about a minute (copy + activation) after the build;
 all Hetzner products and RTS run the byte-identical binaries of one build (same manifest). Tests: `deploy/common/test_release_manifest.py`,
 `test_build_once.py`, `deploy/rootless-linux/test_prebuilt.py` (the stage-only copy test runs on Linux only).
+
+## Build a pinned commit (2026-10-04)
+
+`DEPLOY_SHA_MCP_AGENT_BUILDER_GO`, `DEPLOY_SHA_MCPAGENT` and `DEPLOY_SHA_MULTI_LLM_PROVIDER_GO` (40-hex) make `./deploy.sh` build that commit instead of main's head, so a
+release can leave out work still landing on main (PLAT-435 was mid-migration when PLAT-437 had to go out). The commit must be an ancestor of `origin/main`.
