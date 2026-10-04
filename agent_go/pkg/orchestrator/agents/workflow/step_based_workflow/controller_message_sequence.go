@@ -1667,14 +1667,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step
 		"KbAccess":                  kbAccess,
 		"KbAccessLabel":             kbAccessLabel(kbAccess),
 		"KBGuidanceBlock":           BuildStepKBGuidanceWithTarget(kbAccess, "", hcpo.messageSequenceAbsPath(filepath.Join(KnowledgebaseFolderName, KBNotesFolderName))),
-		"MessageSequenceAccessNote": buildMessageSequenceAccessNote(writeAccess),
+		"MessageSequenceAccessNote": buildMessageSequenceAccessNote(writeAccess, dbAccess),
 		"HasLearnings":              "false",
 		"CurrentDate":               time.Now().Format("2006-01-02"),
 		"CurrentTime":               time.Now().Format("15:04:05"),
 	}
 }
 
-func buildMessageSequenceAccessNote(writeAccess MessageSequenceWriteAccess) string {
+func buildMessageSequenceAccessNote(writeAccess MessageSequenceWriteAccess, dbAccess string) string {
+	// No platform stores (a Relay): the folder grants are the step folder and
+	// Downloads only; name no database, knowledgebase or learnings.
+	if dbAccess == DBAccessNone {
+		return "Writes for this item are limited to: step folder, Downloads. Readable folders are listed in Allowed READ."
+	}
 	grants := []string{"step folder", "Downloads", "db/assets/"}
 	if writeAccess.DB {
 		grants = append(grants, "database rows via mutate_workflow_db")

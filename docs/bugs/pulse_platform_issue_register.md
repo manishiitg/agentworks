@@ -1,3 +1,9 @@
+## Steps and Relay guidance mention no stores they lack — PLAT-454
+
+[PLAT-454](pulse_platform/plans-contracts/plat-454.md), fixed on `main`, not deployed:
+a step with no platform stores gets no database/KB/learnings text at all; the Relay
+Builder prompt and skill say how data moves instead of what is missing.
+
 ## Plan and Browser move into the workflow toolbar's Ops group — PLAT-453
 
 [PLAT-453](pulse_platform/frontend-chat/plat-453.md), fixed on `main`, not deployed:

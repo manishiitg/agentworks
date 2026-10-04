@@ -586,7 +586,10 @@ func isWorkflowStepShellRequest(envs ...map[string]string) bool {
 // database file is not blocked (only scripted steps get that), yet the final
 // environment carries no DB_PATH.
 func shellMissingGrantedDBPath(env map[string]string, cfg *common.SessionShellConfig) bool {
-	if strings.TrimSpace(env["WORKFLOW_DB_ACCESS"]) == "" || strings.TrimSpace(env["DB_PATH"]) != "" {
+	access := strings.TrimSpace(env["WORKFLOW_DB_ACCESS"])
+	// "none" is a product without platform stores (a Relay): no DB_PATH is the
+	// intended state, not a missing grant.
+	if access == "" || strings.EqualFold(access, "none") || strings.TrimSpace(env["DB_PATH"]) != "" {
 		return false
 	}
 	if cfg == nil {

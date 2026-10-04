@@ -52,9 +52,8 @@ reasoning.
   one JSON value to `os.path.join(os.environ["STEP_OUTPUT_DIR"], "route_result.json")`;
   the agent receives exactly that JSON. A lookup that finds nothing returns e.g.
   `{"found": false}` rather than failing.
-- Relays have no workflow database, knowledge base or learnings. A tool reaches
-  the user's own systems with their client library and a secret (for example a
-  connection string in `SECRET_*`), or a file granted through
+- A tool reaches the user's own systems with their client library and a secret
+  (for example a connection string in `SECRET_*`), or a file granted through
   `additional_read_paths`.
 - The agent's authored system prompt is kept as written; the platform appends a
   short list of its tools. Test the tool with `execute_step`, then the whole
@@ -86,8 +85,8 @@ provided by product.yaml; do not replace them with goal or dashboard commands.
 
 - Anyone with visibility may execute a published Relay and poll their own API runs. Publishing and editing require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.
 - External products invoke published versions through API function triggers. Do not configure cron/calendar schedules or timed draft execution.
-- Scripts and agent tools must write generated files only into the assigned run folder or runtime data directories (`db/`, `costs/`, `logs/`). Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
+- Scripts and agent tools must write generated files only into the assigned run folder. Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
 
-## Execution stores
+## Data handoff
 
-`product.yaml` declares `execution.platform_stores: false`. This is enforced for draft tests, individual step tests, script tools and published API runs. Old DB/KB/learnings settings are ignored at execution. Platform DB tools and raw store files are unavailable; no DB_PATH is provided to Python. Use INPUT, variables and step outputs for data handoff. A user database remains accessible through explicitly configured scripts or MCP tools with attached secrets. Do not use agentworks_db or create platform store artifacts.
+Use INPUT, variables and step outputs to pass data between steps. A user's own database or system is reached through a script tool or an MCP integration with attached secrets.

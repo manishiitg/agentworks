@@ -69,6 +69,10 @@ type PromptSections struct {
 // managed workflow database. Agentic steps and background agents must receive
 // the same call shapes; saved scripted code has a separate $DB_PATH contract.
 func BuildManagedWorkflowDBGuidance(access string) string {
+	// A product without platform stores (a Relay) has no database to describe.
+	if strings.EqualFold(strings.TrimSpace(access), DBAccessNone) {
+		return ""
+	}
 	if strings.EqualFold(strings.TrimSpace(access), DBAccessRead) {
 		return guidance.StepSystemPromptTemplate("managed-db-read")
 	}
