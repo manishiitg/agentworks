@@ -640,3 +640,9 @@ The actual Crew builder made three read-only calls through the ordinary `agentwo
 The allowed call recorded input and output; both denied calls recorded attempted input without upstream output. HTTP 200 is the tool transport envelope and does not imply permission was granted. These results used group permissions, not Vault administrator setup authority. Focused product regression tests and the backend build passed.
 
 This test used the connected Codex CLI temporarily because Muse did not load its MCP bridge tools. The original Muse model and Max reasoning were restored afterward. Muse MCP loading remains unresolved. This verifies the fetch-ID regex and tool grant for **manish 1** only; it does not verify the search equality rule or restrict **manish 2**, which has separate grants without this regex.
+
+### Integration with current main for deployment testing (2026-10-04)
+
+The merge retains main's ownership registry, explicit CLI run-as identity and Crew migration to `Crew/<id>`, including native session continuity. Product manifests declare main's existing `native-subagents` guidance. Workflow MCP registration now obeys its manifest tool admission so the Vault call wrapper does not silently widen the workflow surface. Gateway end-to-end fixtures explicitly include approved tool fingerprints. Main's pinned provider version and its module checksums are retained.
+
+Verification after integration: the gateway Go suite, focused Vault/Crew/migration/product-surface tests, linked runtime tests, 35 Vault UI tests, TypeScript checking and 16 installer/deployment transport tests passed. Confida deployment acceptance remains a separate server test; this merge does not verify or resolve the local Muse MCP-loading issue.
