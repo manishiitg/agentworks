@@ -10538,6 +10538,13 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		fallbackCancel()
 		if handled {
 			if err != nil {
+				// The same proof the warm-session branch above accepts: the retained terminal is gone (Stop, a died CLI or a provider switch ended it), so nothing
+				// was sent and a fresh turn is safe. Answering 409 delivery_uncertain here left every send, and each of its 30 s retries, rejected until the
+				// stale record cleared (Code on Excellence, 2026-10-04: three 409s after a provider switch).
+				if liveInputErrorProvesNoTarget(err) {
+					log.Printf("[QUERY->LIVE] Retained terminal for session %s has no live target; starting a new turn: %v", sessionID, err)
+					return false
+				}
 				log.Printf("[QUERY->LIVE] Retained-terminal fallback uncertain for session %s: %v", sessionID, err)
 				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
 				return true

@@ -1,3 +1,7 @@
+## Provider switch: next sends rejected with 409 delivery_uncertain — PLAT-425
+
+[PLAT-425](pulse_platform/chat-reliability/plat-425.md), P1, fixed on `main`; deploy pending. A gone retained terminal now starts a fresh turn instead of 409.
+
 ## CLI delivery health: smoke test, duplicate and launch-death checks — PLAT-424
 
 [PLAT-424](pulse_platform/chat-reliability/plat-424.md), P2, open (planned, not started). Notice duplicate sends, instant launch deaths and slow acceptance without a user report.
