@@ -30,8 +30,8 @@ import (
 // the JSON it prints. The script runs in the same sandbox as a scripted step:
 // read access to the workflow, a read-only DB snapshot, the workflow's
 // selected secrets and MCP servers, and one writable cache folder. Anyone who
-// can see the workflow can run it -- it runs with the workflow's connections,
-// never the viewer's, exactly like a scheduled run. There is no server cache;
+// can see the workflow can run it -- it uses the project's selection under
+// the viewer's live MCP/Vault permissions. There is no server cache;
 // a script that talks to a slow or rate-limited service caches for itself in
 // REPORT_CACHE_DIR.
 
