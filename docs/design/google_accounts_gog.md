@@ -24,15 +24,18 @@ access token (a `GITHUB_TOKEN` secret) used with git and the API.
   redirect URI to register and the APIs to enable.
 - **Across products:** Integrations → Gmail → **Connect Google account** uses the
   same compact account list and connection form for Code, Crew, workflow and relay
-  targets, locally and on deployed servers with a configured Google app. Choose what the agent may
+  targets, locally and on deployed servers with either OAuth source. Choose what the agent may
   use (Gmail: not used / read only / read, draft and send; Drive, Calendar, Docs, Sheets, Slides:
   not used / read only / read and edit), sign in with their own Google account, personal or work.
   No file to upload and no Google Cloud project of their own. The connection is private to that
   Code and its owner (`GmailConnection.ScopeWorkspace`, `UsableFrom`) when connected
   to a Code. Shared Crew/workflow accounts can be connected and managed only by an
   administrator. Existing legacy clients remain usable: Change access reconnects
-  the same connection and client instead of creating a replacement. Without a
-  configured platform app, the legacy client-upload flow remains available.
+  the same connection and client instead of creating a replacement. The same new UI also offers saved named clients or **Use my own OAuth JSON**,
+  whether or not the company app is configured. A new upload has a unique name
+  and never replaces another client. The account cards show saved **AgentWorks
+  settings** separately from the checked **Google** permissions; granted Gmail
+  read access does not automatically enable the AgentWorks read opt-in.
 - **The agent:** `google_workspace_cli` (gog) honors the connection's target and owner scope. A read-only session gets
   read tools only.
 
@@ -51,7 +54,10 @@ access token (a `GITHUB_TOKEN` secret) used with git and the API.
   that belongs to a pending Gmail sign-in (`services.HasPendingGmailOAuthState`) to the Gmail
   completion; every other state stays an MCP sign-in.
 - `GET /api/human-feedback/gmail/google-app` says whether the server has a Google app and the
-  redirect URI; the component renders only when it does.
+  redirect URI; it selects the company-app option rather than gating the account UI.
+- Named uploads use `/oauth-clients`; connecting through them uses `/connections`
+  with `client_name` and `workspace_path`, followed by `/connections/{id}/auth/start`.
+  Updating services sends `services_set: true`, including when clearing the list.
 
 ## Google-side requirements (not visible to us)
 

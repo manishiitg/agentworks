@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ArrowRight, Check, ChevronDown, Loader2, Minus, Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
+import { GmailSetupGuide } from '../../components/workflow/bots/GmailSetupGuide'
 import { googleAppApi } from '../../api/googleApp'
 import { CHANGE_GOOGLE_ACCESS_EVENT, GOOGLE_ACCESS_SERVICES, GOOGLE_SERVICES, googleAccessLabel, type GoogleAccessLevel } from './googleAccountAccess'
 
@@ -14,20 +15,21 @@ const errorText = (cause: unknown, fallback: string) => {
   return cause instanceof Error ? cause.message : fallback
 }
 
-/**
- * Connect Google accounts through the server's Google app: pick what the
- * agent may use, sign in with Google, done. Nothing is uploaded and there is no Google Cloud
- * project to make. Code accounts stay private; shared accounts are admin-managed. The server
- * holds the token and runs the Google tools, refusing changes the person did not allow.
- * Rendered only when the server has a Google app.
- */
+/** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
 export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount = true, readOnly = false }: { workspacePath: string; onChanged?: () => void; privateAccount?: boolean; readOnly?: boolean }) {
   const [configured, setConfigured] = useState<boolean | null>(null)
+  const [clients, setClients] = useState<{ name: string }[]>([])
+  const [source, setSource] = useState('')
+  const [sourceError, setSourceError] = useState<string | null>(null)
+  const [clientName, setClientName] = useState('')
+  const [clientFile, setClientFile] = useState<File | null>(null)
   const [gmail, setGmail] = useState<Level>('read')
   const [levels, setLevels] = useState<Record<string, Level>>({ drive: 'read', calendar: 'read' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
+  const [authUrl, setAuthUrl] = useState('')
+  const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(true)
   const contentId = useId()
   const [changing, setChanging] = useState<{ id: string; email: string; gmail: Level; levels: Record<string, Level> } | null>(null)
@@ -55,9 +57,20 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
 
   useEffect(() => {
     let cancelled = false
-    void googleAppApi.status().then(status => { if (!cancelled) setConfigured(status.configured) }).catch(() => { if (!cancelled) setConfigured(false) })
+    setConfigured(null); setSource(''); setSourceError(null)
+    void Promise.allSettled([googleAppApi.status(), googleAppApi.clients()]).then(([app, named]) => {
+      if (cancelled) return
+      const company = app.status === 'fulfilled' && app.value.configured
+      const available = named.status === 'fulfilled' ? named.value.filter(client => client.name !== 'platform') : []
+      setConfigured(company)
+      setClients(available)
+      setSource(company ? 'company' : available.length ? `client:${available[0].name}` : 'upload')
+      if (app.status === 'rejected' || named.status === 'rejected') {
+        setSourceError('Could not check all Google sign-in apps. Existing accounts can still reconnect; available options are shown below. Reopen this panel to retry.')
+      }
+    })
     return () => { cancelled = true }
-  }, [])
+  }, [workspacePath])
 
   const connect = useCallback(async () => {
     if (readOnly || busy) return
@@ -70,9 +83,30 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
         allow_read_access: gmail !== 'off',
         allow_agent_write_access: gmail === 'write',
       }
-      const result = changing ? await googleAppApi.reconnect(changing.id, request) : await googleAppApi.connect(request)
+      let result: { id: string; auth_url: string }
+      if (changing) {
+        // Reauthorization retains this connection's original client, even without a company app.
+        result = await googleAppApi.reconnect(changing.id, request)
+      } else if (source === 'company' && configured) {
+        result = await googleAppApi.connect(request)
+      } else {
+        let name = source.startsWith('client:') ? source.slice(7) : ''
+        if (source === 'upload') {
+          name = clientName.trim()
+          if (name === 'platform') throw new Error('Choose a different name; platform is reserved for the company Google app.')
+          if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(name)) throw new Error('Name the Google app using lowercase letters, numbers and hyphens, up to 64 characters.')
+          if (!clientFile) throw new Error('Choose the OAuth client JSON downloaded from Google Cloud.')
+          let json: unknown
+          try { json = JSON.parse(await clientFile.text()) } catch { throw new Error('That file is not valid JSON. Upload the original OAuth client JSON from Google Cloud.') }
+          await googleAppApi.registerClient(name, json)
+          setClients(existing => [...existing, { name }])
+          setSource(`client:${name}`); setClientFile(null)
+        }
+        if (!name) throw new Error('Choose a Google sign-in app first.')
+        result = await googleAppApi.connectWithClient(name, request)
+      }
       window.open(result.auth_url, '_blank', 'noopener')
-      setOpened(true)
+      setOpened(true); setAuthUrl(result.auth_url); setCopied(false)
       if (changing) setChanging({ ...changing, gmail, levels: { ...levels } })
       // The account list refreshes when the person comes back from Google, not before.
       if (focusListener.current) window.removeEventListener('focus', focusListener.current)
@@ -84,9 +118,8 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
     } finally {
       setBusy(false)
     }
-  }, [workspacePath, levels, gmail, onChanged, changing, readOnly, busy])
+  }, [workspacePath, levels, gmail, onChanged, changing, readOnly, busy, source, configured, clientName, clientFile])
 
-  if (!configured) return null
 
   const changedCount = changing ? GOOGLE_ACCESS_SERVICES.filter(service => {
     const current = service.key === 'gmail' ? changing.gmail : changing.levels[service.key] ?? 'off'
@@ -117,6 +150,29 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
         {privateAccount ? 'Sign in with your own Google account, personal or work. It stays in this Code and works only for you.' : 'An administrator connects Google accounts shared by Crews and workflows on this installation.'} The agent uses it through the server and never sees your password or token.
       </p>
       {readOnly && <p className="mt-2 text-xs text-muted-foreground">{privateAccount ? "Only this Code's owner can manage its Google accounts." : 'An administrator manages shared Google accounts.'}</p>}
+      {sourceError && <p role="alert" className="mt-2 text-xs text-amber-600 dark:text-amber-400">{sourceError}</p>}
+      {!changing && <div className="mt-3 space-y-2 rounded-md border border-border p-3">
+        <label className="block text-xs font-medium">Google sign-in app
+          <select aria-label="Google sign-in app" value={source} disabled={readOnly || busy || configured === null}
+            onChange={event => { setSource(event.target.value); setError(null) }} className="mt-1 block w-full rounded-md border border-border bg-background p-2 text-xs">
+            {configured === null && <option value="">Checking Google apps…</option>}
+            {configured && <option value="company">Company Google app · configured by administrator</option>}
+            {clients.map(client => <option key={client.name} value={`client:${client.name}`}>Saved app: {client.name}</option>)}
+            <option value="upload">Use my own OAuth JSON</option>
+          </select>
+        </label>
+        <p className="text-xs text-muted-foreground">{source === 'company' ? 'Use the app configured for this installation. No JSON upload needed.' : source === 'upload' ? 'Give this app a unique name. Uploading creates a separate app and keeps existing accounts unchanged.' : 'Reuse this saved Google app to connect another account.'}</p>
+        {source === 'upload' && <>
+          <label className="block text-xs">Name this Google app
+            <input aria-label="Google app name" value={clientName} onChange={event => setClientName(event.target.value)} disabled={readOnly || busy} placeholder="my-google-app"
+              className="mt-1 block w-full rounded-md border border-border bg-background p-2 text-xs" />
+          </label>
+          <label className="block text-xs">OAuth client JSON
+            <input aria-label="Google Cloud client file" type="file" accept=".json,application/json" disabled={readOnly || busy} onChange={event => setClientFile(event.target.files?.[0] || null)} className="mt-1 block w-full text-xs" />
+          </label>
+          <GmailSetupGuide backend="gog" />
+        </>}
+      </div>}
       <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-2">
         {GOOGLE_ACCESS_SERVICES.map(service => {
           const value = service.key === 'gmail' ? gmail : levels[service.key] ?? 'off'
@@ -154,7 +210,11 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
       </div>
       <p className="mt-3 text-xs leading-5 text-muted-foreground">Gmail can still send workflow notifications when agent access is removed.</p>
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
-      {opened && <p role="status" className="mt-2 text-xs text-muted-foreground">Finish signing in on the Google tab that opened. This list updates when you come back.</p>}
+      {opened && <div className="mt-2 text-xs text-muted-foreground">
+        <p role="status">Finish signing in on the Google tab that opened. This list updates when you come back.</p>
+        <button type="button" className="mt-1 text-primary underline" onClick={() => { void navigator.clipboard.writeText(authUrl).then(() => setCopied(true)).catch(() => setError('Could not copy the sign-in link.')) }}>{copied ? 'Link copied' : 'Copy sign-in link'}</button>
+        <p className="mt-1">Use this link if the account is in a different browser profile.</p>
+      </div>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
         <div className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -163,7 +223,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
             <div className="mt-1 max-w-72 leading-4">{changing ? 'Changes are saved when you continue. Approve new permissions with Google.' : 'Review and approve these permissions with Google.'}</div>
           </div>
         </div>
-        <Button size="sm" disabled={busy || readOnly} onClick={() => { void connect() }}>
+        <Button size="sm" disabled={busy || readOnly || (!changing && (!source || configured === null || (source === 'upload' && (!clientName.trim() || !clientFile))))} onClick={() => { void connect() }}>
           {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}{changing ? 'Sign in again with Google' : 'Connect Google account'}<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
         </Button>
       </div>

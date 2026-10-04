@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — One Google account UI supports both company and named OAuth clients
+
+Choose the administrator's company app or a saved/new named OAuth JSON client
+inside the same account and permissions form. App availability controls source
+choices, not the UI design. Existing connections keep their ID and client;
+Code ownership and shared-account administration stay enforced. Show saved
+AgentWorks settings separately from Google's grants so a granted scope never
+implies an application opt-in. Ticket:
+[PLAT-470](bugs/pulse_platform/integrations/plat-470.md).
+
 ### 2026-10-04 — PR #228 merged with mcp-gateway not compiling; gate it in CI
 
 - **Found.** The Vault MVP merge referenced `store.SecretResource`,

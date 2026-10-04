@@ -34,14 +34,24 @@ an otherwise working account merely because both binaries exist.
    to widen or narrow a token's scope after the fact; the only way to change
    it is a fresh consent (Reconnect).
 
-**These two can drift apart**, and when they do, the "Sending accounts"
-panel's badges can be misleading — a connection authorized long ago under a
-broader legacy flow can show "Send only" while the real token already has
-full Gmail + Drive + Sheets + Docs + Slides + Calendar access, because the
-badge reads the *stored request*, not the live grant. Never assume the
-badge is the truth. If you need to know what an account can currently
-actually do, read `auth.scopes` from its status (the raw granted OAuth
-scopes), not `allow_read_access`/`allow_agent_write_access`/`services`.
+**These two can drift apart.** The shared account cards show **AgentWorks
+settings** and **Google** permissions separately. Neither substitutes for the
+other: Gmail reading requires both the saved `allow_read_access` opt-in and a
+Google read grant. If Google already granted `gmail.readonly` but the saved flag
+is off, say "Google already granted read access; AgentWorks still has mailbox
+reading disabled" and guide the owner to **Change access**. Do not claim Google
+has withheld read access in that case, or enable it automatically.
+
+### Connecting through either OAuth source
+
+The same **Connect a Google account** form is used by Code, Crew, workflows and
+Relays. The owner/admin can choose the **Company Google app** configured by the
+deployment administrator, a saved named app, or **Use my own OAuth JSON**. For
+an upload, the person gives the app a unique name and uploads the original file
+in the UI; never ask them to paste client secrets into chat. A company app needs
+no per-account upload. Reusing a saved named app needs no second upload. Existing
+accounts retain their connection ID and OAuth client when changing access.
+Code accounts remain private to their owner; shared accounts remain admin-managed.
 
 ### Always check current state first, from chat
 
@@ -61,17 +71,13 @@ directly instead of asking the user to describe screenshots:
 - If it lists something and the user hasn't reconnected since requesting it,
   tell them to click **Reconnect** (or call `update_gmail_connection_grants`
   to get a fresh `reconnect_url`) and complete Google's consent screen.
-- If it lists something **and the user says they already reconnected**, this
-  is almost always because that exact scope isn't registered on this OAuth
-  client's consent screen in Google Cloud Console (**APIs & Services → OAuth
-  consent screen → Data Access**) — Google silently omits any
-  requested-but-unregistered scope from the granted token even with a forced
-  fresh consent prompt. Tell the user the precise missing scope (it's right
-  there in `stored_but_not_granted`) and that exact fix, rather than asking
-  them what they see in the UI or guessing at other causes. This applies
-  identically to every service (Drive, Sheets, Docs, Slides, Calendar) and to
-  Gmail read access — none of them have a code-side or CLI-side workaround if
-  the scope was never registered.
+- If it lists something **and the user says they already reconnected**, first
+  check whether the browser callback actually reported **Gmail connected**.
+  A failed callback, including a gog import failure, leaves the old grant in
+  place. Report that failure and retry sign-in. If a successful callback still
+  omits access, investigate the exact OAuth response, app and organization
+  policies. Do not assume Google silently drops scopes that are absent from
+  the consent-screen configuration.
 
 ### Changing what a connection is authorized for, from chat
 
@@ -91,9 +97,7 @@ Call `update_gmail_connection_grants`:
   `services` first if you don't already know them.
 
 **Every entry in `services` also needs a `write` decision — do not just omit
-it.** Omitted/`false` means read-only; this is the same trap the "Sending
-accounts" panel's checkbox UI has (a separate, easy-to-miss "allow write
-access" checkbox next to each service) — a user who says "give this workflow
+it.** Omitted/`false` means read-only; the service cards show explicit Read only and Read and edit choices — a user who says "give this workflow
 Drive access" almost always means it needs to *create or edit* files there,
 not just read them, and a silent read-only grant produces a confusing
 "permission denied" later with no obvious cause. Infer `write` from what the
@@ -112,7 +116,9 @@ and does not change what the account can do yet. It returns a
 `reconnect_url`. You must:
 
 1. Tell the user to open `reconnect_url` and complete Google's consent
-   screen. Nothing takes effect until they do.
+   screen. New Google scopes require successful consent. Saved restrictions
+   can take effect immediately; an existing Google grant does not itself
+   turn on the application's Gmail read opt-in.
 2. Call `perform_ui_action(action="open", view="mcp")` right after and point at the
    Gmail tab, so the Sending accounts panel is visible and they can see the
    updated request (and click Reconnect there instead, if they'd rather not

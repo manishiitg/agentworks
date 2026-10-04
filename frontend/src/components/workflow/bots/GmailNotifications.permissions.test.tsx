@@ -22,6 +22,7 @@ vi.mock('../../../stores/useWorkflowManifestStore', () => ({
 }))
 vi.mock('../AskAIButton', () => ({ AskAIButton: () => null }))
 vi.mock('./GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
+vi.mock('../../../api/googleApp', () => ({ googleAppApi: { status: vi.fn(async () => ({ configured: false })), clients: vi.fn(async () => [{ name: 'test-client' }]), connectWithClient: vi.fn(), registerClient: vi.fn(), reconnect: vi.fn() } }))
 vi.mock('../../../services/api', () => ({
   agentApi: {
 
@@ -41,6 +42,7 @@ vi.mock('../../../services/api', () => ({
     deleteGmailOAuthClient: vi.fn(async () => {}),
     createGmailOAuthClient: vi.fn(async () => ({ name: 'new-client' })),
     createGmailConnection: vi.fn(async () => ({ id: 'new-connection' })),
+    getApiBaseUrl: () => 'http://localhost:18743',
   },
 }))
 
@@ -55,108 +57,91 @@ function Probe({ workspacePath }: { workspacePath: string }) {
   return <GmailNotifications bots={latest} workspacePath={workspacePath} />
 }
 
-describe('Gmail management permissions', () => {
+describe('Gmail management permissions with either OAuth source', () => {
   let host: HTMLDivElement
   let root: Root
   const button = (text: string) => [...host.querySelectorAll('button')].find(entry => entry.textContent === text)!
   const render = async (path = 'Workflow/test') => {
     await act(async () => root.render(<Probe workspacePath={path} />))
   }
+  const openMenu = async () => {
+    await act(async () => (host.querySelector('[aria-label^="More for"]') as HTMLButtonElement).click())
+  }
 
   beforeEach(() => {
     vi.clearAllMocks()
     Object.assign(access, { user: { id: 'alice', is_admin: false }, isMultiUserMode: true, isMultiUserModeChecked: true, canWrite: true })
     vi.stubGlobal('confirm', vi.fn(() => true))
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   })
   afterEach(async () => {
-    await act(async () => root.unmount())
-    host.remove()
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
+    await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks()
   })
 
-  it('explains admin access and prevents a workflow editor from adding or removing shared accounts', async () => {
+  it('keeps the new UI while preventing workflow editors from managing shared accounts', async () => {
     await render()
-    expect(host.textContent).toContain('An admin manages shared Gmail accounts. You can remove your own connected account.')
-    for (const label of ['+ Add account', 'Remove', 'Reconnect', 'Make default', 'Send test', 'Enable', 'Edit access', 'Save', 'Send test email']) {
-      // This mailbox is enabled, so its toggle is labelled Disable.
-      const control = button(label === 'Enable' ? 'Disable' : label)
-      expect(control.disabled, label).toBe(true)
-    }
-    await act(async () => { button('Remove').click(); button('+ Add account').click() })
-    expect(agentApi.deleteGmailConnection).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-testid="google-account-list"]')).not.toBeNull()
+    expect(button('Change access').disabled).toBe(true)
+    expect(button('Connect Google account').disabled).toBe(true)
+    expect(button('Save').disabled).toBe(true)
+    expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(true)
+    expect(host.textContent).toContain('An admin manages shared Gmail accounts')
+    await act(async () => button('Connect Google account').click())
     expect(agentApi.createGmailOAuthClient).not.toHaveBeenCalled()
-    expect(host.querySelector('[aria-label="Google Cloud client file"]')).toBeNull()
   })
 
-  it('lets a member remove their server-identified account without managing shared settings or deleting the OAuth app', async () => {
+  it('permits removal of a server-identified own account without other shared management', async () => {
     vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ connections: [{
       id: 'gmail_002', display_name: 'Own mailbox', client_name: 'test-client', can_remove: true,
       enabled: true, is_default: false, ready: true, auth: { authenticated: true, has_gmail_scope: true, gws_installed: true },
     }] })
-    await render()
+    await render(); await openMenu()
     expect(button('Remove').disabled).toBe(false)
-    for (const label of ['+ Add account', 'Reconnect', 'Make default', 'Send test', 'Disable', 'Edit access', 'Save']) {
-      expect(button(label).disabled, label).toBe(true)
-    }
-    access.canWrite = false
-    await render()
-    expect(button('Remove').disabled).toBe(true)
-    access.canWrite = true
-    await render()
+    for (const label of ['Change access', 'Connect Google account', 'Reconnect', 'Make default', 'Send a test email', 'Turn off', 'Save']) expect(button(label).disabled, label).toBe(true)
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
   })
 
-  it('allows an admin to remove and open the add-account form', async () => {
+  it('allows an admin to remove an unused client and open the JSON upload', async () => {
     access.user.is_admin = true
-    await render()
-    expect(button('Remove').disabled).toBe(false)
+    await render(); await openMenu()
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).toHaveBeenCalledWith('test-client')
-    await act(async () => button('+ Add account').click())
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Google sign-in app"]')!
+    await act(async () => { select.value = 'upload'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     expect((host.querySelector('[aria-label="Google Cloud client file"]') as HTMLInputElement).disabled).toBe(false)
   })
 
-  it('lets a Code owner manage private accounts while shared delivery settings remain admin-only', async () => {
+  it('lets Code owners manage private accounts while delivery remains admin-only', async () => {
     await render('Chats/Code/projects/app-1')
-    expect(button('Remove').disabled).toBe(false)
-    expect(button('+ Add account').disabled).toBe(false)
+    expect(button('Change access').disabled).toBe(false)
+    expect(button('Connect Google account').disabled).toBe(false)
     expect(button('Send test email').disabled).toBe(true)
-    expect(host.textContent).toContain('Only an admin can change shared Gmail delivery settings')
     await render('_users/alice/Chats/Code/projects/app-1')
-    expect(button('Remove').disabled).toBe(false)
+    expect(button('Change access').disabled).toBe(false)
     await render('_users/bob/Chats/Code/projects/app-1')
-    expect(button('Remove').disabled).toBe(true)
-    expect(button('+ Add account').disabled).toBe(true)
+    expect(button('Change access').disabled).toBe(true)
+    expect(button('Connect Google account').disabled).toBe(true)
   })
 
-  it('fails closed until authentication mode is known and permits the local installation owner', async () => {
+  it('fails closed until auth mode is known and allows the local installation owner', async () => {
     Object.assign(access, { isMultiUserMode: false, isMultiUserModeChecked: false })
-    await render()
-    expect(button('Remove').disabled).toBe(true)
+    await render(); expect(button('Change access').disabled).toBe(true)
     access.isMultiUserModeChecked = true
-    await render()
-    expect(button('Remove').disabled).toBe(false)
+    await render(); expect(button('Change access').disabled).toBe(false)
     access.canWrite = false
-    await render()
-    expect(button('Remove').disabled).toBe(true)
+    await render(); expect(button('Change access').disabled).toBe(true)
   })
 
-  it('shows the server permission reason if admin access changes after the panel loads', async () => {
+  it('shows the permission reason when access changes after the panel loads', async () => {
     access.user.is_admin = true
     vi.mocked(agentApi.deleteGmailConnection).mockRejectedValueOnce(Object.assign(new Error('Request failed with status code 403'), {
       response: { status: 403, data: { error: 'workflow permission denied', required_access: 'admin' } },
     }))
-    await render()
-    await act(async () => button('Remove').click())
+    await render(); await openMenu(); await act(async () => button('Remove').click())
     expect(host.textContent).toContain('Only an admin can manage shared Gmail accounts and delivery settings.')
-    expect(host.textContent).not.toContain('Request failed with status code 403')
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
   })
 })

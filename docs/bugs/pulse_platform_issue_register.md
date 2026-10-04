@@ -1,3 +1,9 @@
+## Unified Google account UI for company and named OAuth apps — PLAT-470
+
+[PLAT-470](pulse_platform/integrations/plat-470.md), fixed on main, not deployed:
+the same icon-based account/access form supports the company app, saved local
+clients and JSON uploads, and distinguishes AgentWorks settings from Google grants.
+
 ## The early selected-secret check refuses chats that select a project secret — PLAT-469
 
 [PLAT-469](pulse_platform/security-sandbox/plat-469.md), open, P1, owned by the Vault maintainer; GitHub issue #266. `validateVaultSecretSelection` runs before the project secrets are loaded, so a project secret is treated as a missing shared secret (403). Blocks the Vault rollout to Confida and RTS.

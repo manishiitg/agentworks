@@ -3,15 +3,16 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const { status, connect, access, refresh } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), access: { readOnly: false }, refresh: vi.fn() }))
-vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect } }))
+const { status, connect, clients, access, refresh } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), clients: vi.fn(), access: { readOnly: false }, refresh: vi.fn() }))
+vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, clients } }))
 vi.mock('./bots/useWorkflowBots', () => ({ useWorkflowBots: () => ({ gmailConnectionsReadOnly: access.readOnly, loadGmailConnections: refresh }) }))
 vi.mock('./bots/GmailNotifications', () => ({ GmailNotifications: ({ platformConnect }: { platformConnect?: React.ReactNode }) => <div>{platformConnect || 'Legacy client upload'}</div> }))
+vi.mock('./bots/GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-beforeEach(() => { vi.clearAllMocks(); access.readOnly = false; status.mockResolvedValue({ configured: true }); connect.mockResolvedValue({ id: 'new', auth_url: 'https://accounts.google.com/auth' }) })
+beforeEach(() => { vi.clearAllMocks(); access.readOnly = false; status.mockResolvedValue({ configured: true }); clients.mockResolvedValue([]); connect.mockResolvedValue({ id: 'new', auth_url: 'https://accounts.google.com/auth' }) })
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.restoreAllMocks() })
 
 async function render(path: string) {
@@ -43,9 +44,10 @@ it('retains shared-account management restrictions in the unified flow', async (
   expect(connect).not.toHaveBeenCalled()
 })
 
-it('preserves the legacy client upload when a deployment has no Google app', async () => {
+it('uses the new form with JSON upload when a deployment has no company app', async () => {
   status.mockResolvedValue({ configured: false })
   const host = await render('Workflow/support')
-  expect(host.textContent).toContain('Legacy client upload')
-  expect(host.querySelector('[data-testid="google-account-connect"]')).toBeNull()
+  expect(host.textContent).not.toContain('Legacy client upload')
+  expect(host.querySelector('[data-testid="google-account-connect"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Google Cloud client file"]')).not.toBeNull()
 })

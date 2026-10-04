@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { status, connect, reconnect } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), reconnect: vi.fn() }))
-vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, reconnect } }))
+const { status, connect, reconnect, clients, registerClient, connectWithClient } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), reconnect: vi.fn(), clients: vi.fn(), registerClient: vi.fn(), connectWithClient: vi.fn() }))
+vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, reconnect, clients, registerClient, connectWithClient } }))
+
+vi.mock('../../components/workflow/bots/GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
 
 import { GoogleAccountConnect } from './GoogleAccountConnect'
 import { changeGoogleAccountAccess } from './googleAccountAccess'
@@ -12,7 +14,8 @@ import type { GmailConnection } from '../../services/api-types'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); document.body.innerHTML = '' })
+beforeEach(() => clients.mockResolvedValue([]))
+afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); vi.restoreAllMocks(); document.body.innerHTML = '' })
 
 const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountConnect>> = {}) => {
   const host = document.createElement('div')
@@ -112,10 +115,69 @@ describe('GoogleAccountConnect', () => {
     expect(reconnect).not.toHaveBeenCalled()
   })
 
-  it('shows nothing when the server has no Google app', async () => {
+  it('offers the new permission form and JSON upload without a company app', async () => {
     status.mockResolvedValue({ configured: false, redirect_uri: '' })
     const host = await render()
-    expect(host.querySelector('[data-testid="google-account-connect"]')).toBeNull()
+    expect(host.querySelector('[data-testid="google-account-connect"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Google Cloud client file"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Gmail access"]')).not.toBeNull()
+  })
+
+  it('reconnects a legacy account with no company app and preserves its choices', async () => {
+    status.mockResolvedValue({ configured: false })
+    reconnect.mockResolvedValue({ id: 'old', auth_url: 'https://accounts.google.com/auth' })
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    const host = await render({ workspacePath: 'Workflow/local', privateAccount: false })
+    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: false, services: [{ service: 'docs', write: true }] } as GmailConnection, 'Workflow/local'))
+    expect(host.querySelector('[aria-label="Google sign-in app"]')).toBeNull()
+    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Sign in again with Google')!.click())
+    expect(reconnect).toHaveBeenCalledWith('old', expect.objectContaining({ allow_read_access: false, services: [{ service: 'docs', write: true }] }))
+    expect(connectWithClient).not.toHaveBeenCalled()
+  })
+
+  it('allows company and saved apps together, and uses the selected named client', async () => {
+    status.mockResolvedValue({ configured: true })
+    clients.mockResolvedValue([{ name: 'local-app' }, { name: 'platform' }])
+    connectWithClient.mockResolvedValue({ id: 'new', auth_url: 'https://accounts.google.com/auth' })
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    const host = await render()
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Google sign-in app"]')!
+    expect(select.value).toBe('company')
+    expect([...select.options].map(o => o.value)).toEqual(['company', 'client:local-app', 'upload'])
+    await act(async () => { select.value = 'client:local-app'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account')!.click())
+    expect(connectWithClient).toHaveBeenCalledWith('local-app', expect.objectContaining({ workspace_path: 'Chats/Code/projects/p1', allow_read_access: true }))
+    expect(registerClient).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  it('uploads a separately named JSON without replacing an existing client', async () => {
+    status.mockResolvedValue({ configured: false })
+    registerClient.mockResolvedValue({ name: 'my-local-app' })
+    connectWithClient.mockResolvedValue({ id: 'new', auth_url: 'https://accounts.google.com/auth' })
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    const host = await render({ privateAccount: false, workspacePath: 'Workflow/local' })
+    const name = host.querySelector<HTMLInputElement>('[aria-label="Google app name"]')!
+    const file = host.querySelector<HTMLInputElement>('[aria-label="Google Cloud client file"]')!
+    const json = { web: { client_id: 'test-id', client_secret: 'test-secret' } }
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'my-local-app'); name.dispatchEvent(new Event('input', { bubbles: true }))
+      Object.defineProperty(file, 'files', { value: [{ text: async () => JSON.stringify(json) }], configurable: true })
+      file.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account')!.click())
+    expect(registerClient).toHaveBeenCalledWith('my-local-app', json)
+    expect(connectWithClient).toHaveBeenCalledWith('my-local-app', expect.objectContaining({ workspace_path: 'Workflow/local' }))
+    expect(host.querySelector('[aria-label="Google Cloud client file"]')).toBeNull()
+  })
+
+  it('reports failed app discovery and still permits existing-account reauthorization', async () => {
+    status.mockRejectedValue(new Error('offline'))
+    clients.mockResolvedValue([])
+    const host = await render()
+    expect(host.textContent).toContain('Could not check all Google sign-in apps')
+    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: true } as GmailConnection, 'Chats/Code/projects/p1'))
+    expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Sign in again with Google')!.disabled).toBe(false)
   })
 
   it('connects with read-only defaults and opens Google, with no file to upload', async () => {

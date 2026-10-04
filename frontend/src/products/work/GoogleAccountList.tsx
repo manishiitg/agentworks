@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import type { GmailConnection } from '../../services/api-types'
-import { changeGoogleAccountAccess, GOOGLE_ACCESS_SERVICES, googleAccessLabel, googleAccessLevels } from './googleAccountAccess'
+import { changeGoogleAccountAccess, GOOGLE_ACCESS_SERVICES, googleAccessLabel, googleAccessLevels, googleGrantedAccess } from './googleAccountAccess'
 
 /**
  * Google accounts across products: identity, service icons and saved agent access.
@@ -28,6 +28,8 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
         const busy = busyId === conn.id
         const removalAllowed = canRemove ? canRemove(conn) : !readOnly
         const access = googleAccessLevels(conn)
+        const scopes = conn.auth?.scopes
+        const granted = scopes ? googleGrantedAccess(scopes) : null
         return (
           <li key={conn.id} className="min-w-0 rounded-lg border border-border p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -37,6 +39,7 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? 'bg-green-500' : 'bg-amber-500'}`} />
                   {!conn.enabled ? 'Turned off' : conn.ready === false ? 'Needs sign-in' : 'Connected'}
+                  {conn.client_name && <span className="break-all">· Google app: {conn.client_name === 'platform' ? 'Company app' : conn.client_name}</span>}
                 </div>
               </div>
               <button type="button" disabled={readOnly || busy} onClick={() => changeGoogleAccountAccess(conn, workspacePath)}
@@ -52,16 +55,25 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
               ]} />
             </div>
             <div className="mt-3 border-t border-border pt-3">
-              <p className="mb-2 text-xs text-muted-foreground">{ready ? 'Current agent access' : 'Saved agent access · available after sign-in and enabling this account'}</p>
+              <p className="mb-2 text-xs text-muted-foreground">{ready ? 'AgentWorks settings' : 'Saved AgentWorks settings · available after sign-in and enabling this account'}</p>
               <div className="flex flex-wrap gap-1.5">
                 {GOOGLE_ACCESS_SERVICES.map(service => {
                   const level = service.key === 'gmail' ? access.gmail : access.levels[service.key] ?? 'off'
+                  const googleLevel = granted ? service.key === 'gmail' ? granted.gmail : granted.levels[service.key] ?? 'off' : null
                   return <span key={service.key} className={`inline-flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 text-xs ${level === 'off' ? 'text-muted-foreground' : 'bg-muted/40 text-foreground'}`}>
                     <ConnectionIcon icon={service.icon} name={service.label} size="xs" />
-                    <span>{service.label}: {googleAccessLabel(service.key, level)}</span>
+                    <span><span className="block">{service.label}: {googleAccessLabel(service.key, level)}</span>
+                      <span className="block text-[10px] text-muted-foreground">Google: {googleLevel === null ? 'Not checked' : service.key === 'gmail' && granted ? [granted.gmailRead && 'Read', granted.gmailWrite && 'Drafts', granted.gmailSend && 'Send'].filter(Boolean).join(', ') || 'No access' : googleLevel === 'off' ? 'No access' : googleAccessLabel(service.key, googleLevel)}</span></span>
                   </span>
                 })}
               </div>
+              {granted && access.gmail === 'off' && granted.gmailRead && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Gmail reading is granted by Google but disabled in AgentWorks. Use Change access to enable it.</p>}
+              {granted && GOOGLE_ACCESS_SERVICES.some(service => {
+                const requested = service.key === 'gmail' ? access.gmail : access.levels[service.key] ?? 'off'
+                const actual = service.key === 'gmail' ? granted.gmail : granted.levels[service.key] ?? 'off'
+                if (service.key === 'gmail') return (conn.allow_read_access && !granted.gmailRead) || (conn.allow_agent_write_access && !granted.gmailWrite)
+                return requested !== 'off' && (actual === 'off' || (requested === 'write' && actual !== 'write'))
+              }) && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Some selected access has not been granted by Google. Use Change access and complete sign-in.</p>}
             </div>
           </li>
         )
