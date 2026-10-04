@@ -126,13 +126,14 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	}
 }
 
-// A connection whose owner can no longer edit the workflow stops at once.
-func TestPlaceMCPStopsWhenOwnerLosesEditAccess(t *testing.T) {
+// A connection belongs to the place (DECISIONS 2026-10-04): it keeps working when the person who added it
+// loses edit access, and everyone with access to the place has it. It is removed by an editor, not by time.
+func TestPlaceMCPKeepsWorkingWhenItsAdderLosesEditAccess(t *testing.T) {
 	readAccessRouterWithAPI(t)
 	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-	// bob only reads Workflow/shared: a record naming him (planted, or left
-	// from before a demotion) grants nothing.
+	// bob only reads Workflow/shared (he is not an editor now), yet the connection he added is the
+	// place's and stays usable for the people who have access to the place.
 	store := placeMCPStoreID("bob", "Workflow/shared")
 	if _, err := addPlaceMCPServer(store, placeMCPServer{Name: "gmail", URL: "https://mcp.example.com/mcp", Transport: "http"}); err != nil {
 		t.Fatal(err)
@@ -140,7 +141,7 @@ func TestPlaceMCPStopsWhenOwnerLosesEditAccess(t *testing.T) {
 	if err := recordPlaceMCP("bob", "gmail", "Workflow/shared"); err != nil {
 		t.Fatal(err)
 	}
-	if names, _ := attachedMCPServersForRoot(context.Background(), "Workflow/shared"); len(names) != 0 {
-		t.Fatalf("connection of someone who cannot edit is used: %v", names)
+	if names, _ := attachedMCPServersForRoot(context.Background(), "Workflow/shared"); len(names) != 1 {
+		t.Fatalf("the place's connection stopped working when its adder lost edit access: %v", names)
 	}
 }

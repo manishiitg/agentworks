@@ -56,8 +56,10 @@ func TestPrivateMCPRuntimeDoesNotShareOwnerCredentials(t *testing.T) {
 	if err := recordPrivateMCP("alice", "linear", "Workflow/w"); err != nil {
 		t.Fatal(err)
 	}
-	if names, _ := attachedMCPServersForRoot(personContext("bob"), "Workflow/w"); len(names) != 0 {
-		t.Fatal("shared project exposed owner's private account")
+	// A connection added to a place belongs to that place (DECISIONS 2026-10-04): bob, who has access to
+	// Workflow/w, has the one alice attached. His own credentials still never cross to anyone else.
+	if names, _ := attachedMCPServersForRoot(personContext("bob"), "Workflow/w"); len(names) != 1 {
+		t.Fatal("the place's connection was not available to a person with access to the place")
 	}
 }
 func TestVaultDelegationCannotChangeActorOrConnector(t *testing.T) {

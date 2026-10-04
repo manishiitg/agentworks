@@ -40,6 +40,11 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
 		return resolved, err
 	}
+	// A connection attached to the session's own workflow, Relay, Crew or Code belongs to that place:
+	// any session of it (a chat of anyone with access, a run, a step, a schedule) resolves it.
+	if resolved, handled, err := api.resolvePlaceAttachedMCP(ctx, sessionID, server); handled {
+		return resolved, err
+	}
 	resolved, err := api.resolveWorkshopMCPServer(ctx, sessionID, server, tool)
 	if resolved != nil || err != nil {
 		return resolved, err
@@ -143,4 +148,67 @@ func serverListHasName(names []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// placeRootForSession is the workflow, Relay, Crew or Code a session works in, taken only from data the server
+// set when it started the session (never from anything the client sent); "" when it has none.
+func placeRootForSession(sessionID string) string {
+	cfg := common.GetSessionShellConfig(sessionID)
+	if cfg == nil {
+		return ""
+	}
+	for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
+		if root := placeRootOf(candidate); root != "" {
+			return root
+		}
+	}
+	return ""
+}
+
+// placeAttachedMatch finds, among the connections attached to the session's own place, the one named server
+// (its internal name or its plain name). found is false when the place has no such connection, so the caller
+// falls through to the platform and Vault servers; denied is true when it has one the session may not use.
+func (api *StreamingAPI) placeAttachedMatch(ctx context.Context, sessionID, server string) (internal string, cfg mcpclient.MCPServerConfig, found, denied bool, err error) {
+	server = strings.TrimSpace(server)
+	root := placeRootForSession(sessionID)
+	if root == "" || server == "" {
+		return "", mcpclient.MCPServerConfig{}, false, false, nil
+	}
+	names, overrides := placeAttachedConfigs(root)
+	var matches []string
+	for _, name := range names {
+		if name == server || strings.EqualFold(placeMCPPlainName(name), server) {
+			matches = append(matches, name)
+		}
+	}
+	if len(matches) == 0 {
+		return "", mcpclient.MCPServerConfig{}, false, false, nil
+	}
+	if len(matches) > 1 {
+		return "", mcpclient.MCPServerConfig{}, true, true, fmt.Errorf("more than one connection of this place is named %q; use the exact name", server)
+	}
+	person := ""
+	if api.eventStore != nil {
+		person = api.mcpSessionPerson(sessionID)
+	}
+	if !placeMCPUsableBy(ctx, person, root) {
+		return "", mcpclient.MCPServerConfig{}, true, true, fmt.Errorf("you do not have access to this place's connections")
+	}
+	override := overrides[matches[0]]
+	if override.Server == nil {
+		return "", mcpclient.MCPServerConfig{}, true, true, errPlaceMCPUnavailable
+	}
+	return matches[0], *override.Server, true, false, nil
+}
+
+// resolvePlaceAttachedMCP resolves a call against the session's own place (see placeAttachedMatch).
+func (api *StreamingAPI) resolvePlaceAttachedMCP(ctx context.Context, sessionID, server string) (*executor.ResolvedMCPServer, bool, error) {
+	internal, cfg, found, denied, err := api.placeAttachedMatch(ctx, sessionID, server)
+	if !found {
+		return nil, false, nil
+	}
+	if denied || err != nil {
+		return nil, true, err
+	}
+	return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: internal}, true, nil
 }
