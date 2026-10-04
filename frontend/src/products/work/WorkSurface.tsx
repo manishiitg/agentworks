@@ -330,6 +330,8 @@ function useWorkChatTab(
   // subscription re-rendered the Work surface (and the workspace pane beside
   // the chat) on every keystroke.
   const sessionId = session?.id
+  const globalPageOpen = useAppStore(state => state.adminPage !== null || state.showSchedulesOverview || state.showWorkflowsOverview)
+  const showProviders = useLLMStore(state => state.showLLMModal)
   const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
   const sessionRef = useRef(session)
   const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
@@ -463,8 +465,10 @@ function useWorkChatTab(
   }, [session])
 
   useLayoutEffect(() => {
-    if (canonicalTabId && !activeProjectTabId) activateTab(canonicalTabId)
-  }, [activeProjectTabId, canonicalTabId])
+    // Resolving a chat after navigating here must not dismiss the requested
+    // Users, Providers or Schedules page. Activate it when returning to work.
+    if (canonicalTabId && !activeProjectTabId && !globalPageOpen && !showProviders) activateTab(canonicalTabId)
+  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders])
   return {
     // A previously prepared Crew tab is safe to display immediately while its
     // durable binding is revalidated in the background.
@@ -862,7 +866,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     useModeStore.getState().setModeCategory('multi-agent')
     useAppStore.getState().setAgentMode('multi-agent')
     useAppStore.getState().setShowWorkflowsOverview(false)
-    useAppStore.getState().setShowSchedulesOverview(false)
   }, [])
 
   useEffect(() => {

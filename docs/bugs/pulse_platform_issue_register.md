@@ -1,3 +1,15 @@
+## Quick switching across running work, products and menus — PLAT-462
+
+[PLAT-462](pulse_platform/frontend-chat/plat-462.md), fixed on `main`, not deployed:
+Ctrl/Cmd+K opens from every product with running work first; search also reaches
+products and allowed menus. Auto-hide shows a shortcut hint.
+
+## Auto-hidden navigation leaves an empty strip — PLAT-461
+
+[PLAT-461](pulse_platform/frontend-chat/plat-461.md), fixed on `main`, not deployed:
+the hidden rail reserves no layout width or shadow; its invisible edge target
+reveals the mounted navigation over the workspace.
+
 ## Fixed or auto-hidden global navigation — PLAT-460
 
 [PLAT-460](pulse_platform/frontend-chat/plat-460.md), fixed on `main`, not deployed:

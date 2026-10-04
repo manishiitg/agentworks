@@ -16,9 +16,11 @@ until they move to the left edge.
 - A pin control at the bottom toggles Fixed (default) and Auto-hide.
 - The shared `ProductTopBar` persists `product_navigation_mode` through the
   existing storage-safe preference hook; products restore the same choice.
-- Auto-hide reserves a six-pixel edge and reveals the 48-pixel strip over the
+- Auto-hide uses a six-pixel edge target and reveals the 48-pixel strip over the
   workspace on hover or keyboard focus. The edge is also a focusable/clickable
   reveal target. Mouse focus alone does not hold the strip open after leaving.
+- [PLAT-461](plat-461.md) removes the reserved width and hidden shadow;
+  [PLAT-462](plat-462.md) adds the shortcut hint and global quick navigation.
 - Navigation and its live monitor stay mounted in both modes. Flyouts remain
   positioned against the viewport (no transformed ancestor). The existing
   terminal-focus rule hides the complete shell including the reveal edge.

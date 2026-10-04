@@ -558,9 +558,6 @@ function App() {
 
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
-  useEffect(() => {
-    if (productSurface !== 'agentworks' && productSurface !== 'work' && productSurface !== 'code' && productSurface !== 'relays') setShowQuickSwitcher(false)
-  }, [productSurface])
 
   
   // Ref to prevent duplicate default tab creation (React StrictMode runs effects twice)
@@ -572,8 +569,6 @@ function App() {
 
   useEffect(() => {
     const handleOpenQuickSwitcher = (event: Event) => {
-      const surface = useProductSurfaceStore.getState().productSurface
-      if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code' && surface !== 'relays') return
       const detail = (event as CustomEvent<{ query?: string }>).detail
       setQuickSwitcherInitialQuery(detail?.query || '')
       setShowQuickSwitcher(true)
@@ -862,10 +857,8 @@ function App() {
         chatStore.setAutoScroll(!chatStore.autoScroll)
         return
       }
-      // Ctrl/Cmd + K opens the shared AgentWorks/Crew/Code/Relay switcher.
-      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
-        const surface = useProductSurfaceStore.getState().productSurface
-        if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code' && surface !== 'relays') return
+      // Ctrl/Cmd + K opens shared navigation from every product surface.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
         setShowQuickSwitcher(prev => !prev)

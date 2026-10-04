@@ -71,7 +71,8 @@ function useCapLayerChat() {
     store.setTabConfig(created, { selectedServers: ['NO_SERVERS'], selectedSkills: [] })
     await hydrateTabEvents(conversation.session_id, { workspacePath: WORKSPACE, preferChatHistory: true, fallbackToChatHistory: true })
     if (request !== generation.current) return
-    activateTab(created)
+    const app = useAppStore.getState()
+    if (!app.adminPage && !app.showSchedulesOverview && !useLLMStore.getState().showLLMModal) activateTab(created)
     setTabId(created)
   }, [])
   useEffect(() => {

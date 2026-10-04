@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Quick navigation keeps running work first and reaches every product
+
+Ctrl/Cmd+K opens from every product. Its default list prioritizes running
+workflows, Crews, Code and Relays; products and allowed menus appear on search
+or through dedicated scopes. Hiding the sidebar teaches this shortcut once
+per hide action. Auto-hide overlays an invisible edge target and consumes no
+workspace width, so the hidden strip leaves no empty column.
+Tickets: [PLAT-462](bugs/pulse_platform/frontend-chat/plat-462.md),
+[PLAT-461](bugs/pulse_platform/frontend-chat/plat-461.md).
+
 ### 2026-10-04 — Global navigation can stay fixed or auto-hide
 
 The user chooses Fixed (default) or Auto-hide with the bottom pin; remember

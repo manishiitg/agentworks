@@ -39,9 +39,12 @@ it('defaults to fixed and restores the chosen mode after remounting', async () =
   expect(saved.get('product_navigation_mode')).toBe('auto-hide')
   expect(pin.getAttribute('aria-pressed')).toBe('false')
   expect(host.querySelector('[aria-label="Show navigation"]')).not.toBeNull()
+  expect(host.querySelector('[data-product-navigation-mode]')?.className).toContain('w-0')
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Ctrl+K')
 
   const restored = await render()
   expect(restored.querySelector('[data-product-navigation-mode]')?.getAttribute('data-product-navigation-mode')).toBe('auto-hide')
+  expect(restored.querySelector('[role="status"]')).toBeNull()
   await act(async () => restored.querySelector<HTMLButtonElement>('[aria-label="Keep navigation fixed"]')!.click())
   expect(saved.get('product_navigation_mode')).toBe('fixed')
 })
@@ -66,4 +69,20 @@ it('uses fixed navigation for an unknown saved preference', async () => {
   saved.set('product_navigation_mode', 'retired')
   const host = await render()
   expect(host.querySelector('[data-product-navigation-mode]')?.getAttribute('data-product-navigation-mode')).toBe('fixed')
+})
+
+it('opens quick navigation from the hide hint and dismisses the hint', async () => {
+  const host = await render()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Keep navigation fixed"]')!.click())
+  const opened = vi.fn()
+  window.addEventListener('open-quick-switcher', opened)
+  try {
+    const button = Array.from(host.querySelectorAll('button')).find(el => el.textContent === 'Open quick navigation')!
+    await act(async () => button.click())
+    expect(opened).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[role="status"]')).toBeNull()
+    expect(saved.get('product_navigation_mode')).toBe('auto-hide')
+  } finally {
+    window.removeEventListener('open-quick-switcher', opened)
+  }
 })

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewaySurface } from './GatewaySurface'
 const auth = vi.hoisted(() => ({ user: { is_admin: true } as { is_admin: boolean } | null, checkAuth: vi.fn() }))
+const globalPage = vi.hoisted(() => ({ adminPage: null as string | null, showLLMModal: false }))
 
 const chatRuntime = vi.hoisted(() => {
   const state = { chatTabs: {} as Record<string, any>, tabEvents: {}, createChatTab: vi.fn(), setTabConfig: vi.fn(), setTabMetadata: vi.fn() }
@@ -25,8 +26,8 @@ vi.mock('./GatewayAuditPanel', () => ({ GatewayAuditPanel: ({ tab }: any) => <di
 vi.mock('./GatewayConnectPanel', () => ({ GatewayConnectPanel: () => <div data-testid="endpoint-content">Endpoint connection</div> }))
 vi.mock('./GatewayModelSettings', () => ({ GatewayModelSettings: () => <span>Shared provider model settings</span> }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: any) => unknown) => selector(auth) }))
-vi.mock('../../stores/useAppStore', () => ({ useAppStore: Object.assign((selector: (state: any) => unknown) => selector({}), { getState: () => ({ setAdminPage: vi.fn(), setShowSchedulesOverview: vi.fn(), setShowWorkflowsOverview: vi.fn() }) }) }))
-vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: Object.assign((selector: (state: any) => unknown) => selector({}), { getState: () => ({ setShowLLMModal: vi.fn() }) }) }))
+vi.mock('../../stores/useAppStore', () => ({ useAppStore: Object.assign((selector: (state: any) => unknown) => selector(globalPage), { getState: () => ({ ...globalPage, setAdminPage: vi.fn(), setShowSchedulesOverview: vi.fn(), setShowWorkflowsOverview: vi.fn() }) }) }))
+vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: Object.assign((selector: (state: any) => unknown) => selector(globalPage), { getState: () => ({ ...globalPage, setShowLLMModal: vi.fn() }) }) }))
 vi.mock('../../stores/useChatStore', () => ({
   useChatStore: Object.assign((selector: (state: any) => unknown) => selector(chatRuntime.state), { getState: () => chatRuntime.state }),
   waitForChatStoreHydration: () => Promise.resolve(),
@@ -80,6 +81,8 @@ describe('GatewaySurface', () => {
     vi.restoreAllMocks()
     auth.user = { is_admin: true }
     auth.checkAuth.mockClear()
+    globalPage.adminPage = null
+    globalPage.showLLMModal = false
     sessionStorage.clear()
     window.localStorage?.removeItem(`caplayer_setup_model:${BASE}`)
   })
@@ -88,6 +91,7 @@ describe('GatewaySurface', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     chatRuntime.state.chatTabs = {}
+    chatRuntime.activate.mockClear()
     chatRuntime.resolve.mockResolvedValue({ conversation_id: 'conversation', conversation_key: 'main', session_id: 'session' })
     chatRuntime.startNew.mockResolvedValue({ conversation_id: 'conversation-new', conversation_key: 'main', session_id: 'session-new' })
     chatRuntime.state.createChatTab.mockImplementation(async (name: string, metadata: any, sessionId: string) => {
@@ -101,6 +105,16 @@ describe('GatewaySurface', () => {
     })
     await act(async () => {})
   }
+
+  it.each(['users', 'providers'])('does not dismiss %s when its builder finishes restoring', async page => {
+    stubGatewayUrl(BASE)
+    vi.stubGlobal('fetch', vi.fn(healthyFetch()))
+    globalPage.adminPage = page === 'users' ? 'users' : null
+    globalPage.showLLMModal = page === 'providers'
+    await renderSurface()
+    expect(chatRuntime.hydrate).toHaveBeenCalled()
+    expect(chatRuntime.activate).not.toHaveBeenCalled()
+  })
 
   it('opens audit and MCP endpoint as full-width rail pages and returns to the same builder', async () => {
     stubGatewayUrl(BASE)
