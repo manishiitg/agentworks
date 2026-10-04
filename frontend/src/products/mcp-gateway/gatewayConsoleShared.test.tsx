@@ -94,7 +94,9 @@ it('recovers the real group, membership and permissions loaders from one gateway
   unavailable = false
   await act(async () => retryButtons()[0].click())
   expect(container.querySelector('[role="alert"]')).toBeNull()
-  // The MCP permissions loader recovered too: the server list renders.
+  // The MCP permissions loader recovered too: nothing is assigned yet, and the
+  // connector loader recovered, so the one Docs connector is offered to add.
   expect(container.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
-  expect(container.textContent).toContain('Docs')
+  expect(container.textContent).toContain('No MCPs assigned.')
+  expect(container.textContent).toContain('Add MCPs (1)')
 })

@@ -1,12 +1,13 @@
 name: Desktop DMG
 
+# The macOS DMG build is slow and costly, so it runs only for a platform release
+# tag (vX.Y.Z) or by hand (Actions > Desktop DMG > Run workflow, builds the
+# artifact for any branch). Pushes and pull requests are covered by
+# frontend-ci.yml and coding-cli-p0.yml.
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
-  pull_request:
   workflow_dispatch:
 
 permissions:

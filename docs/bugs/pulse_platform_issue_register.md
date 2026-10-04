@@ -26,8 +26,9 @@ owner-only rule). Phase 2 removes the "private MCP" concept.
 
 ## The frontend test suite is red on main — PLAT-481
 
-[PLAT-481](pulse_platform/frontend-chat/plat-481.md), open: a circular import is fixed; 11 stale
-contract tests (Vault UI refactors of 3–4 Oct) are being updated. Blocks the DMG/release build.
+[PLAT-481](pulse_platform/frontend-chat/plat-481.md), fixed on main: the circular import and the stale
+contract tests are fixed; the suite is green. The DMG build now runs on release tags only; a new
+`frontend-ci.yml` runs the frontend checks on pushes. Left: confirm both are green.
 
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
