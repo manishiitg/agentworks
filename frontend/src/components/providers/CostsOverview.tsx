@@ -41,9 +41,12 @@ const costRangeBounds = (days: number, now = new Date()) => {
 
 // Crew rows arrive keyed by project folder; the Crew list supplies names.
 const crewProjectId = (workspacePath: string) => {
-  const marker = 'Chats/Work/projects/'
-  const index = workspacePath.indexOf(marker)
-  return index >= 0 ? workspacePath.slice(index + marker.length).split('/')[0] : ''
+  // A Crew's row is keyed by its folder: in its owner's tree, or at the shared root (Crew/<folder>).
+  for (const marker of ['Chats/Work/projects/', 'Crew/']) {
+    const index = workspacePath.indexOf(marker)
+    if (index >= 0 && (index === 0 || workspacePath[index - 1] === '/')) return workspacePath.slice(index + marker.length).split('/')[0]
+  }
+  return ''
 }
 
 export default function CostsOverview() {

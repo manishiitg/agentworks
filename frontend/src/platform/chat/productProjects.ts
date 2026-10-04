@@ -177,6 +177,8 @@ export function parseProductProjectManifest<P extends string>(
 
 type ProductProjectStorageOptions = {
   runtimeManifestName?: string
+  /** Also load the Crews the user owns at the shared root (Crew/<folder>), which a listing of the user's own projects root does not show. */
+  includeOwnSharedProjects?: boolean
 }
 
 function manifestNativeAgentTools(raw: ProductManifest): boolean {
@@ -214,6 +216,17 @@ export async function loadProductProjects<P extends string>(root: string, produc
   const manifests = dedupeByFilepath(
     flattenFiles(responseFiles(response)).filter((file) => file.type !== 'folder' && file.filepath.endsWith('/product.json')),
   )
+  if (storage.includeOwnSharedProjects) {
+    try {
+      const own = await agentApi.listOwnSharedProjects(product)
+      for (const shared of own.projects || []) {
+        const filepath = `${shared.workspace_path}/product.json`
+        if (!manifests.some(file => file.filepath === filepath)) manifests.push({ filepath, type: 'file' } as (typeof manifests)[number])
+      }
+    } catch {
+      // A server without shared-root Crews (or an older one) has none to add.
+    }
+  }
   const projects = await Promise.all(manifests.map(async (file) => {
     try {
       const response = await agentApi.getPlannerFileContent(file.filepath)

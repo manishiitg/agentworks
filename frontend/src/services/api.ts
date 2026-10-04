@@ -1253,6 +1253,14 @@ export const agentApi = {
     return response.data
   },
 
+  /** The Crews the signed-in user owns that live at the shared root (Crew/<folder>); older servers have none. */
+  listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string }> }> => {
+    const response = await api.get(
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`,
+    )
+    return response.data
+  },
+
   listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,
