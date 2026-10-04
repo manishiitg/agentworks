@@ -596,6 +596,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "other_text": {
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -698,6 +701,9 @@
           "type": "string"
         },
         "multi_select": {
+          "type": "boolean"
+        },
+        "allow_other": {
           "type": "boolean"
         },
         "min_selections": {

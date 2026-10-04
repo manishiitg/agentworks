@@ -226,4 +226,5 @@ instruction_sections:
   - browser-pointer
   - grants
   - cli-tool-environment
+  - clarification
   - native-subagents

@@ -891,6 +891,20 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.
+  const answerCodingAgentQuestion = useCallback(async (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => {
+    if (!activeSessionId) throw new Error('This conversation is no longer active')
+    try {
+      await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
+    } catch (cause) {
+      const detail = codingAgentQuestionErrorText(cause)
+      if (/no longer pending|unavailable/i.test(detail)) {
+        setClosedCodingAgentQuestions(current => new Set(current).add(promptId))
+        throw new Error('This question is no longer open. You can keep chatting.')
+      }
+      throw new Error(detail || 'Could not submit this choice. Try again.')
+    }
+  }, [activeSessionId])
+
   const activeTabIsExecution = isExecutionConversationTab(activeTab)
   const activeTabProfileWorkspace = activeTab?.metadata?.agentProfileWorkspace
   const loadOlderConversationPage = useCallback(async () => {
@@ -3620,19 +3634,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
-            onAnswerCodingAgentQuestion={async (provider, promptId, answers, auto) => {
-              if (!activeSessionId) throw new Error('The coding agent session is no longer active')
-              try {
-                await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
-              } catch (cause) {
-                const detail = codingAgentQuestionErrorText(cause)
-                if (/no longer pending|unavailable/i.test(detail)) {
-                  setClosedCodingAgentQuestions((current) => new Set(current).add(promptId))
-                  throw new Error('This question is no longer open. You can keep chatting.')
-                }
-                throw new Error(detail || 'Could not submit this choice. Refresh and try again.')
-              }
-            }}
+            onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+            closedCodingAgentQuestions={closedCodingAgentQuestions}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
         ) : selectedModeCategory === 'workflow' ? (
@@ -3686,6 +3689,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
+                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+                    closedCodingAgentQuestions={closedCodingAgentQuestions}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
@@ -3751,6 +3756,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
+                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+                    closedCodingAgentQuestions={closedCodingAgentQuestions}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}

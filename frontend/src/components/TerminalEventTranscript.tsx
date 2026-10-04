@@ -1,3 +1,5 @@
+import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
+import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -794,6 +796,8 @@ interface TerminalEventTranscriptProps {
   // terminal's own scoping does not need it.
   siblingTerminals?: TerminalSnapshot[]
   onSendMessage?: (msg: string) => void
+  onAnswerCodingAgentQuestion?: CodingAgentQuestionAnswerHandler
+  closedCodingAgentQuestions?: ReadonlySet<string>
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
@@ -827,6 +831,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   terminal,
   siblingTerminals,
   onSendMessage,
+  onAnswerCodingAgentQuestion,
+  closedCodingAgentQuestions,
   onRetryLastMessage,
   onResendMessage,
   loading = false,
@@ -865,9 +871,10 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     })
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
+  const questions = useMemo(() => codingAgentQuestionCards(scoped), [scoped])
   const items = useMemo<TranscriptRenderItem[]>(
-    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped)))),
-    [scoped],
+    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id)))))),
+    [scoped, questions],
   )
   // Retry belongs to the latest human turn, never an older failed message
   // after the user has continued the conversation.
@@ -1053,7 +1060,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           // otherwise leave unmeasured space at the end of the virtual list.
           const slot = turnSlots[index]
           const testId = item.kind === 'event' ? `terminal-clear-event-${item.event.id || item.key}` : undefined
-          const body = item.kind === 'live'
+          const question = item.kind === 'event' ? questions.cards.get(item.event.id) : undefined
+          const questionPrompt = question ? withClosedQuestions(question, closedCodingAgentQuestions) : question
+          const body = questionPrompt
+            ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} />
+            : item.kind === 'live'
             ? <LiveAssistantTranscript text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'tools'
             ? <ToolBatch item={item} />

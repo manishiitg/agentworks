@@ -369,6 +369,9 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	codingAgentClarificationsMu sync.Mutex
+	codingAgentClarifications   map[string]*pendingCodingAgentClarification
+
 	externalBuilderRuntime      externalBuilderRuntime
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
 	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
@@ -5751,6 +5754,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer toolGate.logSurface(sessionID)
 		platformBridgeTools := []string{}
+		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
+			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
+			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
+		if clarificationAvailable {
+			platformBridgeTools = append(platformBridgeTools, "request_clarification")
+		}
 		if resolvedProfile != nil {
 			// Profile-declared native tools still pass normal registration and
 			// admission checks. This does not enable a general shell bridge.
@@ -6466,6 +6475,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Add custom agent instructions based on agent mode
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
+			if clarificationAvailable {
+				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider); err != nil {
+					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
+					return
+				}
+			}
 			// Create custom tools for the agent. Workflow-phase (workshop) agents need
 			// the full applicable human-tool set registered — notably notify_user.
 			// Chat mode stays minimal (workflowMode=false). Without
@@ -6932,6 +6947,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
 
+			promptCtx.ClarificationAvailable = clarificationAvailable
+			promptCtx.NativeClaudeQuestionsAvailable = clarificationAvailable && claudeCodePersistentInteractive && !forceStructuredCodingAgent
 			includedSections, skippedSections, sectionErr := assemblePromptSections(llmAgent, promptCtx)
 			if sectionErr != nil {
 				sendError(fmt.Sprintf("Failed to assemble the system prompt: %v", sectionErr), true)

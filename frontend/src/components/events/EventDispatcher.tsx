@@ -440,8 +440,6 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   if (event.type === 'coding_agent_question') {
     const envelope = event.data as { data?: Record<string, unknown> } | undefined
     const data = (envelope?.data || event.data || {}) as Record<string, unknown>
-    const provider = typeof data.provider === 'string' ? data.provider : ''
-    const who = provider === 'muse-cli' ? 'Muse' : provider === 'claude-code' ? 'Claude' : 'The coding agent'
     const kind = typeof data.kind === 'string' ? data.kind : ''
     const record = (value: unknown) => (value && typeof value === 'object' ? value as Record<string, unknown> : {})
     const questions = (Array.isArray(data.questions) ? data.questions : []).map(record)
@@ -449,8 +447,8 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const settled = kind === 'settled' || answers.length > 0 || typeof data.outcome === 'string'
     return (
       <CompactWrapper compact={compact}>
-        <div data-testid="coding-agent-question-event" className={`rounded-md border border-violet-200 bg-violet-50/70 text-violet-900 dark:border-violet-900 dark:bg-violet-950/20 dark:text-violet-200 ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
-          <span className="font-medium">{settled ? `${who}'s question answered` : `${who} asked`}</span>
+        <div data-testid="coding-agent-question-event" className={`rounded-md border border-border bg-card text-card-foreground ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
+          <span className="font-medium">{settled ? (data.outcome === 'answered' ? 'Clarification answered' : 'Clarification closed') : 'Clarification needed'}</span>
           {!settled && questions.length > 0 && (
             <ul className="mt-1 space-y-1">
               {questions.map((question, index) => {
