@@ -18,6 +18,7 @@ type WorkshopExecuteOptions struct {
 	Iteration              string                 // e.g., "iteration-3" — combined with group folder name to form RunFolder
 	RunFolder              string                 // e.g., "iteration-3/xtech" — auto-calculated from Iteration + group, or set directly
 	SavedScriptOnly        bool                   // If true, run only the saved learnings/{step-id}/main.py fast path with no LLM fallback
+	AllowScriptRepair      bool                   // Builder execute_step only: an LLM may author or repair the step's script (PLAT-436)
 	Instructions           string                 // Optional orchestrator instructions for inner steps — appended to step description as "## Orchestrator Instructions"
 	HumanInput             string                 // Optional human input for top-level steps — injected as critical feedback in PreviousStepsSummary
 	Tier                   int                    // Optional LLM tier override (1=high, 2=medium, 3=low). 0 means no override.
@@ -202,6 +203,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	}
 	if opts != nil && opts.SavedScriptOnly {
 		setup.Context.SavedScriptOnly = true
+	}
+	// A scheduled, Slack or webhook invocation is a run even when it reaches a
+	// step through execute_step: it never repairs scripts.
+	if opts != nil && opts.AllowScriptRepair && !opts.SavedScriptOnly {
+		if runOpts := hcpo.GetExecutionOptions(); runOpts == nil || runOpts.RunKind == "" {
+			setup.Context.AllowScriptRepair = true
+		}
 	}
 
 	// For inner steps: skip top-level cleanup and route execution into the

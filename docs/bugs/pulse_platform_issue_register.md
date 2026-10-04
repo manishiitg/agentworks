@@ -1,3 +1,9 @@
+## Scripted steps never self-heal in a run — PLAT-436
+
+[PLAT-436](pulse_platform/step-execution/plat-436.md), fixed on `main`, not
+deployed: runs execute the saved script and fail on its error; only the
+Builder's own `execute_step` authors or repairs scripts.
+
 ## Code and Crew pages could not connect their panel on multi-user servers — PLAT-434
 
 [PLAT-434](pulse_platform/frontend-chat/plat-434.md), fixed on main; deployment pending. A project under `_users/<id>/` got the workflow

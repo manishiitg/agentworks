@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Scripted steps never self-heal in a run
+
+A run (schedule, webhook/Relay, `run_full_workflow`, a route called by an agent)
+executes a scripted step's saved `main.py` only; a missing or failing script
+fails the step and Pulse reports it. Only the Builder's own `execute_step` may
+author or repair a script. `lock_code` now only stops that Builder repair.
+Ticket: [PLAT-436](bugs/pulse_platform/step-execution/plat-436.md).
+
 ### 2026-10-04 — Relays expose external API triggers only
 
 Relays integrate with existing products through API function triggers. Remove

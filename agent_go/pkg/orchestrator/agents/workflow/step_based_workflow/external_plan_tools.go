@@ -32,7 +32,7 @@ type stepConfigToolRuntime interface {
 const updateStepConfigToolDescription = "Update planning/step_config.json for a specific workflow step. Changes take effect on the next execute_step or run_full_workflow call. To REMOVE a field (so the step falls back to preset/default behavior where that field has a fallback, or removes the explicit setting otherwise), list its name in clear_fields — sending null in a value field does NOT clear; it's ignored."
 
 func getUpdateStepConfigParameters() map[string]interface{} {
-	lockCodeDescription := "If true, lock the saved main.py script — prevents LLM-rewritten scripts from being saved back to learnings, and skips the fix loop (falls back directly to agentic mode). Only applies to scripted steps. Use only when the user explicitly wanted scripted, the script is deterministic, and script_metadata/eval evidence shows 10+ successful scenario-covering runs."
+	lockCodeDescription := "If true, the Builder's own execute_step also stops rewriting the saved main.py (no repair loop). Runs never rewrite a script whatever this says: a run executes the saved main.py and fails on its error, which Pulse reports. Only applies to scripted steps."
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{

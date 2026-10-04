@@ -24,7 +24,7 @@ A step's access to each store is independent and defaults differently. Grant the
 
 | Lock | Scope | Effect | Set when |
 |---|---|---|---|
-| `lock_code` | per-step (scripted) | Freezes `<script-dir>/main.py`, skips the fix loop | **user asks to lock** → allow it; **Workshop auto-locking on its own** → only after 10+ scenario-covering runs |
+| `lock_code` | per-step (scripted) | Freezes `<script-dir>/main.py` even for the Builder's own `execute_step`. Runs never repair a script regardless: a failing script fails the step and Pulse reports it | **user asks to lock** → allow it; **Workshop auto-locking on its own** → only after 10+ scenario-covering runs |
 
 Knowledge-base writes are controlled per step instead: `knowledgebase_access`
 must permit writes and `knowledgebase_contribution` must state what durable

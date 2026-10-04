@@ -2390,10 +2390,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			execOpts := &WorkshopExecuteOptions{
-				GroupName:              resolvedGroupName,
-				Iteration:              iteration,
-				RunFolder:              runFolder,
-				SavedScriptOnly:        fastPathOnly,
+				GroupName:       resolvedGroupName,
+				Iteration:       iteration,
+				RunFolder:       runFolder,
+				SavedScriptOnly: fastPathOnly,
+				// The Builder running a step itself may author or repair its
+				// script; a scheduled session never does (PLAT-436).
+				AllowScriptRepair: !fastPathOnly && iwm.currentWorkshopModeFromConfigs(nil) == "workshop" &&
+					(iwm.workshopConfig == nil || iwm.workshopConfig.ScheduleInvocation == nil),
 				Instructions:           instructions,
 				HumanInput:             humanInput,
 				Tier:                   tierValue,
