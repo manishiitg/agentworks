@@ -97,7 +97,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(claims, tool) {
-			allowed = append(allowed, tool)
+			allowed = append(allowed, knowledgebaseToolForClaims(claims, tool))
 		}
 	}
 	instructions := externalMCPReadOnlyInstructions
@@ -111,7 +111,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if isExternalKnowledgebaseTool(tool.Name) {
-			instructions += " Knowledge Base: discover nested folders with list_knowledgebase_folders, then list_knowledgebase and read_knowledgebase. The catalog reflects this connection's current read/write scopes. Updates use expected_version and a stable request_id; saved changes are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt. Access management belongs to the Knowledge Base access chat."
+			instructions += " Knowledge Base has five tools with action parameters: browse_knowledgebase (folders/entries), read_knowledgebase (read/search), update_knowledgebase (create/update/delete/create_folder), backup_knowledgebase (status/commit/push), and manage_knowledgebase_access (inspect only on content connections). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt with a different request ID. Access changes belong to the app's access builder. Activity stays in the app."
 			break
 		}
 	}

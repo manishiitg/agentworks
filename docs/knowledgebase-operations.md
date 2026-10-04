@@ -45,11 +45,24 @@ The MCP endpoint is `/api/external/v1/mcp`. Authenticate with a Bearer token, us
 `get_api_spec` to discover tools and schemas, then `call_tool` with the operation
 name and its arguments. The existing local bridge uses the same catalog.
 
+The MVP has five tools, all requiring `action`:
+
+| Tool | Actions |
+| --- | --- |
+| `browse_knowledgebase` | `folders`, `entries` |
+| `read_knowledgebase` | `read`, `search` |
+| `update_knowledgebase` | `create`, `update`, `delete`, `create_folder` |
+| `backup_knowledgebase` | `status`, `commit`, `push` |
+| `manage_knowledgebase_access` | `inspect`; other access actions belong to the app's builder |
+
+Read-only connections discover four tools with read-only action schemas. Activity
+history stays in the app. Use different request IDs for different actions.
+
 Typical write flow: list folders, read an entry's version, call
-`update_knowledgebase` with `expected_version`, a patch or replacement, and a stable
+`update_knowledgebase(action=update)` with `expected_version`, a patch or replacement, and a stable
 `request_id`. Keep the same ID and arguments when retrying uncertain delivery.
-To back up, call `commit_knowledgebase` with selected current versions/deletion
-tokens, then `push_knowledgebase` with the returned opaque receipt. Never stage the
+To back up, call `backup_knowledgebase(action=commit)` with selected current versions/deletion
+tokens, then `backup_knowledgebase(action=push)` with the returned opaque receipt. Never stage the
 live directory or push a private receipt ref yourself.
 
 Content and diffs must be UTF-8 text. Binary control characters and NUL bytes are

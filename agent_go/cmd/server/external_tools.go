@@ -207,24 +207,22 @@ func externalTools() ([]externalTool, error) {
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalRelayDefinitions(add)
-		for _, def := range knowledgebase.ToolDefinitions() {
-			if def.Name != "manage_knowledgebase_access" {
-				// The compiler accepts JSON values, rather than Go-specific slices.
-				encoded, err := json.Marshal(def.InputSchema)
-				if err != nil {
-					externalCatalogErr = err
-					return
-				}
-				var schema map[string]any
-				if err = json.Unmarshal(encoded, &schema); err != nil {
-					externalCatalogErr = err
-					return
-				}
-				if schema["required"] == nil {
-					delete(schema, "required")
-				}
-				defined = append(defined, externalTool{Name: def.Name, Description: def.Description, InputSchema: schema, mutates: def.Mutates})
+		for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
+			// The compiler accepts JSON values, rather than Go-specific slices.
+			encoded, err := json.Marshal(def.InputSchema)
+			if err != nil {
+				externalCatalogErr = err
+				return
 			}
+			var schema map[string]any
+			if err = json.Unmarshal(encoded, &schema); err != nil {
+				externalCatalogErr = err
+				return
+			}
+			if schema["required"] == nil {
+				delete(schema, "required")
+			}
+			defined = append(defined, externalTool{Name: def.Name, Description: def.Description, InputSchema: schema, mutates: def.Mutates})
 		}
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
@@ -334,7 +332,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(GetUserFromContext(r.Context()), tool) {
-			allowed = append(allowed, tool)
+			allowed = append(allowed, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool))
 		}
 	}
 	externalJSON(w, map[string]any{"tools": allowed})
@@ -380,6 +378,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if !externalTokenAllows(GetUserFromContext(r.Context()), *tool) {
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation.")
+		return
+	}
+	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
+		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Knowledge Base action.")
 		return
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {

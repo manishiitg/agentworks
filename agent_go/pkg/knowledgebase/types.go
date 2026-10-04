@@ -20,11 +20,13 @@ type Cap struct {
 }
 
 type Principal struct {
-	IdentityID string                      `json:"identity_id"`
-	IsAdmin    bool                        `json:"is_admin"`
-	AccessOnly bool                        `json:"access_only"`
-	Caps       *[]Cap                      `json:"caps,omitempty"`
-	Recheck    func(context.Context) error `json:"-"`
+	IdentityID       string                      `json:"identity_id"`
+	IsAdmin          bool                        `json:"is_admin"`
+	AccessOnly       bool                        `json:"access_only"`
+	Caps             *[]Cap                      `json:"caps,omitempty"`
+	Recheck          func(context.Context) error `json:"-"`
+	requestTool      string
+	requestArguments map[string]any
 }
 
 type Error struct {
@@ -59,7 +61,8 @@ func asMap(v any) map[string]any {
 	return m
 }
 
-func ToolDefinitions() []ToolDefinition {
+// operationDefinitions describes internal domain operations, not MCP names.
+func operationDefinitions() []ToolDefinition {
 	obj := func(required []string, props map[string]any) map[string]any {
 		req := make([]any, len(required))
 		for i, v := range required {

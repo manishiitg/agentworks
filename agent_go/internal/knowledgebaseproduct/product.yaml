@@ -68,16 +68,8 @@ chat:
   mcp:
     prompt: {file: prompts/mcp.md}
     external_tools:
-      - list_knowledgebase_folders
-      - create_knowledgebase_folder
-      - list_knowledgebase
+      - browse_knowledgebase
       - read_knowledgebase
-      - search_knowledgebase
-      - create_knowledgebase
       - update_knowledgebase
-      - delete_knowledgebase
-      - get_knowledgebase_access
-      - get_knowledgebase_activity
-      - get_knowledgebase_backup_status
-      - commit_knowledgebase
-      - push_knowledgebase
+      - backup_knowledgebase
+      - manage_knowledgebase_access

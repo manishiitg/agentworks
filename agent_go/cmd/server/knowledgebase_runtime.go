@@ -34,14 +34,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 		copy := *claims
 		copy.AccessToken = &fresh
 		claims = &copy
-		var def externalTool
-		for _, candidate := range knowledgebase.ToolDefinitions() {
-			if candidate.Name == tool {
-				def = externalTool{Name: tool, mutates: candidate.Mutates}
-				break
-			}
-		}
-		if accessOnly || !externalTokenAllows(claims, def) {
+		if accessOnly || !externalTokenAllows(claims, externalTool{Name: tool}) || !knowledgebaseConnectionAllowsAction(claims, tool, args) {
 			return "", fmt.Errorf("connection does not allow this operation")
 		}
 	}
@@ -55,7 +48,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 	r := (&http.Request{}).WithContext(context.WithValue(ctx, UserContextKey, claims))
 	p := knowledgebasePrincipal(r, claims)
 	p.AccessOnly = accessOnly
-	result, err := service.Call(ctx, p, tool, args)
+	result, err := service.CallTool(ctx, p, tool, args)
 	if err != nil {
 		return "", err
 	}
@@ -82,10 +75,7 @@ func createKnowledgebaseTools(userID string) ([]llmtypes.Tool, map[string]interf
 	if !productEnabled("knowledgebase") {
 		return tools, executors, categories
 	}
-	for _, def := range knowledgebase.ToolDefinitions() {
-		if def.Name == "manage_knowledgebase_access" {
-			continue
-		}
+	for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
 		def := def
 		encoded, _ := json.Marshal(def.InputSchema)
 		params := new(llmtypes.Parameters)
@@ -99,4 +89,30 @@ func createKnowledgebaseTools(userID string) ([]llmtypes.Tool, map[string]interf
 		categories[def.Name] = "knowledgebase"
 	}
 	return tools, executors, categories
+}
+
+func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args map[string]any) bool {
+	if claims == nil || claims.AccessToken != nil && !claims.AccessToken.Allows("knowledgebase:read") {
+		return false
+	}
+	action, _ := args["action"].(string)
+	if tool == "manage_knowledgebase_access" && action != "inspect" {
+		return false
+	}
+	return claims.AccessToken == nil || !knowledgebase.ToolActionMutates(tool, action) || claims.AccessToken.Allows("knowledgebase:write")
+}
+
+// Mixed-action tools remain discoverable by readers, with read-only schemas.
+func knowledgebaseToolForClaims(claims *UserClaims, tool externalTool) externalTool {
+	if !isExternalKnowledgebaseTool(tool.Name) {
+		return tool
+	}
+	canWrite := claims != nil && (claims.AccessToken == nil || claims.AccessToken.Allows("knowledgebase:write"))
+	for _, def := range knowledgebase.ConnectionToolDefinitions(canWrite) {
+		if def.Name == tool.Name {
+			tool.InputSchema, tool.Description, tool.mutates = def.InputSchema, def.Description, def.Mutates
+			break
+		}
+	}
+	return tool
 }

@@ -315,22 +315,16 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
 	}
-	// Content connections do not carry access-management authority, even
-	// when issued by an organization administrator.
-	if tool.Name == "manage_knowledgebase_access" {
-		return false
-	}
-	for _, definition := range knowledgebase.ToolDefinitions() {
-		if definition.Name != tool.Name {
-			continue
-		}
+	if knowledgebase.IsMCPTool(tool.Name) {
 		if !knowledgebaseProductAllowed(c) {
 			return false
 		}
 		if c.AccessToken == nil {
 			return true
 		}
-		if definition.Mutates || tool.mutates {
+		// Backup/access include read actions. Dispatch checks each action;
+		// only the all-write update tool is hidden from read-only connections.
+		if tool.Name == "update_knowledgebase" {
 			return c.AccessToken.Allows("knowledgebase:read") && c.AccessToken.Allows("knowledgebase:write")
 		}
 		return c.AccessToken.Allows("knowledgebase:read")

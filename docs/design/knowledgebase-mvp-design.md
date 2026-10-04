@@ -23,7 +23,7 @@ The live knowledge base is the source of truth. A private Git repository is a ve
 | MCP clients | Crews, Code, Workflows, and external local agents use the same backend. |
 | Content mutations | Create, update, patch, and delete through MCP. |
 | Access | Authenticated users and service accounts receive inherited folder permissions. |
-| Large files | Read a section or line range and submit a unified diff through `update_knowledgebase`. |
+| Large files | Read a section or line range and submit a unified diff through `update_knowledgebase(action=update)`. |
 | Visibility | Successful writes are immediately readable by authorized users. |
 | Backup | Writers explicitly commit selected content snapshots and push them through MCP. |
 | Backup format | Plain Markdown files in the same folder hierarchy, without embedded metadata. |
@@ -180,24 +180,21 @@ The builder chat cannot create or edit entry content, patch files, or initiate G
 
 ## 7. MCP interface
 
-These are proposed public names. They can be routed through the existing MCPBridge while sharing the underlying knowledge-base service.
+The MVP exposes five public MCP names, each with an explicit `action`. They share the existing domain operations and authorization boundary; internal operation names are not MCP aliases.
 
-| Tool | Purpose | Required access |
+| Tool | Actions | Required access |
 | --- | --- | --- |
-| `list_knowledgebase` | Browse like a filesystem: list folders and entry metadata by path, with depth, glob, and pagination. | Reader |
-| `search_knowledgebase` | Keyword search within accessible content; optional folder, type, and tag filters. | Reader |
-| `read_knowledgebase` | Read a full entry, heading section, or line range; return its current version. | Reader |
-| `create_knowledgebase_folder` | Create a child folder that inherits parent access. | Editor on parent |
-| `create_knowledgebase` | Create an entry with filename, type, title, content, and optional description and tags. | Editor on folder |
-| `update_knowledgebase` | Patch or replace content and/or edit metadata, with a required expected version. | Editor |
-| `delete_knowledgebase` | Delete an entry with a required expected version; return a deletion token for backup. | Editor |
-| `commit_knowledgebase` | Prepare a Git commit from explicitly selected permitted content versions. | Editor on every selected path |
-| `push_knowledgebase` | Push the prepared commit using backend-held Git credentials. | Editor on every included path |
-| `get_knowledgebase_backup_status` | Show live, committed, and pushed versions for accessible content. | Reader |
+| `browse_knowledgebase` | `folders`, `entries` — nested folder/entry browsing, filters, and pagination. | Reader |
+| `read_knowledgebase` | `read` — whole entry, heading, or lines; `search` — literal content search. | Reader |
+| `update_knowledgebase` | `create`, `update` (diff, replacement, and/or metadata), `delete`, `create_folder`. | Editor on the affected folder |
+| `backup_knowledgebase` | `status`, `commit` selected versions/deletions, `push` an owned receipt. | Reader for status; Editor on every selected path for commit/push |
+| `manage_knowledgebase_access` | `inspect` for connected agents; `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account` only in the app's access builder. | Reader for inspection; Owner/admin for access changes; admin for service accounts |
+
+Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; content connections expose access inspection only. Dispatch rechecks the action's write scope and live folder grants independently of discovery. Activity history remains in the app through its read-only viewer API.
 
 All operations are scoped to the authenticated organization. Content operations resolve an entry by ID or organization-relative path. Types use the same tools; no separate tool families are needed for skills, notes, facts, or sources.
 
-Mutating calls require a request ID for safe retries. Deduplicate by organization, initiating identity, tool name, and request ID, storing a hash of the normalized arguments and the outcome for seven days. Repeating a request with the same arguments returns the existing outcome without repeating its effect. Reusing its ID with different arguments returns `REQUEST_ID_REUSE`. While the original call is in progress, a retry returns `REQUEST_IN_PROGRESS` with a suggested retry delay.
+Mutating calls require a request ID for safe retries. Deduplicate by organization, initiating identity, public tool name, and request ID, storing a hash of the arguments including the action and the outcome for seven days. Repeating a request with the same arguments returns the existing outcome without repeating its effect. Use different request IDs for different actions, including commit and push. Reusing its ID with different arguments or a different action returns `REQUEST_ID_REUSE`. While the original call is in progress, a retry returns `REQUEST_IN_PROGRESS` with a suggested retry delay.
 
 Automatic retry guarantees expire after seven days. Beyond that window, clients must inspect current state before issuing a new operation. Backup receipt state provides an additional durable check against pushing the same commit twice. Transient failures with no effect are retryable using the same ID; a new commit preparation after a stale branch conflict uses a new ID.
 
@@ -218,6 +215,7 @@ Example partial read:
 
 ```json
 {
+  "action": "read",
   "path": "Engineering/Payments/Checkout/deployment.md",
   "start_line": 120,
   "end_line": 145
@@ -230,6 +228,7 @@ Example patch:
 
 ```json
 {
+  "action": "update",
   "path": "Engineering/Payments/Checkout/deployment.md",
   "expected_version": "v12",
   "diff": "--- a/deployment.md\n+++ b/deployment.md\n@@ -120,1 +120,2 @@\n Run the deployment command.\n+Verify service health before continuing.\n",
@@ -250,9 +249,9 @@ If any hunk fails, no content changes are saved. A concurrent update returns a v
 
 ### 7.2 Creation, metadata updates, and limits
 
-`create_knowledgebase` requires exactly one parent locator (`folder_id` or `folder_path`), plus `filename`, `type`, `title`, `content`, and `request_id`. Description defaults to an empty string and tags to an empty list. Creating a folder similarly requires one parent locator, a name, and a request ID. Uniqueness checks and creation happen atomically.
+`update_knowledgebase(action=create)` requires exactly one parent locator (`folder_id` or `folder_path`), plus `filename`, `type`, `title`, `content`, and `request_id`. Description defaults to an empty string and tags to an empty list. Creating a folder similarly requires one parent locator, a name, and a request ID. Uniqueness checks and creation happen atomically.
 
-`update_knowledgebase` accepts a locator, `expected_version`, `request_id`, and:
+`update_knowledgebase(action=update)` accepts a locator, `expected_version`, `request_id`, and:
 
 - At most one of `diff` or replacement `content`; providing both returns `INVALID_ARGUMENT`.
 - An optional `metadata` object containing only `title`, `description`, `tags`, or `type`.
@@ -264,11 +263,15 @@ Example metadata-only update:
 
 ```json
 {
+  "action": "update",
   "path": "Engineering/Payments/Checkout/deployment.md",
   "expected_version": "v13",
   "metadata": {
     "title": "Checkout deployment and rollback",
-    "tags": ["deployment", "checkout"]
+    "tags": [
+      "deployment",
+      "checkout"
+    ]
   },
   "request_id": "checkout-title-001"
 }
@@ -294,7 +297,7 @@ Whole-entry reads can return up to the content limit. Clients should use section
 
 ### 7.3 Reuse of existing MCPBridge patch functionality
 
-Expose the existing diff patch capability as `update_knowledgebase`, with a knowledge-base-specific description and schema. Users do not need to see `diff_patch_workspace_file` on this product's MCP surface.
+Expose the existing diff patch capability as `update_knowledgebase(action=update)`, with a knowledge-base-specific description and schema. Users do not need to see `diff_patch_workspace_file` on this product's MCP surface.
 
 The existing workspace client accepts `filepath` and `diff` and includes folder write-path validation. The knowledge-base adapter maps the public entry locator to an authorized target and reuses the underlying patch implementation.
 
@@ -354,16 +357,16 @@ Do not inject YAML frontmatter, entry IDs, revision numbers, access grants, or m
 ```text
 Save through MCP → Immediately shared live content
                            ↓ explicit writer call
-                   commit_knowledgebase
+                   backup_knowledgebase(action=commit)
                            ↓ explicit writer call
-                    push_knowledgebase
+                    backup_knowledgebase(action=push)
                            ↓
                     Private Git remote
 ```
 
 There is no background agent committing or pushing. A Crew or workflow can be instructed to call these tools itself after writing; that is an explicit client action.
 
-`commit_knowledgebase` takes an `entries` list of locators and expected versions, an optional `deletions` list of deletion tokens, a commit message, and a request ID. Either list may be omitted, but the combined selection must be non-empty. Resolve and authorize the entire selection, then capture all selected versions in one consistent snapshot of the selected files and registry state. Any stale version or unauthorized selection rejects the whole request.
+`backup_knowledgebase(action=commit)` takes an `entries` list of locators and expected versions, an optional `deletions` list of deletion tokens, a commit message, and a request ID. Either list may be omitted, but the combined selection must be non-empty. Resolve and authorize the entire selection, then capture all selected versions in one consistent snapshot of the selected files and registry state. Any stale version or unauthorized selection rejects the whole request.
 
 The backend prepares a commit with the current tracked remote branch tip as its parent. Its complete Git tree carries every unselected path forward unchanged from that parent. Only the selected additions, modifications, and deletions appear in its diff. Do not create a tree consisting only of selected files, which would delete the rest of the repository.
 
@@ -375,6 +378,7 @@ Example:
 
 ```json
 {
+  "action": "commit",
   "entries": [
     {
       "path": "Engineering/Payments/Checkout/deployment.md",
@@ -386,7 +390,7 @@ Example:
 }
 ```
 
-`push_knowledgebase` takes `receipt_id` and `request_id`. Only the initiating identity can push its receipt. Recheck current Editor permission and connection scope for every selected change, including a deletion's retained folder. The receipt must belong to the same organization and must not be expired or stale.
+`backup_knowledgebase(action=push)` takes `receipt_id` and `request_id`. Only the initiating identity can push its receipt. Recheck current Editor permission and connection scope for every selected change, including a deletion's retained folder. The receipt must belong to the same organization and must not be expired or stale.
 
 Do not stage an entire shared working directory. Use an isolated index or staging area populated from the published base, then overlay only the selected immutable snapshots. Unrelated users' unpublished commits must not become ancestors of a push.
 
@@ -418,7 +422,7 @@ Expected pushes by other users and unexpected direct repository changes both req
 
 ### 9.4 Deletion backups and path reuse
 
-`delete_knowledgebase` atomically removes the entry from live listing/search/read results and retains a tombstone containing its entry ID, folder ID, path, deletion sequence, actor, and a stable opaque `deletion_id`. Its idempotent response returns that deletion ID. Normal readers cannot read the removed content through the deletion record.
+`update_knowledgebase(action=delete)` atomically removes the entry from live listing/search/read results and retains a tombstone containing its entry ID, folder ID, path, deletion sequence, actor, and a stable opaque `deletion_id`. Its idempotent response returns that deletion ID. Normal readers cannot read the removed content through the deletion record.
 
 Select a deletion independently of a live version:
 
@@ -432,7 +436,7 @@ Select a deletion independently of a live version:
 }
 ```
 
-Resolve the token to its server-side path and retained folder; a client-supplied path cannot change what it deletes. Both preparation and push check the caller's current Editor permission there. `get_knowledgebase_backup_status` can include authorized deletion records so another permitted writer can find and back up an unpushed deletion.
+Resolve the token to its server-side path and retained folder; a client-supplied path cannot change what it deletes. Both preparation and push check the caller's current Editor permission there. `backup_knowledgebase(action=status)` can include authorized deletion records so another permitted writer can find and back up an unpushed deletion.
 
 Keep tombstones and their tokens as durable internal records. Do not export them to Git. Reserve the deleted path until its absence is confirmed in the remote and no unknown push can restore it. It can then be reused by a new entry with a new ID. Prepared snapshots are bound to entry IDs as well as paths, so an old content or deletion receipt cannot overwrite or remove a replacement entry. A retry of an already-pushed receipt returns its recorded outcome without touching the replacement.
 
@@ -543,7 +547,7 @@ Private registries, journals, identities, request outcomes and backup receipts a
 5. Two agents editing the same version cannot silently overwrite one another; the later conflicting write is rejected.
 6. A partial read of a large entry supplies enough line and version information for a scoped diff update.
 7. A failed multi-hunk patch leaves the entire entry unchanged.
-8. The knowledge-base MCP surface exposes `update_knowledgebase` backed by the reused patch functionality and knowledge-base safeguards.
+8. The knowledge-base MCP surface exposes `update_knowledgebase(action=update)` backed by the reused patch functionality and knowledge-base safeguards.
 9. A writer can explicitly commit and push permitted versions without receiving direct repository credentials.
 10. A backup commit changes only the selected authorized paths, preserves all unselected paths from its published parent, and stores plain Markdown content.
 11. New edits made after a snapshot remain marked pending after that snapshot is pushed.
@@ -700,11 +704,11 @@ Add the tools and validated schemas from section 7 to the shared external catalo
 The existing hosted endpoint is `/api/external/v1/mcp`. It advertises `get_api_spec` and `call_tool`; actual product operation names are discovered and invoked through that catalog. Reuse that transport for the MVP:
 
 ```text
-get_api_spec(names="update_knowledgebase")
-call_tool(name="update_knowledgebase", arguments={...})
+get_api_spec(names="update_knowledgebase(action=update)")
+call_tool(name="update_knowledgebase(action=update)", arguments={...})
 ```
 
-Thus `update_knowledgebase` is the public knowledge operation name even when the hosted MCP transport uses a generic call wrapper. Existing local bridge configurations can expose registered named operations directly where supported. Do not assume adding a manifest creates a separate `/knowledgebase/mcp` endpoint or automatically renames an unrelated registered tool.
+Thus `update_knowledgebase(action=update)` is the public knowledge operation name even when the hosted MCP transport uses a generic call wrapper. Existing local bridge configurations can expose registered named operations directly where supported. Do not assume adding a manifest creates a separate `/knowledgebase/mcp` endpoint or automatically renames an unrelated registered tool.
 
 Extend the shared token issuance, scope filtering, discovery instructions, and dispatch to support Knowledge Base and its folder restrictions. Dedicated service-account tokens must resolve to a service-account principal rather than an impersonated administrator; this needs explicit implementation if the current platform token path supports users only.
 

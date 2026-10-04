@@ -87,7 +87,7 @@ type featureDefinition struct {
 // the bundle layer does not fork their implementations.
 var featureCatalog = map[string]featureDefinition{
 	"knowledgebase": {
-		Tools:           []string{"list_knowledgebase_folders", "create_knowledgebase_folder", "list_knowledgebase", "read_knowledgebase", "search_knowledgebase", "create_knowledgebase", "update_knowledgebase", "delete_knowledgebase", "get_knowledgebase_access", "get_knowledgebase_activity", "get_knowledgebase_backup_status", "commit_knowledgebase", "push_knowledgebase"},
+		Tools:           []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"},
 		PromptExtension: "Shared Knowledge Base is available through its MCP tools. Discover accessible folders, read a current version, and use expected_version plus a stable request_id for changes. Saved content is immediately shared. Git backup requires explicit selected-version commit and receipt push; do this only when requested. Folder permissions apply to every call. Never access Knowledge Base host files or credentials directly.",
 	},
 	"live-chat": {

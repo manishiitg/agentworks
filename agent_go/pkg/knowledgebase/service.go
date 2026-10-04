@@ -379,7 +379,7 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 	}
 	known := false
 	mutates := false
-	for _, d := range ToolDefinitions() {
+	for _, d := range operationDefinitions() {
 		if d.Name == tool {
 			known = true
 			mutates = d.Mutates
@@ -466,6 +466,9 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 	return result, nil
 }
 func (s *Service) requestPath(p Principal, tool string, args map[string]any) (string, string, error) {
+	if p.requestTool != "" {
+		tool, args = p.requestTool, p.requestArguments
+	}
 	id, ok := args["request_id"].(string)
 	if !ok || len(id) < 1 || len(id) > 128 {
 		return "", "", badArg("request_id must contain 1–128 ASCII letters, digits, underscores, or hyphens.")

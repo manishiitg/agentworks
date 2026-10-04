@@ -304,18 +304,17 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 }
 
 func isExternalKnowledgebaseTool(name string) bool {
-	for _, def := range knowledgebase.ToolDefinitions() {
-		if def.Name == name && name != "manage_knowledgebase_access" {
-			return true
-		}
-	}
-	return false
+	return knowledgebase.IsMCPTool(name)
 }
 
 func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *http.Request, tool string, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if !knowledgebaseProductAllowed(claims) {
 		externalError(w, 404, "NOT_FOUND", "Knowledge Base not found.")
+		return
+	}
+	if !knowledgebaseConnectionAllowsAction(claims, tool, args) {
+		externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow the requested Knowledge Base action.")
 		return
 	}
 	service, err := knowledgebaseService()
@@ -327,7 +326,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 		knowledgebaseHTTPError(w, err)
 		return
 	}
-	result, err := service.Call(r.Context(), knowledgebasePrincipal(r, claims), tool, args)
+	result, err := service.CallTool(r.Context(), knowledgebasePrincipal(r, claims), tool, args)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return

@@ -35,14 +35,9 @@ func TestKnowledgebaseTokenToolAdmission(t *testing.T) {
 		if externalTokenAllows(workflow, tool) {
 			t.Errorf("ordinary workflow token admitted %s", definition.Name)
 		}
-		if definition.Name == "manage_knowledgebase_access" {
-			if externalTokenAllows(read, tool) || externalTokenAllows(write, tool) {
-				t.Error("content token admitted access management")
-			}
-			continue
-		}
-		if got := externalTokenAllows(read, tool); got == definition.Mutates {
-			t.Errorf("reader admission for %s = %v", definition.Name, got)
+		wantRead := definition.Name != "update_knowledgebase"
+		if got := externalTokenAllows(read, tool); got != wantRead {
+			t.Errorf("reader admission for %s = %v, want %v", definition.Name, got, wantRead)
 		}
 		if !externalTokenAllows(write, tool) {
 			t.Errorf("KB writer with workflow viewer account role denied %s", definition.Name)
@@ -151,7 +146,7 @@ func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) 
 	if unrestricted.Metadata.KnowledgebaseFolders != nil || denied.Metadata.KnowledgebaseFolders == nil || len(*denied.Metadata.KnowledgebaseFolders) != 0 {
 		t.Fatalf("null and empty caps confused: %+v %+v", unrestricted.Metadata, denied.Metadata)
 	}
-	readRequest := `{"name":"read_knowledgebase","arguments":{"entry_id":"` + entry.EntryID + `"}}`
+	readRequest := `{"name":"read_knowledgebase","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
 	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
 		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
 	}
