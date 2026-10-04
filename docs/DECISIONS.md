@@ -22,6 +22,17 @@ Design references for the linked runtime decisions:
 ### 2026-10-04 — A slot command cannot see its slot's tmux socket; a host that cannot hide it refuses the command
 
 Landlock does not govern connect() on pathname Unix sockets below ABI 9 (RTS kernel 7.0 is ABI 8, Hetzner 6.8 is ABI 4), and a slot's tmux server runs as the same account as the commands it confines, so a confined command could reach an unconfined server (verified live on RTS, PLAT-480 F1). A slot command's policy now hides the slot run root behind an empty folder in the command's own namespaces. A host that cannot give the command those namespaces refuses it (`SANDBOX_UNAVAILABLE`) instead of running it with the socket in view. RTS needs a path-scoped AppArmor `userns` exception for slotctl and the launcher (`provision-slots.sh userns`). Code: `workspace/security/isolator_linux.go`. Ticket: PLAT-480.
+### 2026-10-04 — An MCP added to a workflow, Relay, Crew or Code is shared with everyone who has access to it — PLAT-482
+
+- **Decided (owner).** There are two kinds of MCP connection: Vault (global, governed by groups) and a connection specific to a place. One added to a
+  workflow, Relay, Crew or Code belongs to that place and is used by everyone with access to it, in chats, Run mode, schedules and runs. It acts as the
+  connected account, so connecting it is the consent. Anyone who can edit the place can remove it. A "private connection that only its owner can run"
+  no longer exists.
+- **Why.** The owner-only rule came from the Code product (a private workspace per person) and was copied onto workflows and Crews, where it made a
+  scheduled Upwork run fail ("active MCP user required"): a run has no person.
+- **Where.** `placeMCPUsableBy`, `resolvePlaceAttachedMCP` and `placeAttachedMatch` in `cmd/server/place_mcp_attach.go` and `place_mcp_runtime.go`; the
+  agent inventory in `vault_runtime.go`. Replaces the 2026-09-28 Code private-MCP design and the "only that owner can see or run it" rule for non-Code
+  places. [PLAT-482](bugs/pulse_platform/integrations/plat-482.md).
 
 ### 2026-10-04 — Slot-run shell commands never receive app-private paths such as browser profiles; every slot deploy proves the chain
 

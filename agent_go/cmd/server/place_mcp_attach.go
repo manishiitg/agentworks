@@ -219,6 +219,34 @@ func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner
 }
 
+// placeMCPUsableBy reports whether a session may use root's connections. A connection added to a workflow,
+// Relay, Crew or Code belongs to that place and is used by everyone with access to it (DECISIONS 2026-10-04):
+// a person needs access to the place, and a session with no person (a run, step or schedule of the place,
+// whose place comes from server-set session data) uses them as the place's own.
+func placeMCPUsableBy(ctx context.Context, person, root string) bool {
+	root = cleanAttachRoot(root)
+	if root == "" {
+		return false
+	}
+	person = strings.TrimSpace(person)
+	if person == "" {
+		return true
+	}
+	claims := userClaimsForDirectoryID(person)
+	if claims == nil {
+		return false
+	}
+	if strings.HasPrefix(root, "Workflow/") {
+		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
+		return level != WorkflowAccessNone
+	}
+	if isCodePlaceRoot(root) {
+		return workspaceref.MustParse(root).OwnedBy(person)
+	}
+	ref, ok := resolveCrewPath(ctx, person, root)
+	return ok && crewAccessFor(claims, ref) != crewAccessNone
+}
+
 // recordPlaceMCP adds owner's server to root's index.
 func recordPlaceMCP(owner, server, root string) error {
 	placeMCPMu.Lock()
@@ -283,9 +311,18 @@ func placeMCPAttachmentsFor(root string) ([]placeMCPAttachment, error) {
 
 // attachedMCPServersForRoot is the runtime side: a workflow's, Crew's or Code's own
 // connections as ordinary server names plus complete configs, for any chat or
-// run there. A connection whose owner can no longer edit root is skipped.
+// run there. They are the place's, whoever added them: everyone with access to
+// the place gets them, and the caller's own access is the only check.
 func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpclient.RuntimeOverrides) {
 	root = placeRootOf(root)
+	if !placeMCPUsableBy(ctx, mcpCaller(ctx), root) {
+		return nil, nil
+	}
+	return placeAttachedConfigs(root)
+}
+
+// placeAttachedConfigs is every connection attached to root as names plus configs, with no caller check.
+func placeAttachedConfigs(root string) ([]string, mcpclient.RuntimeOverrides) {
 	attachments, err := placeMCPAttachmentsFor(root)
 	if err != nil {
 		log.Printf("[PLACE_MCP] connections of %s: %v", root, err)
@@ -297,13 +334,6 @@ func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpc
 	names := make([]string, 0, len(attachments))
 	overrides := mcpclient.RuntimeOverrides{}
 	for _, a := range attachments {
-		if a.Owner != mcpCaller(ctx) {
-			continue
-		}
-		if !placeMCPCanAttach(ctx, a.Owner, root) {
-			log.Printf("[PLACE_MCP] skipping %s in %s: the person who added it can no longer edit it", a.Server, root)
-			continue
-		}
 		internal, cfg, err := placeMCPServerConfig(attachmentStore(a, root), a.Server)
 		if err != nil {
 			log.Printf("[PLACE_MCP] skipping %s in %s: %v", a.Server, root, err)
@@ -325,13 +355,10 @@ func placeMCPSignedInInternalNames(ctx context.Context, root string) map[string]
 	if err != nil {
 		return out
 	}
+	if !placeMCPUsableBy(ctx, mcpCaller(ctx), root) {
+		return out
+	}
 	for _, a := range attachments {
-		if a.Owner != mcpCaller(ctx) {
-			continue
-		}
-		if !placeMCPCanAttach(ctx, a.Owner, root) {
-			continue
-		}
 		store := attachmentStore(a, root)
 		internal, _, err := placeMCPServerConfig(store, a.Server)
 		if err != nil {
@@ -396,9 +423,6 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 	dir, _ := loadUserDirectory()
 	rows := make([]row, 0, len(attachments))
 	for _, a := range attachments {
-		if a.Owner != userID {
-			continue
-		}
 		store := attachmentStore(a, root)
 		servers, _ := listPlaceMCPServers(store)
 		var server *placeMCPServer
@@ -421,7 +445,7 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 		rows = append(rows, row{
 			Name: a.Server, Label: server.Label, Catalog: server.Catalog, URL: redactedURL(server.URL),
 			Owner: a.Owner, OwnerName: ownerName, Mine: a.Owner == userID, Connected: connected, SignIn: server.OAuth != nil,
-			Active: placeMCPCanAttach(r.Context(), a.Owner, root), AddedAt: a.AttachedAt,
+			Active: true, AddedAt: a.AttachedAt,
 		})
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})
@@ -540,8 +564,8 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 	if owner == "" {
 		owner = userID
 	}
-	if owner != userID {
-		writeAgentProfileError(w, http.StatusForbidden, "only the owner can remove a private connection")
+	if owner != userID && !placeMCPCanAttach(r.Context(), userID, root) {
+		writeAgentProfileError(w, http.StatusForbidden, "you can remove connections only where you can edit")
 		return
 	}
 	name := mux.Vars(r)["name"]

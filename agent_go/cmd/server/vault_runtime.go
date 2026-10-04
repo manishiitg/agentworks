@@ -469,6 +469,20 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 				continue
 			}
 		}
+		// A connection attached to this session's own workflow, Relay, Crew or Code is the place's: it is
+		// available to every session of that place, including runs that have no person.
+		if internal, cfg, found, denied, _ := api.placeAttachedMatch(ctx, sessionID, name); found {
+			if !denied {
+				if _, seen := scoped[internal]; !seen {
+					selected = append(selected, internal)
+				}
+				config := cfg
+				scoped[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
+				aliases[strings.ToLower(name)] = internal
+				aliases[strings.ToLower(placeMCPPlainName(internal))] = internal
+			}
+			continue
+		}
 		// Legacy per-place credentials remain sealed at the original path, private
 		// to their original owner. The caller's matching internal prefix is required.
 		if isPlaceMCPInternalName(name) && api.ownsLegacyPlaceMCP(ctx, person, name) {
