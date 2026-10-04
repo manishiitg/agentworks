@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Global navigation can stay fixed or auto-hide
+
+The user chooses Fixed (default) or Auto-hide with the bottom pin; remember
+the choice across products and reloads. Auto-hide reveals at the left edge or
+on keyboard focus to free workspace space while preserving access. Keep the
+navigation mounted so its live activity monitor continues refreshing.
+Ticket: [PLAT-460](bugs/pulse_platform/frontend-chat/plat-460.md).
+
 ### 2026-10-04 — The persistent chat tab names its workflow or project
 
 Show the workflow/Relay name or Crew/Code/Vault project name on the persistent

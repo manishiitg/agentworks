@@ -1,3 +1,10 @@
+## Fixed or auto-hidden global navigation — PLAT-460
+
+[PLAT-460](pulse_platform/frontend-chat/plat-460.md), fixed on `main`, not deployed:
+the bottom pin toggles Fixed and Auto-hide; the saved choice applies to shared
+product navigation. Hidden navigation reveals at the left edge and keeps its
+live monitor mounted.
+
 ## Work chat selection test fails before running tests — PLAT-459
 
 [PLAT-459](pulse_platform/frontend-chat/plat-459.md), open: the suite fails
