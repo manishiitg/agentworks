@@ -4,7 +4,7 @@
 
 ## Builder-guided administrator setup for incoming Gmail — PLAT-483
 
-[PLAT-483](pulse_platform/integrations/plat-483.md), P2, fixed on main, not deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Requires app admin plus Google project permissions. No live Cloud/account changes or deployment performed.
+[PLAT-483](pulse_platform/integrations/plat-483.md), P2, fixed on main, not deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Right-panel headers and Gmail cards share this setup guidance. Requires app admin plus Google project permissions. No live Cloud/account changes or deployment performed.
 
 ## Existing Code MCP skill discovery contract test fails — PLAT-484
 

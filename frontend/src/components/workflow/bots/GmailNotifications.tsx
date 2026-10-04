@@ -15,6 +15,7 @@ import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import { GoogleAccountConnect } from '../../../products/work/GoogleAccountConnect'
 import { GmailInboundPanel } from './GmailInboundPanel'
+import { getGoogleAppsAskAIMessage } from './gmailAskAI'
 
 function gmailBackendLabel(backend: string | undefined): { name: string; install: string } {
   if (backend === 'gog') return { name: 'gog', install: 'gogcli' }
@@ -120,7 +121,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 workspacePath={workspacePath}
                 onAsk={onAsk}
                 label={scopeNoun === 'project' ? 'Ask Crew to set up Gmail' : 'Ask Builder to set up Gmail'}
-                message="Help me set up Gmail: use the company Google app if configured, or choose/upload a named OAuth client JSON locally. Check both Allowed in AgentWorks and Google permissions before recommending access changes. Choose default recipients and test delivery. Guide me through the settings without requesting secrets in chat."
+                message={getGoogleAppsAskAIMessage(scopeNoun, scopeNoun !== 'relay')}
               />
             }
           >

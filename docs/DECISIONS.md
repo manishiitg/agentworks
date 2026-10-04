@@ -26,7 +26,8 @@ plan through Builder. The human reviews it and completes plan-bound Google
 Cloud consent in the browser; no agent tool applies the plan or receives Cloud
 credentials. The server verifies the owning OAuth project, provisions only the
 reviewed resources and narrow grants, and activates durable private configuration
-without environment edits or a restart. Manual settings remain compatible;
+without environment edits or a restart. Right-panel headers and Gmail cards share
+these setup instructions and reuse pending review links. Manual settings remain compatible;
 conflicts fail closed. Mailbox connections, rules and extra-sender approval remain
 separate. Why: the manual Pub/Sub checklist made receiving too difficult; gog
 watchers still require its infrastructure. Ticket:

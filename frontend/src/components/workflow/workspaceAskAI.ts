@@ -1,5 +1,6 @@
 import { buildAskAIMessage } from '../../utils/askAIMessage'
 import { getWorkspaceView, type WorkspaceViewId } from './workspaceViews'
+import { getGoogleAppsSetupInstructions } from './bots/gmailAskAI'
 
 // Every right-side workspace view has one useful first message for Builder.
 // Keeping this exhaustive means a newly registered view cannot silently ship
@@ -62,7 +63,8 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   },
   gmail: {
     label: 'Integrations · Gmail',
-    summary: "Help me connect or configure Gmail, default recipients, and email access settings.",
+    summary: "Help me connect Google apps and set up sending or automatic incoming Gmail for this workflow.",
+    instructions: getGoogleAppsSetupInstructions(),
   },
   cli: {
     label: 'Integrations · Connect',

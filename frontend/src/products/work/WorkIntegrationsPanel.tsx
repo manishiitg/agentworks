@@ -18,6 +18,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
+import { getGoogleAppsAskAIMessage } from '../../components/workflow/bots/gmailAskAI'
 
 export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -36,7 +37,7 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
-    gmail: `Help me with this ${noun} project's Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides). Explain the setup and ask what I want to change.`,
+    gmail: getGoogleAppsAskAIMessage(`${noun} project`),
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
