@@ -1,3 +1,9 @@
+## Scripted routes are named tools — PLAT-432
+
+[PLAT-432](pulse_platform/plans-contracts/plat-432.md), fixed on `main`, not
+deployed: each saved scripted route is a named tool of its Agent step, returns
+`route_result.json`, and may declare `script_parameters_schema`.
+
 ## Relays reuse workflow migrations, minus goal-driven ones — PLAT-431
 
 [PLAT-431](pulse_platform/plans-contracts/plat-431.md), fixed on `main`, not

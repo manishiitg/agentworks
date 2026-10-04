@@ -1149,6 +1149,23 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 		return fmt.Sprintf("Sub-agent %s failed: %v", route.RouteName, err), capturedHistory, err
 	}
 
+	// A scripted route returns a value by writing route_result.json in its
+	// output folder (PLAT-432). The caller gets that JSON instead of the run
+	// summary; an unusable file is logged and the summary is kept.
+	if isScriptedRoute {
+		resultJSON, readErr := readScriptedRouteResult(hcpo.scriptedRouteOutputDir(subAgentStepPath))
+		if readErr != nil {
+			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Route %s: %s ignored: %v", route.RouteID, ScriptedRouteResultFile, readErr))
+			executionResult = fmt.Sprintf("%s\n(%s was ignored: %v)", executionResult, ScriptedRouteResultFile, readErr)
+		}
+		if resultJSON != "" {
+			executionResult = resultJSON
+			if capture, ok := ctx.Value(scriptedRouteResultCaptureKey{}).(*scriptedRouteResultCapture); ok && capture != nil {
+				capture.json = resultJSON
+			}
+		}
+	}
+
 	result := fmt.Sprintf("Sub-agent %s completed: %s", route.RouteName, executionResult)
 	return result, capturedHistory, nil
 }

@@ -103,6 +103,7 @@ var cliStepContractCmd = &cobra.Command{
 		layout.printStepInfo()
 		failures := layout.verifyStepResults()
 		failures = append(failures, layout.verifyDatabase(ctx)...)
+		failures = append(failures, layout.verifyRouteTool(ctx)...)
 		if len(failures) > 0 {
 			for _, failure := range failures {
 				fmt.Printf("FAIL %s\n", failure)
@@ -207,6 +208,9 @@ with open(os.path.join(out_dir, %q), "w") as f:
 subprocess.run(["sh", %q, res, out_dir], check=False)
 `, l.stepOutDir(stepContractScriptID), agentScriptName, l.stepScript(), l.stepScriptPath(stepContractScriptID))
 	scriptMain += stepContractDBScript + "print(\"CONTRACT_SCRIPT_DONE\")\n"
+	if err := l.writeRouteScript(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(l.absMain, "code", stepContractScriptID), 0o755); err != nil {
 		return err
 	}
@@ -226,11 +230,25 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 			"items": []map[string]interface{}{
 				{"id": "run-script", "type": "user_message", "message": agentMessage},
 				{"id": "db-write", "type": "user_message", "message": stepContractAgentDBMessage},
+				{"id": "route-tool", "type": "user_message", "message": l.routeToolMessage()},
 			},
+			"predefined_routes": []map[string]interface{}{{
+				"route_id": stepContractRouteID, "route_name": "Contract lookup",
+				"condition": "When a customer record is needed by id",
+				"sub_agent_step": map[string]interface{}{
+					"type": "regular", "id": stepContractRouteStepID, "title": "Contract lookup",
+					"description":          "Return the customer record for one id as JSON.",
+					"context_dependencies": []string{}, "context_output": "",
+					"script_parameters": map[string]interface{}{
+						"customer_id": map[string]interface{}{"type": "string", "description": "The customer id to look up", "required": true},
+					},
+				},
+			}},
 		},
 	}}
 	stepConfig := map[string]interface{}{"steps": []map[string]interface{}{
 		{"id": stepContractScriptID, "title": "Contract scripted step", "agent_configs": map[string]interface{}{"use_code_execution_mode": true, "lock_code": true}},
+		{"id": stepContractRouteStepID, "title": "Contract lookup", "agent_configs": map[string]interface{}{"use_code_execution_mode": true, "lock_code": true}},
 	}}
 	if err := writeJSONFile(filepath.Join(l.absMain, "planning", "plan.json"), plan); err != nil {
 		return err
@@ -268,6 +286,68 @@ with open(os.path.join(out_dir, "db-helper-results.txt"), "w") as f:
 `
 
 const stepContractAgentDBMessage = "Now call the MCP tool mutate_workflow_db exactly once with sql \"INSERT INTO contract_rows(label) VALUES (?)\" and params [\"agent-step\"], then call query_workflow_db once with sql \"SELECT COUNT(*) AS n FROM contract_rows WHERE label = ?\" and params [\"agent-step\"]. Report the count. Do nothing else."
+
+// The named route tool (PLAT-432): the agent step owns a saved scripted route,
+// calls it by its own tool name, and writes down a value only the script knows.
+const (
+	stepContractRouteID     = "contract-lookup"
+	stepContractRouteStepID = stepContractRouteID // a route and its step share one id
+	stepContractRouteTool   = "contract_lookup"
+	stepContractCustomerID  = "c-42"
+)
+
+func (l *cliSandboxContractLayout) routeToken() string { return "ROUTE_" + l.tokens["private"] }
+
+func (l *cliSandboxContractLayout) routeToolResultPath() string {
+	return filepath.Join(l.stepOutDir(stepContractAgentID), "route-tool.txt")
+}
+
+func (l *cliSandboxContractLayout) writeRouteScript() error {
+	dir := filepath.Join(l.absMain, "code", stepContractRouteStepID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`import json, os
+params = json.loads(os.environ["STEP_PARAMS_JSON"])
+out = os.environ["STEP_OUTPUT_DIR"]
+with open(os.path.join(out, "params.json"), "w") as f:
+    json.dump(params, f)
+with open(os.path.join(out, "route_result.json"), "w") as f:
+    json.dump({"customer_id": params["customer_id"], "name": %q}, f)
+print("ROUTE_DONE")
+`, l.routeToken())
+	return os.WriteFile(filepath.Join(dir, "main.py"), []byte(script), 0o644)
+}
+
+func (l *cliSandboxContractLayout) routeToolMessage() string {
+	return fmt.Sprintf("Now call the tool %s with customer_id %q (it is one of your tools; if it is not listed directly, find it with search_tools or the MCP bridge API, and do not use call_scripted_sub_agent). It returns JSON with a name field. Then use the MCP api-bridge execute_shell_command tool to write exactly that name value, nothing else, into %s, for example: printf '%%s' '<name>' > %s. Do nothing else.",
+		stepContractRouteTool, stepContractCustomerID, l.routeToolResultPath(), shellSingleQuoteE2E(l.routeToolResultPath()))
+}
+
+// verifyRouteTool checks the agent called the named route tool and got its JSON.
+func (l *cliSandboxContractLayout) verifyRouteTool(ctx context.Context) []string {
+	deadline := time.Now().Add(3 * time.Minute)
+	var got string
+	for {
+		data, _ := os.ReadFile(l.routeToolResultPath()) // #nosec G304 -- fixture
+		got = strings.TrimSpace(string(data))
+		if got != "" || time.Now().After(deadline) || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+	var failures []string
+	if got != l.routeToken() {
+		failures = append(failures, fmt.Sprintf("route tool: the agent wrote %q, want the script's value %q (named tool not called, or its JSON not returned)", got, l.routeToken()))
+	}
+	matches, _ := filepath.Glob(filepath.Join(l.stepOutDir(stepContractAgentID), "scripts", "routes", stepContractRouteID, "calls", "*", "params.json"))
+	if len(matches) != 1 {
+		failures = append(failures, fmt.Sprintf("route tool: want exactly one route call folder with params.json, found %d", len(matches)))
+	} else if data, _ := os.ReadFile(matches[0]); !strings.Contains(string(data), stepContractCustomerID) { // #nosec G304 -- fixture
+		failures = append(failures, "route tool: the script did not receive customer_id "+stepContractCustomerID+": "+string(data))
+	}
+	return failures
+}
 
 func (l *cliSandboxContractLayout) contractDBPath() string {
 	return filepath.Join(l.absMain, "db", "db.sqlite")

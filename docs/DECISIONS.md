@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Agents call scripts through scripted routes, not a second tool concept
+
+An agent calls a workflow script as a named tool backed by a saved scripted route
+(arguments from `script_parameters` or `script_parameters_schema`, answer from
+`route_result.json`). Relay Python tools (PLAT-423) are to be retired in favour of
+this, so Goals and Relays share one mechanism.
+Ticket: [PLAT-432](bugs/pulse_platform/plans-contracts/plat-432.md).
+
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
 
 A Relay reuses the workflow runtime, so it owes the same contract migrations for

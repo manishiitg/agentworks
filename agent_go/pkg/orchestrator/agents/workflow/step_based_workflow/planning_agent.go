@@ -465,7 +465,11 @@ type CommonStepFields struct {
 	// (regular) step. Todo-task orchestrators discover this contract from the
 	// route and pass matching values to main.py through STEP_PARAMS_JSON.
 	ScriptParameters map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`
-	SharedWith       *StepSharing                         `json:"shared_with,omitempty"` // Optional: visibility rules for reusable orphan steps
+	// ScriptParametersSchema is the alternative contract: one full JSON Schema
+	// (type object) for the whole parameters object, for nested or constrained
+	// inputs. A step declares one or the other, never both (PLAT-432).
+	ScriptParametersSchema map[string]interface{} `json:"script_parameters_schema,omitempty"`
+	SharedWith             *StepSharing           `json:"shared_with,omitempty"` // Optional: visibility rules for reusable orphan steps
 }
 
 // ScriptParameterDefinition describes one input accepted by a scripted step.
@@ -1219,15 +1223,16 @@ type PartialPlanStep struct {
 	BranchQuestion string `json:"branch_question,omitempty"` // Optional: Updated branch question
 	RouteSource    string `json:"route_source,omitempty"`    // Optional: "human" makes the branch ask a person when nothing was preseeded (branch only)
 	// Human input step fields
-	Question         string                               `json:"question,omitempty"`            // Optional: Updated question
-	VariableName     string                               `json:"variable_name,omitempty"`       // Optional: Updated variable name
-	ResponseType     string                               `json:"response_type,omitempty"`       // Optional: Updated response type
-	Options          []string                             `json:"options,omitempty"`             // Optional: Updated options (for multiple_choice)
-	IfYesNextStepID  string                               `json:"if_yes_next_step_id,omitempty"` // Optional: Updated if_yes_next_step_id (for yesno)
-	IfNoNextStepID   string                               `json:"if_no_next_step_id,omitempty"`  // Optional: Updated if_no_next_step_id (for yesno)
-	OptionRoutes     map[string]string                    `json:"option_routes,omitempty"`       // Optional: Updated option routes (for multiple_choice)
-	ValidationSchema *ValidationSchema                    `json:"validation_schema,omitempty"`   // Optional: Updated validation schema
-	ScriptParameters map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`   // Optional: replace the scripted runtime parameter contract; pass {} to clear
+	Question               string                               `json:"question,omitempty"`                 // Optional: Updated question
+	VariableName           string                               `json:"variable_name,omitempty"`            // Optional: Updated variable name
+	ResponseType           string                               `json:"response_type,omitempty"`            // Optional: Updated response type
+	Options                []string                             `json:"options,omitempty"`                  // Optional: Updated options (for multiple_choice)
+	IfYesNextStepID        string                               `json:"if_yes_next_step_id,omitempty"`      // Optional: Updated if_yes_next_step_id (for yesno)
+	IfNoNextStepID         string                               `json:"if_no_next_step_id,omitempty"`       // Optional: Updated if_no_next_step_id (for yesno)
+	OptionRoutes           map[string]string                    `json:"option_routes,omitempty"`            // Optional: Updated option routes (for multiple_choice)
+	ValidationSchema       *ValidationSchema                    `json:"validation_schema,omitempty"`        // Optional: Updated validation schema
+	ScriptParameters       map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`        // Optional: replace the scripted runtime parameter contract; pass {} to clear
+	ScriptParametersSchema map[string]interface{}               `json:"script_parameters_schema,omitempty"` // Optional: replace the full JSON Schema contract; pass {} to clear
 	// Message sequence fields
 	Items          []MessageSequenceItem `json:"items,omitempty"`
 	AuthoredPrompt *bool                 `json:"authored_prompt,omitempty"`
@@ -2189,6 +2194,7 @@ func getAddOrchestratorStepSchema() string {
 								"title": {"type": "string", "description": "REQUIRED: Title of the sub-agent step"},
 								"description": {"type": "string", "description": "REQUIRED: What this specialized agent does AND its standing brief. For scripted regular routes this is the stable code contract; runtime variation belongs in script_parameters. For agent routes, per-call instructions are added on top."},
 								"script_parameters": {"type": "object", "description": "For regular scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
+								"script_parameters_schema": {"type": "object", "description": "For regular scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 								"items": {"type": "array", "description": "REQUIRED when type='message_sequence'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
 								"context_dependencies": {"type": "array", "items": {"type": "string"}},
 								"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
@@ -2376,6 +2382,7 @@ func getAddOrchestratorRouteSchema() string {
 							"title": {"type": "string", "description": "REQUIRED: Title of the sub-agent step"},
 							"description": {"type": "string", "description": "REQUIRED: What this specialized agent does AND its standing brief. For scripted regular routes this is the stable code contract; runtime variation belongs in script_parameters. For agent routes, per-call instructions are added on top."},
 							"script_parameters": {"type": "object", "description": "For regular scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
+							"script_parameters_schema": {"type": "object", "description": "For regular scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 							"items": {"type": "array", "description": "REQUIRED when type='message_sequence'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
 							"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 							"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
@@ -2434,6 +2441,7 @@ func getUpdateOrchestratorRouteSchema() string {
 					"title": {"type": "string"},
 					"description": {"type": "string", "description": "OPTIONAL: Replaces the stable route contract. For scripted regular routes, runtime variation belongs in script_parameters. Omit to preserve the existing description."},
 					"script_parameters": {"type": "object", "description": "For regular scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
+					"script_parameters_schema": {"type": "object", "description": "For regular scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 					"items": {"type": "array", "description": "Required when type='message_sequence'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/message-sequence.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/message-sequence.md\"}]).", "items": {"type": "object"}},
 					"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 					"context_output": {"type": "string"},
@@ -3306,6 +3314,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.ScriptParameters != nil {
 			updated.ScriptParameters = partialUpdate.ScriptParameters
 		}
+		if partialUpdate.ScriptParametersSchema != nil {
+			updated.ScriptParametersSchema = partialUpdate.ScriptParametersSchema
+			if len(partialUpdate.ScriptParametersSchema) == 0 {
+				updated.ScriptParametersSchema = nil
+			}
+		}
 		// Validation schema is LLM-generated only - no code-based auto-generation
 		return &updated
 
@@ -3754,6 +3768,15 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			Field:    "script_parameters",
 			OldValue: oldParameters,
 			NewValue: partialUpdate.ScriptParameters,
+		})
+	}
+	if partialUpdate.ScriptParametersSchema != nil {
+		changedFields = append(changedFields, "script_parameters_schema")
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{
+			StepID:   partialUpdate.ExistingStepID,
+			Field:    "script_parameters_schema",
+			OldValue: existingStep.GetCommonFields().ScriptParametersSchema,
+			NewValue: partialUpdate.ScriptParametersSchema,
 		})
 	}
 	if partialUpdate.ScriptOnly != nil {
@@ -4654,7 +4677,7 @@ func createUpdateRegularStepExecutor(workspacePath string, logger loggerv2.Logge
 			updatedStep, _, _ = findStepByID(plan.OrphanSteps, partialUpdate.ExistingStepID)
 		}
 		if scriptedStep, ok := updatedStep.(*RegularPlanStep); ok {
-			if err := validateScriptParameterDefinitions(scriptedStep.ScriptParameters); err != nil {
+			if err := validateScriptParameterContract(&scriptedStep.CommonStepFields); err != nil {
 				return "", fmt.Errorf("validation failed: invalid script_parameters: %w", err)
 			}
 		}
@@ -5953,7 +5976,7 @@ func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrat
 				return fmt.Errorf("step (title: %q, ID: %s) predefined_route[%d] (route_id: %s): %w", title, stepID, i, route.RouteID, err)
 			}
 		case *RegularPlanStep:
-			if err := validateScriptParameterDefinitions(subStep.ScriptParameters); err != nil {
+			if err := validateScriptParameterContract(&subStep.CommonStepFields); err != nil {
 				return fmt.Errorf("step (title: %q, ID: %s) predefined_route[%d] (route_id: %s) has invalid script_parameters: %w", title, stepID, i, route.RouteID, err)
 			}
 		}
@@ -6185,7 +6208,7 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		switch stepType {
 		case "regular":
 			if scriptedStep, ok := typedStep.(*RegularPlanStep); ok {
-				if err := validateScriptParameterDefinitions(scriptedStep.ScriptParameters); err != nil {
+				if err := validateScriptParameterContract(&scriptedStep.CommonStepFields); err != nil {
 					return "", fmt.Errorf("validation failed: invalid script_parameters: %w", err)
 				}
 			}

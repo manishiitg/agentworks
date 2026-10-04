@@ -75,6 +75,9 @@ For an authorized migration, using `set_code_layout_version`:
 - Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
+**Returning a value from a scripted route**
+- A scripted route called by an agent hands its answer back by writing one JSON value to `os.path.join(os.environ['STEP_OUTPUT_DIR'], 'route_result.json')` (at most 1 MiB). Inputs arrive in `json.loads(os.environ['STEP_PARAMS_JSON'])`. A lookup that finds nothing returns e.g. `{"found": false}`; it does not fail.
+
 **Environment access (strict)**
 - Use `os.environ['KEY']` for required configuration, credentials, and paths. A missing required variable must raise KeyError; never mask it with a fallback. Explicitly optional context/diagnostic flags such as `VAR_GROUP_NAME` and `SCRIPT_VERBOSE` may use `.get()` with a documented safe default.
 - Workflow variables → `VAR_<NAME>` (config: user IDs, sheet IDs, URLs).

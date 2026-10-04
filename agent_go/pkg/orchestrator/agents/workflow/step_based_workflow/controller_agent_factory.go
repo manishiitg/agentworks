@@ -1743,6 +1743,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	// normal execution steps. Without this, shell calls fall back to the broader parent
 	// workflow/group MCP session and can see workflow-root files or sibling groups.
 	todoReadPaths, todoWritePaths := hcpo.GetFolderGuardPaths()
+	todoReadPaths = append(todoReadPaths, hcpo.scriptedRouteSourceReadPaths(subAgentExecCtx)...)
 	todoSessionID := hcpo.setupSubAgentSessionGuard("todo", stepID, todoReadPaths, todoWritePaths)
 	config.MCPSessionID = todoSessionID
 	dbAccess := resolveDBAccess(stepConfig)
@@ -1920,6 +1921,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 			executorsToUse[toolName] = wrappedExecutor
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
 		}
+
+		// PLAT-432: each saved scripted route is also a named tool.
+		reserved := map[string]bool{}
+		for _, tool := range append(append([]llmtypes.Tool(nil), hcpo.WorkspaceTools...), toolsToRegister...) {
+			if tool.Function != nil {
+				reserved[tool.Function.Name] = true
+			}
+		}
+		for _, definition := range config.DirectTools {
+			reserved[definition.Name] = true
+		}
+		routeTools := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		config.DirectTools = append(config.DirectTools, routeTools...)
+		for _, definition := range routeTools {
+			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))
+		}
 	} else {
 		hcpo.GetLogger().Info("🔧 Sub-agent execution context not provided - sub-agent tools will not be available")
 	}
@@ -2041,6 +2058,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 					desc += "\n\nDescription: " + ResolveVariables(route.SubAgentStep.GetDescription(), hcpo.variableValues)
 					if contract := formatScriptParameterContract(scriptedParameterDefinitions(route.SubAgentStep)); contract != "" {
 						desc += "\n\nScript parameters (pass these as call_scripted_sub_agent.parameters):\n" + contract
+					}
+					if schema := scriptedParametersSchema(route.SubAgentStep); len(schema) > 0 {
+						encoded, _ := json.MarshalIndent(schema, "", "  ")
+						desc += "\n\nScript parameters JSON Schema (call_scripted_sub_agent.parameters must match it):\n" + string(encoded)
 					}
 					if sequenceRouteInfo := formatMessageSequenceRoutePromptBlock(route.SubAgentStep); sequenceRouteInfo != "" {
 						desc += "\n\n" + sequenceRouteInfo
