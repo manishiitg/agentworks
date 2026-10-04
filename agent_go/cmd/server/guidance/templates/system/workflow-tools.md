@@ -256,16 +256,18 @@ Use `get_workflow_config` to see the workflow's selected skills. Use `list_skill
 
 ## Secrets
 
-Secrets are credentials (API keys, tokens, passwords) injected into step agents as `$SECRET_<NAME>` environment variables at execution time. They exist in three buckets:
+Secrets are credentials (API keys, tokens, passwords) injected into step agents as `$SECRET_<NAME>` environment variables at execution time. They exist in two buckets:
 
 - **Workflow secrets** — encrypted server-side, scoped only to this workflow. Use these by default for workflow-specific credentials.
-- **Global secrets** — operator-managed via `GLOBAL_SECRET_*` env vars on the server. Read-only from chat.
+- **Vault secrets** — managed encrypted shared credentials with group permissions. Administrators can create, update and share them from builder chat through `manage_global_secret`. Only `GLOBAL_SECRET_*` environment entries are operator-managed and cannot be edited from chat. Check the current admitted tool schema before claiming an operation is unavailable.
 
 **Storing a new secret is one step.** `set_workflow_secret(name="BUFFER_API_KEY", value="<plaintext>")` stores, attaches, and injects the value into the active builder shell and future workflow steps.
 
 **Attaching an already-stored secret is a separate operation.** Call `list_secrets`, then `update_workflow_config(add_secrets=["BUFFER_API_KEY"])`. The builder can use it immediately as `$SECRET_BUFFER_API_KEY`; no restart or new chat is required. If the requested name does not exist, ask for the value and store it. Never claim that a stored secret is unusable merely because its plaintext cannot be returned—the builder should consume it through the injected environment without displaying it.
 
 Do **not** give boilerplate advice like `"rotate this secret"` after a normal user-requested save. Recommend rotation only when there is a concrete exposure reason: the value was printed into logs/output, committed to a file, sent to the wrong channel, or the user explicitly asks for security remediation.
+
+**Sharing a project secret to Vault**: discover `manage_global_secret` in the live tool catalog and inspect its schema. Use `action="list_groups"` to get recipient IDs, then `action="share", name="SOURCE_NAME", group_ids=["GROUP_ID"]` with optional `vault_name` and `source_workflow_path`. Ask which groups should receive access if unspecified. The backend copies and encrypts the value without exposing it to the model, keeps the source and its attachments unchanged, and rejects existing Vault names. Copies rotate independently. Destination projects explicitly select the Vault name and runtime checks their users' group permissions. This requires current administrator and Vault management access; a read-only session or group use grant cannot publish secrets. Never read legacy generated .pi/.claude skill files in the project to infer current platform capabilities. Load the attached canonical `builder-reference/references/secret-management.md` instead.
 
 **Other secret ops**:
 

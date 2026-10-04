@@ -58,6 +58,16 @@ access needs review in Vault. It never reports a completed share, removes the
 source, or overwrites an existing global on retry. The UI keeps the form and
 shows the error.
 
+## Builder capability guidance
+
+The shared secret-management and workflow-tools references describe both managed
+Vault values and environment-defined globals. Only the environment entries are
+read-only from chat. Builder references document sharing by reference with explicit
+group IDs and current admin checks. Native builders load the active session's
+attached references and live tool schemas, rather than legacy provider-generated
+skills left in the project. The native workflow and Crew prompts use one shared
+instruction for that boundary. There is no reusable per-user secret bucket.
+
 ## Built-in platform group
 
 Vault installation creates **Platform**, a built-in group for sharing MCP tools

@@ -7,8 +7,9 @@ Secrets are credentials (API keys, tokens, passwords). They may come from two bu
 
 ### Tools
 
-- **`list_secrets`** — returns `global` (read-only names) and `workflow` (current workflow names, when scoped) buckets. Values are never exposed. Call before set/delete/attach.
+- **`list_secrets`** — returns `global` (permitted shared names) and `workflow` (current workflow names, when scoped) buckets. Values are never exposed. Call before set/delete/attach.
 - **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
+- **`manage_global_secret`** — administrator-only Vault management. `list_groups` discovers recipient IDs; `share` copies an existing project secret with explicit group grants; `set` creates/updates a managed global; `delete` removes it. Inspect the current tool schema. Discovery and management permissions do not grant runtime use.
 - **`delete_workflow_secret(name)`** — delete a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
 
 ### When a user says "store / save / set this key"
@@ -37,9 +38,43 @@ Do not tell the user to rotate the secret after a normal requested save. Recomme
 
 ## Reusing a secret across workflows
 
-Secrets needed by multiple workflows belong in Global Secrets. Server admins can use `manage_global_secret(action="promote", name="NAME")` to move an existing active-workflow secret into the encrypted global store without reading or printing its value. To promote from another workflow without switching chats, first call `list_secrets(source_workflow_path="Workflow/rts-latency")`, then `manage_global_secret(action="promote", name="NAME", source_workflow_path="Workflow/rts-latency")`. Use the actual workspace path from the workflow listing, not a guessed label. Both calls check current admin rights and source workflow access. Omit the source path to use the active workflow. After promotion, attach the global name in the current destination workflow with the workflow config tool. Promotion makes it available server-wide, so only do this when the user intends that scope. The Secrets UI offers **Make global** with the same permission check. Existing source attachments keep working; other workflows select the global name. Name collisions fail without overwriting.
+Secrets needed by multiple products belong in Vault. In an authorized builder
+chat, discover `manage_global_secret` through the current runtime tool catalog,
+inspect its schema, and call `action="list_groups"` to list recipient groups.
+For an existing project secret, use `action="share", name="SOURCE_NAME",
+group_ids=["GROUP_ID"]` with optional `vault_name="VAULT_NAME"`. This copies the
+value inside the backend, keeps the project copy and attachments unchanged,
+rejects existing Vault names, and grants only the chosen groups. Ask about groups
+when the user's intent is unspecified; never default to Platform. Copies rotate
+independently. The shared UI offers **Share to Vault** with the same checks.
 
-Admins can use `action="set"` with a new value to update a managed global, or `action="delete"` to remove it. Values are never returned. Changes apply to new turns and runs; running sessions may retain their existing environment. Environment-backed `GLOBAL_SECRET_*` entries remain operator-managed and cannot be overwritten here. Ordinary owners and readers cannot manage globals, and attaching read-only workflow context grants no authority to publish its secrets.
+To share from another accessible project, first call
+`list_secrets(source_workflow_path="EXACT_PATH")`, then use that same
+`source_workflow_path` in the share action. Use the real workspace path from the
+project/workflow listing. Omit it to use the active workspace. Do not fetch,
+print, or pass the source value through the model or shell. Legacy
+`action="promote"` removes the source copy and creates no grants; prefer share.
 
+Admins can use `action="set"` with a user-supplied value to create or update a
+managed Vault secret, and `action="delete"` to remove it. Prefer the secure editor
+for entering new values. A request to add an existing project secret to Vault
+should use share by reference. Only environment-backed `GLOBAL_SECRET_*` entries
+remain operator-managed and cannot be edited from chat. Do not claim all global
+secrets are read-only. Ordinary owners/readers cannot manage Vault values or
+grants, and read-only project context does not grant publication authority.
+There is no reusable per-user secret bucket: project secrets and shared Vault
+secrets are the current platform model.
 
-Shared credentials are managed in Vault > Secrets and selected in each product's Integrations > Secrets > Vault. Global names are not automatically authorized. Vault groups grant use permission; the backend rechecks the executing user's memberships for chat, reports, workflow runs, and schedules. An omitted or null global selection means none. Never request values in chat; use the secure Secrets editor. Prefer exact existing names returned by list_secrets; do not grant or select unrelated credentials. Managed connection OAuth tokens remain private to their MCP connections.
+Use the current attached canonical references and admitted tools. Legacy
+provider-generated skill files under a project's .pi/.claude/.agents directories
+may predate Vault; they do not describe this session's capabilities. Business
+context about another system's GCP/Kubernetes secrets does not define AgentWorks
+Vault storage or access. If a tool is not directly listed, use the runtime's
+search_tools/get_api_spec discovery route before reporting it unavailable.
+
+Recipients explicitly select shared names in their product integrations.
+Vault groups grant use permission; the backend rechecks the executing user's
+memberships for chat, reports, runs and schedules. Omitted/null selections mean
+none. Only name references appear in manifests. Connection OAuth tokens stay
+private to their MCP connections. Changes apply to new turns/runs; already-running
+processes may retain their environment.

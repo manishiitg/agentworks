@@ -6708,7 +6708,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register multi-agent secret tools: %v", err), true)
 					return
 				}
-				logfWithContext(queryLogCtx, "[SECRET TOOLS] Registered multi-agent secret tools with live session injection (list_secrets; global names read-only)")
+				logfWithContext(queryLogCtx, "[SECRET TOOLS] Registered multi-agent secret tools with live session injection (project secret tools; Vault management tools admitted for administrators)")
 			}
 			if isAgentWorksChat {
 				if err := api.registerCustomCommandTools(llmAgent, currentUserID, ""); err != nil {

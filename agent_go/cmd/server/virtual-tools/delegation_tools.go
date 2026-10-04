@@ -648,7 +648,7 @@ func GetMultiAgentDelegationInstructionsWithUser(chatsFolder string, _ string) s
 	capabilityInstructions := `
 ## Secret Management (brief)
 
-Buckets: **workflow** (scoped to workflow) and **global** (read-only). Tools: ` + "`list_secrets`" + `, ` + "`set_workflow_secret`" + `, ` + "`delete_workflow_secret`" + `.
+Buckets: **project/workflow** and **shared Vault**. Administrators can use ` + "`manage_global_secret`" + ` to create managed globals or share a project secret with explicit group grants; only environment globals are read-only. Check the live schema before reporting a capability unavailable. Tools: ` + "`list_secrets`" + `, ` + "`set_workflow_secret`" + `, ` + "`delete_workflow_secret`" + `.
 
 **Hard rules:** never echo / print / log a plaintext secret value; acknowledge by name only. ` + "`set_workflow_secret`" + ` injects ` + "`$SECRET_<NAME>`" + ` into the shell — usable immediately without config update.
 

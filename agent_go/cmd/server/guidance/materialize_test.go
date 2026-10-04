@@ -12,6 +12,28 @@ import (
 
 var builderReferenceReadPattern = regexp.MustCompile(`"name":"builder-reference","path":"(references/[^"]+\.md)"`)
 
+func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
+	for _, mode := range []string{"workshop", "multi-agent"} {
+		t.Run(mode, func(t *testing.T) {
+			text := materializedFileContent(t, MaterializeReferenceSkill(mode), "references/secret-management.md")
+			for _, want := range []string{"manage_global_secret", "list_groups", `action="share"`, "group_ids", "keeps the project copy", "environment-backed", "search_tools/get_api_spec"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("attached secret reference omits %q", want)
+				}
+			}
+			for _, stale := range []string{"set_user_secret", "Global secrets** — operator-managed", "global** (read-only)"} {
+				if strings.Contains(text, stale) {
+					t.Errorf("attached secret reference retains stale guidance %q", stale)
+				}
+			}
+		})
+	}
+	workflow := materializedFileContent(t, MaterializeReferenceSkill("workshop"), "references/workflow-tools.md")
+	if !strings.Contains(workflow, `action="share"`) || !strings.Contains(workflow, "keeps the source") {
+		t.Fatal("workflow tools reference omits managed Vault copy semantics")
+	}
+}
+
 func TestMegaSkillDiscoveryFitsFormatAndKeepsEveryTopic(t *testing.T) {
 	check := func(t *testing.T, skill *llmtypes.Skill) {
 		t.Helper()
