@@ -26,6 +26,7 @@ import { ChatInput } from './ChatInput'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest } from './useTranscriptScroll'
+import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
 import { MainAgentTerminal } from './MainAgentTerminal'
 import { placeViewKey } from '../utils/placeViewMode'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
@@ -1285,49 +1286,51 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     }
   }, [finalResponse, autoScroll, scrollToBottom])
 
+  // One owner for "go to the bottom after a switch or a just-sent message":
+  // requests (tab change, 'chat-scroll-to-bottom') coalesce into one instant
+  // scroll, made once the chat content has stopped mounting/resizing. Manual
+  // scrolling after the request wins and drops it.
+  const settledBottomRef = useRef<SettledScroll | null>(null)
+  useEffect(() => {
+    const element = chatContentRef.current
+    const settled = new SettledScroll(() => {
+      setAutoScroll(true)
+      scrollToBottom('instant')
+    })
+    settledBottomRef.current = settled
+    const touch = () => settled.touch()
+    const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(touch)
+    if (element) observer?.observe(element, { childList: true, subtree: true })
+    const resizeObserver = element && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(touch) : null
+    if (element) resizeObserver?.observe(element)
+    const onWheel = (e: WheelEvent) => { if (e.deltaY < 0) settled.cancel() }
+    const onTouchMove = () => settled.cancel()
+    element?.addEventListener('wheel', onWheel, { passive: true })
+    element?.addEventListener('touchmove', onTouchMove, { passive: true })
+    const listener = () => {
+      const version = manualScrollVersionRef.current
+      settled.request(() => manualScrollVersionRef.current === version)
+    }
+    window.addEventListener(CHAT_SCROLL_TO_BOTTOM_EVENT, listener)
+    return () => {
+      window.removeEventListener(CHAT_SCROLL_TO_BOTTOM_EVENT, listener)
+      element?.removeEventListener('wheel', onWheel)
+      element?.removeEventListener('touchmove', onTouchMove)
+      observer?.disconnect()
+      resizeObserver?.disconnect()
+      settled.cancel()
+      settledBottomRef.current = null
+    }
+  }, [scrollToBottom, setAutoScroll])
+
   // Scroll to bottom when switching tabs (including workflow switch via Ctrl+K)
   useEffect(() => {
     if (!targetTabId) return
     // Re-enable auto-scroll so subsequent events keep the view pinned to the bottom
     setAutoScroll(true)
-    const scrollVersion = manualScrollVersionRef.current
-    const scrollIfUserHasNotMoved = (behavior: ScrollBehavior) => {
-      if (manualScrollVersionRef.current === scrollVersion) {
-        scrollToBottom(behavior)
-      }
-    }
-    // Small delay to let the new tab's content render before scrolling.
-    // Use two attempts: 50ms for fast renders, 300ms as fallback when events are still loading.
-    const timer1 = setTimeout(() => scrollIfUserHasNotMoved('instant'), 50)
-    const timer2 = setTimeout(() => scrollIfUserHasNotMoved('instant'), 300)
-    return () => { clearTimeout(timer1); clearTimeout(timer2) }
-  }, [targetTabId, scrollToBottom, setAutoScroll])
-
-  // Cross-mode switchers can change mode/preset before the target ChatArea has
-  // fully rendered. Listen for an explicit request and retry shortly after.
-  useEffect(() => {
-    const handleScrollRequest = () => {
-      setAutoScroll(true)
-      scrollToBottom('instant')
-      const timer1 = setTimeout(() => scrollToBottom('instant'), 80)
-      const timer2 = setTimeout(() => scrollToBottom('instant'), 350)
-      return () => {
-        clearTimeout(timer1)
-        clearTimeout(timer2)
-      }
-    }
-
-    let cleanupTimers: (() => void) | null = null
-    const listener = () => {
-      cleanupTimers?.()
-      cleanupTimers = handleScrollRequest()
-    }
-    window.addEventListener('chat-scroll-to-bottom', listener)
-    return () => {
-      cleanupTimers?.()
-      window.removeEventListener('chat-scroll-to-bottom', listener)
-    }
-  }, [scrollToBottom, setAutoScroll])
+    const version = manualScrollVersionRef.current
+    settledBottomRef.current?.request(() => manualScrollVersionRef.current === version)
+  }, [targetTabId, setAutoScroll])
 
   // Update refs when values change (for global observer)
   useEffect(() => {

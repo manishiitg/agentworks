@@ -1,3 +1,9 @@
+## Chat scroll jumps after a switch or "Apply in chat" — PLAT-455
+
+[PLAT-455](pulse_platform/frontend-chat/plat-455.md), fixed on `main`, not deployed:
+one request helper and one settled scroll (coalesced, after the list is quiet, manual
+scroll wins) replace the timed `chat-scroll-to-bottom` bursts.
+
 ## Steps and Relay guidance mention no stores they lack — PLAT-454
 
 [PLAT-454](pulse_platform/plans-contracts/plat-454.md), fixed on `main`, not deployed:

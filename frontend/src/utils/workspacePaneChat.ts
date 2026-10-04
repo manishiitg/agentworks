@@ -2,7 +2,9 @@ import type { ChatTab, EventViewMode } from '../stores/useChatStore'
 import { useChatStore } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { transcriptIsFollowing } from '../components/useTranscriptScroll'
 import { activateTab } from './activateTab'
+import { requestChatScrollToBottom } from './chatScrollRequest'
 import { selectWorkflowPreset } from './workflowNavigation'
 
 /** Asks the active chat composer to take focus with the caret at the end. */
@@ -161,7 +163,12 @@ export async function sendWorkspacePaneMessageToChat(request: WorkspacePaneChatR
   const existingQueue = chatStore.getTabConfig(tabId)?.queuedMessages || []
   chatStore.setTabConfig(tabId, { queuedMessages: [...existingQueue, message] })
   chatStore.setTabViewMode(tabId, viewMode)
-  chatStore.setAutoScroll(true)
+  // A message into the chat already on screen keeps the reader's place when
+  // they have scrolled up; into any other chat (or one at the bottom) it lands
+  // at the bottom, as a normal send does.
+  const keepReadingPosition = chatStore.activeTabId === tabId &&
+    (!chatStore.autoScroll || !transcriptIsFollowing(tabId))
+  if (!keepReadingPosition) chatStore.setAutoScroll(true)
   activateTab(tabId)
 
   if (queuedBehindRunningTurn) {
@@ -177,7 +184,7 @@ export async function sendWorkspacePaneMessageToChat(request: WorkspacePaneChatR
     workflowStore.setFocusedPane('chat')
   }
 
-  window.setTimeout(() => window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom')), 50)
+  if (!keepReadingPosition) requestChatScrollToBottom()
   return { tabId, reused, queuedBehindRunningTurn }
 }
 

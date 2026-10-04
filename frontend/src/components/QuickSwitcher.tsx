@@ -3,6 +3,7 @@ import { Activity, Code2, Layers, MessageSquare, Search, Users } from 'lucide-re
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
+import { requestChatScrollToBottom } from '../utils/chatScrollRequest'
 import type { ChatTab } from '../stores/useChatStore'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -170,13 +171,6 @@ const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
   const sourcePart = source ? ` · ${source}` : ''
   const current = session.current_execution_name ? ` · ${session.current_execution_name}` : ''
   return ` · active: ${activeSessionStatusLabel(session)}${sourcePart}${current} · ${sessionShortId(session.session_id)}`
-}
-
-const requestChatScrollToBottom = () => {
-  useChatStore.getState().setAutoScroll(true)
-  window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom'))
-  setTimeout(() => window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom')), 120)
-  setTimeout(() => window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom')), 400)
 }
 
 export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({

@@ -16,6 +16,12 @@ export function transcriptReadingState(key: string): TranscriptReadingState {
   return saved
 }
 
+// Whether this conversation's transcript is pinned to the latest message (true
+// for one that has no saved reading position yet).
+export function transcriptIsFollowing(key: string): boolean {
+  return positions.get(key)?.following ?? true
+}
+
 const FOLLOW_LATEST_EVENT = 'transcript-follow-latest'
 
 // The user just sent a message in this conversation: show the bottom. The

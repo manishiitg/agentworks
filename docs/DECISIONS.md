@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A chat switch scrolls to the bottom once, after the list settles; a pane message keeps a reader's place
+
+- Switching chats or workflows asks for the bottom through one request that is performed once the chat content has stopped changing (capped at 0.8 s)
+  and is dropped if the person scrolls first. No caller repeats it on timers.
+- "Apply in chat" / pane messages into the chat already on screen do not move a reader who has scrolled up; into another chat they land at the bottom.
+  Ticket: [PLAT-455](bugs/pulse_platform/frontend-chat/plat-455.md).
+
 ### 2026-10-04 — Project ownership is server-controlled (a registry), never read from user-writable project files
 
 - Who owns a Crew or a Code, and so whose Linux slot a launch uses and who may open it, comes from the server's owner registry in the app's state area
