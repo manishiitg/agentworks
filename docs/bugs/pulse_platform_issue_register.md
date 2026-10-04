@@ -1,3 +1,13 @@
+## A symlink in a user's own tree into config/ or Workflow/<id> is followed — PLAT-457
+
+[PLAT-457](pulse_platform/security-sandbox/plat-457.md), P1, open. The workspace service's link guard only closes links into other users' trees; a link into
+`config/` or `Workflow/<id>` resolves and bypasses the proxy's path gates. `Crew/<id>` is closed (PLAT-442 step 4), the others are not.
+
+## Absolute and backslash spellings passed the raw proxy's folder gates — PLAT-456
+
+[PLAT-456](pulse_platform/security-sandbox/plat-456.md), P1, fixed on `main`, not deployed. The gates classified the path string; the workspace service strips its
+docs root and reads the same file. Every gate now classifies the workspace-relative path.
+
 ## Chat scroll jumps after a switch or "Apply in chat" — PLAT-455
 
 [PLAT-455](pulse_platform/frontend-chat/plat-455.md), fixed on `main`, not deployed:

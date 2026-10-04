@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Per-workflow and per-project Slack apps: CRUD over Slack app identities,
@@ -150,7 +151,9 @@ func physicalProductSlackScope(ctx context.Context, profileID, workspacePath str
 	if strings.TrimSpace(profileID) == "" || workspacePath == "" {
 		return workspacePath
 	}
-	return productConversationRuntimeWorkspace(productWorkspaceUserID(ctx), workspacePath)
+	userID := productWorkspaceUserID(ctx)
+	// A Crew that moved to the shared root is addressed there, whichever spelling the browser still sends.
+	return followCrewAlias(userID, productConversationRuntimeWorkspace(userID, workspacePath))
 }
 
 func requireSlackConnectionCreateAccess(r *http.Request, api *StreamingAPI, workspacePath, profileID string) error {
@@ -235,7 +238,7 @@ func requireProductSlackScopeOwner(ctx context.Context, api *StreamingAPI, profi
 	// A connection saved before scopes were made physical still holds the
 	// logical path, which names the caller's own crew; resolve it so its owner
 	// is not locked out of the bot (and can re-save it to repair the scope).
-	workspacePath = productConversationRuntimeWorkspace(userID, workspacePath)
+	workspacePath = followCrewAlias(userID, productConversationRuntimeWorkspace(userID, workspacePath))
 	profile, err := api.agentProfiles.Resolve(profileID, 0, userID)
 	if err != nil {
 		return fmt.Errorf("agent profile %q is unavailable: %w", profileID, err)
@@ -255,6 +258,11 @@ func requireProductSlackScopeOwner(ctx context.Context, api *StreamingAPI, profi
 // escape the root.
 func productWorkspaceUnderCallerRoot(profile agentprofiles.Profile, userID, workspacePath string) bool {
 	clean := filepath.ToSlash(filepath.Clean("/" + strings.TrimSpace(workspacePath)))
+	// A Crew at the shared root is the caller's own when the server's registry says so (PLAT-442 step 4).
+	if project, shared := workspaceref.MustParse(clean).SharedProject(); shared &&
+		strings.TrimSpace(profile.Runtime.Workspace.ProjectsRoot) == workspaceref.CrewProjectsRoot && sharedCrewOwner(project) == sanitizeUserIDForPath(userID) {
+		return true
+	}
 	roots := []string{}
 	if root := strings.TrimSpace(profile.Runtime.Workspace.Root); root != "" {
 		if cleaned, err := cleanAgentProfileWorkspace(root, userID); err == nil {

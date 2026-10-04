@@ -71,6 +71,14 @@ func (r SlackConnectionRoute) SameDestination(workspacePath, profileID string) b
 // equals the physical path with the same suffix. Two physical paths must match
 // exactly, so different owners' folders never compare equal.
 func SameSlackScopePath(a, b string) bool {
+	// Two spellings of one MIGRATED crew (the old per-user path and Crew/<folder>) are the same destination
+	// (PLAT-442 step 4); the fold leaves every other path as it is.
+	if fa, fb := foldCrewScope(a), foldCrewScope(b); fa != a || fb != b {
+		if fa == fb && workspaceref.MustParse(fa).IsShared() {
+			return true
+		}
+		a, b = fa, fb
+	}
 	ra, rb := workspaceref.MustParse(a), workspaceref.MustParse(b)
 	if ra.HasOwner() == rb.HasOwner() {
 		return ra.SameAs(rb)

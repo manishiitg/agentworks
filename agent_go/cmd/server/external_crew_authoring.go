@@ -463,7 +463,7 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 	if err != nil {
 		return "", fmt.Errorf("invalid Crew projects root: %w", err)
 	}
-	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
+	runtimeRoot := crewCreationRoot("work", agentProfileRuntimeWorkspace(userID, projectsRoot))
 	crewID := uuid.NewString()
 	workspacePath := runtimeRoot + "/" + slugifyCrewTitle(spec.Name) + "-" + crewID[:8]
 	if projectExistsAtPath(ctx, workspacePath) {

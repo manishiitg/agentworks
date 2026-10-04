@@ -167,7 +167,12 @@ func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, call
 			wantRoot = workspaceref.CodeProjectsRoot
 		}
 		rootRef := workspaceref.MustParse(root)
-		if projectsRoot, _, ok := rootRef.ProjectRoot(); !ok || projectsRoot != wantRoot || !rootRef.OwnedBy(ownerID) || rootRef.String() != root {
+		if folder, shared := rootRef.SharedProjectRoot(); shared && profileID == crewProfileID {
+			// A Crew at the shared root: its owner is the server's registry (PLAT-442 step 4).
+			if sharedCrewOwner(folder) != ownerID {
+				return denied
+			}
+		} else if projectsRoot, _, ok := rootRef.ProjectRoot(); !ok || projectsRoot != wantRoot || !rootRef.OwnedBy(ownerID) || rootRef.String() != root {
 			return denied
 		}
 		raw, present, err := defaultProductProjectStore().read(ctx, root+"/product.json")

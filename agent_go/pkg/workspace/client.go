@@ -19,6 +19,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsalias"
 )
 
 // FolderGuardConfig represents folder access restrictions.
@@ -198,9 +199,10 @@ func WithDefaultWorkingDir(dir string) ClientOption {
 
 // NewClient creates a new workspace REST client with optional configuration
 func NewClient(baseURL string, opts ...ClientOption) *Client {
+	// wsalias: an old spelling of a moved Crew's path is translated before the request leaves (PLAT-442 step 4).
 	c := &Client{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
-		HTTPClient: &http.Client{Timeout: 300 * time.Second},
+		HTTPClient: &http.Client{Timeout: 300 * time.Second, Transport: wsalias.Transport(nil)},
 	}
 	for _, opt := range opts {
 		opt(c)

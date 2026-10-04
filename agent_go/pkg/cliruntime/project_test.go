@@ -111,3 +111,109 @@ func TestLinkedProjectRefusesRepointedLinkAndObstructions(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-442 step 4: a project that moved inside the workspace keeps the runtime folder (hence the native CLI session)
+// it always had, and the runtime's link follows it; without the legacy path the move would start a fresh runtime.
+func TestPrepareLinkedProjectMovedKeepsTheRuntimeFolder(t *testing.T) {
+	state, docs := t.TempDir(), t.TempDir()
+	oldRel := "_users/alice/Chats/Work/projects/sde-1a2b"
+	newRel := "Crew/sde-1a2b"
+	oldDir := filepath.Join(docs, filepath.FromSlash(oldRel))
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := PrepareLinkedProject(state, docs, "alice", oldDir, "chat-1", "claude-code", "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The project moves.
+	newDir := filepath.Join(docs, filepath.FromSlash(newRel))
+	if err := os.MkdirAll(filepath.Dir(newDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(oldDir, newDir); err != nil {
+		t.Fatal(err)
+	}
+	// An ordinary launch of the moved project is a different runtime (the digest names the path).
+	fresh, err := PrepareLinkedProject(state, docs, "alice", newDir, "chat-1", "claude-code", "builder")
+	if err != nil || fresh == before {
+		t.Fatalf("fresh runtime = %q (before %q) err=%v; the digest was expected to follow the path", fresh, before, err)
+	}
+	// With the legacy path the runtime is the same, and its link was repointed to the project's new place.
+	after, err := PrepareLinkedProjectMoved(state, docs, "alice", newDir, oldRel, "chat-1", "claude-code", "builder")
+	if err != nil || after != before {
+		t.Fatalf("moved runtime = %q (before %q) err=%v", after, before, err)
+	}
+	resolvedNew, _ := filepath.EvalSymlinks(newDir)
+	if saved, _ := os.Readlink(filepath.Join(after, ProjectLink)); saved != resolvedNew {
+		t.Fatalf("the runtime link points at %q, want %q", saved, resolvedNew)
+	}
+	// And it keeps working: a second launch is the same runtime with the same link.
+	if again, err := PrepareLinkedProjectMoved(state, docs, "alice", newDir, oldRel, "chat-1", "claude-code", "builder"); err != nil || again != before {
+		t.Fatalf("second launch = %q err=%v", again, err)
+	}
+	// Another session, user, provider or mode is another runtime, as before.
+	if other, err := PrepareLinkedProjectMoved(state, docs, "alice", newDir, oldRel, "chat-2", "claude-code", "builder"); err != nil || other == before {
+		t.Fatalf("another session shares the runtime: %q err=%v", other, err)
+	}
+}
+
+// Only the exact old target is repointed: a link that points anywhere else still fails the launch.
+func TestPrepareLinkedProjectMovedRefusesAForeignLink(t *testing.T) {
+	state, docs, elsewhere := t.TempDir(), t.TempDir(), t.TempDir()
+	oldRel := "_users/alice/Chats/Work/projects/p"
+	oldDir := filepath.Join(docs, filepath.FromSlash(oldRel))
+	newDir := filepath.Join(docs, "Crew", "p")
+	for _, d := range []string{oldDir, newDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir, err := PrepareLinkedProject(state, docs, "alice", oldDir, "s", "claude-code", "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ProjectLink)
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareLinkedProjectMoved(state, docs, "alice", newDir, oldRel, "s", "claude-code", "builder"); err == nil {
+		t.Fatal("a link to somewhere else was repointed")
+	}
+	if saved, _ := os.Readlink(link); saved != elsewhere {
+		t.Fatalf("the foreign link was changed to %q", saved)
+	}
+}
+
+func TestRepointProjectLinks(t *testing.T) {
+	state, docs := t.TempDir(), t.TempDir()
+	oldDir := filepath.Join(docs, "_users", "alice", "Chats", "Work", "projects", "p")
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a, err := PrepareLinkedProject(state, docs, "alice", oldDir, "s1", "claude-code", "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareLinkedProject(state, docs, "alice", oldDir, "s2", "codex", "run"); err != nil {
+		t.Fatal(err)
+	}
+	resolvedOld, _ := filepath.EvalSymlinks(oldDir)
+	runtimes, err := ProjectLinksTo(state, resolvedOld)
+	if err != nil || len(runtimes) != 2 {
+		t.Fatalf("runtimes linking the project = %v err=%v", runtimes, err)
+	}
+	n, err := RepointProjectLinks(state, resolvedOld, "/new/place")
+	if err != nil || n != 2 {
+		t.Fatalf("repointed %d err=%v", n, err)
+	}
+	if saved, _ := os.Readlink(filepath.Join(a, ProjectLink)); saved != "/new/place" {
+		t.Fatalf("link = %q", saved)
+	}
+	if n, _ := RepointProjectLinks(state, resolvedOld, "/x"); n != 0 {
+		t.Fatalf("repointed %d links that no longer match", n)
+	}
+}

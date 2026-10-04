@@ -17,6 +17,13 @@ import (
 // their directory across restarts; provider cleanup only touches that directory.
 // This is instruction isolation, not an OS sandbox or workflow write lock.
 func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode string) (string, error) {
+	return prepare(stateRoot, workspaceRoot, user, workflow, "", session, provider, mode)
+}
+
+// prepare is Prepare with an optional legacy digest input: a workspace-relative path whose resolved spelling replaces
+// the workflow's in the v1 digest, so a project that moved keeps the runtime folder, and with it the native CLI
+// session, it always had (PLAT-442 step 4).
+func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {
 	if !filepath.IsAbs(stateRoot) || !filepath.IsAbs(workspaceRoot) || !filepath.IsAbs(workflow) {
 		return "", fmt.Errorf("CLI isolation requires absolute state, workspace and workflow paths")
 	}
@@ -63,7 +70,11 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 	if within(physicalWorkspace, physicalBase) || within(physicalBase, physicalWorkspace) {
 		return "", fmt.Errorf("CLI runtime storage must be separate from workspace documents")
 	}
-	identity, _ := json.Marshal([]string{user, workflow, session, provider, mode})
+	digestWorkflow := workflow
+	if legacyDigestRel != "" {
+		digestWorkflow = filepath.Join(workspaceRoot, filepath.FromSlash(legacyDigestRel))
+	}
+	identity, _ := json.Marshal([]string{user, digestWorkflow, session, provider, mode})
 	digest := fmt.Sprintf("%x", sha256.Sum256(identity))
 	dir := base
 	for _, component := range []string{"", "v1", digest} {

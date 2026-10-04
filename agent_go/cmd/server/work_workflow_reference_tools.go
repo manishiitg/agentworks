@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 type accessibleProjectIdentity struct {
@@ -62,10 +63,19 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 	if err != nil {
 		return nil, fmt.Errorf("list Crew projects: %w", err)
 	}
+	rootPrefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
 	if !exists {
+		paths = nil
+	}
+	// Crews that moved to the shared root (PLAT-442 step 4) belong to their manifest owner.
+	shared, err := listSharedCrewManifestPaths(ctx, store, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list Crew projects: %w", err)
+	}
+	paths = append(paths, shared...)
+	if len(paths) == 0 {
 		return []map[string]interface{}{}, nil
 	}
-	rootPrefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
 	access, ownerLabel := "owner", "you"
 	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) {
 		access, ownerLabel = "write", ownerID
@@ -77,7 +87,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 	items := make([]map[string]interface{}, 0)
 	for _, candidate := range paths {
 		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
-		if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") || seen[candidate] {
+		if (!strings.HasPrefix(candidate, rootPrefix) && !strings.HasPrefix(candidate, workspaceref.SharedCrewRoot+"/")) || !strings.HasSuffix(candidate, "/product.json") || seen[candidate] {
 			continue
 		}
 		seen[candidate] = true

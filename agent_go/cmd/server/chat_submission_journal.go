@@ -609,6 +609,8 @@ func durableSubmissionProject(owner, session string) (string, error) {
 	for _, product := range projectProducts {
 		roots = append(roots, workspaceref.PhysicalPath(owner, product.ProjectsRoot))
 	}
+	// Crews that moved to the shared root (PLAT-442 step 4): only the owner's own are this owner's.
+	roots = append(roots, workspaceref.SharedCrewRoot)
 	projects := map[string]bool{}
 	for _, root := range roots {
 		if err := ctx.Err(); err != nil {
@@ -621,6 +623,9 @@ func durableSubmissionProject(owner, session string) (string, error) {
 		for _, folder := range folders {
 			if err := ctx.Err(); err != nil {
 				return "", err
+			}
+			if root == workspaceref.SharedCrewRoot && sharedCrewOwner(filepath.Base(folder)) != sanitizeUserIDForPath(owner) {
+				continue
 			}
 			candidates, err := submissionProjectConversationFiles(ctx, folder)
 			if err != nil {

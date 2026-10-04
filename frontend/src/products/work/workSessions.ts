@@ -47,7 +47,7 @@ export function parseSessionManifest(content: string, workspacePath: string, las
 }
 
 export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
-  const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json' })
+  const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json', includeOwnSharedProjects: product.listsSharedProjects })
   return Promise.all(sessions.map(async original => {
     let session = original
     if (!session.runtimeConfigInitialized || !session.selectionConfigInitialized) {

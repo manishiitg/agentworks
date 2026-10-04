@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getPlannerFileContent = vi.hoisted(() => vi.fn())
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
+const getPlannerFiles = vi.hoisted(() => vi.fn())
+const listOwnSharedProjects = vi.hoisted(() => vi.fn())
 
-vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile } }))
+vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects } }))
 
 import { agentApi } from '../../services/api'
-import { parseProductProjectManifest, updateProductProjectIdentity, type ProductProject } from './productProjects'
+import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -82,5 +84,45 @@ describe('updateProductProjectIdentity', () => {
   it('rejects invalid project configuration', async () => {
     getPlannerFileContent.mockResolvedValue({ content: 'not json' })
     await expect(updateProductProjectIdentity(project, { name: 'Nova' }, 'Update identity')).rejects.toThrow('invalid JSON')
+  })
+})
+
+
+describe('loadProductProjects with Crews at the shared root', () => {
+  const manifest = (id: string, title: string) => JSON.stringify({ schema_version: 1, product: 'work', id, title, session_id: `work:project:${id}` })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPlannerFiles.mockResolvedValue({ data: [{ filepath: 'Chats/Work/projects/legacy-1a2b', type: 'folder', children: [{ filepath: 'Chats/Work/projects/legacy-1a2b/product.json', type: 'file' }] }] })
+    getPlannerFileContent.mockImplementation(async (path: string) => {
+      if (path === 'Chats/Work/projects/legacy-1a2b/product.json') return { content: manifest('legacy', 'Legacy') }
+      if (path === 'Crew/moved-3c4d/product.json') return { content: manifest('moved', 'Moved') }
+      throw new Error(`unexpected read ${path}`)
+    })
+  })
+
+  it('lists the Crews in the owner tree and, when asked, the ones the user owns at Crew/<folder>', async () => {
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
+    const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
+    expect(projects.map(p => [p.id, p.workspacePath]).sort()).toEqual([
+      ['legacy', 'Chats/Work/projects/legacy-1a2b'],
+      ['moved', 'Crew/moved-3c4d'],
+    ])
+    expect(listOwnSharedProjects).toHaveBeenCalledWith('work')
+  })
+
+  it('does not ask for them by default, and survives a server that has no such list', async () => {
+    const plain = await loadProductProjects('Chats/Work/projects', 'work')
+    expect(plain.map(p => p.id)).toEqual(['legacy'])
+    expect(listOwnSharedProjects).not.toHaveBeenCalled()
+    listOwnSharedProjects.mockRejectedValue(new Error('404'))
+    const withOld = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
+    expect(withOld.map(p => p.id)).toEqual(['legacy'])
+  })
+
+  it('does not list a Crew twice', async () => {
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'legacy', workspace_path: 'Chats/Work/projects/legacy-1a2b' }] })
+    const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
+    expect(projects).toHaveLength(1)
   })
 })

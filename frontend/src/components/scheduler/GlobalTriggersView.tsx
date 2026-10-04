@@ -11,7 +11,7 @@ type TriggerRow = { id: string; name: string; enabled: boolean; path: string; ow
 
 async function loadTriggers(kind: TriggerOwner['kind'], workflowKind?: 'workflow' | 'relay'): Promise<{ rows: TriggerRow[]; failures: number }> {
   const owners = kind === 'crew'
-    ? (await loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID)).map(project => ({
+    ? (await loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true })).map(project => ({
       id: project.id, label: project.identity?.name || project.title, kind,
     }))
     : (await workflowManifestApi.listWorkflowManifests()).workflows.filter(workflow => !workflowKind || (workflow.manifest.kind || 'workflow') === workflowKind).map(workflow => ({

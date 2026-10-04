@@ -179,17 +179,68 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
 }
 
+// GET /api/agent-profiles/{id}/own-shared-projects: the Crews the caller owns that live at the shared root
+// (Crew/<folder>, PLAT-442 step 4). The Crew UI lists the caller's own Crews from their projects root, which a moved
+// Crew has left; this is how it finds them. Only the caller's own, by the server's owner registry; only for the Crew
+// product; the response names where each lives, nothing of its content.
+func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	profileID := strings.TrimSpace(mux.Vars(r)["id"])
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" || profileID == "" || api == nil || api.agentProfiles == nil {
+		writeAgentProfileError(w, http.StatusNotFound, "projects not found")
+		return
+	}
+	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
+	if err != nil || !userAllowedProduct(claims, profile.Product) || !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []map[string]string{}})
+		return
+	}
+	type ownProject struct {
+		ID            string `json:"id"`
+		Title         string `json:"title,omitempty"`
+		WorkspacePath string `json:"workspace_path"`
+	}
+	rows := []ownProject{}
+	manifests, err := listSharedCrewManifestPaths(r.Context(), defaultProductProjectStore(), claims.UserID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "list projects: "+err.Error())
+		return
+	}
+	for _, manifestPath := range manifests {
+		root := strings.TrimSuffix(manifestPath, "/product.json")
+		manifest, err := readCrewProjectManifests(r.Context(), profile.ID, root)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, ownProject{ID: manifest.ID, Title: manifest.Title, WorkspacePath: root})
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkspacePath < rows[j].WorkspacePath })
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
+}
+
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {
 	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, ownerID)
 	if err != nil {
 		return nil
 	}
 	listing, exists, err := listWorkspaceFolder(ctx, agentProfileRuntimeWorkspace(ownerID, projectsRoot), 3)
-	if err != nil || !exists {
+	var paths []string
+	if err == nil && exists {
+		collectWorkspaceFilePaths(listing, &paths)
+	}
+	// Crews that moved to the shared root belong to their registered owner (PLAT-442 step 4).
+	if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		if shared, sharedErr := listSharedCrewManifestPaths(ctx, defaultProductProjectStore(), ownerID); sharedErr == nil {
+			paths = append(paths, shared...)
+		}
+	}
+	if len(paths) == 0 {
 		return nil
 	}
-	var paths []string
-	collectWorkspaceFilePaths(listing, &paths)
 	rows := []sharedProjectSummary{}
 	seenManifests := make(map[string]bool)
 	for _, candidate := range paths {

@@ -96,6 +96,13 @@ func cleanAttachRoot(raw string) string {
 		// Only a project root itself: _users/<owner>/Chats/(Work|Code)/projects/<id>.
 		projectRoot, project, ok := ref.Project()
 		if ok && ref.Logical() == projectRoot+"/"+project && ref.PhysicalKeepOwner("") == root {
+			// A Crew that has moved is its Crew/<folder> root (PLAT-442 step 4): connections attached under the old
+			// root are the same Crew's.
+			if projectRoot == workspaceref.CrewProjectsRoot {
+				if moved := crewPathAliases.lookup(context.Background(), root); moved != "" {
+					return moved
+				}
+			}
 			return root
 		}
 		return ""
@@ -151,6 +158,14 @@ func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
 	all := map[string][]placeMCPAttachment{}
 	if err := readPlaceMCPJSON(file, &all); err != nil {
 		return nil, err
+	}
+	// Entries recorded under a migrated Crew's old root belong to its Crew/<folder> root (merged in memory; the
+	// next write stores them under the new key).
+	for key, list := range all {
+		if folded := cleanAttachRoot(key); folded != "" && folded != key {
+			all[folded] = append(all[folded], list...)
+			delete(all, key)
+		}
 	}
 	return all, nil
 }

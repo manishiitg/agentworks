@@ -26,6 +26,18 @@ Design references for the linked runtime decisions:
 - "Apply in chat" / pane messages into the chat already on screen do not move a reader who has scrolled up; into another chat they land at the bottom.
   Ticket: [PLAT-455](bugs/pulse_platform/frontend-chat/plat-455.md).
 
+### 2026-10-04 — A moved Crew keeps its old paths, its CLI runtime and its browser profile
+
+- Crews move to the shared `Crew/<slug>-<id8>` root by an explicit command (dry run by default; `--apply` needs a verified backup, moves one Crew at a time through
+  copy-verify-switch with a journal, and refuses a Crew that is in use, has an owner mismatch, a collision or a symlink that leaves it). New Crews are created there only
+  with `AGENTWORKS_CREW_SHARED_ROOT=on` (default off), after a server's migration is verified.
+- Old spellings (the owner's `Chats/Work/projects/<f>` and the physical `_users/<owner>/...`) keep resolving indefinitely through the owner registry's aliases, with a
+  logged `[CREW_ALIAS]` warning; no stored reference is rewritten.
+- A moved Crew keeps its CLI runtime folder (the old path stays the digest input, so native CLI sessions of existing chats survive) and its browser profile key (saved logins
+  survive). A Crew created at the shared root has neither history.
+- Another user sees a Crew only while project sharing is on (default off), at `Crew/<id>` as before the move.
+- Ticket: [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
+
 ### 2026-10-04 — Project ownership is server-controlled (a registry), never read from user-writable project files
 
 - Who owns a Crew or a Code, and so whose Linux slot a launch uses and who may open it, comes from the server's owner registry in the app's state area

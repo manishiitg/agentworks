@@ -100,6 +100,10 @@ func physicalCrewScopeForMigration(ctx context.Context, workspacePath, profileID
 	if profileID == "" || !strings.HasPrefix(logical, "Chats/") {
 		return ""
 	}
+	// A crew that has since moved to the shared root is addressed there (PLAT-442 step 4).
+	if moved := foldCrewScopePath(logical); moved != logical {
+		return moved
+	}
 	if hint := strings.TrimSpace(ownerHint); hint != "" {
 		physical := agentProfileRuntimeWorkspace(hint, logical)
 		if _, found, err := readProjectRuntimeManifest(ctx, profileID, physical); err == nil && found {

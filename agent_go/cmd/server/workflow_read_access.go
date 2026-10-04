@@ -122,6 +122,11 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		clean = workspaceref.PhysicalPath(owner, clean)
 		segments = strings.Split(clean, "/")
 	}
+	// A migrated crew's old spelling is the shared Crew/<id> crew: its manifest owner decides, not the folder the
+	// path names (PLAT-442 step 4).
+	if crewRef, found := resolveCrewPath(ctx, claims.UserID, clean); found && crewRef.Shared {
+		return crewAccessFor(claims, crewRef) == crewAccessOwner
+	}
 	if ref := workspaceref.MustParse(clean); ref.HasOwner() || ref.IsUsersRoot() {
 		if !ref.HasOwner() {
 			return false

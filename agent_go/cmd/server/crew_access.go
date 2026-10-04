@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
@@ -38,13 +39,33 @@ type crewProjectBinding struct {
 	Binding       productConversationBinding
 }
 
-// crewProjectOwnerID extracts the owning user ID from a crew workspace
-// path. Crew roots are always physical per-user paths
-// ("_users/<owner>/Chats/..."); anything else has no crew owner.
+// crewProjectOwnerID returns the owning user ID of a crew workspace path.
+//
+//   - Crew/<id> (shared root): the owner is the server's registry entry (PLAT-449), never the path or the manifest;
+//     "" when there is none, so a crew nobody registered is nobody's (PLAT-442 step 4).
+//   - _users/<owner>/Chats/Work/projects/<id> (physical, per-user): the path names the owner, unless the crew has
+//     been migrated, in which case this old spelling is an alias of Crew/<id> and the registry answers.
+//   - anything else (a logical path names no owner): no crew owner.
+//
+// Every caller that used to take the owner out of the path goes through here, so none of them says "no owner" for
+// Crew/<id> or follows an old path to an empty folder.
 func crewProjectOwnerID(workspacePath string) (string, bool) {
 	ref, ok := workspaceref.Parse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
-	if !ok || !ref.HasOwner() || ref.Logical() == "" {
+	if !ok {
 		return "", false
+	}
+	if project, shared := ref.SharedProject(); shared {
+		owner := crewOwners.owner(context.Background(), workspaceref.SharedProjectPath(project))
+		return owner, owner != ""
+	}
+	if !ref.HasOwner() || ref.Logical() == "" {
+		return "", false
+	}
+	if project, _, isCrew := ref.AnyCrewProject(); isCrew {
+		if moved := crewPathAliases.lookup(context.Background(), legacyCrewRoot(ref.Owner(), project)); moved != "" {
+			owner := crewOwners.owner(context.Background(), moved)
+			return owner, owner != ""
+		}
 	}
 	return ref.Owner(), true
 }
@@ -52,25 +73,38 @@ func crewProjectOwnerID(workspacePath string) (string, bool) {
 // canonicalCrewWorkspaceRoot normalizes a crew workspace root for exact
 // comparison: slash separators, trimmed whitespace, no leading or
 // trailing slashes.
+//
+// A moved Crew (PLAT-442 step 4) has one root under every spelling: an old spelling is folded to its Crew/<folder>
+// root, so a root stored before the move compares equal to the same Crew's root after it.
 func canonicalCrewWorkspaceRoot(workspacePath string) string {
-	return strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/")
+	return foldCrewRootForStoredReference(strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/"))
 }
 
 // isCrewProjectPath reports whether a workspace path addresses a crew
-// project of any owner: a physical per-user path, or the caller's own
-// logical path, under Chats/Work/projects/<project>.
+// project of any owner: a shared Crew/<id> path, a physical per-user path,
+// or the caller's own logical path, under Chats/Work/projects/<project>.
 func isCrewProjectPath(workspacePath string) bool {
-	root, _, ok := workspaceref.MustParse(workspacePath).Project()
-	return ok && root == workspaceref.CrewProjectsRoot
+	_, _, ok := workspaceref.MustParse(workspacePath).AnyCrewProject()
+	return ok
 }
 
 // crewProjectOwnedByCaller reports whether the caller owns the crew project
 // at workspacePath. Logical (prefix-less) project paths address the
-// caller's own tree; physical paths name their owner explicitly.
+// caller's own tree; physical paths name their owner explicitly; a shared
+// Crew/<id> path (or an old spelling of a migrated crew) is owned by the
+// owner in the server's registry.
 func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
+	if _, shared := ref.SharedProject(); shared {
+		owner, ok := crewProjectOwnerID(workspacePath)
+		return ok && owner == sanitizeUserIDForPath(callerID)
+	}
 	if !ref.HasOwner() {
 		return ref.IsProject()
+	}
+	if _, _, isCrew := ref.AnyCrewProject(); isCrew {
+		owner, ok := crewProjectOwnerID(workspacePath)
+		return ok && owner == sanitizeUserIDForPath(callerID)
 	}
 	return ref.OwnedBy(callerID) && ref.Logical() != ""
 }
@@ -167,6 +201,21 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	// Projects are private to their owner unless project sharing is switched on (project_sharing.go).
 	if !projectSharingEnabled() {
+		return denied()
+	}
+	// A Crew at the shared root (PLAT-442 step 4) has its owner in the server's registry: one listing of Crew/ finds
+	// it whoever the owner is (not the caller, whose own were tried above).
+	var sharedOwner string
+	if shared, err := resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, strings.TrimSpace(projectID), crewResourceProjectID(projectID), store, func(folder string) bool {
+		owner := sharedCrewOwner(folder)
+		if owner == "" || owner == sanitizeUserIDForPath(callerID) {
+			return false
+		}
+		sharedOwner = owner
+		return true
+	}); err == nil {
+		return readerCrewProjectBinding(sharedOwner, shared), nil
+	} else if !errors.Is(err, errProjectNotFound) {
 		return denied()
 	}
 	// The query path already carries the verified physical root: resolve
@@ -357,4 +406,13 @@ func crewReaderDeniedTools() []string {
 		"create_crew",
 		"perform_ui_action",
 	}
+}
+
+// crewResourceProjectID is the project id of a conversation key ("<id>" or "<id>:<tab>").
+func crewResourceProjectID(conversationKey string) string {
+	key := strings.TrimSpace(conversationKey)
+	if base, _, found := strings.Cut(key, ":"); found {
+		return strings.TrimSpace(base)
+	}
+	return key
 }

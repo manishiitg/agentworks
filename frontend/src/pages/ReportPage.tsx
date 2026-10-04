@@ -1,5 +1,6 @@
 import { BarChart3 } from "lucide-react";
 import { ReportView } from "../components/workflow/ReportViewer";
+import { isSafeReportWorkspacePath } from "../utils/reportWorkspacePath";
 
 interface ReportPageProps {
   encodedPath: string;
@@ -18,19 +19,6 @@ function decodeBase64Utf8(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-function isSafeReportWorkspacePath(path: string): boolean {
-  const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalized || normalized.split("/").includes("..")) return false;
-  if (normalized !== path) return false;
-  if (normalized.startsWith("Workflow/")) return normalized.split("/").length === 2;
-  const parts = normalized.split("/");
-  if (normalized.startsWith("Chats/Work/projects/")) return parts.length >= 4;
-  if (normalized.startsWith("Chats/Code/projects/")) return parts.length === 4 && parts[3] !== "";
-  // Physical Code paths are accepted only for their owner below.
-  return parts.length === 6 && parts[0] === "_users" && /^[a-zA-Z0-9_-]{1,128}$/.test(parts[1]) &&
-    parts[2] === "Chats" && parts[3] === "Code" && parts[4] === "projects" && parts[5] !== "";
 }
 
 export function ReportPage({ encodedPath, ownerUid, currentUserId, onBack }: ReportPageProps) {

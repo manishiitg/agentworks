@@ -151,7 +151,9 @@ func chatPolicyRequiresReconnect(codingProvider bool, previous, current string, 
 // finalization/catalog publication. Other products retain their manifest gate.
 func (api *StreamingAPI) registerMCPToolsForChat(registrar definitionToolRegistrar, policy workflowChatPolicy, disabled func(string) bool) error {
 	if policy.allows("mcp_management") {
-		return api.registerMultiAgentMCPServerTools(registrar, disabled)
+		return api.registerMultiAgentMCPServerTools(registrar, func(name string) bool {
+			return !agentworksproduct.ChatAllowsTool(policy.Mode, name) || disabled != nil && disabled(name)
+		})
 	}
 	if !policy.allows("mcp_inspection") {
 		return nil

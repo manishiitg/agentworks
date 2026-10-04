@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"github.com/spf13/viper"
 )
 
@@ -44,7 +45,9 @@ func CreateWorkflowDatabaseBackupSnapshot(c *gin.Context) {
 		return
 	}
 	cleanRequest = strings.TrimSpace(filepath.ToSlash(filepath.Clean(filepath.FromSlash(cleanRequest))))
-	isManagedRoot := strings.HasPrefix(cleanRequest, "Workflow/") || strings.HasPrefix(cleanRequest, "Chats/Work/projects/")
+	// A Crew's database is managed wherever the Crew lives: its owner's tree or the shared Crew/ root (PLAT-442).
+	isManagedRoot := strings.HasPrefix(cleanRequest, "Workflow/") || strings.HasPrefix(cleanRequest, "Chats/Work/projects/") ||
+		strings.HasPrefix(cleanRequest, workspaceref.SharedCrewRoot+"/")
 	if filepath.IsAbs(filepath.FromSlash(cleanRequest)) || !isManagedRoot || !strings.HasSuffix(cleanRequest, "/db/db.sqlite") || strings.HasPrefix(cleanRequest, "../") {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid db_path", Error: "managed databases must use <workspace>/db/db.sqlite"})
 		return

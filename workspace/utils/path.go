@@ -47,7 +47,31 @@ func IsValidFilePath(filePath, docsDir string) bool {
 			}
 		}
 	}
+	// The same holds for a shared Crew (Crew/<id>), which has no "_users/<owner>/" in its name to make the rule
+	// above bite: a link planted in anyone's own tree (or another Crew's) must not read a Crew it was not made
+	// in, or every Crew's files would be one symlink away from any account that can create a link.
+	if realTree, inCrews := sharedCrewTree(resolvedRoot, resolvedCandidate); inCrews {
+		lexTree, lexIn := sharedCrewTree(cleanDocsDir, cleanPath)
+		if !lexIn || lexTree != realTree {
+			// A path that resolved no further than the Crew root itself is fine while it does not exist yet (a
+			// new Crew's first file: nothing below Crew/<id> is there to follow); a link that exists and
+			// points at the root would list every Crew.
+			if _, statErr := os.Lstat(cleanPath); realTree != "" || !lexIn || statErr == nil {
+				return false
+			}
+		}
+	}
 	return true
+}
+
+// sharedCrewTree returns which tree of the shared Crew root path lies in ("" for the bare root), and whether it
+// lies in the shared root at all.
+func sharedCrewTree(root, path string) (string, bool) {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return "", false
+	}
+	return workspaceref.MustParse(filepath.ToSlash(rel)).SharedTree()
 }
 
 func resolveExistingPathPrefix(candidate, root string) (string, error) {

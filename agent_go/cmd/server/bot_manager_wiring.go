@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // wireBotManager installs every server hook on a bot manager: session start
@@ -34,6 +37,62 @@ func (api *StreamingAPI) wireBotManager(m *services.BotConversationManager) {
 	services.SetSlackDMUserResolver(slackDMUserForEmail)
 	// WhatsApp lists other owners' crews (read-only) beside the user's own.
 	services.SetWhatsAppOtherCrewsFunc(api.whatsappOtherCrews)
+	// A Crew that moved to the shared root (PLAT-442 step 4) names no owner in its path and keeps its old spellings
+	// as aliases: the bot code asks the server's registry and alias map.
+	services.SetCrewScopeHooks(botCrewOwner, foldCrewScopePath, api.ownSharedCrewListings)
+}
+
+// botCrewOwner is the registered owner of a crew path (Crew/<f>, or any spelling of a migrated crew); "" when the
+// path is no crew's.
+func botCrewOwner(workspacePath string) string {
+	owner, _ := crewProjectOwnerID(workspacePath)
+	return owner
+}
+
+// foldCrewScopePath maps any spelling of a migrated crew to its Crew/<f> path, keeping anything below it; every
+// other path is returned unchanged.
+func foldCrewScopePath(workspacePath string) string {
+	trimmed := strings.TrimSpace(workspacePath)
+	if trimmed == "" {
+		return workspacePath
+	}
+	ref := workspaceref.MustParse(filepath.ToSlash(trimmed))
+	if ref.IsShared() {
+		return workspacePath
+	}
+	folder, shared, ok := ref.AnyCrewProject()
+	if !ok || shared {
+		return workspacePath
+	}
+	moved := crewPathAliases.lookupFolder(context.Background(), folder)
+	if moved == "" {
+		return workspacePath
+	}
+	rest := strings.TrimPrefix(ref.Logical(), workspaceref.CrewProjectsRoot+"/"+folder)
+	return moved + rest
+}
+
+// ownSharedCrewListings lists the Crews at the shared root the user owns, for the WhatsApp destination list.
+func (api *StreamingAPI) ownSharedCrewListings(ctx context.Context, userID string) []services.SharedCrewListing {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil
+	}
+	store := defaultProductProjectStore()
+	manifests, err := listSharedCrewManifestPaths(ctx, store, userID)
+	if err != nil {
+		return nil
+	}
+	var out []services.SharedCrewListing
+	for _, manifestPath := range manifests {
+		root := strings.TrimSuffix(manifestPath, "/product.json")
+		manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
+		if err != nil {
+			continue
+		}
+		out = append(out, services.SharedCrewListing{ID: manifest.ID, Title: firstNonEmptyTrimmed(manifest.Title, manifest.Identity.Name), WorkspacePath: root})
+	}
+	return out
 }
 
 // botRunningWorkflows lists a user's running workflows for bot status replies.

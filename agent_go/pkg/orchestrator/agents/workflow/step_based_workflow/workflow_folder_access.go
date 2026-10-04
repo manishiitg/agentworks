@@ -151,7 +151,7 @@ func appendWorkflowFolderAccess(workspacePath string, readPaths, writePaths []st
 	}
 	live := liveCrewAttachmentGrants(workspacePath)
 	for _, attachment := range live {
-		root := strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/")
+		root := workflowtypes.CanonicalCrewAttachmentRoot(attachment.CrewWorkspacePath)
 		readPaths = append(readPaths, root)
 		readOnlyPaths = append(readOnlyPaths, root)
 	}

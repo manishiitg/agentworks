@@ -45,7 +45,9 @@ var workspaceUsersDirAllowlist = map[string]string{
 var usersDirAllowlist = map[string]string{
 	"cmd/server/auth_rotate_cmd.go":                "globs the per-user directories on disk to rotate stored credentials",
 	"cmd/server/product_secrets_migration.go":      "one-shot on-disk migration of per-user secrets files",
-	"cmd/server/product_owner.go":                  "startup scan stamping owner_id into Crew/Code product.json from the on-disk per-user tree (PLAT-442)",
+	"cmd/server/product_owner.go":                  "startup scan registering Crew/Code owners from the on-disk per-user tree, with anchored symlink-refusing opens (PLAT-449, PLAT-450)",
+	"cmd/server/crew_move.go":                      "one-shot Crew move: lists the per-user trees on disk to find the Crews to move (PLAT-442 step 4)",
+	"cmd/server/crew_move_refs.go":                 "read-only dry-run scan of the stores that mention a Crew's path, under each per-user tree on disk (PLAT-442 step 4)",
 	"cmd/server/durable_chat_migration_command.go": "one-shot migration reading the owner out of legacy on-disk chat paths",
 	"cmd/server/virtual-tools/delegation_tools.go": "const fallback Chats folder; a const cannot call PhysicalPath",
 	"internal/videoproduct/managed_skills.go":      "walks the per-user directories on disk",

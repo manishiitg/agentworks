@@ -3728,6 +3728,13 @@ func routeWorkspaceUserID(route ChannelRoute, fallback string) string {
 	if userID := strings.TrimSpace(route.WorkspaceUserID); userID != "" {
 		return userID
 	}
+	// A Crew at the shared root, or an old spelling of a migrated one, has its owner in the server's registry
+	// (PLAT-442 step 4); the path of an unmigrated crew names it.
+	if ref := workspaceref.MustParse(route.WorkspacePath); ref.IsShared() || ref.HasOwner() {
+		if owner := strings.TrimSpace(crewOwnerFor(route.WorkspacePath)); owner != "" {
+			return owner
+		}
+	}
 	if owner := strings.TrimSpace(workspaceref.MustParse(route.WorkspacePath).Owner()); owner != "" {
 		return owner
 	}

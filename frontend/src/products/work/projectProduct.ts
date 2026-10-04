@@ -83,6 +83,8 @@ export function projectProductConfig(profileId: ProjectProductId): ProjectProduc
 /** The project product of a workspace path, logical or under _users/<owner>/. */
 export function projectProductForPath(path: string | undefined): ProjectProductConfig | null {
   const clean = (path || '').replace(/^\/+/, '').replace(/^_users\/[^/]+\//, '')
+  // A Crew at the shared root (Crew/<folder>) is a Crew project like one in its owner's tree.
+  if (/^Crew\/[^/.][^/]*(\/|$)/.test(clean)) return CREW_PRODUCT
   for (const product of [CREW_PRODUCT, CODE_PRODUCT]) {
     if (clean.startsWith(`${product.projectsRoot}/`) && clean.length > product.projectsRoot.length + 1) return product
   }

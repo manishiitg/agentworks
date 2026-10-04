@@ -1868,6 +1868,10 @@ func chatHistorySessionMatchesWorkspace(userID string, session ChatHistorySessio
 }
 
 func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
+	// A migrated crew is Crew/<f> whichever old spelling names it (PLAT-442 step 4).
+	if shared, ok := sharedCrewIdentity(userID, workspacePath); ok {
+		return shared
+	}
 	return workspaceref.CanonicalFor(userID, workspacePath)
 }
 
@@ -1876,7 +1880,13 @@ func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
 // removes the authenticated user's own prefix; a path owned by another user
 // therefore never becomes equivalent to a public path.
 func workspacePathsMatchForUser(userID, left, right string) bool {
-	return workspaceref.MustParse(left).SameFor(userID, workspaceref.MustParse(right))
+	if workspaceref.MustParse(left).SameFor(userID, workspaceref.MustParse(right)) {
+		return true
+	}
+	// Two spellings of one MIGRATED crew (PLAT-442 step 4): the old per-user path and Crew/<id>.
+	l, lok := sharedCrewIdentity(userID, left)
+	r, rok := sharedCrewIdentity(userID, right)
+	return lok && rok && l == r
 }
 
 // listWorkflowBuilderHistoryFromDisk returns builder chat sessions for a workflow.

@@ -60,7 +60,12 @@ func ClassifySessionWorkspace(userID, workspacePath string) (SessionWorkspaceKin
 		}
 		return SessionWorkspaceUnknown, ""
 	}
-	if root, project, ok := workspaceref.MustParse(canonical).Project(); ok {
+	ref := workspaceref.MustParse(canonical)
+	// A Crew at the shared root (PLAT-442 step 4) is a Crew project like any other.
+	if project, ok := ref.SharedProject(); ok {
+		return SessionWorkspaceCrewProject, workspaceref.SharedProjectPath(project)
+	}
+	if root, project, ok := ref.Project(); ok {
 		return SessionWorkspaceCrewProject, root + "/" + project
 	}
 	return SessionWorkspaceUnknown, ""

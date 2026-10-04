@@ -15,10 +15,13 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsalias"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
@@ -40,6 +43,10 @@ func workspaceProxyHandler() http.Handler {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	// The browser may still send an old spelling of a moved Crew's path: translate it on the way out (the gate above
+	// has already classified the translated path, see workspaceProxyPathIsOtherUser). A nil base is the default
+	// transport, where the workspace token is attached.
+	proxy.Transport = wsalias.Transport(nil)
 	// The agent server's own CORS middleware answers the browser; the
 	// workspace server adds its own permissive headers too, and a response
 	// carrying two Access-Control-Allow-Origin values is rejected by every
@@ -218,24 +225,64 @@ func workspaceProxyURLIsOtherUser(rel, own string) bool {
 	return workspaceProxyPathIsOtherUser(remainder, own)
 }
 
+// workspaceProxyDocsRoots are the spellings of the document root a path argument may carry: the workspace
+// service strips the root from an absolute path (utils.SanitizeInputPath) before it resolves it, so
+// "<docs root>/Crew/<id>/product.json" names the same file as "Crew/<id>/product.json".
+func workspaceProxyDocsRoots() []string {
+	roots := []string{fsutil.WorkspaceDocsRoot(), fsutil.WorkspaceShellRoot(), "/app/workspace-docs"}
+	out := roots[:0]
+	for _, root := range roots {
+		root = strings.TrimSpace(filepath.ToSlash(filepath.Clean(root)))
+		if root != "" && root != "." && root != "/" {
+			out = append(out, root)
+		}
+	}
+	return out
+}
+
+// workspaceProxyCleanPath is the workspace-relative path a path argument names, as the workspace service
+// reads it: the document root is stripped from an absolute path, backslashes are separators, dots are
+// collapsed, no leading or trailing slash. Every gate below classifies this, never the raw string, so an
+// absolute or backslashed spelling of a protected folder cannot slip past a prefix test.
+func workspaceProxyCleanPath(raw string) string {
+	s := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	cleaned := path.Clean("/" + s)
+	for _, root := range workspaceProxyDocsRoots() {
+		if cleaned == root || strings.HasPrefix(cleaned, root+"/") {
+			cleaned = strings.TrimPrefix(cleaned, root)
+			break
+		}
+	}
+	return strings.Trim(path.Clean("/"+cleaned), "/")
+}
+
 // workspaceProxyPathIsOtherUser matches values that address another
 // user's tree: the bare _users root, or _users/<segment>/... with a
 // segment that is not the caller's own. A shared crew root, Crew/<id>, is
 // the owner's tree too: raw access is the manifest owner's only (readers
 // use the mediated /shared-projects endpoints), the bare Crew root is never
 // listable, and a crew nobody owns (or that does not exist yet: crews are
-// created server-side) is refused.
+// created server-side) is refused. Entries of Crew/ that are not a crew
+// ("Crew/.migration", the server's own bookkeeping) are nobody's.
 func workspaceProxyPathIsOtherUser(raw, own string) bool {
-	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
+	clean := workspaceProxyCleanPath(raw)
+	// An old spelling of a MOVED Crew is judged as the Crew it names (the transport translates it on its way out).
+	if folded := followCrewAlias(own, clean); folded != clean {
+		clean = folded
+	}
 	ref := workspaceref.MustParse(clean)
-	if ref.IsUsersRoot() || clean == crewSharedRootName {
+	if ref.IsUsersRoot() {
 		return true
 	}
-	if strings.HasPrefix(clean, crewSharedRootName+"/") {
+	if ref.IsShared() {
+		project, ok := ref.SharedProject()
+		if !ok {
+			return true
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		ref, ok := resolveCrewPath(ctx, own, clean)
-		return !ok || ref.OwnerID == "" || ref.OwnerID != own
+		crew, ok := resolveCrewPath(ctx, own, workspaceref.SharedProjectPath(project))
+		return !ok || crew.OwnerID == "" || crew.OwnerID != own
 	}
 	return ref.HasOwner() && ref.Owner() != own
 }

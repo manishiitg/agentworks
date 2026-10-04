@@ -1,6 +1,6 @@
 # PLAT-442 — Identity is explicit: owner from the server's registry, slot named by the platform, Crews at `Crew/<id>`
 
-Status: steps 1, 2, 3 and 5 on main (2026-10-04), not deployed; step 1's owner source was CHANGED the same day by PLAT-449 and PLAT-450 (registry, not manifest; no symlinks, see below). Step 4 (the Crew move) is not started. Crew CLI identity needs a decision: PLAT-446. Follows PLAT-435 (one path type in agent_go).
+Status: steps 1, 2, 3 and 5 on main (2026-10-04), not deployed; step 1's owner source was CHANGED the same day by PLAT-449 and PLAT-450 (registry, not manifest; no symlinks, see below). Step 4 (the Crew move) is BUILT and tested on temp trees (2026-10-04) and NOT run against any real data, not deployed; it is inert until the migration is run and the creation switch `AGENTWORKS_CREW_SHARED_ROOT=on` is set. Crew CLI identity: PLAT-446 (decided: the app account). Follows PLAT-435 (one path type in agent_go).
 
 ## Problem
 
@@ -144,6 +144,165 @@ turn kind runs as, in one place.
 - Workspace proxy decision for each user and path pair (A and B x Code, Crew, Goal x read/write, both spellings).
 - Not covered (needs a real OS): the Linux identity of the launched process; that stays with the Linux slot suites on a host.
 
+### Step 4: the Crew move (built 2026-10-04; not run on any real data, not deployed)
+
+Crews move from `_users/<owner>/Chats/Work/projects/<slug>-<id8>` to the shared `Crew/<slug>-<id8>` (folder name kept) by a migration command, with the code
+that makes `Crew/<id>` a first-class place. Code, SparkQuill, Video Studio and Goals do not move. Ownership is the server's registry (PLAT-449), not the
+manifest the original design relied on (the design in `docs/design/crew_shared_root.md` is superseded where it says "owner from product.json", "alias file
+in `_system/`", "rewrite stored references" and "migrate at startup": this step keeps every stored reference as it is and serves it through an alias, and
+the move is an explicit, backed-up, journaled command).
+
+**Safety order (what was built first).** The gate came first, with failing tests: today a foreign `_users/*` refusal is the only thing keeping a reader out of
+a Crew's files, and `Crew/<id>` has no `_users` segment. `crew_shared_root_gate_test.go` drives the raw proxy's gate with every request shape (URL routes,
+query parameters, JSON body fields including nested and array ones, multipart, absolute/backslash/dot spellings) for the owner, a Run-mode reader, a user
+without the Crew product, an administrator who is not the owner and another Crew's owner, plus a parity test against the same Crew in the owner's tree. It
+found PLAT-456 at once. A second gate was needed that the design did not list: the workspace service's symlink guard only protects `_users/<id>` trees, so
+a link made anywhere could read a Crew at the shared root (PLAT-457; closed for `Crew/<id>` here).
+
+**What exists now**
+
+- `workspaceref`: a shared root (`SharedCrewRoot`, `Ref.IsShared/SharedProject/SharedProjectRoot/SharedTree/AnyCrewProject`). A shared path names no owner, is
+  never "the caller's own" or "public" (`OwnedByOrUnowned` is false for it), `Physical`/`CanonicalFor` never place it under a user, and `Project()` does not
+  return it (so `ref.IsProject()` callers can never treat `Crew/x` as the caller's). Table tests; the guard test still passes.
+- Owner: `resolveProjectOwner` (registry; shared root with no entry = nobody). `crewProjectOwnerID`, `isCrewProjectPath`, `crewProjectOwnedByCaller`,
+  `canonicalCrewWorkspaceRoot` are shared-root and alias aware, so the ~35 callers of them follow without change.
+- Binding: `resolveProductProjectBindingWithStore` finds the caller's Crews at `Crew/` by registry owner after their own tree; `resolveCrewProjectBinding`
+  finds another owner's (reader, only while project sharing is on, as before); a project found in the caller's tree that is registered to someone else is
+  refused. Every enumeration of "this owner's Crews" asks both places (`listProjectManifestPaths`, `listSharedCrewManifestPaths`).
+- Aliases: the registry record of a moved Crew carries its old physical roots as `aliases`; `crewPathAliases` reads them (not a file in `_system/`, which
+  an agent could not write either but the registry is the one authority). One resolver (`resolveCrewPath`) follows them for the physical and the caller's
+  logical spelling, with a logged `[CREW_ALIAS]` warning once per old path. `pkg/wsalias` is the same translation at the workspace transport (server client,
+  tool client, browser proxy): an old path in a request is rewritten to `Crew/<f>` before it leaves, so a read finds the Crew and a write never creates a folder
+  at the old place. The proxy gate classifies the translated path, so an old spelling is judged as the Crew it names.
+- `crewAccessFor`: another user is a reader only while project sharing is on (default off); with it off nobody else sees the Crew or its live-feed notices.
+- Creation: `AGENTWORKS_CREW_SHARED_ROOT=on` makes server-side creation (`create_crew`, import, external authoring) put new Crews at `Crew/<slug>-<id8>`, registered
+  to the creator, with the owner's slot group set (`ensureSharedCrewFolderAccess`); default off, nothing changes by deploying. Browser creation writes
+  into the owner's tree from the browser and still does; a later run of the migration moves it. Reading `Crew/<id>` never depends on the switch.
+- UI: the Crew list asks `GET /api/agent-profiles/work/own-shared-projects` (the caller's own Crews at the shared root, by registry) next to the listing of
+  their own tree; `projectProductForPath`, the report page path check and the cost rows know `Crew/<id>`. Old servers answer 404 and the list is unchanged.
+
+**The migration command** `agentworks server migrate-crews-to-shared-root` (`crew_move*.go`; flags `--docs-root --state-root --dry-run(default) --apply
+--backup-dir --crew (repeatable) --rollback <folder> [--from-backup] --finalize --no-reference-scan --json`):
+
+- Dry run (default): every Crew with owner, source, destination, size, files/folders/symlinks, registry and manifest owner, the users who would read it, CLI runtime
+  folders that link to it, stored references that will be served through the alias (counts of files per store kind; nothing is rewritten), warnings and
+  BLOCKERS. It changes nothing (tested by comparing complete snapshots of the docs tree and state area).
+- Blockers (they block `--apply` for that Crew only; the rest proceed and the run exits non-zero): `[OWNER_MISMATCH]` (manifest `owner_id` differs from the owner the path
+  names: resolve by confirming the owner and fixing `owner_id` in `product.json`), `Crew/<folder>` exists (never merged), the same folder name under several
+  owners, `[ACTIVE]` (a tmux pane or a process works in the Crew or in a CLI runtime folder that links to it), a symlink that leaves the Crew folder or a special file,
+  `[UNSAFE_PATH]` (a symlink where a folder or the manifest should be), a registry owner that disagrees with the path.
+- `--apply` needs `--backup-dir`: free space is measured, exactly the Crew folders about to move (and the registry) are copied to
+  `<dir>/crew-move-<time>/` and READ BACK and compared with the source before the first move; any failure aborts with nothing changed.
+- One Crew at a time, copy → verify → switch: copy into `Crew/.migrating/<folder>` (modes, groups and times kept; symlinks copied AS symlinks; nothing is followed:
+  every access is through `os.Root`), hash both sides and compare entry by entry, re-check the source did not change, then two renames inside the docs root
+  (staging in, old folder renamed to `_users/<owner>/Chats/Work/.moved-to-crew/<folder>`), then the registry marks the Crew shared with the old path as an alias, runtime
+  links are repointed, and the moved Crew is re-hashed against the journal with the owner, alias and access rules checked as the server applies them.
+  Nothing is deleted until `--finalize`.
+- A journal per Crew (`<state root>/migrations/crew-move/<folder>.json`, written before and after every step) makes a crash resumable: tests crash at every
+  named point and the re-run finishes with nothing lost or duplicated. Re-runs are idempotent. A lock marker (`active.json`) makes the server bind no turn, schedule,
+  webhook or bot to that Crew and the proxy refuse writes to it while it moves; a marker of a dead process locks nothing.
+- `--rollback <folder>` moves the Crew's CURRENT folder back (work done since the move is kept), unmarks the registry, repoints runtime links back;
+  `--from-backup` restores the backed-up copy instead (the damaged folder is kept aside by name). `--finalize` removes the kept old folders of finished moves.
+
+**Decisions made while building (behaviour; see DECISIONS)**
+
+- Old paths resolve for good through the registry's aliases; no stored reference is rewritten.
+- A moved Crew keeps its CLI runtime folder: the runtime folder is named by a digest of the project's resolved path, so a moved Crew would have started a
+  fresh native session in every chat. `cliruntime.PrepareLinkedProjectMoved` keeps the OLD path as the digest input (from the registry alias) and
+  repoints the runtime's `project` link (only from exactly the old target); the migration repoints existing links too, so the link also works if the
+  server starts before it. Tested: the runtime folder is identical before and after, the native session file in it is still there, other Crews' runtimes do not change, a new
+  Crew at the shared root gets its own.
+- A moved Crew keeps its browser profile key (its first old physical path), under every spelling, so saved logins and tabs survive.
+- Cost rows recorded before the move fold into the Crew's row.
+
+**Every site of the old path rule, and how it was handled** (grep for `crewProjectOwnerID`, `crewProjectOwnedByCaller`, `isCrewProjectPath`,
+`Chats/Work/projects`, `CrewProjectsRoot`, `Chats/Work`, `ProjectsRoot`, `.Project()`):
+
+| Site | Handling |
+|---|---|
+| `workspaceref` (both modules) | shared root semantics (above) |
+| `workspace_proxy.go` gate, `workspace_proxy_policy.go` | `Crew/<id>`: owner by registry only, bare root and hidden entries never, absolute/backslash spellings (PLAT-456), old spellings judged as the translated Crew, writes refused while the Crew moves |
+| `workspace/utils/path.go` (`IsValidFilePath`) | links into a Crew tree from elsewhere refused (PLAT-457) |
+| `workspace/handlers/database_backup_snapshot.go` | `Crew/` is a managed root for the DB backup snapshot |
+| `agent_profile_runtime.go` `cleanAgentProfileWorkspace` | accepts `Crew/<id>` for its registry owner only; the query path runs a verified binding root and rejects a client folder that is not the same Crew (alias-aware) |
+| `crew_access.go` (`crewProjectOwnerID`, `isCrewProjectPath`, `crewProjectOwnedByCaller`, `canonicalCrewWorkspaceRoot`, `resolveCrewProjectBinding`) | rewritten (above); their callers need no change: `crew_functions.go`, `crew_session_mode.go`, `product_schedules.go`, `product_webhooks.go`, `cost_overview.go`, `pulse_crew_calls_tool.go`, `instructions.go`, `work_schedule_tools.go`, `crew_workflow_tools.go`, `gmail_*`, `browser_live.go`, `trigger_link_tools.go`, `crew_reader_chat_mirror.go`, `work_workflow_reference_tools.go`, `agent_profile_runtime.go` |
+| `crew_ref.go` (`resolveCrewPath`, `crewAccessFor`, owner cache, alias cache, `followCrewAlias`, `crewTurnWorkspace`, `foldCrewRootForStoredReference`) | registry owner; alias from the registry; no negative owner caching |
+| `product_conversation_registry.go` (binding in root, shared lookup, lock check) | shared root found by registry owner; refuses while the Crew moves |
+| `chat_history_persistence.go` (`workspacePathsMatchForUser`, `canonicalChatHistoryWorkspacePath`), `agent_profile_conversations.go` (`normalizeConversationWorkspace`) | fold old spellings of a moved Crew to `Crew/<f>`: every chat-history, bot-scope, browser, resume comparison keyed on them follows |
+| `product_schedules.go`, `product_webhooks.go`, `work_workflow_reference_tools.go`, `crew_directory.go`, `crew_delete_references.go`, `chat_submission_journal.go`, `code_peer_functions.go` | enumeration/authorization asks both places (`listProjectManifestPaths`, `listSharedCrewManifestPaths`, `sharedCrewOwner`) |
+| `workflow_context_access.go`, `external_file_reads.go`, `workflow_read_access.go`, `pkg/workflowtypes` attachments, `step_based_workflow/workflow_folder_access.go` | stored attachments keep their stored spelling and resolve to the Crew's current root; the stored root and the freshly authorized binding root compare equal |
+| `cost_overview.go` | old rows fold into the Crew's row |
+| bots: `services/bot_scope.go`, `services/slack_connections.go`, `services/bot_connector.go`, `services/whatsapp_service.go`, `slack_connection_routes.go`, `crew_bot_scope_migration.go`, `bot_manager_wiring.go` | `Crew/<f>` is a valid destination whose owner is the registry's; old and new spelling are one destination; the WhatsApp list includes the user's shared Crews |
+| `place_mcp_attach.go` | old roots fold to the Crew's new root; stored entries merge in memory |
+| `browser_conversation_isolation.go`, `browser_workspace.go` | browser profile key kept; project-root check knows the shared root |
+| `crew_cli_runtime.go`, `pkg/cliruntime` | runtime folder (digest) kept; link repointed |
+| `crew_creation.go`, `external_crew_authoring.go`, `crew_shared_access.go` | creation switch; registry registration; slot group; `Crew/` mode 0711 |
+| `agent_profile_conversations.go` delete | registry entry removed with the Crew |
+| `pkg/common/session_workspace.go` | `Crew/<f>` sessions classify as Crew projects |
+| `pkg/wsalias`, `workspace_http.go`, `pkg/workspace/client.go`, proxy transport | old paths translated at the workspace transport |
+| UI: `projectProduct.ts`, `productProjects.ts`, `workSessions.ts`, report page, costs | see above |
+| NOT touched (path-independent or not Crews) | schedules/triggers state (keyed by manifest id), Slack thread bindings, structured chat events, `work:project:<id>` and `product-<uuid>` session ids (they embed the project id), Code/SparkQuill/Video Studio/Goals, `docs/design/crew_shared_root.md` (superseded, stale status) |
+
+**Stored references, each tested with the old path after a real migration** (`TestStoredReferencesToAMovedCrewKeepWorking`, `TestMovedCrewStoredReferences...`,
+`TestAccessAssertionsAfterARealMove`, `TestProxyTranslatesOldSpellingsOfAMovedCrew`): typed physical and logical paths, chat history workspace keys, a
+workflow's attached Crew (`workflow.json` attachments and context paths, including a reader's), a bot destination (valid, same destination, owner), a turn
+that still names the old folder, raw read access and the proxy by the old path, external file roots, place MCP roots, the browser key, cost rows, an
+unmigrated Crew untouched.
+
+**Access, the same assertions on every layout.** `runMultiUserAccessAssertions` runs on the old layout, on `Crew/<id>`, on a mixed server (one Crew moved, one
+not) and after a REAL migration of the fixture's files: A (owner) by the short spelling, B (Run-mode reader, sharing on) by both, C (no Crew product) refused
+everywhere (binding, access level, live feed, raw proxy), B's writes refused (proxy, tool surface, shell folder guard), sharing off refuses B, Code and Goals unaffected.
+The bridge shell tool runs as the caller's slot: the migration preserves every file's mode and group (and widens only the owner's slot group's bits on files
+the slot account owned), no entry gets a bit for "other", folders keep setgid, and `Crew/` is 0711 (traversable, not listable); tested on temp trees. Not tested:
+the Linux identity of a real slot shell (needs a host).
+
+**Test status for step 4** (see the final report of the session for counts): targeted runs per commit; full `cmd/server` once at the end; the 13 baseline failures
+(Relay catalog, `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`, `TestSalesCrewCatalogHasInstallableRoles`,
+`TestResolveDelegationTierConfigExpandsProviderProfile`, the two playbook tests, `TestAgentWorksProductSurfaceE2E`, `TestCrewProductSurfaceE2E`, the three
+provider-accounts tests, `TestNativeTerminalRealTmuxKeyboardAndPaste`, `TestWorkshopResolveLLMConfigExpandsCodingAgentMode`) are unchanged.
+
+**What was NOT verified (nothing here ran on a real server)**: the move on real data (sizes, run time, a 12-Crew Confida tree), Linux slot accounts and group/ACL
+behaviour of a real `Crew/` folder (the unit tests check modes and groups on temp trees only), tmux/process detection against real CLI sessions on the target
+hosts (tested with a real child process and a stubbed tmux), the app account's ability to `chgrp` to the slot groups (the move fails the Crew with a clear
+message when it cannot keep a group), a remote (non-local) workspace service (the command works on the docs folder directly and refuses nothing about it),
+the frontend in a browser (vitest and `tsc -b` only), and a live CLI session surviving the runtime folder repoint.
+
+#### Runbook (per server; Confida first)
+
+Order matters. Stop conditions are at the end. Confida: 12 Crews, 2 Codes (the Codes are not touched by anything below); RTS and excellence: after Confida is
+clean for a few days.
+
+1. **Before anything.** Deploy this release with `AGENTWORKS_CREW_SHARED_ROOT` unset (nothing changes by itself; the startup scan registers every Crew and Code in
+   the owner registry from its path: read `[OWNER_BACKFILL] ... conflicts=N unsafe=N` and any `[OWNER_MISMATCH]` / `[UNSAFE_PATH]` lines; do not "fix" them on live
+   data without confirming the intended owner). The registry is `<state root>/ownership/projects.json`; include the state root in the host's backups.
+2. **Room.** Docs volume free space at least the total size of the Crews to move plus 10% (the old folders stay until `--finalize`); the backup directory free space the
+   same again. `df` both. Pick a quiet window: no Crew turns, schedules or webhooks due for the Crews being moved (the dry run shows live tmux sessions and processes;
+   stop the Crews' schedules if one is due, or stop the server for the window: the command works on the docs folder, not through the server).
+3. **Backup of the host** (your normal snapshot) AND the command's own: `--backup-dir` on a different volume.
+4. **Dry run, everything**: `agentworks server migrate-crews-to-shared-root` (same environment as the server: `WORKSPACE_DOCS_PATH`, `AGENTWORKS_STATE_ROOT`).
+   Read every Crew's block. Resolve every BLOCKED line (an `[OWNER_MISMATCH]`: confirm the owner, fix `owner_id`; an `[ACTIVE]`: stop what is running; a collision or symlink:
+   look at it by hand). Read "references": those are what is served through the alias.
+5. **Apply ONE Crew first**: `... --apply --backup-dir /backups/crews --crew <folder>`. It prints the backup directory it made and verified, the move, and `verified`.
+6. **Check that Crew in the app**: open it as the owner (chat resumes the same native session: the runtime folder is unchanged), its files, dashboard, schedule, a bot
+   route if any; as a reader (only where project sharing is on) read-only; in another account without the Crew product: nothing. Look at the server log for
+   `[CREW_ALIAS]` lines (old paths in use: expected) and any `[OWNER_MISMATCH]`.
+7. **Apply the rest** (same command without `--crew`). A re-run after any interruption is safe and resumes.
+8. **Verify**: re-run the dry run (every moved Crew shows state `done`); the report's `verified` list; `find <docs>/Crew -maxdepth 1` lists the Crews and `.migrating` is empty;
+   `ls -ld <docs>/Crew` is `drwx--x--x`; each Crew folder keeps its old group (`ls -ld <docs>/Crew/<f>` vs its tombstone).
+9. **Turn the switch on**: set `AGENTWORKS_CREW_SHARED_ROOT=on` in the server's environment and restart in a quiet moment (new server-side Crews are then created at
+   `Crew/`). Browser-created Crews still land in the owner's tree; the next run of the command moves them.
+10. **Watch** for a few days: `[CREW_ALIAS]` (stale references: expected, harmless), `[OWNER_MISMATCH]`, `[UNSAFE_PATH]`, `[CREW_ACCESS]` (slot group could not be set on a new
+    Crew), `[OWNER_REGISTRY]`; chats resuming; schedules firing for moved Crews.
+11. **After the soak** (say a week): `--finalize` removes the kept old folders (it re-verifies each moved Crew first). Keep the backup directory until you are sure.
+
+**Rollback**: one Crew: `... --rollback <folder>` (keeps work done since the move; the registry unmarks it; runtime links go back); if its new folder is damaged
+`--rollback <folder> --from-backup --backup-dir <the dir of the run>`. All: roll back each Crew; then unset `AGENTWORKS_CREW_SHARED_ROOT`. The release can stay deployed:
+unmoved Crews are the old behaviour.
+
+**Stop conditions** (stop, do not continue to the next step): a verification failure in the report or the log; a blocker you do not understand; any Crew that fails its
+move (the run stops at the first failure and leaves it resumable: read `last_error` in its journal before re-running); free space under the estimate; a Crew
+opened as its owner that does not find its chat history or files; a reader or an outsider who can see a Crew they should not; `[OWNER_MISMATCH]` for a Crew that has already moved.
+
 ## Test status (2026-10-04)
 
 agent_go `cmd/server` full run: the same 13 failures as on the baseline (Relay catalog, `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
@@ -155,31 +314,30 @@ loaded full run and passes alone and on rerun (timing). Workspace module: all gr
 
 ## Left
 
-- Step 4, the Crew move (not started, by instruction).
+- Step 4: built; run it per the runbook, one server at a time (Confida first), and turn the creation switch on afterwards. Not run on any real data.
 - Fallback removal: launches that declare no run-as still fall back to the folder rule (logged `[SLOT_FALLBACK]`); see Step 2 for the list. Remove
   it once a canary period shows none in the logs.
-- UI-created Crews and Codes have no `owner_id` until the owner first opens them or the next start (startup scan); the browser could write it
-  at creation.
-- PLAT-446: owner decision on Crew CLI turns (app account today).
+- UI-created Crews and Codes get their registry entry when the owner first opens them or at the next start (startup scan, from the path); the browser still
+  creates Crews in the owner's tree even with `AGENTWORKS_CREW_SHARED_ROOT=on` (creation through a server endpoint would put them at the shared root; until
+  then the migration command moves them on its next run).
+- PLAT-446: decided (app account); nothing left.
+- PLAT-457: the symlink rule for `Workflow/<id>` and `config/`.
+- The old folders (`.moved-to-crew`) and the backup directory are kept until `--finalize` / by hand; nothing deletes them on its own.
+- `pkg/common` browser checkpoint classification (`CanonicalSessionWorkspace`) does not fold an old spelling of a moved Crew (new sessions use the new path).
 
-## Risks for step 4 (the Crew move)
+## Risks for step 4 (the Crew move), and where each stands
 
-1. Crew CLI turns never ran as a slot (PLAT-446), so the move cannot lose that isolation; but the BRIDGE shell tool runs as the caller's slot via
-   `X-User-ID`, so for a reader it runs as the reader's slot in the owner's folder. Check that the move does not change which folder that slot
-   can enter (group ACLs follow the owner's tree today).
-2. `resolveCrewPath` already prefers the manifest owner, but `crewProjectOwnerID(path)` (path only) still feeds about ten callers (schedules,
-   triggers, webhooks, reader chat mirror, bot scope, `routeWorkspaceUserID`); each must move to the manifest or it will say "no owner" for
-   `Crew/<id>`. `resolveProjectOwner(ctx, root)` (`product_owner.go`) is the helper.
-3. The raw proxy refuses foreign `_users/*` today and that is the ONLY thing keeping a reader out of the Crew's files; `Crew/<id>` has no such
-   rule until the proxy gates it like `Workflow/` (`workspaceProxyPolicy.denies`). The fixture's "B cannot write the Crew" and proxy rows are the test
-   for it; rerun `runMultiUserAccessAssertions` with the `Crew/<id>` layout before enabling the move.
-4. `cleanAgentProfileWorkspace` and the live feed's visibility check name the path owner; both need the manifest owner for shared roots.
-5. The provider's folder rule is now only a fallback, so a Crew in `Crew/<id>` does not silently get a different slot; it gets what
-   `decideTurnRunAs` declares (the app account for the isolated runtime). If the owner chooses the owner's slot (PLAT-446), declare it there.
-6. A Crew's CLI runtime folder hashes the project path (`cliruntime.Prepare` digest of user, workflow, session, provider, mode): moving the Crew
-   changes the hash, so every existing CLI session of a Crew would start a fresh runtime (the digest input is kept for existing chats, see the
-   comment in `cliruntime/workspace.go`). The migration must alias the old path as the digest input or accept one fresh session per Crew.
-7. `owner_id` backfill: a manifest copied between accounts keeps the old owner; `[OWNER_MISMATCH]` in the logs lists them before the move.
+1. **Bridge shell tool as the caller's slot** (a reader's commands run as the reader's slot): handled by preserving every file's mode and group and giving `Crew/` mode
+   0711 (no "other" bits anywhere in a moved Crew, group read/write for the owner's slot, setgid folders), asserted on temp trees; the reader's folder guard is read-only
+   as before. NOT verified with real accounts; check `ls -ln` of a moved Crew against its tombstone on each host before turning the switch on.
+2. **`crewProjectOwnerID(path)` feeding ~10 callers**: fixed at the function (shared-root and alias aware, registry owner), so every caller follows; the list is in the site table.
+3. **The proxy's refusal of foreign `_users/*` was the only thing keeping a reader out of a Crew**: `Crew/<id>` has its own gate (owner by registry only; bare root, hidden
+   entries, ownerless Crews, absolute/backslash spellings refused), tested on every request shape and by parity with the owner's tree; plus the symlink rule (PLAT-457).
+4. **`cleanAgentProfileWorkspace` and the live feed's visibility**: both use the registry owner for shared roots; the live feed shows another user's Crew only while
+   project sharing is on.
+5. **CLI runtime digest hashes the project path**: kept (old path as the digest input), tested; runtime links repointed.
+6. **A manifest copied between accounts keeps its old `owner_id`**: now harmless for ownership (the registry decides) and reported by the dry run as `[OWNER_MISMATCH]`, which
+   blocks that Crew's move until a person resolves it.
 
 ## 2026-10-04 independent review
 

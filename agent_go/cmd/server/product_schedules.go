@@ -349,28 +349,15 @@ func (s *ProductScheduleService) profilesWithProjectSchedules() []agentprofiles.
 }
 
 func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID string, profile agentprofiles.Profile, states map[string]productScheduleUserState) ([]productScheduleJob, error) {
-	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
-	if err != nil {
-		return nil, err
-	}
-	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
+	// The user's own projects root and, for a Crew, the Crew/ shared root (PLAT-442 step 4): a migrated Crew's
+	// schedules must keep firing for its owner.
 	store := defaultProductProjectStore()
-	paths, exists, err := store.listPaths(ctx, runtimeRoot)
+	paths, exists, err := listProjectManifestPaths(ctx, store, userID, profile)
 	if err != nil || !exists {
 		return nil, err
 	}
-	rootPrefix := strings.TrimSuffix(filepath.ToSlash(runtimeRoot), "/") + "/"
-	seen := map[string]struct{}{}
 	var jobs []productScheduleJob
 	for _, candidate := range paths {
-		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
-		if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") {
-			continue
-		}
-		if _, ok := seen[candidate]; ok {
-			continue
-		}
-		seen[candidate] = struct{}{}
 		raw, found, readErr := store.read(ctx, candidate)
 		if readErr != nil {
 			return nil, readErr

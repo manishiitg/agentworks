@@ -72,7 +72,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     if (!isOpen) return
     void Promise.all([
       workflowManifestApi.listWorkflowManifests(),
-      loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID),
+      loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }),
     ]).then(([response, crews]) => {
       if (cancelled) return
       const workflows: WorkflowItem[] = (response.workflows || []).map(workflow => ({

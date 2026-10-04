@@ -1691,6 +1691,7 @@ func init() {
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
+	ServerCmd.AddCommand(migrateCrewsToSharedRootCmd)
 	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
 
@@ -1774,8 +1775,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// never changes a registered owner), and written into product.json as information only; no symlink is followed
 	// (PLAT-450).
 	if ownerReport := migrateProductOwners(fsutil.WorkspaceDocsRoot()); ownerReport.Scanned > 0 || len(ownerReport.Failures) > 0 {
-		log.Printf("[OWNER_BACKFILL] scanned=%d registered=%d already_registered=%d conflicts=%d stamped=%d current=%d skipped=%d manifest_mismatch=%d unsafe=%d failures=%d",
-			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, len(ownerReport.Failures))
+		log.Printf("[OWNER_BACKFILL] scanned=%d registered=%d already_registered=%d conflicts=%d stamped=%d current=%d skipped=%d manifest_mismatch=%d unsafe=%d shared_orphans=%d failures=%d",
+			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, ownerReport.SharedOrphans, len(ownerReport.Failures))
 		for _, failure := range ownerReport.Failures {
 			log.Printf("[OWNER_BACKFILL] failure: %s", failure)
 		}
@@ -2428,6 +2429,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
 	// Admin inspection of Code (read-only, audited; admin checked in-handler).
 	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
