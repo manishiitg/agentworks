@@ -1,3 +1,8 @@
+## Builder chats treated as "provider changed" on every message — PLAT-437
+
+[PLAT-437](pulse_platform/chat-reliability/plat-437.md), regression of PLAT-425 (deployed), fixed on main; deploy pending. A workflow whose manifest
+names its own LLM ignores the request's provider, but the check compared it with the retained CLI: every send queued behind a running turn and relaunched the CLI.
+
 ## Scripted steps never self-heal in a run — PLAT-436
 
 [PLAT-436](pulse_platform/step-execution/plat-436.md), fixed on `main`, not
