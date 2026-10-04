@@ -1,3 +1,21 @@
+## Slot/folder mismatch falls back to the app account — PLAT-451
+
+[PLAT-451](pulse_platform/security-sandbox/plat-451.md), P1, open. The slot
+selector logs a refusal but returns the same value as a non-slot launch;
+slottmux then passes it to the app account's tmux.
+
+## Product owner migration follows cross-user manifest symlinks — PLAT-450
+
+[PLAT-450](pulse_platform/security-sandbox/plat-450.md), P1, open, reproduced.
+A startup backfill can stamp an attacker's identity into another user's
+unstamped product manifest through a symlink.
+
+## Editable project metadata selects another user's CLI identity — PLAT-449
+
+[PLAT-449](pulse_platform/security-sandbox/plat-449.md), P1, open, reproduced.
+A can edit their own Code's owner_id to B, remain owner-admitted, and select
+B's launch slot. Ownership is not yet protected as server authority.
+
 ## Relay migration history claims inapplicable upgrades were applied — PLAT-448
 
 [PLAT-448](pulse_platform/plans-contracts/plat-448.md), fixed on `main`, not

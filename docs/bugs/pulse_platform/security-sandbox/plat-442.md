@@ -171,3 +171,22 @@ loaded full run and passes alone and on rerun (timing). Workspace module: all gr
    changes the hash, so every existing CLI session of a Crew would start a fresh runtime (the digest input is kept for existing chats, see the
    comment in `cliruntime/workspace.go`). The migration must alias the old path as the digest input or accept one fresh session per Crew.
 7. `owner_id` backfill: a manifest copied between accounts keeps the old owner; `[OWNER_MISMATCH]` in the logs lists them before the move.
+
+## 2026-10-04 independent review
+
+Reviewed AgentWorks `a04b393c9` with provider `ae8e204` and mcpagent `ffc32d7`.
+Do not treat the current ownership/identity implementation as ready for rollout:
+[PLAT-449](plat-449.md) reproduces editable owner metadata selecting another
+user's slot; [PLAT-450](plat-450.md) reproduces cross-user manifest mutation
+through a symlink in startup backfill; [PLAT-451](plat-451.md) traces a slot
+mismatch falling through to app-account tmux rather than rejecting the launch.
+No implementation fix or live server change was made in this review.
+
+Parser/guard tests, workspace slots/utils tests, provider llmtypes/slotfs tests,
+and the focused application owner/run-as/multi-user tests passed. Temporary
+probes confirmed the first two findings and were removed after verification.
+The broader selected server suite also had three failures already documented
+in PLAT-435: `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
+`TestSalesCrewCatalogHasInstallableRoles`, `TestCrewProductSurfaceE2E`.
+This review did not rerun their old baseline or a real Linux CLI launch.
+The shared Crew-root move remains step 4, not implemented by these commits.
