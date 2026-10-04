@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -21,7 +23,7 @@ import (
 const ProfileID = "code"
 
 // ProjectsRoot is where a user's Code workspaces live, below their own tree.
-const ProjectsRoot = "Chats/Code/projects"
+const ProjectsRoot = workspaceref.CodeProjectsRoot
 
 const nameLimit = 60
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // A product's earlier conversations. The registry remembers every
@@ -62,19 +63,12 @@ func conversationTitleFrom(session *ChatHistorySession, fallback string) string 
 	return "New chat"
 }
 
-// normalizeConversationWorkspace compares workspaces the way chat_history
-// and the registry each record them: with or without the per-user prefix.
+// normalizeConversationWorkspace is the logical spelling of a workspace
+// path: ANY owner's _users/<id>/ prefix stripped (also under an absolute
+// document root). It answers "which product/project is this", never "may this
+// caller touch it"; access identity is workspacepathsMatchForUser.
 func normalizeConversationWorkspace(workspacePath string) string {
-	clean := strings.Trim(strings.TrimSpace(strings.ReplaceAll(workspacePath, "\\", "/")), "/")
-	// Runtime history may store the user-relative path while the resolved
-	// project binding is absolute under the document root. Compare both from
-	// the stable _users/<id>/ boundary.
-	if index := strings.Index(clean, "_users/"); index >= 0 && (index == 0 || clean[index-1] == '/') {
-		if rest := strings.SplitN(clean[index:], "/", 3); len(rest) == 3 {
-			clean = rest[2]
-		}
-	}
-	return clean
+	return workspaceref.MustParse(workspacePath).Logical()
 }
 
 func chatHistorySessionWorkspace(session ChatHistorySession) string {

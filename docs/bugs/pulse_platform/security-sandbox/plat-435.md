@@ -34,3 +34,10 @@ PLAT-434 fixed the Code/Crew UI-control instance.
   `SameFor(user, other)` / `SameAs` / `OwnedBy` / `OwnedByOrUnowned` (identity for access), `Physical(user)`,
   `PhysicalKeepOwner(user)`, `Project()` / `IsProject()` over the single `ProjectRoots` table, `SanitizeUserID` (one
   implementation). Table tests for every spelling; `reftest.BothSpellings` shared helper.
+- Migrated (commit 2): `normalizeConversationWorkspace` (Logical), `canonicalChatHistoryWorkspacePath` /
+  `pkg/common.CanonicalSessionWorkspace` (both `workspaceref.CanonicalFor`), `workspacePathsMatchForUser` (`SameFor`),
+  `projectProductForPath` (`Ref.Project`; single project-root table, `codeproduct.ProjectsRoot` takes it from there),
+  `sanitizeUserIDForPath` + `pkg/common` + `pkg/chathistory` sanitizers (`SanitizeUserID`), `ClassifySessionWorkspace`,
+  `CodeProjectRoot`.
+- Pre-existing failures on main 0cf79e4cf, unrelated: TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID,
+  TestSalesCrewCatalogHasInstallableRoles, TestCrewProductSurfaceE2E (native-subagents undeclared).

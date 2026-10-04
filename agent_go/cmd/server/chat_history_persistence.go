@@ -17,6 +17,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -1867,9 +1868,7 @@ func chatHistorySessionMatchesWorkspace(userID string, session ChatHistorySessio
 }
 
 func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
-	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
-	userPrefix := pathpkg.Join("_users", sanitizeUserIDForPath(userID)) + "/"
-	return strings.TrimPrefix(workspacePath, userPrefix)
+	return workspaceref.CanonicalFor(userID, workspacePath)
 }
 
 // workspacePathsMatchForUser compares the public workspace identity used by
@@ -1877,7 +1876,7 @@ func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
 // removes the authenticated user's own prefix; a path owned by another user
 // therefore never becomes equivalent to a public path.
 func workspacePathsMatchForUser(userID, left, right string) bool {
-	return canonicalChatHistoryWorkspacePath(userID, left) == canonicalChatHistoryWorkspacePath(userID, right)
+	return workspaceref.MustParse(left).SameFor(userID, workspaceref.MustParse(right))
 }
 
 // listWorkflowBuilderHistoryFromDisk returns builder chat sessions for a workflow.

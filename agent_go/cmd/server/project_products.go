@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // projectProduct is a product whose conversations live in per-project
@@ -26,7 +27,7 @@ type projectProduct struct {
 const crewProfileID = "work"
 
 var projectProducts = []projectProduct{
-	{ProfileID: crewProfileID, ProjectsRoot: "Chats/Work/projects", FallbackName: "Crew"},
+	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.CrewProjectsRoot, FallbackName: "Crew"},
 	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code"},
 }
 
@@ -50,17 +51,14 @@ func projectProductForProfile(profileID string) (projectProduct, bool) {
 // contains workspacePath (logical or physical _users/<owner>/ form) and the
 // project folder name. The path must address a project, not the root.
 func projectProductForPath(workspacePath string) (projectProduct, string, bool) {
-	canonical := normalizeConversationWorkspace(workspacePath)
+	root, project, ok := workspaceref.MustParse(workspacePath).Project()
+	if !ok {
+		return projectProduct{}, "", false
+	}
 	for _, product := range projectProducts {
-		prefix := product.ProjectsRoot + "/"
-		if !strings.HasPrefix(canonical, prefix) {
-			continue
+		if product.ProjectsRoot == root {
+			return product, project, true
 		}
-		project := strings.SplitN(strings.Trim(strings.TrimPrefix(canonical, prefix), "/"), "/", 2)[0]
-		if project == "" {
-			return projectProduct{}, "", false
-		}
-		return product, project, true
 	}
 	return projectProduct{}, "", false
 }

@@ -203,3 +203,10 @@ func TestProject(t *testing.T) {
 		}
 	}
 }
+
+func TestWithLogicalKeepsOwner(t *testing.T) {
+	r := MustParse("_users/alice/Chats/Code/projects/p/src").WithLogical("Chats/Code/projects/p")
+	if r.Owner() != "alice" || r.Logical() != "Chats/Code/projects/p" {
+		t.Errorf("%+v", r)
+	}
+}

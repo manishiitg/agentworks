@@ -1,23 +1,16 @@
 package server
 
 import (
-	"fmt"
 	"log"
-	"regexp"
-)
 
-// safeUserIDForPath matches the same character set the workspace utils package uses for user IDs.
-// Keeping it in sync with workspace/utils/path.go's validUserIDRegex avoids divergence.
-var safeUserIDForPath = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+)
 
 // sanitizeUserIDForPath returns a userID safe to use as a filesystem path segment.
 // Falls back to "default" when the input is empty, too long, or contains characters
 // outside the allowed set. Used to route per-user folders under _users/<id>/.
 func sanitizeUserIDForPath(userID string) string {
-	if userID == "" || len(userID) > 128 || !safeUserIDForPath.MatchString(userID) {
-		return "default"
-	}
-	return userID
+	return workspaceref.SanitizeUserID(userID)
 }
 
 // perUserChatsFolderFor returns the workspace-relative Chats folder path for a given user,
@@ -25,7 +18,7 @@ func sanitizeUserIDForPath(userID string) string {
 // the older global "Chats/" folder. Every multi-agent chat session defaults to this path,
 // and it's propagated to sub-agents via ChatsFolderKey context so shell commands resolve correctly.
 func perUserChatsFolderFor(userID string) string {
-	return fmt.Sprintf("_users/%s/Chats", sanitizeUserIDForPath(userID))
+	return workspaceref.PhysicalPath(userID, "Chats")
 }
 
 // ConditionalWriteGrant is a declarative spec for extending a multi-agent chat

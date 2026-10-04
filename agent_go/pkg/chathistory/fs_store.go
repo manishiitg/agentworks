@@ -9,13 +9,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // FilesystemStore is the filesystem-backed implementation of Store. It owns
@@ -45,14 +45,9 @@ type FilesystemStore struct {
 
 // sanitizeUserID returns a safe folder segment for a user ID. Empty or
 // invalid IDs collapse to "default".
-var userIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 func sanitizeUserID(userID string) string {
-	userID = strings.TrimSpace(userID)
-	if userID == "" || len(userID) > 128 || !userIDPattern.MatchString(userID) {
-		return "default"
-	}
-	return userID
+	return workspaceref.SanitizeUserID(strings.TrimSpace(userID))
 }
 
 // NewFilesystemStore constructs a FilesystemStore rooted at the given

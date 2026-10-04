@@ -209,3 +209,28 @@ func (r Ref) IsProject() bool {
 	_, _, ok := r.Project()
 	return ok
 }
+
+// CanonicalFor is the identity key of a workspace path for user: logical when
+// the path is public or carries the user's own prefix, the clean physical
+// spelling when another user owns it, "" for an empty or invalid path. Two
+// paths are the same folder for user exactly when their keys are equal. Use
+// SameFor to compare; use this only where a string key is needed (maps,
+// stored fields).
+func CanonicalFor(user, p string) string {
+	r, ok := Parse(p)
+	switch {
+	case !ok:
+		return ""
+	case r.usersRoot:
+		return UsersDir
+	case r.OwnedByOrUnowned(user):
+		return r.logical
+	}
+	return path.Join(UsersDir, r.owner, r.logical)
+}
+
+// WithLogical returns a Ref with the same owner and another logical path
+// (for example the project root of a path inside a project).
+func (r Ref) WithLogical(logical string) Ref {
+	return Ref{owner: r.owner, logical: strings.Trim(path.Clean("/"+logical), "/")}
+}
