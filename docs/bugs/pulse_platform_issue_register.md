@@ -34,8 +34,9 @@ view list, so the page's connect call was refused (`invalid_state`) and the agen
 
 ## One workspace path type instead of `_users/` string handling everywhere — PLAT-435
 
-[PLAT-435](pulse_platform/security-sandbox/plat-435.md), open (proposal). The logical/physical path mix-up is the root of a long series of
-multi-user-only bugs: 82 files, 17 raw prefix checks, three disagreeing normalisers.
+[PLAT-435](pulse_platform/security-sandbox/plat-435.md), fixed on main for agent_go (package `pkg/workspaceref`, guard
+test), not deployed. The `workspace/` module and a multi-user e2e fixture are left; PLAT-440 tracks unsanitized ids.
+
 
 ## Relays use external API triggers without timed schedules — PLAT-433
 

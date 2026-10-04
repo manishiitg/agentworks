@@ -1,6 +1,6 @@
 # PLAT-435 — One workspace path type: stop the `_users/<id>/` prefix bugs from coming back
 
-Status: in progress (owner approved 2026-10-04; package built, migration under way). Opened 2026-10-04 after PLAT-434, the latest of a long series.
+Status: agent_go migrated and guarded on main (2026-10-04), not deployed; workspace/ module and multi-user e2e fixture left (below). Opened 2026-10-04 after PLAT-434, the latest of a long series.
 
 ## Why it keeps coming back
 
@@ -71,3 +71,24 @@ PLAT-434 fixed the Code/Crew UI-control instance.
   whitespace ignored) and on any `workspaceref.UsersDir` use outside an explicit allowlist (9 storage/migration files,
   each with its reason; `cmd/testing/` e2e fixtures are the only literal allowlist entry). It also fails when an
   allowlist entry stops needing its exemption.
+
+## Result (2026-10-04)
+
+Counts in production agent_go Go files, before -> after: files mentioning `_users` 90 -> 72 (comments included);
+non-comment `_users` lines 118 -> 27 (all `workspaceref.UsersDir` uses in the 9 allowlisted storage/migration files, the
+`cmd/testing` fixtures and the package itself); raw HasPrefix/TrimPrefix/Contains/Split checks on `_users` 38 -> 0.
+Tests: `cmd/server` full run has 13 failures, the same 13 that fail on the pre-435 baseline 5f14ea26b (Relay catalog,
+Sales catalog, product-surface e2e, provider accounts, playbooks, native terminal, tier/LLM config, Code caller);
+everything touched by this work passes.
+
+## Left
+
+- `workspace/` module (separate Go module, own copy of the rule): `utils.UsersDirectory`, `handlers/query.go:240`
+  (other-user refusal), `handlers/documents.go:508`, `server.go:68` (default folders), `skill_sync.go:186` (regexp on
+  `_users/<id>/Chats/<product>/projects/<p>/skills`), `slots/slots.go:246` (Code path shape), `slots/config.go:130`
+  (docs-root prefix), and `utils.SanitizeUserID` (falls back to `DEFAULT_USER_ID`, not `"default"`: PLAT-440). These are
+  access checks; migrating them needs `workspaceref` importable from that module (move it to a shared module) and a
+  behaviour review, so they are not done here.
+- Item 4 of the proposal: run the e2e suites on a multi-user fixture.
+- PLAT-440: call sites that build a physical path from an unsanitized user id (`PhysicalPathOf`).
+- Storage/migration files still name the directory through `workspaceref.UsersDir` (allowlist in `guard_test.go`).
