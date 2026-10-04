@@ -48,5 +48,9 @@ Relays, while also providing navigation when the shared sidebar is hidden.
 
 ## Left
 
+[PLAT-464](plat-464.md) extends this navigation with clickable footer icons and
+browse/product/menu entries at the bottom of the default scrollable list;
+users no longer need to search or type a scope to discover these destinations.
+
 Deployment and verification on deployed product surfaces. PLAT-459 remains
 open independently.

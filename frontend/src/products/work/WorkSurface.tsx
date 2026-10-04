@@ -507,6 +507,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId }: { projectId: s
         isBlank={false}
         displayName={tab.tabId === canonicalTabId ? projectName : tab.name}
         titleOverride={tab.tabId === canonicalTabId ? projectName : undefined}
+        productSurface={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileId === 'code' ? 'code' : 'work') : undefined}
         onTabClick={selectTab}
         onCloseTab={closeHistoryTab}
       />)}

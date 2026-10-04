@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { MessageSquare, Pencil, X } from 'lucide-react'
 import type { ChatTab } from '../../stores/useChatStore'
+import type { ProductSurface } from '../../products/productSurfaceConfig'
+import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'>
@@ -9,6 +11,7 @@ export interface ChatTabPillProps {
   isBlank: boolean
   displayName?: string
   titleOverride?: string
+  productSurface?: ProductSurface
   readOnly?: boolean
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
@@ -25,7 +28,7 @@ const TAB_STATUS_DOT: Record<'busy' | 'completed' | 'ready', { cls: string; labe
 
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
-  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride,
+  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface,
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false,
 }) => {
   const displayName = displayNameOverride ?? tab.name
@@ -82,6 +85,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
+      {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       {!isBlank && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} />}
       {isRenaming ? (
         <input

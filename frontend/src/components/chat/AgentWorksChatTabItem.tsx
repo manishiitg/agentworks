@@ -3,6 +3,7 @@ import type { ChatTab } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkflowReadOnly } from '../../utils/workflowPermissions'
 import { ChatTabPill } from './ChatTabPill'
+import type { ProductSurface } from '../../products/productSurfaceConfig'
 
 export interface AgentWorksChatTabItemProps {
   tab: ChatTab
@@ -11,6 +12,7 @@ export interface AgentWorksChatTabItemProps {
   isBlank: boolean
   displayName?: string
   titleOverride?: string
+  productSurface?: ProductSurface
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>

@@ -221,6 +221,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 isBlank={false}
                 displayName={isPersistentChat ? workflowName : workflowTabDisplayName(tab, isBlank)}
                 titleOverride={isPersistentChat ? workflowName : undefined}
+                productSurface={isPersistentChat ? (isRelaySurface ? 'relays' : 'agentworks') : undefined}
                 onTabClick={handleTabClick}
                 onCloseTab={handleCloseTab}
                 onMakeInteractive={handleMakeInteractive}

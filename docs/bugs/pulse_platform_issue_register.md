@@ -1,3 +1,15 @@
+## Product icon on the first chat tab — PLAT-465
+
+[PLAT-465](pulse_platform/frontend-chat/plat-465.md), fixed on `main`, not deployed:
+the persistent workflow/Relay, Crew, Code and Vault chat tab shows its product
+mark beside the name while retaining the status dot.
+
+## Clickable quick-switcher navigation — PLAT-464
+
+[PLAT-464](pulse_platform/frontend-chat/plat-464.md), fixed on `main`, not deployed:
+footer icons replace visible typed scope hints; browse lists, products and
+menu destinations also appear below work in the scrollable list.
+
 ## Quick switching across running work, products and menus — PLAT-462
 
 [PLAT-462](pulse_platform/frontend-chat/plat-462.md), fixed on `main`, not deployed:

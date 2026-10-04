@@ -85,6 +85,7 @@ function useCapLayerChat() {
 function GatewayChatTab({ tabId, chatOpen, openChat }: { tabId: string | null; chatOpen: boolean; openChat: () => void }) {
   const tab = useChatStore(state => tabId ? state.chatTabs[tabId] : undefined)
   return tab ? <AgentWorksChatTabItem tab={tab} isActive={chatOpen} canClose={false} isBlank={false}
+    productSurface="mcp-gateway"
     onTabClick={() => { openChat(); activateTab(tab.tabId) }} onCloseTab={() => {}} /> : null
 }
 

@@ -1,11 +1,12 @@
-import { PRODUCT_SURFACE_LABELS, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, PRODUCT_SURFACE_LABELS, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
-export type NavigationAction = 'active' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp'
+export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products'
+export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
   id: string
@@ -17,6 +18,7 @@ export type QuickNavigationItem = {
   hasLocalActivity: false
   surface?: ProductSurface
   action?: NavigationAction
+  scope?: QuickNavigationScope
 }
 
 const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway']
@@ -35,7 +37,15 @@ export function quickNavigationItems(
   const menu = (action: NavigationAction, label: string, description: string) => {
     items.push({ ...common, type: 'menu', id: `menu:${action}`, label, subtitle: `Menu · ${description}`, isActive: false, action })
   }
-  menu('active', 'Active work', 'Running sessions and work waiting for input')
+  const browse = (scope: QuickNavigationScope, label: string) => {
+    items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
+  }
+  browse('active', 'Running work')
+  if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
+  if (products.includes('relays')) browse('relays', 'All Relays')
+  if (products.includes('work')) browse('crew', 'All Crews')
+  if (products.includes('code')) browse('code', 'All Code projects')
+  if (products.length) browse('products', 'All products')
   if (products.includes('agentworks')) menu('activity', 'Activity', 'Automation activity and recent runs')
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
     menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
@@ -44,6 +54,10 @@ export function quickNavigationItems(
     menu('providers', 'Providers', 'AI accounts, models and costs')
     if (user?.is_admin) menu('users', 'Users and access', 'Manage users and permissions')
     if (user?.is_admin || user?.is_code_reviewer) menu('mcp', 'Connect an AI agent (MCP)', 'Connect an agent to this server')
+  }
+  if (current === 'mcp-gateway' && products.includes(current) && gatewayAdminUrl() && user?.is_admin) {
+    menu('vault-audit', 'Vault audit logs', 'Vault · audit and analysis')
+    menu('vault-connect', 'Vault MCP endpoint', 'Vault · connection details')
   }
   return items
 }
@@ -58,7 +72,13 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     openProductWorkspace(item.surface)
     return true
   }
-  if (!item.action || item.action === 'active') return false
+  if (!item.action || item.scope) return false
+  if (item.action === 'vault-audit' || item.action === 'vault-connect') {
+    const panel = item.action === 'vault-audit' ? 'audit' : 'connect'
+    openProductWorkspace('mcp-gateway')
+    window.dispatchEvent(new CustomEvent('vault-open-panel', { detail: panel }))
+    return true
+  }
   const products = visibleProductSurfaceIDs(user?.allowed_products)
   const destinations = item.action === 'activity' ? ['agentworks']
     : item.action === 'schedules' ? ['agentworks', 'work'] : GLOBAL_PAGE_SURFACES

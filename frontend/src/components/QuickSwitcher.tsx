@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, Plug, Search, Users } from 'lucide-react'
+import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -21,8 +21,10 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { intersectAllowedProductSurfaces, isEnabledProductSurface } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
-import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem } from '../utils/quickNavigation'
+import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem, type QuickNavigationScope } from '../utils/quickNavigation'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
+import { ProductSurfaceIcon } from './ProductSurfaceIcon'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 interface QuickSwitcherProps {
   isOpen: boolean
@@ -184,12 +186,23 @@ const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
   return ` · active: ${activeSessionStatusLabel(session)}${sourcePart}${current} · ${sessionShortId(session.session_id)}`
 }
 
+function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
+  const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : item.scope === 'code' ? 'code' : undefined)
+  if (surface) return <ProductSurfaceIcon surface={surface} />
+  const Icon = item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
+    : item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug
+    : item.action === 'schedules' ? CalendarClock : item.action === 'activity' ? NotebookText
+    : item.action === 'vault-audit' ? ScrollText : item.action === 'vault-connect' ? PlugZap : Activity
+  return <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+}
+
 export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   isOpen,
   onClose,
   initialQuery = '',
 }) => {
   const [query, setQuery] = useState('')
+  const [scopeFilter, setScopeFilter] = useState<QuickNavigationScope | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -217,6 +230,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const user = useAuthStore(state => state.user)
   const navigationItems = useMemo(() => quickNavigationItems(user, productSurface), [user, productSurface])
+  const footerItems = navigationItems.filter(item => item.type === 'menu')
   const codeAvailable = useMemo(
     () => isEnabledProductSurface('code') && intersectAllowedProductSurfaces(['code'], allowedProducts).includes('code'),
     [allowedProducts],
@@ -249,6 +263,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery)
+      setScopeFilter(null)
       setSelectedIndex(0)
       // Paint from the subscribed cache immediately. The normal TTL still
       // refreshes stale data without forcing a request into the open path.
@@ -458,23 +473,22 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         if (isCodeProductSession(item.session)) return visibleProducts.has('code')
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
-    }), ...navigationItems]
+    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope)]
   }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems])
 
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    if (!rawQuery) return allItems.filter(item => item.type !== 'product' && item.type !== 'menu' && (item.type !== 'active' || !item.activeScopeOnly))
-
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|chats?|tabs|crew|code|products?|menus?)\s*/)
-    const scope = scopeMatch?.[1] || null
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?)\s*/)
+    const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
       ? allItems.filter(item => {
           // Every running session once: its own row, plus tabs whose only
           // activity is local (no server session yet).
           if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
-          if (scope === 'workflow' || scope === 'workflows') return item.type === 'workflow'
+          if (scope === 'workflow' || scope === 'workflows') return item.type === 'workflow' && item.preset.workflowKind !== 'relay'
+          if (scope === 'relay' || scope === 'relays') return item.type === 'workflow' && item.preset.workflowKind === 'relay'
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu'
           if (scope === 'crew') return item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
@@ -504,7 +518,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     })
 
     return filtered
-  }, [query, allItems])
+  }, [query, scopeFilter, allItems])
 
   // Read filteredItems via a ref so this effect does NOT fire on every new
   // array reference — only on real user intent changes (query, mode, open).
@@ -512,16 +526,16 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const filteredItemsRef = useRef(filteredItems)
   filteredItemsRef.current = filteredItems
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() && !scopeFilter) {
       const items = filteredItemsRef.current
       const runningAlternative = items.findIndex(item => itemHasRunningWork(item) && !item.isActive)
       const firstRunning = items.findIndex(itemHasRunningWork)
-      const firstNonActive = items.findIndex(item => !item.isActive)
+      const firstNonActive = items.findIndex(item => item.type !== 'menu' && item.type !== 'product' && !item.isActive)
       setSelectedIndex(runningAlternative >= 0 ? runningAlternative : firstRunning >= 0 ? firstRunning : firstNonActive >= 0 ? firstNonActive : 0)
     } else {
       setSelectedIndex(0)
     }
-  }, [isOpen, isChatMode, isWorkflowMode, query])
+  }, [isOpen, isChatMode, isWorkflowMode, query, scopeFilter])
 
   // Clamp (don't reset) when the list length changes so a narrowing filter
   // keeps a valid index without discarding the user's position.
@@ -541,7 +555,14 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
     if (item.type === 'product' || item.type === 'menu') {
-      if (item.action === 'active') { setQuery('@active '); setSelectedIndex(0); return }
+      if (item.scope) {
+        const current = useProductSurfaceStore.getState().productSurface
+        if (!quickNavigationItems(useAuthStore.getState().user, current).some(candidate => candidate.id === item.id)) return
+        setScopeFilter(item.scope); setQuery(''); setSelectedIndex(0)
+        if (listRef.current) listRef.current.scrollTop = 0
+        searchInputRef.current?.focus()
+        return
+      }
       if (openQuickNavigation(item)) onClose()
       return
     }
@@ -621,7 +642,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   if (!isOpen) return null
 
   const placeholder = 'Search running work, projects, products, or menus...'
-  const emptyText = query ? 'No matching items' : 'No work to switch to. Search for a product or menu.'
+  const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
@@ -639,6 +660,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
+          {scopeFilter && <button type="button" aria-label="Show all work and navigation" title="Clear filter"
+            onClick={() => { setScopeFilter(null); if (listRef.current) listRef.current.scrollTop = 0; searchInputRef.current?.focus() }}
+            className="flex shrink-0 items-center gap-1 rounded bg-secondary px-2 py-1 text-xs text-secondary-foreground">
+            {navigationItems.find(item => item.scope === scopeFilter)?.label}<X className="h-3 w-3" aria-hidden="true" />
+          </button>}
           <input
             ref={searchInputRef}
             type="text"
@@ -688,7 +714,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   onMouseEnter={() => setSelectedIndex(index)}
                   onMouseDown={e => { e.preventDefault(); void handleSelect(item) }}
                 >
-                  {item.type === 'crew'
+                  {item.type === 'product' || item.type === 'menu'
+                    ? <QuickNavigationIcon item={item} />
+                    : item.type === 'crew'
                     ? <EntityIdentityIcon icon={item.icon} label={item.label} />
                     : <ItemIcon className={`w-4 h-4 flex-shrink-0 ${item.isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`} />}
                   <div className="flex-1 min-w-0">
@@ -697,7 +725,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
                       </span>
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (
@@ -731,12 +759,24 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
         {/* Footer */}
         <div className="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50">
-          <div className="px-4 py-2 text-[11px] text-gray-400 dark:text-gray-500 flex items-center justify-between">
+          <div className="px-4 py-2 text-[11px] text-gray-400 dark:text-gray-500 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex items-center gap-3 min-w-0">
               <span><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">↑↓</kbd> navigate</span>
               <span><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">↵</kbd> switch</span>
             </div>
-            <span className="hidden sm:inline flex-shrink-0">@active @workflows @crew{codeAvailable ? ' @code' : ''} · @products @menus</span>
+            <TooltipProvider delayDuration={150}>
+              <nav aria-label="Quick navigation shortcuts" className="order-last flex w-full min-w-0 flex-wrap items-center justify-center gap-1 sm:order-none sm:w-auto sm:flex-1">
+                {footerItems.map(item => <Tooltip key={item.id}>
+                  <TooltipTrigger asChild><button type="button" aria-label={item.label} title={item.label}
+                    aria-pressed={item.scope ? scopeFilter === item.scope : undefined}
+                    onClick={() => { void handleSelect(item) }}
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${item.scope && scopeFilter === item.scope ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+                    <QuickNavigationIcon item={item} />
+                  </button></TooltipTrigger>
+                  <TooltipContent side="top">{item.label}</TooltipContent>
+                </Tooltip>)}
+              </nav>
+            </TooltipProvider>
             <span className="flex-shrink-0"><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">esc</kbd> close</span>
           </div>
         </div>

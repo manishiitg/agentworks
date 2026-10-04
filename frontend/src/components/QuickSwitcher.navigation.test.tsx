@@ -50,7 +50,7 @@ async function renderNavigation(query: string, allowed = ['agentworks', 'work', 
   return { host, onClose }
 }
 
-it('defaults to running workflows, Crews, Code and Relays before idle work, without product or menu rows', async () => {
+it('defaults to running workflows, Crews, Code and Relays before idle work, with browse and navigation rows at the bottom', async () => {
   const { host } = await renderNavigation('', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'code' })
     useChatStore.setState({ activeTabId: 'idle', chatTabs: {
@@ -67,15 +67,18 @@ it('defaults to running workflows, Crews, Code and Relays before idle work, with
     ] as never })
   })
   const rows = [...host.querySelectorAll('[data-navigation-id]')]
-  expect(rows).toHaveLength(5)
+  expect(rows.length).toBeGreaterThan(5)
   expect(rows.slice(0, 4).map(row => row.textContent)).toEqual(expect.arrayContaining([
     expect.stringContaining('Running workflow'), expect.stringContaining('Running Relay'),
     expect.stringContaining('Running Crew'), expect.stringContaining('Running Code'),
   ]))
   expect(rows[4].textContent).toContain('Idle current')
   expect(rows[0].className).toContain('bg-blue-50')
-  expect(host.querySelector('[data-navigation-id^="product:"]')).toBeNull()
-  expect(host.querySelector('[data-navigation-id^="menu:"]')).toBeNull()
+  expect(rows[5].getAttribute('data-navigation-id')).toBe('browse:active')
+  expect(host.querySelector('[data-navigation-id="browse:workflows"]')).not.toBeNull()
+  expect(host.querySelector('[data-navigation-id="browse:relays"]')).not.toBeNull()
+  expect(host.querySelector('[data-navigation-id="menu:providers"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Quick navigation shortcuts"]')?.textContent).not.toContain('@')
 })
 
 it('keeps a running scheduled Crew visible when its view-only tab has no project row', async () => {
@@ -85,8 +88,59 @@ it('keeps a running scheduled Crew visible when its view-only tab has no project
       scheduled: { tabId: 'scheduled', sessionId, name: 'Scheduled Crew', metadata: { agentProfileId: 'work', isScheduledRun: true, isViewOnly: true } },
     } as never, activeSessionsCache: [{ session_id: sessionId, status: 'running', title: 'Scheduled Crew' }] as never })
   })
-  expect(host.querySelectorAll('[data-navigation-id]')).toHaveLength(1)
+  expect(host.querySelector('[data-navigation-id]')?.getAttribute('data-navigation-id')).toBe(`active:work:project:crew:trigger:run`)
   expect(host.querySelector('[data-navigation-id^="active:"]')?.textContent).toContain('Scheduled Crew')
+})
+
+it('browses all workflows or Relays from footer icons without requiring typed scopes', async () => {
+  const { host, onClose } = await renderNavigation('', undefined, true, () => {
+    useGlobalPresetStore.setState({ workflowPresets: [
+      { id: 'workflow', label: 'Daily report', selectedFolder: { filepath: 'Workflow/report' } },
+      { id: 'relay', label: 'Invoice Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/invoice' } },
+    ] as never })
+  })
+  const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
+  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All workflows"]')!.click())
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow'])
+  expect(host.querySelector('input')!.value).toBe('')
+  expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All workflows')
+  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Relays"]')!.click())
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay'])
+  expect(onClose).not.toHaveBeenCalled()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())
+  expect(host.querySelector('[data-navigation-id="browse:crew"]')).not.toBeNull()
+})
+
+it.each([
+  ['Users and access', 'users'], ['Connect an AI agent (MCP)', 'mcp'], ['Providers', 'providers'],
+])('opens %s directly from its footer icon', async (label, destination) => {
+  const { host, onClose } = await renderNavigation('')
+  useAppStore.setState({ adminPage: null })
+  useLLMStore.setState({ showLLMModal: false })
+  await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="Quick navigation shortcuts"] button[aria-label="${label}"]`)!.click())
+  if (destination === 'providers') expect(useLLMStore.getState().showLLMModal).toBe(true)
+  else expect(useAppStore.getState().adminPage).toBe(destination)
+  expect(onClose).toHaveBeenCalled()
+})
+
+it.each(['activity', 'schedules'])('opens %s from the scrollable navigation rows', async action => {
+  const { host, onClose } = await renderNavigation('')
+  useAppStore.setState({ showWorkflowsOverview: false, showSchedulesOverview: false })
+  await act(async () => host.querySelector(`[data-navigation-id="menu:${action}"]`)!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect(useProductSurfaceStore.getState().productSurface).toBe('agentworks')
+  expect(action === 'activity' ? useAppStore.getState().showWorkflowsOverview : useAppStore.getState().showSchedulesOverview).toBe(true)
+  expect(onClose).toHaveBeenCalled()
+})
+
+it('shows Vault-specific icons only in Vault and opens its audit page', async () => {
+  const { host } = await renderNavigation('', undefined, true, () => useProductSurfaceStore.setState({ productSurface: 'mcp-gateway' }))
+  const opened = vi.fn()
+  window.addEventListener('vault-open-panel', opened)
+  try {
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Quick navigation shortcuts"] button[aria-label="Vault audit logs"]')!.click())
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ detail: 'audit' }))
+    expect(quickNavigationItems(useAuthStore.getState().user, 'code').some(item => item.action === 'vault-audit')).toBe(false)
+  } finally { window.removeEventListener('vault-open-panel', opened) }
 })
 
 it('lists every available product and opens its workspace from another product', async () => {

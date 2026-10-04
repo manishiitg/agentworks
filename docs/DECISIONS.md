@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Quick switching exposes navigation by click, and chat tabs identify their product
+
+Keep running work first, but append browse lists, products and allowed menus
+so users can scroll and click. Replace visible typed scope hints with footer
+icons and named filters, including separate workflow and Relay lists. Put the
+owning product mark on the first persistent chat tab beside its name and
+status dot. These controls share the browser and desktop implementation.
+Tickets: [PLAT-464](bugs/pulse_platform/frontend-chat/plat-464.md),
+[PLAT-465](bugs/pulse_platform/frontend-chat/plat-465.md).
+
 ### 2026-10-04 — Quick navigation keeps running work first and reaches every product
 
 Ctrl/Cmd+K opens from every product. Its default list prioritizes running
