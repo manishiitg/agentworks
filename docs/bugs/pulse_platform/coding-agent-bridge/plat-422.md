@@ -4,11 +4,11 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on `main` (provider `b75b7b5`, pinned here); deploy to Excellence and RTS in progress |
+| State | fixed on `main` (provider `04645b8`, pinned here); `b75b7b5` (pane-notice count) was live on Excellence `agents-669e775b` and is superseded; deploy of `04645b8` to Excellence and RTS in progress |
 | Severity | P1 (duplicate runs and cost on every Muse message; answers arrived late) |
 | Date | 2026-10-04 |
 | Owner | coding-agent-bridge |
-| Related | PLAT-417 (the refused-message retry), PLAT-421 |
+| Related | PLAT-417 (the refused-message retry), PLAT-421, PLAT-352 (durable submit acknowledgement; `docs/refactor/durable_ack_p0.md`) |
 
 ## Problem
 
@@ -22,12 +22,17 @@ After one real refusal every later submit saw that old notice, was judged refuse
 
 ## Fix
 
-`museSubmitRejected` now gets the pane from just before Enter. `museRefusedThisSubmit`: the notice must be on screen and either be new (more notices than before Enter) or the draft must still be in the input box
-(the area between the last two rules above the status line); an accepted message empties that box. Test `TestMuseRefusedThisSubmit` uses panes shaped like the live one (stale notice with an empty input, a new notice, a stale
-notice scrolled away with the draft left, no rules in the pane).
+First patch (`b75b7b5`): the notice had to be new or the draft still in the input box. It still let pane text drive a retype, against the durable-ack decision
+(`docs/refactor/durable_ack_p0.md`: attempt once, report the truth; "pane string matching alone must never decide a user-visible delivery failure once submission may have occurred"; "Blind Enter retries ... risked duplicate submissions").
+
+Final fix (`04645b8`): `museSendPrompt` submits once. When the notice shows after Enter it is logged (`[MUSE_SUBMIT_NOTICE]`) and nothing is cleared or retyped; `museWaitIntake` observes the native
+`session.jsonl` for the `runtime.user_intent.accepted` record (60 s, 5 min when Muse has started a session) and reports "delivery unconfirmed" if it never comes. The retype loop, its counter and the pane-count helpers are gone.
+Test `TestMuseSendPromptDoesNotRetypeAfterARefusalNotice`: a stand-in `tmux` that shows the notice after Enter must see the message typed once, submitted once, no clear (the old code loops, waits and retypes).
 
 ## Left
 
 - Deploy and check on Excellence: one message shows once in the Muse terminal and answers in seconds, not minutes.
 - Why the first submit after a resume is refused for up to about 90 s ("another run is still starting"): cold TUI start or the resumed run re-attaching; not measured yet. The wrapper's update-check stamp is not the cause (PLAT-417 now sets `MUSE_NO_AUTO_UPDATE=1`).
 - Muse already has the earlier duplicates in its saved conversation for the owner's test chat.
+- If Muse truly refuses a message while a resumed run is still starting (the text then stays in its input), no intake record arrives and the turn ends as unconfirmed; a structured "Muse is ready" record to wait on before submitting has not been found (follow-up).
+- Other CLIs: their pane-text use has not been audited for retries yet; their submit paths are covered by the same durable-ack rule in the document.
