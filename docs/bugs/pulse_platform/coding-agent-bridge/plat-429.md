@@ -31,6 +31,7 @@ The ambiguous line was in the product section "Platform actions": "Discover tool
 The 2026-10-01 prompt reduction (DECISIONS "Keep prompt contracts upfront and load procedures through skills"; Code -21%, Crew Builder -40%, workflow chats about -40%) gave discovery ONE owner: mcpagent's runtime block "bridge tool routing"
 (`coding_agent_bridge_routing_prompt.go`: direct runtime tools, "find other tools with search_tools", schema and route via `get_api_spec`), with a short pointer in each product prompt. The failing text was a pointer that contradicted the owner.
 So the fix keeps one owner and only corrects the pointers, in as few words as possible:
+- Owner (mcpagent, all CLIs): the sentence above, once.
 - Code and Crew system prompts: "Find platform tools with `search_tools` (see bridge tool routing); a tool missing from your own tool list is not missing." (Code prompt 2076 -> 1826 bytes, Crew 4178 -> 3965, smaller than before the incident.)
 - The shared `work-ui-control` skill (Crew and Code): two lines saying these are bridge tools found with `search_tools(query="ui")`.
 - Tests: `TestCodePromptNamesTheBridgeToolDiscovery`, `TestCrewPromptNamesTheBridgeToolDiscovery` and the skill expectations in `product_config_test.go`.
@@ -49,6 +50,5 @@ the only other "tool search" wording is about step tool selection in `optimize-p
 ## Left
 
 - Deploy; then ask Codex, Claude and Muse in a Code chat to open the Costs panel and check each finds and calls `perform_ui_action` through the bridge.
-- Optional, in mcpagent (the owner, another repo): add one sentence to the runtime block, "a tool missing from your own tool list or your runtime's tool search is not missing: use search_tools"; it would reach every CLI chat of every product (about 100 bytes), so it is a decision for the owner.
 - Relays has no contract of its own for these tools: it reuses the Workflow views, and its right panel (workflow panel on, files panel off) may not match them; not checked in the UI.
 - Other platform tools have the same shape (a CLI that only checks its direct tool list will think they are missing); the general bridge guidance already says to use `search_tools`.
