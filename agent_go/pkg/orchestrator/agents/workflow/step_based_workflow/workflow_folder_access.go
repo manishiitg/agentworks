@@ -158,7 +158,7 @@ func appendWorkflowFolderAccess(workspacePath string, readPaths, writePaths []st
 	for key, path := range workflowtypes.CrewAttachmentEnvKeys(live) {
 		env[key] = path
 	}
-	enabled := len(kbRead) == 0 || kbRead[0]
+	enabled := (len(kbRead) == 0 || kbRead[0]) && workspacePlatformStoresEnabled(workspacePath)
 	env["WORKFLOW_KB_ACCESS"] = "none"
 	if enabled {
 		env["WORKFLOW_KB_ACCESS"] = "read"

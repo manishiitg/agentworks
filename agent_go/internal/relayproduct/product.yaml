@@ -1,6 +1,10 @@
 schema_version: 2
 dependencies: {}
 
+# Agent/script chains use inputs and outputs, without workflow DB, KB or learnings.
+execution:
+  platform_stores: false
+
 # Relay authoring reuses the workflow Builder runtime, graph canvas, triggers,
 # and executor. This manifest owns built-in chat prompts, skills, and tool
 # surfaces. An individual Relay's authored step prompts and selected runtime

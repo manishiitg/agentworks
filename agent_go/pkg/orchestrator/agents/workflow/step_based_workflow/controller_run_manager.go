@@ -295,7 +295,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createRunFolderStructure(ctx context.
 
 	// Create db folder at workspace root (always enabled, no preset toggle).
 	// Structured JSON data shared across all runs and groups. See DBFolderName in controller_execution.go.
-	{
+	if hcpo.platformStoresEnabled() {
 		workspacePath := hcpo.GetWorkspacePath()
 		if err := createFolderViaAPI(ctx, DBFolderName, workspacePath); err != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to create db folder via API: %v (continuing)", err))

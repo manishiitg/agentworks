@@ -1,3 +1,9 @@
+## Relay execution inherited workflow DB/KB/learnings — PLAT-447
+
+[PLAT-447](pulse_platform/plans-contracts/plat-447.md), fixed on `main`, not
+deployed: product.yaml disables platform stores for every Relay agent/script
+execution, including script tools, Builder tests and published versions.
+
 ## Crew CLI turns run as the app account, not the owner's slot — PLAT-446
 
 [PLAT-446](pulse_platform/security-sandbox/plat-446.md), decided 2026-10-04: keep the app account, nothing to build. Found in PLAT-442 step 2: a Crew CLI starts in an isolated

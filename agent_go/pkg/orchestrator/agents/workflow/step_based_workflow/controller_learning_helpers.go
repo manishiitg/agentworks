@@ -126,6 +126,9 @@ func validateExecutionLLMChange(pinned bool, reason string) error {
 func (hcpo *StepBasedWorkflowOrchestrator) LoadGlobalLearningHistory(
 	ctx context.Context,
 ) (string, error) {
+	if !hcpo.platformStoresEnabled() {
+		return "", nil
+	}
 	globalLearningsPath := hcpo.getLearningsBasePath() + "/" + GlobalLearningID
 
 	// Read learning files from global folder

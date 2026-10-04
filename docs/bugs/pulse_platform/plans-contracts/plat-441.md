@@ -44,6 +44,5 @@ JSON result contract.
 
 ## Left
 
-- Relay agents still receive the workflow DB tools and default KB/learnings read
-  at run time (shared defaults). Blocking them at run time is an owner decision:
-  a Relay on a server may rely on them today.
+- Runtime DB/KB/learnings removal was approved by the owner and implemented
+  in [PLAT-447](plat-447.md). Deployment and live verification are tracked there.

@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relay execution has no platform DB, KB or learnings
+
+Relay product.yaml declares `execution.platform_stores: false`. The shared step
+executor enforces it for tools, trusted sessions, Python, folder guards and
+reflection. Persisted step settings cannot restore these capabilities. Inputs
+and step outputs carry graph data; user systems remain available through
+explicit script/MCP integrations. Ordinary workflow capabilities stay enabled.
+Ticket: [PLAT-447](bugs/pulse_platform/plans-contracts/plat-447.md).
+
 ### 2026-10-04 — Run-as identity is explicit; Crew and Goal turns stay on the app account; Crews move to `Crew/<id>`
 
 - The owner of a Goal, Crew or Code comes from its manifest, and the platform names the slot a CLI runs as. Neither is read from the folder path any more.

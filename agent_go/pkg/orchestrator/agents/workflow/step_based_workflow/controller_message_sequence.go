@@ -232,7 +232,7 @@ func effectiveRuntimeStepType(step PlanStepInterface) string {
 // already grants learnings/_global or notes/ from kind + write_access.
 func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceClosingItems(ctx context.Context, seq *MessageSequencePlanStep, stepIndex int) []MessageSequenceItem {
 	cfg := seq.AgentConfigs
-	if cfg == nil {
+	if cfg == nil || !hcpo.platformStoresEnabled() {
 		return nil
 	}
 	var items []MessageSequenceItem
@@ -243,7 +243,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceClosingItems(ctx conte
 	// knowledgebase item. Appending them separately reproduced the same defect
 	// the regular-step path had: the agent chose a destination based on which
 	// turn it happened to be in rather than on which store owns the content.
-	learningsDue := shouldDirectWriteLearnings(cfg, seq)
+	learningsDue := hcpo.shouldDirectWriteLearnings(cfg, seq)
 	kbAccess := resolveKnowledgebaseAccess(cfg, hcpo.UseKnowledgebase())
 	kbContribution := strings.TrimSpace(kbContributionForPrompt(cfg))
 	// Under write_method=agent the constraint layer strips KB from every item's
@@ -1370,7 +1370,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setMessageSequenceShellEnv(sessionID,
 		hcpo.selectedRunFolder,
 		hcpo.snapshotWorkspaceEnv(),
 	)
-	configureWorkflowDBSession(sessionID, hcpo.GetWorkspacePath(), DBAccessReadWrite, false)
+	configureWorkflowDBSession(sessionID, hcpo.GetWorkspacePath(), hcpo.resolveDBAccess(nil), false)
 }
 
 // Reuse only the live runtime owned by this sequence. Serialized session IDs
@@ -1493,9 +1493,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveMessageSequenceItemWriteAccess
 	} else {
 		kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 		resolved = MessageSequenceWriteAccess{
-			DB:            resolveDBAccess(stepConfig) == DBAccessReadWrite,
+			DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 			Knowledgebase: kbAccessAllowsWrite(kbAccess),
-			Learnings:     resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
+			Learnings:     hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 		}
 	}
 	return resolved
@@ -1509,9 +1509,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceStepFullWriteAccess(st
 	stepConfig := getAgentConfigs(step)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 	resolved := MessageSequenceWriteAccess{
-		DB:            resolveDBAccess(stepConfig) == DBAccessReadWrite,
+		DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 		Knowledgebase: kbAccessAllowsWrite(kbAccess),
-		Learnings:     resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
+		Learnings:     hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 	}
 	return resolved
 }
@@ -1520,9 +1520,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) constrainMessageSequenceWriteAccess(s
 	return MessageSequenceWriteAccess{
 		// DB is intentionally not narrowed by an item's write_access. Every
 		// workflow step and sequence turn receives the same managed DB tools.
-		DB:            true,
+		DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 		Knowledgebase: requested.Knowledgebase && kbAccessAllowsWrite(resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())),
-		Learnings:     requested.Learnings && resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
+		Learnings:     requested.Learnings && hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 	}
 }
 
@@ -1562,8 +1562,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupMessageSequenceFolderGuard(stepP
 		fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath),
 	}
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := resolveLearningsAccess(stepConfig)
-	readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, nil)
+	learningsAccess := hcpo.resolveLearningsAccess(stepConfig)
+	if hcpo.platformStoresEnabled() {
+		readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, nil)
+	}
 	if kbAccessAllowsRead(kbAccess) {
 		readPaths = append(readPaths, getKnowledgebasePath(baseWorkspacePath))
 	}
@@ -1616,7 +1618,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step
 	stepExecRel := hcpo.messageSequenceExecutionRelPath(stepPath, step.GetID())
 	docsRoot := GetPromptDocsRoot()
 	kbAccess := messageSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)
-	dbAccess := DBAccessReadWrite
+	dbAccess := hcpo.resolveDBAccess(getAgentConfigs(step))
 	// Honor the step's declared context_output so the sequence writes the file
 	// downstream steps expect (in execution/<stepID>/, the normal step folder).
 	// Fall back to the generic name only when the step declares no output.

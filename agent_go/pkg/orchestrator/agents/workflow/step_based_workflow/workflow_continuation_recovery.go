@@ -314,7 +314,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) queueRecoveredDirectLearning(state *W
 		return
 	}
 	stepCfg := getAgentConfigs(runtime.Step)
-	if !shouldDirectWriteLearnings(stepCfg, runtime.Step) {
+	if !hcpo.shouldDirectWriteLearnings(stepCfg, runtime.Step) {
 		hcpo.recordWorkflowContinuationPhaseForRunFolder(context.Background(), state.RunFolder, state.StepID, state.StepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning, workflowContinuationStatusSkipped, "direct learning gates disabled", nil)
 		return
 	}

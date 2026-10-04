@@ -235,7 +235,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceScripts(ctx con
 			return outputPath, err
 		}
 		ctx = withScriptedDelegationContext(ctx, "", call.Call.ID, "", call.Call.Parameters)
-		result := hcpo.tryRunSavedScriptedScript(ctx, call.Step, stepIndex, stepPath, session.scriptedPlan.Steps, outputPath, executionRoot, resolveDBAccess(call.Step.AgentConfigs))
+		result := hcpo.tryRunSavedScriptedScript(ctx, call.Step, stepIndex, stepPath, session.scriptedPlan.Steps, outputPath, executionRoot, hcpo.resolveDBAccess(call.Step.AgentConfigs))
 		// Preserve stdout and diagnostics outside the LLM context, including on Stop.
 		if result != nil {
 			logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)

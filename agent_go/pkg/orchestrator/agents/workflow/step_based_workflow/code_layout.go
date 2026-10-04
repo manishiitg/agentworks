@@ -24,18 +24,23 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(err.Error(), "404") {
 			hcpo.codeLayoutVersion.Store(0)
+			hcpo.platformStoresDisabled.Store(false)
 			return nil
 		}
 		return fmt.Errorf("read code layout: %w", err)
 	}
 	var m struct {
-		Version int `json:"code_layout_version"`
+		Version int    `json:"code_layout_version"`
+		Kind    string `json:"kind"`
 	}
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
 		return fmt.Errorf("parse code layout: %w", err)
 	}
 	if m.Version < 0 || m.Version > 1 {
 		return fmt.Errorf("unsupported code_layout_version %d", m.Version)
+	}
+	if err := hcpo.configureExecutionProduct(m.Kind); err != nil {
+		return err
 	}
 	hcpo.codeLayoutVersion.Store(int32(m.Version))
 	return nil
@@ -75,6 +80,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedWorkingDir(stepID, executionP
 func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string) map[string]string {
 	if env == nil {
 		env = map[string]string{}
+	}
+	if !hcpo.platformStoresEnabled() {
+		delete(env, "DB_PATH")
+		for key := range env {
+			if strings.HasPrefix(key, "WORKFLOW_KB_") {
+				delete(env, key)
+			}
+		}
+		env["WORKFLOW_KB_ACCESS"] = KBAccessNone
+		env[workflowDBAccessEnv] = DBAccessNone
 	}
 	delete(env, "WORKFLOW_TRIGGER_INPUT_FILE")
 	delete(env, "WORKFLOW_TRIGGER_CONTEXT_FILE")

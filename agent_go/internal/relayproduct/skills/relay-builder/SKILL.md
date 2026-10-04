@@ -87,3 +87,7 @@ provided by product.yaml; do not replace them with goal or dashboard commands.
 - Anyone with visibility may execute a published Relay and poll their own API runs. Publishing and editing require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.
 - External products invoke published versions through API function triggers. Do not configure cron/calendar schedules or timed draft execution.
 - Scripts and agent tools must write generated files only into the assigned run folder or runtime data directories (`db/`, `costs/`, `logs/`). Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
+
+## Execution stores
+
+`product.yaml` declares `execution.platform_stores: false`. This is enforced for draft tests, individual step tests, script tools and published API runs. Old DB/KB/learnings settings are ignored at execution. Platform DB tools and raw store files are unavailable; no DB_PATH is provided to Python. Use INPUT, variables and step outputs for data handoff. A user database remains accessible through explicitly configured scripts or MCP tools with attached secrets. Do not use agentworks_db or create platform store artifacts.

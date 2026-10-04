@@ -180,3 +180,15 @@ func BuilderExternalTools() ([]string, error) {
 	}
 	return append([]string(nil), manifest.Chat["builder"].ExternalTools...), nil
 }
+
+// PlatformStoresEnabled is the product-owned execution capability for DB, KB and learnings.
+// Missing policy is an error rather than inheriting workflow defaults.
+func PlatformStoresEnabled() (bool, error) {
+	if err := loadProduct(); err != nil {
+		return false, err
+	}
+	if manifest.Execution.PlatformStores == nil {
+		return false, fmt.Errorf("Relay execution must declare platform_stores")
+	}
+	return *manifest.Execution.PlatformStores, nil
+}

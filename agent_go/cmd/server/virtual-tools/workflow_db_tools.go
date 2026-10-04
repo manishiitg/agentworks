@@ -658,6 +658,9 @@ func ResolveWorkflowWorkspaceFolder(ctx context.Context, fallbackSessionID strin
 }
 
 func resolveWorkflowDBPathFromConfig(sessionID string, cfg *common.SessionShellConfig) (string, error) {
+	if cfg != nil && strings.TrimSpace(cfg.Env[workflowDBAccessEnv]) == "none" {
+		return "", fmt.Errorf("workflow database access is disabled for session %q", sessionID)
+	}
 	folder, err := resolveWorkflowWorkspaceFolder(sessionID, cfg)
 	if err != nil {
 		return "", err
