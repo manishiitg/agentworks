@@ -113,7 +113,7 @@ func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
 	if !orchestratorStep.AuthoredPrompt || orchestratorStep.SystemPrompt != agent.SystemPrompt {
 		t.Fatalf("the delegation runtime lost the authored prompt: %+v", orchestratorStep)
 	}
-	block := authoredRoutesPromptBlock(agent.PredefinedRoutes)
+	block := authoredRoutesPromptBlock(agent.PredefinedRoutes, map[string]string{"lookup-customer": "lookup_customer"})
 	for _, want := range []string{"`lookup_customer`", "When a customer id is known", "final answer is still the JSON"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("tools block missing %q:\n%s", want, block)
@@ -122,10 +122,22 @@ func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
 	if strings.Contains(block, "Sub-agents") {
 		t.Errorf("a script-only agent must not be told about sub-agents:\n%s", block)
 	}
-	if authoredRoutesPromptBlock(nil) != "" {
+	if authoredRoutesPromptBlock(nil, nil) != "" {
 		t.Error("an agent without routes gets no block")
 	}
 	if err := validateMessageSequenceStepFieldsTyped(agent); err != nil {
 		t.Errorf("an authored agent with routes must pass plan validation: %v", err)
+	}
+}
+
+// PLAT-444: two route ids that become one tool name are refused at validation.
+func TestRelayRejectsRoutesThatShareAToolName(t *testing.T) {
+	script := func(id string) PlanOrchestrationRoute {
+		return PlanOrchestrationRoute{RouteID: id, RouteName: id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "d"}, ScriptOnly: true}}
+	}
+	plan := relayTestPlan()
+	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{script("a-b"), script("a_b")}
+	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "a_b") {
+		t.Fatalf("two routes with one tool name accepted: %v", err)
 	}
 }

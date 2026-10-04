@@ -1,6 +1,6 @@
 # PLAT-443 — Script-tool result reader follows symlinks outside its output folder
 
-Status: open. Reproduced in an isolated local worktree on main f38701175.
+Status: fixed on `main`; not deployed. Reproduced in an isolated local worktree on main f38701175.
 Priority: P1.
 Related: PLAT-432, PLAT-441, PLAT-118.
 
@@ -39,3 +39,20 @@ allowed output path, symlink confinement and a bounded read. Include a regressio
 for a leaf symlink and a symlinked ancestor, with a regular JSON file still
 returned successfully. Do not deploy the affected tool path as ready until this
 boundary is fixed and verified.
+
+## Fix (2026-10-04)
+
+`readScriptedRouteResult(confineRoot, outputDir)`: resolves the workflow folder and
+the output folder with `EvalSymlinks` and refuses an output folder that resolves
+outside the workflow (a symlinked ancestor); `Lstat`s the file and accepts only a
+regular file (a leaf symlink, even to another file inside the workflow, a
+directory or any special file is refused); opens it and requires `os.SameFile`
+with the checked file; reads through a `LimitReader` of the cap plus one byte, so
+growth between check and read cannot exceed the bound. An unusable file is logged
+and the run summary is kept, as before. Tests: regular file returned, leaf
+symlink outside, link to another workflow file, symlinked ancestor outside, a
+directory named route_result.json.
+
+Not done: this is a purpose-built reader, not a shared confined workspace-file
+reader (none exists in the codebase); consolidating the several `EvalSymlinks`
+checks into one helper is a separate cleanup.

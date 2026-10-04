@@ -1595,6 +1595,11 @@ type SubAgentExecutionContext struct {
 	// their call/query/stop handlers cannot replace the parent's handlers.
 	ToolSessionID string
 
+	// ScriptToolNames maps a scripted route id to the tool name actually
+	// registered for it (PLAT-444). An authored agent's prompt advertises exactly
+	// these; a route that is absent here has no tool.
+	ScriptToolNames map[string]string
+
 	// CallHistory records every sub-agent call made during this todo task step.
 	// Protected by callHistoryMu for concurrent tool calls.
 	CallHistory   []SubAgentCallRecord
@@ -1921,7 +1926,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		for _, definition := range config.DirectTools {
 			reserved[definition.Name] = true
 		}
-		routeTools := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		routeTools, routeToolErr := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		if routeToolErr != nil {
+			return nil, routeToolErr
+		}
 		config.DirectTools = append(config.DirectTools, routeTools...)
 		for _, definition := range routeTools {
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))

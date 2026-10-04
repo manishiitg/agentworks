@@ -1157,7 +1157,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	// output folder (PLAT-432). The caller gets that JSON instead of the run
 	// summary; an unusable file is logged and the summary is kept.
 	if isScriptedRoute {
-		resultJSON, readErr := readScriptedRouteResult(hcpo.scriptedRouteOutputDir(subAgentStepPath))
+		resultJSON, readErr := readScriptedRouteResult(filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath()), hcpo.scriptedRouteOutputDir(subAgentStepPath))
 		if readErr != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Route %s: %s ignored: %v", route.RouteID, ScriptedRouteResultFile, readErr))
 			executionResult = fmt.Sprintf("%s\n(%s was ignored: %v)", executionResult, ScriptedRouteResultFile, readErr)

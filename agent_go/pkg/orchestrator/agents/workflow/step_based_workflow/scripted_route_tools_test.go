@@ -56,7 +56,7 @@ func TestScriptedRouteInputSchemaMirrorsScriptParameters(t *testing.T) {
 
 func TestReadScriptedRouteResult(t *testing.T) {
 	dir := t.TempDir()
-	if got, err := readScriptedRouteResult(dir); got != "" || err != nil {
+	if got, err := readScriptedRouteResult(dir, dir); got != "" || err != nil {
 		t.Fatalf("no file = %q %v, want nothing", got, err)
 	}
 	write := func(body string) {
@@ -65,15 +65,15 @@ func TestReadScriptedRouteResult(t *testing.T) {
 		}
 	}
 	write("  {\"customer\": {\"id\": \"c1\", \"name\": \"Ada\"}}\n")
-	if got, err := readScriptedRouteResult(dir); err != nil || got != `{"customer": {"id": "c1", "name": "Ada"}}` {
+	if got, err := readScriptedRouteResult(dir, dir); err != nil || got != `{"customer": {"id": "c1", "name": "Ada"}}` {
 		t.Fatalf("valid JSON = %q %v", got, err)
 	}
 	write("{not json")
-	if _, err := readScriptedRouteResult(dir); err == nil {
+	if _, err := readScriptedRouteResult(dir, dir); err == nil {
 		t.Error("invalid JSON must be reported")
 	}
 	write(`"` + strings.Repeat("x", maxScriptedRouteResultBytes) + `"`)
-	if _, err := readScriptedRouteResult(dir); err == nil || !strings.Contains(err.Error(), "at most") {
+	if _, err := readScriptedRouteResult(dir, dir); err == nil || !strings.Contains(err.Error(), "at most") {
 		t.Errorf("an oversized result must be reported: %v", err)
 	}
 }
@@ -95,7 +95,10 @@ func TestScriptedRouteDirectToolsOfferOnlyScriptedRoutesWithoutShadowing(t *test
 		{RouteID: "broken", SubAgentStep: scripted("broken", map[string]ScriptParameterDefinition{"bad name": {Type: "string", Description: "x"}})},
 	}}
 	reserved := map[string]bool{"execute_shell_command": true}
-	tools := hcpo.scriptedRouteDirectTools(&SubAgentExecutionContext{OrchestratorStep: step}, reserved)
+	tools, toolsErr := hcpo.scriptedRouteDirectTools(&SubAgentExecutionContext{OrchestratorStep: step}, reserved)
+	if toolsErr != nil {
+		t.Fatal(toolsErr)
+	}
 	if len(tools) != 1 || tools[0].Name != "lookup_customer" {
 		names := []string{}
 		for _, tool := range tools {
@@ -115,7 +118,7 @@ func TestScriptedRouteDirectToolsOfferOnlyScriptedRoutesWithoutShadowing(t *test
 	if !reserved["lookup_customer"] {
 		t.Error("the new name must be reserved so a second route cannot take it")
 	}
-	if again := hcpo.scriptedRouteDirectTools(&SubAgentExecutionContext{OrchestratorStep: step}, reserved); len(again) != 0 {
+	if again, _ := hcpo.scriptedRouteDirectTools(&SubAgentExecutionContext{OrchestratorStep: step}, reserved); len(again) != 0 {
 		t.Errorf("a name already taken is never offered twice: %d tools", len(again))
 	}
 }
@@ -180,11 +183,127 @@ func TestScriptedRouteToolUsesTheFullSchema(t *testing.T) {
 		{RouteID: "lookup", SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup", Description: "d", ScriptParametersSchema: schema}}},
 	}}
 	execCtx := &SubAgentExecutionContext{OrchestratorStep: step}
-	tools := hcpo.scriptedRouteDirectTools(execCtx, map[string]bool{})
+	tools, toolsErr := hcpo.scriptedRouteDirectTools(execCtx, map[string]bool{})
+	if toolsErr != nil {
+		t.Fatal(toolsErr)
+	}
 	if len(tools) != 1 || !reflect.DeepEqual(tools[0].InputSchema, schema) {
 		t.Fatalf("the named tool must take the route's full schema: %+v", tools)
 	}
 	if paths := hcpo.scriptedRouteSourceReadPaths(execCtx); len(paths) != 1 || !strings.HasSuffix(paths[0], "/lookup") || !strings.HasPrefix(paths[0], "Workflow/demo/") {
 		t.Errorf("the Agent step must be able to read its route's saved code: %v", paths)
+	}
+}
+
+// PLAT-443: the result file is read from the route's own output folder only.
+func TestReadScriptedRouteResultNeverFollowsLinksOutOfTheFolder(t *testing.T) {
+	workflow := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.json")
+	if err := os.WriteFile(secret, []byte(`{"fixture_secret":"outside"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := filepath.Join(workflow, "runs", "execution", "route")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A regular file is still returned.
+	if err := os.WriteFile(filepath.Join(outputDir, ScriptedRouteResultFile), []byte(`{"ok":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readScriptedRouteResult(workflow, outputDir); err != nil || got != `{"ok":true}` {
+		t.Fatalf("regular file = %q %v", got, err)
+	}
+
+	// A leaf symlink to a file outside is refused, never read.
+	_ = os.Remove(filepath.Join(outputDir, ScriptedRouteResultFile))
+	if err := os.Symlink(secret, filepath.Join(outputDir, ScriptedRouteResultFile)); err != nil {
+		t.Skip("symlinks are unavailable")
+	}
+	if got, err := readScriptedRouteResult(workflow, outputDir); err == nil || strings.Contains(got, "fixture_secret") {
+		t.Fatalf("a leaf symlink was followed: %q %v", got, err)
+	}
+	// Even a link to another file inside the workflow is not the script's own file.
+	_ = os.Remove(filepath.Join(outputDir, ScriptedRouteResultFile))
+	inside := filepath.Join(workflow, "db.json")
+	_ = os.WriteFile(inside, []byte(`{"inside":1}`), 0o600)
+	_ = os.Symlink(inside, filepath.Join(outputDir, ScriptedRouteResultFile))
+	if got, err := readScriptedRouteResult(workflow, outputDir); err == nil || got != "" {
+		t.Fatalf("a link to another workflow file was accepted: %q %v", got, err)
+	}
+
+	// A symlinked ancestor that leaves the workflow is refused.
+	escaped := filepath.Join(workflow, "runs", "escaped")
+	if err := os.Symlink(outside, escaped); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(outside, ScriptedRouteResultFile), []byte(`{"fixture_secret":"outside"}`), 0o600)
+	if got, err := readScriptedRouteResult(workflow, escaped); err == nil || strings.Contains(got, "fixture_secret") {
+		t.Fatalf("a symlinked output folder outside the workflow was read: %q %v", got, err)
+	}
+
+	// A special file (a directory here) is not a result.
+	if err := os.Mkdir(filepath.Join(workflow, "runs", "execution", "dir-route"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dirRoute := filepath.Join(workflow, "runs", "execution", "dir-route")
+	if err := os.Mkdir(filepath.Join(dirRoute, ScriptedRouteResultFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readScriptedRouteResult(workflow, dirRoute); err == nil {
+		t.Error("a directory named route_result.json was accepted")
+	}
+}
+
+// PLAT-444: an authored agent is never told about a tool that was not registered.
+func TestAuthoredScriptToolCollisionsFailInsteadOfBeingAdvertised(t *testing.T) {
+	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.SetWorkspacePath("Workflow/demo")
+	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
+	script := func(id string) PlanOrchestrationRoute {
+		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Description: "d"}, ScriptOnly: true}}
+	}
+	authored := func(routes ...PlanOrchestrationRoute) *SubAgentExecutionContext {
+		return &SubAgentExecutionContext{OrchestratorStep: &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, AuthoredPrompt: true, SystemPrompt: "x", PredefinedRoutes: routes}}
+	}
+
+	// A platform-name collision is an error, not a silently missing tool.
+	if _, err := hcpo.scriptedRouteDirectTools(authored(script("execute-shell-command")), map[string]bool{"execute_shell_command": true}); err == nil || !strings.Contains(err.Error(), "execute_shell_command") {
+		t.Fatalf("a platform-name collision on an authored agent must fail: %v", err)
+	}
+	// Two routes normalizing to one name: the second is an error.
+	if _, err := hcpo.scriptedRouteDirectTools(authored(script("a-b"), script("a_b")), map[string]bool{}); err == nil {
+		t.Fatal("two routes with the same tool name must fail for an authored agent")
+	}
+	// In an ordinary workflow the old behaviour holds: skipped, still reachable
+	// through call_scripted_sub_agent.
+	ordinary := authored(script("execute-shell-command"))
+	ordinary.OrchestratorStep.AuthoredPrompt = false
+	tools, err := hcpo.scriptedRouteDirectTools(ordinary, map[string]bool{"execute_shell_command": true})
+	if err != nil || len(tools) != 0 {
+		t.Fatalf("an ordinary workflow keeps the skip behaviour: %v %v", tools, err)
+	}
+
+	// The prompt lists only what was registered, by its registered name.
+	good := authored(script("lookup-customer"), script("check-price"))
+	if _, err := hcpo.scriptedRouteDirectTools(good, map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	block := authoredRoutesPromptBlock(good.OrchestratorStep.PredefinedRoutes, good.ScriptToolNames)
+	for _, want := range []string{"`lookup_customer`: when lookup-customer", "`check_price`: when check-price"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("block missing %q:\n%s", want, block)
+		}
+	}
+	partial := map[string]string{"lookup-customer": "lookup_customer"}
+	if block := authoredRoutesPromptBlock(good.OrchestratorStep.PredefinedRoutes, partial); strings.Contains(block, "check_price") || strings.Contains(block, "check-price") {
+		t.Errorf("an unregistered route must not be advertised:\n%s", block)
+	}
+	if authoredRoutesPromptBlock(good.OrchestratorStep.PredefinedRoutes, nil) != "" {
+		t.Error("no registered tools means no block")
 	}
 }

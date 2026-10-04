@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,23 +87,60 @@ type scriptedRouteResultCapture struct{ json string }
 
 // readScriptedRouteResult returns the route's route_result.json when it is
 // valid JSON of a bounded size. A missing file is no result. A file that is too
-// big or not JSON is reported as an error; the caller logs it and falls back to
-// the run summary rather than failing a route that otherwise succeeded.
-func readScriptedRouteResult(outputDir string) (string, error) {
-	path := filepath.Join(outputDir, ScriptedRouteResultFile)
-	info, err := os.Stat(path)
+// big, not JSON, or not a plain file inside the route's own output folder is
+// reported as an error; the caller logs it and falls back to the run summary
+// rather than failing a route that otherwise succeeded.
+//
+// The script wrote this file, and this read runs in the agent server, outside
+// the script's sandbox: it must never follow a link out of the assigned folder
+// (PLAT-443). confineRoot is the folder the output directory must resolve
+// inside (the workflow's own folder); the file must be a regular file whose
+// resolved path sits directly in the resolved output directory, and what is read
+// is the very file that was checked, capped even if it grows meanwhile.
+func readScriptedRouteResult(confineRoot, outputDir string) (string, error) {
+	root, err := filepath.EvalSymlinks(confineRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", confineRoot, err)
+	}
+	dir, err := filepath.EvalSymlinks(outputDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
 		return "", err
 	}
-	if info.Size() > maxScriptedRouteResultBytes {
-		return "", fmt.Errorf("%s is %d bytes; a route result is at most %d", ScriptedRouteResultFile, info.Size(), maxScriptedRouteResultBytes)
+	if rel, relErr := filepath.Rel(root, dir); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("the route output folder resolves outside its workflow")
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- the route's own output folder
+	path := filepath.Join(dir, ScriptedRouteResultFile)
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	if !linkInfo.Mode().IsRegular() {
+		return "", fmt.Errorf("%s must be a regular file written by the script, not a link or special file", ScriptedRouteResultFile)
+	}
+	file, err := os.Open(path) // #nosec G304 -- resolved inside the confined output folder
 	if err != nil {
 		return "", err
+	}
+	defer file.Close()
+	openInfo, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !os.SameFile(linkInfo, openInfo) {
+		return "", fmt.Errorf("%s changed while it was being read", ScriptedRouteResultFile)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxScriptedRouteResultBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxScriptedRouteResultBytes {
+		return "", fmt.Errorf("%s is larger than %d bytes; a route result is at most that", ScriptedRouteResultFile, maxScriptedRouteResultBytes)
 	}
 	trimmed := strings.TrimSpace(string(data))
 	if !json.Valid([]byte(trimmed)) {
@@ -137,13 +175,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteSourceReadPaths(execCtx 
 var scriptedRouteToolCalls atomic.Uint64
 
 // scriptedRouteDirectTools builds one named tool per saved scripted route of the
-// step. reserved holds names already taken by the agent's tools; a route whose
-// name collides is skipped (it stays reachable through call_scripted_sub_agent)
-// rather than shadowing a platform tool.
-func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *SubAgentExecutionContext, reserved map[string]bool) []mcpagent.ToolDefinition {
+// step. reserved holds names already taken by the agent's tools. In an ordinary
+// workflow a route whose name is taken is skipped (it stays reachable through
+// call_scripted_sub_agent). An authored agent has no such fallback, so a route it
+// cannot register is an error: the agent must never be told about a tool it does
+// not have (PLAT-444). The names actually registered are recorded on execCtx.
+func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *SubAgentExecutionContext, reserved map[string]bool) ([]mcpagent.ToolDefinition, error) {
 	if execCtx == nil || execCtx.OrchestratorStep == nil {
-		return nil
+		return nil, nil
 	}
+	authored := execCtx.OrchestratorStep.AuthoredPrompt
+	execCtx.ScriptToolNames = map[string]string{}
 	var definitions []mcpagent.ToolDefinition
 	for _, route := range execCtx.OrchestratorStep.PredefinedRoutes {
 		if route.SubAgentStep == nil || !isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep)) {
@@ -152,15 +194,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *Sub
 		parameters := scriptedParameterDefinitions(route.SubAgentStep)
 		fields := route.SubAgentStep.GetCommonFields()
 		if err := validateScriptParameterContract(&fields); err != nil {
+			if authored {
+				return nil, fmt.Errorf("script tool %q cannot be registered: %w", route.RouteID, err)
+			}
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Scripted route %q is not offered as a named tool: %v", route.RouteID, err))
 			continue
 		}
 		name := scriptedRouteToolName(route.RouteID)
 		if reserved[name] {
+			if authored {
+				return nil, fmt.Errorf("script tool %q cannot be registered as %q: that name is already a tool of this agent (a platform tool or another route); rename the route", route.RouteID, name)
+			}
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Scripted route %q is not offered as named tool %q: the name is taken; call_scripted_sub_agent still reaches it", route.RouteID, name))
 			continue
 		}
 		reserved[name] = true
+		execCtx.ScriptToolNames[route.RouteID] = name
 		routeID := route.RouteID
 		inputSchema := scriptedRouteInputSchema(parameters)
 		if len(fields.ScriptParametersSchema) > 0 {
@@ -202,5 +251,5 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *Sub
 			DisplayGroup: virtualtools.GetSubAgentToolCategory(),
 		})
 	}
-	return definitions
+	return definitions, nil
 }
