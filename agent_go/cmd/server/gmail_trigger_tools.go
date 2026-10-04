@@ -290,7 +290,10 @@ func (api *StreamingAPI) waitGmailWorkflowRun(ctx context.Context, d *gmailinbou
 }
 
 func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, session, workspace string) error {
-	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing, ordered rules and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The pane is read-only for configuration; sender_consent reports whether the signed-in owner must confirm additional senders there. Mailbox watch readiness is separate from sender approval. If configured=false, explain setup.admin_setup in plain language and give its deployment-specific endpoint and checklist; do not just tell the user to ask an administrator.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	if err := api.registerGmailSetupTool(reg, session); err != nil {
+		return err
+	}
+	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing, ordered rules and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The pane is read-only for configuration; sender_consent reports whether the signed-in owner must confirm additional senders there. Mailbox watch readiness is separate from sender approval. If configured=false, inspect setup.provisioning. An interactive app administrator can use setup_gmail_inbound to prepare automatic provisioning and a human Google consent link. Explain required Cloud permissions; use the optional manual checklist only when needed. Do not just tell the user to ask an administrator.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, nil)
 	}, "gmail_connection_management"); err != nil {
 		return err
@@ -354,8 +357,8 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 	}
 	action, _ := args["action"].(string)
 	if action == "connect" {
-		if api.gmailInbound == nil {
-			return "", fmt.Errorf("Automatic incoming email is not enabled on this server. Read get_gmail_trigger.setup.admin_setup for the Google Cloud and server setup checklist; Google sign-in alone does not enable it.")
+		if api.gmailInbound == nil || len(config.Topics) == 0 {
+			return "", fmt.Errorf("Automatic incoming email is not enabled on this server. Read get_gmail_trigger.setup.provisioning and ask an interactive administrator to use setup_gmail_inbound for the one-time receiving setup. Google sign-in alone does not enable it.")
 		}
 		return api.connectGmailTriggerAccount(ctx, workspace, config, args)
 	}

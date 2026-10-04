@@ -71,7 +71,12 @@ servers, and available secrets.
   This is off by default and separate from `notify_user`; never remove the
   Gmail send guard or treat `gmail.send` alone as agent-write permission.
 - Gmail notifications and agent-authored sends are outbound operations.
-  Incoming Gmail uses `get_gmail_trigger` and `manage_gmail_trigger`; do not
+  Incoming Gmail uses `get_gmail_trigger` and `manage_gmail_trigger`. If receiving
+  is not configured, an interactive app administrator can use
+  `setup_gmail_inbound` to prepare a reviewed plan and human Google consent;
+  this provisions Pub/Sub and private server configuration without gcloud,
+  environment edits or a restart. App admin access alone does not grant Google
+  project permissions. No Cloud credentials belong in chat. Do not
   create a bearer webhook or change a gog watch to connect it. Gmail account
   configuration is separate from each target's incoming-email trigger.
 
@@ -135,12 +140,29 @@ The Email and Triggers panes are read-only for incoming Gmail: they show the
 saved address, target, ordered rules, readiness and delivery activity. Do the configuration
 with tools; never instruct the user to find an Enable button or route editor.
 
-1. Inspect `get_gmail_trigger` and `list_gmail_connections`. If `configured`
-   is false, read `setup.admin_setup` and explain Google sign-in versus automatic
-   receiving. Give the Google Cloud topic/subscription checklist, exact public
-   push endpoint and all three GMAIL_INBOUND environment variables. Setup needs
-   Google Cloud project permissions and server access, not only an app admin
-   role. Do not stop at asking an administrator; never request credentials.
+1. Inspect `get_gmail_trigger` and `list_gmail_connections`. Google sign-in
+   connects a mailbox; automatic incoming email also needs Pub/Sub delivery.
+   If `configured` is false or no OAuth client is mapped, inspect
+   `setup.provisioning`. For an interactive app administrator, prefer
+   `setup_gmail_inbound(action="prepare")`. Select a registered OAuth app;
+   use its returned `project_id` metadata or ask for the owning Google Cloud
+   project ID if unknown. Never guess the project or read credentials into chat.
+   Show the returned resource plan and `review_url`. The human must open that
+   URL themselves, review the Cloud/server changes and consent with an account
+   allowed to configure the Google project. Never follow the review URL, handle
+   the callback or complete Google consent using tools. No provisioning happens
+   when preparing the plan. After consent the server enables APIs, creates or
+   verifies resources, adds narrow IAM grants and saves private configuration,
+   activating receiving without environment edits or a restart. Inspect
+   `setup_gmail_inbound(action="status")` and `get_gmail_trigger` afterward;
+   real mailbox readiness and delivery still need their own verification.
+   For non-admins, explain that an app administrator with Google project
+   permissions must complete this one-time deployment setup. App admin status
+   alone grants no Google Cloud permissions. Local needs an existing public
+   HTTPS tunnel configured in PUBLIC_URL. Use `setup.admin_setup`'s exact event
+   URL and optional manual checklist if automatic setup is unavailable or the
+   operator requests manual setup. Do not substitute recurring agent turns,
+   schedules or standalone gog watcher processes for receiving infrastructure.
 2. Use `setup.oauth_clients` and `setup.can_connect_account` from
    `get_gmail_trigger`. Choose an existing usable account matching the owner's
    requested mailbox; do not ask the human to find connection IDs. If several
@@ -265,7 +287,15 @@ is not needed for mailbox reading. Show sender, subject, received time and a
 brief summary; delivery records are not freshly fetched email. Do not replay
 mail, change settings, start workflows or send responses for this action.
 
-Operator setup is once per deployment/OAuth project, not per user: enable
+Automatic operator setup is once per deployment/OAuth project, not per user.
+Builder uses `setup_gmail_inbound` with human browser consent; short-lived Cloud
+authorization is never stored as a refresh token or given to gog/agents. It writes
+private `gmail-inbound/config.json` under the deployment state root, outside
+projects. Existing environment configuration remains supported and conflicting
+identities or topic mappings fail closed. Setup does not connect a mailbox,
+register its watch, change filters, approve senders or deploy a release.
+
+For optional manual operator setup: enable
 Gmail and Pub/Sub APIs; create a topic in the Google Cloud project owning the
 OAuth client; grant `gmail-api-push@system.gserviceaccount.com` publisher on it;
 create an authenticated push subscription to the deployment's public HTTPS
@@ -274,8 +304,8 @@ as the token audience. Grant Pub/Sub's service agent permission to mint that
 account's tokens. Configure `GMAIL_INBOUND_TOPICS` (named OAuth client to full
 `projects/PROJECT/topics/TOPIC` mapping), `GMAIL_INBOUND_AUDIENCE` (the URL), and
 `GMAIL_INBOUND_PUSH_EMAIL` (the push service-account email) in deployment config.
-Use Google Cloud tooling for provisioning; gog manages mailbox access, not
-Pub/Sub infrastructure. One topic can serve many users and deployments; give
+The automatic setup tool uses Google Cloud APIs for provisioning; gog manages
+mailbox access, not Pub/Sub infrastructure. Manual operators can use gcloud. One topic can serve many users and deployments; give
 each deployment its own subscription. When the same mailbox is connected in
 several deployments, all watches must use the same topic. No new Gmail user,
 MX change or standalone watcher process is required. The receiver is public

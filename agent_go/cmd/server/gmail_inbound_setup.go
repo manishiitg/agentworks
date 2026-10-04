@@ -21,9 +21,10 @@ func gmailInboundAdminSetup(config gmailInboundConfig) map[string]interface{} {
 		}
 	}
 	return map[string]interface{}{
-		"required_access":       "Google Cloud project setup permissions and access to the deployment's server environment; app administrator access alone is insufficient.",
+		"required_access":       "App administrator access and Google Cloud project setup permissions. Builder can prepare automatic provisioning; Google consent is completed in your browser. Server environment access is needed only for manual setup.",
 		"explanation":           "Google sign-in connects an account. Automatic incoming email also needs Google Pub/Sub, which delivers mailbox change events to this server. Saved filters do not enable delivery.",
 		"push_endpoint":         endpoint,
+		"automatic_setup":       "Ask Builder to use setup_gmail_inbound(action=prepare). Review its plan and complete Google Cloud consent yourself. The server provisions resources and activates its private configuration without gcloud, environment edits or a restart. Cloud project permissions and a public HTTPS endpoint are still required.",
 		"environment_variables": []string{"GMAIL_INBOUND_TOPICS", "GMAIL_INBOUND_AUDIENCE", "GMAIL_INBOUND_PUSH_EMAIL"},
 		"steps": []string{
 			"Use the Google Cloud project that owns the existing OAuth client; enable the Gmail and Pub/Sub APIs.",

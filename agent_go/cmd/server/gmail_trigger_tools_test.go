@@ -318,16 +318,17 @@ func TestGmailBuilderExplainsDeploymentSetupWhenDisabled(t *testing.T) {
 		Setup      struct {
 			Clients []string `json:"oauth_clients"`
 			Admin   struct {
-				Endpoint string   `json:"push_endpoint"`
-				Access   string   `json:"required_access"`
-				Steps    []string `json:"steps"`
+				Endpoint  string   `json:"push_endpoint"`
+				Access    string   `json:"required_access"`
+				Steps     []string `json:"steps"`
+				Automatic string   `json:"automatic_setup"`
 			} `json:"admin_setup"`
 		} `json:"setup"`
 	}
 	if err := json.Unmarshal([]byte(result), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Configured || len(status.Setup.Clients) != 0 || status.Setup.Admin.Endpoint != "https://video.realtrainingsys.com/api/hooks/gmail/events" || len(status.Setup.Admin.Steps) != 5 || !strings.Contains(status.Setup.Admin.Access, "server environment") {
+	if status.Configured || len(status.Setup.Clients) != 0 || status.Setup.Admin.Endpoint != "https://video.realtrainingsys.com/api/hooks/gmail/events" || len(status.Setup.Admin.Steps) != 5 || !strings.Contains(status.Setup.Admin.Access, "Google Cloud project setup permissions") || !strings.Contains(status.Setup.Admin.Automatic, "without gcloud, environment edits or a restart") {
 		t.Fatalf("missing actionable deployment help: %s", result)
 	}
 }

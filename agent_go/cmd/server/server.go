@@ -387,6 +387,7 @@ type StreamingAPI struct {
 	agentProfiles       *agentprofiles.Registry
 	productSchedules    *ProductScheduleService
 	gmailInbound        *gmailinbound.Service
+	gmailSetup          gmailSetupManager
 
 	// internalQueryHandler is a narrow test seam for server-owned follow-up
 	// turns. Production dispatch falls back to handleQuery.

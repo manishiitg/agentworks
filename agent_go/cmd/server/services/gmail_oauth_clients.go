@@ -33,6 +33,7 @@ type GmailOAuthClient struct {
 	// ClientID is informational only, shown in the UI so an operator can tell
 	// clients apart without re-opening the file. Never the secret.
 	ClientID  string    `json:"client_id,omitempty"`
+	ProjectID string    `json:"project_id,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
@@ -162,7 +163,16 @@ func CreateOAuthClient(ctx context.Context, name string, secretJSON []byte, repl
 	}
 
 	now := time.Now().UTC()
+	var projectMetadata map[string]struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(secretJSON, &projectMetadata)
+	projectID := projectMetadata["web"].ProjectID
+	if projectID == "" {
+		projectID = projectMetadata["installed"].ProjectID
+	}
 	client := GmailOAuthClient{
+		ProjectID: projectID,
 		Name:      name,
 		ClientID:  clientID,
 		CreatedAt: now,

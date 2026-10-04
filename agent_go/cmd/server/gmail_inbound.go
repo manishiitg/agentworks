@@ -36,70 +36,102 @@ const gmailInboundEventPath = "/api/hooks/gmail/events"
 var inboundTopicPattern = regexp.MustCompile(`^projects/[a-z0-9][a-z0-9-]+/topics/[A-Za-z][A-Za-z0-9._~%+-]*$`)
 
 type gmailInboundConfig struct {
-	Topics    map[string]string
-	Audience  string
-	PushEmail string
+	Topics    map[string]string `json:"topics"`
+	Audience  string            `json:"audience"`
+	PushEmail string            `json:"push_email"`
 }
 
 func readGmailInboundConfig() (gmailInboundConfig, error) {
 	c := gmailInboundConfig{Topics: map[string]string{}, Audience: strings.TrimSpace(os.Getenv("GMAIL_INBOUND_AUDIENCE")), PushEmail: strings.TrimSpace(os.Getenv("GMAIL_INBOUND_PUSH_EMAIL"))}
 	raw := strings.TrimSpace(os.Getenv("GMAIL_INBOUND_TOPICS"))
 	if raw == "" {
-		return c, nil
+		return loadGmailSetupConfig(c)
 	}
 	if e := json.Unmarshal([]byte(raw), &c.Topics); e != nil {
 		return c, fmt.Errorf("GMAIL_INBOUND_TOPICS must map OAuth client names to Pub/Sub topic names")
 	}
+	if err := validateGmailInboundConfig(c); err != nil {
+		return c, err
+	}
+	return loadGmailSetupConfig(c)
+}
+
+func validateGmailInboundConfig(c gmailInboundConfig) error {
 	if c.Audience == "" || c.PushEmail == "" {
-		return c, fmt.Errorf("GMAIL_INBOUND_AUDIENCE and GMAIL_INBOUND_PUSH_EMAIL are required")
+		return fmt.Errorf("GMAIL_INBOUND_AUDIENCE and GMAIL_INBOUND_PUSH_EMAIL are required")
 	}
 	u, e := url.Parse(c.Audience)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.Path != gmailInboundEventPath || u.RawQuery != "" || u.Fragment != "" {
-		return c, fmt.Errorf("GMAIL_INBOUND_AUDIENCE must be the public HTTPS Gmail event URL")
+	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != gmailInboundEventPath || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("GMAIL_INBOUND_AUDIENCE must be the public HTTPS Gmail event URL")
 	}
 	for client, topic := range c.Topics {
 		if client == "" || !inboundTopicPattern.MatchString(topic) {
-			return c, fmt.Errorf("invalid Gmail inbound topic configuration")
+			return fmt.Errorf("invalid Gmail inbound topic configuration")
 		}
 	}
-	return c, nil
+	return nil
 }
 
 // initGmailInbound installs a single ingress and fixed pools for all accounts.
-// A missing configuration leaves management readable but intake disabled.
+// The private queue stays available before setup. Intake and account-watch
+// access remain disabled until validated configuration is available.
 func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
-	c, e := readGmailInboundConfig()
-	if e != nil {
+	if _, e := readGmailInboundConfig(); e != nil {
 		log.Printf("[GMAIL-INBOUND] disabled: %v", e)
-		c.Topics = nil
 	}
-	if len(c.Topics) > 0 {
-		stateRoot, stateErr := workflowCLIStateRoot()
-		if stateErr != nil {
-			log.Printf("[GMAIL-INBOUND] cannot resolve private state: %v", stateErr)
-			return func() {}
-		}
+	stateRoot, stateErr := workflowCLIStateRoot()
+	if stateErr != nil {
+		log.Printf("[GMAIL-INBOUND] cannot resolve private state: %v", stateErr)
+	} else {
 		path := filepath.Join(stateRoot, "gmail-inbound", "email.db")
 		store, e := gmailinbound.Open(path)
 		if e != nil {
 			log.Printf("[GMAIL-INBOUND] cannot open queue: %v", e)
 		} else {
-			v := &gmailinbound.PushVerifier{Audience: c.Audience, Email: c.PushEmail}
-			s := &gmailinbound.Service{Store: store, Verify: v.Verify, Authorize: api.authorizeInboundEmail, Dispatch: api.dispatchInboundEmail, Reply: api.replyInboundEmail}
+			var verifierMu sync.Mutex
+			var verifier *gmailinbound.PushVerifier
+			s := &gmailinbound.Service{Store: store, Enabled: func(context.Context) bool {
+				cfg, err := readGmailInboundConfig()
+				return err == nil && len(cfg.Topics) > 0
+			}, Verify: func(ctx context.Context, token string) error {
+				current, err := readGmailInboundConfig()
+				if err != nil || len(current.Topics) == 0 {
+					return fmt.Errorf("Gmail intake is not configured")
+				}
+				verifierMu.Lock()
+				if verifier == nil || verifier.Audience != current.Audience || verifier.Email != current.PushEmail {
+					verifier = &gmailinbound.PushVerifier{Audience: current.Audience, Email: current.PushEmail}
+				}
+				v := verifier
+				verifierMu.Unlock()
+				return v.Verify(ctx, token)
+			}, Authorize: api.authorizeInboundEmail, Dispatch: api.dispatchInboundEmail, Reply: api.replyInboundEmail}
 			s.Client = func(ctx context.Context, m gmailinbound.Mailbox) (gmailinbound.Client, error) {
-				return inboundClientFor(m.ConnectionID, c)
+				current, err := readGmailInboundConfig()
+				if err != nil {
+					return nil, err
+				}
+				return inboundClientFor(m.ConnectionID, current)
 			}
 			api.gmailInbound = s
 		}
 	}
 	router.HandleFunc(gmailInboundEventPath, func(w http.ResponseWriter, r *http.Request) {
-		if api.gmailInbound == nil {
+		current, err := readGmailInboundConfig()
+		if api.gmailInbound == nil || err != nil || len(current.Topics) == 0 {
 			http.Error(w, "Gmail intake is not configured", 503)
 			return
 		}
 		api.gmailInbound.Receive(w, r)
 	}).Methods("POST")
-	router.HandleFunc("/api/gmail-inbound/route", api.gmailInboundRoute(c)).Methods("GET")
+	router.HandleFunc("/api/gmail-inbound/route", func(w http.ResponseWriter, r *http.Request) {
+		current, err := readGmailInboundConfig()
+		if err != nil {
+			current = gmailInboundConfig{}
+		}
+		api.gmailInboundRoute(current)(w, r)
+	}).Methods("GET")
+	api.initGmailSetup(router)
 	router.HandleFunc("/api/gmail-inbound/sender-consent", api.gmailSenderConsent).Methods("POST")
 	if api.gmailInbound == nil {
 		return func() {}
@@ -107,7 +139,9 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 	ctx, cancel := context.WithCancel(context.Background())
 	api.gmailInbound.Start(ctx)
 	var once sync.Once
-	return func() { once.Do(func() { cancel(); api.gmailInbound.Wait(); _ = api.gmailInbound.Store.Close() }) }
+	return func() {
+		once.Do(func() { cancel(); api.gmailSetup.stop(); api.gmailInbound.Wait(); _ = api.gmailInbound.Store.Close() })
+	}
 }
 func inboundClientFor(id string, c gmailInboundConfig) (services.GmailInboundClient, error) {
 	svc := services.GetGmailService()
@@ -231,7 +265,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 			}
 		}
 		if r.Method == "POST" {
-			if api.gmailInbound == nil {
+			if api.gmailInbound == nil || len(config.Topics) == 0 {
 				http.Error(w, "An administrator must configure Gmail Pub/Sub on this server first", 409)
 				return
 			}
@@ -364,7 +398,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 			existing = &target
 		}
 		scope, _ := gmailRequestScope(r, target.WorkspacePath)
-		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r), "admin_setup": gmailInboundAdminSetup(config)}}
+		response := map[string]interface{}{"configured": api.gmailInbound != nil && len(config.Topics) > 0, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r), "admin_setup": gmailInboundAdminSetup(config), "provisioning": api.gmailSetupStatus(r.Context())}}
 		if existing != nil {
 			consent, consentErr := api.gmailInbound.Store.SenderConsentStatus(r.Context(), *existing, gmailOwnerEmail(*existing))
 			if consentErr != nil {

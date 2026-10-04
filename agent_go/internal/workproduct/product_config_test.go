@@ -157,6 +157,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"list_gmail_connections":            false,
 		"get_gmail_trigger":                 false,
 		"manage_gmail_trigger":              false,
+		"setup_gmail_inbound":               false,
 		"update_gmail_connection_grants":    false,
 		"query_workflow_db":                 false,
 		"mutate_workflow_db":                false,

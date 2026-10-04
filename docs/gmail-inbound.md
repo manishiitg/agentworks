@@ -36,11 +36,86 @@ Automatic replies, bounces, spam and trash remain blocked. Shared-project
 readers cannot configure a route. Code continues to use only that Code's private
 Google connection.
 
+## Builder-guided administrator setup
+
+An app administrator can ask any Gmail-enabled Crew, Code or workflow Builder:
+**“Set up automatic incoming Gmail for this server.”** The Builder inspects
+`get_gmail_trigger.setup.provisioning` and calls
+`setup_gmail_inbound(action="prepare", client_name="REGISTERED_CLIENT", project_id="OWNING_PROJECT")`.
+One registered OAuth app is selected automatically. Newly uploaded OAuth JSON
+retains its non-secret `project_id` metadata; when that metadata is absent,
+Builder asks for the owning Google Cloud project ID rather than guessing it.
+The company app and named local OAuth apps both work. Setup is once per
+server/OAuth project; it is not performed for every connected mailbox.
+
+Preparation returns a read-only resource plan and an expiring review link.
+The human opens the link, reviews the exact topic, subscription, push identity
+and event URL, then chooses **Continue with Google and set up receiving**.
+Google consent must be completed by the human with a Cloud account permitted
+to configure the project. Agent tools cannot apply a plan; the Cloud operations
+require Google's single-use authorization code, bound to this plan with PKCE.
+The flow reuses the selected OAuth app's existing Gmail callback (or the company
+app's `/api/oauth/callback`), so it adds no redirect URI. Google or organization
+consent policy can still block the Cloud scope and must be resolved by the operator.
+
+The server verifies the Cloud project's number against the registered OAuth
+client before changing resources, enables Gmail/Pub/Sub/IAM APIs, creates or
+reuses the topic and push service account, merges only the Gmail publisher and
+Pub/Sub token-creator grants with existing IAM policies, and creates/verifies a
+wrapped authenticated push subscription. It refuses a conflicting existing
+subscription instead of overwriting it. Existing topic mappings and receiving
+identities are preserved. Additional OAuth projects can publish to topics in
+their own project while subscriptions stay in the existing push identity's
+project; the consenting operator needs access to both projects in that case.
+
+The administrator needs project read access, API enablement, topic/subscription
+administration and topic IAM permissions, service account creation/IAM, and
+`iam.serviceAccounts.actAs` for the push account. Grant these outside the app
+according to organization policy; setup never grants the operator project roles.
+App administrator access alone is insufficient. No gcloud installation, service
+account key upload or server environment edit is needed for this flow. Only a
+short-lived Cloud access token is used; Cloud refresh tokens are discarded and
+never added to gog or any Gmail connection. Revoked app-admin access stops
+subsequent Cloud requests and prevents activation.
+
+After verification the server atomically saves mode-0600
+`gmail-inbound/config.json` under `AGENTWORKS_STATE_ROOT` (or the normal durable
+private state root), outside project storage. The existing fixed worker pools
+and authenticated receiver read the configuration live: no process restart or
+release deployment is needed. The environment settings below remain a supported
+manual option; conflicting saved/environment identities or client topics disable
+intake rather than silently replacing them. Keep the private state root on durable
+storage across releases. To remove automatically configured intake entirely, an
+operator removes that private config as well as any manual environment settings;
+ordinary owners pause their own triggers through Builder.
+
+The Incoming email pane displays preparation, consent, progress, errors and a
+review link. Builder uses `setup_gmail_inbound(action="status")` afterward.
+**Receiving infrastructure ready** verifies resources and saved configuration;
+it does not prove the proxy/tunnel delivers events or that a real mailbox watch
+works. Next, connect the mailbox with Gmail read access, configure its saved
+rules, wait for `watch_ready=true`, and send a test email. Filters, workflow
+routes and separate owner approval for extra senders remain unchanged.
+
+Setup has a bounded four-minute runtime. If a permission, IAM propagation or
+network failure interrupts it, receiving is not activated. Created resources
+are left intact and reported as a failure; prepare a new review to retry with
+fresh consent. Matching resources are reused. Pending links/jobs are in memory
+and expire after 15 minutes; a server restart requires a fresh review, while
+successfully saved receiving configuration survives it. Concurrent provisioning
+is refused. Cloud resource charges remain subject to Google pricing.
+
+For RTS, the event URL is `https://video.realtrainingsys.com/api/hooks/gmail/events`.
+For other deployments it comes from their trusted `PUBLIC_URL` or existing
+validated audience. Local development must set `PUBLIC_URL` to its existing
+public HTTPS Cloudflare tunnel and route the callback/event paths to this backend.
+This flow does not create a tunnel, connect a Gmail account, change rules, approve
+senders or deploy a release. The manual setup below remains available.
+
 ## Shared service, deployment-specific configuration
 
 The receiver is `POST /api/hooks/gmail/events`. Google-signed OIDC tokens must
-match the configured service account and exact audience. Only that endpoint
-bypasses the browser login gate; management remains authenticated. The
+match the configured service account and exact audience. The event endpoint verifies Google push identity itself. The exact expiring setup-review endpoint and existing OAuth callbacks also bypass browser login; all management remains authenticated. The
 AWS RTS gateway and the Hetzner gateways compile the same gateway source.
 
 Use one topic per Google OAuth project, and a separate push subscription and
@@ -59,7 +134,7 @@ account and audience. No Google Cloud credential file is needed on the app
 server for receiving push notifications: gog uses the existing user OAuth
 connection for Gmail, and the server checks Google's public signing keys.
 
-Keep these settings in the deployment's existing private `.env` file:
+For manual setup, keep these settings in the deployment's existing private `.env` file:
 
 ```dotenv
 GMAIL_INBOUND_TOPICS='{"YOUR_OAUTH_CLIENT_NAME":"projects/YOUR_GOOGLE_PROJECT_ID/topics/agentworks-gmail"}'

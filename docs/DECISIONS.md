@@ -19,6 +19,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Builder prepares Gmail infrastructure; human Cloud consent authorizes provisioning
+
+An interactive app administrator can prepare a frozen incoming-Gmail resource
+plan through Builder. The human reviews it and completes plan-bound Google
+Cloud consent in the browser; no agent tool applies the plan or receives Cloud
+credentials. The server verifies the owning OAuth project, provisions only the
+reviewed resources and narrow grants, and activates durable private configuration
+without environment edits or a restart. Manual settings remain compatible;
+conflicts fail closed. Mailbox connections, rules and extra-sender approval remain
+separate. Why: the manual Pub/Sub checklist made receiving too difficult; gog
+watchers still require its infrastructure. Ticket:
+[PLAT-483](bugs/pulse_platform/integrations/plat-483.md).
+
 ### 2026-10-04 — Slot commands keep access to their slot's rootless Docker (accepted exception to the sandbox)
 
 Users run things through Docker in Code, so where a host enables Docker for slots (`provision-slots.sh docker`, a rootless daemon per slot at `/run/user/<uid>/docker.sock`) slot commands keep using it; the slot's run-root hiding (PLAT-480 F1) does not cover `/run/user/<uid>`. Consequence, accepted: a command that can use its slot's Docker can start a container that is not under the command's Landlock rules, so on such a host the boundary for what a slot command can reach is the slot account's own Unix permissions plus rootless Docker's user namespace, not Landlock. That boundary is why each user has a slot; other users' files and the app's private state stay closed to it. Do not remove Docker from slots to close this; if it must tighten, narrow what the slot account can reach. Ticket: PLAT-480.

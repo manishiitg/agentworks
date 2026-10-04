@@ -108,18 +108,30 @@ Operator setup and internals: `docs/gmail-inbound.md`.
 
 ## When incoming email is not set up
 
-The Incoming email pane now explains that Google sign-in and automatic receiving
-are separate. Its expandable setup checklist shows the Google Cloud requirements,
-server environment variable names and this deployment's public event URL. Ask AI
-passes the same request to Builder, and `get_gmail_trigger.setup.admin_setup`
-returns the deployment-specific checklist without credentials.
+The Incoming email pane explains Google sign-in versus automatic receiving.
+Ask AI sends the setup request to Builder. An app administrator can ask Builder
+**“Set up automatic incoming Gmail for this server.”** Builder selects the
+registered company or local OAuth app and prepares a plan. If the app's saved
+metadata lacks its Google Cloud project ID, Builder asks for it.
 
-`configured: false` means the receiving service is disabled. An empty
-`setup.oauth_clients` means no registered OAuth client is mapped to an inbound
-topic; Google sign-in can still be configured. Setup needs Google Cloud project
-permissions plus server environment access. Being an app administrator alone
-does not grant those permissions. The operator follows [the setup runbook](gmail-inbound.md),
-then Builder connects a mailbox with read consent and verifies readiness.
+Open the returned review link yourself, review the resources and server changes,
+and continue with a Google account permitted to configure that project. After
+Google consent, AgentWorks handles APIs, the topic, narrow IAM grants, the
+subscription and private server configuration. You do not need gcloud, manual
+environment edits or a backend restart. The pane shows progress and failures;
+ask Builder to check status afterward. App administrator access alone does not
+grant Google Cloud permissions, and local needs its public HTTPS tunnel.
+
+`configured: false` means receiving is disabled; an empty `setup.oauth_clients`
+means no registered OAuth app is mapped to an inbound topic, even if Google
+sign-in works. `setup.provisioning` shows whether the current administrator can
+prepare setup and lists eligible registered apps. The expandable manual checklist
+is an optional fallback. See [the setup runbook](gmail-inbound.md).
+
+Infrastructure ready is separate from mailbox readiness. Builder then connects
+the mailbox with Gmail read consent and configures the requested rules. Send a
+test email after the mailbox is Ready. Setup never broadens senders or changes
+an existing rule, and does not create a recurring agent email-check schedule.
 
 ## Owner confirmation for additional senders
 

@@ -33,6 +33,11 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 					google = strings.ReplaceAll(google, "connection configuration remains account-wide and shared with AgentWorks", "connection configuration remains private to this project")
 					body += "\n" + google
 				}
+				// Code's private-Gmail variant also retains incoming-email procedures;
+				// clipping channel/Slack guidance must not clip its admitted setup tools.
+				if start := strings.Index(copy.Content, "## Incoming Gmail triggers:"); start >= 0 {
+					body += "\n" + copy.Content[start:]
+				}
 				body += "\nUse only this project's private Google accounts in its owner's chats. Reads require an observed read grant; drafting/sending requires agent-write opt-in plus compose grant.\n"
 				copy.Description += " Also read before using this project's private Google/Gmail accounts."
 			} else {
