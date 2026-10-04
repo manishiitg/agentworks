@@ -96,8 +96,8 @@ known-good build from being pruned by later builds. `./deploy.sh build` only bui
 - Confida failed before touching anything: the first playbook validation ran in the shared build's read-only `source/` as the `confida` account, and the playbook tests create a temporary folder beside the playbooks (`PermissionError`). The old path ran it in the product's own clone.
   Fix: with `--prebuilt` the shared source is not validated in place; `build-release.sh` validates the playbooks once in a scratch copy and each product validates its own release copy. Test `test_playbook_validators_never_write_into_the_shared_build_source`
   (run on the box as the unprivileged `agents` account: it passes, and against the old script it fails with the same PermissionError).
-- SparkQuill: `ssh sparkquill@host` is refused for the deploy key (`id_ed25519`, which works for `agents@`); the "Too many authentication failures" message came from SSH offering several agent keys. `deploy.sh` now sets `IdentitiesOnly=yes` so the real error shows.
-  SparkQuill needs its own deploy key (or the deploy key added to its `authorized_keys`).
+- SparkQuill: `ssh sparkquill@host` is refused for the deploy key (`id_ed25519`, which works for `agents@`); the "Too many authentication failures" message came from SSH offering several agent keys. `deploy.sh` now sets `IdentitiesOnly=yes` when the named key file exists, so the real error shows. (A first version set it always and broke Confida: its default key file `~/.ssh/confida_deploy` does not exist on the owner's Mac, so ssh must stay free to use the agent's key; the Confida redeploy aborted at its first connection, before any change.)
+  SparkQuill needs its own deploy key (or the deploy key added to its `authorized_keys`); the owner is handling that with another agent.
 
 ## Left
 

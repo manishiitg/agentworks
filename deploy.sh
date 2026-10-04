@@ -170,9 +170,13 @@ for cmd in git scp ssh; do
   command -v "$cmd" >/dev/null || { echo "Missing $cmd" >&2; exit 1; }
 done
 
-SSH_OPTS=(-p "$SSH_PORT" -i "$SSH_KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+# Offer only the named key when that file exists (a wrong key then fails with its real error instead of "Too many authentication failures"). When it
+# does not exist (Confida's default ~/.ssh/confida_deploy on a machine that logs in through the ssh agent) ssh must be free to use the agent's keys.
+SSH_IDENTITY=(-i "$SSH_KEY_PATH")
+[[ -r "$SSH_KEY_PATH" ]] && SSH_IDENTITY+=(-o IdentitiesOnly=yes)
+SSH_OPTS=(-p "$SSH_PORT" "${SSH_IDENTITY[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 SSH=(ssh "${SSH_OPTS[@]}" "$PRODUCT@$HOST_IP")
-SCP=(scp -P "$SSH_PORT" -i "$SSH_KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+SCP=(scp -P "$SSH_PORT" "${SSH_IDENTITY[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
 echo "==> [$PRODUCT] Checking deployment configuration"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - preflight" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
