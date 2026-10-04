@@ -60,8 +60,8 @@ func TestWorkflowSuggestionReaderSubmissionAndOwnerReview(t *testing.T) {
 	if _, err := consumeReportHumanInput(ctxFor("reader"), "Workflow/test", input.ID, ReportHumanInputConsumeRequest{OutcomeSummary: "Implemented"}); err == nil {
 		t.Fatal("reader consumed suggestion")
 	}
-	if turns := scheduledDecisionPreflightTurns([]ReportHumanInput{*approved}); len(turns) != 0 {
-		t.Fatal("accepted suggestion started unattended decision processing")
+	if mode := scheduledDecisionApplyMode(*approved); mode != "legacy_manual" {
+		t.Fatalf("an accepted suggestion is review, not edit authority; apply mode = %q", mode)
 	}
 	again, err := listReportHumanInputs(context.Background(), "Workflow/test", "answered", "user_suggestion")
 	if err != nil || len(again) != 1 || again[0].ApplyContract.Mode != "no_change" {

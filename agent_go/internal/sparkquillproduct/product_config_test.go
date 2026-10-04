@@ -145,6 +145,7 @@ func TestLearningCreationSkillsAreParentOnlyAndDiscoverable(t *testing.T) {
 	}
 	profiles := BuiltinAgentProfiles()
 	for name, command := range map[string]string{
+		"learning-game":           "create-learning-game",
 		"animated-learning-video": "create-animated-video",
 		"reading-book":            "create-reading-book",
 	} {

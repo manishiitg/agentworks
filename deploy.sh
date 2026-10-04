@@ -32,6 +32,8 @@ server only copies and activates it after verifying its manifest (architecture, 
                         ancestors of origin/main of the three repositories
   DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
+  DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
+                        (it must already be on main); for a release that leaves out work still landing
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 

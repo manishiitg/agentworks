@@ -1279,7 +1279,7 @@ func TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer(t *testing.T) {
 		}
 	}
 	for _, stage := range steps[2:5] {
-		for _, contract := range []string{"run_in_background", "review_module=", "runtime waits for the child", "one terminal review result", "Do not render a dashboard"} {
+		for _, contract := range []string{"do the review yourself", "your own subagents", "Do not render a dashboard"} {
 			if !strings.Contains(stage.query, contract) {
 				t.Fatalf("%s missing %s", stage.label, contract)
 			}
@@ -2034,6 +2034,23 @@ func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
 	for _, label := range []string{"gate", "review", "fix", "review-fix-continuation", "dashboard", "finalize"} {
 		if got := (pulseLifecycleStep{label: label}).idleMaxInactivity(); got != 10*time.Minute {
 			t.Fatalf("%s max inactivity = %s, want 10m", label, got)
+		}
+	}
+	// A module review runs inside its own turn, so it may stay quiet longer.
+	for _, label := range []string{"plan-drift-review", "technical-review", "architecture-review", "strategic-review"} {
+		if got := (pulseLifecycleStep{label: label}).idleMaxInactivity(); got != schedulerPulseReviewMaxInactivity {
+			t.Fatalf("%s max inactivity = %s, want %s", label, got, schedulerPulseReviewMaxInactivity)
+		}
+	}
+}
+
+// Goal Work's permission levels reach its step as text, with the statement that
+// the tools do not enforce them (PLAT-452).
+func TestGoalWorkAutonomyTextCarriesTheLevelsAndTheHonestCaveat(t *testing.T) {
+	text := goalWorkAutonomyText(context.Background(), "Workflow/does-not-exist")
+	for _, want := range []string{"not enforced by the tools", "Run permission", "Outward permission", "Change permission"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("autonomy text missing %q:\n%s", want, text)
 		}
 	}
 }

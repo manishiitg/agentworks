@@ -22,8 +22,7 @@ goals, outcomes, measurement and experiments to Strategic Review.
    latest meaningful outputs, validation receipts and run summaries. Select
    only evidence tied to a concrete correctness question. An ordinary
    successful run is not a reason to audit every implementation surface.
-2. Perform the review in this current background agent. Do not call
-   `run_in_background`, launch another reviewer, publish, notify, run the
+2. Perform the review yourself in this turn. Do not launch another reviewer, publish, notify, run the
    workflow, or edit files or configuration. Follow a suspected defect only as
    far as needed to establish its root cause, required-output impact and
    recovery status. Open a bounded raw trace only when compact evidence cannot

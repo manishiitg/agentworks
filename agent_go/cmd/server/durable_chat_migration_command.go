@@ -14,6 +14,7 @@ import (
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/spf13/cobra"
 )
 
@@ -233,7 +234,7 @@ func collectDurableChatMigrationCandidates(docsRoot string, stats *durableChatMi
 func legacyChatOwnerFromPath(path string) string {
 	parts := strings.Split(filepath.ToSlash(path), "/")
 	for index, part := range parts {
-		if (part == "_users" || part == "users") && index+1 < len(parts) && strings.TrimSpace(parts[index+1]) != "" {
+		if (part == workspaceref.UsersDir || part == "users") && index+1 < len(parts) && strings.TrimSpace(parts[index+1]) != "" {
 			return parts[index+1]
 		}
 	}

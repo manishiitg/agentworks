@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // extractWorkspacePathFromObjective extracts the workspace path from the objective string
@@ -487,13 +488,8 @@ func isChatsWriteFolder(folder string) bool {
 		return true
 	}
 
-	parts := strings.Split(cleaned, "/")
-	for i := 0; i+2 < len(parts); i++ {
-		if parts[i] == "_users" && parts[i+2] == "chats" {
-			return true
-		}
-	}
-	return false
+	ref := workspaceref.MustParse(cleaned)
+	return ref.HasOwner() && (ref.Logical() == "chats" || strings.HasPrefix(ref.Logical(), "chats/"))
 }
 
 func isExactFolderGuardFilePath(folder string) bool {

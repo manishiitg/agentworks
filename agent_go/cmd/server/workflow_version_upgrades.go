@@ -33,8 +33,9 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
 // schedules, Pulse, reports, notifications and run summaries. A Relay shares the
-// workflow runtime (steps, scripts, code layout, database) and therefore every
-// other migration, but never these (PLAT-431).
+// workflow runtime (steps, scripts, code layout) and therefore every other
+// migration, except its absent stores below (PLAT-431, PLAT-441). New ladder
+// entries apply to both products by default; these are explicit exceptions.
 var goalsOnlyWorkflowUpgrades = map[string]bool{
 	"upgrade-notification-config":            true,
 	"upgrade-current-artifact-contract":      true,
@@ -52,6 +53,13 @@ var goalsOnlyWorkflowUpgrades = map[string]bool{
 	"upgrade-route-summaries":                true,
 	"upgrade-explicit-schedule-pulse":        true,
 	"upgrade-eval-verdict-schema":            true,
+}
+
+// relayStoreUpgrades migrate the workflow database, knowledge base or learnings.
+// A Relay has none of those stores, so it never owes them.
+var relayStoreUpgrades = map[string]bool{
+	"upgrade-kb-write-method":    true,
+	"upgrade-managed-db-scripts": true,
 }
 
 func manifestIsRelay(manifest *WorkflowManifest) bool {
@@ -448,7 +456,7 @@ func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpg
 	}
 	shared := plan[:0:0]
 	for _, upgrade := range plan {
-		if !goalsOnlyWorkflowUpgrades[upgrade.label] {
+		if !goalsOnlyWorkflowUpgrades[upgrade.label] && !relayStoreUpgrades[upgrade.label] {
 			shared = append(shared, upgrade)
 		}
 	}

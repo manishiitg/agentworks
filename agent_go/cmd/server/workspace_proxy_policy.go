@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // workspaceProxyPolicy decides, per workspace path a proxied request names
@@ -165,9 +166,8 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 // running-session and credential cleanup. This also covers deleting a parent
 // folder or clearing its contents through /folders/<path>/files.
 func codeFilesDeletionProtected(clean string) bool {
-	parts := strings.Split(clean, "/")
-	if len(parts) >= 3 && parts[0] == "_users" {
-		clean = strings.Join(parts[2:], "/")
+	if ref := workspaceref.MustParse(clean); ref.HasOwner() && ref.Logical() != "" {
+		clean = ref.Logical()
 	}
 	root := codeproduct.ProjectsRoot
 	if clean == root || (clean != "" && strings.HasPrefix(root, clean+"/")) {
@@ -177,7 +177,7 @@ func codeFilesDeletionProtected(clean string) bool {
 	if !inside {
 		return false
 	}
-	parts = strings.Split(rel, "/")
+	parts := strings.Split(rel, "/")
 	return len(parts) == 1 || (len(parts) == 2 && (parts[1] == "product.json" || parts[1] == "workflow.json"))
 }
 

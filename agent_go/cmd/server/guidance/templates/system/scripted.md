@@ -12,6 +12,16 @@ Use the others for branching (`branch` for a small in-flow decision, `routing` f
 sub-workflow fork), adaptive specialist coordination (`message_sequence` with
 `predefined_routes`), or operator input (`human_input`).
 
+## Scripts are built by you, not healed by the run
+
+A scripted step runs its saved `main.py` and nothing else. In any run (schedule,
+webhook, `run_full_workflow`, a route called by an agent) a missing or failing
+script fails the step with its real error, and Pulse reports it; no LLM rewrites
+the script, repairs it or stands in for it. You write and fix scripts: author
+`main.py`, test it with `execute_step` (the only place an agent may write or repair
+a script), and after a reported failure read the error and fix the script the same
+way. `lock_code` additionally stops that repair in your own `execute_step`.
+
 ## When to use
 
 - Deterministic, self-contained work: fixed API/SDK calls, CLI commands, data fetching, known pagination, parse, normalize, transform, write, and mechanically verify. Declare these steps `scripted` from initial design and batch related calls that share one source/auth/retry/output contract.
@@ -50,8 +60,8 @@ for the exact item schema, permissions, parallelism, Stop behavior, and limits.
 - `context_dependencies` → `context_output` — forward-only context flow between steps.
 - `validation_schema` — **required**; gates the step. Checks **files** (file_checks +
   json_checks) AND/OR the **db** (`db: [{sql, min_rows, max_rows, checks}]` — read-only
-  queries against `db/db.sqlite`). On failure the agent retries with the failed-check
-  feedback. Prefer **db checks** when the step writes its results to the db: they gate on
+  queries against `db/db.sqlite`). A failed check fails the step with its feedback; you
+  fix the script with `execute_step`. Prefer **db checks** when the step writes its results to the db: they gate on
   the source of truth, so you don't need a hand-written output file just to validate (a
   duplicated summary file drifts from the db — e.g. a `status` that ends up null).
 - Stores: reads soul / db / knowledgebase / learnings per access; writes its own step

@@ -848,9 +848,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 ) (*workspace.FolderGuardConfig, error) {
 	stepConfig := getAgentConfigs(step)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := resolveExecutionLearningsAccess(stepConfig, step)
+	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, step)
 
-	readPaths, writePaths := hcpo.setupExecutionFolderGuard(stepPath, step.GetID(), kbAccess, learningsAccess, resolveDBAccess(stepConfig), stepConfig)
+	readPaths, writePaths := hcpo.setupExecutionFolderGuard(stepPath, step.GetID(), kbAccess, learningsAccess, hcpo.resolveDBAccess(stepConfig), stepConfig)
 	// Sequence batches use an invocation-specific output folder while retaining
 	// the saved script's identity and store permissions. Never grant the script's
 	// ordinary execution folder instead of the actual invocation directory.
@@ -877,6 +877,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 		ReadPaths:         readPaths,
 		WritePaths:        writePaths,
 		BlockedWritePaths: readOnlyPaths,
+		BlockedPaths:      hcpo.executionStoreBlockedPaths(),
 	}, nil
 }
 
@@ -979,7 +980,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// that injects DB_PATH. Without it a saved main.py doing os.environ['DB_PATH']
 	// fails with "DB_PATH unset and no root found". Set it here to the same absolute
 	// path the agent path uses. Set AFTER the workspace-env merge so it always wins.
-	extraEnv["DB_PATH"] = filepath.Join(docsRoot, hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+	if dbAccess != DBAccessNone {
+		extraEnv["DB_PATH"] = filepath.Join(docsRoot, hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
 
 	// RUN_FOLDER: the workspace-relative "iteration-N/<group>" segment under

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"net/http"
 	"net/url"
 	"os"
@@ -125,7 +126,7 @@ func (c *Client) resolveGuardRelativeWorkspacePath(ctx context.Context, input st
 	}
 	firstPart := strings.SplitN(filepath.ToSlash(clean), "/", 2)[0]
 	switch firstPart {
-	case "_users", "Chats", "Workflow":
+	case workspaceref.UsersDir, "Chats", "Workflow":
 		// These are already workspace-root-qualified. A denied qualified path
 		// must stay denied rather than being smuggled below the project root.
 		return clean

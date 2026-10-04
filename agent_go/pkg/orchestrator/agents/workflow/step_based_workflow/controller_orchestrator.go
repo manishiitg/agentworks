@@ -36,7 +36,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	executionWorkspacePath := hcpo.getOrchestratorExecutionWorkspacePath()
 	skillStepConfig := getAgentConfigs(step)
 	kbAccessForGuard := resolveKnowledgebaseAccess(skillStepConfig, hcpo.UseKnowledgebase())
-	learningsAccessForGuard := resolveExecutionLearningsAccess(skillStepConfig, step)
+	learningsAccessForGuard := hcpo.resolveExecutionLearningsAccess(skillStepConfig, step)
 
 	// READ: current group's execution folder + DB documentation/assets, plus KB/learnings only when
 	// the step config grants those stores. WRITE: current group's execution
@@ -51,7 +51,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	// The bridge writes oversized tool results here; agents need read access to retrieve them.
 	readPaths = append(readPaths, filepath.Join(baseWorkspacePath, "tool_output_folder"))
 	writePaths = []string{parentRoot, sharedPath, downloadsPath}
-	readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, writePaths)
+	if hcpo.platformStoresEnabled() {
+		readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, writePaths)
+	}
 	if learningsAccessForGuard != LearningsAccessNone {
 		globalLearningsPath := filepath.Join(baseWorkspacePath, "learnings", GlobalLearningID)
 		readPaths = append(readPaths, globalLearningsPath)
@@ -177,7 +179,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeOrchestratorStep(
 
 	// Learnings read gate — default-on unless learnings_access="none" or routing/eval.
 	// Todo-task agents benefit from seeing _global/SKILL.md to reuse cross-step knowledge.
-	isLearningDisabled := !canReadLearnings(stepConfig, orchestratorStep)
+	isLearningDisabled := !hcpo.canReadLearnings(stepConfig, orchestratorStep)
 	select {
 	case <-ctx.Done():
 		return false, "", fmt.Errorf("todo task execution canceled: %w", ctx.Err())
@@ -312,6 +314,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeOrchestratorStep(
 		Items:            items,
 		NextStepID:       orchestratorStep.NextStepID,
 		AgentConfigs:     orchestratorStep.AgentConfigs,
+		AuthoredPrompt:   orchestratorStep.AuthoredPrompt,
+		SystemPrompt:     orchestratorStep.SystemPrompt,
 	}
 	opts := messageSequenceCallOptions{
 		Source: "configured_queue",
@@ -354,6 +358,8 @@ func delegatingMessageSequenceAsOrchestrator(step *MessageSequencePlanStep) *Orc
 		NextStepID:       step.NextStepID,
 		Messages:         step.Items,
 		AgentConfigs:     step.AgentConfigs,
+		AuthoredPrompt:   step.AuthoredPrompt,
+		SystemPrompt:     step.SystemPrompt,
 	}
 }
 
@@ -419,11 +425,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	// Get step config for code execution mode: step config > workflow/preset default
 	stepConfig := getAgentConfigs(step)
 	isCodeExecutionMode := hcpo.getCodeExecutionMode(stepConfig)
-	dbAccessForGuard := resolveDBAccess(stepConfig)
+	dbAccessForGuard := hcpo.resolveDBAccess(stepConfig)
 
 	// Resolve KB access mode for this step (explicit step config > preset default).
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := resolveExecutionLearningsAccess(stepConfig, step)
+	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, step)
 	useKnowledgebase := kbAccess != KBAccessNone
 
 	// Build folder guard paths for prompt (same logic as executeOrchestratorStep setup)
@@ -1153,7 +1159,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	// output folder (PLAT-432). The caller gets that JSON instead of the run
 	// summary; an unusable file is logged and the summary is kept.
 	if isScriptedRoute {
-		resultJSON, readErr := readScriptedRouteResult(hcpo.scriptedRouteOutputDir(subAgentStepPath))
+		resultJSON, readErr := readScriptedRouteResult(filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath()), hcpo.scriptedRouteOutputDir(subAgentStepPath))
 		if readErr != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Route %s: %s ignored: %v", route.RouteID, ScriptedRouteResultFile, readErr))
 			executionResult = fmt.Sprintf("%s\n(%s was ignored: %v)", executionResult, ScriptedRouteResultFile, readErr)

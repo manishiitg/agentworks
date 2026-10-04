@@ -19,6 +19,78 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A chat switch scrolls to the bottom once, after the list settles; a pane message keeps a reader's place
+
+- Switching chats or workflows asks for the bottom through one request that is performed once the chat content has stopped changing (capped at 0.8 s)
+  and is dropped if the person scrolls first. No caller repeats it on timers.
+- "Apply in chat" / pane messages into the chat already on screen do not move a reader who has scrolled up; into another chat they land at the bottom.
+  Ticket: [PLAT-455](bugs/pulse_platform/frontend-chat/plat-455.md).
+
+### 2026-10-04 — Project ownership is server-controlled (a registry), never read from user-writable project files
+
+- Who owns a Crew or a Code, and so whose Linux slot a launch uses and who may open it, comes from the server's owner registry in the app's state area
+  (`<state root>/ownership/projects.json`, app-owned, not under the docs root, not reachable by the workspace proxy or a CLI's folder guard); a project
+  with no entry is owned by whoever's tree it lies in (`_users/<owner>/...`); a project at the shared `Crew/` root with no entry belongs to nobody.
+  `product.json`'s `owner_id` is information only: users and agent turns can edit it, so it is never trusted (a disagreement is logged and the registry
+  or path wins).
+- A private Code whose registered owner is not the person whose tree admitted it is refused before any CLI starts, with an explicit error. There is no
+  ownership transfer; adding one must update the registry and the project's location together.
+- The startup scan, the owner opening a project, project creation and the Crew move write the registry; the owner scan and every manifest write refuse
+  symlinks (anchored opens, no write through a link): [PLAT-450](bugs/pulse_platform/security-sandbox/plat-450.md).
+- Tickets: [PLAT-449](bugs/pulse_platform/security-sandbox/plat-449.md), [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
+
+### 2026-10-04 — No background-agent tool; the agent does the work itself
+
+The Builder/Pulse `run_in_background` tool is removed. Coding CLIs have their own
+subagents; an agent does reviews and runs workflow steps itself, and Pulse's own
+agent does each module review in its turn. Review limits (read-only, Goal Work
+autonomy) are stated in the prompt rather than enforced by a filtered tool set;
+the owner accepted that trade-off.
+Ticket: [PLAT-452](bugs/pulse_platform/plans-contracts/plat-452.md).
+
+### 2026-10-04 — A slot mismatch refuses the launch
+
+A launch whose script names one slot and whose folder names another is refused:
+slottmux exits non-zero before running tmux, and the provider refuses a launch
+whose declared user+slot the host table does not confirm. It never falls back
+to the app account, which would silently drop isolation. A declared app account
+(Crew/goal CLI turns) and hosts without slots are unaffected. Code:
+`workspace/slots` `SlotForLaunch`, `workspace/cmd/slottmux`, provider
+`internal/slotfs`. Ticket: [PLAT-451](bugs/pulse_platform/security-sandbox/plat-451.md).
+
+### 2026-10-04 — Relay execution has no platform DB, KB or learnings
+
+Relay product.yaml declares `execution.platform_stores: false`. The shared step
+executor enforces it for tools, trusted sessions, Python, folder guards and
+reflection. Persisted step settings cannot restore these capabilities. Inputs
+and step outputs carry graph data; user systems remain available through
+explicit script/MCP integrations. Ordinary workflow capabilities stay enabled.
+Ticket: [PLAT-447](bugs/pulse_platform/plans-contracts/plat-447.md).
+
+### 2026-10-04 — Run-as identity is explicit; Crew and Goal turns stay on the app account; Crews move to `Crew/<id>`
+
+- The owner of a Crew or Code comes from the server's owner registry (path fallback; never the manifest, see the entry above), and the platform names the slot a CLI runs as. Neither is inferred from the folder path alone any more.
+- Crew turns (owner and reader alike) run as the app account, with Landlock; the reader block, tools and folder guards limit a reader. (The CLI starts in an app-owned runtime folder, not in the owner's folder, so it never ran as the owner's slot; owner confirmed keeping it, PLAT-446.)
+- Goals keep running as the app account with Landlock and per-workflow folders. Workflows have several owners, so no single person's slot fits.
+- Crews move to the shared `Crew/<slug>-<id8>` root once the explicit owner and slot are in place. Old paths stay as aliases. Code stays private in its owner's tree.
+- Ticket: [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
+
+### 2026-10-04 — Relay agents get script tools, never sub-agents; Relays have no DB/KB/learnings
+
+A Relay agent may call saved Python scripts as named tools (scripted routes,
+`script_only`); it keeps its authored system prompt. Sub-agents are not supported
+in Relays. Relays have no workflow database, knowledge base or learnings, so they
+skip those migrations and their Builder has no DB tools.
+Ticket: [PLAT-441](bugs/pulse_platform/plans-contracts/plat-441.md).
+
+### 2026-10-04 — Product selectors no longer expose the Code inspector
+
+Remove the admin/reviewer workspace inspection button and popup from the
+shared Code/Crew surface at the user's request: the unfamiliar popup failed
+with a Network Error on Excellence. The separate audited review API and
+Providers conversations overview retain their existing authorization.
+Ticket: [PLAT-439](bugs/pulse_platform/frontend-chat/plat-439.md).
+
 ### 2026-10-04 — Scripted steps never self-heal in a run
 
 A run (schedule, webhook/Relay, `run_full_workflow`, a route called by an agent)
@@ -54,9 +126,10 @@ falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetz
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
 
 A Relay reuses the workflow runtime, so it owes the same contract migrations for
-steps, scripts, code layout and the database, run from its own Builder. It skips
+steps, scripts and code layout, run from its own Builder. It skips
 migrations about schedules, Pulse, reports and notifications, and is runnable
-when no shared migration is pending.
+when no shared migration is pending. The original database inclusion was
+superseded by PLAT-441 above: platform DB/KB/learnings migrations are also skipped.
 Ticket: [PLAT-431](bugs/pulse_platform/plans-contracts/plat-431.md).
 
 ### 2026-10-04 — Costs shows numbers and short labels
@@ -422,6 +495,8 @@ Owner decision: decisions are applied only where the person can watch. The
 pre-run decision drain (PLAT-093) is removed; an answered decision is applied in
 the Builder chat, by the answering turn or Needs you's "Apply in chat". Ticket:
 [PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
+The chat message is the only apply path: the Builder is the Fixer, for every apply
+mode and whatever option was picked. Ticket: [PLAT-445](bugs/pulse_platform/human-decisions/plat-445.md).
 
 ### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
 

@@ -16,6 +16,7 @@ import (
 	sbw "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 const presentationsMigration = `CREATE TABLE IF NOT EXISTS ui_presentations (id TEXT PRIMARY KEY, kind TEXT NOT NULL, schema_version INTEGER NOT NULL, session_id TEXT, title TEXT NOT NULL, payload_json TEXT NOT NULL, resources_json TEXT NOT NULL, actions_json TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`
@@ -90,16 +91,13 @@ func ensureVideoStudioDefaultGroup(ctx context.Context, client *workspace.Client
 // scope as the guard. The workspace API accepts this canonical form and still
 // applies the authenticated X-User-ID boundary.
 func profileWorkspaceRoot(userID, workspacePath string) string {
-	cleanWorkspace := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(strings.TrimSpace(workspacePath))), "/")
-	if strings.HasPrefix(cleanWorkspace, "_users/") {
-		return cleanWorkspace
+	ref, ok := workspaceref.Parse(workspacePath)
+	if !ok {
+		// A path escaping the workspace maps to a folder that does not exist,
+		// never to the user's whole tree.
+		return workspaceref.PhysicalPath(userID, "_invalid_workspace_path")
 	}
-	cleanUser := strings.TrimSpace(userID)
-	if cleanUser == "" {
-		cleanUser = "default"
-	}
-	cleanUser = filepath.Base(filepath.Clean(cleanUser))
-	return filepath.ToSlash(filepath.Join("_users", cleanUser, cleanWorkspace))
+	return ref.PhysicalKeepOwner(strings.TrimSpace(userID))
 }
 
 // profileWorkspaceLocalPath resolves the same user-scoped workspace to the

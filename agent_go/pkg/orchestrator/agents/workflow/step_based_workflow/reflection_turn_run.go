@@ -59,11 +59,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 	executionLLM string,
 ) stepReflectionTurnResult {
 	result := stepReflectionTurnResult{History: history}
-	if executionAgent == nil {
+	if executionAgent == nil || !hcpo.platformStoresEnabled() {
 		return result
 	}
 
-	writesLearnings := shouldDirectWriteLearnings(stepConfig, step)
+	writesLearnings := hcpo.shouldDirectWriteLearnings(stepConfig, step)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 	kbContribution := kbContributionForPrompt(stepConfig)
 	writesKB := kbAccessAllowsWrite(kbAccess) && strings.TrimSpace(kbContribution) != ""
@@ -347,6 +347,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveReflectionTimingLog(
 // name real destinations. Best-effort: an unavailable database simply omits the
 // list rather than blocking reflection.
 func (hcpo *StepBasedWorkflowOrchestrator) reflectionDBTableNames(ctx context.Context) []string {
+	if !hcpo.platformStoresEnabled() {
+		return nil
+	}
 	names, err := LoadWorkflowDBTableNames(ctx, hcpo.GetWorkspacePath())
 	if err != nil {
 		hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ Reflection turn omitting DB table list: %v", err))
@@ -359,6 +362,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) reflectionDBTableNames(ctx context.Co
 // file, so the prompt can state the gap instead of asserting a budget nobody
 // measures.
 func (hcpo *StepBasedWorkflowOrchestrator) reflectionSkillIndexLines(ctx context.Context) int {
+	if !hcpo.platformStoresEnabled() {
+		return 0
+	}
 	base := fmt.Sprintf("%s/learnings/%s", hcpo.GetWorkspacePath(), GlobalLearningID)
 	content, err := hcpo.ReadWorkspaceFile(ctx, base+"/SKILL.md")
 	if err != nil {

@@ -15,11 +15,15 @@ still pending. Supersedes the role split in PLAT-303/305 for Strategy.
   (`strategy-auditor`) are unchanged; only their content, permissions and UI
   label changed. `templates/system/strategy-auditor.md` is the Goal Work
   contract; `templates/review/strategy-auditor.md` is the manual pass.
-- Permissions: `background_review_scope.go` gives Goal Work the research tools
-  plus `record_pulse_goal_work`, writes to `runs/pulse/<run>/` and
-  `pulse/work/`, and `execute_step` / `run_full_workflow` only when
-  `pulse.autonomy.run` is `auto` (the default) and no Plan Drift is due.
-  Plan, schedule and dispatch tools stay withheld. Outward actions are a prompt
+- Permissions (changed 2026-10-04, PLAT-452): Goal Work runs in the Pulse
+  conversation, so its limits are no longer enforced by a filtered tool set.
+  `GoalWorkAutonomyInstructions` (`background_review_scope.go`) writes the
+  `pulse.autonomy` levels into its step text and says the agent must hold them
+  itself: write prepared work under `pulse/work/`, run steps only when
+  `pulse.autonomy.run` is `auto` (the default) and no Plan Drift is due, and
+  keep plan, schedule and dispatch changes to what `autonomy.change` allows. The
+  owner accepted prose limits as a trade-off. Before PLAT-452 this was enforced by
+  `goalWorkToolAllowed` on a background reviewer. Outward actions are a prompt
   contract: the workflow's own MCP and browser access cannot be filtered per
   action. The manual pass in Builder chat is not runtime-restricted and holds
   the levels by contract.
@@ -71,7 +75,7 @@ Only the UI label, prompt and permissions change.
 
 ### The Goal Work loop (one pass)
 
-One retained background executor, run as a message sequence:
+One retained Pulse turn (the Pulse agent itself, using its own subagents if it wants):
 
 1. **Orient.** Goals and priorities from `soul.md`, `get_goal_metrics`, the last
    Goal Work result, answered decisions, and recent user feedback.
@@ -283,10 +287,10 @@ Each phase ships on its own and is verified end to end on one pilot workflow
 - New `guidance/templates/system/goal-work.md` replacing `strategy-auditor.md`:
   the loop above, the three gap types, and a "did / needs / challenges" result.
   Much shorter than the current prompt; no category checklist.
-- `background_review_scope.go`: split `strategic_review` from
-  `architecture_review`. Goal Work gets the Prepare level (writes to
-  `pulse/work/`) and, gated by `pulse.autonomy.run`, `execute_step` /
-  `run_full_workflow`. The `workflow_contract_execution_guard` still applies.
+- `background_review_scope.go` (originally: split `strategic_review` from
+  `architecture_review`; since PLAT-452 only the autonomy text remains, no tool
+  filtering). Goal Work writes to `pulse/work/` and, per `pulse.autonomy.run`,
+  runs `execute_step` / `run_full_workflow`. The `workflow_contract_execution_guard` still applies.
 - `scheduler.go` + `pulsemodules.ExecutionOrder`: Goal Work runs first. The Drift
   exclusivity check (`if !planDriftDue`) no longer skips it; it only disables
   the Run level.
@@ -339,14 +343,17 @@ Answered by the user on 2026-09-23:
 
 ### Models (2026-09-23)
 
-`pulse_llm` ("Pulse Goal Work" in the LLM settings) is used by Goal Work only:
-the strategic_review background agent of a scheduled Pulse. Plan Drift,
-Technical (including its Fixer) and Architecture review agents, plus
-knowledgebase maintenance, run on the workflow's Medium tier (`tier_2`), which
-falls back to the Pulse model and then the Builder model when missing. The Pulse
-conversation itself (Gate, dispatch, finalizer) stays on the Builder model
-because its retained coding CLI cannot switch models mid-conversation. Manual
-review commands run on the Builder model. See `selectBackgroundTaskLLM`.
+**Superseded 2026-10-04 (PLAT-452).** `pulse_llm` and the Medium upkeep tier no
+longer apply to reviews: every review, Goal Work included, runs inside the Pulse
+conversation on its retained coding CLI, which cannot switch models
+mid-conversation, so all of them use the Builder model. The text below is how it
+worked while reviews ran as separate background agents. `pulse_llm` ("Pulse Goal
+Work" in the LLM settings) was used by Goal Work only: the strategic_review
+background agent of a scheduled Pulse. Plan Drift, Technical (including its
+Fixer) and Architecture review agents, plus knowledgebase maintenance, ran on the
+workflow's Medium tier (`tier_2`), which fell back to the Pulse model and then the
+Builder model when missing. Manual review commands ran on the Builder model
+(`selectBackgroundTaskLLM`, removed).
 
 ## Find, fix, close (2026-09-24)
 

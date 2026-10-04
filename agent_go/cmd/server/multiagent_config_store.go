@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"time"
 )
 
@@ -22,7 +23,7 @@ type MultiAgentChatConfig struct {
 }
 
 func multiAgentConfigPath(userID string) string {
-	return "_users/" + userID + "/multiagent-config.json"
+	return workspaceref.PhysicalPathOf(userID, "multiagent-config.json")
 }
 
 // ReadMultiAgentChatConfig reads the chat-capabilities file for a user.

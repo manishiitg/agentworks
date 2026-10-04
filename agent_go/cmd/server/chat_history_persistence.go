@@ -17,6 +17,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -284,7 +285,7 @@ var chatHistoryIndexLocks [64]sync.Mutex
 
 // chatHistoryRoot returns the workspace-relative path to a user's chat_history root.
 func chatHistoryRoot(userID string) string {
-	return fmt.Sprintf("_users/%s/chat_history", sanitizeUserIDForPath(userID))
+	return workspaceref.PhysicalPath(userID, "chat_history")
 }
 
 func chatHistoryConversationFileName(sessionID string) string {
@@ -435,7 +436,7 @@ func workProjectChatHistoryConversationPath(userID, workspacePath, sessionID str
 		return "", false
 	}
 
-	userWorkspacePath := pathpkg.Join("_users", sanitizeUserIDForPath(userID), canonicalWorkspace)
+	userWorkspacePath := workspaceref.PhysicalPath(userID, canonicalWorkspace)
 	return workflowBuilderConversationLogPath(userWorkspacePath, sanitizeChatHistorySessionID(sessionID), t), true
 }
 
@@ -1867,9 +1868,7 @@ func chatHistorySessionMatchesWorkspace(userID string, session ChatHistorySessio
 }
 
 func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
-	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
-	userPrefix := pathpkg.Join("_users", sanitizeUserIDForPath(userID)) + "/"
-	return strings.TrimPrefix(workspacePath, userPrefix)
+	return workspaceref.CanonicalFor(userID, workspacePath)
 }
 
 // workspacePathsMatchForUser compares the public workspace identity used by
@@ -1877,7 +1876,7 @@ func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
 // removes the authenticated user's own prefix; a path owned by another user
 // therefore never becomes equivalent to a public path.
 func workspacePathsMatchForUser(userID, left, right string) bool {
-	return canonicalChatHistoryWorkspacePath(userID, left) == canonicalChatHistoryWorkspacePath(userID, right)
+	return workspaceref.MustParse(left).SameFor(userID, workspaceref.MustParse(right))
 }
 
 // listWorkflowBuilderHistoryFromDisk returns builder chat sessions for a workflow.
@@ -2368,7 +2367,7 @@ func parseLocalChatHistorySession(userID, workspaceRoot, workflowPath, fallbackS
 		// unambiguous. Workflow-scoped legacy transcripts predate user_id and
 		// must stay marked as legacy instead of being attributed to whoever
 		// happened to list the shared folder first.
-		if strings.HasPrefix(strings.Trim(workspaceRoot, "/"), "_users/") {
+		if workspaceref.MustParse(workspaceRoot).HasOwner() {
 			ownerID = userID
 		} else {
 			ownerID = "default"
@@ -3396,7 +3395,7 @@ func normalizeRestoredChatHistoryConversationPath(userID, conversationPath strin
 	if cleaned == userRoot || strings.HasPrefix(cleaned, userRoot+"/") {
 		return cleaned, true
 	}
-	if strings.HasPrefix(cleaned, pathpkg.Join("_users", sanitizeUserIDForPath(userID))+"/") && isProjectWorkspacePath(cleaned) && strings.Contains(cleaned, "/builder/conversation/") && strings.HasSuffix(cleaned, ".json") {
+	if ownedRef := workspaceref.MustParse(cleaned); ownedRef.OwnedBy(userID) && ownedRef.IsProject() && strings.Contains(cleaned, "/builder/conversation/") && strings.HasSuffix(cleaned, ".json") {
 		return cleaned, true
 	}
 	if strings.HasPrefix(cleaned, "Workflow/") && strings.Contains(cleaned, "/builder/") && strings.HasSuffix(cleaned, ".json") {
@@ -3688,11 +3687,12 @@ func DeleteChatHistorySession(userID, sessionID, workspacePath string) (ChatHist
 }
 
 func ownedWorkProjectWorkspacePath(userID, workspacePath string) (string, bool) {
-	canonical := canonicalChatHistoryWorkspacePath(userID, workspacePath)
-	if !isProjectWorkspacePath(canonical) {
+	canonical := workspaceref.MustParse(canonicalChatHistoryWorkspacePath(userID, workspacePath))
+	// A path that kept another user's prefix is not this user's project.
+	if canonical.HasOwner() || !canonical.IsProject() {
 		return workspacePath, false
 	}
-	return pathpkg.Join("_users", sanitizeUserIDForPath(userID), canonical), true
+	return canonical.Physical(userID), true
 }
 
 func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID, workspacePath string) (ChatHistoryCleanupResult, error) {

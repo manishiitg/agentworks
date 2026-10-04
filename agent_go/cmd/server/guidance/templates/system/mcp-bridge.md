@@ -114,10 +114,11 @@ jq '.' <<<"$result"
 For a large result, save or filter the already-decoded `result` variable. Never
 repeat the same read merely to apply a different local `jq` expression.
 
-When passing returned guidance to a background task, extract it from the decoded
-result, not the HTTP envelope. A missing `.guidance` produces `null`; even `jq -e`
-does not stop a shell script unless its failure is handled. Stop before launching
-the task if any read or validation fails:
+When using returned guidance as an instruction (for example to give to one of
+your own subagents), extract it from the decoded result, not the HTTP envelope. A
+missing `.guidance` produces `null`; even `jq -e` does not stop a shell script
+unless its failure is handled. Stop before using it if any read or validation
+fails:
 
 ```bash
 set -euo pipefail
@@ -130,8 +131,7 @@ instruction="$(jq -er '
     elif test("\\S") and (ascii_downcase != "null") then .
     else error("empty guidance") end
 ' <<<"$response")"
-payload="$(jq -cn --arg name "$task_name" --arg instruction "$instruction" '{name:$name,instruction:$instruction}')"
-curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/run_in_background"
+printf '%s' "$instruction"
 ```
 
 For retries, backoff, or structured logging, write a small helper in the

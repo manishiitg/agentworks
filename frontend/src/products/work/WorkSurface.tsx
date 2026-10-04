@@ -23,8 +23,6 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
-import { AdminCodeInspector } from './AdminCodeInspector'
-import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -548,7 +546,6 @@ function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: P
 
 function WorkTopBarControl({
   product,
-  onInspect,
   sessions,
   selected,
   onSelect,
@@ -558,8 +555,6 @@ function WorkTopBarControl({
   deletingProjectId,
 }: {
   product: ProjectProductConfig
-  /** Admins of a product with admin inspection: open the inspector. */
-  onInspect?: () => void
   sessions: WorkSession[]
   selected: WorkSession | null
   onSelect: (id: string) => void
@@ -597,15 +592,6 @@ function WorkTopBarControl({
             {creating ? `Creating ${product.itemNoun}…` : `+ New ${product.itemNoun}`}
           </span>
         </button>
-        {onInspect ? (
-          <button
-            type="button"
-            onClick={() => { setOpen(false); onInspect() }}
-            className="w-full rounded-md p-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700"
-          >
-            Inspect everyone’s {product.noun} (admin)
-          </button>
-        ) : null}
         {sessions.length === 0 ? (
           <div className="p-2 text-center text-sm text-gray-500 dark:text-gray-400">No projects yet. Create one to get started.</div>
         ) : (<>
@@ -736,11 +722,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
-  const [inspectOpen, setInspectOpen] = useState(false)
-  // Code opts into admin inspection; Crew chats stay owner-only for admins.
-  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const isCodeReviewer = useAuthStore(state => state.user?.is_code_reviewer === true)
-  const canInspect = (isAdmin || isCodeReviewer) && product.profileId === 'code'
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -1008,7 +989,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const topBarControl = useMemo(() => (
     <WorkTopBarControl
       product={product}
-      onInspect={canInspect ? () => setInspectOpen(true) : undefined}
       sessions={sessions}
       selected={selected}
       onSelect={select}
@@ -1017,7 +997,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       creating={creating}
       deletingProjectId={deletingProjectId}
     />
-  ), [canInspect, creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
+  ), [creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
 
   const error = sessionsError || chatError
 
@@ -1034,7 +1014,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         // Both products have their own tour; only active dialogs pause it.
         walkthroughPaused={createOpen || deleteCandidate !== null}
       />
-      {inspectOpen ? <AdminCodeInspector onClose={() => setInspectOpen(false)} /> : null}
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}

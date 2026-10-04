@@ -161,3 +161,17 @@ func TestResolveCurrentWorkflowDBPathNeverAcceptsArbitraryDBPath(t *testing.T) {
 		t.Fatalf("resolved path=%q", path)
 	}
 }
+
+func TestWorkflowDBToolsDenyDisabledRelaySession(t *testing.T) {
+	const session = "relay-platform-stores-none"
+	common.SetSessionFolderGuard(session, []string{"Workflow/relay"}, []string{"Workflow/relay"})
+	common.SetSessionShellEnv(session, map[string]string{workflowDBAccessEnv: "none", "DB_PATH": "Workflow/relay/db/db.sqlite"})
+	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
+	registry := CreateWorkflowDBToolRegistry("http://127.0.0.1:1", "", session)
+	for name, executor := range registry.Executors {
+		_, err := executor(context.Background(), map[string]any{"sql": "SELECT 1"})
+		if err == nil || !(strings.Contains(err.Error(), "disabled") || strings.Contains(err.Error(), "denied")) {
+			t.Fatalf("%s did not refuse before HTTP: %v", name, err)
+		}
+	}
+}

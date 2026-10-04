@@ -21,6 +21,7 @@ import (
 	"github.com/slack-go/slack/socketmode"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Slack state is persisted as two small JSON files under <workspace-docs>/config/:
@@ -2521,7 +2522,7 @@ func slackUserChatUploadFolder(userID string) string {
 	if safeUserID == "" {
 		safeUserID = "default"
 	}
-	return filepath.ToSlash(filepath.Join("_users", safeUserID, "chat_history", "uploads", "slack", time.Now().Format("2006-01-02")))
+	return workspaceref.PhysicalPathOf(safeUserID, "chat_history", "uploads", "slack", time.Now().Format("2006-01-02"))
 }
 
 func slackWorkflowUploadFolder(route *ChannelRoute) string {

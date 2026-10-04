@@ -926,8 +926,8 @@ type QueryRequest struct {
 	KeepNativeSessionAlive bool `json:"keep_native_session_alive,omitempty"`
 	// PulseLifecycleTurn marks a scheduler-sent Pulse turn (Gate, review
 	// dispatch, Finalize). The main conversation keeps the Builder model on
-	// every turn; this flag only routes the background review agents that
-	// turn launches (plan drift / technical / strategic review) to pulse_llm.
+	// every turn, reviews included; the flag only tags the turn for Pulse
+	// scope and cost.
 	PulseLifecycleTurn bool `json:"pulse_lifecycle_turn,omitempty"`
 	// UserInteractiveContinuation promotes an observed schedule/bot conversation
 	// into an interactive chat without changing its session or native resume ID.
@@ -1770,6 +1770,16 @@ func runServer(cmd *cobra.Command, args []string) {
 	// interactive Pulse sessions can write. This is intentionally repeated at
 	// startup: the version receipt makes it a no-op after the first successful
 	// deployment, while the lazy open guard covers laptops that were offline.
+	// PLAT-449: every Crew's and Code's owner is recorded in the server's owner registry from its path (idempotent;
+	// never changes a registered owner), and written into product.json as information only; no symlink is followed
+	// (PLAT-450).
+	if ownerReport := migrateProductOwners(fsutil.WorkspaceDocsRoot()); ownerReport.Scanned > 0 || len(ownerReport.Failures) > 0 {
+		log.Printf("[OWNER_BACKFILL] scanned=%d registered=%d already_registered=%d conflicts=%d stamped=%d current=%d skipped=%d manifest_mismatch=%d unsafe=%d failures=%d",
+			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, len(ownerReport.Failures))
+		for _, failure := range ownerReport.Failures {
+			log.Printf("[OWNER_BACKFILL] failure: %s", failure)
+		}
+	}
 	pulseMigrationCtx, cancelPulseMigration := context.WithTimeout(context.Background(), 10*time.Minute)
 	pulseMigrationReport, pulseMigrationErr := pulsestore.MigrateWorkspaceDatabases(pulseMigrationCtx, fsutil.WorkspaceDocsRoot())
 	cancelPulseMigration()
@@ -4052,9 +4062,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// (or fail against) the old provider's terminal. Before this a provider change was invisible here, so after switching Muse to Codex mid-chat the next sends went to the old Muse
 	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on Excellence, 2026-10-04). Like any runtime change it waits for a running turn
 	// and then relaunches on the selected provider (the native conversation resumes across providers).
-	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, requestedProviderOf(req))
+	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, api.effectiveProviderOf(r.Context(), req))
 	if providerChanged {
-		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, requestedProviderOf(req))
+		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, api.effectiveProviderOf(r.Context(), req))
 		retainedProfileCompatible = false
 	}
 	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
@@ -4752,6 +4762,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WORKFLOW ERROR] Failed to create workflow orchestrator: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to create workflow orchestrator: %v", err), http.StatusInternalServerError)
 			return
+		}
+		if workflowCLISecurityPolicy != nil {
+			// PLAT-442: a Goal never runs as a person's slot: declared, not left to the folder rule.
+			workflowRoot := codingAgentWorkspaceWorkingDir(manifestWorkspacePath)
+			workflowCLISecurityPolicy.RunAs = llmtypes.RunAs{Declared: true, Root: workflowRoot}
+			llmtypes.DeclareRunAs(workflowRoot, workflowCLISecurityPolicy.RunAs)
 		}
 		workflowOrchestrator.SetCLISecurityPolicy(workflowCLISecurityPolicy)
 
@@ -5568,23 +5584,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if isWorkflowPhase && workflowPhaseFolder != "" && workflowPhaseFolder != "default_workspace" {
 			chatWorkingFolder = workflowPhaseFolder
 		}
-		chatWorkingDir := codingAgentWorkspaceWorkingDir(chatWorkingFolder)
 		workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-		sharedChatWorkingDir := chatWorkingDir
-		if isWorkflowPhase {
-			var isolationErr error
-			chatWorkingDir, isolationErr = workflowCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly))
-			if isolationErr != nil {
-				sendError(isolationErr.Error(), true)
-				return
-			}
-		} else if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID {
-			var isolationErr error
-			chatWorkingDir, isolationErr = crewCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
-			if isolationErr != nil {
-				sendError(isolationErr.Error(), true)
-				return
-			}
+		turnProfileID := ""
+		if resolvedProfile != nil {
+			turnProfileID = resolvedProfile.Definition.ID
+		}
+		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly)
+		if isolationErr != nil {
+			sendError(isolationErr.Error(), true)
+			return
 		}
 		if resolvedProfile != nil && resolvedProfile.Definition.ID == caplayerproduct.ProfileID {
 			var isolationErr error
@@ -5621,6 +5629,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			logfWithContext(queryLogCtx, "[CLI_SECURITY] Failed to resolve policy: %v", err)
 			sendError(fmt.Sprintf("CLI security policy cannot be enforced: %v", err), true)
 			return
+		}
+		// PLAT-442: the platform names the account this turn's CLI runs as (run_as.go) and declares it to the
+		// provider for the CLI's folder; the launch policy carries it too.
+		turnRunAs, runAsErr := declareTurnRunAs(r.Context(), turnRunAsInput{
+			ProfileID:        turnProfileID,
+			WorkflowPhase:    isWorkflowPhase,
+			WorkingFolder:    chatWorkingFolder,
+			CLIWorkingDir:    chatWorkingDir,
+			SharedWorkingDir: sharedChatWorkingDir,
+			CallerID:         currentUserID,
+		})
+		if runAsErr != nil {
+			sendError(runAsErr.Error(), true)
+			return
+		}
+		if cliSecurityPolicy != nil {
+			cliSecurityPolicy.RunAs = turnRunAs
 		}
 		if piPersistentInteractive {
 			// Another conversation's Pi turn in this folder finishes first:

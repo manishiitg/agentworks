@@ -1,5 +1,5 @@
-Run /run-technical-review as a BACKGROUND task so this chat stays responsive.
-If the run_in_background tool is available: call run_in_background with name "Technical review + fix", completion_mode "present_result", the review instruction below, and a message_sequence with one follow-up message (id "fix") carrying the fix instruction below.
+Run /run-technical-review. You do it yourself in this turn, and may use your own subagents for parallel reading or analysis.
+Do both parts in this turn, in order: the review instruction first, then, once its receipt is persisted, the fix instruction.
 
 Review instruction:
 
@@ -13,5 +13,4 @@ Fix instruction:
 
 Continue the same bounded Review+Fix task. First confirm this conversation has a completed technical_review receipt; if review failed or is incomplete, report that and do not repair. Then call get_workflow_command_guidance(kind="pulse-fixer") and follow its repair-only instructions, carrying the same focus and run folder. Apply only reviewed, authorized bounded fixes, perform proportional immediate checks, and close applied fixes unless the defect is reproduced. Do not rerun reviewers or create future-run verification tasks. Return the combined review and repair outcome.
 
-Do NOT perform the review + fix yourself this turn — you'll get a presentation-only completion notification, then present the selected repair objective, changes made, immediate checks and their limits, lifecycle outcomes, and remaining actionable issues. Do not call tools, reload state, or independently revalidate after that notification.
-If run_in_background is not available, perform the same bounded Review+Fix inline: run the review instruction above, and after persisting the review receipt, continue inline with the fix instruction.
+When you are done, present the selected repair objective, changes made, immediate checks and their limits, lifecycle outcomes, and remaining actionable issues.

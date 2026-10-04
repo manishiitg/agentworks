@@ -62,7 +62,7 @@ When running a step or the full workflow:
 
 ## Auto-notification system
 
-All background agents **automatically notify you** when they complete:
+Background step and workflow runs **automatically notify you** when they complete:
 
 - Notifications arrive as messages prefixed with `[AUTO-NOTIFICATION]`
   — they are **system-generated, NOT from the user**. Do not treat

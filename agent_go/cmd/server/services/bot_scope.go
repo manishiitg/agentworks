@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"strings"
 )
 
@@ -29,12 +29,11 @@ func ValidateBotScope(workspacePath, profileID string) error {
 
 // physicalBotScopeOwner returns the owner named by a physical path, or "".
 func physicalBotScopeOwner(workspacePath string) string {
-	clean := strings.Trim(filepath.ToSlash(filepath.Clean(strings.TrimSpace(workspacePath))), "/")
-	parts := strings.SplitN(clean, "/", 3)
-	if len(parts) < 3 || parts[0] != "_users" || strings.TrimSpace(parts[1]) == "" {
+	ref := workspaceref.MustParse(workspacePath)
+	if !ref.HasOwner() || ref.Logical() == "" || strings.TrimSpace(ref.Owner()) == "" {
 		return ""
 	}
-	return parts[1]
+	return ref.Owner()
 }
 
 // ScopeResolver maps a stored destination to its physical form. It returns ""

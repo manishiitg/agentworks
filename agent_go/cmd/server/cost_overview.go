@@ -8,6 +8,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Consolidated cost view (Providers → Costs): recorded usage across workflows,
@@ -116,10 +117,12 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 	// Product project usage can be recorded against its physical workspace,
 	// e.g. _users/<owner>/Chats/Video Studio/projects/<project>. Do not fold
 	// these into the admin-only "other" bucket: their owner should see them.
-	parts := strings.Split(path, "/")
-	if len(parts) >= 6 && parts[0] == "_users" && parts[1] != "" &&
-		parts[2] == "Chats" && parts[3] != "" && parts[4] == "projects" && parts[5] != "" {
-		return strings.Join(parts[:6], "/"), costOverviewKindProduct, parts[3] + " · " + parts[5], parts[1]
+	if ref := workspaceref.MustParse(path); ref.HasOwner() {
+		if logical := strings.Split(ref.Logical(), "/"); len(logical) >= 4 && logical[0] == "Chats" && logical[1] != "" &&
+			logical[2] == "projects" && logical[3] != "" {
+			root := ref.WithLogical(strings.Join(logical[:4], "/")).String()
+			return root, costOverviewKindProduct, logical[1] + " · " + logical[3], ref.Owner()
+		}
 	}
 	return costOverviewOtherID, costOverviewKindOther, "Unattributed activity", ""
 }
@@ -143,8 +146,9 @@ func costOverviewProductVisibleTo(id, userID string, admin, codeReviewer bool) b
 
 // costOverviewIsCode reports whether a product row is a Code workspace.
 func costOverviewIsCode(root string) bool {
-	parts := strings.SplitN(root, "/", 3)
-	return len(parts) == 3 && parts[0] == "_users" && strings.HasPrefix(parts[2], codeproduct.ProjectsRoot+"/")
+	ref := workspaceref.MustParse(root)
+	projectsRoot, _, ok := ref.Project()
+	return ok && ref.HasOwner() && projectsRoot == codeproduct.ProjectsRoot
 }
 
 func mergeWorkflowAggregate(target *costledger.WorkflowAggregate, source *costledger.WorkflowAggregate) {

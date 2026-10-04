@@ -134,7 +134,6 @@ The interactive builder commonly uses:
 - `stop_step`
 - `stop_all_executions`
 - `list_executions`
-- `run_in_background`
 - `update_step_config`
 - plan modification tools such as `add_*`, `update_*`, `delete_*`
 - `update_workflow_config`
@@ -160,7 +159,6 @@ Key behavior:
   turn without starting a second run. Coding CLIs receive live input; other
   agents queue it for the next safe turn boundary. It cannot resume completed
   work and may return `no_active_agent` during validation or script-only phases.
-- `run_in_background(...)` can spawn a side task with the same workspace access
 
 In builder mode:
 - `iteration` is effectively pinned to `iteration-0`

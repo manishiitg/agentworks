@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
@@ -104,79 +103,6 @@ func newWorkshopStageAgentIdentity(name string) string {
 	return fmt.Sprintf("%s_%s-%d", prefix, sanitizeWorkshopAgentIdentityPart(name), workshopStageAgentIdentityCounter.Add(1))
 }
 
-const maxBackgroundMessageSequenceItems = 12
-
-// backgroundMessageSequenceItem is one follow-up turn sent to an already
-// running background agent. The opening turn remains the tool's instructions
-// field for backward compatibility. Every item below reuses the same agent,
-// MCP session, isolated coding workspace, and conversation history.
-type backgroundMessageSequenceItem struct {
-	ID      string
-	Title   string
-	Message string
-}
-
-// backgroundWorkshopToolDefinitionDraft collects workshop-native tools before
-// the child MCP agent is constructed. mcpagent intentionally has no mutable
-// post-construction registration API, so this keeps the child on the same
-// definition-time contract as every other agent.
-type backgroundWorkshopToolDefinitionDraft struct {
-	tools  []mcpagent.ToolDefinition
-	byName map[string]int
-	skills []*llmtypes.Skill
-}
-
-func newBackgroundWorkshopToolDefinitionDraft(skills []*llmtypes.Skill) *backgroundWorkshopToolDefinitionDraft {
-	return &backgroundWorkshopToolDefinitionDraft{
-		byName: make(map[string]int),
-		skills: append([]*llmtypes.Skill(nil), skills...),
-	}
-}
-
-func (d *backgroundWorkshopToolDefinitionDraft) RegisterCustomTool(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), displayGroup string) error {
-	return d.RegisterCustomToolWithTimeout(name, description, parameters, execute, 0, displayGroup)
-}
-
-func (d *backgroundWorkshopToolDefinitionDraft) RegisterCustomToolWithTimeout(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, displayGroup string) error {
-	definition := mcpagent.ToolDefinition{Name: name, Description: description, InputSchema: parameters, Execute: execute, Timeout: timeout, DisplayGroup: displayGroup}
-	if index, exists := d.byName[name]; exists {
-		d.tools[index] = definition
-		return nil
-	}
-	d.byName[name] = len(d.tools)
-	d.tools = append(d.tools, definition)
-	return nil
-}
-
-func (d *backgroundWorkshopToolDefinitionDraft) AttachedSkills() []*llmtypes.Skill {
-	return append([]*llmtypes.Skill(nil), d.skills...)
-}
-
-func (d *backgroundWorkshopToolDefinitionDraft) Definitions() []mcpagent.ToolDefinition {
-	return append([]mcpagent.ToolDefinition(nil), d.tools...)
-}
-
-func (iwm *InteractiveWorkshopManager) prepareBackgroundWorkshopToolDefinitions(skills []*llmtypes.Skill) ([]mcpagent.ToolDefinition, error) {
-	if iwm == nil || iwm.controller == nil {
-		return nil, fmt.Errorf("background workshop tool definitions require a controller")
-	}
-	draft := newBackgroundWorkshopToolDefinitionDraft(skills)
-	workspacePath := iwm.controller.GetWorkspacePath()
-	logger := iwm.controller.GetLogger()
-	if err := registerFullWorkshopAgentTools(iwm, draft, workspacePath, logger, "background-task"); err != nil {
-		return nil, fmt.Errorf("prepare complete background workshop toolset: %w", err)
-	}
-	return draft.Definitions(), nil
-}
-
-func parseBackgroundTaskInstruction(args map[string]interface{}) (string, error) {
-	instruction, ok := args["instruction"].(string)
-	if !ok || strings.TrimSpace(instruction) == "" || strings.EqualFold(strings.TrimSpace(instruction), "null") {
-		return "", fmt.Errorf("instruction must contain task instructions, not an empty value or null; when using the HTTP bridge, check success and decode result before extracting guidance")
-	}
-	return instruction, nil
-}
-
 func stringSliceArgument(args map[string]interface{}, key string) ([]string, bool) {
 	raw, supplied := args[key]
 	if !supplied || raw == nil {
@@ -196,146 +122,6 @@ func stringSliceArgument(args map[string]interface{}, key string) ([]string, boo
 		}
 	}
 	return result, true
-}
-
-func parseBackgroundMessageSequence(args map[string]interface{}) ([]backgroundMessageSequenceItem, error) {
-	raw, exists := args["message_sequence"]
-	if !exists || raw == nil {
-		return nil, nil
-	}
-	items, ok := raw.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("message_sequence must be an array")
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("message_sequence must contain at least one follow-up turn when supplied")
-	}
-	if len(items) > maxBackgroundMessageSequenceItems {
-		return nil, fmt.Errorf("message_sequence has %d items; maximum is %d", len(items), maxBackgroundMessageSequenceItems)
-	}
-
-	seen := make(map[string]struct{}, len(items))
-	parsed := make([]backgroundMessageSequenceItem, 0, len(items))
-	for index, rawItem := range items {
-		item, ok := rawItem.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("message_sequence[%d] must be an object", index)
-		}
-		id, _ := item["id"].(string)
-		id = strings.TrimSpace(id)
-		if id == "" {
-			// Item IDs are diagnostic labels only, not caller-owned identity.
-			// Keep useful error text without making agents manufacture metadata.
-			id = fmt.Sprintf("turn-%d", index+1)
-		}
-		if _, duplicate := seen[id]; duplicate {
-			return nil, fmt.Errorf("message_sequence item id %q is duplicated", id)
-		}
-		seen[id] = struct{}{}
-		message, _ := item["message"].(string)
-		message = strings.TrimSpace(message)
-		if message == "" {
-			return nil, fmt.Errorf("message_sequence[%d].message is required", index)
-		}
-		title, _ := item["title"].(string)
-		parsed = append(parsed, backgroundMessageSequenceItem{
-			ID:      id,
-			Title:   strings.TrimSpace(title),
-			Message: message,
-		})
-	}
-	return parsed, nil
-}
-
-func backgroundMessageSequenceSchema() map[string]interface{} {
-	return map[string]interface{}{
-		"type":        "array",
-		"minItems":    1,
-		"maxItems":    maxBackgroundMessageSequenceItems,
-		"description": "Ordered user-message turns. The step description is the shared system-level charter; the backend sends these items sequentially to the same agent, preserving one conversation, MCP session, folder guard, and isolated coding workspace. Use explicit items when later analysis must build on earlier analysis; do not use them to run independent work in parallel.",
-		"items": map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"id": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional diagnostic label. The backend generates turn-1, turn-2, etc. when omitted.",
-				},
-				"title": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional short human-readable turn title.",
-				},
-				"message": map[string]interface{}{
-					"type":        "string",
-					"description": "The next user message sent after the preceding turn completes.",
-				},
-			},
-			"required": []string{"message"},
-		},
-	}
-}
-
-func executeBackgroundMessageSequence(
-	ctx context.Context,
-	agent agents.OrchestratorAgent,
-	templateVars map[string]string,
-	opening string,
-	messageSequence []backgroundMessageSequenceItem,
-) (string, error) {
-	return executeBackgroundMessageSequenceObserved(ctx, agent, templateVars, opening, messageSequence, nil)
-}
-
-type backgroundMessageSequenceObserver func(backgroundMessageSequenceItem, string) error
-
-func executeBackgroundMessageSequenceObserved(
-	ctx context.Context,
-	agent agents.OrchestratorAgent,
-	templateVars map[string]string,
-	opening string,
-	messageSequence []backgroundMessageSequenceItem,
-	observer backgroundMessageSequenceObserver,
-) (string, error) {
-	result, _, err := executeBackgroundMessageSequenceWithHistory(ctx, agent, templateVars, opening, messageSequence, observer)
-	return result, err
-}
-
-// executeBackgroundMessageSequenceWithHistory also returns the conversation,
-// so the caller can continue it (e.g. with owned step results).
-func executeBackgroundMessageSequenceWithHistory(
-	ctx context.Context,
-	agent agents.OrchestratorAgent,
-	templateVars map[string]string,
-	opening string,
-	messageSequence []backgroundMessageSequenceItem,
-	observer backgroundMessageSequenceObserver,
-) (string, []llmtypes.MessageContent, error) {
-	if agent == nil {
-		return "", nil, fmt.Errorf("background sequence agent is nil")
-	}
-	turns := make([]backgroundMessageSequenceItem, 0, 1+len(messageSequence))
-	turns = append(turns, backgroundMessageSequenceItem{ID: "opening", Title: "Opening", Message: opening})
-	turns = append(turns, messageSequence...)
-	var (
-		result  string
-		history []llmtypes.MessageContent
-		err     error
-	)
-	for turnIndex, turn := range turns {
-		turnVars := make(map[string]string, len(templateVars))
-		for key, value := range templateVars {
-			turnVars[key] = value
-		}
-		turnVars["Instruction"] = turn.Message
-		result, history, err = agent.Execute(ctx, turnVars, history)
-		if err != nil {
-			return "", history, fmt.Errorf("sequence turn %d (%s) failed: %w", turnIndex+1, turn.ID, err)
-		}
-		if observer != nil {
-			if err := observer(turn, result); err != nil {
-				return "", history, fmt.Errorf("sequence turn %d (%s) checkpoint failed: %w", turnIndex+1, turn.ID, err)
-			}
-		}
-	}
-	return result, history, nil
 }
 
 // ValidatePulseReviewIdentity rejects a review identity that cannot name a
@@ -1151,15 +937,12 @@ type ServerAgentInfo struct {
 
 // InteractiveWorkshopManager manages the interactive workshop phase
 type InteractiveWorkshopManager struct {
-	controller     *StepBasedWorkflowOrchestrator
-	workshopConfig *WorkshopConfig
-	presetLLM      *AgentLLMConfig
-	sessionID      string
-	workflowID     string
-	stepRegistry   *WorkshopStepRegistry
-	// backgroundStepOwners maps a run_in_background agent's tool session to
-	// the steps it starts (background_step_ownership.go).
-	backgroundStepOwners   sync.Map
+	controller             *StepBasedWorkflowOrchestrator
+	workshopConfig         *WorkshopConfig
+	presetLLM              *AgentLLMConfig
+	sessionID              string
+	workflowID             string
+	stepRegistry           *WorkshopStepRegistry
 	sessionCtx             context.Context                             // long-lived ctx for background goroutines
 	toolCallQueryFunc      ToolCallQueryFunc                           // optional: query live tool calls for running steps
 	tmuxLookupFunc         TmuxLookupFunc                              // optional: resolve live tmux session name for a coding-CLI step
@@ -1177,12 +960,6 @@ type InteractiveWorkshopManager struct {
 	cancelAllServerAgents  func()                    // optional: cancel all running agents in server's bgAgentRegistry
 	listServerAgents       func() []ServerAgentInfo  // optional: list all agents from server's bgAgentRegistry
 	workshopModeOverride   string                    // frontend-selected workshop mode (takes priority over auto-detection)
-}
-
-// inPulseLifecycleTurn reports whether the turn currently being served is a
-// scheduler Pulse lifecycle turn (see WorkshopConfig.PulseLifecycleTurn).
-func (iwm *InteractiveWorkshopManager) inPulseLifecycleTurn() bool {
-	return iwm != nil && iwm.workshopConfig != nil && iwm.workshopConfig.PulseLifecycleTurn
 }
 
 // isRunModeRestricted reports whether this session's current WorkshopMode is
@@ -1396,22 +1173,6 @@ func NewInteractiveWorkshopManager(
 	}
 }
 
-func workflowAgentLLMConfig(agentConfig *AgentLLMConfig, apiKeys *orchestrator.APIKeys) *orchestrator.LLMConfig {
-	if agentConfig == nil || agentConfig.Provider == "" || agentConfig.ModelID == "" {
-		return nil
-	}
-
-	return &orchestrator.LLMConfig{
-		Primary: orchestrator.LLMModel{
-			Provider:     agentConfig.Provider,
-			ModelID:      agentConfig.ModelID,
-			Options:      agentConfig.Options,
-			ConnectionID: agentConfig.ConnectionID,
-		},
-		APIKeys: apiKeys,
-	}
-}
-
 // SetToolCallQuery configures the live tool call query capability.
 // mainSessionID is the event store session ID; queryFunc queries tool calls by correlation ID.
 func (iwm *InteractiveWorkshopManager) SetToolCallQuery(mainSessionID string, queryFunc ToolCallQueryFunc) {
@@ -1474,7 +1235,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	// Workshop execution tools
 	execution := []string{
 		"execute_step", "query_step", "send_step_message", "stop_step", "stop_all_executions",
-		"list_executions", "run_in_background",
+		"list_executions",
 	}
 
 	// Step config & analysis tools
@@ -1707,37 +1468,6 @@ func registerWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent Defini
 	} else if err := iwm.registerMarkChangelogArtifactReviewedTool(mcpAgent, workspacePath, logger); err != nil {
 		logger.Warn(fmt.Sprintf("Failed to register changelog artifact-review marker tool: %v", err))
 	}
-}
-
-// registerFullWorkshopAgentTools installs the complete workshop surface on an
-// agent. Background agents are children of the workshop conversation, not
-// ordinary workflow steps: they must inherit the same plan, schedule, Pulse,
-// human-input, and workspace capabilities as their parent. Folder Guard and
-// the child task's instruction remain the authority for what a particular
-// child may safely change.
-func registerFullWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent DefinitionRegistrar, workspacePath string, logger loggerv2.Logger, agentName string) error {
-	if iwm.workshopConfig != nil {
-		mcpAgent = guardScheduleRegistrar(mcpAgent, iwm.workshopConfig.ScheduleCollisionCheck)
-	}
-	if iwm.isRunModeRestricted() {
-		logger.Info("PLAT-262: skipping plan modification tools for background agent (read-only access)")
-	} else if err := RegisterPlanModificationTools(
-		mcpAgent,
-		workspacePath,
-		logger,
-		iwm.controller.ReadWorkspaceFile,
-		iwm.controller.WriteWorkspaceFile,
-		iwm.controller.MoveWorkspaceFile,
-		agentName,
-	); err != nil {
-		return fmt.Errorf("register plan modification tools: %w", err)
-	}
-	registerWorkshopAgentTools(iwm, mcpAgent, workspacePath, logger)
-	// Slash-command wrappers may dispatch their work into a background child.
-	// Keep their canonical guidance tool on this shared registration path so the
-	// child never receives an instruction it cannot execute.
-	guidance.RegisterGuidanceTool(mcpAgent, iwm.currentWorkshopModeFromConfigs(nil), logger)
-	return nil
 }
 
 func (iwm *InteractiveWorkshopManager) markChangelogArtifactReviewed(ctx context.Context, workspacePath string, args map[string]interface{}, logger loggerv2.Logger) (string, error) {
@@ -2425,10 +2155,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			// and can double-act — e.g. post the same tweet twice.
 			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
 				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
-				if owner := iwm.backgroundStepOwnerFor(ctx); owner != nil {
-					owner.add(existing.ID)
-					return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. The runtime will wait for it and give you its final result as your next message. End your turn now if you have nothing else to do; do not poll.", stepID, existing.ID), nil
-				}
 				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
 			}
 			// Pulse runs alongside the workflow's own schedules; it must not run
@@ -2534,18 +2260,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			} else if groupName != "" {
 				stepDisplayName = fmt.Sprintf("%s [%s]", stepDisplayName, groupName)
 			}
-			// A step started by a run_in_background agent belongs to that agent:
-			// it is its child, and its result goes to that agent rather than to
-			// the main session (background_step_ownership.go).
-			stepOwner := iwm.backgroundStepOwnerFor(ctx)
 			parentExecutionID := currentWorkshopParentExecutionID(execCtx)
 			startMetadata := map[string]string{
 				"execution_type": "workflow-step",
-			}
-			if stepOwner != nil {
-				parentExecutionID = stepOwner.ownerID
-				startMetadata["suppress_auto_notification"] = "true"
-				startMetadata["owned_by_background_agent"] = stepOwner.ownerID
 			}
 			registerWorkshopExecutionBeforeLaunch(iwm.executionNotifier, WorkshopExecutionStart{
 				ID:                execID,
@@ -2558,9 +2275,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				Metadata: startMetadata,
 				Cancel:   cancel,
 			})
-			if stepOwner != nil {
-				stepOwner.add(execID)
-			}
 			execCtx = virtualtools.WithBackgroundAgentID(execCtx, execID)
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
 			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
@@ -2697,220 +2411,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if displayGroupName == "" {
 				runFolderNotice += " (no group resolved — this workspace may have no defined variable groups)"
 			}
-			if stepOwner != nil {
-				return fmt.Sprintf("Step %q started.\nexecution_id: %q%s\nThe runtime will wait for it and give you its final result as your next message. End your turn now if you have nothing else to do; do not poll.", stepID, execID, runFolderNotice), nil
-			}
 			return fmt.Sprintf("Step %q started in background.\nexecution_id: %q%s\nYou will be automatically notified when it completes. End the current agent turn now instead of polling. Use query_step(step_id=%q) only if the user explicitly requests a live status check. Use send_step_message(execution_id=%q, message=...) only for a necessary live correction while an agent turn is active.", stepID, execID, runFolderNotice, stepID, execID), nil
 		},
 		"workflow",
 	); err != nil {
 		logger.Warn(fmt.Sprintf("⚠️ Failed to register execute_step tool: %v", err))
-	}
-
-	// Tool: run_in_background — spawn independent background agent (not tied to a workflow step)
-	if err := mcpAgent.RegisterCustomTool(
-		"run_in_background",
-		"Spawn an independent background agent to run a task with the same tools and attached skills as the workflow builder. Returns an execution_id immediately. You will be notified when it completes. Use this to offload context-heavy work or run tasks in parallel. message_sequence is optional: use it only when one executor needs ordered follow-up turns in the same conversation. Every supplied item needs only a non-empty message, for example [{\"message\":\"Review the evidence.\"},{\"message\":\"Apply and verify safe fixes.\"}]. Optional id/title fields are generated or used only for diagnostics. completion_mode=\"present_result\" marks the completion as presentation-only: the parent must surface the returned result without re-reading tools or independently revalidating it.\n\nagent_type controls the agent model:\n- \"executor\" (default): single-pass execution agent — best for focused, well-defined tasks\n- \"orchestrator\": todo task orchestrator — best for complex multi-step tasks that benefit from task management and sub-agent delegation. Sub-agent completions also auto-notify you.",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
-					"type":        "string",
-					"description": "Short descriptive name (e.g., 'Research APIs', 'Validate data')",
-				},
-				"access_mode": map[string]interface{}{"type": "string", "enum": []string{"read_write", "read_only"}, "description": "Default read_write inherits parent grants. read_only uses a bounded inspection-only tool surface, no workflow write grants or connected MCPs; executor only. Use for design review."},
-				"instruction": map[string]interface{}{
-					"type":        "string",
-					"description": "Opening-turn instructions for the background agent. This is the agent's task — be specific about what it should do, inputs, expected outputs.",
-				},
-				"review_module":    map[string]interface{}{"type": "string", "enum": []string{"plan_drift_review", "technical_review", "architecture_review", "strategic_review"}, "description": "Pulse review role. Architecture has research access but cannot edit workflow implementation. strategic_review is Goal Work: it can also prepare work under pulse/work/ and, when the workflow's Run permission is auto, run existing steps; it never edits the plan or acts outward."},
-				"pulse_run_id":     map[string]interface{}{"type": "string", "description": "Exact scheduler Pulse run id; required with review_module."},
-				"message_sequence": backgroundMessageSequenceSchema(),
-				"agent_type": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"executor", "orchestrator"},
-					"description": "executor (default): single-pass agent. orchestrator: todo task orchestrator with sub-agent delegation.",
-				},
-				"completion_mode": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"continue", "present_result"},
-					"description": "continue (default) lets the parent continue normal work. present_result makes completion presentation-only: surface the child result without tool calls or state revalidation.",
-				},
-			},
-			"required": []string{"name", "instruction"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			nameRaw, ok := args["name"]
-			if !ok || nameRaw == nil {
-				return "name is required", nil
-			}
-			name, ok := nameRaw.(string)
-			if !ok || name == "" {
-				return "name must be a non-empty string", nil
-			}
-
-			instruction, err := parseBackgroundTaskInstruction(args)
-			if err != nil {
-				return "", err
-			}
-			messageSequence, err := parseBackgroundMessageSequence(args)
-			if err != nil {
-				return "", err
-			}
-
-			agentType := "executor"
-			if v, ok := args["agent_type"].(string); ok && v != "" {
-				agentType = v
-			}
-			if agentType == "orchestrator" && len(messageSequence) > 0 {
-				return "", fmt.Errorf("message_sequence is supported by executor background agents; orchestrator agents already manage their own dynamic multi-turn task flow")
-			}
-			completionMode := "continue"
-			if value, ok := args["completion_mode"].(string); ok && strings.TrimSpace(value) != "" {
-				completionMode = strings.TrimSpace(value)
-			}
-			if completionMode != "continue" && completionMode != "present_result" {
-				return "", fmt.Errorf("completion_mode must be continue or present_result")
-			}
-			reviewModule, _ := args["review_module"].(string)
-			reviewRunID, _ := args["pulse_run_id"].(string)
-			if reviewModule != "" {
-				if err := validateBackgroundReviewScope(reviewModule, reviewRunID); err != nil {
-					return "", err
-				}
-				if agentType != "executor" {
-					return "", fmt.Errorf("review_module requires an executor")
-				}
-			}
-			readOnlyTask, err := parseBackgroundReadOnlyAccess(args, agentType)
-			if err != nil {
-				return "", err
-			}
-			// Create slug from name for execution ID
-			nameSlug := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
-			// Trim to reasonable length
-			if len(nameSlug) > 30 {
-				nameSlug = nameSlug[:30]
-			}
-
-			execID := fmt.Sprintf("bg-%s-%05d", nameSlug, time.Now().UnixNano()%100000)
-			execCtx, cancel, ctxErr := iwm.newExecContext(ctx)
-			if ctxErr != nil {
-				return "Session was stopped — execution skipped", nil
-			}
-
-			if readOnlyTask {
-				execCtx = context.WithValue(execCtx, backgroundReadOnlyKey{}, true)
-			}
-			if reviewModule != "" {
-				scope := backgroundReviewScope{Module: reviewModule, RunID: reviewRunID}
-				if scope.goalWork() {
-					scope.Permissions = goalWorkPermissions{Run: true}
-					if manifestJSON, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
-						scope.Permissions = pulseAutonomyPermissions(manifestJSON)
-					}
-				}
-				execCtx = context.WithValue(execCtx, backgroundReviewScopeKey{}, scope)
-			}
-			// Inject correlation IDs for sub-agent event tagging (same pattern as execute_step)
-			agentSessionID := fmt.Sprintf("workshop-bg-%s-%d", nameSlug, time.Now().UnixNano())
-			execCtx = context.WithValue(execCtx, orchestrator_events.AgentSessionIDKey, agentSessionID)
-			execCtx = context.WithValue(execCtx, orchestrator_events.ForceCorrelationIDKey, agentSessionID)
-			execCtx = context.WithValue(execCtx, orchestrator_events.IsSubAgentContextKey, true)
-
-			exec := &WorkshopStepExecution{
-				ID:             execID,
-				StepID:         name, // Use name as the "step" identifier for display
-				AgentSessionID: agentSessionID,
-				Status:         WorkshopStepRunning,
-				cancel:         cancel,
-			}
-			iwm.stepRegistry.Register(exec)
-
-			// Notify server layer so bgAgentRegistry tracks this execution (keeps frontend polling alive)
-			if iwm.executionNotifier != nil {
-				iwm.executionNotifier.OnExecutionStart(WorkshopExecutionStart{
-					ID:                execID,
-					ParentExecutionID: currentWorkshopParentExecutionID(execCtx),
-					Name:              name,
-					Cancel:            cancel,
-					Metadata: map[string]string{
-						"completion_mode": completionMode,
-					},
-				})
-			}
-			execCtx = virtualtools.WithBackgroundAgentID(execCtx, execID)
-			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
-
-			// Definition returns cloned skill bundles, so the goroutine receives
-			// an immutable snapshot of exactly what is attached to this builder
-			// session. The isolated child will project those bundles into its own
-			// temporary CLI workspace.
-			inheritedSkills := mcpAgent.AttachedSkills()
-
-			go func() {
-				var result string
-				var execErr error
-				eventBridge := iwm.controller.GetContextAwareBridge()
-				defer func() {
-					skipNotify := finalizeExecStatus(exec, execCtx, &result, &execErr)
-					if eventBridge != nil {
-						isCancelled := skipNotify || execCtx.Err() != nil
-						endEvent := &orchestrator_events.OrchestratorAgentEndEvent{
-							BaseEventData: baseevents.BaseEventData{Timestamp: time.Now(), Component: "orchestrator"},
-							AgentType:     "workshop-background-task",
-							AgentName:     fmt.Sprintf("Background: %s", name),
-							Success:       execErr == nil,
-						}
-						if execErr != nil {
-							if isCancelled {
-								endEvent.Result = fmt.Sprintf("Cancelled: %v", execErr)
-							} else {
-								endEvent.Result = fmt.Sprintf("Failed: %v", execErr)
-							}
-						} else {
-							endEvent.Result = result
-						}
-						eventBridge.HandleEvent(execCtx, &baseevents.AgentEvent{
-							Type:          orchestrator_events.OrchestratorAgentEnd,
-							Timestamp:     time.Now(),
-							Data:          endEvent,
-							CorrelationID: agentSessionID,
-						})
-					}
-					if !skipNotify && iwm.executionNotifier != nil {
-						iwm.executionNotifier.OnExecutionComplete(execID, name, result, nil, execErr)
-					}
-				}()
-
-				// Emit orchestrator_agent_start so the frontend creates a grouping card
-				if eventBridge != nil {
-					startEvent := &orchestrator_events.OrchestratorAgentStartEvent{
-						BaseEventData: baseevents.BaseEventData{Timestamp: time.Now(), Component: "orchestrator"},
-						AgentType:     "workshop-background-task",
-						AgentName:     fmt.Sprintf("Background: %s", name),
-					}
-					eventBridge.HandleEvent(execCtx, &baseevents.AgentEvent{
-						Type:          orchestrator_events.OrchestratorAgentStart,
-						Timestamp:     time.Now(),
-						Data:          startEvent,
-						CorrelationID: agentSessionID,
-					})
-				}
-
-				if agentType == "orchestrator" {
-					result, execErr = iwm.runBackgroundOrchestratorAgent(execCtx, name, instruction, inheritedSkills)
-				} else {
-					result, execErr = iwm.runBackgroundTaskAgentSequence(execCtx, name, instruction, messageSequence, inheritedSkills)
-				}
-			}()
-
-			logger.Info(fmt.Sprintf("🚀 Workshop: background task %q started (type=%s, inherited_skills=%d), execution_id=%q", name, agentType, len(inheritedSkills), execID))
-			return fmt.Sprintf("Background task %q started (type=%s, completion_mode=%s).\nexecution_id: %q\nYou will be automatically notified when it completes.", name, agentType, completionMode, execID), nil
-		},
-		"workflow",
-	); err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to register run_in_background tool: %v", err))
 	}
 
 	// Tool 2: query_step — execution status + structured MCP tool call visibility
@@ -8861,19 +8366,6 @@ type WorkflowBackgroundTaskAgent struct {
 	*agents.BaseOrchestratorAgent
 }
 
-func newWorkflowBackgroundTaskAgent(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) *WorkflowBackgroundTaskAgent {
-	baseAgent := agents.NewBaseOrchestratorAgentWithEventBridge(
-		config,
-		logger,
-		tracer,
-		"workshop-background-task", // Must match the manual start/end events in the goroutine for frontend dedup
-		eventBridge,
-	)
-	return &WorkflowBackgroundTaskAgent{
-		BaseOrchestratorAgent: baseAgent,
-	}
-}
-
 // Execute implements OrchestratorAgent interface for the background task agent
 func (agent *WorkflowBackgroundTaskAgent) Execute(ctx context.Context, templateVars map[string]string, conversationHistory []llmtypes.MessageContent) (string, []llmtypes.MessageContent, error) {
 	baseAgent := agent.BaseOrchestratorAgent.BaseAgent()
@@ -8918,371 +8410,6 @@ func validateWorkshopScheduleTimezone(timezone string) error {
 		return fmt.Errorf("invalid timezone %q: use an IANA timezone like UTC, Asia/Kolkata, or America/New_York", timezone)
 	}
 	return nil
-}
-
-// runBackgroundOrchestratorAgent runs a todo task orchestrator as a background agent.
-// Unlike runBackgroundTaskAgent (single-pass), this supports multi-step task management
-// and sub-agent delegation. Sub-agent completions auto-notify
-// the main workshop agent via the subAgentNotifier already set on the controller.
-func (iwm *InteractiveWorkshopManager) runBackgroundOrchestratorAgent(ctx context.Context, name, instruction string, inheritedSkills []*llmtypes.Skill) (string, error) {
-	stepID := fmt.Sprintf("bg-todo-%s-%d", strings.ToLower(strings.ReplaceAll(name, " ", "-")), time.Now().UnixNano()%100000)
-	ctx = withBackgroundAgentSkills(ctx, inheritedSkills)
-
-	// Build a minimal OrchestratorPlanStep from the instruction
-	todoStep := &OrchestratorPlanStep{
-		Type: StepTypeOrchestrator,
-		CommonStepFields: CommonStepFields{
-			ID:          stepID,
-			Title:       name,
-			Description: instruction,
-		},
-		PredefinedRoutes: nil, // generic agent only
-		NextStepID:       "end",
-	}
-
-	execCtx := &ExecutionContext{
-		SkipHumanInput:    true,
-		RunSingleStepOnly: false,
-		SingleStepTarget:  -1,
-	}
-
-	_, _, err := iwm.controller.executeOrchestratorStep(
-		ctx,
-		todoStep,
-		0,
-		&StepProgress{},
-		[]string{},
-		[]string{},
-		0,
-		execCtx,
-		[]PlanStepInterface{todoStep},
-		stepID,
-	)
-	if err != nil {
-		return fmt.Sprintf("Background todo task %q failed: %v", name, err), err
-	}
-	return fmt.Sprintf("Background todo task %q completed.", name), nil
-}
-
-// runBackgroundTaskAgentSequence creates and runs one standalone background
-// agent, optionally preserving it across ordered follow-up turns.
-func (iwm *InteractiveWorkshopManager) runBackgroundTaskAgentSequence(ctx context.Context, name string, instruction string, messageSequence []backgroundMessageSequenceItem, inheritedSkills []*llmtypes.Skill) (string, error) {
-	logger := iwm.controller.GetLogger()
-	readOnlyTask, _ := ctx.Value(backgroundReadOnlyKey{}).(bool)
-
-	// --- Folder guard: same as workshop agent ---
-	workspacePath := iwm.controller.GetWorkspacePath()
-	knowledgebasePath := getKnowledgebasePath(workspacePath)
-	readPaths := []string{
-		workspacePath,
-		fmt.Sprintf("%s/runs", workspacePath),
-		fmt.Sprintf("%s/learnings", workspacePath),
-		fmt.Sprintf("%s/code", workspacePath),
-		fmt.Sprintf("%s/planning", workspacePath),
-		knowledgebasePath,
-		"Chats",
-	}
-	writePaths := workshopWritePaths(workspacePath)
-	if iwm.isRunModeRestricted() {
-		// PLAT-262: run mode gets full reads but zero write grants for this
-		// background sub-agent's shell/file tools.
-		writePaths = []string{}
-	}
-	reviewScope, _ := ctx.Value(backgroundReviewScopeKey{}).(backgroundReviewScope)
-	if reviewScope.goalWork() && (reviewScope.Permissions.Run || reviewScope.Permissions.Change) {
-		// A due (or unknown) Plan Drift means the plan may not match its
-		// dependents; Goal Work still prepares and researches but neither runs
-		// steps nor edits the workflow until Drift has reviewed it.
-		if items, driftErr := CollectPlanDriftDueItems(workspacePath); driftErr != nil || len(items) > 0 {
-			reviewScope.Permissions.Run = false
-			reviewScope.Permissions.Change = false
-		}
-	}
-	if reviewScope.goalWork() {
-		if !iwm.isRunModeRestricted() {
-			writePaths = []string{
-				fmt.Sprintf("%s/runs/pulse/%s", workspacePath, reviewScope.RunID),
-				fmt.Sprintf("%s/pulse/work", workspacePath),
-			}
-		}
-		instruction += "\nGOAL WORK: do goal-advancing work for the user, not only proposals. Write prepared work (research, drafts, lists, plans) under pulse/work/<YYYY-MM-DD>/ and link it in record_pulse_finding(issue_kind=\"goal_work\") and your result. " + goalWorkPermissionInstructions(reviewScope.Permissions) + " Never purchase or spend money yourself. Never break a soul.md constraint, even one you are challenging. Record everything you did yourself as a done record_pulse_goal_work item so the user sees it."
-	}
-	if reviewScope.researchOnly() {
-		if !iwm.isRunModeRestricted() {
-			writePaths = []string{fmt.Sprintf("%s/runs/pulse/%s", workspacePath, reviewScope.RunID)}
-		}
-		instruction += "\nRESEARCH REVIEW: use authorized workflow MCPs, browser, web search and managed DB queries to investigate. Save new reasoning and dated source references in optional review_note on record_pulse_result. No mandatory Markdown checkpoint or reporting-only turn; optional research files remain allowed. Do not edit workflow implementation, run business actions, send messages, publish, or change external records. Create typed decisions for proposals and reuse the improvement ledger. External tool access retains the workflow's existing authorization limits."
-	}
-	if readOnlyTask {
-		writePaths = []string{}
-		instruction += "\nREAD-ONLY REVIEW: inspect only. Do not edit artifacts, execute workflow steps, persist findings, send messages, or modify external records. Return findings to the parent."
-	}
-	iwm.controller.SetWorkspacePathForFolderGuard(readPaths, writePaths)
-
-	// --- LLM: a background child started by a scheduler Pulse turn is a Pulse
-	// review agent and runs on pulse_llm; every other run_in_background child
-	// follows the workshop's Builder (phase) model. The parent conversation
-	// itself never switches model (its coding CLI is retained across turns);
-	// the child is a fresh process, which is exactly where a different model
-	// can take effect.
-	pulseTurn := iwm.inPulseLifecycleTurn()
-	purpose := "background task agent"
-	if pulseTurn {
-		purpose = "Pulse review agent"
-		if reviewScope.Module != "" {
-			purpose = "Pulse " + reviewScope.Module + " agent"
-		}
-	}
-	llmConfigToUse := iwm.controller.selectBackgroundTaskLLM(pulseTurn, reviewScope.Module, purpose)
-	if llmConfigToUse == nil && iwm.presetLLM != nil && iwm.presetLLM.Provider != "" && iwm.presetLLM.ModelID != "" {
-		llmConfigToUse = workflowAgentLLMConfig(iwm.presetLLM, iwm.controller.GetAPIKeys())
-	}
-	if llmConfigToUse == nil {
-		return "", fmt.Errorf("no valid LLM configuration found for background task agent")
-	}
-
-	// --- Agent config ---
-	config := iwm.createUnattendedWorkshopAgentConfig(fmt.Sprintf("Background: %s", name), 80, llmConfigToUse, "background task agent")
-	isCodeExecMode := iwm.controller.GetUseCodeExecutionMode()
-	config.UseCodeExecutionMode = isCodeExecMode
-	config.EnableParallelToolExecution = true
-	// Run the coding-CLI session in a fresh os.MkdirTemp dir instead of
-	// CodingAgentWorkingDir — same protection workflow-step agents get via
-	// applyStepConfigToAgentConfig. Background-task agents are spawned by
-	// the workshop chat's `run_in_background` tool, which means the
-	// workshop chat itself is already attached to the workflow folder
-	// with the chat's MCP config; without isolation, the background
-	// agent's coding-CLI session collides with the chat's session on the
-	// same dir with different MCP configs, and the run fails with a "does
-	// not support concurrent sessions ..."-style error some coding CLIs
-	// raise. File access to the user's workspace continues to flow
-	// through the MCP api-bridge tools, which take absolute workspace
-	// paths and do not depend on CLI CWD.
-	config.IsolateCodingAgentWorkspace = true
-	if readOnlyTask {
-		config.ServerNames = []string{mcpclient.NoServers}
-	}
-	config.CodingAgentKeepAlive = len(messageSequence) > 0
-	toolSessionID, cleanupToolSession := iwm.configureWorkshopToolAgentSessionWithID(config, "background-task", readPaths, writePaths)
-	defer cleanupToolSession()
-	// Steps this agent starts are its own: execute_step finds this owner from
-	// the caller's tool session, and the agent gets their results before it is
-	// done (background_step_ownership.go).
-	stepOwner := newBackgroundStepOwner(currentWorkshopParentExecutionID(ctx))
-	defer iwm.registerBackgroundStepOwner(toolSessionID, stepOwner)()
-	// On any exit the agent's turns are over, so nothing new is started.
-	defer stepOwner.stopUnhanded(func(executionID string) {
-		if snap, ok := iwm.stepRegistry.GetSnapshot(executionID); ok && snap.Status == WorkshopStepRunning {
-			_, _ = stopWorkshopExecution(iwm.stepRegistry, iwm.executionNotifier, executionID)
-		}
-	})
-
-	// The workshop-only tools are native definitions rather than entries in the
-	// workspace tool pool. Collect them before construction, alongside the full
-	// inherited workspace bundle below.
-	workshopToolDefinitions, err := iwm.prepareBackgroundWorkshopToolDefinitions(inheritedSkills)
-	if err != nil {
-		return "", err
-	}
-	if reviewScope.researchOnly() || reviewScope.goalWork() {
-		filtered := workshopToolDefinitions[:0]
-		for _, tool := range workshopToolDefinitions {
-			if (reviewScope.researchOnly() && researchReviewToolAllowed(tool.Name)) ||
-				(reviewScope.goalWork() && goalWorkToolAllowed(tool.Name, reviewScope.Permissions)) {
-				filtered = append(filtered, tool)
-			}
-		}
-		workshopToolDefinitions = filtered
-	}
-	if readOnlyTask {
-		filtered := workshopToolDefinitions[:0]
-		for _, tool := range workshopToolDefinitions {
-			if readOnlyBackgroundToolAllowed(tool.Name) {
-				filtered = append(filtered, tool)
-			}
-		}
-		workshopToolDefinitions = filtered
-	}
-	// Having a Crew do work is running work: only Goal Work may, and only with
-	// its Run permission (goalWorkToolAllowed). No other background agent gets
-	// ask_platform_crew.
-	if !reviewScope.goalWork() {
-		filtered := workshopToolDefinitions[:0]
-		for _, tool := range workshopToolDefinitions {
-			if tool.Name != "ask_platform_crew" {
-				filtered = append(filtered, tool)
-			}
-		}
-		workshopToolDefinitions = filtered
-	}
-	config.DirectTools = workshopToolDefinitions
-
-	// --- Tools: inherit the parent's complete workspace tool bundle ---
-	//
-	// A background task is a workshop child, not a normal plan step. Using
-	// prepareCustomTools(nil) here silently reduced it to the step-default
-	// workspace/human/DB set, which omitted Pulse persistence, plan editing,
-	// schedules, and durable human-input tools. That made children able to
-	// diagnose defects but unable to record or repair them. The per-agent Folder
-	// Guard above still enforces file safety; do not add a second, drifting
-	// category allow-list here.
-	toolsToRegister := iwm.controller.WorkspaceTools
-	executorsToUse := iwm.controller.WorkspaceToolExecutors
-	if reviewScope.researchOnly() {
-		toolsToRegister, executorsToUse = filterResearchReviewTools(toolsToRegister, executorsToUse)
-	}
-	if reviewScope.goalWork() {
-		toolsToRegister, executorsToUse = filterGoalWorkTools(toolsToRegister, executorsToUse, reviewScope.Permissions)
-	} else {
-		toolsToRegister, executorsToUse = withoutBackgroundTool(toolsToRegister, executorsToUse, "ask_platform_crew")
-	}
-
-	if readOnlyTask {
-		toolsToRegister, executorsToUse = filterReadOnlyBackgroundTools(toolsToRegister, executorsToUse)
-	}
-
-	createAgentFunc := func(cfg *agents.OrchestratorAgentConfig, log loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
-		return newWorkflowBackgroundTaskAgent(cfg, log, tracer, eventBridge)
-	}
-
-	// PushContext before setup so the shared bridge context is preserved for concurrent agents.
-	// setupStandardAgent calls SetOrchestratorContext which overwrites the bridge — without
-	// push/pop this corrupts the main agent's metadata when the bg task runs in a goroutine.
-	if cab, ok := iwm.controller.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
-		cab.PushContext("background-task", 0, "background-task", fmt.Sprintf("Background: %s", name))
-	}
-
-	agent, err := iwm.controller.CreateAndSetupStandardAgentWithConfig(
-		ctx,
-		config,
-		"background-task",
-		0, 0,
-		"background-task",
-		createAgentFunc,
-		toolsToRegister,
-		executorsToUse,
-		true, // overwriteSystemPrompt — we provide our own
-	)
-
-	// Immediately restore bridge context — bg task events use ForceCorrelationIDKey from ctx,
-	// not the bridge's current context, so restoring here is safe.
-	if cab, ok := iwm.controller.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
-		cab.PopContext()
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to create background task agent: %w", err)
-	}
-	if len(messageSequence) > 0 {
-		defer closeBackgroundMessageSequenceAgent(agent, config, name)
-	}
-
-	// --- Post-setup: add skill/secret/browser prompts ---
-	baseAgent := agent.GetBaseAgent()
-	if baseAgent == nil {
-		return "", fmt.Errorf("base agent is nil after creation")
-	}
-	// Build supplementary prompts
-	//
-	// Phase 3 rewire: skills attach to the agent directly; the listing
-	// goes into the system prompt via mcpagent.ensureSystemPrompt, and
-	// CLI adapters project SKILL.md folders to disk. The legacy
-	// {{.SkillPrompt}} template variable stays empty — kept for
-	// template backward compatibility but no longer carries content.
-	//
-	// run_in_background is a child of the interactive builder rather than a
-	// persisted workflow step, so it inherits the parent's attached identity.
-	// The definitions are passed directly (rather than reloaded by name) to
-	// preserve every supporting file in the isolated CLI workspace.
-	skillPrompt := ""
-	effectiveSkills := backgroundSkillNames(inheritedSkills)
-	if err := applyInheritedBackgroundSkills(ctx, baseAgent, inheritedSkills); err != nil {
-		return "", fmt.Errorf("apply background agent skills: %w", err)
-	}
-
-	secretPrompt := ""
-	effectiveSecrets := GetEffectiveSecrets(iwm.controller.BaseOrchestrator)
-	if len(effectiveSecrets) > 0 {
-		secretPrompt = BuildWorkflowSecretPrompt(effectiveSecrets)
-	}
-
-	// Same trim as workshop main path: emit a one-line pointer to the
-	// browser-usage skill instead of the ~5-10KB BuildBrowserInstructions
-	// block. Background-task agents fetch the full guide on demand.
-	bgBrowserCfg := iwm.controller.resolveBrowserConfig(config.ServerNames, effectiveSkills)
-	browserPrompt := ""
-	if bgBrowserCfg.HasAgentBrowser {
-		browserPrompt = "\n## Browser\n\nThis task has a browser tool available (mode=" + bgBrowserCfg.Mode +
-			"). Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific mode, tab, file, and safety rules. "
-		if bgBrowserCfg.HasAgentBrowser && bgBrowserCfg.Mode == "cdp" {
-			ports := append([]int{bgBrowserCfg.CdpPort}, bgBrowserCfg.CdpPorts...)
-			endpoints := browser.ConfiguredCDPEndpoints(ports)
-			endpoint := browser.ConfiguredCDPEndpoint(bgBrowserCfg.CdpPort)
-			if len(endpoints) > 0 {
-				endpoint = endpoints[0]
-			}
-			if len(endpoints) > 1 {
-				browserPrompt += "This workflow explicitly authorizes independently-profiled Chrome browsers at `" + strings.Join(endpoints, "`, `") + "`. Choose the endpoint matching the intended login/account on every call. "
-			}
-			browserPrompt += "Every agent_browser call must explicitly include one authorized `--cdp <endpoint>`. Before the first browser action, load the version-matched core skill with `agent_browser(command=\"skills\", args=[\"--cdp\", \"" + endpoint + "\", \"get\", \"core\"], session=\"default\")`; this docs call does not require a selected tab.\n"
-		} else {
-			browserPrompt += "Before the first browser action, load the version-matched core skill with `agent_browser(command=\"skills\", args=[\"get\", \"core\"], session=\"default\")`.\n"
-		}
-	}
-
-	// Apply post-setup configuration (folder guard + registry for code execution mode)
-	if err := iwm.controller.applyPostSetupToAgent(agent, "background-task-agent"); err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Post-setup configuration failed for background-task-agent: %v", err))
-	}
-
-	// --- Template vars ---
-	templateVars := map[string]string{
-		"WorkspacePath":    workspacePath,
-		"AbsWorkspacePath": absPromptWorkspacePath(workspacePath),
-		"Instruction":      instruction,
-		"DBGuidance":       BuildManagedWorkflowDBGuidance(DBAccessReadWrite),
-		"SkillPrompt":      skillPrompt,
-		"SecretPrompt":     secretPrompt,
-		"BrowserPrompt":    browserPrompt,
-	}
-
-	if reviewScope.researchOnly() || reviewScope.goalWork() || readOnlyTask {
-		templateVars["DBGuidance"] = BuildManagedWorkflowDBGuidance(DBAccessRead)
-	}
-	if readOnlyTask {
-		templateVars["SecretPrompt"] = ""
-	}
-	// --- Execute ---
-	logger.Info(fmt.Sprintf("🚀 Running background task agent: %q (turns=%d)", name, 1+len(messageSequence)))
-	result, history, err := executeBackgroundMessageSequenceWithHistory(ctx, agent, templateVars, instruction, messageSequence, nil)
-	if err != nil {
-		return "", fmt.Errorf("background task agent failed: %w", err)
-	}
-	result, history, err = handOwnedStepResults(ctx, agent, templateVars, history, result, stepOwner, iwm.stepRegistry)
-	if err != nil {
-		return "", fmt.Errorf("background task agent failed: %w", err)
-	}
-	// A Pulse reviewer finishes with its result recorded: if it has not, it
-	// gets one more turn in its own conversation to record it, rather than the
-	// Pulse conversation reconstructing it afterwards.
-	if iwm.workshopConfig != nil {
-		result, err = ensurePulseReviewerRecorded(ctx, agent, templateVars, history, result, reviewScope.Module, reviewScope.RunID, iwm.workshopConfig.PulseReviewResultCheck, stepOwner, iwm.stepRegistry)
-		if err != nil {
-			return "", fmt.Errorf("background task agent failed: %w", err)
-		}
-	}
-	return result, nil
-}
-
-func closeBackgroundMessageSequenceAgent(agent agents.OrchestratorAgent, config *agents.OrchestratorAgentConfig, name string) {
-	if agent != nil {
-		_ = agent.Close()
-	}
-	if config == nil {
-		return
-	}
-	closeMessageSequenceCodingSession(config.LLMConfig.Primary.Provider, config.MCPSessionID, "background message sequence completed: "+name)
-	mcpagent.RemoveIsolatedSessionWorkspace(config.MCPSessionID)
 }
 
 // stepLLMConfigForValidation carries the selected override for structural validation.

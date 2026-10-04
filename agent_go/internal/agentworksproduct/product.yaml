@@ -250,7 +250,6 @@ chat:
       - request_workflow_folder_access
       - review_step_code
       - run_full_workflow
-      - run_in_background
       - search_mcp_catalog
       - search_playbooks
       - search_skills
@@ -315,7 +314,6 @@ chat:
       - query_step
       - request_workflow_folder_access
       - run_full_workflow
-      - run_in_background
       - search_skills
       - send_step_message
       - stop_all_executions

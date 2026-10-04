@@ -210,17 +210,17 @@ var promptSections = []promptSection{
 		Build:   func(c promptContext) string { return c.CLIToolEnvironment },
 	},
 	{
-		// Full CLI has its own subagents; run_in_background stays for what they
-		// cannot do (PLAT-397).
+		// Full CLI has its own subagents for parallel work. There is no separate
+		// background-agent tool: reviews are done by the agent itself.
 		Name:    "native-subagents",
 		Applies: func(c promptContext) bool { return c.NativeCodingTools },
 		Build:   func(promptContext) string { return nativeSubagentsGuidance },
 	},
 }
 
-const nativeSubagentsGuidance = `## Subagents and background work
-Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly.
-A review, audit or check that must not change anything is NOT a job for your own subagents: they can write whatever you can. Start it with ` + "`run_in_background`" + ` and ` + "`access_mode=\"read_only\"`" + ` which the platform holds read-only. It is a platform tool, usually not in your declared tool list: call ` + "`search_tools(query=\"run_in_background\")`" + `, then ` + "`get_api_spec(tool_name=\"run_in_background\")`" + `, and call the route it returns. Not finding it in your declared tools is not a reason to skip the review. Use ` + "`run_in_background`" + ` also for a long supervision loop that should keep going after this turn (run steps, read results, fix, rerun).`
+const nativeSubagentsGuidance = `## Subagents
+Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results. There is no separate background-agent tool.
+A review, audit or check that must not change anything: do it yourself, or give it to a subagent with an explicit instruction not to write, edit or run anything with side effects, and confirm afterwards that nothing changed.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.

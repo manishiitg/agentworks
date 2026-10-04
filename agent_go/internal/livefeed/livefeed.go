@@ -11,6 +11,7 @@
 package livefeed
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"strings"
 	"sync"
 )
@@ -153,14 +154,13 @@ func WorkflowRoot(p string) string {
 // IsPlanPath reports files that change the shared Graph/Plan view. Keep this
 // classification in one place for workspace tools and server-side writes.
 func IsPlanPath(p string) bool {
-	parts := strings.Split(strings.Trim(strings.TrimSpace(p), "/"), "/")
-	start := 0
-	if len(parts) >= 3 && parts[0] == "_users" && parts[1] != "" {
-		start = 2
-	}
-	if len(parts) <= start {
+	// The owner prefix is irrelevant to the shape of the path.
+	ref, ok := workspaceref.Parse(p)
+	if !ok || ref.Logical() == "" {
 		return false
 	}
+	parts := strings.Split(ref.Logical(), "/")
+	start := 0
 	rootEnd := 0
 	switch {
 	case len(parts) >= start+2 && (parts[start] == "Workflow" || parts[start] == "Crew") && parts[start+1] != "":

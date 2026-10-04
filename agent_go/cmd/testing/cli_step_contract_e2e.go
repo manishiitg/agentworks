@@ -104,6 +104,7 @@ var cliStepContractCmd = &cobra.Command{
 		failures := layout.verifyStepResults()
 		failures = append(failures, layout.verifyDatabase(ctx)...)
 		failures = append(failures, layout.verifyRouteTool(ctx)...)
+		failures = append(failures, layout.verifyAuthoredAgent(ctx)...)
 		if len(failures) > 0 {
 			for _, failure := range failures {
 				fmt.Printf("FAIL %s\n", failure)
@@ -211,6 +212,9 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 	if err := l.writeRouteScript(); err != nil {
 		return err
 	}
+	if err := l.writeAuthoredRouteScript(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(l.absMain, "code", stepContractScriptID), 0o755); err != nil {
 		return err
 	}
@@ -239,6 +243,30 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 					"type": "regular", "id": stepContractRouteStepID, "title": "Contract lookup",
 					"description":          "Return the customer record for one id as JSON.",
 					"context_dependencies": []string{}, "context_output": "",
+					"script_parameters": map[string]interface{}{
+						"customer_id": map[string]interface{}{"type": "string", "description": "The customer id to look up", "required": true},
+					},
+				},
+			}},
+		},
+		{
+			// PLAT-441: an authored agent (a Relay agent's shape) owning a saved
+			// script tool keeps its own system prompt and JSON answer.
+			"type": "message_sequence", "id": stepContractAuthoredID, "title": "Contract authored agent",
+			"description":          "Answer with the customer's name as JSON.",
+			"context_dependencies": []string{}, "context_output": "",
+			"authored_prompt": true,
+			"system_prompt":   "You look up customers. Call your tool " + stepContractAuthoredTool + " with the customer id you are given. Answer with exactly one JSON object and nothing else: {\"name\": \"<the name field the tool returned>\"}.",
+			"items": []map[string]interface{}{
+				{"id": "ask", "type": "user_message", "message": "Look up customer " + stepContractCustomerID + "."},
+			},
+			"predefined_routes": []map[string]interface{}{{
+				"route_id": stepContractAuthoredRouteID, "route_name": "Authored lookup",
+				"condition": "When a customer record is needed by id",
+				"sub_agent_step": map[string]interface{}{
+					"type": "regular", "id": stepContractAuthoredRouteID, "title": "Authored lookup",
+					"description":          "Return the customer record for one id as JSON.",
+					"context_dependencies": []string{}, "context_output": "", "script_only": true,
 					"script_parameters": map[string]interface{}{
 						"customer_id": map[string]interface{}{"type": "string", "description": "The customer id to look up", "required": true},
 					},
@@ -297,6 +325,46 @@ const (
 )
 
 func (l *cliSandboxContractLayout) routeToken() string { return "ROUTE_" + l.tokens["private"] }
+
+const (
+	stepContractAuthoredID      = "step-contract-authored"
+	stepContractAuthoredRouteID = "authored-lookup"
+	stepContractAuthoredTool    = "authored_lookup"
+)
+
+func (l *cliSandboxContractLayout) authoredToken() string { return "AUTHORED_" + l.tokens["private"] }
+
+func (l *cliSandboxContractLayout) writeAuthoredRouteScript() error {
+	dir := filepath.Join(l.absMain, "code", stepContractAuthoredRouteID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`import json, os
+params = json.loads(os.environ["STEP_PARAMS_JSON"])
+with open(os.path.join(os.environ["STEP_OUTPUT_DIR"], "route_result.json"), "w") as f:
+    json.dump({"customer_id": params["customer_id"], "name": %q}, f)
+`, l.authoredToken())
+	return os.WriteFile(filepath.Join(dir, "main.py"), []byte(script), 0o644)
+}
+
+// verifyAuthoredAgent checks the authored agent's final JSON carries the value
+// only its script tool returns.
+func (l *cliSandboxContractLayout) verifyAuthoredAgent(ctx context.Context) []string {
+	summary := filepath.Join(l.absMain, "runs", "iteration-0", "default", "logs", stepContractAuthoredID, "execution", "execution-final-summary.json")
+	deadline := time.Now().Add(5 * time.Minute)
+	var data []byte
+	for {
+		data, _ = os.ReadFile(summary) // #nosec G304 -- fixture
+		if len(data) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+	if !strings.Contains(string(data), l.authoredToken()) {
+		return []string{fmt.Sprintf("authored agent: final answer lacks the script tool's value %q (prompt lost, or tool not called): %s", l.authoredToken(), strings.TrimSpace(string(data)))}
+	}
+	return nil
+}
 
 func (l *cliSandboxContractLayout) routeToolResultPath() string {
 	return filepath.Join(l.stepOutDir(stepContractAgentID), "route-tool.txt")

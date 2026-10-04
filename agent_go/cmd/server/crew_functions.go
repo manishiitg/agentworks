@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew functions (PLAT-357): a Crew or workflow declares typed functions in
@@ -677,7 +678,7 @@ func (c *crewFunctionCall) persist() {
 
 func (c *crewFunctionCall) recordPath() string {
 	if c.TargetProfileID == codeproduct.ProfileID {
-		return "_users/" + sanitizeUserIDForPath(c.UserID) + "/chat_history/code-peer-calls/" + c.ID + ".json"
+		return workspaceref.PhysicalPath(c.UserID, "chat_history", "code-peer-calls", c.ID+".json")
 	}
 	return strings.TrimSuffix(c.TargetPath, "/") + "/functions/calls/" + c.ID + ".json"
 }

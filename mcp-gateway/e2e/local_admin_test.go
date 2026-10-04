@@ -243,7 +243,7 @@ func TestGroupServerGrantRoundTrip(t *testing.T) {
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
 	st.AddMember("g1", "u1")
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
-	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive, Fingerprint: "fake__tool-fp", ApprovedFingerprint: "fake__tool-fp"})
 	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
@@ -267,8 +267,8 @@ func TestGroupServerGrantRoundTrip(t *testing.T) {
 	if _, err := policy.Authorize(st, id, "fake__tool"); err != nil {
 		t.Fatalf("tool denied after server attach: %v", err)
 	}
-	// A tool discovered later is covered by the same ongoing attach.
-	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__new", Status: store.StatusActive})
+	// A tool discovered and approved later is covered by the same ongoing attach.
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__new", Status: store.StatusActive, Fingerprint: "fake__new-fp", ApprovedFingerprint: "fake__new-fp"})
 	if _, err := policy.Authorize(st, id, "fake__new"); err != nil {
 		t.Fatalf("later tool denied after server attach: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestGroupAPIKeyFlow(t *testing.T) {
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
-	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive, Fingerprint: "fake__tool-fp", ApprovedFingerprint: "fake__tool-fp"})
 	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)

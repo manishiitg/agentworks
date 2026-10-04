@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Legacy migration: ~/.sunlit-learning (the standalone family-server's home)
@@ -71,7 +72,7 @@ func LegacyFamilyRoot(docsDir, userID string) string {
 	if strings.TrimSpace(userID) == "" {
 		userID = "default"
 	}
-	return filepath.Join(docsDir, "_users", userID, "Chats", "SparkQuill")
+	return filepath.Join(docsDir, workspaceref.UsersDir, userID, "Chats", "SparkQuill")
 }
 
 // DefaultLegacySourceDir is ~/.sunlit-learning, or SPARKQUILL_LEGACY_DIR.

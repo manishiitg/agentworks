@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -91,12 +92,18 @@ func cleanAttachRoot(raw string) string {
 			return ""
 		}
 	}
+	if ref := workspaceref.MustParse(root); ref.HasOwner() {
+		// Only a project root itself: _users/<owner>/Chats/(Work|Code)/projects/<id>.
+		projectRoot, project, ok := ref.Project()
+		if ok && ref.Logical() == projectRoot+"/"+project && ref.PhysicalKeepOwner("") == root {
+			return root
+		}
+		return ""
+	}
 	switch {
 	case len(segments) == 2 && segments[0] == "Workflow" && !strings.HasPrefix(segments[1], "."):
 		return root
 	case len(segments) == 2 && segments[0] == crewSharedRootName:
-		return root
-	case len(segments) == 6 && segments[0] == "_users" && segments[2] == "Chats" && (segments[3] == "Work" || segments[3] == "Code") && segments[4] == "projects":
 		return root
 	}
 	return ""
@@ -104,8 +111,8 @@ func cleanAttachRoot(raw string) string {
 
 // isCodePlaceRoot reports whether a cleaned place root is a Code.
 func isCodePlaceRoot(root string) bool {
-	segments := strings.Split(root, "/")
-	return len(segments) == 6 && segments[0] == "_users" && segments[3] == "Code"
+	projectRoot, _, ok := workspaceref.MustParse(root).Project()
+	return ok && projectRoot == workspaceref.CodeProjectsRoot && workspaceref.MustParse(root).HasOwner()
 }
 
 // placeRootOf returns the workflow, Crew or Code root a path lies in (a run
@@ -115,8 +122,11 @@ func placeRootOf(raw string) string {
 	switch {
 	case len(segments) >= 2 && (segments[0] == "Workflow" || segments[0] == crewSharedRootName):
 		return cleanAttachRoot(strings.Join(segments[:2], "/"))
-	case len(segments) >= 6 && segments[0] == "_users":
-		return cleanAttachRoot(strings.Join(segments[:6], "/"))
+	}
+	if ref := workspaceref.MustParse(raw); ref.HasOwner() {
+		if projectRoot, project, ok := ref.Project(); ok {
+			return cleanAttachRoot(ref.WithLogical(projectRoot + "/" + project).PhysicalKeepOwner(""))
+		}
 	}
 	return ""
 }
@@ -127,8 +137,8 @@ func placeRootOf(raw string) string {
 // _users tree.
 func attachRootForCaller(userID, raw string) string {
 	raw = strings.Trim(strings.TrimSpace(raw), "/")
-	if strings.HasPrefix(raw, "Chats/Work/projects/") || strings.HasPrefix(raw, "Chats/Code/projects/") {
-		raw = "_users/" + sanitizeUserIDForPath(userID) + "/" + raw
+	if ref := workspaceref.MustParse(raw); !ref.HasOwner() && ref.IsProject() && ref.Logical() == raw {
+		raw = ref.Physical(userID)
 	}
 	return cleanAttachRoot(raw)
 }
@@ -188,7 +198,7 @@ func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 	}
 	if isCodePlaceRoot(root) {
 		// A Code lives in its owner's tree; only the owner connects there.
-		return strings.HasPrefix(root, "_users/"+sanitizeUserIDForPath(userID)+"/")
+		return workspaceref.MustParse(root).OwnedBy(userID)
 	}
 	ref, ok := resolveCrewPath(ctx, userID, root)
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner

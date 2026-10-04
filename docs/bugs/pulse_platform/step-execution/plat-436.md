@@ -38,6 +38,23 @@ emptied a route's saved folder in the PLAT-432 investigation (inferred).
   updated; code-authoring says runs never repair scripts.
 - Unit test `TestScriptedRunIsStrictUnlessTheBuilderRepairs`.
 
+## Follow-up 2026-10-04: Builder guidance
+
+The Builder's guidance still described the old behaviour in several places.
+Fixed: `scripted.md` now opens with "Scripts are built by you, not healed by the
+run" (runs execute the saved script and fail on its error; Pulse reports it; the
+Builder writes and repairs with `execute_step`); `optimize-playbook.md` no longer
+says `lock_code` stops "the fix loop / execution agent" in runs (four places: it
+now only stops the Builder's own `execute_step` repair, and advises locking late);
+`code-authoring.md` drops "autofix sees it" and scopes the exit-code-2 rule to the
+Builder's own runs; `workflow-tools.md` says only the Builder's `execute_step`
+may repair. Test: `scripted_no_self_heal_test.go` fails if any of the old
+promises reappears.
+
+`docs/workflow/learn_code_flow.md` (the scripted execution description) now opens
+with the run-time rule and scopes generation, repair, save-back, the `lock_code`
+effect and the `code_exec` fallback to the Builder's own `execute_step`.
+
 ## Left
 
 - Live: `cli-step-contract` (saved scripted step + named route, strict by

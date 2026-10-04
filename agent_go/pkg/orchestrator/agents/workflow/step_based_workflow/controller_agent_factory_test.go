@@ -562,7 +562,7 @@ func TestAllWorkflowAgentFactoriesEnableWorkspaceIsolation(t *testing.T) {
 		want int
 	}{
 		{path: "controller_agent_factory.go", want: 2},     // regular + todo-task orchestrator
-		{path: "interactive_workshop_manager.go", want: 4}, // run_in_background + review workshop agents
+		{path: "interactive_workshop_manager.go", want: 3}, // review workshop agents
 	}
 	const needle = "config.IsolateCodingAgentWorkspace = true"
 	for _, tc := range cases {

@@ -120,3 +120,13 @@ func TestRelayMCPAdmissionIsOwnedByBuilderManifest(t *testing.T) {
 		t.Fatal("MCP added Run chat")
 	}
 }
+
+func TestRelayProductDeclaresNoPlatformStores(t *testing.T) {
+	enabled, err := PlatformStoresEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Fatal("Relays must not inherit workflow DB, KB or learnings")
+	}
+}

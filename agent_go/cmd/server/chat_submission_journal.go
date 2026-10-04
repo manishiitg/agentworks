@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
@@ -606,7 +607,7 @@ func durableSubmissionProject(owner, session string) (string, error) {
 	defer cancel()
 	roots := []string{"Workflow"}
 	for _, product := range projectProducts {
-		roots = append(roots, filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(owner), product.ProjectsRoot)))
+		roots = append(roots, workspaceref.PhysicalPath(owner, product.ProjectsRoot))
 	}
 	projects := map[string]bool{}
 	for _, root := range roots {

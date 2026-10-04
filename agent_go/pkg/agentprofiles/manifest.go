@@ -49,6 +49,10 @@ type ChatPromptSource struct {
 }
 
 type ProductManifest struct {
+	// Execution owns shared workflow-runtime capabilities; omitted preserves workflow defaults.
+	Execution struct {
+		PlatformStores *bool `yaml:"platform_stores,omitempty"`
+	} `yaml:"execution,omitempty"`
 	// InstructionSections declares the shared server prompt-section registry for
 	// integration checks; each section still decides when it applies at runtime.
 	InstructionSections []string                      `yaml:"instruction_sections,omitempty"`

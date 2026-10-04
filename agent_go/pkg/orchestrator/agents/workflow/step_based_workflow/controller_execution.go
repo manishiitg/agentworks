@@ -176,6 +176,7 @@ func resolveKnowledgebaseAccess(stepConfig *AgentConfigs, presetEnabled bool) st
 const (
 	DBAccessReadWrite = "read-write"
 	DBAccessRead      = "read"
+	DBAccessNone      = "none"
 )
 
 // resolveDBAccess returns the uniform execution-step DB capability. The config
@@ -1354,8 +1355,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	if sessionID := hcpo.GetMCPSessionID(); sessionID != "" && !isSubAgent {
 		narrowAgentCfg := getAgentConfigs(step)
 		narrowKBAccess := resolveKnowledgebaseAccess(narrowAgentCfg, hcpo.UseKnowledgebase())
-		narrowLearningsAccess := resolveExecutionLearningsAccess(narrowAgentCfg, step)
-		narrowRead, narrowWrite := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, narrowKBAccess, narrowLearningsAccess, resolveDBAccess(narrowAgentCfg), narrowAgentCfg)
+		narrowLearningsAccess := hcpo.resolveExecutionLearningsAccess(narrowAgentCfg, step)
+		narrowRead, narrowWrite := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, narrowKBAccess, narrowLearningsAccess, hcpo.resolveDBAccess(narrowAgentCfg), narrowAgentCfg)
 		var prevRead, prevWrite []string
 		if prevCfg := common.GetSessionShellConfig(sessionID); prevCfg != nil {
 			prevRead = prevCfg.ReadPaths
@@ -1485,8 +1486,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		}
 
 		// Get folder guard paths for template (so agent knows exact paths it can access)
-		learningsAccess := resolveExecutionLearningsAccess(agentConfigs, step)
-		dbAccess := resolveDBAccess(agentConfigs)
+		learningsAccess := hcpo.resolveExecutionLearningsAccess(agentConfigs, step)
+		dbAccess := hcpo.resolveDBAccess(agentConfigs)
 		folderGuardReadPaths, folderGuardWritePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, agentConfigs)
 
 		// Learn code mode: add code/ subdir to write paths so LLM can write main.py there
@@ -1829,9 +1830,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			// Default is "read": every step sees _global/SKILL.md in its prompt.
 			// Only routing steps or explicit learnings_access="none" opt out.
 			// Contribution (write) is a separate gate further below.
-			if !canReadLearnings(agentConfigs, step) {
+			if !hcpo.canReadLearnings(agentConfigs, step) {
 				formattedLearningHistory = ""
-				hcpo.GetLogger().Info(fmt.Sprintf("⏭️ Learnings read disabled for step %d (learnings_access=%s) - skipping _global/ injection", stepIndex+1, resolveLearningsAccess(agentConfigs)))
+				hcpo.GetLogger().Info(fmt.Sprintf("⏭️ Learnings read disabled for step %d (learnings_access=%s) - skipping _global/ injection", stepIndex+1, hcpo.resolveLearningsAccess(agentConfigs)))
 			} else {
 				// Learning is enabled - read from global learning skill
 				formattedLearningHistory, err = hcpo.readGlobalLearningHistory(ctx)
@@ -2598,9 +2599,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				// "empty objective" used to also kill read access; with learnings_access
 				// split, write is honest opt-in and read is default-on.
 				agentConfigs = getAgentConfigs(step)
-				isLearningDisabled := !canWriteLearnings(agentConfigs, step)
+				isLearningDisabled := !hcpo.canWriteLearnings(agentConfigs, step)
 				if isScriptedMode {
-					hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] Step %d — main.py remains executable truth; SKILL.md writes gated by learnings_access=%s", stepIndex+1, resolveLearningsAccess(agentConfigs)))
+					hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] Step %d — main.py remains executable truth; SKILL.md writes gated by learnings_access=%s", stepIndex+1, hcpo.resolveLearningsAccess(agentConfigs)))
 				}
 				// Pre-validation result drives validationResponse (set above).
 				// Safety guard: if somehow nil, default to success so learning + KB can proceed.

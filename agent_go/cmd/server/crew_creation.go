@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // CreateCrewRequest is the validated input for server-side Crew creation from
@@ -463,6 +466,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	manifest := map[string]interface{}{
 		"schema_version": 1,
 		"product":        profileID,
+		"owner_id":       sanitizeUserIDForPath(userID),
 		"id":             crewID,
 		"title":          title,
 		"description":    purpose,
@@ -470,6 +474,19 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title, "icon": icon, "role": role},
+	}
+	// The server records who owns the project before anything about it exists (PLAT-449): the registry is the
+	// authority, the owner_id above is information for whoever reads the folder.
+	if err := defaultProjectOwners().Register(projectOwnerRecord{
+		Product: profileID, Folder: filepath.Base(filepath.ToSlash(workspacePath)), OwnerID: userID, ProjectID: crewID,
+		Shared: workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(),
+	}); err != nil {
+		// A project in its owner's tree still resolves by its path; one at the shared root would belong to
+		// nobody, so only that creation fails.
+		if workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared() || errors.Is(err, errProjectOwnerConflict) {
+			return CreatedCrew{}, fmt.Errorf("register crew owner: %w", err)
+		}
+		log.Printf("[OWNER_REGISTRY] %s: %v", workspacePath, err)
 	}
 	if err := writeCrewCreationManifest(ctx, filepath.ToSlash(filepath.Join(workspacePath, "workflow.json")), runtimeManifest); err != nil {
 		return CreatedCrew{}, err

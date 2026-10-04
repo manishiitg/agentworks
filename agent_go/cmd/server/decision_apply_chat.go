@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -25,26 +26,41 @@ func decisionApplyChatMessage(input ReportHumanInput) string {
 	switch scheduledDecisionApplyMode(input) {
 	case "external_wait":
 		return ""
-	case "no_change", "direct_apply", "targeted_fixer":
-		var parts []string
-		for _, turn := range scheduledDecisionPreflightTurns([]ReportHumanInput{input}) {
-			parts = append(parts, turn.query)
-		}
-		if len(parts) == 0 {
-			return ""
-		}
-		return intro + "\n\n" + strings.Join(parts, "\n\n")
 	default:
-		// Older decisions carry no apply type, so the unattended drain never
-		// applies them. Here the user answered in person and is watching.
-		return intro + fmt.Sprintf(`
+		// Every other decision, structured or older, is applied here by the
+		// Builder: the user answered in person and is watching. There is no
+		// separate Fixer or pre-run turn; the Builder makes the repair itself.
+		return intro + decisionApplyInstructions(input)
+	}
+}
 
-Read it with get_human_input_request(workspace_path=%q, input_id=%q). Its context says what happens for each answer. Honor the answer exactly, including a rejection or a deferral.
-- Approved: make the change with the normal typed Builder tools, re-read the changed artifact to confirm it landed, then call mark_human_input_consumed with an outcome_summary that says in plain words what changed.
+// decisionApplyInstructions tells the Builder how to apply one answered decision.
+// A structured decision's saved scope, checks and linked issue bound the repair;
+// whatever option the user picked (approve, a smaller option such as
+// label_only, a rejection, a deferral) is honored as written.
+func decisionApplyInstructions(input ReportHumanInput) string {
+	id := strings.TrimSpace(input.ID)
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\nRead it with get_human_input_request(workspace_path=%q, input_id=%q). Its context says what happens for each answer. Honor the answer exactly, including a rejection, a deferral or a smaller option than the one proposed.\n", input.WorkspacePath, id)
+	contract := input.ApplyContract
+	if scope := strings.TrimSpace(contract.ApprovedScope); scope != "" {
+		fmt.Fprintf(&b, "- Scope: apply ONLY this approved scope: %q. Make the smallest coherent change and do not broaden it.\n", scope)
+	}
+	if len(contract.PreRunChecks) > 0 {
+		checks, _ := json.Marshal(contract.PreRunChecks)
+		fmt.Fprintf(&b, "- Checks: run every required static or side-effect-free check before you finish (through the real consumer where possible), and call validate_plan_change whenever the plan changed: %s\n", checks)
+	}
+	if proof := strings.TrimSpace(contract.PostRunProof); proof != "" {
+		fmt.Fprintf(&b, "- Proof that needs a later run: %q. Say plainly what remains to be proven; do not claim it.\n", proof)
+	}
+	if issueID := strings.TrimSpace(contract.IssueID); issueID != "" {
+		fmt.Fprintf(&b, "- Linked issue %q: read it with get_pulse_state(view=\"backlog\", detail=\"full\") before changing anything. Keep it open until the change is applied, then record what was done and close it.\n", issueID)
+	}
+	b.WriteString(`- Approved or a smaller option chosen: make the change with the normal typed Builder tools, re-read the changed artifact to confirm it landed, then call mark_human_input_consumed with an outcome_summary that says in plain words what changed.
 - Rejected: call mark_human_input_consumed with an outcome_summary that the user declined and nothing changed.
 - Deferred, or anything you cannot apply safely right now: change nothing, leave it answered, and tell me in one or two sentences why.
-Do not run the workflow, back up, publish or notify. Keep your reply short and plain.`, input.WorkspacePath, id)
-	}
+Do not run the workflow, back up, publish or notify. Keep your reply short and plain.`)
+	return b.String()
 }
 
 // withDecisionApplyMessages fills ApplyMessage on every answered decision, so

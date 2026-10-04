@@ -36,8 +36,8 @@ import { useLLMStore } from '../../../stores/useLLMStore'
 
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
-const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'flow', 'browser'])
-const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
+const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse'])
+const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'browser', 'workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
 const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
   identity: 'Identity',
   playbooks: 'Playbooks',
@@ -157,7 +157,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
   // Button clusters come from the view registry, in registry order. Plan is
   // always present, including for a new workflow with no steps yet.
-  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report' && (!relayMode || view.id === 'flow'))
+  // Plan and Browser live in Ops; a Relay keeps its Graph (the Plan view) in Views.
+  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => (relayMode ? view.id === 'flow' : PRIMARY_TOOLBAR_VIEW_IDS.has(view.id)) && view.id !== 'report')
   const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['workshop', 'costs', 'execution-logs', 'files'].includes(view.id)))
   const capabilityViewDefinitions = useMemo(
     () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp' || view.id === 'identity')),
@@ -388,7 +389,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               hideLabel
               hideToggleWhenOpen
               open
-              title={relayMode ? 'Relay views: Graph' : 'Views: Pulse, Plan and Browser'}
+              title={relayMode ? 'Relay views: Graph' : 'Views: Pulse, Needs you and Activity'}
             >
               <div className="inline-flex items-center gap-0.5 px-0.5">
                 {!relayMode && <Tooltip>
@@ -444,7 +445,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             data-tour="workflow-operations"
             open={operationsOpen}
             onToggle={() => setOperationsOpen(open => !open)}
-            title={relayMode ? 'Relay operations: triggers, costs, execution logs and files' : 'Operations: automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
+            active={operationsWorkspaceViewDefinitions.some(view => view.id === activeWorkspaceView) || (!relayMode && ['backup', 'publish', 'notify'].includes(activeWorkspaceView))}
+            title={relayMode ? 'Relay operations: triggers, costs, execution logs and files' : 'Operations: plan, browser, automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
           >
             <div className="inline-flex items-center gap-0.5">
               {operationsWorkspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (

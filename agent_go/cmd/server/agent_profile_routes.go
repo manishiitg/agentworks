@@ -17,6 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -86,7 +87,7 @@ func resolveProductResumeTarget(userID string, conversation ProductConversationR
 	// variants; the history reader can still fall back to legacy global chats.
 	lookupWorkspacePath := workspacePath
 	if workspacePath != "" {
-		lookupWorkspacePath = filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(userID), filepath.FromSlash(workspacePath)))
+		lookupWorkspacePath = workspaceref.PhysicalPath(userID, workspacePath)
 	}
 	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
 	if err != nil || !ok || target == nil {

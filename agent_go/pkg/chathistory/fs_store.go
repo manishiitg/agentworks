@@ -9,13 +9,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // FilesystemStore is the filesystem-backed implementation of Store. It owns
@@ -45,14 +45,9 @@ type FilesystemStore struct {
 
 // sanitizeUserID returns a safe folder segment for a user ID. Empty or
 // invalid IDs collapse to "default".
-var userIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 func sanitizeUserID(userID string) string {
-	userID = strings.TrimSpace(userID)
-	if userID == "" || len(userID) > 128 || !userIDPattern.MatchString(userID) {
-		return "default"
-	}
-	return userID
+	return workspaceref.SanitizeUserID(strings.TrimSpace(userID))
 }
 
 // NewFilesystemStore constructs a FilesystemStore rooted at the given
@@ -252,7 +247,7 @@ func workflowSecretPathHash(workflowPath string) string {
 }
 
 func (s *FilesystemStore) userSecretsFile(userID string) string {
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "secrets.json")
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "secrets.json")
 }
 
 func (s *FilesystemStore) workflowSecretsFile(userID, workflowPath string) (string, string, error) {
@@ -260,7 +255,7 @@ func (s *FilesystemStore) workflowSecretsFile(userID, workflowPath string) (stri
 	if err != nil {
 		return "", "", err
 	}
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "workflow_secrets", workflowSecretPathHash(normalized)+".json"), normalized, nil
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "workflow_secrets", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 func (s *FilesystemStore) workflowProviderCredentialsFile(userID, workflowPath string) (string, string, error) {
@@ -268,7 +263,7 @@ func (s *FilesystemStore) workflowProviderCredentialsFile(userID, workflowPath s
 	if err != nil {
 		return "", "", err
 	}
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "workflow_provider_credentials", workflowSecretPathHash(normalized)+".json"), normalized, nil
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "workflow_provider_credentials", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 // secretsLock returns a per-user mutex, created on demand.

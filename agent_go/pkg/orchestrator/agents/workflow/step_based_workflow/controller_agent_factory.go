@@ -16,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythontools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -327,6 +326,10 @@ func configureWorkflowDBSession(sessionID, workspacePath, dbAccess string, direc
 		return
 	}
 	common.SetSessionShellEnv(sessionID, map[string]string{workflowDBAccessEnv: dbAccess})
+	if dbAccess == DBAccessNone {
+		configureNoPlatformStoresSession(sessionID, workspacePath)
+		return
+	}
 	if direct {
 		return
 	}
@@ -368,6 +371,10 @@ func grantScriptBridgeSessionDB(sessionID, workspacePath, dbAccess string) {
 // sidecars stays blocked even when the surrounding db/ folder is writable for
 // migrations, documentation, and db/assets.
 func ConfigureManagedWorkflowDBSession(sessionID, workspacePath string, readWrite bool) {
+	if !workspacePlatformStoresEnabled(workspacePath) {
+		configureWorkflowDBSession(sessionID, workspacePath, DBAccessNone, false)
+		return
+	}
 	dbAccess := DBAccessRead
 	if readWrite {
 		dbAccess = DBAccessReadWrite
@@ -527,14 +534,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// granting write access to another top-level step.
 	writePaths = []string{writeRootPath, downloadsPath}
 
-	// db/ is always readable. Ordinary workflow execution currently resolves dbAccess
+	// db/ is available only when the product permits platform stores. Ordinary workflow execution resolves dbAccess
 	// to read-write uniformly, so db/ is also writable for those steps. The read branch
 	// remains only for callers that explicitly construct a reader profile while the
 	// canonical reader/writer refactor is incomplete.
 	dbPath := getDBPath(baseWorkspacePath)
-	readPaths = append(readPaths, dbPath)
-	if dbAccess != DBAccessRead {
-		writePaths = append(writePaths, dbPath)
+	if dbAccess != DBAccessNone {
+		readPaths = append(readPaths, dbPath)
+		if dbAccess == DBAccessReadWrite {
+			writePaths = append(writePaths, dbPath)
+		}
 	}
 
 	// Add knowledgebase folder to READ paths when the mode grants read. Under
@@ -565,7 +574,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 		readPaths = append(readPaths, opts.WebhookInputFile)
 	}
 	readPaths = appendAdditionalWorkflowReadPaths(readPaths, baseWorkspacePath, stepConfig)
-	readPaths = appendPythonToolReadPaths(readPaths, baseWorkspacePath, stepConfig)
 	readPaths, writePaths, _, _ = appendWorkflowFolderAccess(baseWorkspacePath, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	readPaths, writePaths = hcpo.appendCDPHostDownloadsPaths(readPaths, writePaths)
 	// PLAT-284: one persistent, workflow-scoped folder for anything a step
@@ -883,8 +891,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	// DB and cost access come from capabilities, not from whether an explicit
 	// tool list was supplied. Filtering against the actual workspace pool below
 	// cannot introduce a tool withheld by the owning profile.
-	enabledTools = append(enabledTools, "workflow_db:query_workflow_db", "workflow_costs:query_workflow_costs", "workflow:get_goal_metrics", "workflow:record_goal_observations")
-	if resolveDBAccess(stepConfig) == DBAccessReadWrite {
+	enabledTools = append(enabledTools, "workflow_costs:query_workflow_costs")
+	if hcpo.platformStoresEnabled() {
+		enabledTools = append(enabledTools, "workflow_db:query_workflow_db", "workflow:get_goal_metrics", "workflow:record_goal_observations")
+	}
+	if hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite {
 		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db", "workflow_db:apply_workflow_db_migration")
 	}
 
@@ -904,6 +915,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 		}
 	}
 	tools, executors := orchestrator.FilterCustomToolsByCategory(hcpo.WorkspaceTools, hcpo.WorkspaceToolExecutors, enabledTools)
+	if !hcpo.platformStoresEnabled() {
+		tools, executors = withoutPlatformStoreTools(tools, executors)
+	}
 	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered custom tools: %d tools enabled from %d entries: %v", len(tools), len(enabledTools), enabledTools))
 	return tools, executors
 }
@@ -1006,6 +1020,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureSubAgentSessionGuard(session
 	if len(kbReadOverride) > 0 {
 		kbRead = kbReadOverride[0]
 	}
+	kbRead = kbRead && hcpo.platformStoresEnabled()
 	readPaths, writePaths, readOnlyPaths, folderEnv := appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbRead)
 	common.SetSessionFolderGuard(sessionID, readPaths, writePaths)
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
@@ -1283,14 +1298,6 @@ func parentStepIndexFromContext(ctx context.Context, fallback int) int {
 func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.Context, phase string, stepPath string, agentName string, stepConfig *AgentConfigs, planStep PlanStepInterface, stepIDOverride string, artifactFolderNameOverride string) (agents.OrchestratorAgent, error) {
 	// 1. Resolve stepID first (needed for folder guard setup)
 	stepID := hcpo.resolveStepID(stepPath, stepIDOverride)
-	var pythonSelections []string
-	if stepConfig != nil {
-		pythonSelections = stepConfig.EnabledCustomTools
-	}
-	_, err := pythontools.SelectedNames(pythonSelections)
-	if err != nil {
-		return nil, err
-	}
 	artifactStepID := stepID
 	artifactStepPath := stepPath
 	if artifactFolderNameOverride = strings.TrimSpace(artifactFolderNameOverride); artifactFolderNameOverride != "" {
@@ -1300,8 +1307,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// 2. Setup folder guard (extracted method). Empty kbAccess defaults to orchestrator-level UseKnowledgebase.
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := resolveExecutionLearningsAccess(stepConfig, planStep)
-	dbAccess := resolveDBAccess(stepConfig)
+	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, planStep)
+	dbAccess := hcpo.resolveDBAccess(stepConfig)
 	readPaths, writePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, stepConfig)
 	stepEnvOutputPathOverride := ""
 	if override, ok := ctx.Value(messageSequenceFolderGuardOverrideKey{}).(*messageSequenceFolderGuardOverride); ok && override != nil {
@@ -1313,7 +1320,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		// The item-specific override may narrow files/KB/learnings, but DB is a
 		// uniform workflow-step capability. Restore the workflow DB path instead
 		// of silently downgrading the child and removing mutate_workflow_db.
-		if !dbWritePathGranted(writePaths, hcpo.GetWorkspacePath()) {
+		if dbAccess == DBAccessReadWrite && !dbWritePathGranted(writePaths, hcpo.GetWorkspacePath()) {
 			dbPath := getDBPath(hcpo.GetWorkspacePath())
 			readPaths = common.DeduplicateStrings(append(readPaths, dbPath))
 			writePaths = common.DeduplicateStrings(append(writePaths, dbPath))
@@ -1386,7 +1393,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		execSessionID = hcpo.setupSubAgentSessionGuard("exec", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	}
 	config.MCPSessionID = execSessionID
-	directDBAccess := isScriptedStep(planStep, stepConfig)
+	directDBAccess := isScriptedStep(planStep, stepConfig) && dbAccess != DBAccessNone
 	configureWorkflowDBSession(execSessionID, hcpo.GetWorkspacePath(), dbAccess, directDBAccess)
 	// Bind the per-step tool session to the workflow's browser session. Tool-session
 	// isolation protects folder and DB permissions without creating a second browser.
@@ -1398,11 +1405,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	// in registerCustomToolsForAgent, ensuring each agent gets its own correct paths.
 	config.FolderGuardReadPaths = readPaths
 	config.FolderGuardWritePaths = writePaths
-	pythonLoadCtx := context.WithValue(ctx, common.ChatSessionIDKey, config.MCPSessionID)
-	pythonTools, err := pythontools.Load(pythonLoadCtx, pythonSelections, hcpo.ReadWorkspaceFile)
-	if err != nil {
-		return nil, err
-	}
 
 	// Setup Downloads folder for agent-browser.
 	// Use shared function to ensure both execution and orchestrator agents set the override correctly
@@ -1466,12 +1468,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		registerStepSessionShellEnv(config.MCPSessionID, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, workspaceEnv)
 		injectStepEnvIntoShellExecutor(executorsToUse, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, config.MCPSessionID, workspaceEnv)
 		hcpo.GetLogger().Info(fmt.Sprintf("📂 Injecting step shell env into execute_shell_command for %s: STEP_OUTPUT_DIR=%s MCP_SESSION_ID=%s", stepID, stepOutputAbsPath, config.MCPSessionID))
-	}
-
-	if len(pythonTools) > 0 {
-		if err := hcpo.bindPythonTools(config, pythonTools, &toolsToRegister, executorsToUse); err != nil {
-			return nil, err
-		}
 	}
 
 	// 6. Use base factory! (This handles all setup automatically)
@@ -1616,6 +1612,11 @@ type SubAgentExecutionContext struct {
 	// their call/query/stop handlers cannot replace the parent's handlers.
 	ToolSessionID string
 
+	// ScriptToolNames maps a scripted route id to the tool name actually
+	// registered for it (PLAT-444). An authored agent's prompt advertises exactly
+	// these; a route that is absent here has no tool.
+	ScriptToolNames map[string]string
+
 	// CallHistory records every sub-agent call made during this todo task step.
 	// Protected by callHistoryMu for concurrent tool calls.
 	CallHistory   []SubAgentCallRecord
@@ -1746,7 +1747,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	todoReadPaths = append(todoReadPaths, hcpo.scriptedRouteSourceReadPaths(subAgentExecCtx)...)
 	todoSessionID := hcpo.setupSubAgentSessionGuard("todo", stepID, todoReadPaths, todoWritePaths)
 	config.MCPSessionID = todoSessionID
-	dbAccess := resolveDBAccess(stepConfig)
+	dbAccess := hcpo.resolveDBAccess(stepConfig)
 	// An orchestrator step is never scripted (its job is runtime delegation),
 	// so it never gets the scripted executor's direct DB path.
 	directDBAccess := false
@@ -1814,6 +1815,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		return false
 	}
 	for _, name := range []string{"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration"} {
+		if dbAccess == DBAccessNone {
+			continue
+		}
 		if (name == "mutate_workflow_db" || name == "apply_workflow_db_migration") && dbAccess == DBAccessRead {
 			continue
 		}
@@ -1910,13 +1914,23 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// Categories for built-in delegation tools are registered once when the
 		// BaseOrchestrator is constructed; the map stays immutable so nested
 		// orchestrators can be created in parallel safely.
+		// An authored agent (a Relay agent) calls only its saved scripts, through
+		// the named route tools below: no sub-agent, generic agent or delegation
+		// tools (PLAT-441).
+		authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
 		for _, tool := range subAgentTools {
+			if authoredAgent {
+				break
+			}
 			toolsToRegister = append(toolsToRegister, tool)
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added sub-agent tool '%s' to todo task orchestrator (category: %s)", tool.Function.Name, subAgentCategory))
 		}
 
 		// Wrap sub-agent executors with context injection
 		for toolName, executor := range subAgentExecutors {
+			if authoredAgent {
+				break
+			}
 			wrappedExecutor := hcpo.wrapSubAgentToolExecutor(executor, subAgentExecCtx)
 			executorsToUse[toolName] = wrappedExecutor
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
@@ -1932,7 +1946,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		for _, definition := range config.DirectTools {
 			reserved[definition.Name] = true
 		}
-		routeTools := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		routeTools, routeToolErr := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		if routeToolErr != nil {
+			return nil, routeToolErr
+		}
 		config.DirectTools = append(config.DirectTools, routeTools...)
 		for _, definition := range routeTools {
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))
@@ -1972,7 +1989,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	effectiveSkills := GetEffectiveSkills(stepConfig, hcpo.BaseOrchestrator)
 	if baseAgent := agent.GetBaseAgent(); baseAgent != nil {
 		if baseAgent.Agent() != nil {
-			attachGlobalLearnings := resolveLearningsAccess(stepConfig) != LearningsAccessNone
+			attachGlobalLearnings := hcpo.resolveLearningsAccess(stepConfig) != LearningsAccessNone
 			// An orchestrator step is never scripted (PLAT-287).
 			hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), false)
 			if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
@@ -2001,6 +2018,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) restoreSubAgentToolExecutors(execCtx 
 	}
 	if sessionID == "" {
 		return
+	}
+	if execCtx.OrchestratorStep != nil && execCtx.OrchestratorStep.AuthoredPrompt {
+		return // an authored (Relay) agent never had delegation executors
 	}
 	subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
 	wrappedExecutors := make(map[string]func(ctx context.Context, args map[string]interface{}) (string, error), len(subAgentExecutors))

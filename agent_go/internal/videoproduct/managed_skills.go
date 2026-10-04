@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productdeps"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func syncManagedProductSkills(ctx context.Context, workspacePath string) error {
@@ -73,7 +74,7 @@ func SyncVisibleSkillsForExistingProjects(docsRoot string) error {
 	if docsRoot == "" {
 		return nil
 	}
-	usersRoot := filepath.Join(docsRoot, "_users")
+	usersRoot := filepath.Join(docsRoot, workspaceref.UsersDir)
 	users, err := os.ReadDir(usersRoot)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

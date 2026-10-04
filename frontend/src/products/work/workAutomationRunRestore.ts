@@ -4,6 +4,7 @@ import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { requestChatScrollToBottom } from '../../utils/chatScrollRequest'
 import { hydrateExecutionConversation } from '../../utils/executionConversationRestore'
 import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
 import { loadWorkSessions, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
@@ -144,6 +145,5 @@ export async function openWorkAutomationRunChat(
   chatStore.setTabCompleted(runTabId, runtime.status !== 'running')
   chatStore.setTabViewMode(runTabId, 'formatted')
   chatStore.switchTab(runTabId)
-  chatStore.setAutoScroll(true)
-  window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom'))
+  requestChatScrollToBottom()
 }

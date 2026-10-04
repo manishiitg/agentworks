@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
@@ -226,7 +227,8 @@ func workspaceProxyURLIsOtherUser(rel, own string) bool {
 // created server-side) is refused.
 func workspaceProxyPathIsOtherUser(raw, own string) bool {
 	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
-	if clean == "_users" || clean == crewSharedRootName {
+	ref := workspaceref.MustParse(clean)
+	if ref.IsUsersRoot() || clean == crewSharedRootName {
 		return true
 	}
 	if strings.HasPrefix(clean, crewSharedRootName+"/") {
@@ -235,11 +237,7 @@ func workspaceProxyPathIsOtherUser(raw, own string) bool {
 		ref, ok := resolveCrewPath(ctx, own, clean)
 		return !ok || ref.OwnerID == "" || ref.OwnerID != own
 	}
-	if !strings.HasPrefix(clean, "_users/") {
-		return false
-	}
-	segment := strings.SplitN(strings.TrimPrefix(clean, "_users/"), "/", 2)[0]
-	return segment != "" && segment != own
+	return ref.HasOwner() && ref.Owner() != own
 }
 
 // workspaceProxyBodyPathFields are the JSON field names that carry

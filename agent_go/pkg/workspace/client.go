@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // FolderGuardConfig represents folder access restrictions.
@@ -403,7 +404,7 @@ func (c *Client) userScopedFolderGuardPath(inputPath string, guard *FolderGuardC
 		}
 		switch parts[0] {
 		case "Chats", "Downloads", "chat_history", "memories":
-			return filepath.Join("_users", userID, clean)
+			return filepath.Join(workspaceref.UsersDir, userID, clean)
 		default:
 			return clean
 		}

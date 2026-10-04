@@ -28,8 +28,25 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 		steps[step.GetID()] = step
 		switch s := step.(type) {
 		case *MessageSequencePlanStep:
-			if !s.AuthoredPrompt || strings.TrimSpace(s.SystemPrompt) == "" || len(s.PredefinedRoutes) != 0 {
-				return fmt.Errorf("Relay agent %q needs an authored system prompt and no nested routes", s.ID)
+			if !s.AuthoredPrompt || strings.TrimSpace(s.SystemPrompt) == "" {
+				return fmt.Errorf("Relay agent %q needs an authored system prompt", s.ID)
+			}
+			// A Relay agent may own saved Python scripts it calls as named tools
+			// (scripted routes, PLAT-441). Sub-agents are not supported, and a
+			// script is never rewritten, like a Relay script node.
+			toolNames := map[string]string{}
+			for _, route := range s.PredefinedRoutes {
+				script, ok := route.SubAgentStep.(*RegularPlanStep)
+				if !ok || !script.ScriptOnly {
+					return fmt.Errorf("Relay agent %q route %q must be a saved script (type regular, script_only: true); Relays do not support sub-agents", s.ID, route.RouteID)
+				}
+				// Route ids become tool names (a-b and a_b both become a_b); two
+				// routes of one agent must not share one (PLAT-444).
+				name := scriptedRouteToolName(route.RouteID)
+				if other, taken := toolNames[name]; taken {
+					return fmt.Errorf("Relay agent %q routes %q and %q both become the tool name %q; rename one", s.ID, other, route.RouteID, name)
+				}
+				toolNames[name] = route.RouteID
 			}
 			for _, item := range s.Items {
 				if item.Type != "" && item.Type != "user_message" {

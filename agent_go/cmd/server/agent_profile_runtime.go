@@ -17,6 +17,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
 )
@@ -133,15 +134,8 @@ func cleanAgentProfileWorkspace(raw, userID string) (string, error) {
 	if clean == crewSharedRootName || strings.HasPrefix(clean, crewSharedRootName+"/") {
 		return "", fmt.Errorf("selected_folder must be a crew you can open")
 	}
-	if clean == "_users" || strings.HasPrefix(clean, "_users/") {
-		owner := strings.TrimPrefix(clean, "_users")
-		owner = strings.TrimPrefix(owner, "/")
-		if idx := strings.Index(owner, "/"); idx >= 0 {
-			owner = owner[:idx]
-		}
-		if owner == "" || owner != sanitizeUserIDForPath(userID) {
-			return "", fmt.Errorf("selected_folder must stay inside your own workspace")
-		}
+	if ref := workspaceref.MustParse(clean); ref.IsUsersRoot() || !ref.OwnedByOrUnowned(userID) {
+		return "", fmt.Errorf("selected_folder must stay inside your own workspace")
 	}
 	return clean, nil
 }
@@ -194,14 +188,14 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical form alone resolves outside any user tree and finds nothing — which
 // made restored Crews start a fresh native session (RTS 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
-	clean := strings.Trim(filepath.ToSlash(strings.TrimSpace(selectedFolder)), "/")
-	if clean == "" {
+	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
+	if ref.IsEmpty() && !ref.IsUsersRoot() {
 		return ""
 	}
-	if strings.HasPrefix(clean, "_users/") {
-		return clean
+	if ref.HasOwner() {
+		return ref.PhysicalKeepOwner(userID)
 	}
-	return agentProfileRuntimeWorkspace(userID, normalizeConversationWorkspace(clean))
+	return agentProfileRuntimeWorkspace(userID, ref.Logical())
 }
 
 // isActiveWorkProjectWorkspace distinguishes an actual Crew or Code project
@@ -350,9 +344,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewRoot := ""
 	folderForClean := selectedFolder
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// A Code resolves in the caller's own tree, or under an owner who
-		// shared it with them; turn access (owner/co-owner/editor) was
-		// checked by conversationTargetAccess. Like a Crew, a Code always runs
+		// A Code is private to its owner and resolves only in the caller's own
+		// tree (sharing is a removed legacy: code_shares.go answers 410);
+		// turn access was checked by conversationTargetAccess. Like a Crew, a Code always runs
 		// with native agent tools: there is no switch (owner decision
 		// 2026-09-29; the CLIs' own reads are not sandboxed yet, PLAT-364
 		// part 2).
@@ -366,8 +360,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		crewOwned = project.OwnedByCaller
 		crewRoot = project.Binding.WorkspacePath
-		// Everyone who may chat with a Code (owner, co-owner, editor) gets
-		// native tools; viewers never reach this turn.
+		// Only the owner reaches a Code turn (it is owner-only, see above) and
+		// gets native tools.
 		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
 		}

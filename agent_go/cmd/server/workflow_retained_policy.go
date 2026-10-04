@@ -104,6 +104,33 @@ func requestedProviderOf(req QueryRequest) string {
 	return provider
 }
 
+// effectiveProviderOf is the coding provider this request will actually run on, resolved in the order handleQuery applies: the manifest's LLM for a Builder chat
+// (unless the request's LLM config comes from a product profile), then the server's locked default (a locked server honours the request only for a product profile
+// or a published model), then the request's own choice. Comparing the retained CLI with the raw request provider called every send a provider change whenever the
+// request named a provider that is never used (local Codex chat that answered "queued", RTS-style locked servers, 2026-10-04).
+func (api *StreamingAPI) effectiveProviderOf(ctx context.Context, req QueryRequest) string {
+	if req.AgentMode == "workflow_phase" && !requestLLMConfigOverridesManifest(req) {
+		folder := strings.TrimSpace(req.SelectedFolder)
+		if req.PresetQueryID != "" {
+			if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil && resolved != "" {
+				folder = resolved
+			}
+		}
+		if folder != "" {
+			if manifest, found, err := ReadWorkflowManifest(ctx, folder); err == nil && found && manifest != nil && manifest.Capabilities.LLMConfig != nil {
+				if phaseLLM, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(manifest.Capabilities.LLMConfig)); phaseLLM != nil && phaseLLM.Provider != "" && phaseLLM.ModelID != "" {
+					return phaseLLM.Provider
+				}
+			}
+		}
+	}
+	if isGlobalLLMConfigLocked() {
+		provider, _ := resolveLockedLLM(req.LLMConfig, req.LLMConfigSource)
+		return provider
+	}
+	return requestedProviderOf(req)
+}
+
 // retainedCLIProviderDiffers reports whether the CLI or agent retained for this chat runs a different provider than the request selects. It is false when the
 // request names no provider or nothing is retained.
 func (api *StreamingAPI) retainedCLIProviderDiffers(sessionID, requested string) bool {

@@ -3,10 +3,10 @@ package common
 import (
 	"context"
 	"fmt"
-	"path"
-	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Session workspace classification: the single place that knows the
@@ -31,37 +31,14 @@ const (
 	SessionWorkspaceCrewProject SessionWorkspaceKind = "crew"
 )
 
-// safeSessionUserIDForPath mirrors cmd/server's safeUserIDForPath. The two
-// are pinned together by TestCanonicalSessionWorkspaceMatchesServer.
-var safeSessionUserIDForPath = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-
-func sanitizeSessionUserIDForPath(userID string) string {
-	if userID == "" || len(userID) > 128 || !safeSessionUserIDForPath.MatchString(userID) {
-		return "default"
-	}
-	return userID
-}
-
 // CanonicalSessionWorkspace normalizes a session workspace path and strips
-// the caller's own `_users/<id>/` prefix. It mirrors cmd/server's
-// canonicalChatHistoryWorkspacePath exactly (same trim, clean, traversal
-// rejection, and prefix strip); the cmd/server equivalence test pins them
-// together. It lives here because pkg/browser cannot import cmd/server.
+// the caller's own `_users/<id>/` prefix. It is cmd/server's
+// canonicalChatHistoryWorkspacePath: both call workspaceref.CanonicalFor, the
+// one implementation (PLAT-435). It lives here because pkg/browser cannot
+// import cmd/server.
 func CanonicalSessionWorkspace(userID, workspacePath string) string {
-	workspacePath = strings.TrimSpace(strings.Trim(workspacePath, "/"))
-	if workspacePath == "" {
-		return ""
-	}
-	cleaned := path.Clean(workspacePath)
-	if cleaned == "." || strings.HasPrefix(cleaned, "../") || cleaned == ".." {
-		return ""
-	}
-	return strings.TrimPrefix(cleaned, path.Join("_users", sanitizeSessionUserIDForPath(userID))+"/")
+	return workspaceref.CanonicalFor(userID, workspacePath)
 }
-
-// projectWorkspacePrefixes are the project products' roots: Crew and Code
-// (cmd/server projectProducts). Both classify as a project workspace.
-var projectWorkspacePrefixes = []string{"Chats/Work/projects/", "Chats/Code/projects/"}
 
 // ClassifySessionWorkspace returns the owning kind and owning root of a
 // session workspace: `Workflow/<name>` for workflows, or the Crew project
@@ -83,36 +60,10 @@ func ClassifySessionWorkspace(userID, workspacePath string) (SessionWorkspaceKin
 		}
 		return SessionWorkspaceUnknown, ""
 	}
-	crewCanonical := stripAnySessionUserPrefix(canonical)
-	for _, crewPrefix := range projectWorkspacePrefixes {
-		if !strings.HasPrefix(crewCanonical, crewPrefix) {
-			continue
-		}
-		rest := strings.Trim(strings.TrimPrefix(crewCanonical, crewPrefix), "/")
-		if rest == "" {
-			return SessionWorkspaceUnknown, ""
-		}
-		project := rest
-		if i := strings.Index(project, "/"); i >= 0 {
-			project = project[:i]
-		}
-		return SessionWorkspaceCrewProject, crewPrefix + project
+	if root, project, ok := workspaceref.MustParse(canonical).Project(); ok {
+		return SessionWorkspaceCrewProject, root + "/" + project
 	}
 	return SessionWorkspaceUnknown, ""
-}
-
-// stripAnySessionUserPrefix drops any owner's `_users/<id>/` prefix. It
-// mirrors cmd/server's normalizeConversationWorkspace, which the server
-// crew check applies after its own-prefix canonicalization.
-func stripAnySessionUserPrefix(workspacePath string) string {
-	clean := strings.Trim(strings.TrimSpace(workspacePath), "/")
-	if index := strings.Index(clean, "_users/"); index >= 0 {
-		rest := clean[index+len("_users/"):]
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			return rest[slash+1:]
-		}
-	}
-	return clean
 }
 
 // SessionUserIDFromContext reads the signed-in user for canonicalization.
@@ -132,15 +83,19 @@ func SessionUserIDFromContext(ctx context.Context) string {
 // inside a Code. Only the physical form names an owner, so a logical
 // Chats/Code/... path resolves under userID.
 func CodeProjectRoot(userID, path string) string {
-	clean := strings.Trim(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
-	parts := strings.Split(clean, "/")
-	if len(parts) >= 6 && parts[0] == "_users" && parts[1] != "" && parts[2] == "Chats" && parts[3] == "Code" && parts[4] == "projects" && parts[5] != "" {
-		return strings.Join(parts[:6], "/")
+	ref, ok := workspaceref.Parse(path)
+	if !ok {
+		return ""
 	}
-	if len(parts) >= 4 && parts[0] == "Chats" && parts[1] == "Code" && parts[2] == "projects" && parts[3] != "" && strings.TrimSpace(userID) != "" {
-		return "_users/" + sanitizeSessionUserIDForPath(userID) + "/" + strings.Join(parts[:4], "/")
+	root, project, isProject := ref.Project()
+	if !isProject || root != workspaceref.CodeProjectsRoot {
+		return ""
 	}
-	return ""
+	projectRef := ref.WithLogical(root + "/" + project)
+	if !ref.HasOwner() && strings.TrimSpace(userID) == "" {
+		return ""
+	}
+	return projectRef.PhysicalKeepOwner(userID)
 }
 
 // codeSessionRoots marks the sessions that run in a Code workspace (session
@@ -179,7 +134,7 @@ func CodeSessionRoot(sessionID string) string {
 func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string, err error) {
 	userID = SessionUserIDFromContext(ctx)
 	if userID != "" {
-		userID = sanitizeSessionUserIDForPath(userID)
+		userID = workspaceref.SanitizeUserID(userID)
 	}
 	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
 	if strings.TrimSpace(sessionID) == "" {

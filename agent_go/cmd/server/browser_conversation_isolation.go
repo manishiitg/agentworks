@@ -2,11 +2,11 @@ package server
 
 import (
 	"log"
-	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Browsers are one per workflow and one per project, never per user. A Crew
@@ -31,17 +31,11 @@ func bindConversationBrowserIsolation(sessionID, userID, selectedWorkspace strin
 // path) and other users (who send the physical path) name the same browser,
 // while two owners' same-named projects stay distinct.
 func browserProjectKey(userID, workspace string) string {
-	clean := strings.Trim(filepath.ToSlash(strings.TrimSpace(workspace)), "/")
-	if clean == "" {
+	ref, ok := workspaceref.Parse(filepath.ToSlash(strings.TrimSpace(workspace)))
+	if !ok || ref.IsEmpty() {
 		return ""
 	}
-	if index := strings.Index(clean, "_users/"); index >= 0 && (index == 0 || clean[index-1] == '/') {
-		return path.Clean(clean[index:])
-	}
-	if owner := sanitizeUserIDForPath(userID); owner != "" {
-		return path.Join("_users", owner, clean)
-	}
-	return path.Clean(clean)
+	return ref.PhysicalKeepOwner(userID)
 }
 
 // browserSessionForWorkspace returns the managed browser session name a

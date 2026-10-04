@@ -36,6 +36,7 @@ profile:
     - process-file
     - recall-conversations
     - create-progress-report
+    - learning-game
     - animated-learning-video
     - reading-book
     - publish
@@ -59,6 +60,12 @@ profile:
         kind: suggestions
         render: chat.suggestions
   commands:
+    - name: create-learning-game
+      description: "Create a learning game"
+      prompt: "Create a complete, immersive learning game for my child about the topic we are working on. Follow your learning-game skill. Choose a genre and scope that fit her age and interests, make the learning drive meaningful gameplay, and use polished visuals, responsive controls, feedback and progression. You are free to build a substantial game; choose the mechanics and number of levels yourself. Build and play-check the finished experience, then show it for my preview."
+    - name: create-interactive-quiz
+      description: "Create an interactive quiz"
+      prompt: "Create an engaging, playable quiz for my child about the topic we are working on. Follow your learning-game skill, choose an experience that fits her age and interests, and make her answers influence what happens. Include useful feedback and recovery from mistakes. Choose the format and depth yourself, finish and play-check it, then show it for my preview."
     - name: create-animated-video
       description: "Create an animated video"
       prompt: "Create an animated explainer video for my child using HyperFrames, on the topic we are working on. Use her reading level and language, clear visual examples, captions and a short recap. Make it a playable learning activity I can preview and give to her."
@@ -82,7 +89,7 @@ profile:
       prompt: "Create a practice test for my child \u2014 a short refresher, then a proper check with real tiers, plus the answer key for me."
     - name: surprise-her
       description: "Surprise her with something new"
-      prompt: "Surprise her with a complete, playable learning game about something fun and new to discover this week. Choose a topic that fits her age and interests, and make the game ready for me to give to her."
+      prompt: "Surprise her with a complete, immersive learning game about something fun and new to discover this week. Follow your learning-game skill. Choose a topic, genre and scope that fit her age and interests, with meaningful actions, visual feedback and progression. Finish and play-check the game, then show it for my preview."
     - name: update-progress-report
       description: "Update progress report"
       prompt: "Build an updated progress report \u2014 follow your create-progress-report skill, make it a designed HTML page, and give me a short coach-style read of the evidence here in chat too."

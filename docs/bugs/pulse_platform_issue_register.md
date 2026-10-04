@@ -1,3 +1,118 @@
+## Chat scroll jumps after a switch or "Apply in chat" — PLAT-455
+
+[PLAT-455](pulse_platform/frontend-chat/plat-455.md), fixed on `main`, not deployed:
+one request helper and one settled scroll (coalesced, after the list is quiet, manual
+scroll wins) replace the timed `chat-scroll-to-bottom` bursts.
+
+## Steps and Relay guidance mention no stores they lack — PLAT-454
+
+[PLAT-454](pulse_platform/plans-contracts/plat-454.md), fixed on `main`, not deployed:
+a step with no platform stores gets no database/KB/learnings text at all; the Relay
+Builder prompt and skill say how data moves instead of what is missing.
+
+## Plan and Browser move into the workflow toolbar's Ops group — PLAT-453
+
+[PLAT-453](pulse_platform/frontend-chat/plat-453.md), fixed on `main`, not deployed:
+Views keeps Pulse, Needs you and Activity; Plan and Browser are in Ops (a Relay keeps
+its Graph in Views); the collapsed Ops label highlights when one of them is active.
+
+## Remove the Builder/Pulse run_in_background tool — PLAT-452
+
+[PLAT-452](pulse_platform/plans-contracts/plat-452.md), on `main`, not deployed, not
+tested in a live Pulse run: the tool and its background agent code are gone;
+Pulse's own agent does each review in its turn. Review limits are prose, not tool
+filters.
+
+## Slot/folder mismatch falls back to the app account — PLAT-451
+
+[PLAT-451](pulse_platform/security-sandbox/plat-451.md), P1, fixed on main (not
+deployed). The slot selector logs a refusal but returned the same value as a
+non-slot launch; slottmux then passed it to the app account's tmux. A mismatch is
+now an explicit error in the selector, slottmux and the provider; the root-owned
+slottmux must be deployed with the matching release.
+
+## Product owner migration follows cross-user manifest symlinks — PLAT-450
+
+[PLAT-450](pulse_platform/security-sandbox/plat-450.md), P1, fixed on `main`, not
+deployed. The owner scan and the owner writers now use anchored, symlink-refusing
+opens (`[UNSAFE_PATH]`); regression tests use real temp files and symlinks.
+
+## Editable project metadata selects another user's CLI identity — PLAT-449
+
+[PLAT-449](pulse_platform/security-sandbox/plat-449.md), P1, fixed on `main`, not
+deployed. Ownership is server-controlled (an owner registry in the state area,
+else the path; product.json `owner_id` is information only), and a Code launch
+whose registered owner is not the admitted caller is refused before any CLI starts.
+
+## Relay migration history claims inapplicable upgrades were applied — PLAT-448
+
+[PLAT-448](pulse_platform/plans-contracts/plat-448.md), fixed on `main`, not
+deployed: applied history now uses the same product-filtered shared ladder as
+pending upgrades; audit checks preserve all applicable Relay migrations and gates.
+
+## Relay execution inherited workflow DB/KB/learnings — PLAT-447
+
+[PLAT-447](pulse_platform/plans-contracts/plat-447.md), fixed on `main`, not
+deployed: product.yaml disables platform stores for every Relay agent/script
+execution, including script tools, Builder tests and published versions.
+
+## Crew CLI turns run as the app account, not the owner's slot — PLAT-446
+
+[PLAT-446](pulse_platform/security-sandbox/plat-446.md), decided 2026-10-04: keep the app account, nothing to build. Found in PLAT-442 step 2: a Crew CLI starts in an isolated
+runtime folder, so the owner's and a reader's turn both run as the app account; the premise of decision 1 does not hold.
+
+## Applying a decision in chat pointed at a Fixer that no longer exists — PLAT-445
+
+[PLAT-445](pulse_platform/human-decisions/plat-445.md), fixed on `main`, not
+deployed: every answered decision is applied by the Builder in chat, honoring any
+option picked; the dead pre-run Fixer/drain routing is removed.
+
+## Relay script-tool names can be advertised after registration drops them — PLAT-444
+
+[PLAT-444](pulse_platform/plans-contracts/plat-444.md), P2, open. Reproduced:
+a valid authored Relay advertises a normalized script name that collides with a
+platform tool; its generic route fallback was removed by PLAT-441.
+
+## Script-tool JSON reader follows symlinks outside its output folder — PLAT-443
+
+[PLAT-443](pulse_platform/security-sandbox/plat-443.md), P1, open. Reproduced with
+fake data: the server result reader returns JSON outside the assigned output
+folder through a script-created symlink; parent reads need confinement.
+
+## Identity is explicit: owner from the manifest, slot named by the platform, Crews at Crew/<id> — PLAT-442
+
+[PLAT-442](pulse_platform/security-sandbox/plat-442.md), open, approved 2026-10-04. Ownership and the run-as slot stop being read from `_users/<id>` paths
+(three copies today); Crews move to a shared root afterwards.
+
+## Relay agents call saved Python scripts as tools — PLAT-441
+
+[PLAT-441](pulse_platform/plans-contracts/plat-441.md), fixed on `main`, not
+deployed: a Relay agent may own `script_only` scripted routes (named tools) and
+keeps its authored prompt; sub-agents stay unsupported; Relays skip DB/KB migrations.
+
+## Physical _users paths built from an unsanitized user id — PLAT-440
+
+[PLAT-440](pulse_platform/security-sandbox/plat-440.md), open: found during PLAT-435; a few call sites build
+`_users/<id>/` from a raw or differently sanitized user id, and the workspace module's default-user fallback differs
+from the agent server's.
+
+## Remove the product workspace inspector popup — PLAT-439
+
+[PLAT-439](pulse_platform/frontend-chat/plat-439.md), fixed on main; deployment
+pending. Remove the admin/reviewer inspection entry and popup from Code/Crew's
+shared product surface after the user reported a Network Error on Excellence.
+
+## Message-sequence prompts advertised KB read the sandbox denied — PLAT-438
+
+[PLAT-438](pulse_platform/step-execution/plat-438.md), fixed on `main`, not
+deployed: a sequence step's prompt now offers the knowledge base only when its
+`knowledgebase_access` allows it.
+
+## Builder chats treated as "provider changed" on every message — PLAT-437
+
+[PLAT-437](pulse_platform/chat-reliability/plat-437.md), regression of PLAT-425 (deployed), fixed on main; deploy pending. A workflow whose manifest
+names its own LLM, or a locked server (RTS), ignores the request's provider, but the check compared it with the retained CLI: every send queued behind a running turn and relaunched the CLI.
+
 ## Scripted steps never self-heal in a run — PLAT-436
 
 [PLAT-436](pulse_platform/step-execution/plat-436.md), fixed on `main`, not
@@ -11,8 +126,9 @@ view list, so the page's connect call was refused (`invalid_state`) and the agen
 
 ## One workspace path type instead of `_users/` string handling everywhere — PLAT-435
 
-[PLAT-435](pulse_platform/security-sandbox/plat-435.md), open (proposal). The logical/physical path mix-up is the root of a long series of
-multi-user-only bugs: 82 files, 17 raw prefix checks, three disagreeing normalisers.
+[PLAT-435](pulse_platform/security-sandbox/plat-435.md), fixed on main for agent_go (package `pkg/workspaceref`, guard
+test), not deployed. The `workspace/` module and a multi-user e2e fixture are left; PLAT-440 tracks unsanitized ids.
+
 
 ## Relays use external API triggers without timed schedules — PLAT-433
 
@@ -64,10 +180,7 @@ and RTS only copy and activate it after verifying the manifest; `--build` deploy
 
 ## Named custom Python tools for Relay agents — PLAT-423
 
-[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), fixed on main;
-deployment pending. User-authored run(input) functions register as named tools
-with per-step selection, schemas and the shared sandbox/registry. Published
-versions freeze tool source. The original custom-tool requirement is implemented.
+[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), retired before deployment: replaced by scripted routes as named tools (PLAT-432); Relay agent tools wait for routes on authored-prompt agents.
 
 ## Muse messages ran three or more times: stale refusal notice — PLAT-422
 

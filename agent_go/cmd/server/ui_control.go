@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -174,6 +175,16 @@ func (b *uiControlBroker) unbind(session, id, token string) error {
 	}
 	return nil
 }
+
+// validObservedUIView accepts the view a page reports it is showing. It is an observation, not a command: a page on a tab the agent cannot open (Code's Terminal,
+// Plan or Suggestions) must still register and renew, or the agent sees "browser_disconnected" for as long as the person looks at that tab (Code on Excellence,
+// 2026-10-04). Which views an action may open stays with the contract (validateUIActionForContract); this only keeps the reported name well-formed.
+var observedUIViewName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+
+func validObservedUIView(view string) bool {
+	return view == "" || observedUIViewName.MatchString(view)
+}
+
 func validUIViewForContract(contract uiContract, view string) bool {
 	for _, v := range contract.Views {
 		if v.ID == view {
@@ -316,7 +327,7 @@ func (b *uiControlBroker) syncClient(session, id, token string, state uiSnapshot
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.prune()
-	if state.Revision < 0 || (state.View != "" && !validUIViewForContract(uiContractForScope(b.scopes[session]), state.View)) {
+	if state.Revision < 0 || !validObservedUIView(state.View) {
 		return nil, fmt.Errorf("invalid_state")
 	}
 	c, err := b.client(session, id, token)
@@ -346,7 +357,7 @@ func (b *uiControlBroker) ack(session, id, token, request, status, code string, 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.prune()
-	if state.Revision < 0 || (state.View != "" && !validUIViewForContract(uiContractForScope(b.scopes[session]), state.View)) {
+	if state.Revision < 0 || !validObservedUIView(state.View) {
 		return fmt.Errorf("invalid_state")
 	}
 	c, err := b.client(session, id, token)

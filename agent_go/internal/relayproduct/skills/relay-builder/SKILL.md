@@ -34,71 +34,33 @@ available through the shared sandboxed command runner in all products.
 - Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with a configured `group_name` and `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
 - Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
 
-## Custom Python tools for agents
+## Agent tools: saved Python scripts
 
-For a custom database lookup or action the agent may choose to call, create
-`code/tools/lookup_customer/tool.json`:
+An agent that needs live data or an action during its turn (a customer lookup,
+a price check) gets a saved Python script it calls as a tool. Relays support
+only these script tools on agents; they do not support sub-agents. Prefer a
+script node in the graph when the work does not depend on the agent's
+reasoning.
 
-```json
-{
-  "description": "Look up a customer by ID in the configured database",
-  "parameters": {
-    "type": "object",
-    "properties": {"customer_id": {"type": "string", "minLength": 1}},
-    "required": ["customer_id"],
-    "additionalProperties": false
-  },
-  "timeout_seconds": 30
-}
-```
-
-Save `code/tools/lookup_customer/main.py` with a synchronous `run(input)`
-function. For example, if the user supplies a SQLite database path in the
-`CUSTOM_DB_PATH` secret and grants that file through `additional_read_paths`:
-
-```python
-import os
-import sqlite3
-
-def run(input):
-    with sqlite3.connect(os.environ["SECRET_CUSTOM_DB_PATH"]) as db:
-        row = db.execute(
-            "SELECT name FROM customers WHERE id = ?", (input["customer_id"],)
-        ).fetchone()
-    return {"name": row[0] if row else None}
-```
-
-Adapt the code to the user's real schema and credentials. For remote databases
-use the user's chosen client/library and secret connection string. The
-platform's managed workflow SQLite database is never opened directly (no
-`$DB_PATH`, no `db.sqlite`): a tool that needs it uses the built-in helper,
-`from agentworks_db import query, execute`, which goes through the registered
-DB tools.
-
-Enable `python_tools:lookup_customer` through `update_step_config` on each
-intended agent, retaining its other tool selections. The directory name is the
-tool name, a lowercase identifier of at most 64 characters. No Python wildcard
-or platform tool name collision is allowed. Save source and metadata before
-enabling; the config tool checks both. An agent receives only its selections.
-Additional local input files require the existing read grants; tool source is
-read-only. Write generated files under STEP_OUTPUT_DIR, not beside main.py.
-
-`run(input)` returns JSON-compatible data directly to the agent. Do not call
-set_output inside a custom tool to supply its return value; that helper is for
-graph script nodes. Prints go to the shell's stderr, never the tool result.
-Exceptions, timeout, invalid arguments and non-JSON values fail the tool call
-and are visible to the agent. Do not add automatic retries to side effects.
-Inputs are limited to 64 KiB; output uses the shared shell limit and incomplete
-JSON fails explicitly. For large data return a compact summary or an artifact
-reference. Use explicit read/connection grants and the shared sandbox; there
-is no new database credential store or host execution path.
-
-Test with execute_step/run_full_workflow, inspect the actual named tool call
-and result, then publish when requested. Publishing validates definitions and
-saved source, freezes them in the release and includes them in its integrity
-hash. Later draft edits do not change the tool in an earlier version. Python
-syntax, dependencies and connectivity must be tested in the sandbox; publish
-does not execute user code to validate them.
+- Add the tool with `manage_step_route` on the agent: `route_id` and the
+  `sub_agent_step.id` are the same (`lookup-customer`), `type: regular`,
+  `script_only: true`, a clear `description` (the agent reads it to decide when
+  to call), and `script_parameters` (flat typed list) or
+  `script_parameters_schema` (one full JSON Schema), never both.
+- Write `code/lookup-customer/main.py` yourself. It reads its inputs from
+  `json.loads(os.environ["STEP_PARAMS_JSON"])` and returns its answer by writing
+  one JSON value to `os.path.join(os.environ["STEP_OUTPUT_DIR"], "route_result.json")`;
+  the agent receives exactly that JSON. A lookup that finds nothing returns e.g.
+  `{"found": false}` rather than failing.
+- A tool reaches the user's own systems with their client library and a secret
+  (for example a connection string in `SECRET_*`), or a file granted through
+  `additional_read_paths`.
+- The agent's authored system prompt is kept as written; the platform appends a
+  short list of its tools. Test the tool with `execute_step`, then the whole
+  Relay with `run_full_workflow`, and check the named tool call and its result.
+  A script is never rewritten at run time: a failing script fails the tool call
+  with its real error, which the agent sees. Publishing requires every tool's
+  saved `main.py`.
 
 ## Validation boundaries
 
@@ -123,4 +85,8 @@ provided by product.yaml; do not replace them with goal or dashboard commands.
 
 - Anyone with visibility may execute a published Relay and poll their own API runs. Publishing and editing require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.
 - External products invoke published versions through API function triggers. Do not configure cron/calendar schedules or timed draft execution.
-- Scripts and agent tools must write generated files only into the assigned run folder or runtime data directories (`db/`, `costs/`, `logs/`). Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
+- Scripts and agent tools must write generated files only into the assigned run folder. Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
+
+## Data handoff
+
+Use INPUT, variables and step outputs to pass data between steps. A user's own database or system is reached through a script tool or an MCP integration with attached secrets.

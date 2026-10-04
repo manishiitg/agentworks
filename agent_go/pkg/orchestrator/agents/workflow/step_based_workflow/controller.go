@@ -60,7 +60,8 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 // - Always includes independent steps extraction for parallel execution
 // - NEW: Includes learning phase after each step execution and validation
 type StepBasedWorkflowOrchestrator struct {
-	codeLayoutVersion atomic.Int32
+	codeLayoutVersion      atomic.Int32
+	platformStoresDisabled atomic.Bool
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
 	// NEW: Store planning conversation for iterative refinement
@@ -1196,13 +1197,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) GetType() string {
 }
 
 // UseKnowledgebase reports whether the knowledgebase prerequisite is enabled.
-// The knowledgebase is now ALWAYS enabled for workflows — the per-preset
+// Relay product policy disables platform stores. For ordinary workflows the
+// knowledgebase is always enabled — the per-preset
 // "enable KB" toggle was removed. Steps read it by default; an explicit
 // knowledgebase_access="none" opts out, while writes still require an explicit
 // contribution contract. This prerequisite no longer acts as a global
 // kill-switch.
 func (hcpo *StepBasedWorkflowOrchestrator) UseKnowledgebase() bool {
-	return true
+	return hcpo.platformStoresEnabled()
 }
 
 // KBShape returns the raw stored shape value. Retained for config compatibility;

@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -38,8 +38,8 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	}
 	owner := strings.TrimSpace(r.URL.Query().Get("uid"))
 	parts := strings.Split(clean, "/")
-	if parts[0] == "_users" && len(parts) >= 3 {
-		owner, parts = parts[1], parts[2:]
+	if ref := workspaceref.MustParse(clean); ref.HasOwner() && ref.Logical() != "" {
+		owner, parts = ref.Owner(), strings.Split(ref.Logical(), "/")
 	}
 	if owner == "" || owner == caller || sanitizeUserIDForPath(owner) != owner {
 		return "", "", false, false, false
@@ -47,7 +47,7 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	if len(parts) < 4 || parts[0] != "Chats" || (parts[1] != "Work" && parts[1] != "Code") || parts[2] != "projects" || parts[3] == "" {
 		return "", "", false, false, false
 	}
-	crewRoot := path.Join("_users", owner, "Chats", parts[1], "projects", parts[3])
+	crewRoot := workspaceref.PhysicalPathOf(owner, "Chats", parts[1], "projects", parts[3])
 	if parts[1] == "Code" {
 		// A Code link opens for the people its owner shared it with.
 		if !codeLinkReadAllowed(r.Context(), claims, owner, crewRoot) {
@@ -74,7 +74,7 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 		externalError(w, 403, "protected_path", "Private workspace files are not shareable.")
 		return "", "", false, true, false
 	}
-	return path.Join("_users", owner, "Chats"), relative, crewRelative == "", true, true
+	return workspaceref.PhysicalPathOf(owner, "Chats"), relative, crewRelative == "", true, true
 }
 
 // crewRootListingVisible hides the crew's private areas from a reader's

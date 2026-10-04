@@ -21,7 +21,6 @@ A case passes only after the saved graph or configuration is visible, a real run
 | R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; callers without visibility cannot execute; visible readers can execute and only poll their own API runs | Partially passed; no-route claim checked in config, not live |
 | R9 | Optional integrations | Selected MCP tool/skill, authorized Google apps (Drive, Sheets, Calendar, Gmail), model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
 | R10 | Versioned publish and draft isolation | Builder publishes v1; draft edit leaves v1 stable; v2 becomes active; explicit v1 remains callable and idempotent | Passed 2026-09-28 on isolated preview |
-| R11 | Named custom Python tool inside an agent | Builder saves tool metadata/source, enables it on one agent; actual named call performs a custom DB lookup and returns JSON to the model; unselected agents do not receive it; v1 retains frozen source after draft edit | Implementation and local agent-loop/release tests pass 2026-10-04; deployment/live Builder verification pending, PLAT-423 |
 
 ## Live evidence
 

@@ -58,9 +58,10 @@ only. Code: `pulse_schedule.go`, `EffectivePulseMode` in
    Architecture and Technical wait for the next pass so they never judge a plan
    already known to drift.
 3. Then the due reviewers run in order **Goal Work (strategic_review) →
-   Architecture → Technical**, one `run_in_background` child per blocking step.
-   While Plan Drift is due only Goal Work runs, without permission to run
-   workflow steps.
+   Architecture → Technical**, each in its own blocking turn of the Pulse
+   conversation: the Pulse agent does the review itself and may use its own
+   subagents (PLAT-452). While Plan Drift is due only Goal Work runs, without
+   permission to run workflow steps.
 4. **Finalizer**: Backup, Publish, Notify.
 
 Each stage checks only its own result and records only its own interrupted
@@ -106,13 +107,15 @@ remain Gate judgments; choose dates for the protected scheduling behavior.
 
 ## Research access and write boundaries
 
-Scheduled review dispatch supplies `run_in_background(review_module=...,
-pulse_run_id=...)`. Architecture and Strategy inherit the workflow's configured
-MCP connections and browser setup, with permitted browser/search/managed query
-custom tools and typed Pulse/decision tools. Their workflow-edit, schedule,
-production execution, and nested dispatch custom tools are withheld. File writes
-are limited to this run's Pulse directory; raw implementation writes remain
-blocked by the existing workspace guard. Run mode's stricter write limit remains.
+Scheduled review dispatch is a turn in the Pulse conversation, not a separately
+launched reviewer (the `run_in_background` tool was removed, PLAT-452). The review
+therefore holds the Pulse conversation's tool set: the read-only limits on
+Architecture and Strategy and Goal Work's `pulse.autonomy` levels are stated in
+the review step's text and held by the agent, not enforced by a filtered tool
+set. The owner accepted this trade-off. Architecture and Strategy use the
+workflow's configured MCP connections and browser setup. Raw implementation
+writes remain blocked by the existing workspace guard, and Run mode's stricter
+write limit remains.
 
 External MCP permissions remain those of the configured connection. This does
 not introduce a universal read-only proxy for arbitrary external tools or browser

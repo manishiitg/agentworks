@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,16 +47,16 @@ func workspaceGitLock(dir string) func() {
 // workspaceGitWriteAllowed reports whether the caller may change the repo
 // tree at canonical ("_users/<owner>/...").
 var workspaceGitWriteAllowed = func(ctx context.Context, r *http.Request, claims *UserClaims, canonical string) bool {
-	segments := strings.Split(canonical, "/")
-	if len(segments) < 2 || segments[0] != "_users" {
+	ref := workspaceref.MustParse(canonical)
+	if !ref.HasOwner() {
 		return false
 	}
 	caller := sanitizeUserIDForPath(publicWorkspaceUserID(r))
-	if caller != "" && segments[1] == caller {
+	if caller != "" && ref.Owner() == caller {
 		return true
 	}
-	if claims != nil && len(segments) >= 6 && segments[2] == "Chats" && segments[3] == "Code" && segments[4] == "projects" {
-		return codeRoleFor(ctx, claims.UserID, segments[1], segments[5]).atLeast(codeRoleEditor)
+	if root, project, ok := ref.Project(); claims != nil && ok && root == workspaceref.CodeProjectsRoot {
+		return codeRoleFor(ctx, claims.UserID, ref.Owner(), project).atLeast(codeRoleEditor)
 	}
 	return false
 }

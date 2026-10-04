@@ -2,10 +2,13 @@ package slots
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 )
 
 // DefaultSlotctlConfig is the root-owned allow-list slotctl reads. It sits beside the launcher in a
@@ -115,8 +118,10 @@ func RunDirFor(slot string) (string, error) {
 	return filepath.Join(cfg.SlotRunRoot, slot), nil
 }
 
-// SlotForDir returns the slot a folder belongs to: a folder in a slot's state or run area, or in a
-// user's own tree <docs root>/_users/<user id>/ when that user holds a slot.
+// SlotForDir returns the slot a folder belongs to by where it lies: a folder in a slot's state or run area (the slot
+// is named in the path), or in a user's own tree <docs root>/_users/<user id>/ when that user holds a slot. The
+// second rule is the legacy folder rule (PLAT-442): the tmux front-end no longer decides from it, see
+// SlotForLaunch; it is kept to detect a launch whose folder and script disagree.
 func (cfg ExecConfig) SlotForDir(dir string) string {
 	if slot := SlotOfDir(cfg.SlotStateRoot, dir); slot != "" {
 		return slot
@@ -127,16 +132,72 @@ func (cfg ExecConfig) SlotForDir(dir string) string {
 	if cfg.DocsRoot == "" || cfg.SlotTable == "" {
 		return ""
 	}
-	prefix := filepath.Join(filepath.Clean(cfg.DocsRoot), "_users") + string(filepath.Separator)
-	clean := filepath.Clean(dir)
-	if !strings.HasPrefix(clean, prefix) {
+	rel, err := filepath.Rel(filepath.Clean(cfg.DocsRoot), filepath.Clean(dir))
+	if err != nil {
 		return ""
 	}
-	userID := strings.SplitN(strings.TrimPrefix(clean, prefix), string(filepath.Separator), 2)[0]
+	ref, ok := workspaceref.Parse(filepath.ToSlash(rel))
+	if !ok || !ref.HasOwner() {
+		return ""
+	}
 	table, err := LoadTable(cfg.SlotTable)
 	if err != nil {
 		return ""
 	}
-	slot, _ := table.SlotFor(userID)
+	slot, _ := table.SlotFor(ref.Owner())
 	return slot
+}
+
+// ErrSlotMismatch is the error a launch whose script names one slot and whose folder names another carries
+// (PLAT-451). It is a refusal, never "no slot requested": a caller that gets it must not run the launch on any
+// account.
+var ErrSlotMismatch = errors.New("slot mismatch")
+
+// SlotMismatchError says which slot the script named and which the working folder belongs to.
+type SlotMismatchError struct{ ScriptSlot, Dir, DirSlot string }
+
+func (e *SlotMismatchError) Error() string {
+	return fmt.Sprintf("[SLOT_EXPLICIT_MISMATCH] launch refused: the launch script is in %s's run folder but the folder %s belongs to %s", e.ScriptSlot, e.Dir, e.DirSlot)
+}
+
+// Is makes errors.Is(err, ErrSlotMismatch) true for a *SlotMismatchError.
+func (e *SlotMismatchError) Is(target error) bool { return target == ErrSlotMismatch }
+
+// SlotForLaunch is the slot a tmux new-session runs as: the one the platform named by placing the launch script in
+// that slot's run folder (<run root>/<slot>/..., created by the provider only for a launch it decided runs as the
+// slot). command is the pane's command line. A script that is not in any slot's run folder is not a slot launch:
+// ("", nil). The folder the session starts in is not consulted to choose the slot (PLAT-442); if it names a
+// different slot than the script does, the launch is refused: ("", *SlotMismatchError), which a caller must treat
+// as a refusal, never as a launch without a slot (PLAT-451).
+func (cfg ExecConfig) SlotForLaunch(dir, command string) (string, error) {
+	slot := cfg.SlotNamedByScript(command)
+	if slot == "" {
+		return "", nil
+	}
+	if byDir := cfg.SlotForDir(dir); byDir != "" && byDir != slot {
+		return "", &SlotMismatchError{ScriptSlot: slot, Dir: dir, DirSlot: byDir}
+	}
+	return slot, nil
+}
+
+// SlotNamedByScript returns the slot whose run folder the command refers to ("" when none).
+func (cfg ExecConfig) SlotNamedByScript(command string) string {
+	if cfg.SlotRunRoot == "" {
+		return ""
+	}
+	prefix := filepath.Clean(cfg.SlotRunRoot) + string(filepath.Separator)
+	for from := 0; from < len(command); {
+		i := strings.Index(command[from:], prefix)
+		if i < 0 {
+			return ""
+		}
+		i += from
+		rest := command[i+len(prefix):]
+		name, _, _ := strings.Cut(rest, string(filepath.Separator))
+		if ValidSlot(name) && strings.Contains(rest, string(filepath.Separator)) {
+			return name
+		}
+		from = i + len(prefix)
+	}
+	return ""
 }

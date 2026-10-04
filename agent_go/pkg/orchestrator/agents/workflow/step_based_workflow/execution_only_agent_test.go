@@ -314,3 +314,36 @@ func TestExecutionOnlySystemPromptContainsStepCharter(t *testing.T) {
 		}
 	}
 }
+
+// A step in a product without platform stores (a Relay) is told nothing about a
+// workflow database, knowledgebase or learnings it cannot reach (PLAT-454).
+func TestExecutionOnlyPromptNamesNoPlatformStoresWhenThereAreNone(t *testing.T) {
+	agent := &WorkflowExecutionOnlyAgent{}
+	for name, vars := range map[string]map[string]string{
+		"declared output": {"DBAccess": DBAccessNone, "KbAccess": KBAccessNone, "DBGuidance": BuildManagedWorkflowDBGuidance(DBAccessNone), "StepContextOutput": "result.json", "DBPath": "/w/db"},
+		"no output file":  {"DBAccess": DBAccessNone, "KbAccess": KBAccessNone, "DBGuidance": BuildManagedWorkflowDBGuidance(DBAccessNone), "DBPath": "/w/db"},
+	} {
+		prompt := agent.executionOnlySystemPromptProcessor(vars)
+		for _, banned := range []string{"mutate_workflow_db", "query_workflow_db", "db/db.sqlite", "`/w/db/`", "$DB_PATH", "knowledgebase/context", "knowledgebase/notes", "Knowledgebase access for this step", "**learnings/**", "**knowledgebase/**"} {
+			if strings.Contains(prompt, banned) {
+				t.Errorf("%s: the prompt of a step with no platform stores still mentions %q", name, banned)
+			}
+		}
+		// The prompt does not explain the absence either: it simply omits the section.
+		for _, banned := range []string{"persistent stores", "no workflow database", "soul/soul.md"} {
+			if strings.Contains(prompt, banned) {
+				t.Errorf("%s: the prompt still has stores text %q", name, banned)
+			}
+		}
+	}
+	// A normal workflow step keeps its database and knowledge-base guidance.
+	normal := agent.executionOnlySystemPromptProcessor(map[string]string{"DBAccess": DBAccessReadWrite, "KbAccess": KBAccessRead, "DBGuidance": BuildManagedWorkflowDBGuidance(DBAccessReadWrite)})
+	for _, want := range []string{"mutate_workflow_db", "**knowledgebase/**", "**learnings/**"} {
+		if !strings.Contains(normal, want) {
+			t.Errorf("a normal step lost %q", want)
+		}
+	}
+	if note := buildMessageSequenceAccessNote(MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true}, DBAccessNone); strings.Contains(note, "db/") || strings.Contains(note, "knowledgebase") || strings.Contains(note, "learnings") || strings.Contains(note, "workflow_db") {
+		t.Errorf("the access note of a step with no stores names a store: %s", note)
+	}
+}

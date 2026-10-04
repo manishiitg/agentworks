@@ -594,7 +594,7 @@ type WorkshopConfig struct {
 	// PulseLifecycleTurn is per-turn: true while the scheduler is sending a
 	// Pulse lifecycle turn (Gate, review dispatch, Finalize). The main
 	// conversation stays on PresetPhaseLLM (the Builder model); the flag routes
-	// the background review agents that turn launches to PresetPulseLLM.
+	// and tags the turn for Pulse scope and cost.
 	// Refreshed on every turn through WorkshopChatSession.SetPulseLifecycleTurn.
 	PulseLifecycleTurn bool
 	// PulseReviewResultCheck reports whether a Pulse reviewer has recorded

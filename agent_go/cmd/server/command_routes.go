@@ -9,6 +9,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // RegisterCommandRoutes sets up user command API routes
@@ -186,7 +187,7 @@ func commandPathForRequest(w http.ResponseWriter, r *http.Request, write bool) (
 	requested := strings.Trim(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 	userID := GetUserIDFromContext(r.Context())
 	if requested == "" {
-		return path.Join("_users", sanitizeUserIDForPath(userID), commands.CustomCommandsSubPath), true
+		return workspaceref.PhysicalPath(userID, commands.CustomCommandsSubPath), true
 	}
 	clean := path.Clean(requested)
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
@@ -207,7 +208,7 @@ func commandPathForRequest(w http.ResponseWriter, r *http.Request, write bool) (
 		}
 		return path.Join(clean, commands.CustomCommandsSubPath), true
 	}
-	if clean != "Chats" && !strings.HasPrefix(clean, "Chats/") && !strings.HasPrefix(clean, "_users/") {
+	if ref := workspaceref.MustParse(clean); !ref.HasOwner() && ref.Logical() != "Chats" && !strings.HasPrefix(ref.Logical(), "Chats/") {
 		http.Error(w, "workspace_path must identify the current project or workflow", http.StatusBadRequest)
 		return "", false
 	}

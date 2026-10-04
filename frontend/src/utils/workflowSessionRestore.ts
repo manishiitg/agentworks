@@ -1,4 +1,5 @@
 import { activateTab } from './activateTab'
+import { requestChatScrollToBottom } from './chatScrollRequest'
 import { restoreSession } from './sessionRestore'
 import { hydrateExecutionConversation } from './executionConversationRestore'
 import { agentApi } from '../services/api'
@@ -239,13 +240,6 @@ function findWorkflowPresetForSession(
   return presetStore.workflowPresets.find(preset =>
     normalizeWorkspacePath(preset.selectedFolder?.filepath) === workspacePath
   )
-}
-
-function requestChatScrollToBottom(): void {
-  useChatStore.getState().setAutoScroll(true)
-  window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom'))
-  setTimeout(() => window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom')), 120)
-  setTimeout(() => window.dispatchEvent(new CustomEvent('chat-scroll-to-bottom')), 400)
 }
 
 // Bring the chat pane forward. Deliberately does not touch the workflow's

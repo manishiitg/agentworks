@@ -445,3 +445,22 @@ func TestUIContractForScopeIgnoresUserPrefix(t *testing.T) {
 		t.Error("a workflow must keep the workflow contract")
 	}
 }
+
+// PLAT-434: the Code page reports the tab it shows. Terminal, Plan and Suggestions are not views the agent can open, but a page showing one must still register
+// (it was refused as invalid_state, so the agent saw "browser_disconnected").
+func TestObservedUIViewIsAcceptedEvenWhenTheAgentCannotOpenIt(t *testing.T) {
+	for _, view := range []string{"", "report", "shell", "plan", "suggestions", "execution-logs"} {
+		if !validObservedUIView(view) {
+			t.Errorf("view %q must be accepted as an observation", view)
+		}
+	}
+	for _, view := range []string{"../x", "Shell", "a b", "x;y", "9lives", strings.Repeat("a", 33), "<script>"} {
+		if validObservedUIView(view) {
+			t.Errorf("view %q is not a well-formed view name", view)
+		}
+	}
+	// Opening is still limited to the contract: the Code contract has no terminal view to open.
+	if validUIViewForContract(uiContractForScope("_users/manish/Chats/Code/projects/hi"), "shell") {
+		t.Error("an action must not be able to open a view the contract does not list")
+	}
+}

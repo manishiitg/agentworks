@@ -26,4 +26,7 @@ func TestPLAT280DiagnosticFiresOnlyForAGrantedMissingPath(t *testing.T) {
 	if shellMissingGrantedDBPath(map[string]string{}, scripted) {
 		t.Error("a session without DB access is not in scope")
 	}
+	if shellMissingGrantedDBPath(map[string]string{"WORKFLOW_DB_ACCESS": "none"}, scripted) {
+		t.Error("a product without platform stores (access none) has no DB_PATH by design")
+	}
 }

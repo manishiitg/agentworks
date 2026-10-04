@@ -11,14 +11,11 @@ Run this full audit for scheduled Pulse or an explicit user request. Ordinary pl
 
 ## Execution model
 
-- In Pulse, the parent may include this checklist in the normal Engineering
-  background executor when artifact-drift evidence is selected.
-- Outside Pulse, launch one `run_in_background` executor with this checklist as
-  its instructions.
-- If you are already that background reviewer, perform the audit directly. Never launch another reviewer, background tool, or nested maintenance agent.
-- The call returns an `execution_id` immediately. End the current turn and wait
-  for the automatic completion notification; do not poll, sleep, or repeatedly
-  call `query_step`.
+- In Pulse, the Engineering review may include this checklist when artifact-drift
+  evidence is selected.
+- Perform the audit yourself in this turn. Never launch another reviewer or a
+  nested maintenance agent; you may use your own subagents for parallel reading,
+  and you stay responsible for the result.
 - **Part 1 (below) has real repair authority, identical to `plan_drift_review`'s
   own scheduled turn** — read/apply/verify/persist exactly as
   `plan-drift-review.md` describes, because you ARE running that same
@@ -233,7 +230,7 @@ Return one compact review package containing:
 Before returning, persist each material Part 2 finding through
 `record_pulse_finding` under `technical_review`, reusing its canonical issue.
 Create and link a typed `create_human_input_request` when the recommendation
-needs a human decision; do not block the background task with a chat question.
+needs a human decision; do not block the review with a chat question.
 This persistence does not authorize Part 2 implementation edits, changelog
 marks, or a separate Technical Review terminal receipt. The slash-command
 parent only presents your result; do not leave findings for it to persist.
