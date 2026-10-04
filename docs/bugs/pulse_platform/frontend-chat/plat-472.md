@@ -49,4 +49,9 @@ open); this one is a restart.
 - Takes effect after the next backend restart; a chat already stuck keeps
   browser_disconnected until its page reconnects once the new server is up (the page
   retries on its own) or the user sends the chat a message.
-- Not tried live in the browser.
+- Not tried live in the browser. The owner reported browser_disconnected unchanged after
+  the retry fix. Facts so far: after the second restart the server log showed no bind
+  attempt after the chat went live, so the page either never ran the new code or never
+  re-bound; a binding expires after 6 minutes (`uiControlBindingLease`) and the page
+  renews every 5 minutes (`UI_CONTROL_BACKUP_POLL_MS`), and a hidden tab releases its
+  binding. Still open: confirm in the browser whether a bind succeeds after a reload.
