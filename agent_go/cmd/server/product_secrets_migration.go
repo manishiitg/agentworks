@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 type productSecretsMigrationOptions struct {
@@ -125,7 +126,7 @@ func runProductSecretsMigration(opts productSecretsMigrationOptions) (*productSe
 // users. The reserved pseudo-users back live features (the shared boxes and
 // managed globals) and are never migration sources.
 func productSecretsMigrationUsers(docsDir, only string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(docsDir, "_users"))
+	entries, err := os.ReadDir(filepath.Join(docsDir, workspaceref.UsersDir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -230,7 +231,7 @@ func productSecretsMigrationTargets(docsDir, product, userDir string) ([]product
 	if product == "sparkquill" {
 		public = append(public, productSecretsMigrationTarget{Box: "Chats/SparkQuill", ManifestID: "sparkquill"})
 	} else {
-		projectsRoot := filepath.Join(docsDir, "_users", userDir, "Chats", "Video Studio", "projects")
+		projectsRoot := filepath.Join(docsDir, workspaceref.UsersDir, userDir, "Chats", "Video Studio", "projects")
 		projects, err := os.ReadDir(projectsRoot)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -379,9 +380,9 @@ func attachProductSecretsManifest(docsDir string, target productSecretsMigration
 // aside. The bytes stay on disk for manual recovery; the store only ever
 // reads the un-suffixed name, so the archive is invisible to the runtime.
 func archiveProductSecretsPersonalFile(docsDir, userDir string) error {
-	source := filepath.Join(docsDir, "_users", userDir, "secrets.json")
+	source := filepath.Join(docsDir, workspaceref.UsersDir, userDir, "secrets.json")
 	stamp := time.Now().UTC().Format("20060102T150405Z")
-	target := filepath.Join(docsDir, "_users", userDir, "secrets.json.migrated-"+stamp)
+	target := filepath.Join(docsDir, workspaceref.UsersDir, userDir, "secrets.json.migrated-"+stamp)
 	if err := os.Rename(source, target); err != nil {
 		return fmt.Errorf("archive personal secrets of %s: %w", userDir, err)
 	}

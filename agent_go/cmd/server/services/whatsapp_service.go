@@ -30,6 +30,7 @@ import (
 	// WhatsAppService doc below for the reason. Pure-Go is chosen over
 	// mattn/go-sqlite3 so the agent binary stays CGO-free and builds the
 	// same way across hosts.
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	_ "modernc.org/sqlite"
 )
 
@@ -1168,7 +1169,7 @@ func whatsappUserChatUploadFolder(userID string) string {
 	if safeUserID == "" {
 		safeUserID = "default"
 	}
-	return filepath.ToSlash(filepath.Join("_users", safeUserID, "chat_history", "uploads", "whatsapp", time.Now().Format("2006-01-02")))
+	return workspaceref.PhysicalPathOf(safeUserID, "chat_history", "uploads", "whatsapp", time.Now().Format("2006-01-02"))
 }
 
 func whatsappWorkflowUploadFolder(route *ChannelRoute) string {

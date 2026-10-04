@@ -1325,7 +1325,7 @@ func (m *BotConversationManager) loadRecentChatTurns(ctx context.Context, userID
 	if m.workspaceURL == "" || userID == "" || sessionID == "" || n <= 0 {
 		return nil
 	}
-	filePath := fmt.Sprintf("_users/%s/chat_history/%s/conversation.json", userID, sessionID)
+	filePath := workspaceref.PhysicalPathOf(userID, "chat_history", sessionID, "conversation.json")
 	content, exists, err := readWorkspaceFile(ctx, m.workspaceURL, filePath)
 	if err != nil || !exists {
 		return nil

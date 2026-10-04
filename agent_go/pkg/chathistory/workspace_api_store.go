@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"log"
@@ -290,7 +291,7 @@ func (s *WorkspaceAPIStore) ListBotConnectorConfigs(ctx context.Context) ([]BotC
 }
 
 func (s *WorkspaceAPIStore) userSecretsFile(userID string) string {
-	return "_users/" + sanitizeUserID(userID) + "/secrets.json"
+	return workspaceref.PhysicalPath(sanitizeUserID(userID), "secrets.json")
 }
 
 func (s *WorkspaceAPIStore) workflowSecretsFile(userID, workflowPath string) (string, string, error) {
@@ -298,7 +299,7 @@ func (s *WorkspaceAPIStore) workflowSecretsFile(userID, workflowPath string) (st
 	if err != nil {
 		return "", "", err
 	}
-	return "_users/" + sanitizeUserID(userID) + "/workflow_secrets/" + workflowSecretPathHash(normalized) + ".json", normalized, nil
+	return workspaceref.PhysicalPath(sanitizeUserID(userID), "workflow_secrets", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 func (s *WorkspaceAPIStore) workflowProviderCredentialsFile(userID, workflowPath string) (string, string, error) {
@@ -306,7 +307,7 @@ func (s *WorkspaceAPIStore) workflowProviderCredentialsFile(userID, workflowPath
 	if err != nil {
 		return "", "", err
 	}
-	return "_users/" + sanitizeUserID(userID) + "/workflow_provider_credentials/" + workflowSecretPathHash(normalized) + ".json", normalized, nil
+	return workspaceref.PhysicalPath(sanitizeUserID(userID), "workflow_provider_credentials", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 func (s *WorkspaceAPIStore) secretsLock(userID string) *sync.Mutex {

@@ -247,7 +247,7 @@ func workflowSecretPathHash(workflowPath string) string {
 }
 
 func (s *FilesystemStore) userSecretsFile(userID string) string {
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "secrets.json")
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "secrets.json")
 }
 
 func (s *FilesystemStore) workflowSecretsFile(userID, workflowPath string) (string, string, error) {
@@ -255,7 +255,7 @@ func (s *FilesystemStore) workflowSecretsFile(userID, workflowPath string) (stri
 	if err != nil {
 		return "", "", err
 	}
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "workflow_secrets", workflowSecretPathHash(normalized)+".json"), normalized, nil
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "workflow_secrets", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 func (s *FilesystemStore) workflowProviderCredentialsFile(userID, workflowPath string) (string, string, error) {
@@ -263,7 +263,7 @@ func (s *FilesystemStore) workflowProviderCredentialsFile(userID, workflowPath s
 	if err != nil {
 		return "", "", err
 	}
-	return filepath.Join(s.rootDir, "_users", sanitizeUserID(userID), "workflow_provider_credentials", workflowSecretPathHash(normalized)+".json"), normalized, nil
+	return filepath.Join(s.rootDir, workspaceref.UsersDir, sanitizeUserID(userID), "workflow_provider_credentials", workflowSecretPathHash(normalized)+".json"), normalized, nil
 }
 
 // secretsLock returns a per-user mutex, created on demand.

@@ -64,3 +64,10 @@ PLAT-434 fixed the Code/Crew UI-control instance.
   physical-path builders (`PhysicalPath`/`PhysicalPathOf`) in agent_profile_routes, chat_submission_journal,
   crew_functions, code_peer_functions, slack_trigger, chat_history_persistence, command_routes, custom_command_tools,
   browser_live, workspace_git, instructions. Tests added to `workspaceref_sites_test.go`.
+- Migrated (commit 7): storage layers now name the directory only through `workspaceref.UsersDir`; unsanitized-owner
+  builders use `PhysicalPathOf`; `pkg/chathistory/workspace_api_store.go` uses `PhysicalPath`. Opened PLAT-440 for the
+  call sites that build a physical path from a raw or differently sanitized user id.
+- Guard: `pkg/workspaceref/guard_test.go` fails on a `_users` path string literal anywhere in production code (prose with
+  whitespace ignored) and on any `workspaceref.UsersDir` use outside an explicit allowlist (9 storage/migration files,
+  each with its reason; `cmd/testing/` e2e fixtures are the only literal allowlist entry). It also fails when an
+  allowlist entry stops needing its exemption.

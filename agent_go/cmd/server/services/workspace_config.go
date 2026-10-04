@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func workspaceAPIURL() string {
@@ -210,7 +211,7 @@ func LoadMultiAgentChatCapabilities(ctx context.Context, workspaceURL, userID st
 	if userID == "" {
 		return nil, false, nil
 	}
-	content, exists, err := readWorkspaceFile(ctx, workspaceURL, "_users/"+userID+"/multiagent-config.json")
+	content, exists, err := readWorkspaceFile(ctx, workspaceURL, workspaceref.PhysicalPathOf(userID, "multiagent-config.json"))
 	if err != nil || !exists {
 		return nil, exists, err
 	}

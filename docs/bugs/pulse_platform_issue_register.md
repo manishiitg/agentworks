@@ -1,3 +1,9 @@
+## Physical _users paths built from an unsanitized user id — PLAT-440
+
+[PLAT-440](pulse_platform/security-sandbox/plat-440.md), open: found during PLAT-435; a few call sites build
+`_users/<id>/` from a raw or differently sanitized user id, and the workspace module's default-user fallback differs
+from the agent server's.
+
 ## Remove the product workspace inspector popup — PLAT-439
 
 [PLAT-439](pulse_platform/frontend-chat/plat-439.md), fixed on main; deployment

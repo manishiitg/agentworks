@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -39,7 +40,7 @@ const (
 	BotNotificationDestinationKey delegationContextKey = "bot_notification_destination"
 	// ChatsFolderPath is the fallback per-user Chats folder when session context is unavailable.
 	// Always prefer GetChatsFolder(ctx) which reads the session-scoped per-user path.
-	ChatsFolderPath = "_users/default/Chats"
+	ChatsFolderPath = workspaceref.UsersDir + "/default/Chats"
 	// ChatsFolderKey is the context key for the session-scoped Chats folder path (usually _users/<userID>/Chats).
 	// Set by the server at session setup and propagated to every sub-agent via context.
 	ChatsFolderKey delegationContextKey = "chats_folder"

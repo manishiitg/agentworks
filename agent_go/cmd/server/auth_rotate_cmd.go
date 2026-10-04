@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sealbox"
 	"github.com/spf13/cobra"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 var rotateAuthSecretCmd = &cobra.Command{
@@ -380,13 +381,13 @@ func collectWorkflowSecretDocs(docsDir string) ([]*workflowSecretDocFile, error)
 		{"workflow_secrets", "secrets", "secrets"},
 		{"workflow_provider_credentials", "credentials", "credentials"},
 	} {
-		matches, err := filepath.Glob(filepath.Join(docsDir, "_users", "*", kind.dir, "*.json"))
+		matches, err := filepath.Glob(filepath.Join(docsDir, workspaceref.UsersDir, "*", kind.dir, "*.json"))
 		if err != nil {
 			return nil, err
 		}
 		sort.Strings(matches)
 		for _, path := range matches {
-			rel, err := filepath.Rel(filepath.Join(docsDir, "_users"), path)
+			rel, err := filepath.Rel(filepath.Join(docsDir, workspaceref.UsersDir), path)
 			if err != nil {
 				return nil, err
 			}
