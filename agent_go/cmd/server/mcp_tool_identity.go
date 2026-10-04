@@ -50,7 +50,7 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 
 // Connection status and tool metadata come only from this person's store.
 func (api *StreamingAPI) mcpToolStatusForUser(name, person string, _ mcpclient.MCPServerConfig) ToolStatus {
-	private, found := privateMCPByCatalog(person, name)
+	private, found := personalMCPByCatalog(person, name)
 	if !found {
 		return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}
 	}

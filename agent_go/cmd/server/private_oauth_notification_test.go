@@ -34,7 +34,7 @@ func TestPrivateOAuthCallbacksReachInitiatingChat(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := recordPrivateMCP("owner", "notion", codePrivacyOwnerRoot); err != nil {
+			if err := attachPersonalLoginToPlace("owner", "notion", codePrivacyOwnerRoot); err != nil {
 				t.Fatal(err)
 			}
 			start := func(session string) *httptest.ResponseRecorder {
@@ -54,7 +54,7 @@ func TestPrivateOAuthCallbacksReachInitiatingChat(t *testing.T) {
 						}
 						output, err = reg.exec(ctx, map[string]interface{}{"action": "connect", "catalog": "notion"})
 					} else {
-						output, err = api.privateMCPTool(ctx, "owner", "install_mcp_server", map[string]interface{}{"name": "notion"})
+						output, err = api.mcpConnectionTool(ctx, "owner", "install_mcp_server", map[string]interface{}{"name": "notion"})
 					}
 					if err != nil {
 						t.Fatal(err)
@@ -116,7 +116,7 @@ func TestPrivateOAuthCallbacksReachInitiatingChat(t *testing.T) {
 				t.Fatal("notified another user")
 			}
 			// Success remains visible without a retained agent after a restart.
-			api.notifyPrivateOAuthFlowOutcome("own-chat", "notion", "private-oauth:notion:success-fixture", true, "")
+			api.notifyPlaceOAuthFlowOutcome("own-chat", "notion", "private-oauth:notion:success-fixture", true, "")
 			notices = api.eventStore.GetAllEventsRaw("own-chat")
 			raw, _ := json.Marshal(notices[len(notices)-1])
 			if !strings.Contains(string(raw), `"status":"completed"`) {

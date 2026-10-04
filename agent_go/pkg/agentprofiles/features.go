@@ -488,7 +488,7 @@ func FeaturePromptExtensions(profile Profile) []string {
 			if feature.Options["dm_only"] == "true" {
 				rule += " Bots support direct messages only, with a separate chat per person; Slack channels/group chats and agent Slack sends are unavailable."
 				if feature.Options["gmail"] == "own" {
-					rule += " Google uses this project's private accounts in owner chats only."
+					rule += " Google uses the accounts connected to this project in owner chats only."
 				} else {
 					rule += " Gmail and Google Workspace are unavailable."
 				}

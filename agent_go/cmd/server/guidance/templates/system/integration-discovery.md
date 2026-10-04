@@ -20,9 +20,9 @@ Do not use Smithery search or hosted Smithery deployment URLs. Do not substitute
 
 Use `install_mcp_server(name, url=...)` for a new verified URL. It probes the endpoint's actual auth requirements (no sign-in / API key / OAuth with DCR). `add_mcp_server` is for a custom server whose configuration is already known. Registry metadata does not establish connectivity or the live tool list; check discovery after installation. If the catalog search has no suitable MCP, continue with an internet search using the session's available web/search/browser tools. Search for the service name plus MCP and check the provider's official documentation or source repository for its endpoint or installation instructions. A registry miss does not mean the MCP does not exist. Verify that the result belongs to the intended provider and distinguish official servers from community implementations or hosted intermediaries. Never invent an endpoint. If no supported search tool is available or the search still finds nothing suitable, report exactly that limitation. Honor an explicit request for MCP rather than diverting it to a different integration type.
 
-### A person's own account (Gmail, Drive, GitHub, ...)
+### An account connected to this workflow, Relay, Crew or Code (Gmail, Drive, GitHub, ...)
 
-Private accounts are configured under **Integrations → Plugins → Available** and listed under **Connected**. Use the registered private connection tools and the `work-mcp` skill; return the actual sign-in link for the user to complete. Credentials are owned by the verified user; sharing a project does not share a private login. Shared accounts are managed through Vault groups. Use exact connection names for selection and discovery.
+Connections are configured under **Integrations → Plugins → Available** and listed under **Connected**. A connection added to a workflow, Relay, Crew or Code belongs to that place: everyone with access to it uses it, and no other place does. It acts as the account of the person who connected it, so say whose login it is. Use the registered connection tools and the `work-mcp` skill; return the actual sign-in link for the user to complete. Connections shared across places are managed through Vault groups. Use exact connection names for selection and discovery.
 
 ### Reporting back to the user
 
@@ -55,9 +55,9 @@ A full-run missing-dependency error only checks configured names, not auth,
 connectivity, or tool counts. Repair the missing integration instead of removing
 a required server to make validation pass.
 
-### Multiple private accounts
+### Multiple accounts
 
-Private MCP setup is shared by Crew, Code, workflows and Relays. For another
+Connection setup is the same for Crew, Code, workflows and Relays. For another
 account of a catalog provider, use `install_mcp_server(name=<provider>,
 catalog=<provider>, label=<account label>)`. Each labelled install creates a new
 connection and returns its exact name plus its own sign-in step. Inspect the
@@ -69,6 +69,6 @@ independently rather than sharing the legacy provider-group login.
 
 ### Vault access in all products
 
-Integrations → Plugins has Connected, Available, Secrets, Skills and Vault in one row. Connected/Available manage private MCP accounts; Secrets manages project secrets. Vault shows the signed-in user's existing groups and their permitted shared MCPs and secret names, including explicit Platform grants. The backend resolves identity from the authenticated session; an email typed in chat never changes the caller.
+Integrations → Plugins has Connected, Available, Secrets, Skills and Vault in one row. Connected/Available manage this place's MCP connections; Secrets manages project secrets. Vault shows the signed-in user's existing groups and their permitted shared MCPs and secret names, including explicit Platform grants. The backend resolves identity from the authenticated session; an email typed in chat never changes the caller.
 
 Before connecting a duplicate or answering what is available, call `list_mcp_servers` (Code: `manage_my_mcp_servers(action="list")`). Its `vault_groups`, `vault`, and `vault_secrets` fields are live authorized metadata. Inspect the real descriptions/schemas before classifying read/write tools. Select permitted connections with their exact `vault_<id>` names and permitted secret names through the existing project configuration tools. Availability appears automatically; project selection determines what a run uses. Neither project selection nor a prompt grants new Vault access. The gateway checks tool and argument/regex permissions on every call, and secret access is checked before injecting a selected secret. Never include values in chat, prompts, logs or configuration.

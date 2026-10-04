@@ -18,10 +18,10 @@ import (
 func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, person, codeRoot, redirectURI string) error {
 	root := cleanAttachRoot(codeRoot)
 	return reg.RegisterCustomTool("manage_my_mcp_servers",
-		"Manage your private MCP connections (your own logins: their Gmail, Drive, GitHub, ...). "+
-			"list: the catalog, this Code's private connections, and the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values). Inspect this live inventory before proposing shared setup. "+
+		"Manage the MCP connections of this Code (added with the owner's own login: Gmail, Drive, GitHub, ...). "+
+			"list: the catalog, this Code's connections, and the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values). Inspect this live inventory before proposing shared setup. "+
 			"connect: add a catalog server (catalog) or an https URL (name + url) to this Code with the owner's own login, and return the sign-in link for them to open. "+
-			"remove: detach your private connection from this Code. select/deselect: choose a permitted Vault connection for this Code using its exact server name. Shared connections and grants are managed in Vault. "+
+			"remove: detach a connection from this Code. select/deselect: choose a permitted Vault connection for this Code using its exact server name. Shared connections and grants are managed in Vault. "+
 			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the Integrations > Plugins > Available to finish. Changes apply from the user's next message.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
@@ -54,13 +54,13 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 				}
 				store := person
 				if strings.TrimSpace(label) == "" {
-					store = privateStoreForAttachment(person, name, root)
+					store = storeForAttachment(person, name, root)
 				}
-				saved, _, err := api.ensurePrivateMCP(ctx, store, placeMCPServer{Name: name, Label: label, URL: url}, catalogName)
+				saved, _, err := api.ensurePersonalMCP(ctx, store, placeMCPServer{Name: name, Label: label, URL: url}, catalogName)
 				if err != nil {
 					return "", err
 				}
-				if err := recordPrivateMCP(person, saved.Name, root); err != nil {
+				if err := attachPersonalLoginToPlace(person, saved.Name, root); err != nil {
 					return "", err
 				}
 				if saved.OAuth == nil {

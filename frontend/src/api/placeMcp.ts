@@ -3,7 +3,7 @@ import api from '../services/api'
 import type { PersonalMcpConnectResult, PersonalMcpHeader } from './mcpCatalog'
 import type { ToolDefinition } from '../stores/types'
 
-// Private MCP connections use the caller's login. Shared access is governed by Vault.
+// A connection added to a workflow, Relay, Crew or Code belongs to that place and is used by everyone with access to it, as the account of whoever connected it. Access shared across places is governed by Vault.
 
 export interface PlaceMcpServer {
   name: string

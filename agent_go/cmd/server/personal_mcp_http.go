@@ -10,12 +10,12 @@ import (
 
 // Exact connection IDs always win. Provider aliases are accepted only when
 // they identify one account, so runtime and management never guess an account.
-func privateMCPByCatalog(person, name string) (placeMCPServer, bool) {
-	saved, found, _ := lookupPrivateMCP(person, name)
+func personalMCPByCatalog(person, name string) (placeMCPServer, bool) {
+	saved, found, _ := lookupPersonalMCP(person, name)
 	return saved, found
 }
 
-func lookupPrivateMCP(person, name string) (placeMCPServer, bool, error) {
+func lookupPersonalMCP(person, name string) (placeMCPServer, bool, error) {
 	servers, err := listPlaceMCPServers(person)
 	if err != nil {
 		return placeMCPServer{}, false, err
@@ -50,7 +50,7 @@ func (api *StreamingAPI) startPrivateOAuth(w http.ResponseWriter, r *http.Reques
 		writeUsersError(w, http.StatusForbidden, "chat session not found or access denied")
 		return
 	}
-	saved, found, lookupErr := lookupPrivateMCP(person, req.ServerName)
+	saved, found, lookupErr := lookupPersonalMCP(person, req.ServerName)
 	if lookupErr != nil {
 		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
 		return
@@ -77,11 +77,11 @@ func (api *StreamingAPI) startPrivateOAuth(w http.ResponseWriter, r *http.Reques
 		writeUsersJSON(w, 200, discovery)
 		return
 	}
-	writeUsersJSON(w, 200, map[string]string{"server_name": req.ServerName, "auth_url": authURL, "message": "Sign in to your private MCP connection"})
+	writeUsersJSON(w, 200, map[string]string{"server_name": req.ServerName, "auth_url": authURL, "message": "Sign in to this MCP connection"})
 }
 func privateOAuthStatus(w http.ResponseWriter, r *http.Request, name string) {
 	person := mcpCaller(r.Context())
-	saved, found := privateMCPByCatalog(person, name)
+	saved, found := personalMCPByCatalog(person, name)
 	valid := false
 	if found {
 		dir, _ := placeMCPDir(person)
@@ -95,7 +95,7 @@ func (api *StreamingAPI) connectPrivateCatalog(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, 401, "sign in first")
 		return
 	}
-	saved, found, lookupErr := lookupPrivateMCP(person, req.ServerName)
+	saved, found, lookupErr := lookupPersonalMCP(person, req.ServerName)
 	if lookupErr != nil {
 		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
 		return
@@ -121,7 +121,7 @@ func (api *StreamingAPI) connectPrivateCatalog(w http.ResponseWriter, r *http.Re
 		}
 		saved.Headers = map[string]placeMCPHeader{"Authorization": {Secret: secret, Format: "Bearer {}"}}
 		if _, err := addPlaceMCPServer(person, saved); err != nil {
-			writeUsersError(w, 500, "could not save private server")
+			writeUsersError(w, 500, "could not save the connection")
 			return
 		}
 	}
@@ -130,7 +130,7 @@ func (api *StreamingAPI) connectPrivateCatalog(w http.ResponseWriter, r *http.Re
 }
 func disconnectPrivateCatalog(w http.ResponseWriter, r *http.Request, name string) {
 	person := mcpCaller(r.Context())
-	saved, found, lookupErr := lookupPrivateMCP(person, name)
+	saved, found, lookupErr := lookupPersonalMCP(person, name)
 	if lookupErr != nil {
 		writeUsersError(w, http.StatusBadRequest, lookupErr.Error())
 		return
@@ -141,7 +141,7 @@ func disconnectPrivateCatalog(w http.ResponseWriter, r *http.Request, name strin
 			return
 		}
 		if err := removePlaceMCPServer(person, saved.Name); err != nil {
-			writeUsersError(w, 500, "could not remove private connection")
+			writeUsersError(w, 500, "could not remove the connection")
 			return
 		}
 		closePlaceMCPConnection(person, saved.Name)

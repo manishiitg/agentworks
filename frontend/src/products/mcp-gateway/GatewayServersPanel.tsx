@@ -212,7 +212,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       }
     })
     const personal = !standalone && row.agentworks?.connection === 'connected' ? [{
-      id: `private:${row.key}`, name: row.agentworks.name, source: 'My MCPs', status: row.agentworks.status === 'not_loaded' ? 'Connected · Tools not loaded' : statusIndicator(row.agentworks.connection, row.agentworks.status).title,
+      id: `private:${row.key}`, name: row.agentworks.name, source: 'This place', status: row.agentworks.status === 'not_loaded' ? 'Connected · Tools not loaded' : statusIndicator(row.agentworks.connection, row.agentworks.status).title,
       toolCount: row.agentworks.status === 'not_loaded' ? undefined : row.agentworks.toolCount,
       toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} AgentWorks tools on ${row.agentworks!.name}`,
       loadTools: async () => {
@@ -232,7 +232,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     notices={[
       ...(error ? [{ message: data ? `Could not refresh: ${error}. Saved data may be outdated.` : error, retry: bump }] : []),
       ...(actionError ? [{ message: actionError, retry: bump }] : []),
-      ...(!standalone && agentWorksError ? [{ message: `Private connections could not be refreshed: ${agentWorksError}`, retry: () => void refreshTools() }] : []),
+      ...(!standalone && agentWorksError ? [{ message: `This place's connections could not be refreshed: ${agentWorksError}`, retry: () => void refreshTools() }] : []),
     ]}
     addCustom={{ label: 'Add custom server', disabled: !onAddCustom || chatRequestBusy, run: requestCustomServer }}>
     <ConfirmationDialog isOpen={deleting !== null} onClose={() => setDeleting(null)} onConfirm={() => void onDelete()} title="Disconnect server"

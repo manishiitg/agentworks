@@ -42,7 +42,7 @@ it('allows a revoked selection to be removed without offering unauthorized tools
 it('reports unavailable Vault without substituting platform connections', async () => {
  get.mockRejectedValue(new Error('offline'))
  const { host } = await mount()
- expect(host.querySelector('[role="alert"]')?.textContent).toContain('Your private MCPs still work')
+ expect(host.querySelector('[role="alert"]')?.textContent).toContain('The connections of this place still work')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
 })
 

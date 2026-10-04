@@ -140,7 +140,7 @@ func formatMissingDependencies(workflowID string, missing []MissingDependency, m
 	for _, m := range missing {
 		b.WriteString(fmt.Sprintf("  • %s %q (required by: %s)\n", m.Kind, m.Name, strings.Join(m.RequiredBy, ", ")))
 	}
-	b.WriteString("\nFix: open an interactive Workflow Builder with write access. Connect your own account in My MCPs, or ask your administrator to assign a Vault group. Select the exact private or Vault connection name with update_workflow_config.\n")
+	b.WriteString("\nFix: open an interactive Workflow Builder with write access. Connect it in Integrations > Plugins, or ask your administrator to assign a Vault group. Select the exact private or Vault connection name with update_workflow_config.\n")
 	b.WriteString("This check validates the run owner's permitted connections; it does not make a live upstream call. Retry after connecting or receiving Vault access; do not remove a required integration just to bypass this check.\n")
 	return b.String()
 }

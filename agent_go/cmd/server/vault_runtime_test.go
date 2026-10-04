@@ -53,7 +53,7 @@ func TestPrivateMCPRuntimeDoesNotShareOwnerCredentials(t *testing.T) {
 	if err != nil || len(overrides) != 0 || len(names) != 1 || names[0] != mcpclient.NoServers {
 		t.Fatal("forged private override admitted")
 	}
-	if err := recordPrivateMCP("alice", "linear", "Workflow/w"); err != nil {
+	if err := attachPersonalLoginToPlace("alice", "linear", "Workflow/w"); err != nil {
 		t.Fatal(err)
 	}
 	// A connection added to a place belongs to that place (DECISIONS 2026-10-04): bob, who has access to
@@ -447,7 +447,7 @@ func TestVaultInventoryAndBuilderShareCallerGroupsAndSecretNames(t *testing.T) {
 	r.Header.Set("X-CapLayer-Actor", "bob")
 	w := httptest.NewRecorder()
 	api.handleMyVaultServers(w, r)
-	builder, err := api.privateMCPTool(ctx, "alice", "list_mcp_servers", nil)
+	builder, err := api.mcpConnectionTool(ctx, "alice", "list_mcp_servers", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

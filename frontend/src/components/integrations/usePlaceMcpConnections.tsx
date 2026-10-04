@@ -8,7 +8,7 @@ import { McpOAuthClientForm, McpCustomServerForm, McpNamedConnectionForm } from 
 import type { McpConnectionRow, McpCatalogRow } from './McpConnectionsPanel'
 
 const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: string } } })?.response?.data?.error || (cause instanceof Error ? cause.message : fallback)
-export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId }: {
+export function usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId }: {
   chatSessionId?: string
   workspacePath: string
   /** "Code", "Crew" or "workflow", for the wording. */
@@ -35,7 +35,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
 
   const refresh = useCallback(async () => {
     try {
-      setServers((await placeMcpApi.list(workspacePath)).filter(server => server.mine))
+      setServers(await placeMcpApi.list(workspacePath))
       setError(null)
     } catch (cause) {
       setError(errorText(cause, 'Could not load connections.'))
@@ -123,7 +123,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
   const add = (entry: McpCatalogServer, label: string) => run(entry.catalog, async () => {
     if (onAsk) {
       const setupSkill = placeNoun === 'workflow' ? 'the MCP management guidance in the system-tools skill' : 'the attached work-mcp skill'
-      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} as a new private account named ${JSON.stringify(label)} with my login. Pass catalog=${JSON.stringify(entry.catalog)} and label=${JSON.stringify(label)} to the setup tool. Preserve my other accounts. First read ${setupSkill}, then use its setup tools. If sign-in is required, give me the link returned by the tool. Check the connection status before saying it is connected.`)
+      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} as a new account named ${JSON.stringify(label)} with my login. Pass catalog=${JSON.stringify(entry.catalog)} and label=${JSON.stringify(label)} to the setup tool. Preserve my other accounts. First read ${setupSkill}, then use its setup tools. If sign-in is required, give me the link returned by the tool. Check the connection status before saying it is connected.`)
       setNamingProvider(null)
       return
     }
@@ -164,7 +164,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
       ...(catalogState === 'failed' ? [{ message: 'Could not load the list of connectors.', retry: loadCatalog }] : []),
     ],
     servers: servers.map(server => ({
-      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.label || server.catalog || server.name, source: server.label && server.catalog ? `My MCPs · ${server.catalog}` : 'My MCPs · your login',
+      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.label || server.catalog || server.name, source: `Connected by ${server.mine ? 'you' : server.owner_name || server.owner}${server.label && server.catalog ? ` · ${server.catalog}` : ''}`,
       status: !server.active ? 'Paused' : server.connected ? 'Connected' : 'Sign-in required', statusDot: server.active && server.connected ? 'bg-green-500' : 'bg-muted-foreground',
       loadTools: server.active && server.connected ? async () => {
         const result = await placeMcpApi.tools(server.name)
@@ -183,7 +183,7 @@ export function usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, on
       ...(entry.group && groups.has(entry.group) ? { batch: { id: entry.group, name: providerGroupLabel(entry.group), connect: (picks: string[]) => addGroup(entry.group!, picks) } } : {}),
     })) satisfies McpCatalogRow[] : [],
     addCustom: canEdit ? { label: 'Add custom server', disabled: busy !== null, run: () => onAsk ? onAsk('Help me connect one of my own MCP servers in this ' + placeNoun + '. First read the relevant MCP setup skill. Ask which app or service I want, then use its setup tools and give me any returned sign-in link. Verify the connection status.') : setShowCustom(true) } : undefined,
-    help: <><p>Connections here are private to you. Sharing a {placeNoun} does not share your MCP accounts. Use Vault for shared access.</p><p>Google apps are connected in the Google apps tab. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Integrations → Secrets.</p></>,
+    help: <><p>A connection added here is used by everyone with access to this {placeNoun}, and only here. It acts as the account of the person who connected it. Use Vault for access shared across places.</p><p>Google apps are connected in the Google apps tab. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Integrations → Secrets.</p></>,
     dialogs: <>
       {clientPrompt && <McpOAuthClientForm key={clientPrompt.server} {...clientPrompt} busy={busy !== null} cancel={() => setClientPrompt(null)} reportError={setError} submit={client => { void run(`client:${clientPrompt.server}`, () => signIn(clientPrompt.server, client), 'Could not start sign-in.') }} />}
       {showCustom && <McpCustomServerForm secrets={secrets} busy={busy !== null} cancel={() => setShowCustom(false)} submit={addCustom} />}

@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | phase 1 and the enforcement part of phase 2 fixed on `main`; needs a restart. Wording and UI cleanup of phase 2 in progress |
+| State | fixed on `main` (phases 1 and 2); needs a restart and a re-run of the Upwork step. Credential storage and place-less chats are the only open parts |
 | Date | 2026-10-04 |
 | Owner | integrations |
 | Related | PLAT-474/475 (OAuth), PLAT-477 (trigger_mcp_discovery) |
@@ -62,11 +62,25 @@ a Crew and for a workflow."
 - Tests: a place session never reaches a person's other connection while a place-less chat still does; lookup of a
   place connection by plain or internal name.
 
+## Done (phase 2: wording, UI, names)
+
+- Agent-facing text: tool descriptions and messages (`list_mcp_servers`, `install_mcp_server`, `add/edit/remove_mcp_server`,
+  `trigger_mcp_discovery`, the Code `manage_my_mcp_servers`), the integration-discovery guidance, the `work-mcp`
+  and `work-mcp-connections` skills and the Code prompt say a connection belongs to the place it was added to, is
+  used by everyone with access to it, and acts as the account of whoever connected it. The "private" wording and
+  the "Integrations > My MCPs" pointer are gone (it is Integrations > Plugins).
+- UI: the Connected list shows every connection of the place as "Connected by <person>"; the help text says who
+  can use it; prompts no longer say "private". Hook and test renamed `usePlaceMcpConnections`.
+- Code names: `private_mcp_*.go` is now `personal_mcp_http.go` and `mcp_connection_tools.go`; `privateMCPByCatalog`,
+  `lookupPrivateMCP`, `recordPrivateMCP`, `ensurePrivateMCP`, `savePrivateMCPOverlay` and friends are renamed
+  (`personalMCP…`, `attachPersonalLoginToPlace`, `ensurePersonalMCP`, `saveUserMCPOverlay`).
+- Checks: the full cmd/server package has no failure that main does not already have; the frontend suite has one
+  failure (`gatewayConsoleShared`, which also fails without these changes).
+
 ## Left
 
-- **Phase 2:** remove the "private" wording, API names, tools and the personal-only list; a personal connection
-  attached nowhere stays inert; chats outside a place keep working until then. "Connected by <person>, used by
-  everyone with access" in the UI.
+- Chats that belong to no place (an ordinary personal chat) still use the person's own connections, because they
+  have no place to attach to. If they should have one, give a person's chat area a place of its own.
 - Credentials stay in the adder's store; moving them into place-owned storage needs re-sealing and is not done.
 - A connection added by someone who later leaves the place keeps working until an editor removes it.
 - Not tried on the real Upwork run: needs a restart, then a re-run of the failed step.

@@ -41,7 +41,7 @@ func TestNamedPrivateMCPRouteCredentialsAndRuntimeIsolation(t *testing.T) {
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &row) != nil || row.Name == "" {
 			t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 		}
-		saved, found := privateMCPByCatalog("owner", row.Name)
+		saved, found := personalMCPByCatalog("owner", row.Name)
 		if !found || saved.Label != label {
 			t.Fatal("named account was not persisted")
 		}
@@ -97,7 +97,7 @@ func TestNamedPrivateMCPRouteCredentialsAndRuntimeIsolation(t *testing.T) {
 		t.Fatal("another user resolved an account")
 	}
 	// Exact reuse does not clear the encrypted client/token.
-	reused, _, err := api.ensurePrivateMCP(context.Background(), "owner", placeMCPServer{Name: a.Name}, "")
+	reused, _, err := api.ensurePersonalMCP(context.Background(), "owner", placeMCPServer{Name: a.Name}, "")
 	if err != nil || reused.Name != a.Name || !fileExists(placeMCPTokenFile(dir, "owner", a.Name)) {
 		t.Fatal("exact reuse destroyed login")
 	}
@@ -119,7 +119,7 @@ func TestNamedPrivateMCPRouteCredentialsAndRuntimeIsolation(t *testing.T) {
 func TestNamedPrivateMCPBuilderAndCodeUseSharedSetup(t *testing.T) {
 	api := namedMCPFixture(t)
 	for _, label := range []string{"Notes · Engineering", "Notes · Sales"} {
-		if _, err := api.privateMCPTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": "PublicNotes", "catalog": "PublicNotes", "label": label}); err != nil {
+		if _, err := api.mcpConnectionTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": "PublicNotes", "catalog": "PublicNotes", "label": label}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -142,14 +142,14 @@ func TestNamedPrivateMCPBuilderAndCodeUseSharedSetup(t *testing.T) {
 	if now, _ := listPlaceMCPServers("owner"); len(now) != 3 {
 		t.Fatal("reusing exact connection created another account")
 	}
-	if _, err := api.privateMCPTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": "PublicNotes"}); err == nil {
+	if _, err := api.mcpConnectionTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": "PublicNotes"}); err == nil {
 		t.Fatal("builder guessed an ambiguous account")
 	}
-	if _, err := api.privateMCPTool(context.Background(), "owner", "remove_mcp_server", map[string]interface{}{"name": "PublicNotes"}); err == nil {
+	if _, err := api.mcpConnectionTool(context.Background(), "owner", "remove_mcp_server", map[string]interface{}{"name": "PublicNotes"}); err == nil {
 		t.Fatal("builder removed an ambiguous account")
 	}
 	for _, s := range servers {
-		if _, err := api.privateMCPTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": s.Name}); err != nil {
+		if _, err := api.mcpConnectionTool(context.Background(), "owner", "install_mcp_server", map[string]interface{}{"name": s.Name}); err != nil {
 			t.Fatal(err)
 		}
 	}

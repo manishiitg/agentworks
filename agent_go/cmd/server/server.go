@@ -12682,7 +12682,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 		}
 		if name == "install_mcp_server" || name == "add_mcp_server" {
 			properties, _ := params["properties"].(map[string]interface{})
-			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate private account. Omit for reconnecting an existing exact connection name."}
+			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate account with its own login. Omit for reconnecting an existing exact connection name."}
 			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
 			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
 		}
@@ -12691,9 +12691,9 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			// requires its name, while the shared schema declares no arguments, so the call
 			// was rejected with or without a name. Declare it.
 			if properties, ok := params["properties"].(map[string]interface{}); ok {
-				properties["name"] = map[string]interface{}{"type": "string", "description": "Exact connection name to discover tools for (see list_mcp_servers), for example a private connection such as your Upwork account."}
+				properties["name"] = map[string]interface{}{"type": "string", "description": "Exact connection name to discover tools for (see list_mcp_servers), for example this place's Upwork connection."}
 			}
-			description += " Pass name to discover one of your private or permitted connections."
+			description += " Pass name to discover one of this place's connections or a permitted Vault connection."
 		}
 		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
 			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -12702,7 +12702,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 					return "", err
 				}
 				ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
-				return api.privateMCPTool(ctx, userID, name, args)
+				return api.mcpConnectionTool(ctx, userID, name, args)
 			}
 		}
 		return registrar.RegisterCustomTool(name, description, params, exec, "mcp_server_tools")
@@ -12789,7 +12789,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"list_mcp_servers",
-		"List your private MCP connections, your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; select a Vault connection by its exact vault_ name and secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
+		"List the MCP connections of this workflow, Relay, Crew or Code (outside a place, your own), your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; select a Vault connection by its exact vault_ name and secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -12919,16 +12919,16 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				if !strings.Contains(strings.ToLower(name), needle) {
 					continue
 				}
-				status := "available template — connect privately in My MCPs"
-				if own, found := privateMCPByCatalog(person, name); found {
+				status := "available template — connect it in Integrations > Plugins"
+				if own, found := personalMCPByCatalog(person, name); found {
 					dir, _ := placeMCPDir(person)
 					if placeMCPServerConnected(dir, person, own) {
 						status = "connected privately for you"
 					} else {
-						status = "your private connection needs sign-in in My MCPs"
+						status = "this connection needs sign-in in Integrations > Plugins"
 					}
 				} else if server.OAuth == nil {
-					status = "available template, no OAuth — add privately in My MCPs"
+					status = "available template, no OAuth — add it in Integrations > Plugins"
 				}
 				catalogHits = append(catalogHits, fmt.Sprintf("- **%s** [our catalog, vetted] — %s", name, status))
 			}
@@ -12992,7 +12992,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL privately for the authenticated user. Return an actual OAuth sign-in link or direct them to Integrations > My MCPs for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
+		"Connect a catalog server or user-supplied remote MCP URL to this workflow, Relay, Crew or Code with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations > Plugins for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13010,14 +13010,14 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				},
 				"api_key": map[string]interface{}{
 					"type":        "string",
-					"description": "Deprecated: do not send credentials in chat. Enter a private API key in My MCPs.",
+					"description": "Deprecated: do not send credentials in chat. Enter the API key in Integrations > Plugins.",
 				},
 				"client_id": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
 				"client_secret": map[string]interface{}{
-					"type": "string", "description": "Deprecated: enter client secrets in My MCPs, never in chat.",
+					"type": "string", "description": "Deprecated: enter client secrets in Integrations > Plugins, never in chat.",
 				},
 			},
 			"required": []string{"name"},
@@ -13172,7 +13172,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a private remote MCP server for the authenticated person. Use a catalog name or an HTTPS URL. Enter credentials through My MCPs. Use Vault to share access.",
+		"Add a remote MCP server to this workflow, Relay, Crew or Code with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations > Plugins. Use Vault for access shared across places.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13254,7 +13254,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
+			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -13269,7 +13269,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"edit_mcp_server",
-		"Edit your private remote MCP connection. Updating its URL clears its sign-in. Shared Vault connections are managed in Vault.",
+		"Edit a remote MCP connection you added to this place. Updating its URL clears its sign-in. Shared Vault connections are managed in Vault.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13350,7 +13350,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
+			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -13365,7 +13365,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"remove_mcp_server",
-		"Remove your private MCP connection and sign-in. It stops working in your projects. This does not remove any shared Vault connection.",
+		"Remove a connection and its sign-in. It stops working in this place for everyone. This does not remove any shared Vault connection.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13407,7 +13407,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			affectedWorkflows := workflowsReferencingMCPServer(ctx, name)
 
 			delete(userConfig.MCPServers, name)
-			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
+			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 

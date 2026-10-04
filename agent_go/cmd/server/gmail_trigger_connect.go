@@ -54,7 +54,7 @@ func (api *StreamingAPI) connectGmailTriggerAccount(ctx context.Context, workspa
 		return "", err
 	}
 	if scope.CodeWorkspace == "" && !currentUserIsAdmin(req) {
-		return "", fmt.Errorf("an administrator must connect or reconnect shared Gmail accounts; this Code's owner can connect private accounts")
+		return "", fmt.Errorf("an administrator must connect or reconnect shared Gmail accounts; this Code's owner can connect accounts")
 	}
 	gmailTriggerConfigMu.Lock()
 	defer gmailTriggerConfigMu.Unlock()

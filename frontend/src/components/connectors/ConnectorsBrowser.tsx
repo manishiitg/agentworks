@@ -174,7 +174,7 @@ export default function ConnectorsBrowser({
               label={`Ask AI about ${serverName}`}
               message={connection === 'connected'
                 ? `Help me with the existing ${JSON.stringify(serverName)} MCP connection in this ${workspaceLabel}. Check its current connection status and ${workspaceLabel} selection, then ask what I want to do with it.`
-                : `Help me connect ${JSON.stringify(serverName)} privately to this ${workspaceLabel}. Check my existing connection first, guide me through sign-in in My MCPs, verify its tools, and select it for this ${workspaceLabel}. Use Vault group permissions for shared access. Do not ask for secrets in chat.`}
+                : `Help me connect ${JSON.stringify(serverName)} to this ${workspaceLabel}. Check my existing connection first, guide me through sign-in in My MCPs, verify its tools, and select it for this ${workspaceLabel}. Use Vault group permissions for shared access. Do not ask for secrets in chat.`}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
@@ -212,8 +212,8 @@ export default function ConnectorsBrowser({
             onAsk={onAskAI}
             label={`Ask ${assistantLabel} to connect`}
             message={query.trim()
-              ? `Help me add a private MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and guide me through sign-in in My MCPs. Use Vault to share access. Never ask for secrets in chat.`
-              : `Help me add a private MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and help me connect in My MCPs. Use Vault to share access. Never ask for secrets in chat.`}
+              ? `Help me add an MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and guide me through sign-in in My MCPs. Use Vault to share access. Never ask for secrets in chat.`
+              : `Help me add an MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and help me connect in My MCPs. Use Vault to share access. Never ask for secrets in chat.`}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>

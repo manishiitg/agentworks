@@ -964,7 +964,7 @@ func (api *StreamingAPI) removeOverlayEntry(serverName string) error {
 		return nil
 	}
 	delete(userConfig.MCPServers, serverName)
-	if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
+	if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
 		return fmt.Errorf("failed to save user config after removing %s: %w", serverName, err)
 	}
 	api.logger.Info(fmt.Sprintf("🗑️ Removed %s from user config overlay", serverName))
@@ -1178,7 +1178,7 @@ func (api *StreamingAPI) persistOAuthConfig(serverName string, serverConfig mcpc
 	userConfig.MCPServers[serverName] = serverConfig
 
 	// Save back to user config file
-	err = savePrivateMCPOverlay(userConfigPath, userConfig)
+	err = saveUserMCPOverlay(userConfigPath, userConfig)
 	if err != nil {
 		api.logger.Error(fmt.Sprintf("💾 Failed to save config: %v", err), err)
 	} else {
@@ -1189,7 +1189,7 @@ func (api *StreamingAPI) persistOAuthConfig(serverName string, serverConfig mcpc
 
 // OAuth client secrets and bearer headers can be present in the overlay.
 // The shared mcpclient.SaveConfig writes 0644, so use a private atomic file.
-func savePrivateMCPOverlay(path string, config *mcpclient.MCPConfig) error {
+func saveUserMCPOverlay(path string, config *mcpclient.MCPConfig) error {
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err

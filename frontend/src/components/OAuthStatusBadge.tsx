@@ -78,7 +78,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     : `Connect ${serverName} privately to your account?`);
   const disconnectConfirmation = scope === 'vault'
     ? `Disconnect ${serverName} from Vault? Groups using this connection will lose access.`
-    : `Disconnect your private ${serverName} account? Your projects will lose access until you reconnect.`;
+    : `Disconnect the ${serverName} account? Everyone who uses it will lose access until it is reconnected.`;
   const [tokenValid, setTokenValid] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [hasOAuth, setHasOAuth] = useState<boolean | null>(null);

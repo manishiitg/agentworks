@@ -26,9 +26,9 @@ vi.mock('../../services/api', () => ({ default: secretsApi }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
 vi.mock('../../products/work/McpAppsSection', () => ({ McpAppsSection: () => null }))
 
-import { usePrivateMcpConnections } from '../../components/integrations/usePrivateMcpConnections'
+import { usePlaceMcpConnections } from '../../components/integrations/usePlaceMcpConnections'
 import { McpConnectionsPanel } from '../../components/integrations/McpConnectionsPanel'
-function PrivateBrowser(props: Parameters<typeof usePrivateMcpConnections>[0]) { const model = usePrivateMcpConnections(props); return <McpConnectionsPanel {...model}>{model.dialogs}</McpConnectionsPanel> }
+function PlaceBrowser(props: Parameters<typeof usePlaceMcpConnections>[0]) { const model = usePlaceMcpConnections(props); return <McpConnectionsPanel {...model}>{model.dialogs}</McpConnectionsPanel> }
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 catalogFn.mockImplementation(async () => catalogMock.entries)
@@ -39,7 +39,7 @@ async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', 
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<TooltipProvider><PrivateBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} chatSessionId={chatSessionId} /></TooltipProvider>) })
+  await act(async () => { root.render(<TooltipProvider><PlaceBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} chatSessionId={chatSessionId} /></TooltipProvider>) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   if (canEdit) { await act(async () => { host.querySelector<HTMLButtonElement>('button[role="tab"][title="Available"]')!.click() }) }
   return host
@@ -52,7 +52,7 @@ const openPicker = async (_host: HTMLElement) => { await settle() }
 it('lists the connections with whose login they use', async () => {
   const host = await render(false)
   expect(host.textContent).toContain('GoogleGmail')
-  expect(host.textContent).toContain("your login")
+  expect(host.textContent).toContain("Connected by you")
   expect(host.textContent).toContain('Connected')
   // A viewer who cannot edit adds nothing: no connector list.
   expect(host.querySelector('[aria-label="Available servers"]')).toBeNull()
@@ -63,7 +63,7 @@ it('Connect sends the request to the agent chat, no popup, and says whose login 
   const onAsk = vi.fn(async (_message: string) => undefined)
   const host = await render(true, 'Crew', 'Workflow/w', onAsk)
   // The rule is a plain line on the page, not a dialog in the way.
-  expect(host.textContent).toContain('private to you')
+  expect(host.textContent).toContain('used by everyone with access to this')
   expect(host.textContent).toContain('Available')
   expect(host.textContent).toContain('Google apps tab')
   expect(host.textContent).toContain('GITHUB_TOKEN')
@@ -94,7 +94,7 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   ]
   placeMock.add.mockResolvedValueOnce({ name: 'googledrive', oauth: true }).mockResolvedValueOnce({ name: 'googlecalendar', oauth: true })
   const host = await render(true, 'Code', 'Chats/Code/projects/p1')
-  expect(host.textContent).toContain('Sharing a Code does not share your MCP accounts')
+  expect(host.textContent).toContain('used by everyone with access to this Code')
   await openPicker(host)
   expect(host.querySelector('[aria-label="Google Workspace"]')).not.toBeNull()
   await act(async () => { (host.querySelector('input[aria-label="Add GoogleDrive"]') as HTMLButtonElement).click() })

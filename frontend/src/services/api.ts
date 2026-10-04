@@ -1734,7 +1734,7 @@ export const agentApi = {
 
   // --- Gmail connections (multi-account senders) ---
 
-  /** With a Code workspace path: that Code's own private accounts only. */
+  /** With a Code workspace path: the connections of that Code only. */
   listGmailConnections: async (workspacePath?: string): Promise<GmailConnectionsResponse> => {
     const apiResponse = await api.get('/api/human-feedback/gmail/connections', { timeout: 15000, params: workspacePath ? { workspace_path: workspacePath } : undefined })
     return apiResponse.data

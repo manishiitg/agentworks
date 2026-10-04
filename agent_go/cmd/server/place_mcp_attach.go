@@ -41,7 +41,7 @@ func attachmentStore(a placeMCPAttachment, root string) string {
 	}
 	return placeMCPStoreID(a.Owner, root)
 }
-func privateStoreForAttachment(owner, server, root string) string {
+func storeForAttachment(owner, server, root string) string {
 	items, _ := placeMCPAttachmentsFor(root)
 	for _, a := range items {
 		if a.Owner == owner && a.Server == server {
@@ -50,7 +50,7 @@ func privateStoreForAttachment(owner, server, root string) string {
 	}
 	return owner
 }
-func recordPrivateMCP(owner, server, root string) error {
+func attachPersonalLoginToPlace(owner, server, root string) error {
 	placeMCPMu.Lock()
 	defer placeMCPMu.Unlock()
 	all, err := readPlaceMCPAttachmentsLocked()
@@ -483,14 +483,14 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 	// (Setup > Secrets), resolved when the connection is made.
 	store := userID
 	if strings.TrimSpace(request.Label) == "" {
-		store = privateStoreForAttachment(userID, request.Name, root)
+		store = storeForAttachment(userID, request.Name, root)
 	}
-	saved, status, err := api.ensurePrivateMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
+	saved, status, err := api.ensurePersonalMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
 	}
-	if err := recordPrivateMCP(userID, saved.Name, root); err != nil {
+	if err := attachPersonalLoginToPlace(userID, saved.Name, root); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -532,7 +532,7 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
 		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
 	}
-	authURL, discovery, status, err := api.startPlaceMCPSignIn(privateStoreForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), sessionID, entered)
+	authURL, discovery, status, err := api.startPlaceMCPSignIn(storeForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), sessionID, entered)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
@@ -579,7 +579,7 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 
 // removePlaceMCP removes owner's connection from root with its login.
 func removePlaceMCP(owner, name, root string) error {
-	store := privateStoreForAttachment(owner, name, root)
+	store := storeForAttachment(owner, name, root)
 	if err := forgetPlaceMCP(owner, name, root); err != nil {
 		return err
 	}

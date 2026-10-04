@@ -48,16 +48,16 @@ func redactedURL(raw string) string {
 	return u.String()
 }
 
-// ensurePrivateMCP is shared by project UI, Code and builder setup tools.
+// ensurePersonalMCP is shared by project UI, Code and builder setup tools.
 // A label creates a new account. Unlabelled requests reuse an exact connection
 // ID or an unambiguous provider alias without clearing its stored login.
-func (api *StreamingAPI) ensurePrivateMCP(ctx context.Context, person string, body placeMCPServer, catalog string) (placeMCPServer, int, error) {
+func (api *StreamingAPI) ensurePersonalMCP(ctx context.Context, person string, body placeMCPServer, catalog string) (placeMCPServer, int, error) {
 	if strings.TrimSpace(body.Label) == "" && strings.TrimSpace(body.URL) == "" {
 		selector := strings.TrimSpace(body.Name)
 		if selector == "" {
 			selector = catalog
 		}
-		saved, found, err := lookupPrivateMCP(person, selector)
+		saved, found, err := lookupPersonalMCP(person, selector)
 		if err != nil {
 			return placeMCPServer{}, http.StatusBadRequest, err
 		}
@@ -227,7 +227,7 @@ func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionI
 		Config:     cfg,
 		ClientFile: placeMCPClientFile(dir, userID, name),
 		Notify: func(success bool, detail string) {
-			api.notifyPrivateOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
+			api.notifyPlaceOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
 		},
 		Discoverer: oauth.Discoverer{Client: netguard.Client(30 * time.Second)},
 		OnSuccess: func(*OAuthFlowState) {

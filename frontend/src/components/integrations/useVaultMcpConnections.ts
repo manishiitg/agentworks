@@ -16,7 +16,7 @@ export function useVaultMcpConnections({ selectedServers, onSelectedServersChang
   const refresh = useCallback(async () => {
     setLoading(true)
     try { const result = await api.get('/api/me/mcp/vault'); setServers(result.data.servers ?? []); setError(null); setLoaded(true) }
-    catch { setError('Vault is unavailable. Your private MCPs still work.') }
+    catch { setError('Vault is unavailable. The connections of this place still work.') }
     finally { setLoading(false) }
   }, [])
   useEffect(() => { void refresh() }, [refresh])

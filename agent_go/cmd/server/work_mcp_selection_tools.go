@@ -49,7 +49,7 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 				return "", resolveErr
 			}
 			canonical = vaultSelectionName(resolved.Name)
-			if private, found := privateMCPByCatalog(userID, requested); found {
+			if private, found := personalMCPByCatalog(userID, requested); found {
 				canonical = private.Name
 			}
 		}

@@ -383,7 +383,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		}
 		plain := placeMCPPlainName(server)
 		if placeMCPInternalName(person, plain) != server {
-			return nil, errors.New("private MCP does not belong to this user")
+			return nil, errors.New("this connection does not belong to this user")
 		}
 		selector = plain
 	}
@@ -391,7 +391,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	var found bool
 	if !inPlace {
 		var lookupErr error
-		p, found, lookupErr = lookupPrivateMCP(person, selector)
+		p, found, lookupErr = lookupPersonalMCP(person, selector)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
@@ -399,7 +399,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if found {
 		dir, _ := placeMCPDir(person)
 		if !placeMCPServerConnected(dir, person, p) {
-			return nil, errors.New("your private MCP needs sign-in; connect it in My MCPs")
+			return nil, errors.New("this MCP connection needs sign-in; connect it in Integrations > Plugins")
 		}
 		name, cfg, err := placeMCPServerConfig(person, p.Name)
 		if err != nil {
@@ -408,7 +408,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
 	}
 	if isPlaceMCPInternalName(server) {
-		return nil, errors.New("private MCP does not belong to this user")
+		return nil, errors.New("this connection does not belong to this user")
 	}
 	authority, builder, err := api.vaultBuilderAuthority(ctx, person)
 	if err != nil {
@@ -462,7 +462,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// This is only discovery: the gateway still authorizes every live call.
 	for _, name := range names {
 		if name != mcpclient.NoServers && !isPlaceMCPInternalName(name) {
-			if _, found := privateMCPByCatalog(person, name); (inPlace || !found) && !common.IsBuiltinToolCategory(name) {
+			if _, found := personalMCPByCatalog(person, name); (inPlace || !found) && !common.IsBuiltinToolCategory(name) {
 				rows, err := vaultServersFor(ctx, person)
 				ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, err})
 				break
@@ -478,7 +478,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 		if common.IsBuiltinToolCategory(name) {
-			if _, private := privateMCPByCatalog(person, name); inPlace || !private {
+			if _, private := personalMCPByCatalog(person, name); inPlace || !private {
 				selected = append(selected, name)
 				continue
 			}
@@ -547,8 +547,8 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		if isPlaceMCPInternalName(runtimeName) {
 			plain := placeMCPPlainName(runtimeName)
 			aliases[strings.ToLower(plain)] = runtimeName
-			if own, found := privateMCPByCatalog(person, plain); found && own.Catalog != "" {
-				if unambiguous, ok := privateMCPByCatalog(person, own.Catalog); !ok || unambiguous.Name != own.Name {
+			if own, found := personalMCPByCatalog(person, plain); found && own.Catalog != "" {
+				if unambiguous, ok := personalMCPByCatalog(person, own.Catalog); !ok || unambiguous.Name != own.Name {
 					continue
 				}
 				aliases[strings.ToLower(own.Catalog)] = runtimeName

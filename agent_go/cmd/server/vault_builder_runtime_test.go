@@ -66,7 +66,7 @@ func TestVaultBuilderAuthorityIsBoundToAdminProfileAndRevokedLive(t *testing.T) 
 	if len(inventory.Users) != 2 || inventory.Users[1].ID != "member" || inventory.Users[1].Email != "member@example.com" {
 		t.Fatal("builder lacks the active platform directory", inventory.Users)
 	}
-	listing, err := api.privateMCPTool(ctx, "admin", "list_mcp_servers", nil)
+	listing, err := api.mcpConnectionTool(ctx, "admin", "list_mcp_servers", nil)
 	if err != nil || !strings.Contains(listing, `"vault_users"`) || !strings.Contains(listing, "member@example.com") || strings.Contains(listing, "disabled@example.com") {
 		t.Fatal("shared builder tool lacks active emails", listing, err)
 	}

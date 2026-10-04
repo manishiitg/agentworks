@@ -48,15 +48,15 @@ func (api *StreamingAPI) oauthNotificationSession(r *http.Request, requested str
 }
 
 // Use the public private-connection name, never its internal credential key.
-func (api *StreamingAPI) notifyPrivateOAuthFlowOutcome(sessionID, name, notificationID string, success bool, detail string) {
+func (api *StreamingAPI) notifyPlaceOAuthFlowOutcome(sessionID, name, notificationID string, success bool, detail string) {
 	if sessionID == "" {
 		return
 	}
 	status := "completed"
-	message := fmt.Sprintf("Private MCP connection %q finished sign-in and the token was saved. Check its current status and tools through the API bridge before saying it is ready. This is the user's private login, not a Vault group grant. Changes apply from the next agent turn.", name)
+	message := fmt.Sprintf("MCP connection %q finished sign-in and the token was saved. Check its current status and tools through the API bridge before saying it is ready. This is the user's private login, not a Vault group grant. Changes apply from the next agent turn.", name)
 	if !success {
 		status = "failed"
-		message = fmt.Sprintf("Private MCP sign-in for %q did not complete: %s. Tell the user and offer to retry.", name, detail)
+		message = fmt.Sprintf("MCP sign-in for %q did not complete: %s. Tell the user and offer to retry.", name, detail)
 	}
 	api.emitSyntheticTurnReady(sessionID, notificationID, name, status, message)
 	// Continue through the shared browser queue, which works without a resident agent.

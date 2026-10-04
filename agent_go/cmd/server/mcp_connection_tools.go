@@ -10,7 +10,7 @@ import (
 
 // All legacy chat MCP management names now act on the authenticated person's
 // private store. Shared setup is exclusively the Vault agent's management tool.
-func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation string, args map[string]interface{}) (string, error) {
+func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operation string, args map[string]interface{}) (string, error) {
 	if !activeMCPPerson(person) {
 		return "", fmt.Errorf("active user required")
 	}
@@ -84,7 +84,7 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		return fmt.Sprintf("Removed %s from this place. It stops working here for everyone; other places that use the same login keep it.", a.Server), nil
 	}
 	if operation == "remove_mcp_server" {
-		saved, found, lookupErr := lookupPrivateMCP(person, name)
+		saved, found, lookupErr := lookupPersonalMCP(person, name)
 		if lookupErr != nil {
 			return "", lookupErr
 		}
@@ -133,7 +133,7 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 			url, _ = raw["url"].(string)
 		}
 		if raw["headers"] != nil || raw["env"] != nil || raw["command"] != nil {
-			return "", fmt.Errorf("private remote MCP setup accepts a URL; enter credentials in the MCP UI")
+			return "", fmt.Errorf("remote MCP setup accepts a URL; enter credentials in the MCP UI")
 		}
 	}
 	label, _ := args["label"].(string)
@@ -150,12 +150,12 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		if label != "" {
 			return "", fmt.Errorf("use install_mcp_server with label for a new account")
 		}
-		existing, found, lookupErr := lookupPrivateMCP(person, name)
+		existing, found, lookupErr := lookupPersonalMCP(person, name)
 		if lookupErr != nil {
 			return "", lookupErr
 		}
 		if !found {
-			return "", fmt.Errorf("private MCP not found; use its exact connection name")
+			return "", fmt.Errorf("connection not found; use its exact connection name")
 		}
 		body := existing
 		if url != "" {
@@ -173,7 +173,7 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		} else if label == "" {
 			body.Name = name
 		}
-		saved, _, err = api.ensurePrivateMCP(ctx, person, body, catalog)
+		saved, _, err = api.ensurePersonalMCP(ctx, person, body, catalog)
 	}
 	if err != nil {
 		return "", err
@@ -195,23 +195,23 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		}
 	}
 	if root != "" && placeMCPCanAttach(ctx, person, root) {
-		if err := recordPrivateMCP(person, saved.Name, root); err != nil {
+		if err := attachPersonalLoginToPlace(person, saved.Name, root); err != nil {
 			return "", err
 		}
 	}
 	if saved.OAuth == nil {
-		return fmt.Sprintf("Connected %s privately. Select it for this project; use Vault to share it.", saved.Name), nil
+		return fmt.Sprintf("Connected %s. Everyone with access to this place can use it; use Vault to share it across places.", saved.Name), nil
 	}
 	redirect := deriveOAuthRedirectURIFromEnv()
 	if redirect == "" {
-		return fmt.Sprintf("Added %s privately. Finish sign-in in Integrations → My MCPs.", saved.Name), nil
+		return fmt.Sprintf("Added %s. Finish sign-in in Integrations → Plugins.", saved.Name), nil
 	}
 	authURL, discovery, _, err := api.startPlaceMCPSignIn(person, saved.Name, redirect, chatSessionIDFromContext(ctx), nil)
 	if err != nil {
 		return "", err
 	}
 	if discovery != nil {
-		return fmt.Sprintf("Added %s privately. Finish its OAuth app setup in Integrations → My MCPs; never paste credentials into chat.", saved.Name), nil
+		return fmt.Sprintf("Added %s. Finish its OAuth app setup in Integrations → Plugins; never paste credentials into chat.", saved.Name), nil
 	}
-	return fmt.Sprintf("Added %s privately. Sign in: %s", saved.Name, authURL), nil
+	return fmt.Sprintf("Added %s. Sign in: %s", saved.Name, authURL), nil
 }

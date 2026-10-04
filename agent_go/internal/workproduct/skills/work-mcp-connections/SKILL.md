@@ -31,17 +31,17 @@ Shared MCPs belong in Vault and require group permissions on every tool call.
   access token in the secret `GITHUB_TOKEN`, used with git and the GitHub API.
   Point the person there instead of trying `connect`.
 - **Providers that need an OAuth app.** When `connect` says so, send the person
-  to **Integrations > MCP** to finish it. Never ask for passwords, API keys
+  to **Integrations > Plugins** to finish it. Never ask for passwords, API keys
   or OAuth client secrets in chat. A server that takes an API key uses a secret
-  the person stores privately; a connection refers to its secret name.
+  the person stores as a secret; a connection refers to its secret name.
 - **Remove one.** `manage_my_mcp_servers` with `remove` and the connection's
-  `name` detaches it from this project; their private account can be reused elsewhere. Say which connection you are removing first.
+  `name` detaches it from this project for everyone; the same login can stay connected to other projects. Say which connection you are removing first.
 - **When a call fails.** "not available in this chat" means the connection was
   removed or its owner lost access. Run `list`, then connect it again. A
   direct tool that is missing is not a failure: use the bridge.
 
 - **Multiple accounts.** Use `connect`, `catalog` and `label` (e.g. "Notion ·
-  Engineering") to create a separate private account. It returns an exact
+  Engineering") to create a separate account with its own login. It returns an exact
   connection `name` with independent credentials. Another labelled request
   creates another account; do not replace an existing one. Reconnect or attach
   an existing account with `connect` and its exact `name`, omitting label.

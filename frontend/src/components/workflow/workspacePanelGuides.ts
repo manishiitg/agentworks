@@ -269,7 +269,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: `Private app connections, project secrets, skills and shared Vault access for this ${surface === 'crew' ? 'project' : 'workflow'}.`,
     howTo: 'Use Back to return to other integrations. Choose a tab in this header to change the type of resource.',
     steps: [
-      'Connected shows your private accounts; Available lets you add another account with its own login.',
+      'Connected shows the connections of this place; Available lets you add another account with its own login.',
       'Secrets and Skills manage resources for this project.',
       'Vault shows your groups and the shared connections and secret names they permit. Select the resources this project should use.',
     ],

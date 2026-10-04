@@ -1,5 +1,5 @@
 import { McpConnectionsPanel } from './McpConnectionsPanel'
-import { usePrivateMcpConnections } from './usePrivateMcpConnections'
+import { usePlaceMcpConnections } from './usePlaceMcpConnections'
 
 /** Project adapter. All MCP presentation is owned by McpConnectionsPanel. */
 export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId, view }: {
@@ -8,10 +8,10 @@ export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, chat
   workspacePath: string; placeNoun: string; canEdit: boolean; onAsk?: (message: string) => Promise<void>
   selectedServers: string[]; onSelectedServersChange: (servers: string[]) => Promise<unknown> | void
 }) {
-  const personal = usePrivateMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId })
-  return <McpConnectionsPanel view={view} servers={personal.servers} catalog={personal.catalog} showTools={false}
-    loading={personal.loading} notices={personal.notices}
-    refresh={() => { void personal.refresh() }} addCustom={personal.addCustom} help={personal.help}>
-    {personal.dialogs}
+  const place = usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId })
+  return <McpConnectionsPanel view={view} servers={place.servers} catalog={place.catalog} showTools={false}
+    loading={place.loading} notices={place.notices}
+    refresh={() => { void place.refresh() }} addCustom={place.addCustom} help={place.help}>
+    {place.dialogs}
   </McpConnectionsPanel>
 }

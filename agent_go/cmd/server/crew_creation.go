@@ -850,7 +850,7 @@ func (s *ProductScheduleService) probeCrewCreationMCPServer(ctx context.Context,
 	if s == nil || s.api == nil {
 		return "", false, fmt.Errorf("MCP configuration is unavailable")
 	}
-	if own, found := privateMCPByCatalog(userID, name); found {
+	if own, found := personalMCPByCatalog(userID, name); found {
 		dir, _ := placeMCPDir(userID)
 		return own.Name, placeMCPServerConnected(dir, userID, own), nil
 	}

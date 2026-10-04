@@ -1,6 +1,6 @@
 ---
 name: work-mcp
-description: Connect and manage private MCP servers and select permitted Vault connections for {{product}} projects.
+description: Connect and manage this project's MCP connections and select permitted Vault connections for {{product}} projects.
 ---
 
 # {{product}} MCP
@@ -8,15 +8,16 @@ description: Connect and manage private MCP servers and select permitted Vault c
 Read this skill before acting on an MCP Connect request. Use the setup tools
 below; a new connection request does not require reading old conversations.
 
-Use `list_mcp_servers` to inspect the caller's private connections and the Vault
+Use `list_mcp_servers` to inspect this project's connections and the Vault
 servers their groups permit. Use `search_mcp_catalog` for connection templates.
 
-- New MCP connections are private to the authenticated user. Use
-  `install_mcp_server` for a catalog server or a user-supplied remote MCP URL.
-  Other users of the same project cannot run with that person's credentials.
-- Shared MCPs belong in **Vault**. An administrator connects them there and
+- A new MCP connection belongs to the project it is added to: everyone with
+  access to the project uses it, and no other project does. It acts as the
+  connected account, so say whose login it is. Use `install_mcp_server` for a
+  catalog server or a user-supplied remote MCP URL.
+- MCPs shared across projects belong in **Vault**. An administrator connects them there and
   assigns tools and resource conditions to groups. Connecting grants no access.
-- Use `update_project_mcp_server_selection` to select or deselect a private
+- Use `update_project_mcp_server_selection` to select or deselect a
   connection or an exact Vault connection ID for the active project. Project
   selection is an additional limit; it cannot grant Vault permissions.
 - Vault checks the caller's current permissions on every call, including
@@ -27,9 +28,9 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
   Discover loaded tools with `search_tools(query="<provider or task>")`, then
   `get_api_spec(tool_name="<returned-name>")` for their argument schemas.
   Only use a runtime `server_name` returned by `search_tools` when filtering;
-  public connection IDs and private connection names are selection IDs.
+  public connection IDs and connection names are selection IDs.
 - Tools become available from the next user message. Confirm what was saved,
-  which connection is private or shared, and any remaining sign-in step.
+  which connection belongs to this project or is shared through Vault, and any remaining sign-in step.
 - For a Connect request, inspect the current inventory first to avoid a duplicate.
   Install the requested catalog connection, return any real OAuth sign-in link,
   and select the connection for this project after sign-in. Refresh the inventory
@@ -38,12 +39,12 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
   the person back to the same Connect button that invoked this request, retry
   identical failing commands, or describe a filesystem error as a missing role.
 - Never ask for passwords, API keys or OAuth client secrets in chat. Direct
-  users to **Integrations > My MCPs** for secure credential entry. Display
+  users to **Integrations > Plugins** for secure credential entry. Display
   OAuth links only when the setup tool actually returns one.
 
 ## Multiple accounts
 
-All products support multiple named private connections to one MCP provider.
+All products support multiple named connections to one MCP provider.
 Use `install_mcp_server(name="<catalog provider>", catalog="<catalog provider>",
 label="Notion · Engineering")` to create a separate account. A label creates a
 new connection, with a stable generated connection name and independent OAuth
