@@ -59,6 +59,40 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "fingerprint": t.Fingerprint, "description": t.Description, "annotations": json.RawMessage(t.Annotations)})
 		}
 		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListAppliedPackages(a.WorkspaceID), "providers": a.Catalog.Providers}, nil
+	case "inspect_group", "remove_group_mcp":
+		var in struct {
+			GroupID     string `json:"group_id"`
+			ConnectorID string `json:"connector_id,omitempty"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(raw)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&in) != nil || decoder.Decode(&struct{}{}) != io.EOF || !validID.MatchString(in.GroupID) || (name == "inspect_group" && in.ConnectorID != "") {
+			return nil, errors.New("provide an exact group_id and, for removal, connector_id")
+		}
+		group, ok := a.Store.GetGroup(in.GroupID)
+		if !ok || group.WorkspaceID != a.WorkspaceID {
+			return nil, errors.New("unknown group")
+		}
+		if name == "inspect_group" {
+			return map[string]any{"group": group, "members": a.Store.MembersOf(group.ID), "server_grants": a.Store.GroupServersFor(group.ID), "permissions": a.groupPermissions(group.ID)}, nil
+		}
+		if !validID.MatchString(in.ConnectorID) || !a.Store.RemoveGroupConnectorAccess(a.WorkspaceID, group.ID, in.ConnectorID, setupActor(actors)) {
+			return nil, errors.New("unknown connector")
+		}
+		if err := a.Store.PersistenceError(); err != nil {
+			return nil, err
+		}
+		permissions := []groupPermission{}
+		allowed := 0
+		for _, permission := range a.groupPermissions(group.ID) {
+			if permission.ConnectorID == in.ConnectorID {
+				permissions = append(permissions, permission)
+				if permission.Allowed {
+					allowed++
+				}
+			}
+		}
+		return map[string]any{"group": group, "connector_id": in.ConnectorID, "removed": true, "server_grant_active": a.Store.GroupHasServer(group.ID, in.ConnectorID), "allowed_tool_count": allowed, "permissions": permissions}, nil
 	case "inspect_tool":
 		var in struct {
 			PublicName string `json:"public_name"`

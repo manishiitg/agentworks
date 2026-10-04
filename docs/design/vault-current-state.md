@@ -442,6 +442,8 @@ Connection settings reauthorize only that row. Disconnect removes that connectio
 | --- | --- | --- |
 | `inspect_environment` | `{}` | Actual catalog providers, connectors, groups, tools and active platform users (ID, email, username) |
 | `list_users` | `{}` | Fresh active platform account directory, matching Users & access; no gateway dependency |
+| `inspect_group` | `{group_id}` | Effective tool permissions, whole-server grants and members using the UI authorization logic |
+| `remove_group_mcp` | `{group_id,connector_id}` | Atomic removal of this connector’s group access, with an effective-access receipt |
 | `connect_server` | `{provider, label, instance?}` | Create a named catalog connection; OAuth starts pending |
 | `connect_server` | `{name, url, instance?}` | Existing custom-server flow; credentials stay outside chat |
 | `sign_in_connection` | `{connection_id}` | Same OAuth flow as the UI; returns an authorization link or directs client-app setup to the secure form |
@@ -686,3 +688,24 @@ directory `id` and matches the administrator's requested email exactly. It asks
 when a name is ambiguous and never invents an address for a local account with
 no email. Directory failures are reported as errors. Reading this metadata does
 not create accounts, sync gateway users, or change memberships or grants.
+
+
+### Group MCP removal and verification
+
+Vault profile v9 exposes `inspect_group` and `remove_group_mcp`. The builder and
+UI share the same group permission calculation and `RemoveGroupConnectorAccess`
+mutation. Removing a connector from a group deletes its whole-server grant,
+individual tool grants and matching saved rules, preserves other groups and
+connectors, and remembers an explicit Platform revocation across restart or
+discovery. The builder receipt includes `server_grant_active`,
+`allowed_tool_count` and the affected effective permissions.
+
+`group_tool_grants` is only one permission source: deleting its rows does not
+remove a `group_server_grants` grant or a saved permission rule. Builder prompts
+require the shared removal operation and effective-access verification before
+reporting success. A group-level removal does not establish that a user has no
+access through another group or a direct grant.
+
+Group MCP panels show assigned connectors by default. Unassigned connectors
+remain available behind **Add MCPs**, labelled **Not in this group**; removing
+a group grant does not disconnect the MCP server.

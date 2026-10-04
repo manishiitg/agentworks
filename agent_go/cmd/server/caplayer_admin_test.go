@@ -153,7 +153,8 @@ func TestCapLayerAgentUsesAllowedSetupOperationsAndRechecksRoles(t *testing.T) {
 			Operation string          `json:"operation"`
 			Arguments json.RawMessage `json:"arguments"`
 		}
-		if json.NewDecoder(r.Body).Decode(&input) != nil || (input.Operation != "inspect_environment" && input.Operation != "connect_server") || string(input.Arguments) != "{}" {
+		allowed := map[string]bool{"inspect_environment": true, "connect_server": true, "inspect_group": true, "remove_group_mcp": true}
+		if json.NewDecoder(r.Body).Decode(&input) != nil || !allowed[input.Operation] || string(input.Arguments) != "{}" {
 			t.Error("incorrect tool arguments")
 		}
 		w.Write([]byte(`{"tools":[]}`))
@@ -175,7 +176,7 @@ func TestCapLayerAgentUsesAllowedSetupOperationsAndRechecksRoles(t *testing.T) {
 	if calls != 0 {
 		t.Fatal("denied operation reached gateway")
 	}
-	for _, operation := range []string{"inspect_environment", "connect_server"} {
+	for _, operation := range []string{"inspect_environment", "connect_server", "inspect_group", "remove_group_mcp"} {
 		if _, err := capLayerAgentAccess(context.Background(), "admin", operation, json.RawMessage(`{}`)); err != nil {
 			t.Fatal(err)
 		}
@@ -185,8 +186,8 @@ func TestCapLayerAgentUsesAllowedSetupOperationsAndRechecksRoles(t *testing.T) {
 	if _, err := capLayerAgentAccess(context.Background(), "admin", "inspect_environment", json.RawMessage(`{}`)); err == nil {
 		t.Fatal("revoked administrator retained tool access")
 	}
-	if calls != 2 {
-		t.Fatalf("expected two authorized calls, got %d", calls)
+	if calls != 4 {
+		t.Fatalf("expected four authorized calls, got %d", calls)
 	}
 }
 
@@ -204,7 +205,7 @@ func TestCapLayerProfileUsesSharedNativeToolsAndGovernanceBridge(t *testing.T) {
 		t.Fatalf("management tool still exposes legacy branding: %+v, %v", tool, err)
 	}
 	parameters, err := json.Marshal(tool.Parameters)
-	if err != nil || !strings.Contains(string(parameters), `"list_users"`) {
+	if err != nil || !strings.Contains(string(parameters), `"list_users"`) || !strings.Contains(string(parameters), `"inspect_group"`) || !strings.Contains(string(parameters), `"remove_group_mcp"`) {
 		t.Fatal("Vault tool schema does not expose account lookup", err)
 	}
 	if len(profile.Skills) != 1 || profile.Skills[0] != "vault-access" {

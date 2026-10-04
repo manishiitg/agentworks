@@ -541,6 +541,7 @@ function GroupPermissions({
   const [permError, setPermError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [removeServer, setRemoveServer] = useState<{ id: string; name: string } | null>(null)
+  const [showAvailable, setShowAvailable] = useState(false)
 
   const toolsByConnector = useMemo(() => {
     const byId = new Map<string, GatewayTool[]>()
@@ -556,6 +557,7 @@ function GroupPermissions({
   useEffect(() => {
     setPermError(null)
     setExpanded(new Set())
+    setShowAvailable(false)
   }, [groupId])
 
   async function run(key: string, fn: () => Promise<unknown>) {
@@ -586,6 +588,15 @@ function GroupPermissions({
     )
   }
 
+  const connectorAssigned = (id: string) => {
+    const tools = toolsByConnector.get(id) ?? []
+    return data.servers.has(id)
+      || tools.some(t => data.permissions.get(t.PublicName)?.assigned || data.permissions.get(t.PublicName)?.allowed || data.permissions.get(t.PublicName)?.source === 'tool')
+      || data.policies.some(p => p.status === 'published' && p.rules.some(r => tools.some(t => t.PublicName === r.public_name)))
+  }
+  const availableCount = data.connectors.filter(c => !connectorAssigned(c.ID)).length
+  const visibleConnectors = data.connectors.filter(c => showAvailable || connectorAssigned(c.ID))
+
   return (
     <div className="space-y-3 text-xs">
       {permError && <ConsoleError message={permError} onRetry={onChanged} />}
@@ -594,13 +605,13 @@ function GroupPermissions({
         <SettingsEmpty>No servers connected yet. Connect one on the Servers page first.</SettingsEmpty>
       ) : (
         <div className="space-y-2" data-testid="gateway-permissions">
-          {data.connectors.map((c) => {
+          {visibleConnectors.length === 0 && <SettingsEmpty>No MCPs assigned.</SettingsEmpty>}
+          {visibleConnectors.map((c) => {
             const full = data.servers.has(c.ID)
             const tools = [...(toolsByConnector.get(c.ID) ?? [])].sort((a, b) =>
               Number(data.permissions.get(b.PublicName)?.allowed ?? false) - Number(data.permissions.get(a.PublicName)?.allowed ?? false))
             const allowedTools = tools.filter(t => data.permissions.get(t.PublicName)?.allowed).length
-            const assigned = full || tools.some(t => data.permissions.get(t.PublicName)?.assigned || data.permissions.get(t.PublicName)?.allowed || data.permissions.get(t.PublicName)?.source === 'tool')
-              || data.policies.some(p => p.status === 'published' && p.rules.some(r => tools.some(t => t.PublicName === r.public_name)))
+            const assigned = connectorAssigned(c.ID)
             const regexRules = data.policies.filter(p => p.status === 'published').flatMap(p => p.rules)
               .filter(rule => tools.some(tool => tool.PublicName === rule.public_name))
               .reduce((count, rule) => count + rule.conditions.filter(condition => condition.op === 'matches').length, 0)
@@ -614,6 +625,7 @@ function GroupPermissions({
                   detail={<>
                     {regexRules > 0 && <span className="rounded bg-muted px-2 py-0.5" title="Saved regular-expression conditions">{regexRules} regex {regexRules === 1 ? 'rule' : 'rules'}</span>}
                     {full && <span className="text-xs text-muted-foreground">Server-wide grant active</span>}
+                    {!assigned && <span className="text-xs text-muted-foreground">Not in this group</span>}
                   </>}
                   actions={<Button variant="ghost" size="xs" disabled={!assigned || busy !== null}
                     className="text-muted-foreground hover:text-destructive"
@@ -658,6 +670,10 @@ function GroupPermissions({
               </div>
             )
           })}
+          {availableCount > 0 && <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAvailable(value => !value)}>
+            <Server className="h-3.5 w-3.5" />
+            {showAvailable ? 'Hide available MCPs' : `Add MCPs (${availableCount})`}
+          </Button>}
         </div>
       )}
       <ConfirmationDialog

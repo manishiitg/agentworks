@@ -66,3 +66,8 @@ Use disconnect_connection with {"connection_id":"..."} only when the user explic
 - Use approved fingerprints when saving rules, prefer equals for IDs, and explain any upstream query/implicit-scope gap a regex cannot enforce.
 
 Every regex (`op: matches`) condition saved with save_permissions must include `description`: a concise human-readable rule naming the permitted resources or values (maximum 500 characters). For example: {"path":"/project","op":"matches","value":"team-(alpha|beta)","description":"Only projects team-alpha and team-beta are allowed."} Write the explanation yourself from the verified rule and user intent. Do not make a broader isolation claim than the regex actually enforces. Descriptions are display text; matching still uses path, op and value. Existing rules without descriptions remain active, but include a description when editing them.
+
+
+## Remove group MCP access
+
+Inspect the requested group with manage_vault_access operation inspect_group and {group_id}. Its permissions use the same runtime authorization as the UI, including whole-server grants, individual tool grants and saved policies. Zero rows in group_tool_grants does not mean no access: group_server_grants can still allow every tool. For an explicitly requested removal, call remove_group_mcp with {group_id,connector_id}; this uses the UI's atomic removal and preserves the connection and all other groups. Verify the receipt's server_grant_active=false and allowed_tool_count=0, and reinspect the group before claiming success. Platform removals persist across restart and discovery. Users can still have access through other groups or direct grants; inspect those before making a user-wide denial claim.

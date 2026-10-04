@@ -37,7 +37,7 @@ func BuiltinAgentProfile() agentprofiles.Profile {
 	}
 	prompt, _ := files.ReadFile("system-prompt.md")
 	return agentprofiles.Profile{
-		ID: ProfileID, Name: "Vault", Version: 8, BuiltIn: true,
+		ID: ProfileID, Name: "Vault", Version: 9, BuiltIn: true,
 		Scope:                agentprofiles.ProfileScopeProject,
 		SystemPromptTemplate: string(prompt), Skills: []string{"vault-access"},
 		Tools:      []agentprofiles.ToolBinding{{ID: "caplayer.access"}, {ID: "caplayer.database.query"}, {ID: "caplayer.database.mutate"}, {ID: "caplayer.secrets"}},
@@ -58,12 +58,12 @@ func RegisterRuntime(registry *agentprofiles.Registry, execute AccessExecutor) e
 	return registry.RegisterToolFactory("caplayer.access", func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
 		return agentprofiles.ToolSpec{
 			Name: "manage_vault_access", Category: "vault",
-			Description: "Create named catalog MCP connections with separate OAuth accounts, start sign-in for a connection, check connection status, sync tools, disconnect an explicitly requested connection, connect a custom MCP server by name and URL, list active platform users by email, username and ID, inspect connected MCP tools and groups, inspect an exact tool schema, or save and immediately apply validated access permissions. Connection approves initial tool definitions but assigns no group access. Regex conditions require a human-readable description. Cannot handle credentials, add group members or execute upstream tools. Read vault-access first.",
+			Description: "Create named catalog MCP connections with separate OAuth accounts, start sign-in for a connection, check connection status, sync tools, disconnect an explicitly requested connection, connect a custom MCP server by name and URL, list active platform users by email, username and ID, inspect a group's effective tool access, remove all access to one MCP from one group, inspect connected MCP tools and groups, inspect an exact tool schema, or save and immediately apply validated access permissions. Connection approves initial tool definitions but assigns no group access. Regex conditions require a human-readable description. Cannot handle credentials, add group members or execute upstream tools. Read vault-access first.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{
-					"operation": map[string]interface{}{"type": "string", "enum": []string{"inspect_environment", "list_users", "inspect_tool", "save_permissions", "connect_server", "sign_in_connection", "connection_status", "sync_connection", "disconnect_connection"}},
-					"arguments": map[string]interface{}{"type": "object", "description": "connect_server: {provider, label, instance?} for catalog or {name, url, instance?} for custom (no credentials); sign_in_connection/connection_status/sync_connection/disconnect_connection: {connection_id}; inspect_environment/list_users: {}; inspect_tool: {public_name}; save_permissions: {id?, version?, name, group_id, rules:[{public_name,fingerprint,conditions:[{path,op:equals|matches,value,description}]}]}; description is required for matches and explains the allowed resources or values in plain language (maximum 500 characters)."},
+					"operation": map[string]interface{}{"type": "string", "enum": []string{"inspect_environment", "list_users", "inspect_group", "remove_group_mcp", "inspect_tool", "save_permissions", "connect_server", "sign_in_connection", "connection_status", "sync_connection", "disconnect_connection"}},
+					"arguments": map[string]interface{}{"type": "object", "description": "connect_server: {provider, label, instance?} for catalog or {name, url, instance?} for custom (no credentials); sign_in_connection/connection_status/sync_connection/disconnect_connection: {connection_id}; inspect_environment/list_users: {}; inspect_group: {group_id}; remove_group_mcp: {group_id,connector_id} removes whole-server, individual tool and saved policy grants for this group/connector, leaving the connection and other groups intact; inspect_tool: {public_name}; save_permissions: {id?, version?, name, group_id, rules:[{public_name,fingerprint,conditions:[{path,op:equals|matches,value,description}]}]}; description is required for matches and explains the allowed resources or values in plain language (maximum 500 characters)."},
 				}, "required": []string{"operation", "arguments"},
 			},
 			Execute: func(ctx context.Context, args map[string]interface{}) (string, error) {

@@ -115,9 +115,10 @@ describe('GatewayGroupsPanel', () => {
     expect(container!.querySelector('[aria-label="Group users"]')).toBeNull()
     expect(container!.querySelector('[role=tab][title=Secrets]')).not.toBeNull()
     expect(container!.textContent).not.toContain('Whole server')
-    expect(container!.querySelector('[aria-label="Remove Notion from group"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Remove Notion from group"]')).toBeNull()
     expect(container!.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
-    expect(container!.querySelector('[title="0 of 1 tools allowed for this group"]')!.textContent).toContain('0/1')
+    expect(container!.textContent).toContain('No MCPs assigned.')
+    expect(container!.textContent).toContain('Add MCPs (1)')
   })
 
   it('keeps secret controls mounted and the add list open while refreshing after a saved grant', async () => {
@@ -201,6 +202,8 @@ describe('GatewayGroupsPanel', () => {
     await act(async () => {})
     expect(container!.querySelector('[data-testid="gateway-group-select"]')).toBeNull()
     expect(container!.textContent).not.toContain('Sales scoped access')
+    expect(container!.querySelector('[aria-label="Show tools on Notion"]')).toBeNull()
+    await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent?.includes('Add MCPs')) as HTMLButtonElement).click() })
     expect(container!.querySelector('[title="0 of 1 tools allowed for this group"]')!.textContent).toContain('0/1')
     expect(container!.textContent).not.toContain('Engineering scoped access')
     expect(container!.textContent).not.toContain('eng-project')
@@ -246,8 +249,30 @@ describe('GatewayGroupsPanel', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/groups/eng/servers/c1/access`, expect.objectContaining({ method: 'DELETE' }))
   })
 
-  it('expands a server to grant specific tools', async () => {
+  it('hides a removed MCP from the assigned list but keeps it available to add', async () => {
+    let removed = false
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') { removed = true; return Promise.resolve(jsonResponse(204, {})) }
+      if (url.endsWith('/servers')) return Promise.resolve(jsonResponse(200, { servers: removed ? [] : ['c1'] }))
+      if (url.includes('/permissions')) return Promise.resolve(jsonResponse(200, { permissions: [{ public_name: 'notion__search', allowed: !removed, assigned: !removed, governed: false, source: removed ? '' : 'server' }] }))
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock)
+    expect(container!.querySelector('[aria-label="Remove Notion from group"]')).not.toBeNull()
+    await act(async () => { (container!.querySelector('[aria-label="Remove Notion from group"]') as HTMLButtonElement).click() })
+    const confirm = [...document.body.querySelectorAll('button')].find(button => button.textContent === 'Remove from group' && !button.hasAttribute('aria-label')) as HTMLButtonElement
+    await act(async () => { confirm.click() })
+    await act(async () => {})
+    expect(container!.querySelector('[aria-label="Remove Notion from group"]')).toBeNull()
+    expect(container!.textContent).toContain('No MCPs assigned.')
+    expect(container!.textContent).toContain('Add MCPs (1)')
+  })
+
+  it('expands an available server to grant specific tools', async () => {
     await renderPanel()
+    expect(container!.querySelector('[aria-label="Show tools on Notion"]')).toBeNull()
+    await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent?.includes('Add MCPs')) as HTMLButtonElement).click() })
+    expect(container!.textContent).toContain('Not in this group')
 
     expect(container!.textContent).not.toContain('notion__search')
     await act(async () => {

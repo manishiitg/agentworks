@@ -43,36 +43,7 @@ func (a *Admin) accessRoutes(mux *http.ServeMux) {
 			writeErr(w, http.StatusNotFound, errors.New("unknown group"))
 			return
 		}
-		type permission struct {
-			PublicName string `json:"public_name"`
-			Allowed    bool   `json:"allowed"`
-			Governed   bool   `json:"governed"`
-			Source     string `json:"source"`
-			Assigned   bool   `json:"assigned"`
-		}
-		permissions := []permission{}
-		assignedRules := map[string]bool{}
-		for _, p := range a.Store.ListAppliedPackages(a.WorkspaceID) {
-			if p.GroupID == group.ID && p.Status == "published" {
-				for _, rule := range p.Rules {
-					assignedRules[rule.PublicName] = true
-				}
-			}
-		}
-		for _, tool := range a.Store.ListTools(a.WorkspaceID) {
-			_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
-			_, err := policy.Authorize(a.Store, auth.Identity{WorkspaceID: a.WorkspaceID, ViaGroup: group.ID}, tool.PublicName)
-			source := ""
-			if governed {
-				source = "policy"
-			} else if a.Store.GroupHasServer(group.ID, tool.ConnectorID) {
-				source = "server"
-			} else if a.Store.GroupHasTool(group.ID, tool.PublicName) {
-				source = "tool"
-			}
-			assigned := assignedRules[tool.PublicName] || a.Store.GroupHasServer(group.ID, tool.ConnectorID) || a.Store.GroupHasTool(group.ID, tool.PublicName)
-			permissions = append(permissions, permission{tool.PublicName, err == nil, governed, source, assigned})
-		}
+		permissions := a.groupPermissions(group.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"permissions": permissions})
 	}))
 	mux.HandleFunc("/api/admin/access/packages", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -140,4 +111,41 @@ func adminActor(r *http.Request) string {
 		return actor
 	}
 	return "local-admin"
+}
+
+type groupPermission struct {
+	PublicName  string `json:"public_name"`
+	ConnectorID string `json:"connector_id"`
+	Allowed     bool   `json:"allowed"`
+	Governed    bool   `json:"governed"`
+	Source      string `json:"source"`
+	Assigned    bool   `json:"assigned"`
+}
+
+// Shared by the UI and builder; counts include whole-server grants and policies.
+func (a *Admin) groupPermissions(groupID string) []groupPermission {
+	permissions := []groupPermission{}
+	assignedRules := map[string]bool{}
+	for _, p := range a.Store.ListAppliedPackages(a.WorkspaceID) {
+		if p.GroupID == groupID && p.Status == "published" {
+			for _, rule := range p.Rules {
+				assignedRules[rule.PublicName] = true
+			}
+		}
+	}
+	for _, tool := range a.Store.ListTools(a.WorkspaceID) {
+		_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
+		_, err := policy.Authorize(a.Store, auth.Identity{WorkspaceID: a.WorkspaceID, ViaGroup: groupID}, tool.PublicName)
+		source := ""
+		if governed {
+			source = "policy"
+		} else if a.Store.GroupHasServer(groupID, tool.ConnectorID) {
+			source = "server"
+		} else if a.Store.GroupHasTool(groupID, tool.PublicName) {
+			source = "tool"
+		}
+		assigned := assignedRules[tool.PublicName] || a.Store.GroupHasServer(groupID, tool.ConnectorID) || a.Store.GroupHasTool(groupID, tool.PublicName)
+		permissions = append(permissions, groupPermission{tool.PublicName, tool.ConnectorID, err == nil, governed, source, assigned})
+	}
+	return permissions
 }

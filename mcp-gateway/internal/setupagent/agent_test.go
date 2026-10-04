@@ -9,8 +9,22 @@ import (
 
 func TestToolDefinitionsAreValidJSON(t *testing.T) {
 	var tools []map[string]any
-	if err := json.Unmarshal(toolDefinitions, &tools); err != nil || len(tools) != 4 {
+	if err := json.Unmarshal(toolDefinitions, &tools); err != nil || len(tools) != 6 {
 		t.Fatalf("invalid setup tool schema: %v", err)
+	}
+	names := map[string]bool{}
+	for _, tool := range tools {
+		function, ok := tool["function"].(map[string]any)
+		if !ok {
+			t.Fatal("setup tool missing function schema")
+		}
+		name, _ := function["name"].(string)
+		names[name] = true
+	}
+	for _, name := range []string{"inspect_group", "remove_group_mcp"} {
+		if !names[name] {
+			t.Fatalf("missing group access tool %s", name)
+		}
 	}
 }
 
