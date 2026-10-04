@@ -227,8 +227,10 @@ export interface ProviderSetupSession {
 }
 
 // Create axios instance for LLM configuration API (use Vite env so deploy URL works)
+// The base URL is read per request, not when this module loads: api.ts imports stores that import this
+// module, so a load-time call hits api.ts before it has finished initializing (a circular import that
+// broke any test importing useLLMStore first), and a per-request read also follows a workspace switch.
 const llmConfigApi = axios.create({
-  baseURL: getApiBaseUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -237,6 +239,7 @@ const llmConfigApi = axios.create({
 
 // Add auth token interceptor
 llmConfigApi.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl()
   const authToken = getAuthToken()
   if (authToken && config.headers) {
     config.headers['Authorization'] = `Bearer ${authToken}`
