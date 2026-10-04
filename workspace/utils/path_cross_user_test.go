@@ -109,3 +109,59 @@ func TestIsValidFilePathRefusesALinkToTheUsersFolderItself(t *testing.T) {
 		t.Error("a link to the _users folder would list every account")
 	}
 }
+
+// PLAT-442 step 4: a Crew at Crew/<id> is protected from symlinks the way a Crew in its owner's tree was (the
+// "_users/<owner>" rule above): a link made anywhere else must not read it, and a link made in it must not
+// carry a path into another Crew or the Crew root.
+func TestIsValidFilePathSharedCrewTreesAreClosedToLinksFromElsewhere(t *testing.T) {
+	docs := crossUserFixture(t)
+	for _, p := range []string{"Crew/sde-1a2b/db", "Crew/ops-9f00/db", "Crew/.migration"} {
+		if err := os.MkdirAll(filepath.Join(docs, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for p, c := range map[string]string{
+		"Crew/sde-1a2b/db/db.sqlite": "sde-db",
+		"Crew/sde-1a2b/notes.md":     "sde",
+		"Crew/ops-9f00/notes.md":     "ops",
+	} {
+		if err := os.WriteFile(filepath.Join(docs, p), []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alice := filepath.Join(docs, "_users", "alice", "Chats")
+	sde := filepath.Join(docs, "Crew", "sde-1a2b")
+	mustLink := func(target, link string) {
+		t.Helper()
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// From a user's tree into a Crew, file and folder, absolute and relative.
+	mustLink(filepath.Join(sde, "notes.md"), filepath.Join(alice, "crewfile"))
+	mustLink("../../../Crew/sde-1a2b", filepath.Join(alice, "crewdir"))
+	// From a shared folder, from the Crew root, from another Crew.
+	mustLink(filepath.Join(sde, "notes.md"), filepath.Join(docs, "Workflow", "shared", "leak.md"))
+	mustLink(filepath.Join(docs, "Crew"), filepath.Join(alice, "allcrews"))
+	mustLink(filepath.Join(sde, "notes.md"), filepath.Join(docs, "Crew", "ops-9f00", "peek.md"))
+	mustLink("../.migration", filepath.Join(sde, "journal"))
+	for _, p := range []string{
+		"_users/alice/Chats/crewfile", "_users/alice/Chats/crewdir", "_users/alice/Chats/crewdir/db/db.sqlite",
+		"Workflow/shared/leak.md", "_users/alice/Chats/allcrews", "_users/alice/Chats/allcrews/sde-1a2b/notes.md",
+		"Crew/ops-9f00/peek.md", "Crew/sde-1a2b/journal",
+	} {
+		if IsValidFilePath(filepath.Join(docs, p), docs) {
+			t.Errorf("%s: a symlink carried a path into a Crew tree it was not made in", p)
+		}
+		if _, err := ResolveUserPath(docs, p, "alice"); err == nil {
+			t.Errorf("ResolveUserPath resolved %s", p)
+		}
+	}
+	// The Crew's own files, its own internal links and the root itself (no link) stay reachable.
+	mustLink("notes.md", filepath.Join(sde, "inner-link.md"))
+	for _, p := range []string{"Crew/sde-1a2b/notes.md", "Crew/sde-1a2b/db/db.sqlite", "Crew/sde-1a2b/inner-link.md", "Crew/sde-1a2b/new/file.txt", "Crew", "Crew/new-crew/product.json"} {
+		if !IsValidFilePath(filepath.Join(docs, p), docs) {
+			t.Errorf("%s refused although nothing carries it across trees", p)
+		}
+	}
+}
