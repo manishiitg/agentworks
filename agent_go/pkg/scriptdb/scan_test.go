@@ -17,14 +17,27 @@ conn.execute("alter table leads add column note text")
 rows = conn.execute("SELECT * FROM leads").fetchall()
 `
 	finding := ScanSource("step/main.py", source)
-	if len(finding.Raw) == 0 || !strings.Contains(finding.Raw[0], "line 2") {
-		t.Errorf("direct access not found at line 2: %v", finding.Raw)
+	if len(finding.Raw) != 1 || !strings.Contains(finding.Raw[0], "line 4") {
+		t.Errorf("direct access to the workflow database not found at line 4 only: %v", finding.Raw)
 	}
 	if len(finding.DDL) != 2 || !strings.Contains(finding.DDL[1], "alter table") {
 		t.Errorf("DDL = %v, want the CREATE and the ALTER (case-insensitive)", finding.DDL)
 	}
 	if finding.Clean() {
 		t.Error("a script that opens the database is not clean")
+	}
+}
+
+// A Relay Python tool (PLAT-423) may read the user's own SQLite file; that is
+// not the workflow database and must not block the 1.0.45 stamp.
+func TestScanSourceAllowsAUsersOwnSQLiteFile(t *testing.T) {
+	source := `import os, sqlite3
+def run(input):
+    with sqlite3.connect(os.environ["SECRET_CUSTOM_DB_PATH"]) as db:
+        return db.execute("SELECT name FROM customers WHERE id = ?", [input["id"]]).fetchone()
+`
+	if finding := ScanSource("tools/lookup_customer/main.py", source); !finding.Clean() {
+		t.Errorf("a user's own SQLite file must scan clean: %+v", finding)
 	}
 }
 
@@ -62,7 +75,7 @@ func TestScanDirReportsOnlyScriptsThatNeedConverting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("step-b/main.py", "import sqlite3\nsqlite3.connect('x')\n")
+	write("step-b/main.py", "import sqlite3\nsqlite3.connect('../db/db.sqlite')\n")
 	write("step-a/main.py", "from agentworks_db import query\nquery('SELECT 1')\n")
 	write("step-c/main.py", "import os\nopen(os.environ['DB_PATH'])\n")
 	write("step-c/test_main.py", "import sqlite3\n")

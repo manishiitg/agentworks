@@ -70,8 +70,10 @@ def run(input):
 
 Adapt the code to the user's real schema and credentials. For remote databases
 use the user's chosen client/library and secret connection string. The
-platform's managed workflow SQLite database still requires its registered DB
-tools; a custom Python tool does not bypass that restriction.
+platform's managed workflow SQLite database is never opened directly (no
+`$DB_PATH`, no `db.sqlite`): a tool that needs it uses the built-in helper,
+`from agentworks_db import query, execute`, which goes through the registered
+DB tools.
 
 Enable `python_tools:lookup_customer` through `update_step_config` on each
 intended agent, retaining its other tool selections. The directory name is the

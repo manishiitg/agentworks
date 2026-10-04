@@ -72,7 +72,7 @@ For an authorized migration, using `set_code_layout_version`:
   - Writes (INSERT, UPDATE, DELETE only): `execute(sql, params)` returns rows affected, `insert` the new id, `execute_many(sql, rows)` writes many rows (2000 per call, each call atomic; `atomic=True` for one transaction of at most 5000), `transaction([(sql, params), ...])` for up to 200 statements that must succeed together.
   - Every failure raises `DBError` with the platform's message; let it propagate so the step fails and autofix sees it.
 - DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `apply_workflow_db_migration` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails and autofix repairs it.
-- `PRAGMA`, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
+- Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
 **Environment access (strict)**

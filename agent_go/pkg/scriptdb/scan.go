@@ -1,7 +1,7 @@
 // Package scriptdb finds Python scripts that open a workflow's SQLite database
 // themselves. Scripts reach the database through the built-in agentworks_db
-// helper (the managed query and mutate tools); a script that imports sqlite3, or
-// opens $DB_PATH or db.sqlite, predates it. The contract migration to the
+// helper (the managed query and mutate tools); a script that opens $DB_PATH or
+// db.sqlite predates it. A bare sqlite3 import is allowed (a user's own file). The contract migration to the
 // managed helper uses this scan: the Builder tool reports what is left to
 // convert, and the version stamp is refused until none is.
 package scriptdb
@@ -27,7 +27,10 @@ type Finding struct {
 func (f Finding) Clean() bool { return len(f.Raw) == 0 && len(f.DDL) == 0 }
 
 var (
-	rawDBPattern = regexp.MustCompile(`\bimport\s+sqlite3\b|\bfrom\s+sqlite3\b|\bsqlite3\s*\.|\bDB_PATH\b|\bdb\.sqlite\b`)
+	// The workflow's own database is reached through $DB_PATH or the db.sqlite
+	// file name. A bare sqlite3 import is not flagged: a script or a Relay
+	// Python tool may read a user's own SQLite file (PLAT-423).
+	rawDBPattern = regexp.MustCompile(`\bDB_PATH\b|\bdb\.sqlite\b`)
 	ddlPattern   = regexp.MustCompile(`(?i)\b(CREATE\s+(TEMP\w*\s+|UNIQUE\s+|VIRTUAL\s+)?(TABLE|INDEX|VIEW|TRIGGER)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX|VIEW|TRIGGER))\b`)
 )
 

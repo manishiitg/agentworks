@@ -44,6 +44,19 @@ compatibility only.
   agent step inserts through `mutate_workflow_db`; both are verified from the file.
   Live on a Mac isolated server 2026-10-04: PASS for claude-code, codex-cli, muse-cli.
 
+## Follow-up 2026-10-04 (found migrating salesoutreach)
+
+- The migration stopped on an email sender that sets `PRAGMA foreign_keys = ON`:
+  managed writes did not enforce foreign keys, so converting it would have dropped
+  the protection. `openMutationDB` now enables `foreign_keys` on every managed
+  write (agents and the helper); only new writes are checked, migrations keep
+  their own connection. The migration text says to delete that PRAGMA.
+  Test: `workspace/handlers/query_mutation_foreign_keys_test.go`.
+- The scan no longer flags a bare `import sqlite3`: a Relay Python tool
+  (PLAT-423) may read the user's own SQLite file. It flags `$DB_PATH`,
+  `db.sqlite` and schema statements. The Relay skill points tools that need the
+  workflow database at `agentworks_db`.
+
 ## Consequence to plan for
 
 Every workflow is blocked from running or scheduling until it is migrated. On the

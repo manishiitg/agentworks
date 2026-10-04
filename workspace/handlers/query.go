@@ -286,8 +286,14 @@ func openQueryOnlyDB(fullPath string) (*sql.DB, error) {
 	return db, nil
 }
 
+// openMutationDB enforces the foreign keys the schema declares. SQLite leaves
+// them off per connection unless asked, so managed writes (agents and the
+// agentworks_db helper) used to accept rows pointing at a missing parent, while
+// scripts that set PRAGMA foreign_keys = ON themselves were protected (PLAT-428).
+// Only new writes are checked; existing rows are not revalidated. Migrations
+// keep their own connection.
 func openMutationDB(fullPath string) (*sql.DB, error) {
-	dsn := sqliteopen.DSN(fullPath) + "&mode=rw"
+	dsn := sqliteopen.DSN(fullPath) + "&mode=rw&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

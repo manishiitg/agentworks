@@ -26,6 +26,8 @@ helper (the same managed query/mutate tools agents use), not `sqlite3`. DDL is a
 Builder migration, never a script statement; a script that no longer matches the
 schema fails and autofix repairs it. Contract 1.0.45 migrates existing scripts and
 blocks execution until done. `$DB_PATH` stays set for old scripts only.
+Managed writes enforce declared foreign keys (scripts used to set the PRAGMA
+themselves; agent writes never had it); only new writes are checked.
 Ticket: [PLAT-428](bugs/pulse_platform/security-sandbox/plat-428.md).
 
 ### 2026-10-04 — Relay MCP authoring is explicit and execution uses direct graph runs
