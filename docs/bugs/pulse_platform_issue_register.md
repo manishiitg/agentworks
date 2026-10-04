@@ -1,3 +1,7 @@
+## CLI delivery health: smoke test, duplicate and launch-death checks — PLAT-424
+
+[PLAT-424](pulse_platform/chat-reliability/plat-424.md), P2, open (planned, not started). Notice duplicate sends, instant launch deaths and slow acceptance without a user report.
+
 ## Named custom Python tools for Relay agents — PLAT-423
 
 [PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), fixed on main;
