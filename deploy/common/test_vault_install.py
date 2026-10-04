@@ -151,6 +151,10 @@ class VaultInstallTest(unittest.TestCase):
         for product in ('agents', 'confida'):
             directory = repo / 'deploy/rootless-linux/products' / product
             subprocess.run(['bash', '-c', command, 'test', str(directory / 'product.env'), str(directory / 'runtime-config.js')], check=True)
+            # The browser hides Vault even when allowlisted if its URL is absent.
+            runtime = (directory / 'runtime-config.js').read_text()
+            public_url = subprocess.check_output(['bash', '-c', 'source "$1"; printf "%s" "$EXPECTED_PUBLIC_URL"', 'test', str(directory / 'product.env')], text=True)
+            self.assertIn(f'gatewayUrl: "{public_url}"', runtime)
 
     def test_both_deployments_build_bootstrap_and_health_check(self):
         repo = ROOT.parents[1]

@@ -11,6 +11,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "",
   workspaceApiBaseUrl: "/api/wp",
   cdpEnabled: false,
+  gatewayUrl: "https://confida.agentworkshq.com",
   // Confida branding (brand/: symbol and wordmark from confida.ai, which
   // is monochrome, so no brandColor: the AgentWorks primary stays).
   appName: "Confida",
