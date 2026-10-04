@@ -57,7 +57,7 @@ root, keep = Path(sys.argv[1]), int(sys.argv[2])
 # A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: it is never
 # removed and does not count toward the newest $KEEP.
 pinned = {m.name for m in (root / ".pinned").glob("*")} if (root / ".pinned").is_dir() else set()
-builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name, reverse=True)
+builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name.rsplit("-", 1)[1], reverse=True)
 for old in builds[keep:]:
     if time.time() - (old / "manifest.json").stat().st_mtime > 900:
         print(f"pruning old build {old.name}")
