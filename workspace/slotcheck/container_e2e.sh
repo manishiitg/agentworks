@@ -19,7 +19,7 @@
 #      (if /src/old is mounted, e.g. `git archive origin/main~N workspace`): the probes FAIL with the RTS error, exit 1.
 set -euo pipefail
 export GOFLAGS=-mod=mod GOTOOLCHAIN=local CGO_ENABLED=0
-apt-get update >/dev/null && apt-get install -y sudo >/dev/null
+apt-get update >/dev/null && apt-get install -y sudo tmux >/dev/null
 
 APP=/srv/vs DOCS=/srv/vs/data/docs LIBEXEC=/usr/local/libexec/agentworks ETC=/etc/agentworks
 REL="$APP/releases/r1"
@@ -148,10 +148,20 @@ else
   echo "OK   no .sandbox-cache created by the self-test"
 fi
 
+echo "==> 5a. a real tmux server for slot01 (PLAT-480, F1)"
+SOCK="$APP/slots/run/slot01/tmux.sock"
+sudo -u slot01 env SHELL=/bin/sh tmux -S "$SOCK" new-session -d -s probe "sleep 3000"
+expect 0 "slot01 itself reaches its tmux server" -- sudo -u slot01 tmux -S "$SOCK" list-sessions
+# Control: the launcher alone (Landlock, no private view) does NOT stop a confined command reaching the server.
+printf '{"read_paths":[],"write_paths":["%s"],"work_dir":"%s"}\n' "$DOCS" "$DOCS" > /tmp/policy-tmux.json && chmod 0644 /tmp/policy-tmux.json
+out="$(sudo -u slot01 "$REL/bin/video-studio-landlock-runner" --config /tmp/policy-tmux.json -- /bin/sh -c "tmux -S $SOCK list-sessions" 2>&1 || true)"
+echo "control (launcher without the hide): $out"
+[[ "$out" == *probe* ]] && echo "OK   control: Landlock alone leaves the socket reachable (the hole this step closes)" || { echo "BAD  control did not reproduce the hole: $out"; fails=$((fails + 1)); }
+
 echo "==> 5. the chain, negative reads"
 expect 0 "TestRealSlotChain" -- as_vs env AGENTWORKS_SLOT_CHAIN_E2E=1 E2E_DOCS="$DOCS" E2E_APP="$APP" E2E_PROFILE="$PROFILE" \
   E2E_OTHER_PROJECT="$DOCS/_users/u2/Chats/Work/projects/u2crew" E2E_CREW="$DOCS/_users/u1/Chats/Work/projects/u1crew" \
-  E2E_NOT_GRANTED="$DOCS/Workflow/wf2/public.txt" E2E_RUNNER="$REL/bin/video-studio-landlock-runner" \
+  E2E_NOT_GRANTED="$DOCS/Workflow/wf2/public.txt" E2E_TMUX_SOCKET="$SOCK" E2E_RUNNER="$REL/bin/video-studio-landlock-runner" \
   AGENTWORKS_LANDLOCK_RUNNER="$REL/bin/video-studio-landlock-runner" "$REL/bin/slotcheck.test" -test.run TestRealSlotChain -test.v
 
 if [[ -f /src/deploy/slotcheck.sh ]]; then
@@ -160,7 +170,7 @@ if [[ -f /src/deploy/slotcheck.sh ]]; then
   ln -sfn "$REL" "$APP/current"
   out="$(sudo -u vs env -i PATH=/usr/bin:/bin HOME=/home/vs bash "$APP/current/slotcheck.sh" --app "$APP" --docs "$DOCS" --product vs 2>&1)"; rc=$?
   printf '%s\n' "$out" | grep -E '^(==>|slot self-test|secret admission|INFO|WARN|FAIL)' || true
-  [[ "$rc" == 0 && "$out" == *"slot self-test: 21 passed, 0 failed"* && "$out" != *never-printed-value* ]] && echo "OK   deploy wrapper passes and prints no secret value" || { echo "BAD  deploy wrapper (exit $rc)"; fails=$((fails + 1)); }
+  [[ "$rc" == 0 && "$out" =~ slot\ self-test:\ [0-9]+\ passed,\ 0\ failed && "$out" != *never-printed-value* ]] && echo "OK   deploy wrapper passes and prints no secret value" || { echo "BAD  deploy wrapper (exit $rc)"; fails=$((fails + 1)); }
 fi
 
 echo "==> the new code created nothing under the browser profile roots"

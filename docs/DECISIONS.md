@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A slot command cannot see its slot's tmux socket; a host that cannot hide it refuses the command
+
+Landlock does not govern connect() on pathname Unix sockets below ABI 9 (RTS kernel 7.0 is ABI 8, Hetzner 6.8 is ABI 4), and a slot's tmux server runs as the same account as the commands it confines, so a confined command could reach an unconfined server (verified live on RTS, PLAT-480 F1). A slot command's policy now hides the slot run root behind an empty folder in the command's own namespaces. A host that cannot give the command those namespaces refuses it (`SANDBOX_UNAVAILABLE`) instead of running it with the socket in view. RTS needs a path-scoped AppArmor `userns` exception for slotctl and the launcher (`provision-slots.sh userns`). Code: `workspace/security/isolator_linux.go`. Ticket: PLAT-480.
+
 ### 2026-10-04 — Slot-run shell commands never receive app-private paths such as browser profiles; every slot deploy proves the chain
 
 A command run as a user's slot account is never granted an app-private path: the managed browsers' profiles (logged-in

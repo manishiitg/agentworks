@@ -115,6 +115,14 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 		}
 	}
 
+	// A slot command must not reach its slot's tmux server (PLAT-480, F1): Landlock does not govern connect() on
+	// pathname Unix sockets (no such right below ABI 9), and the socket belongs to the same account. The launcher
+	// hides the slot run folder behind an empty one in the command's own mount namespace. When the host cannot give
+	// the command that namespace the command is refused (executeIsolatedLinuxPlatform), never run with the socket in view.
+	if root := slotRunRootToHide(iso.Slot); root != "" {
+		hidden = append(hidden, root)
+	}
+
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
@@ -362,4 +370,21 @@ func CLILandlockRunner() (string, bool) {
 	}
 	runner, err := landlockRunnerPath()
 	return runner, err == nil
+}
+
+// slotRunRootToHide is the folder holding every slot's tmux socket (slotctl's slot_run_root) when it exists on this
+// host and the command runs as a slot; "" otherwise (not a slot command, no slots configured, nothing to hide).
+func slotRunRootToHide(slot string) string {
+	if slot == "" {
+		return ""
+	}
+	cfg, err := slots.LoadExecConfig(slots.ConfigPath())
+	if err != nil || strings.TrimSpace(cfg.SlotRunRoot) == "" {
+		return ""
+	}
+	root := canonicalPath(cfg.SlotRunRoot)
+	if info, err := os.Lstat(root); err != nil || !info.IsDir() {
+		return ""
+	}
+	return root
 }
