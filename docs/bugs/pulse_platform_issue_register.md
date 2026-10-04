@@ -2,6 +2,12 @@
 
 [PLAT-476](pulse_platform/security-sandbox/plat-476.md), script fixed on main; live RTS config still to be corrected (root). `provision-slots.sh` built `allowed_cwd` from the app folder while the docs live at `/data/video-studio/docs`, so the slot shell tool failed with exit 126 and the Crew fell back to a no-ask native shell.
 
+## trigger_mcp_discovery cannot discover a private connection — PLAT-477
+
+[PLAT-477](pulse_platform/integrations/plat-477.md), fixed on `main`, needs a restart: the
+per-chat tool's schema now declares the `name` its executor requires (Vault change
+2026-10-03 left it empty), so Upwork's tools can be discovered.
+
 ## Platform group automatically has every shared secret and platform MCP — PLAT-471
 
 [PLAT-471](pulse_platform/security-sandbox/plat-471.md), fixed on main, not deployed; GitHub issue #269. The first Vault install granted nothing, so every run selecting a shared secret was refused. The Platform group is now granted every existing and newly registered shared secret and MCP server (gateway start check plus host-side registration of environment-defined and managed secret names); admin removals persist in `platformRevoked`; servers without Vault behave as before Vault.

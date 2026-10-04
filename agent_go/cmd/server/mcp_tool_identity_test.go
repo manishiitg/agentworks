@@ -151,3 +151,35 @@ func TestMCPInstallBridgeStartsOAuthInPrivateTokenDirectory(t *testing.T) {
 		})
 	}
 }
+
+// schemaRegistrar keeps each tool's declared parameter schema (the shared recordingRegistrar drops it).
+type schemaRegistrar struct {
+	params map[string]map[string]interface{}
+}
+
+func (r *schemaRegistrar) RegisterCustomTool(name, _ string, params map[string]interface{}, _ func(context.Context, map[string]interface{}) (string, error), _ string) error {
+	if r.params == nil {
+		r.params = map[string]map[string]interface{}{}
+	}
+	r.params[name] = params
+	return nil
+}
+
+// The per-chat executor of trigger_mcp_discovery discovers one connection and requires its name; the
+// registered schema must declare that argument, or the call is rejected with or without a name
+// ("unknown field(s): name" / "name is required") and a private connection is never discovered.
+func TestTriggerMCPDiscoverySchemaDeclaresTheConnectionName(t *testing.T) {
+	api := &StreamingAPI{}
+	registrar := &schemaRegistrar{}
+	if err := api.registerMultiAgentMCPServerTools(registrar, nil); err != nil {
+		t.Fatal(err)
+	}
+	params, ok := registrar.params["trigger_mcp_discovery"]
+	if !ok {
+		t.Fatal("trigger_mcp_discovery is not registered")
+	}
+	properties, _ := params["properties"].(map[string]interface{})
+	if _, declared := properties["name"]; !declared {
+		t.Fatalf("trigger_mcp_discovery declares no name argument: %v", params)
+	}
+}

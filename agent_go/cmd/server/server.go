@@ -12665,6 +12665,15 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
 			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
 		}
+		if name == "trigger_mcp_discovery" {
+			// The per-chat executor below discovers one connection (private or governed) and
+			// requires its name, while the shared schema declares no arguments, so the call
+			// was rejected with or without a name. Declare it.
+			if properties, ok := params["properties"].(map[string]interface{}); ok {
+				properties["name"] = map[string]interface{}{"type": "string", "description": "Exact connection name to discover tools for (see list_mcp_servers), for example a private connection such as your Upwork account."}
+			}
+			description += " Pass name to discover one of your private or permitted connections."
+		}
 		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
 			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
 				userID, err := api.mcpToolUserID(ctx)
