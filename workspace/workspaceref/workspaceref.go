@@ -40,8 +40,17 @@ const (
 	CodeProjectsRoot = "Chats/Code/projects"
 )
 
-// ProjectRoots lists every project product root, in lookup order.
+// ProjectRoots lists every project product root, in lookup order. These are the
+// PER-USER roots (below "_users/<owner>/"); a Crew that has moved to the shared
+// root is not in this list on purpose, see SharedCrewRoot.
 var ProjectRoots = []string{CrewProjectsRoot, CodeProjectsRoot}
+
+// SharedCrewRoot is the shared (not per-user) Crew root, "Crew/<slug>-<id8>"
+// (PLAT-442 step 4). Unlike every other path here it names NO owner: the owner
+// comes from the Crew's product.json (owner_id), never from the path, so a
+// Ref of a shared path has HasOwner() == false and Owner() == "" and none of the
+// "unowned means the caller's own" rules apply to it. Use SharedProject.
+const SharedCrewRoot = "Crew"
 
 var safeUserID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
@@ -136,6 +145,10 @@ func (r Ref) IsUsersRoot() bool { return r.usersRoot }
 // the user passed through SanitizeUserID. The ref's own owner is ignored; use
 // PhysicalKeepOwner to keep an explicit owner.
 func (r Ref) Physical(user string) string {
+	if r.IsShared() {
+		// A shared path is already physical and belongs to nobody's tree.
+		return r.logical
+	}
 	return PhysicalPath(user, r.logical)
 }
 
@@ -143,6 +156,9 @@ func (r Ref) Physical(user string) string {
 // one, else the path under user. ("An explicit _users/<owner>/ path is kept,
 // a logical one is placed under the caller.")
 func (r Ref) PhysicalKeepOwner(user string) string {
+	if r.IsShared() {
+		return r.logical
+	}
 	if r.HasOwner() {
 		return path.Join(UsersDir, r.owner, r.logical)
 	}
@@ -173,7 +189,14 @@ func (r Ref) OwnedBy(user string) bool {
 
 // OwnedByOrUnowned is true for a logical path and for a path with the
 // user's own prefix; false for another user's physical path.
+//
+// A shared path (Crew/<id>) is neither: it is not in the user's tree and it is
+// not public, so this is false for it. Whether a user may use a shared Crew is
+// answered from the Crew's manifest, not from the path.
 func (r Ref) OwnedByOrUnowned(user string) bool {
+	if r.IsShared() {
+		return false
+	}
 	return !r.HasOwner() || r.owner == SanitizeUserID(user)
 }
 
@@ -228,6 +251,8 @@ func CanonicalFor(user, p string) string {
 		return ""
 	case r.usersRoot:
 		return UsersDir
+	case r.IsShared():
+		return r.logical
 	case r.OwnedByOrUnowned(user):
 		return r.logical
 	}
@@ -268,4 +293,64 @@ func (r Ref) String() string {
 // PhysicalPath for a user id from a request or a session).
 func PhysicalPathOf(owner string, rel ...string) string {
 	return path.Join(append([]string{UsersDir, owner}, rel...)...)
+}
+
+// IsShared reports a path at or below the shared Crew root: "Crew" itself or
+// "Crew/<id>[/...]", without an owner segment. ("_users/<o>/Crew/x" is an
+// ordinary folder in a user's tree.)
+func (r Ref) IsShared() bool {
+	return !r.HasOwner() && !r.usersRoot && (r.logical == SharedCrewRoot || strings.HasPrefix(r.logical, SharedCrewRoot+"/"))
+}
+
+// SharedProject returns the Crew folder name of a path inside the shared root
+// ("Crew/<id>/db/x" -> "<id>"). The bare root, a hidden entry ("Crew/.x", used
+// for the server's own bookkeeping) and any non-shared path are not projects.
+func (r Ref) SharedProject() (project string, ok bool) {
+	if !r.IsShared() || r.logical == SharedCrewRoot {
+		return "", false
+	}
+	project, _, _ = strings.Cut(strings.TrimPrefix(r.logical, SharedCrewRoot+"/"), "/")
+	if project == "" || strings.HasPrefix(project, ".") {
+		return "", false
+	}
+	return project, true
+}
+
+// SharedTree names which tree of the shared root a path lies in: the first folder below "Crew" ("" for the
+// bare root), hidden bookkeeping folders included. Two paths are in the same tree exactly when their keys are
+// equal; storage layers use it the way they use the owner of a "_users/<id>/" path, to refuse a symlink that
+// would carry a path out of one Crew into another tree.
+func (r Ref) SharedTree() (key string, ok bool) {
+	if !r.IsShared() {
+		return "", false
+	}
+	key, _, _ = strings.Cut(strings.TrimPrefix(strings.TrimPrefix(r.logical, SharedCrewRoot), "/"), "/")
+	return key, true
+}
+
+// SharedProjectRoot is SharedProject for a path that IS the Crew root (nothing below it).
+func (r Ref) SharedProjectRoot() (project string, ok bool) {
+	project, ok = r.SharedProject()
+	if !ok || r.logical != SharedCrewRoot+"/"+project {
+		return "", false
+	}
+	return project, true
+}
+
+// SharedProjectPath builds "Crew/<project>/<rel...>".
+func SharedProjectPath(project string, rel ...string) string {
+	return path.Join(append([]string{SharedCrewRoot, project}, rel...)...)
+}
+
+// AnyCrewProject is the Crew folder name and where it lives, for a path inside a
+// Crew in any location: shared reports true, per-user false. The owner of a
+// per-user Crew is Owner(); the owner of a shared one is in its manifest.
+func (r Ref) AnyCrewProject() (project string, shared, ok bool) {
+	if p, isShared := r.SharedProject(); isShared {
+		return p, true, true
+	}
+	if root, p, isProject := r.Project(); isProject && root == CrewProjectsRoot {
+		return p, false, true
+	}
+	return "", false, false
 }

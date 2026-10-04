@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"path/filepath"
 	"strings"
@@ -48,7 +49,8 @@ type turnRunAsInput struct {
 
 // runAsDeps are the lookups the decision needs; tests replace them.
 type runAsDeps struct {
-	// projectOwner is the owner of the Crew or Code at a physical project root (manifest first, path second).
+	// projectOwner is the owner of the Crew or Code at a physical project root (registry first, path second; never
+	// the manifest, PLAT-449).
 	projectOwner func(ctx context.Context, root string) string
 	// slotOf is the slot a user holds ("" for none, or when slots are off).
 	slotOf func(user string) string
@@ -109,7 +111,8 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
 	if _, _, isProject := ref.Project(); isProject {
-		// A Crew or Code: the owner comes from its manifest (path fallback), never from who is asking.
+		// A Crew or Code: the owner comes from the server's registry (path fallback), never from who is asking and
+		// never from the manifest.
 		switch {
 		case strings.EqualFold(in.ProfileID, codeproduct.ProfileID), strings.EqualFold(in.ProfileID, crewProfileID):
 			projectRoot, project, _ := ref.Project()
@@ -128,13 +131,46 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	return appAccount
 }
 
+// errProjectOwnerMismatch is the launch refusal for a private Code whose server-controlled owner is not the person
+// the request admitted (PLAT-449).
+var errProjectOwnerMismatch = errors.New("this Code workspace is registered to a different owner than you; it cannot be started")
+
+// checkProjectLaunchOwner refuses to start a private Code CLI when the owner the platform resolves for the project
+// (the registry, else the path; never the manifest) is not the caller whose own tree admitted it. It runs BEFORE
+// the launch, so no CLI starts, and there is no fallback: a mismatch is an explicit error. A Code is the owner's
+// alone; a mismatch means a copied or planted project, never a legitimate state.
+func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsDeps) error {
+	if in.WorkflowPhase || !strings.EqualFold(in.ProfileID, codeproduct.ProfileID) {
+		return nil
+	}
+	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
+	projectRoot, project, isProject := ref.Project()
+	if !isProject {
+		return nil
+	}
+	physical := workspaceref.PhysicalPath(in.CallerID, projectRoot, project)
+	if ref.HasOwner() {
+		physical = workspaceref.PhysicalPath(ref.Owner(), projectRoot, project)
+	}
+	owner := deps.projectOwner(ctx, physical)
+	if owner != "" && owner != sanitizeUserIDForPath(in.CallerID) {
+		log.Printf("[OWNER_MISMATCH] Code launch refused: %s resolves to owner %q but the caller is %q", physical, owner, in.CallerID)
+		return errProjectOwnerMismatch
+	}
+	return nil
+}
+
 // declareTurnRunAs decides a turn's identity, declares it to the provider for the CLI's folder, and returns it
-// for the launch policy to carry.
-func declareTurnRunAs(ctx context.Context, in turnRunAsInput) llmtypes.RunAs {
-	runAs := decideTurnRunAs(ctx, in, defaultRunAsDeps())
+// for the launch policy to carry. An error means the launch must not start (checkProjectLaunchOwner).
+func declareTurnRunAs(ctx context.Context, in turnRunAsInput) (llmtypes.RunAs, error) {
+	deps := defaultRunAsDeps()
+	if err := checkProjectLaunchOwner(ctx, in, deps); err != nil {
+		return llmtypes.RunAs{}, err
+	}
+	runAs := decideTurnRunAs(ctx, in, deps)
 	llmtypes.DeclareRunAs(runAs.Root, runAs)
 	log.Printf("[RUN_AS] %s turn in %s runs as %s", describeProfile(in.ProfileID, in.WorkflowPhase), runAs.Root, describeRunAs(runAs))
-	return runAs
+	return runAs, nil
 }
 
 // declareFolderRunAs declares that a CLI starting in dir runs as user's slot (or the app account when the user

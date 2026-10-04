@@ -239,3 +239,83 @@ func TestProjectRootStringAndPhysicalPathOf(t *testing.T) {
 		t.Error("PhysicalPathOf")
 	}
 }
+
+// PLAT-442 step 4: a shared Crew path names no owner and is never "the caller's own" or "public".
+func TestSharedCrewRootSemantics(t *testing.T) {
+	cases := []struct {
+		in          string
+		shared      bool
+		project     string
+		projectRoot bool
+	}{
+		{"Crew", true, "", false},
+		{"Crew/", true, "", false},
+		{"Crew/sde-1a2b", true, "sde-1a2b", true},
+		{"/Crew/sde-1a2b/db/x.html", true, "sde-1a2b", false},
+		{"Crew\\sde-1a2b\\db", true, "sde-1a2b", false},
+		{"./Crew/x/../sde-1a2b", true, "sde-1a2b", true},
+		{"Crew/.hidden", true, "", false},
+		{"Crew/.migration/journal.json", true, "", false},
+		{"CrewX/a", false, "", false},
+		{"crew/a", false, "", false},
+		{"Chats/Work/projects/a", false, "", false},
+		{"_users/alice/Crew/a", false, "", false},
+		{"_users/alice/Chats/Work/projects/a", false, "", false},
+		{"Workflow/Crew/a", false, "", false},
+	}
+	for _, c := range cases {
+		r := MustParse(c.in)
+		if r.IsShared() != c.shared {
+			t.Errorf("IsShared(%q) = %v", c.in, r.IsShared())
+		}
+		project, ok := r.SharedProject()
+		if ok != (c.project != "") || project != c.project {
+			t.Errorf("SharedProject(%q) = %q %v", c.in, project, ok)
+		}
+		if _, ok := r.SharedProjectRoot(); ok != c.projectRoot {
+			t.Errorf("SharedProjectRoot(%q) = %v", c.in, ok)
+		}
+		if c.shared {
+			// A shared path has no owner and is nobody's own tree, whoever asks.
+			if r.HasOwner() || r.Owner() != "" || r.OwnedBy("alice") || r.OwnedByOrUnowned("alice") {
+				t.Errorf("%q: shared path claims an owner", c.in)
+			}
+			if r.IsProject() {
+				t.Errorf("%q: a shared Crew must not be a per-user project (Project() callers would treat it as the caller's own)", c.in)
+			}
+			// Physical never puts it under a user.
+			if got := r.Physical("alice"); got != r.Logical() {
+				t.Errorf("%q: Physical = %q", c.in, got)
+			}
+			if got := r.PhysicalKeepOwner("alice"); got != r.Logical() {
+				t.Errorf("%q: PhysicalKeepOwner = %q", c.in, got)
+			}
+			if got := CanonicalFor("alice", c.in); got != r.Logical() || got != CanonicalFor("bob", c.in) {
+				t.Errorf("%q: CanonicalFor = %q", c.in, got)
+			}
+		}
+	}
+	if SharedProjectPath("sde-1a2b", "db", "x") != "Crew/sde-1a2b/db/x" {
+		t.Error("SharedProjectPath")
+	}
+	// A shared path never equals anything in a user's tree.
+	if MustParse("Crew/a").SameFor("alice", MustParse("Chats/Work/projects/a")) {
+		t.Error("shared path equals the owner's legacy path")
+	}
+	for in, want := range map[string]struct {
+		project string
+		shared  bool
+		ok      bool
+	}{
+		"Crew/a/db":                         {"a", true, true},
+		"_users/o/Chats/Work/projects/a/db": {"a", false, true},
+		"Chats/Work/projects/a":             {"a", false, true},
+		"Chats/Code/projects/a":             {"", false, false},
+		"Crew":                              {"", false, false},
+	} {
+		project, shared, ok := MustParse(in).AnyCrewProject()
+		if project != want.project || shared != want.shared || ok != want.ok {
+			t.Errorf("AnyCrewProject(%q) = %q %v %v", in, project, shared, ok)
+		}
+	}
+}

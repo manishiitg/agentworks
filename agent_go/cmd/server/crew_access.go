@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -143,7 +144,15 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	store := defaultProductProjectStore()
 	if binding, err := resolveProductProjectBindingWithStore(ctx, callerID, profile, projectID, store); err == nil {
-		// PLAT-442: the owner opening a project writes owner_id into its product.json once.
+		// PLAT-449: found in the caller's own tree is only an ADMISSION by path. A folder registered to someone else
+		// (a copy or a planted project) is not the caller's: refused, never resolved on a manifest's say-so.
+		if id, ok := projectIdentityOf(binding.WorkspacePath); ok {
+			if registered, conflict := registeredOwnerConflict(id, callerID); conflict {
+				log.Printf("[OWNER_MISMATCH] %s: %s/%s is registered to %q, not %q; refusing to open it as theirs", binding.WorkspacePath, id.Product, id.Folder, registered, callerID)
+				return denied()
+			}
+		}
+		// The owner opening a project registers it once (PLAT-449) and leaves the owner as information in its manifest.
 		ensureProjectOwnerID(ctx, binding.WorkspacePath, callerID)
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}

@@ -21,15 +21,16 @@ slottmux must be deployed with the matching release.
 
 ## Product owner migration follows cross-user manifest symlinks — PLAT-450
 
-[PLAT-450](pulse_platform/security-sandbox/plat-450.md), P1, open, reproduced.
-A startup backfill can stamp an attacker's identity into another user's
-unstamped product manifest through a symlink.
+[PLAT-450](pulse_platform/security-sandbox/plat-450.md), P1, fixed on `main`, not
+deployed. The owner scan and the owner writers now use anchored, symlink-refusing
+opens (`[UNSAFE_PATH]`); regression tests use real temp files and symlinks.
 
 ## Editable project metadata selects another user's CLI identity — PLAT-449
 
-[PLAT-449](pulse_platform/security-sandbox/plat-449.md), P1, open, reproduced.
-A can edit their own Code's owner_id to B, remain owner-admitted, and select
-B's launch slot. Ownership is not yet protected as server authority.
+[PLAT-449](pulse_platform/security-sandbox/plat-449.md), P1, fixed on `main`, not
+deployed. Ownership is server-controlled (an owner registry in the state area,
+else the path; product.json `owner_id` is information only), and a Code launch
+whose registered owner is not the admitted caller is refused before any CLI starts.
 
 ## Relay migration history claims inapplicable upgrades were applied — PLAT-448
 

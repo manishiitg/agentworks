@@ -1774,10 +1774,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	// interactive Pulse sessions can write. This is intentionally repeated at
 	// startup: the version receipt makes it a no-op after the first successful
 	// deployment, while the lazy open guard covers laptops that were offline.
-	// PLAT-442: a Crew's or Code's owner is written in its product.json (idempotent; never overwrites).
+	// PLAT-449: every Crew's and Code's owner is recorded in the server's owner registry from its path (idempotent;
+	// never changes a registered owner), and written into product.json as information only; no symlink is followed
+	// (PLAT-450).
 	if ownerReport := migrateProductOwners(fsutil.WorkspaceDocsRoot()); ownerReport.Scanned > 0 || len(ownerReport.Failures) > 0 {
-		log.Printf("[OWNER_BACKFILL] scanned=%d stamped=%d current=%d skipped=%d mismatched=%d failures=%d",
-			ownerReport.Scanned, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, len(ownerReport.Failures))
+		log.Printf("[OWNER_BACKFILL] scanned=%d registered=%d already_registered=%d conflicts=%d stamped=%d current=%d skipped=%d manifest_mismatch=%d unsafe=%d failures=%d",
+			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, len(ownerReport.Failures))
 		for _, failure := range ownerReport.Failures {
 			log.Printf("[OWNER_BACKFILL] failure: %s", failure)
 		}
@@ -5622,7 +5624,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// PLAT-442: the platform names the account this turn's CLI runs as (run_as.go) and declares it to the
 		// provider for the CLI's folder; the launch policy carries it too.
-		turnRunAs := declareTurnRunAs(r.Context(), turnRunAsInput{
+		turnRunAs, runAsErr := declareTurnRunAs(r.Context(), turnRunAsInput{
 			ProfileID:        turnProfileID,
 			WorkflowPhase:    isWorkflowPhase,
 			WorkingFolder:    chatWorkingFolder,
@@ -5630,6 +5632,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			SharedWorkingDir: sharedChatWorkingDir,
 			CallerID:         currentUserID,
 		})
+		if runAsErr != nil {
+			sendError(runAsErr.Error(), true)
+			return
+		}
 		if cliSecurityPolicy != nil {
 			cliSecurityPolicy.RunAs = turnRunAs
 		}

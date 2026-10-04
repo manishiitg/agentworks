@@ -116,6 +116,15 @@ func newMultiUserFixture(t *testing.T, layout identityLayout) *multiUserFixture 
 	f.put(fixtureGoal+"/workflow.json", `{"schema_version":1,"id":"goal-1","label":"Goal","created_by":"`+fixtureUserA+`","access":{"owners":["`+fixtureUserA+`"],"readers":["`+fixtureUserB+`"]},"capabilities":{}}`)
 	f.put(fixtureGoal+"/planning/plan.json", "{}")
 
+	// The server's owner registry (PLAT-449): the startup scan registers the projects in their owners' trees from
+	// the path; a Crew at the shared root is registered by whatever created or moved it (here: the fixture).
+	migrateProductOwners(f.Docs)
+	if workspaceref.MustParse(crewRoot).IsShared() {
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: fixtureCrewFolder, OwnerID: fixtureUserA, ProjectID: fixtureCrewID, Shared: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	ws := httptest.NewServer(f.Mock)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)

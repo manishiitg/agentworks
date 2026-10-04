@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | open; reproduced with real temporary files |
+| State | fixed on main (2026-10-04), not deployed; regression tests added; the Crew move command follows the same rules (PLAT-442 step 4) |
 | Priority | P1 |
 | Date | 2026-10-04 |
 | Owner | security-sandbox |
@@ -44,3 +44,21 @@ opens/writes so a check/open race cannot redirect the mutation. Log skipped
 unsafe paths. Add no-cross-user-write regression coverage and inspect backups
 for mismatches before rollout; do not run a corrective migration on live files
 without confirming the intended owner.
+
+## Done (2026-10-04, not deployed)
+
+- `migrateProductOwners` and `ensureProjectOwnerID` (`product_owner.go`) reach every project through anchored opens (`os.Root`): the docs root, `_users`, the
+  user's directory and each folder of the project's path are checked with lstat to be real directories (never symlinks), each step opens a root that confines all
+  later operations to that directory (a link that leads out is refused even if it is planted after the check), `product.json` must be a regular file, and the write
+  is a new file in the project directory (created exclusively) renamed over `product.json`, so a symlink standing there is replaced, never written through.
+  A symlink on the way is logged `[UNSAFE_PATH]`, counted (`unsafe=N` in `[OWNER_BACKFILL]`) and the project is skipped.
+- The owner registry writer never writes through a symlink (temp file + rename, `O_NOFOLLOW` on its lock) and never rewrites an unreadable file.
+- Regression tests with real temp files (`product_owner_test.go`): the attacker's symlink to the victim's manifest (victim's owner stays the victim's), a symlinked
+  project folder, a symlinked `Chats` folder, a symlinked user directory, a manifest that is a directory; the lazy writer; `project_owner_registry_test.go`.
+- The Crew move command must follow the same rules for every file it copies (see the PLAT-442 runbook): symlinks inside a Crew are copied as symlinks or refused,
+  never followed.
+
+## Left
+
+- Inspect backups for manifests whose `owner_id` mismatches before any rollout that follows a PLAT-442 deploy; `owner_id` is information only now, so a stamped wrong
+  value (from the old backfill) does not matter for ownership, but check what was stamped on the first deploy of `a04b393c9` if it ever ran.

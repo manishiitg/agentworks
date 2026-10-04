@@ -1,6 +1,6 @@
-# PLAT-442 — Identity is explicit: owner from the manifest, slot named by the platform, Crews at `Crew/<id>`
+# PLAT-442 — Identity is explicit: owner from the server's registry, slot named by the platform, Crews at `Crew/<id>`
 
-Status: steps 1, 2, 3 and 5 on main (2026-10-04), not deployed. Step 4 (the Crew move) is not started. Crew CLI identity needs a decision: PLAT-446. Follows PLAT-435 (one path type in agent_go).
+Status: steps 1, 2, 3 and 5 on main (2026-10-04), not deployed; step 1's owner source was CHANGED the same day by PLAT-449 and PLAT-450 (registry, not manifest; no symlinks, see below). Step 4 (the Crew move) is not started. Crew CLI identity needs a decision: PLAT-446. Follows PLAT-435 (one path type in agent_go).
 
 ## Problem
 
@@ -28,7 +28,16 @@ agent_go (now `pkg/workspaceref`), the `workspace/` module (`slots.SlotForDir`, 
 
 ## Done
 
-### Step 1: owner from the manifest (2026-10-04, not deployed)
+### Step 1: owner of a project (2026-10-04, not deployed) -- REVISED by PLAT-449 / PLAT-450
+
+**Superseded decision.** The text below describes what step 1 first did: trust `product.json`'s `owner_id` over the path. That was wrong: the manifest is
+user-writable project data (a user, or a Crew's own agent turn with write access to the project, can edit it) and it chose a Linux slot
+([PLAT-449](plat-449.md)); and the backfill followed symlinks ([PLAT-450](plat-450.md)). Now: ownership is **server-controlled** metadata in a registry in the app's
+state area (`<state root>/ownership/projects.json`, outside the docs root); resolution is registry entry, else the physical path owner, else (shared `Crew/` with no
+entry) nobody; `owner_id` in `product.json` is written but is information only and is never trusted (a disagreement is logged `[OWNER_MISMATCH]`, registry or path
+wins). A private Code whose registered owner is not the admitted caller is refused before any CLI starts. The startup scan, the owner opening a project, server-side
+creation and the Crew move write the registry; every manifest read/write is an anchored open that refuses symlinks. See the DECISIONS entry "Project ownership is
+server-controlled". The paragraphs below are kept as history where they still describe the code; read "owner from the manifest" as "owner from the registry".
 
 Where each product's owner lived before: Workflows in `workflow.json` (several owners); Crews and Codes only in the folder path
 (`_users/<owner>/Chats/{Work,Code}/projects/<id>`), except a `Crew/<id>` root, whose `crewOwners` cache already read `owner_id` from

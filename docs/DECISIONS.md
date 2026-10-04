@@ -19,6 +19,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Project ownership is server-controlled (a registry), never read from user-writable project files
+
+- Who owns a Crew or a Code, and so whose Linux slot a launch uses and who may open it, comes from the server's owner registry in the app's state area
+  (`<state root>/ownership/projects.json`, app-owned, not under the docs root, not reachable by the workspace proxy or a CLI's folder guard); a project
+  with no entry is owned by whoever's tree it lies in (`_users/<owner>/...`); a project at the shared `Crew/` root with no entry belongs to nobody.
+  `product.json`'s `owner_id` is information only: users and agent turns can edit it, so it is never trusted (a disagreement is logged and the registry
+  or path wins).
+- A private Code whose registered owner is not the person whose tree admitted it is refused before any CLI starts, with an explicit error. There is no
+  ownership transfer; adding one must update the registry and the project's location together.
+- The startup scan, the owner opening a project, project creation and the Crew move write the registry; the owner scan and every manifest write refuse
+  symlinks (anchored opens, no write through a link): [PLAT-450](bugs/pulse_platform/security-sandbox/plat-450.md).
+- Tickets: [PLAT-449](bugs/pulse_platform/security-sandbox/plat-449.md), [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
+
 ### 2026-10-04 — No background-agent tool; the agent does the work itself
 
 The Builder/Pulse `run_in_background` tool is removed. Coding CLIs have their own
@@ -49,7 +62,7 @@ Ticket: [PLAT-447](bugs/pulse_platform/plans-contracts/plat-447.md).
 
 ### 2026-10-04 — Run-as identity is explicit; Crew and Goal turns stay on the app account; Crews move to `Crew/<id>`
 
-- The owner of a Goal, Crew or Code comes from its manifest, and the platform names the slot a CLI runs as. Neither is read from the folder path any more.
+- The owner of a Crew or Code comes from the server's owner registry (path fallback; never the manifest, see the entry above), and the platform names the slot a CLI runs as. Neither is inferred from the folder path alone any more.
 - Crew turns (owner and reader alike) run as the app account, with Landlock; the reader block, tools and folder guards limit a reader. (The CLI starts in an app-owned runtime folder, not in the owner's folder, so it never ran as the owner's slot; owner confirmed keeping it, PLAT-446.)
 - Goals keep running as the app account with Landlock and per-workflow folders. Workflows have several owners, so no single person's slot fits.
 - Crews move to the shared `Crew/<slug>-<id8>` root once the explicit owner and slot are in place. Old paths stay as aliases. Code stays private in its owner's tree.

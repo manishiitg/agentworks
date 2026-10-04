@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -93,21 +94,27 @@ func TestRunAsRegressionTable(t *testing.T) {
 	}
 }
 
-// A Crew's identity must not depend on where the Crew is stored: the owner comes from the manifest. A Crew whose
-// manifest names A but lives elsewhere still declares A for a Code-style (non-isolated) launch.
-func TestRunAsOwnerComesFromTheManifestNotThePath(t *testing.T) {
+// The owner of a project comes from the server's registry, then from the path, and NEVER from the manifest
+// (PLAT-449): a Code stored in B's tree whose manifest claims A is B's, and a project registered to A stays A's
+// wherever a copy of it sits.
+func TestRunAsOwnerComesFromTheRegistryThenThePathNeverTheManifest(t *testing.T) {
 	f := newMultiUserFixture(t, legacyIdentityLayout())
-	// A Code stored in B's tree whose manifest says A owns it: the manifest wins.
 	odd := workspaceCodeRootForTest(fixtureUserB, "moved-c0de0002")
 	f.put(odd+"/product.json", `{"schema_version":1,"product":"code","id":"c0de0002-0000","owner_id":"`+fixtureUserA+`"}`)
 	in := turnRunAsInput{ProfileID: "code", WorkingFolder: odd, CallerID: fixtureUserB, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
-	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserA || got.Slot != fixtureSlotA {
-		t.Fatalf("manifest owner ignored: %+v", got)
-	}
-	// No owner_id: the path owner is the fallback.
-	f.put(odd+"/product.json", `{"schema_version":1,"product":"code","id":"c0de0002-0000"}`)
+	// Unregistered: the path owner (B), whatever the manifest claims.
 	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserB || got.Slot != fixtureSlotB {
-		t.Fatalf("path fallback broken: %+v", got)
+		t.Fatalf("the manifest's claim decided the owner: %+v", got)
+	}
+	// Registered to A (the server created it for A): A, and B's launch is refused before it starts.
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "code", Folder: "moved-c0de0002", OwnerID: fixtureUserA}); err != nil {
+		t.Fatal(err)
+	}
+	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserA || got.Slot != fixtureSlotA {
+		t.Fatalf("registered owner ignored: %+v", got)
+	}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); !errors.Is(err, errProjectOwnerMismatch) {
+		t.Fatalf("B's launch in a project registered to A was not refused: %v", err)
 	}
 }
 
@@ -248,4 +255,118 @@ func runMultiUserAccessAssertions(t *testing.T, layout identityLayout) {
 			t.Errorf("raw proxy read of A's Crew by B: %d, want 403", got)
 		}
 	})
+}
+
+// sharedIdentityLayout is the Crew move's layout: a Crew at Crew/<folder> (both spellings the same), Code unchanged.
+func sharedIdentityLayout() identityLayout {
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	return layout
+}
+
+// PLAT-449: product.json is project data the owner (or an agent turn with write access to the project) can edit.
+// Editing its owner_id, through the proxy or natively, must change neither who owns the project nor which Linux
+// slot a launch uses.
+func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) {
+	forged := func(product, id string) string {
+		return `{"schema_version":1,"product":"` + product + `","id":"` + id + `","title":"x","session_id":"` + product + `:project:` + id + `","owner_id":"` + fixtureUserB + `"}`
+	}
+	t.Run("Code: A edits owner_id to B", func(t *testing.T) {
+		f := newMultiUserFixture(t, legacyIdentityLayout())
+		codeA := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
+		// The browser path: A's write passes the proxy (it is A's own file), B's is refused.
+		if got := f.Proxy(fixtureUserA, http.MethodPut, codeA+"/product.json"); got != 0 {
+			t.Fatalf("the proxy refused A's own manifest write: %d", got)
+		}
+		if got := f.Proxy(fixtureUserB, http.MethodPut, codeA+"/product.json"); got != http.StatusForbidden {
+			t.Fatalf("the proxy let B write A's manifest: %d", got)
+		}
+		// The native path: an edit in the folder itself (what a CLI turn or a shell does).
+		f.put(codeA+"/product.json", forged("code", fixtureCodeID))
+
+		profile := f.Code
+		project, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, profile, fixtureCodeID, "")
+		if err != nil || !project.OwnedByCaller || project.OwnerID != fixtureUserA {
+			t.Fatalf("A no longer opens their Code: %+v err=%v", project, err)
+		}
+		if got := resolveProjectOwner(f.Ctx(fixtureUserA), codeA); got != fixtureUserA {
+			t.Fatalf("resolved owner = %q after the edit", got)
+		}
+		in := turnRunAsInput{ProfileID: "code", WorkingFolder: codeA, CallerID: fixtureUserA, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
+		runAs, err := declareTurnRunAs(f.Ctx(fixtureUserA), in)
+		if err != nil || runAs.User != fixtureUserA || runAs.Slot != fixtureSlotA {
+			t.Fatalf("launch identity after the edit: %+v err=%v", runAs, err)
+		}
+		if runAs.Slot == fixtureSlotB || runAs.User == fixtureUserB {
+			t.Fatal("B's slot was selected")
+		}
+		// B cannot open it either, whatever the manifest says.
+		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, profile, fixtureCodeID, ""); err == nil {
+			t.Fatalf("B opened A's Code: %+v", got)
+		}
+	})
+
+	t.Run("Code: B plants a copy of A's Code in B's own tree", func(t *testing.T) {
+		f := newMultiUserFixture(t, legacyIdentityLayout())
+		copyRoot := f.Layout.CodePhysical(fixtureUserB, fixtureCodeFolder) // same folder name, B's tree
+		f.put(copyRoot+"/product.json", forged("code", fixtureCodeID))
+		f.put(copyRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCodeID+`","label":"App","capabilities":{}}`)
+		// The folder is registered to A: B's copy is not B's project.
+		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Code, fixtureCodeID, ""); err == nil {
+			t.Fatalf("B opened a copy of A's registered Code: %+v", got)
+		}
+		// And no CLI starts for it: an explicit refusal before the launch, not a fallback.
+		in := turnRunAsInput{ProfileID: "code", WorkingFolder: f.Layout.CodeShort(fixtureCodeFolder), CallerID: fixtureUserB, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
+		if runAs, err := declareTurnRunAs(f.Ctx(fixtureUserB), in); err == nil || !errors.Is(err, errProjectOwnerMismatch) {
+			t.Fatalf("B's launch on a copy of A's Code was not refused: %+v err=%v", runAs, err)
+		}
+		// A's own launch is unaffected.
+		inA := turnRunAsInput{ProfileID: "code", WorkingFolder: f.Layout.CodeShort(fixtureCodeFolder), CallerID: fixtureUserA, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
+		if runAs, err := declareTurnRunAs(f.Ctx(fixtureUserA), inA); err != nil || runAs.Slot != fixtureSlotA {
+			t.Fatalf("A's launch: %+v err=%v", runAs, err)
+		}
+	})
+
+	for name, layout := range map[string]identityLayout{"legacy per-user folder": legacyIdentityLayout(), "Crew/<id>": sharedIdentityLayout()} {
+		layout := layout
+		t.Run("Crew ("+name+"): the owner edits owner_id to B", func(t *testing.T) {
+			f := newMultiUserFixture(t, layout)
+			crewA := layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
+			if got := f.Proxy(fixtureUserA, http.MethodPut, crewA+"/product.json"); got != 0 {
+				t.Fatalf("the proxy refused the owner's own manifest write: %d", got)
+			}
+			if got := f.Proxy(fixtureUserB, http.MethodPut, crewA+"/product.json"); got != http.StatusForbidden {
+				t.Fatalf("the proxy let B write A's Crew manifest: %d", got)
+			}
+			f.put(crewA+"/product.json", forged("work", fixtureCrewID))
+			if got := resolveProjectOwner(f.Ctx(fixtureUserA), crewA); got != fixtureUserA {
+				t.Fatalf("resolved owner = %q after the edit", got)
+			}
+			ref, ok := resolveCrewPath(f.Ctx(fixtureUserA), fixtureUserA, crewA)
+			if !ok || ref.OwnerID != fixtureUserA {
+				t.Fatalf("resolveCrewPath owner = %+v ok=%v", ref, ok)
+			}
+			if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner {
+				t.Fatal("A lost ownership of their Crew by editing the manifest")
+			}
+			if crewAccessFor(f.Claims(fixtureUserB), ref) == crewAccessOwner {
+				t.Fatal("B became the owner by a manifest edit")
+			}
+			// Raw proxy: still A's alone.
+			if got := f.Proxy(fixtureUserB, http.MethodGet, crewA+"/code/notes.md"); got != http.StatusForbidden {
+				t.Fatalf("B reached A's Crew raw after the edit: %d", got)
+			}
+			if got := f.Proxy(fixtureUserA, http.MethodGet, crewA+"/code/notes.md"); got != 0 {
+				t.Fatalf("A lost raw access to their Crew: %d", got)
+			}
+			// A Crew turn never runs as B's slot, before or after (PLAT-446: the app account).
+			for _, caller := range []string{fixtureUserA, fixtureUserB} {
+				in := turnRunAsInput{ProfileID: "work", WorkingFolder: crewA, CallerID: caller, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli-shared"}
+				if runAs := decideTurnRunAs(f.Ctx(caller), in, defaultRunAsDeps()); runAs.Slot == fixtureSlotB {
+					t.Fatalf("a Crew turn of %s selected B's slot", caller)
+				}
+			}
+		})
+	}
 }

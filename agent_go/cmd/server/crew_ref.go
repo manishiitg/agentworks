@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"path"
 	"strings"
@@ -16,7 +15,7 @@ import (
 // A crew is moving from its owner's private tree to a shared root, the way
 // workflows live at Workflow/<name> (docs/design/crew_shared_root.md):
 //
-//	Crew/<id>                               shared root; owner from product.json owner_id
+//	Crew/<id>                               shared root; owner from the server's owner registry (PLAT-449)
 //	Chats/Work/projects/<id>                legacy, user-relative: the caller's own crew
 //	_users/<owner>/Chats/Work/projects/<id> legacy, physical: any owner's crew
 //
@@ -39,7 +38,7 @@ type crewPathRef struct {
 	// Rest is the path below Root ("" for the root itself).
 	Rest string
 	// OwnerID is the owning user's path segment. Legacy paths carry it;
-	// a shared root takes it from the manifest (empty when unknown).
+	// a shared root takes it from the server's owner registry (empty when unknown).
 	OwnerID string
 	// Shared reports a Crew/<id> root.
 	Shared bool
@@ -105,14 +104,9 @@ func resolveCrewPath(ctx context.Context, callerID, raw string) (crewPathRef, bo
 	if ref.Shared && ref.OwnerID == "" {
 		ref.OwnerID = crewOwners.owner(ctx, ref.Root)
 	} else if !ref.Shared && ref.OwnerID != "" {
-		// PLAT-442: the manifest's owner_id wins; the path owner is the fallback. A disagreement is
-		// logged and the manifest is used (it is what the Crew move relies on).
-		manifestOwner := crewOwners.owner(ctx, ref.Root)
-		owner, mismatch := pickProjectOwner(manifestOwner, ref.OwnerID)
-		if mismatch {
-			log.Printf("[OWNER_MISMATCH] %s: product.json owner_id %q differs from the path owner %q; using the manifest", ref.Root, manifestOwner, ref.OwnerID)
-		}
-		ref.OwnerID = owner
+		// PLAT-449: the owner is the server's registry entry, else the path owner; the manifest is never consulted
+		// (users and agent turns can edit it).
+		ref.OwnerID = resolveProjectOwner(ctx, ref.Root)
 	}
 	return ref, true
 }
@@ -170,25 +164,22 @@ func (c *crewOwnerCache) owner(ctx context.Context, root string) string {
 		read = readCrewManifestOwner
 	}
 	owner := read(ctx, root)
-	c.mu.Lock()
-	c.entries[root] = crewOwnerEntry{owner: owner, expires: now.Add(crewOwnerCacheTTL)}
-	c.mu.Unlock()
+	// An unknown owner is not remembered: a Crew registered (created or migrated) a moment ago must be usable
+	// at once, and a refusal that sticks for the cache lifetime would look like a lost Crew.
+	if owner != "" {
+		c.mu.Lock()
+		c.entries[root] = crewOwnerEntry{owner: owner, expires: now.Add(crewOwnerCacheTTL)}
+		c.mu.Unlock()
+	}
 	return owner
 }
 
-func readCrewManifestOwner(ctx context.Context, root string) string {
-	raw, found, err := readFileFromWorkspace(ctx, root+"/product.json")
-	if err != nil || !found {
-		return ""
-	}
-	var manifest struct {
-		Product string `json:"product"`
-		OwnerID string `json:"owner_id"`
-	}
-	if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), "work") {
-		return ""
-	}
-	return cleanManifestOwner(manifest.OwnerID)
+
+// readCrewManifestOwner is the owner of a Crew at the shared root: the server's registry entry, nothing else
+// (PLAT-449: product.json is user-writable, so its owner_id is never read for this; the historical name stays for the
+// tests that replace crewOwners.read). A Crew without an entry has no owner and belongs to nobody.
+func readCrewManifestOwner(_ context.Context, root string) string {
+	return resolveProjectOwner(context.Background(), root)
 }
 
 // crewPathAliases maps a migrated legacy crew root to its Crew/<id> root. The
