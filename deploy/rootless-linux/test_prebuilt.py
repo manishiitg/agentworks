@@ -100,6 +100,33 @@ class PrebuiltActivationTest(unittest.TestCase):
         # copied files are new files: the 14-day cleanup of carried assets must not delete an old build's assets
         self.assertGreater((release / "frontend/assets/app.js").stat().st_mtime, time.time() - 3600)
 
+    def test_playbook_validators_never_write_into_the_shared_build_source(self):
+        # Confida ships playbooks. Its first prebuilt deploy failed because the playbook tests create a temporary folder beside the playbooks, in the
+        # build's read-only source (2026-10-04). A product validates its own copy; the shared source must not be touched.
+        playbooks = self.build / "source/mcp-agent-builder-go/playbooks"
+        (playbooks / "scripts").mkdir(parents=True)
+        (playbooks / "scripts/validate_playbooks.py").write_text(
+            "import pathlib, tempfile, sys\n"
+            "here = pathlib.Path(__file__).resolve().parent.parent\n"
+            "tempfile.mkdtemp(dir=here, prefix='graph-test-')\n"  # fails with PermissionError in a read-only tree
+        )
+        smoke = playbooks / "agentic-engineering-platform/browser-qa/basic-browser-setup/playbook.json"
+        smoke.parent.mkdir(parents=True)
+        smoke.write_text("{}")
+        release_manifest.create(self.build, self.build.name, REVS)  # the build now includes these files
+        for path in [playbooks, *playbooks.rglob("*")]:
+            if path.is_dir():
+                path.chmod(0o555)
+        self.addCleanup(lambda: [p.chmod(0o755) for p in [playbooks, *playbooks.rglob("*")] if p.is_dir()])
+        # as root the permission bits do not apply, so only prove the shared source stays unchanged
+        before = sorted(str(p) for p in playbooks.rglob("*"))
+        result = self.activate("--stage-only", product="confida")
+        self.assertEqual(sorted(str(p) for p in playbooks.rglob("*")), before, "the shared build source was written to")
+        if os.geteuid() != 0:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            (release,) = self.releases()
+            self.assertTrue((release / "playbooks/scripts/validate_playbooks.py").is_file())
+
     def refuse(self, fragment, *extra, **kwargs):
         result = self.activate("--stage-only", *extra, **kwargs)
         self.assertNotEqual(result.returncode, 0, result.stdout)

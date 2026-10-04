@@ -196,6 +196,14 @@ python3 "$REPO_ROOT/scripts/build-playwright-packages.py" "$OUT/packages" >/dev/
 missing="$(LD_LIBRARY_PATH="$OUT/bin/lib" ldd "$OUT/bin/agent" | grep 'not found' || true)"
 [[ -z "$missing" ]] || { echo "agent has unresolved libraries: $missing" >&2; exit 1; }
 rm -f "$OUT/go.work" "$OUT/go.work.sum"
+
+# Validate the playbooks once, here, in a scratch copy (its tests create temporary folders beside the playbooks and must not touch the shared source);
+# a product that ships playbooks validates its own copy again when it activates.
+step "Validating playbooks"
+scratch="$(mktemp -d)"
+cp -R "$REPO_ROOT/playbooks/." "$scratch/"
+PYTHONDONTWRITEBYTECODE=1 python3 "$scratch/scripts/validate_playbooks.py"
+rm -rf "$scratch"
 chmod -R u+rwX,go+rX,go-w "$OUT"
 
 step "Writing manifest.json"

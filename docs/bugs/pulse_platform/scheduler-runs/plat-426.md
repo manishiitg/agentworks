@@ -90,6 +90,15 @@ known-good build from being pruned by later builds. `./deploy.sh build` only bui
 - Builds are not byte-reproducible across rebuilds (no `-trimpath`; the build path is in the binary); one build per commit is what is
   shared, so this does not matter for the "same binary everywhere" goal.
 
+## First real deploys (2026-10-04)
+
+- Excellence, prebuilt from build `a78c5e41-20261004051939` (build 180 s): manifest verified (7,927 files, x86_64, glibc 2.39), live in 4 min 50 s including the build, 0 differences from the profile, site 200, units active.
+- Confida failed before touching anything: the first playbook validation ran in the shared build's read-only `source/` as the `confida` account, and the playbook tests create a temporary folder beside the playbooks (`PermissionError`). The old path ran it in the product's own clone.
+  Fix: with `--prebuilt` the shared source is not validated in place; `build-release.sh` validates the playbooks once in a scratch copy and each product validates its own release copy. Test `test_playbook_validators_never_write_into_the_shared_build_source`
+  (run on the box as the unprivileged `agents` account: it passes, and against the old script it fails with the same PermissionError).
+- SparkQuill: `ssh sparkquill@host` is refused for the deploy key (`id_ed25519`, which works for `agents@`); the "Too many authentication failures" message came from SSH offering several agent keys. `deploy.sh` now sets `IdentitiesOnly=yes` so the real error shows.
+  SparkQuill needs its own deploy key (or the deploy key added to its `authorized_keys`).
+
 ## Left
 
 - A dedicated unprivileged builder account (`BUILD_AS`): `npm ci` runs package install scripts, today as root on the shared box.

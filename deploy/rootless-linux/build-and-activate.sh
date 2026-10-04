@@ -244,7 +244,10 @@ chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
 if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
-  python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
+  # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
+  # next to the playbooks (Confida's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
+  # (build-release.sh); the release's own writable copy is validated below.
+  [[ -n "$PREBUILT" ]] || python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
   mkdir -p "$BUILD_DIR/playbooks"
   cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
   python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py"
