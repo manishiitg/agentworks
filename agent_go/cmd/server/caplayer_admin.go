@@ -224,7 +224,7 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 		return "", err
 	}
 	result, err := capLayerAgentRequest(ctx, userID, "/api/admin/setup/tool", payload)
-	if err != nil || operation != "inspect_environment" {
+	if err != nil || (operation != "inspect_environment" && operation != "inspect_group") {
 		return result, err
 	}
 	users, err := vaultDirectoryUsers(claims)
@@ -235,7 +235,32 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 	if err := json.Unmarshal([]byte(result), &environment); err != nil || environment == nil {
 		return "", errors.New("invalid Vault environment response")
 	}
-	environment["users"] = users
+	if operation == "inspect_environment" {
+		environment["users"] = users
+	} else {
+		var membership struct {
+			Members []string `json:"members"`
+		}
+		if err := json.Unmarshal([]byte(result), &membership); err != nil {
+			return "", errors.New("invalid Vault group membership response")
+		}
+		memberIDs := map[string]bool{}
+		for _, id := range membership.Members {
+			memberIDs[id] = true
+		}
+		active := []vaultDirectoryUser{}
+		activeIDs := []string{}
+		for _, user := range users {
+			if memberIDs[user.ID] {
+				active = append(active, user)
+				activeIDs = append(activeIDs, user.ID)
+			}
+		}
+		environment["stored_member_count"] = len(membership.Members)
+		environment["members"] = activeIDs
+		environment["active_members"] = active
+		environment["active_member_count"] = len(active)
+	}
 	data, err := json.Marshal(environment)
 	return string(data), err
 }

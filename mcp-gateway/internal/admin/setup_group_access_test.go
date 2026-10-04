@@ -33,7 +33,7 @@ func TestBuilderGroupRemovalUsesEffectivePermissionsAndPersistsRevocation(t *tes
 		t.Fatal(err)
 	}
 	platform := store.PlatformGroupID("w")
-	for _, c := range []store.Connector{{ID: "linear", WorkspaceID: "w", Status: store.StatusActive}, {ID: "notion", WorkspaceID: "w", Status: store.StatusActive}, {ID: "foreign", WorkspaceID: "foreign"}} {
+	for _, c := range []store.Connector{{ID: "linear", Label: "Linear", WorkspaceID: "w", Status: store.StatusActive}, {ID: "notion", Label: "Notion", WorkspaceID: "w", Status: store.StatusActive}, {ID: "foreign", WorkspaceID: "foreign"}} {
 		s.AddConnector(c)
 	}
 	for _, c := range []string{"linear", "notion"} {
@@ -56,6 +56,14 @@ func TestBuilderGroupRemovalUsesEffectivePermissionsAndPersistsRevocation(t *tes
 	permissions := result.(map[string]any)["permissions"].([]groupPermission)
 	if len(permissions) != 2 || !permissions[0].Allowed || !permissions[1].Allowed {
 		t.Fatal("server grants were not counted", permissions)
+	}
+	summary := result.(map[string]any)["access_summary"].([]groupConnectorSummary)
+	if len(summary) != 2 || summary[0].Name != "Linear" || !summary[0].ServerGrantActive || summary[0].AllowedToolCount != 1 || summary[0].TotalToolCount != 1 {
+		t.Fatal("incorrect named access summary", summary)
+	}
+	serialized, _ := json.Marshal(result)
+	if !strings.HasPrefix(string(serialized), `{"access_summary":`) {
+		t.Fatal("summary must precede potentially truncated tool details")
 	}
 	// Exercise all removal sources, including a saved rule and a direct grant.
 	s.AddGroupGrant(store.GroupGrant{GroupID: platform, PublicName: "linear__read"})
@@ -92,6 +100,14 @@ func TestBuilderGroupRemovalUsesEffectivePermissionsAndPersistsRevocation(t *tes
 	}
 	if s.GroupHasServer(platform, "linear") || s.GroupHasTool(platform, "linear__read") {
 		t.Fatal("group grants survived")
+	}
+	result, err = a.setupTool(context.Background(), "inspect_group", inspect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary = result.(map[string]any)["access_summary"].([]groupConnectorSummary)
+	if summary[0].AllowedToolCount != 0 || summary[0].ServerGrantActive || summary[0].Assigned || !summary[1].ServerGrantActive {
+		t.Fatal("summary did not reflect complete removal and preserved Notion", summary)
 	}
 	if _, err := policy.Authorize(s, auth.Identity{UserID: "excluded", WorkspaceID: "w"}, "linear__read"); err == nil {
 		t.Fatal("excluded user retained access")

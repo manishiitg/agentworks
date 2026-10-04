@@ -122,6 +122,43 @@ type groupPermission struct {
 	Assigned    bool   `json:"assigned"`
 }
 
+type groupConnectorSummary struct {
+	ConnectorID       string `json:"connector_id"`
+	Name              string `json:"name"`
+	ServerGrantActive bool   `json:"server_grant_active"`
+	Assigned          bool   `json:"assigned"`
+	AllowedToolCount  int    `json:"allowed_tool_count"`
+	TotalToolCount    int    `json:"total_tool_count"`
+}
+
+func (a *Admin) groupAccessSummary(groupID string, permissions []groupPermission) []groupConnectorSummary {
+	byConnector := map[string][]groupPermission{}
+	for _, permission := range permissions {
+		byConnector[permission.ConnectorID] = append(byConnector[permission.ConnectorID], permission)
+	}
+	summary := []groupConnectorSummary{}
+	for _, connector := range a.Store.ListConnectors(a.WorkspaceID) {
+		name := connector.Label
+		if name == "" {
+			name = connector.Provider
+		}
+		if name == "" {
+			name = connector.ID
+		}
+		entry := groupConnectorSummary{ConnectorID: connector.ID, Name: name, ServerGrantActive: a.Store.GroupHasServer(groupID, connector.ID)}
+		entry.Assigned = entry.ServerGrantActive
+		for _, permission := range byConnector[connector.ID] {
+			entry.TotalToolCount++
+			if permission.Allowed {
+				entry.AllowedToolCount++
+			}
+			entry.Assigned = entry.Assigned || permission.Assigned
+		}
+		summary = append(summary, entry)
+	}
+	return summary
+}
+
 // Shared by the UI and builder; counts include whole-server grants and policies.
 func (a *Admin) groupPermissions(groupID string) []groupPermission {
 	permissions := []groupPermission{}

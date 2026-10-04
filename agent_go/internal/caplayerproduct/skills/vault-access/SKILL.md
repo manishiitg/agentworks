@@ -15,6 +15,8 @@ Native CLI tools are enabled through the shared product runtime. Load this proje
 
 # Access setup
 
+For group summaries, inspect_group returns access_summary with exact connector names, allowed/total tool counts and server_grant_active. Report these fields directly, even when the detailed permissions are truncated. Host builder responses include active_member_count and active_members matching Users & access; stored_member_count can include disabled or missing accounts. Do not infer server grants from older chat messages or tool counts.
+
 1. Call manage_vault_access with operation inspect_environment and arguments {}. Use actual group IDs and tool names from the result. Its users field contains active platform accounts with id, email and username from Users & access. Use list_users with {} to refresh only this directory. Resolve a requested email exactly; ask when a name is ambiguous. Match group_members.user_id to directory id; gateway SQL users can have blank or stale emails. Disabled accounts are excluded. Never invent an email for a local account that has none.
 2. Call inspect_tool with arguments {"public_name":"..."} for every proposed tool. Confirm its approved fingerprint and explicit string argument paths.
 3. If a required scope is missing or hidden in query text/opaque IDs, explain why a tool-argument condition is insufficient. Require a trusted adapter or upstream scoped credentials. Do not save a misleading policy.

@@ -74,7 +74,10 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			return nil, errors.New("unknown group")
 		}
 		if name == "inspect_group" {
-			return map[string]any{"group": group, "members": a.Store.MembersOf(group.ID), "server_grants": a.Store.GroupServersFor(group.ID), "permissions": a.groupPermissions(group.ID)}, nil
+			permissions := a.groupPermissions(group.ID)
+			// JSON keys are sorted: put the compact named summary before the
+			// potentially long permission list so CLI output limits retain it.
+			return map[string]any{"access_summary": a.groupAccessSummary(group.ID, permissions), "group": group, "members": a.Store.MembersOf(group.ID), "server_grants": a.Store.GroupServersFor(group.ID), "permissions": permissions}, nil
 		}
 		if !validID.MatchString(in.ConnectorID) || !a.Store.RemoveGroupConnectorAccess(a.WorkspaceID, group.ID, in.ConnectorID, setupActor(actors)) {
 			return nil, errors.New("unknown connector")

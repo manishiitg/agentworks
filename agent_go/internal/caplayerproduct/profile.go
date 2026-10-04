@@ -37,7 +37,7 @@ func BuiltinAgentProfile() agentprofiles.Profile {
 	}
 	prompt, _ := files.ReadFile("system-prompt.md")
 	return agentprofiles.Profile{
-		ID: ProfileID, Name: "Vault", Version: 9, BuiltIn: true,
+		ID: ProfileID, Name: "Vault", Version: 10, BuiltIn: true,
 		Scope:                agentprofiles.ProfileScopeProject,
 		SystemPromptTemplate: string(prompt), Skills: []string{"vault-access"},
 		Tools:      []agentprofiles.ToolBinding{{ID: "caplayer.access"}, {ID: "caplayer.database.query"}, {ID: "caplayer.database.mutate"}, {ID: "caplayer.secrets"}},

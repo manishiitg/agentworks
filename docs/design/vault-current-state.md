@@ -692,13 +692,20 @@ not create accounts, sync gateway users, or change memberships or grants.
 
 ### Group MCP removal and verification
 
-Vault profile v9 exposes `inspect_group` and `remove_group_mcp`. The builder and
+Vault profile v10 exposes `inspect_group` and `remove_group_mcp`. The builder and
 UI share the same group permission calculation and `RemoveGroupConnectorAccess`
 mutation. Removing a connector from a group deletes its whole-server grant,
 individual tool grants and matching saved rules, preserves other groups and
 connectors, and remembers an explicit Platform revocation across restart or
 discovery. The builder receipt includes `server_grant_active`,
 `allowed_tool_count` and the affected effective permissions.
+
+Inspection puts a compact `access_summary` before the detailed tool permissions,
+with connector names, whole-server grant flags and allowed/total counts. This
+keeps the authoritative summary visible under CLI tool-output limits. The host
+joins stored member IDs to the central active account directory and returns
+`active_members` and `active_member_count`, matching the UI. `stored_member_count`
+includes inactive or missing directory entries; inspection does not modify them.
 
 `group_tool_grants` is only one permission source: deleting its rows does not
 remove a `group_server_grants` grant or a saved permission rule. Builder prompts

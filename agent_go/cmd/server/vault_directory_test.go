@@ -82,3 +82,28 @@ func TestVaultDirectoryDoesNotInventLocalEmailAndReportsReadFailure(t *testing.T
 		t.Fatal("directory failure became an empty/local account list")
 	}
 }
+
+func TestVaultGroupInspectionCountsOnlyActiveDirectoryMembers(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin"},{"id":"alice","email":"alice@example.com"},{"id":"disabled","email":"disabled@example.com","disabled":true}]}`)
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Operation string `json:"operation"`
+		}
+		if json.NewDecoder(r.Body).Decode(&input) != nil || input.Operation != "inspect_group" {
+			t.Error("inspection must not mutate or sync gateway memberships")
+		}
+		w.Write([]byte(`{"access_summary":[],"group":{"ID":"g"},"members":["alice","disabled","missing"]}`))
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	result, err := capLayerAgentAccess(context.Background(), "admin", "inspect_group", json.RawMessage(`{"group_id":"g"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, `"active_member_count":1`) || !strings.Contains(result, `"stored_member_count":3`) || !strings.Contains(result, `"email":"alice@example.com"`) || !strings.Contains(result, `"members":["alice"]`) || strings.Contains(result, "disabled@example.com") || strings.Contains(result, `"missing"`) {
+		t.Fatal("inspection does not match the active UI directory", result)
+	}
+}
