@@ -2,6 +2,12 @@
 
 [PLAT-471](pulse_platform/security-sandbox/plat-471.md), fixed on main, not deployed; GitHub issue #269. The first Vault install granted nothing, so every run selecting a shared secret was refused. The Platform group is now granted every existing and newly registered shared secret and MCP server (gateway start check plus host-side registration of environment-defined and managed secret names); admin removals persist in `platformRevoked`; servers without Vault behave as before Vault.
 
+## Agent-started OAuth sign-ins redirect to a dead port locally — PLAT-475
+
+[PLAT-475](pulse_platform/integrations/plat-475.md), fixed on `main`: `run_agentworks` now
+exports `PUBLIC_URL` as the frontend it serves, beating a stale `agent_go/.env` value.
+Provider apps that check the callback exactly need that address registered.
+
 ## OAuth consent screens say "Multi Agent Builder" — PLAT-474
 
 [PLAT-474](pulse_platform/integrations/plat-474.md), fixed on `main` for newly authorized
