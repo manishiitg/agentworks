@@ -1,3 +1,13 @@
+## Code and Crew pages could not connect their panel on multi-user servers — PLAT-434
+
+[PLAT-434](pulse_platform/frontend-chat/plat-434.md), fixed on main; deployment pending. A project under `_users/<id>/` got the workflow
+view list, so the page's connect call was refused (`invalid_state`) and the agent saw "browser disconnected".
+
+## One workspace path type instead of `_users/` string handling everywhere — PLAT-435
+
+[PLAT-435](pulse_platform/security-sandbox/plat-435.md), open (proposal). The logical/physical path mix-up is the root of a long series of
+multi-user-only bugs: 82 files, 17 raw prefix checks, three disagreeing normalisers.
+
 ## Relays use external API triggers without timed schedules — PLAT-433
 
 [PLAT-433](pulse_platform/scheduler-runs/plat-433.md), fixed on main; deployment

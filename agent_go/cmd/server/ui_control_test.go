@@ -426,3 +426,22 @@ func TestPerformUIActionCancellationReturnsTerminalReceipt(t *testing.T) {
 		t.Fatalf("same key created a new action: %s", again)
 	}
 }
+
+// PLAT-434: a project under _users/<id>/ (every multi-user server) got the
+// workflow contract, so the Code page's views were refused as invalid_state
+// and the agent saw "browser disconnected".
+func TestUIContractForScopeIgnoresUserPrefix(t *testing.T) {
+	for _, scope := range []string{"Chats/Code/projects/hi", "_users/manish/Chats/Code/projects/hi"} {
+		if !validUIViewForContract(uiContractForScope(scope), "database") {
+			t.Errorf("%s: a Code project must accept the Code-only view \"database\"", scope)
+		}
+	}
+	for _, scope := range []string{"Chats/Work/projects/site", "_users/manish/Chats/Work/projects/site"} {
+		if !validUIViewForContract(uiContractForScope(scope), "memory") {
+			t.Errorf("%s: a Crew project must accept the Crew view \"memory\"", scope)
+		}
+	}
+	if validUIViewForContract(uiContractForScope("Workflow/w"), "database") {
+		t.Error("a workflow must keep the workflow contract")
+	}
+}
