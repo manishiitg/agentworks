@@ -51,6 +51,10 @@ Builder's own runs; `workflow-tools.md` says only the Builder's `execute_step`
 may repair. Test: `scripted_no_self_heal_test.go` fails if any of the old
 promises reappears.
 
+`docs/workflow/learn_code_flow.md` (the scripted execution description) now opens
+with the run-time rule and scopes generation, repair, save-back, the `lock_code`
+effect and the `code_exec` fallback to the Builder's own `execute_step`.
+
 ## Left
 
 - Live: `cli-step-contract` (saved scripted step + named route, strict by

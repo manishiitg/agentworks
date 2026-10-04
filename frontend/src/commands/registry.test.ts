@@ -10,11 +10,10 @@ vi.mock('../api/scheduler', () => ({ schedulerApi: { runPulse: runPulseMock } })
 // Structural fixtures mirroring agentworksproduct/product.yaml: the adapter
 // mechanics (gates, aliases, focus resolution, substitution) are what's under
 // test here. The real prompt content is locked by the backend manifest test.
-const PULSE_REVIEW_PROMPT = 'Run /pulse-review as a BACKGROUND task so this chat stays responsive. '
+const PULSE_REVIEW_PROMPT = 'Run /run-technical-review. You do it yourself in this turn, and may use your own subagents for parallel reading or analysis. '
   + 'Call get_workflow_command_guidance(kind="engineering-review", focus="{{context}}") and follow the returned instructions verbatim. '
-  + 'This is the read-only opening of one retained Review+Fix task. Persist the completed technical_review receipt before ending this turn. '
-  + 'completion_mode="present_result". Do NOT perform the bounded Review+Fix yourself this turn. '
-  + 'Do not call tools, reload state, or independently revalidate after that notification.'
+  + 'This is one bounded Review+Fix task: persist the completed technical_review receipt before moving to the fix part. '
+  + 'When you are done, present the selected repair objective, changes made, and remaining actionable issues.'
 
 function productCommand(name: string, prompt: string, extra?: Partial<AgentworksProductCommand>): AgentworksProductCommand {
   return { name, description: `${name} description`, icon: 'terminal', aliases: [], menuHidden: false, prompt, ...extra }
@@ -23,10 +22,10 @@ function productCommand(name: string, prompt: string, extra?: Partial<Agentworks
 function agentworksFixture(): AgentworksProductCommand[] {
   return [
     productCommand('design-plan', 'Call get_workflow_command_guidance(kind="design-plan", focus="{{context}}") and follow the returned instructions verbatim.'),
-    productCommand('run-plan-drift', 'Run the /run-plan-drift review as a BACKGROUND task. Part 1 may apply bounded safe compatibility and prompt repairs; Part 2 remains read-only. Persist typed review and repair outcomes with their lifecycle outcomes. Focus: {{context}}.', { aliases: ['review-artifact-drift'], menuHidden: true }),
+    productCommand('run-plan-drift', 'Run the /run-plan-drift review in this turn. Part 1 may apply bounded safe compatibility and prompt repairs; Part 2 remains read-only. Persist typed review and repair outcomes with their lifecycle outcomes. Focus: {{context}}.', { aliases: ['review-artifact-drift'], menuHidden: true }),
     productCommand('design-dashboard', 'Call get_workflow_command_guidance(kind="design-reporting-ui", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['design-reporting-ui'] }),
     productCommand('setup-goals', 'Call get_workflow_command_guidance(kind="setup-goals", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['define-success'] }),
-    productCommand('run-goal-work', 'Run the /run-goal-work pass as a BACKGROUND task via run_in_background. Call get_workflow_command_guidance(kind="strategy-auditor", focus="{{context}}"). Then present Needs your decision proposals.', { aliases: ['strategy-auditor', 'goal-advisor'] }),
+    productCommand('run-goal-work', 'Run the /run-goal-work pass in this turn. Call get_workflow_command_guidance(kind="strategy-auditor", focus="{{context}}"). Then present Needs your decision proposals.', { aliases: ['strategy-auditor', 'goal-advisor'] }),
     productCommand('run-technical-review', PULSE_REVIEW_PROMPT, { aliases: ['pulse-review'], menuHidden: true }),
     productCommand('review-code', 'Call get_workflow_command_guidance(kind="design-plan", focus="Architecture focus: inspect saved scripts. Load references/code-authoring.md then references/scripted.md one at a time. Resolve canonical code paths from workflow.json.code_layout_version. do not apply changes in this review. {{context}}").'),
     productCommand('backup', '{{context}} Help me set up or run backup for this workflow.'),
@@ -228,11 +227,11 @@ describe('Pulse slash commands', () => {
     } as unknown as CommandContext)
 
     expect(submitted).toContain('kind="engineering-review"')
-    expect(submitted).toContain('Run /pulse-review as a BACKGROUND task')
-    expect(submitted).toContain('BACKGROUND task')
-    expect(submitted).toContain('completion_mode="present_result"')
+    expect(submitted).toContain('Run /run-technical-review. You do it yourself in this turn')
+    expect(submitted).not.toContain('BACKGROUND task')
+    expect(submitted).not.toContain('run_in_background')
     expect(submitted).not.toContain('required_pulse_review_modules')
-    expect(submitted).toContain('Do not call tools, reload state, or independently revalidate')
+    expect(submitted).toContain('present the selected repair objective')
     expect(submitted).toContain('prioritize failed evaluation writes')
   })
 
@@ -277,7 +276,7 @@ describe('Pulse slash commands', () => {
       workshopMode: 'workshop',
     } as unknown as CommandContext)
 
-    expect(submitted).toContain('Run the /run-goal-work pass as a BACKGROUND task')
+    expect(submitted).toContain('Run the /run-goal-work pass in this turn')
     expect(submitted).toContain('kind="strategy-auditor"')
     expect(submitted).not.toContain('required_pulse_review_modules')
     expect(submitted).toContain('focus on repeated targets')
@@ -305,11 +304,11 @@ describe('Pulse slash commands', () => {
     } as unknown as CommandContext)
 
     expect(submitted).toContain('get_workflow_command_guidance')
-    expect(submitted).toContain('Run the /run-goal-work pass as a BACKGROUND task')
+    expect(submitted).toContain('Run the /run-goal-work pass in this turn')
     expect(submitted).not.toContain('goal-advisor')
     expect(submitted).toContain('challenge feed concentration')
-    expect(submitted).toContain('BACKGROUND task')
-    expect(submitted).toContain('run_in_background')
+    expect(submitted).not.toContain('BACKGROUND task')
+    expect(submitted).not.toContain('run_in_background')
     expect(submitted).toContain('Needs your decision proposals')
     expect(submitted).not.toContain('message_sequence=')
   })

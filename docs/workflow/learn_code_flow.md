@@ -2,6 +2,16 @@
 
 This is the current source of truth for scripted workflow execution.
 
+> **Update 2026-10-04 (PLAT-436): runs never self-heal.** In any run (schedule,
+> webhook, `run_full_workflow`, a route called by an agent) a scripted step runs
+> its saved `main.py` and nothing else. A missing or failing script fails the step
+> with its real error and Pulse reports it; no LLM generates, repairs or stands in
+> for the script, nothing is saved back, and there is no `code_exec` fallback.
+> Generation, repair and save-back below happen only when the Builder runs the
+> step itself with `execute_step` (Workshop mode, not `fast_path_only`, not a
+> scheduled session). Decision: `docs/DECISIONS.md`, ticket
+> `bugs/pulse_platform/step-execution/plat-436.md`.
+
 `learn_code` and `code_exec` are not separate systems. They are two execution modes built on the same code-execution foundation:
 
 - `code_exec`: the agent writes and runs code for the current run only.
@@ -170,9 +180,10 @@ The controller reviews the saved script before trusting it. It rejects fast path
 
 When static review fails, the system skips the fast path and falls back to LLM repair/generation.
 
-### LLM generation and repair
+### Authoring and repair (the Builder's own `execute_step` only)
 
-If fast path fails or no saved script exists:
+If the saved script fails or does not exist and the Builder is running the step
+itself (see the update above; a run fails the step instead):
 
 1. The execution agent writes or repairs `execution/{step-path}/code/main.py`.
 2. The controller reruns pre-validation.
@@ -180,17 +191,18 @@ If fast path fails or no saved script exists:
 
 Repair loop behavior:
 
-- up to 3 fix iterations (configurable via `LearnCodeMaxFixIter`)
+- up to 3 fix iterations
 - fresh Tier 1 (High) repair agent each iteration
 - feedback message includes: task description, pointer to current `main.py` on disk (not inlined), static code review issues, last execution output + exit code, and attempt counter
 - validation details are intentionally omitted from feedback to prevent the LLM from fabricating outputs that match the schema
 - diffs are written under `execution/{step-path}/code/fix-diffs/`
 
-### Save-back behavior
+### Save-back behavior (the Builder's own `execute_step` only)
 
-After learn-code execution, the controller saves the latest script back into `learnings/{step-id}/` unless the script has syntax errors or `lock_code` freezes the saved script.
-
-This means `learn_code` is not only a fast path. It is also the persistent script-maintenance path.
+After a Builder-run learn-code execution, the controller saves the latest script
+back (`code/{step-id}/`, or `learnings/{step-id}/` in the legacy layout) unless the
+script has syntax errors or `lock_code` freezes the saved script. A run never saves
+anything back.
 
 ### Learning access vs code lock
 
@@ -199,28 +211,25 @@ Learning writes use an access level; saved code has a separate lock:
 | Setting | Controls | Effect |
 |---|---|---|
 | `learnings_access` (`"read"\|"read-write"\|"none"`) | SKILL.md read/write at a coarse level | Default `"read"` — step sees `_global/SKILL.md` but doesn't contribute. `"read-write"` (+ non-empty `learning_objective`) opts into contribution. `"none"` opts out of both. Mirrors `knowledgebase_access`. |
-| `lock_code: true` | main.py | Prevents LLM-rewritten scripts from being saved back to learnings. Skips the fix loop entirely (falls back directly to code_exec mode). |
+| `lock_code: true` | main.py | Stops the Builder's own `execute_step` from repairing or rewriting the script. Runs are unaffected: they never rewrite a script whether or not it is locked. |
 
 When `lock_code: true` is set on a step:
 
-- **Fast path**: Saved script is still copied from learnings to execution and run normally
-- **Fix loop**: Skipped entirely (`maxFixIter = -1`) — no repair agents are created, no tokens spent on fixes that would be discarded
-- **Save-back**: Blocked — the LLM's rewritten script is NOT copied back to learnings
-- **Fallback**: Falls through directly to code_exec mode (tools directly, no main.py)
-- **Metadata**: `script_metadata.json` is still updated (run history, failure patterns) for observability
+- **Builder `execute_step`**: the saved script runs; the repair loop is skipped (`maxFixIter = -1`), no repair agents are created, and nothing is saved back.
+- **Runs**: unchanged. The saved script runs and a failure fails the step.
+- **Metadata**: `script_metadata.json` is still updated (run history, failure patterns) for observability.
 
-This means a locked script that keeps failing will repeat the same failure every run. The user must manually fix `learnings/{step-id}/main.py` or set `lock_code: false` to let the system fix it.
+A script that keeps failing repeats the same failure every run until the Builder
+fixes `main.py` (set `lock_code: false` first if it is locked, then `execute_step`).
 
-To force a complete rewrite: delete `learnings/{step-id}/main.py` (not the execution copy), then run `execute_step`. The LLM will generate fresh.
+To force a complete rewrite: delete the saved `main.py` (not the execution copy),
+then run `execute_step` as the Builder. The LLM will generate fresh.
 
-### Fallback after repair exhaustion
+### After repair exhaustion (the Builder's own `execute_step` only)
 
-If the learn-code repair loop is exhausted (or skipped due to locked learnings), the controller disables persistent scripted mode for the remaining outer retries and continues in plain `code_exec` mode.
-
-That fallback is important:
-
-- `learn_code` is the explicitly requested, proven deterministic fast path
-- `code_exec` is the default and the recovery path when the saved script is not currently salvageable within the repair budget
+If the repair loop is exhausted, the Builder's `execute_step` continues in plain
+`code_exec` mode for its remaining retries so the Builder can see what the agent
+can do. This is an authoring aid; a run never falls back to `code_exec`.
 
 ## `code_exec` Flow
 
