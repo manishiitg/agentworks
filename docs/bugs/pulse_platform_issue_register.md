@@ -1,3 +1,7 @@
+## slotctl refuses commands that start in the docs tree on RTS — PLAT-476
+
+[PLAT-476](pulse_platform/security-sandbox/plat-476.md), script fixed on main; live RTS config still to be corrected (root). `provision-slots.sh` built `allowed_cwd` from the app folder while the docs live at `/data/video-studio/docs`, so the slot shell tool failed with exit 126 and the Crew fell back to a no-ask native shell.
+
 ## Platform group automatically has every shared secret and platform MCP — PLAT-471
 
 [PLAT-471](pulse_platform/security-sandbox/plat-471.md), fixed on main, not deployed; GitHub issue #269. The first Vault install granted nothing, so every run selecting a shared secret was refused. The Platform group is now granted every existing and newly registered shared secret and MCP server (gateway start check plus host-side registration of environment-defined and managed secret names); admin removals persist in `platformRevoked`; servers without Vault behave as before Vault.
