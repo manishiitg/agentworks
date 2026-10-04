@@ -197,3 +197,18 @@ func migrateProductOwners(docsDir string) productOwnerMigrationReport {
 	}
 	return report
 }
+
+// resolveProjectOwner returns the owner of the Crew or Code at root (a project
+// root in any spelling the caller knows is physical): manifest first, path second.
+func resolveProjectOwner(ctx context.Context, root string) string {
+	pathOwner := productOwnerFromPath(root)
+	manifestOwner := ""
+	if raw, found, err := readFileFromWorkspace(ctx, strings.TrimSuffix(root, "/")+"/product.json"); err == nil && found {
+		manifestOwner, _, _ = productManifestOwnerID(raw)
+	}
+	owner, mismatch := pickProjectOwner(manifestOwner, pathOwner)
+	if mismatch {
+		log.Printf("[OWNER_MISMATCH] %s: product.json owner_id %q differs from the path owner %q; using the manifest", root, manifestOwner, pathOwner)
+	}
+	return owner
+}

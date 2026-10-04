@@ -4761,6 +4761,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to create workflow orchestrator: %v", err), http.StatusInternalServerError)
 			return
 		}
+		if workflowCLISecurityPolicy != nil {
+			// PLAT-442: a Goal never runs as a person's slot: declared, not left to the folder rule.
+			workflowRoot := codingAgentWorkspaceWorkingDir(manifestWorkspacePath)
+			workflowCLISecurityPolicy.RunAs = llmtypes.RunAs{Declared: true, Root: workflowRoot}
+			llmtypes.DeclareRunAs(workflowRoot, workflowCLISecurityPolicy.RunAs)
+		}
 		workflowOrchestrator.SetCLISecurityPolicy(workflowCLISecurityPolicy)
 
 		// Set selected skills on the orchestrator
@@ -5576,23 +5582,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if isWorkflowPhase && workflowPhaseFolder != "" && workflowPhaseFolder != "default_workspace" {
 			chatWorkingFolder = workflowPhaseFolder
 		}
-		chatWorkingDir := codingAgentWorkspaceWorkingDir(chatWorkingFolder)
 		workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-		sharedChatWorkingDir := chatWorkingDir
-		if isWorkflowPhase {
-			var isolationErr error
-			chatWorkingDir, isolationErr = workflowCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly))
-			if isolationErr != nil {
-				sendError(isolationErr.Error(), true)
-				return
-			}
-		} else if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID {
-			var isolationErr error
-			chatWorkingDir, isolationErr = crewCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
-			if isolationErr != nil {
-				sendError(isolationErr.Error(), true)
-				return
-			}
+		turnProfileID := ""
+		if resolvedProfile != nil {
+			turnProfileID = resolvedProfile.Definition.ID
+		}
+		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly)
+		if isolationErr != nil {
+			sendError(isolationErr.Error(), true)
+			return
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
@@ -5621,6 +5619,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			logfWithContext(queryLogCtx, "[CLI_SECURITY] Failed to resolve policy: %v", err)
 			sendError(fmt.Sprintf("CLI security policy cannot be enforced: %v", err), true)
 			return
+		}
+		// PLAT-442: the platform names the account this turn's CLI runs as (run_as.go) and declares it to the
+		// provider for the CLI's folder; the launch policy carries it too.
+		turnRunAs := declareTurnRunAs(r.Context(), turnRunAsInput{
+			ProfileID:        turnProfileID,
+			WorkflowPhase:    isWorkflowPhase,
+			WorkingFolder:    chatWorkingFolder,
+			CLIWorkingDir:    chatWorkingDir,
+			SharedWorkingDir: sharedChatWorkingDir,
+			CallerID:         currentUserID,
+		})
+		if cliSecurityPolicy != nil {
+			cliSecurityPolicy.RunAs = turnRunAs
 		}
 		if piPersistentInteractive {
 			// Another conversation's Pi turn in this folder finishes first:

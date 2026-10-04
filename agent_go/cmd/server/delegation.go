@@ -697,6 +697,8 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		return "", fmt.Errorf("failed to create sub-agent runtime directory: %w", err)
 	}
 	log.Printf("[DELEGATION] Sub-agent coding-agent runtime cwd: %s", subAgentRuntimeDir)
+	// PLAT-442: the sub-agent's runtime folder is in its user's own tree, so it runs as that user's slot; declared, not guessed.
+	declareFolderRunAs(subAgentRuntimeDir, sanitizeUserIDForPath(subAgentUserID))
 
 	// Create sub-agent config based on parent request
 	subAgentConfig := agent.LLMAgentConfig{

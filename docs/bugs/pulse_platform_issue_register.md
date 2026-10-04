@@ -1,3 +1,8 @@
+## Crew CLI turns run as the app account, not the owner's slot — PLAT-446
+
+[PLAT-446](pulse_platform/security-sandbox/plat-446.md), open, needs an owner decision. Found in PLAT-442 step 2: a Crew CLI starts in an isolated
+runtime folder, so the owner's and a reader's turn both run as the app account; the premise of decision 1 does not hold.
+
 ## Applying a decision in chat pointed at a Fixer that no longer exists — PLAT-445
 
 [PLAT-445](pulse_platform/human-decisions/plat-445.md), fixed on `main`, not

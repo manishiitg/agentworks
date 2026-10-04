@@ -1,6 +1,6 @@
 # PLAT-442 — Identity is explicit: owner from the manifest, slot named by the platform, Crews at `Crew/<id>`
 
-Status: in progress (2026-10-04). Step 1 on main, not deployed; steps 2, 3, 5 below as they land. Step 4 (the Crew move) is not started. Follows PLAT-435 (one path type in agent_go).
+Status: steps 1, 2, 3 and 5 on main (2026-10-04), not deployed. Step 4 (the Crew move) is not started. Crew CLI identity needs a decision: PLAT-446. Follows PLAT-435 (one path type in agent_go).
 
 ## Problem
 
@@ -68,3 +68,106 @@ Where each product's owner lived before: Workflows in `workflow.json` (several o
   the tests above (the new spelling tests pass on the old code for the migrated helpers).
 - This commit also carries the workspace half of step 2 (`slots.ExecConfig.SlotForLaunch`, `slottmux` follows the launch script's run folder,
   `slots/launch_test.go`); the agent_go and provider halves, and what the fallback status is, are under Step 2 once that lands.
+
+### Step 2: the platform names the slot (2026-10-04, not deployed)
+
+Provider `ae8e204` (pinned in `agent_go/go.mod`), agent_go and workspace commits below.
+
+**What it was, proven first.** The provider's `slotfs.SlotOf(hint)` and the tmux front-end's `ExecConfig.SlotForDir(dir)` took the slot of the
+user whose `<docs>/_users/<id>/` tree the folder lies in (plus the canary `AGENTWORKS_SLOT_CLI_USERS`, checked against that id). Regression
+tables written and run on the unchanged code before anything moved: `internal/slotfs/slotfs_identity_test.go` (provider; first version passed on
+04645b8), `workspace/slots/identity_table_test.go` (also run against the pre-change workspace code), and `cmd/server/multiuser_identity_test.go
+TestRunAsRegressionTable`, which builds the folder each turn kind REALLY starts its CLI in with the chat handler's own code and checks that the
+platform's declaration equals what the old folder rule gives for it:
+
+| Turn | CLI starts in | Slot (unchanged) |
+|---|---|---|
+| Code, owner A | the project folder, `_users/A/Chats/Code/projects/p` | A's slot |
+| Crew, owner A | isolated runtime `<app state>/cli-runtimes/v1/<hash>` (links to the project) | none: the app account |
+| Crew, reader B (Run mode) | the same kind of runtime folder | none: the app account |
+| Goal, any user | isolated runtime (chats) or `Workflow/<name>` (runs) | none |
+| private chat of A | `_users/A/Chats` | A's slot |
+| delegated sub-agent of A | A's runtime folder in `_users/A` | A's slot |
+
+**Found: this is not what decision 1 assumed.** The ticket (and decision 1) say a Crew reader's turn runs as the owner's slot because it runs
+"in the owner's folder". It does not: since the Crew CLI isolation (`crewCLIWorkingDir`, always on for coding CLIs) the Crew CLI never starts in the
+Crew folder, so Crew turns of owner and reader both run as the app account. Only the bridge shell tool (workspace service, `slots.For(X-User-ID)`)
+runs as the caller's slot. The task was to make the identity explicit without changing it, so the platform now DECLARES the app account for Crew
+turns (`run_as.go`, one table in the comment on top). Making Crew turns run as the owner's slot is a behaviour change (the runtime folder is
+app-owned 0700, so the CLI could not even enter it as the slot); it needs its own decision. See PLAT-446.
+
+**How the slot is carried.**
+- `llmtypes.RunAs{Declared, User, Slot, Root}` (provider). Carried on the launch policy (`CLISecurityPolicy.RunAs`, so it travels through
+  mcpagent unchanged) AND declared for the CLI's folder in a small in-process registry (`llmtypes.DeclareRunAs(dir, RunAs)`, longest-folder
+  match, bounded). The registry is needed because a launch without a Landlock policy has no policy to carry it, and because the provider asks
+  about many folders (working dir, private home, launch files) under the turn's folder.
+- agent_go decides per turn in `decideTurnRunAs` (`run_as.go`): Code and Crew take the owner from the manifest (step 1), a Goal and an isolated
+  runtime are the app account, a private chat is its user. Called from the chat handler right after the policy is resolved, from the workflow
+  orchestrator (Goal: declared app account for the workflow folder) and from delegation (sub-agent runtime folder).
+- `slotfs.SlotOf` order: the slot named in the path (a folder inside `<slot state root>/<slot>` or `<run root>/<slot>`, explicit by construction) ->
+  the declaration (checked against the host's slot table, which wins on disagreement, logged `[SLOT_EXPLICIT_MISMATCH]`; the canary is applied to
+  the declared user) -> the old folder rule, logged once per folder as `[SLOT_FALLBACK] path-inferred slot ...`.
+- The tmux front-end (`slottmux`) no longer reads the folder at all: it runs a session as the slot whose run folder holds the launch script, which
+  the provider only creates there for a launch it decided runs as the slot (`SlotForLaunch`). A folder that names another slot than the script is
+  refused (`[SLOT_EXPLICIT_MISMATCH]`). One difference: a Muse launch for a slot user whose script is not in the slot folder now gets the Muse
+  launch log (before it did not).
+
+**Fallback status.** Not removed. Launches that declare nothing still fall back (logged): CLI launches outside the chat handler, orchestrator
+and delegation: `workspace_advanced_tools` (working dir is the docs root, names no user), `internal/agentsession` (SparkQuill/Family sessions,
+`cfg.WorkingDir`), the provider-account login confinement (`provider_setup_confine.go`), and the Goal phase-switch re-launch
+(`SetCodingAgentWorkingDir(phaseCLIWorkingDir)` is a runtime folder, no slot either way). Look for `[SLOT_FALLBACK]` in the logs after a deploy;
+when none appears over a canary period the fallback can go.
+
+### Step 5: multi-user fixture and tests (2026-10-04, not deployed)
+
+`cmd/server/multiuser_fixture_test.go` (reusable helper) and `multiuser_identity_test.go`. Fixture: users A and B (both hold a slot in a temp slot
+table), a temp docs root and CLI state root, the existing `mockWorkspaceAPI` as the workspace service, a Crew and a Code owned by A (manifests
+with `owner_id`), a Goal A owns and B reads. No real CLI, no network. `identityLayout` says where the projects live (`legacyIdentityLayout()`
+= today's per-user folders); `runMultiUserAccessAssertions(t, layout)` runs every access assertion for a layout, so the Crew move runs the same
+assertions with a layout whose `CrewPhysical` and `CrewShort` return `Crew/<folder>`. `identityExpectation` (`todayIdentity`) states who each
+turn kind runs as, in one place.
+- B cannot reach A's Code by either spelling (binding, `conversationTargetAccess` with and without the profile, proxy read and write); A reaches it
+  by both.
+- B in Run mode: the physical Crew path resolves with owner A and reader access, `isCrewReaderTurn`, reader roots have no write path, the proxy
+  refuses B's write; A reaches the Crew by the short spelling as owner.
+- Run-as per turn (explicit): Code A -> A's slot; Crew owner and Crew reader B -> app account (see PLAT-446); Goal -> none; private chats ->
+  their user. Each row is also compared with what the old folder rule says for the CLI's real starting folder.
+- Workspace proxy decision for each user and path pair (A and B x Code, Crew, Goal x read/write, both spellings).
+- Not covered (needs a real OS): the Linux identity of the launched process; that stays with the Linux slot suites on a host.
+
+## Test status (2026-10-04)
+
+agent_go `cmd/server` full run: the same 13 failures as on the baseline (Relay catalog, `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
+`TestSalesCrewCatalogHasInstallableRoles`, `TestResolveDelegationTierConfigExpandsProviderProfile`, the playbook catalog pair,
+`TestAgentWorksProductSurfaceE2E`, `TestCrewProductSurfaceE2E`, the three provider-accounts tests, `TestNativeTerminalRealTmuxKeyboardAndPaste`,
+`TestWorkshopResolveLLMConfigExpandsCodingAgentMode`); none new. `TestExternalToolsClientTransportThroughJWTAndWorkspace` failed once in a
+loaded full run and passes alone and on rerun (timing). Workspace module: all green except `TestUserCaptureStaleStateStartsFreshAndRejectsBlankEvidence`
+(browser IPC, fails the same on the baseline). Provider: `llmtypes`, `internal/slotfs`, `clisandbox`, `shelllaunch` and the root package pass.
+
+## Left
+
+- Step 4, the Crew move (not started, by instruction).
+- Fallback removal: launches that declare no run-as still fall back to the folder rule (logged `[SLOT_FALLBACK]`); see Step 2 for the list. Remove
+  it once a canary period shows none in the logs.
+- UI-created Crews and Codes have no `owner_id` until the owner first opens them or the next start (startup scan); the browser could write it
+  at creation.
+- PLAT-446: owner decision on Crew CLI turns (app account today).
+
+## Risks for step 4 (the Crew move)
+
+1. Crew CLI turns never ran as a slot (PLAT-446), so the move cannot lose that isolation; but the BRIDGE shell tool runs as the caller's slot via
+   `X-User-ID`, so for a reader it runs as the reader's slot in the owner's folder. Check that the move does not change which folder that slot
+   can enter (group ACLs follow the owner's tree today).
+2. `resolveCrewPath` already prefers the manifest owner, but `crewProjectOwnerID(path)` (path only) still feeds about ten callers (schedules,
+   triggers, webhooks, reader chat mirror, bot scope, `routeWorkspaceUserID`); each must move to the manifest or it will say "no owner" for
+   `Crew/<id>`. `resolveProjectOwner(ctx, root)` (`product_owner.go`) is the helper.
+3. The raw proxy refuses foreign `_users/*` today and that is the ONLY thing keeping a reader out of the Crew's files; `Crew/<id>` has no such
+   rule until the proxy gates it like `Workflow/` (`workspaceProxyPolicy.denies`). The fixture's "B cannot write the Crew" and proxy rows are the test
+   for it; rerun `runMultiUserAccessAssertions` with the `Crew/<id>` layout before enabling the move.
+4. `cleanAgentProfileWorkspace` and the live feed's visibility check name the path owner; both need the manifest owner for shared roots.
+5. The provider's folder rule is now only a fallback, so a Crew in `Crew/<id>` does not silently get a different slot; it gets what
+   `decideTurnRunAs` declares (the app account for the isolated runtime). If the owner chooses the owner's slot (PLAT-446), declare it there.
+6. A Crew's CLI runtime folder hashes the project path (`cliruntime.Prepare` digest of user, workflow, session, provider, mode): moving the Crew
+   changes the hash, so every existing CLI session of a Crew would start a fresh runtime (the digest input is kept for existing chats, see the
+   comment in `cliruntime/workspace.go`). The migration must alias the old path as the digest input or accept one fresh session per Crew.
+7. `owner_id` backfill: a manifest copied between accounts keeps the old owner; `[OWNER_MISMATCH]` in the logs lists them before the move.
