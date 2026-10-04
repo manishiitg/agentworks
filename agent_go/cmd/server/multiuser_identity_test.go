@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
@@ -129,7 +130,11 @@ func TestMultiUserAccess(t *testing.T) {
 
 // runMultiUserAccessAssertions is the reusable half of the fixture: the Crew move runs it with its own layout.
 func runMultiUserAccessAssertions(t *testing.T, layout identityLayout) {
-	f := newMultiUserFixture(t, layout)
+	assertMultiUserAccess(t, newMultiUserFixture(t, layout), layout)
+}
+
+// assertMultiUserAccess runs the access assertions on a fixture whose Crew is where layout says it is.
+func assertMultiUserAccess(t *testing.T, f *multiUserFixture, layout identityLayout) {
 	codePhysical := layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
 	codeShort := layout.CodeShort(fixtureCodeFolder)
 	crewPhysical := layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
@@ -205,6 +210,115 @@ func runMultiUserAccessAssertions(t *testing.T, layout identityLayout) {
 		}
 		if isCrewReaderTurn(QueryRequest{AgentProfileID: "work", SelectedFolder: crewShort}, fixtureUserA) {
 			t.Fatal("A's own turn is a reader turn")
+		}
+	})
+
+	t.Run("A binds the Crew as its owner, B as a Run-mode reader (sharing on), C and everyone else get nothing", func(t *testing.T) {
+		f.WithSharing(true)
+		// A: the Crew is found, by the project id, as the owner's own.
+		own, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, f.Crew, fixtureCrewID, "")
+		if err != nil || !own.OwnedByCaller || own.OwnerID != fixtureUserA || own.Binding.WorkspacePath != crewPhysical {
+			t.Fatalf("A's binding = %+v err=%v, want the owner's at %s", own, err, crewPhysical)
+		}
+		// B: a reader of the same folder: not the owner, no manifest write path.
+		reader, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, crewPhysical)
+		if err != nil || reader.OwnedByCaller || reader.OwnerID != fixtureUserA || reader.Binding.WorkspacePath != crewPhysical || reader.Binding.ManifestPath != "" {
+			t.Fatalf("B's binding = %+v err=%v, want A's Crew as a reader with no manifest coupling", reader, err)
+		}
+		// Access to the conversation target: the owner full, the reader read-only, C (no Crew product) refused,
+		// whichever spelling the request names.
+		for _, folder := range []string{crewShort, crewPhysical} {
+			req := QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: fixtureCrewID, SelectedFolder: folder}
+			if level, err := f.API.conversationTargetAccess(f.Ctx(fixtureUserA), req); err != nil || level != WorkflowAccessOwner {
+				t.Errorf("A with %q: %v err=%v", folder, level, err)
+			}
+			if folder == crewPhysical {
+				if level, err := f.API.conversationTargetAccess(f.Ctx(fixtureUserB), req); err != nil || level != WorkflowAccessRead {
+					t.Errorf("B with %q: %v err=%v", folder, level, err)
+				}
+			}
+			for _, user := range []string{fixtureUserC} {
+				if level, err := f.API.conversationTargetAccess(f.Ctx(user), req); err == nil || level != WorkflowAccessNone {
+					t.Errorf("%s reached the Crew with %q: %v err=%v", user, folder, level, err)
+				}
+			}
+		}
+		// C has no Crew product: refused by every path (binding, access level, live feed, raw proxy, either spelling).
+		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserC), fixtureUserC, f.Crew, fixtureCrewID, crewPhysical); err == nil && !got.OwnedByCaller {
+			// The profile itself is refused to C before a binding is attempted in the real flow; a binding alone must
+			// still never make C the owner.
+			if crewAccessFor(f.Claims(fixtureUserC), crewPathRef{Root: crewPhysical, OwnerID: fixtureUserA}) != crewAccessNone {
+				t.Errorf("C has crew access")
+			}
+		}
+		for _, spelling := range []string{crewPhysical, crewShort} {
+			for _, method := range []string{http.MethodGet, http.MethodPut} {
+				if status := f.Proxy(fixtureUserC, method, spelling+"/code/notes.md"); status != http.StatusForbidden && spelling == crewPhysical {
+					t.Errorf("proxy %s %s as C: %d", method, spelling, status)
+				}
+			}
+		}
+		ref, _ := resolveCrewPath(f.Ctx(fixtureUserC), fixtureUserC, crewPhysical)
+		if crewAccessFor(f.Claims(fixtureUserC), ref) != crewAccessNone {
+			t.Error("C has crew access by the resolver")
+		}
+		if newLiveFeedAccess(f.Claims(fixtureUserC)).visible(f.Ctx(fixtureUserC), "Crew/"+fixtureCrewFolder) {
+			t.Error("C sees the Crew's live feed")
+		}
+		// Sharing off (the default): B is not a reader either.
+		f.WithSharing(false)
+		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, crewPhysical); err == nil {
+			t.Fatalf("B opened A's Crew with project sharing off: %+v", got)
+		}
+	})
+
+	t.Run("B's writes are refused by the proxy, the tool surface and the shell's folder guard; A's keep working", func(t *testing.T) {
+		for _, method := range []string{http.MethodPut, http.MethodPost, http.MethodPatch, http.MethodDelete} {
+			if status := f.Proxy(fixtureUserB, method, crewPhysical+"/code/notes.md"); status != http.StatusForbidden {
+				t.Errorf("proxy %s as B on A's Crew: %d", method, status)
+			}
+		}
+		// Tools: nothing that changes the Crew is on a reader's surface.
+		denied := map[string]bool{}
+		for _, name := range crewReaderDeniedTools() {
+			denied[name] = true
+		}
+		for _, name := range []string{"create_project_schedule", "update_project_trigger", "install_mcp_server", "set_work_identity", "diff_patch_workspace_file", "set_workflow_secret"} {
+			if !denied[name] {
+				t.Errorf("%s is not denied to a Crew reader", name)
+			}
+		}
+		// The shell's folder guard: the reader gets the Crew read-only with an explicit blocked-write entry; the owner
+		// keeps it writable. (The OS enforcement of the slot's group is not exercised here; see PLAT-442.)
+		root := crewPhysical
+		readB, writeB, blockedB := crewReaderWorkspaceRoots(root, true)
+		if len(readB) == 0 || len(writeB) != 0 || len(blockedB) == 0 {
+			t.Errorf("reader guard read=%v write=%v blocked=%v", readB, writeB, blockedB)
+		}
+		readA, writeA, blockedA := crewReaderWorkspaceRoots(root, false)
+		if len(readA) == 0 || len(writeA) == 0 || len(blockedA) != 0 {
+			t.Errorf("owner guard read=%v write=%v blocked=%v", readA, writeA, blockedA)
+		}
+		for _, w := range writeB {
+			if workspaceref.MustParse(w).IsShared() || w != "" {
+				t.Errorf("the reader's guard has a write path %q", w)
+			}
+		}
+		// A reader turn is detected for either spelling; the owner's is not.
+		if !isCrewReaderTurn(QueryRequest{AgentProfileID: "work", SelectedFolder: crewPhysical}, fixtureUserB) {
+			t.Error("B's turn is not a reader turn")
+		}
+		if isCrewReaderTurn(QueryRequest{AgentProfileID: "work", SelectedFolder: crewPhysical}, fixtureUserA) {
+			t.Error("A's turn in their own Crew is a reader turn")
+		}
+		// Another Crew's builder/ and db/ stay out of reach of a Crew that attaches this one.
+		blocked := foreignCrewChatBlockedPaths("Crew/other-crew-1234", []string{crewPhysical})
+		if len(blocked) != 1 || blocked[0] != crewPhysical+"/builder/" {
+			t.Errorf("foreign Crew chat paths = %v", blocked)
+		}
+		// A's own writes through the proxy.
+		if status := f.Proxy(fixtureUserA, http.MethodPut, crewPhysical+"/code/notes.md"); status != 0 {
+			t.Errorf("proxy refused A's own write: %d", status)
 		}
 	})
 
@@ -369,4 +483,9 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 			}
 		})
 	}
+}
+
+// The same privacy assertions against a Crew that lives at Crew/<id> (PLAT-442 step 4).
+func TestMultiUserAccessSharedCrewRoot(t *testing.T) {
+	runMultiUserAccessAssertions(t, sharedIdentityLayout())
 }

@@ -516,16 +516,53 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 	if s.registry == nil {
 		return nil, fmt.Errorf("product profiles unavailable")
 	}
+	store := defaultProductProjectStore()
+	// scan looks for the trigger in one project manifest; userID is the owner the match runs as.
+	scan := func(profile agentprofiles.Profile, userID, candidate string) *productWebhookMatch {
+		raw, found, err := s.readFile(ctx, candidate)
+		if err != nil || !found {
+			return nil
+		}
+		var manifest productProjectManifest
+		if json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != profile.ID {
+			return nil
+		}
+		runtimePath := candidate
+		if isProjectProfileID(profile.ID) {
+			runtimePath = projectRuntimeManifestPath(profile.ID, filepath.ToSlash(filepath.Dir(candidate)))
+			runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath)
+			if runtimeErr != nil {
+				return nil
+			}
+			if runtimeFound {
+				var runtimeManifest productProjectManifest
+				if json.Unmarshal([]byte(runtimeRaw), &runtimeManifest) != nil {
+					return nil
+				}
+				manifest.Triggers = runtimeManifest.Triggers
+			} else {
+				runtimePath = candidate
+			}
+		}
+		for _, trigger := range manifest.Triggers {
+			if trigger.ID != id {
+				continue
+			}
+			return &productWebhookMatch{UserID: userID, Profile: profile, Binding: productConversationBinding{WorkspacePath: filepath.ToSlash(filepath.Dir(candidate)), ManifestPath: runtimePath}, Manifest: manifest, Trigger: trigger}
+		}
+		return nil
+	}
 	for _, profile := range s.registry.List("") {
 		if !agentprofiles.HasFeature(profile, "triggers") {
 			continue
 		}
-		for _, userID := range s.users(productAccessName(profile)) {
+		users := s.users(productAccessName(profile))
+		for _, userID := range users {
 			root, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
 			if err != nil {
 				continue
 			}
-			paths, exists, err := defaultProductProjectStore().listPaths(ctx, agentProfileRuntimeWorkspace(userID, root))
+			paths, exists, err := store.listPaths(ctx, agentProfileRuntimeWorkspace(userID, root))
 			if err != nil || !exists {
 				continue
 			}
@@ -534,36 +571,24 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 				if !strings.HasSuffix(candidate, "/product.json") {
 					continue
 				}
-				raw, found, err := s.readFile(ctx, candidate)
-				if err != nil || !found {
+				if match := scan(profile, userID, candidate); match != nil {
+					return match, nil
+				}
+			}
+		}
+		// Crews that moved to the shared root (PLAT-442 step 4) are found once, by their manifest owner (a
+		// webhook is received by whoever the Crew belongs to, not by every account in turn).
+		if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+			entries, err := listSharedCrewEntries(ctx, store)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !containsUserID(users, entry.OwnerID) {
 					continue
 				}
-				var manifest productProjectManifest
-				if json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != profile.ID {
-					continue
-				}
-				runtimePath := candidate
-				if isProjectProfileID(profile.ID) {
-					runtimePath = projectRuntimeManifestPath(profile.ID, filepath.ToSlash(filepath.Dir(candidate)))
-					runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath)
-					if runtimeErr != nil {
-						continue
-					}
-					if runtimeFound {
-						var runtimeManifest productProjectManifest
-						if json.Unmarshal([]byte(runtimeRaw), &runtimeManifest) != nil {
-							continue
-						}
-						manifest.Triggers = runtimeManifest.Triggers
-					} else {
-						runtimePath = candidate
-					}
-				}
-				for _, trigger := range manifest.Triggers {
-					if trigger.ID != id {
-						continue
-					}
-					return &productWebhookMatch{UserID: userID, Profile: profile, Binding: productConversationBinding{WorkspacePath: filepath.ToSlash(filepath.Dir(candidate)), ManifestPath: runtimePath}, Manifest: manifest, Trigger: trigger}, nil
+				if match := scan(profile, entry.OwnerID, entry.ManifestPath); match != nil {
+					return match, nil
 				}
 			}
 		}

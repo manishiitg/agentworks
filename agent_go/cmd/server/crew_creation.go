@@ -195,7 +195,8 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if err != nil {
 		return CreatedCrew{}, fmt.Errorf("invalid product projects root: %w", err)
 	}
-	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
+	// New Crews are created at the shared root only when the server's switch is on (crewSharedRootEnabled).
+	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	// Every reference is validated before anything is created: unknown
 	// names fail here, never as half-written crews.
 	skills, err := validateCrewCreationSkills(req.Skills)
@@ -502,6 +503,10 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	// denies the crew path with ACCESS DENIED in every Builder session.
 	if err := createWorkspaceFolder(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code"))); err != nil {
 		return CreatedCrew{}, fmt.Errorf("initialize crew code folder: %w", err)
+	}
+	// A Crew at the shared root gets its owner's slot group (the owner's tree gave that implicitly).
+	if folder, shared := workspaceref.MustParse(filepath.ToSlash(workspacePath)).SharedProject(); shared {
+		ensureSharedCrewFolderAccess(folder, userID)
 	}
 	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
 }

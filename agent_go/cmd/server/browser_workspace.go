@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"io"
 	"net/http"
 	"os"
@@ -83,7 +84,11 @@ func (api *StreamingAPI) browserWorkspaceAccess(r *http.Request, workspace, prof
 	}
 	if isProjectWorkspacePath(workspace) {
 		product, project, _ := projectProductForPath(workspace)
-		if normalizeConversationWorkspace(workspace) != product.ProjectsRoot+"/"+project {
+		root := product.ProjectsRoot + "/" + project
+		if workspaceref.MustParse(workspace).IsShared() {
+			root = workspaceref.SharedProjectPath(project)
+		}
+		if normalizeConversationWorkspace(workspace) != root && normalizeConversationWorkspace(workspace) != normalizeConversationWorkspace(root) {
 			return "", fmt.Errorf("Open the project root browser")
 		}
 		if api.crewBrowserAccess(claims, workspace) == WorkflowAccessNone {

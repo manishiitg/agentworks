@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
@@ -93,7 +92,7 @@ func serverOwnedWrite(clean string) bool {
 // denies returns why raw may not be reached, or "" when it may.
 func (p workspaceProxyPolicy) denies(key, raw string) string {
 	write := p.write && !workspaceProxySourceKeys[key]
-	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
+	clean := workspaceProxyCleanPath(raw)
 	deleteTarget := clean
 	if p.clearFolder {
 		deleteTarget = strings.TrimSuffix(deleteTarget, "/files")
@@ -103,6 +102,10 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 	}
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"
+	}
+	// A Crew being moved by the Crew move command is not written by anyone else meanwhile.
+	if write && crewMoveBlocksPath(clean) {
+		return errCrewBeingMoved.Error()
 	}
 	// Relay releases are server-owned snapshots. Their nested path has no
 	// manifest at Workflow/.relay_releases, so normal workflow path lookup

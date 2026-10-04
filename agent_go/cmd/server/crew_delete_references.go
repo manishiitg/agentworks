@@ -6,6 +6,8 @@ import (
 	"log"
 	"path"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // pruneDeletedCrewReferences removes a deleted crew from every crew's and
@@ -25,12 +27,15 @@ func pruneDeletedCrewReferences(ctx context.Context, ownerID, workspacePath stri
 	owner := sanitizeUserIDForPath(ownerID)
 	logical := "Chats/Work/projects/" + dir
 	physical := strings.Trim(agentProfileRuntimeWorkspace(owner, logical), "/")
+	// The same crew may be attached by any spelling it ever had: the old per-user paths, or Crew/<dir> once it moved
+	// to the shared root (PLAT-442 step 4).
+	shared := workspaceref.SharedProjectPath(dir)
 	prune := func(paths []string, ownedByOwner bool) ([]string, bool) {
 		kept := make([]string, 0, len(paths))
 		changed := false
 		for _, raw := range paths {
 			clean := strings.Trim(strings.TrimSpace(raw), "/")
-			if clean == physical || (ownedByOwner && clean == logical) {
+			if clean == physical || clean == shared || (ownedByOwner && clean == logical) {
 				changed = true
 				continue
 			}
@@ -100,6 +105,16 @@ func pruneDeletedCrewReferences(ctx context.Context, ownerID, workspacePath stri
 	// Crews of every owner.
 	owners := append([]string{owner}, crewProjectOwnerCandidates(owner)...)
 	store := defaultProductProjectStore()
+	// ... including the ones at the shared root.
+	if manifests, err := listSharedCrewManifestPaths(ctx, store, ""); err == nil {
+		for _, manifest := range manifests {
+			crewRoot := strings.TrimSuffix(manifest, "/product.json")
+			if path.Base(crewRoot) == dir {
+				continue
+			}
+			saveCrew(crewRoot, sharedCrewOwner(path.Base(crewRoot)) == owner)
+		}
+	}
 	for _, crewOwner := range owners {
 		root := strings.Trim(agentProfileRuntimeWorkspace(crewOwner, "Chats/Work/projects"), "/")
 		files, exists, err := store.listPaths(ctx, root)

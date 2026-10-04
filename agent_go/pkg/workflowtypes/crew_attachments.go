@@ -82,9 +82,13 @@ func ValidateCrewAttachmentBinding(attachment CrewAttachment) error {
 	if projectID == "" || root == "" {
 		return errCrewAttachmentAlias("attachment must name a crew project and workspace path")
 	}
-	segments := strings.Split(filepath.ToSlash(root), "/")
+	segments := strings.Split(filepath.ToSlash(foldCrewRoot(root)), "/")
 	if len(segments) < 2 {
 		return errCrewAttachmentAlias("attachment workspace path is not a crew workspace")
+	}
+	// A Crew at the shared root: exactly Crew/<folder> (PLAT-442 step 4).
+	if len(segments) == 2 && segments[0] == "Crew" && segments[1] != "" && !strings.HasPrefix(segments[1], ".") {
+		return nil
 	}
 	for _, segment := range segments[:len(segments)-1] {
 		if segment == "projects" {
@@ -98,7 +102,7 @@ func ValidateCrewAttachmentBinding(attachment CrewAttachment) error {
 // root so the two can be compared for exact equality: slash separators,
 // trimmed whitespace, no leading or trailing slashes.
 func CanonicalCrewAttachmentRoot(path string) string {
-	return strings.Trim(filepath.ToSlash(strings.TrimSpace(path)), "/")
+	return foldCrewRoot(strings.Trim(filepath.ToSlash(strings.TrimSpace(path)), "/"))
 }
 
 // ValidateCrewAttachmentRoot verifies one attachment before its root is
@@ -110,7 +114,7 @@ func ValidateCrewAttachmentRoot(attachment CrewAttachment, docsRoot string) erro
 	if err := ValidateCrewAttachmentBinding(attachment); err != nil {
 		return err
 	}
-	root := strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/")
+	root := foldCrewRoot(strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/"))
 	info, err := os.Stat(filepath.Join(docsRoot, filepath.FromSlash(root)))
 	if err != nil || !info.IsDir() {
 		return errCrewAttachmentAlias("attached crew workspace is unavailable")
@@ -134,7 +138,7 @@ func CrewAttachmentEnvKeys(attachments []CrewAttachment) map[string]string {
 			key = base + "_" + strconv.Itoa(n)
 		}
 		used[key] = true
-		env[key] = strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/")
+		env[key] = foldCrewRoot(strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/"))
 	}
 	return env
 }
@@ -175,7 +179,7 @@ func ResolveCrewAttachmentPath(attachments []CrewAttachment, filePath string) (r
 		if attachment.Alias != segment {
 			continue
 		}
-		root := strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/")
+		root := foldCrewRoot(strings.Trim(strings.TrimSpace(attachment.CrewWorkspacePath), "/"))
 		if root == "" {
 			return "", false
 		}

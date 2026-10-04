@@ -339,7 +339,10 @@ type productOwnerMigrationReport struct {
 	Unsafe int
 	// Conflicts counts projects whose folder name is registered to a different owner (a copy; not registered).
 	Conflicts int
-	Failures  []string
+	// SharedOrphans counts folders at the shared Crew root that the registry does not know: nobody's, so nobody can open
+	// them (restore the registry from a backup, or register the owner after confirming who it is).
+	SharedOrphans int
+	Failures      []string
 }
 
 // migrateProductOwners registers every Crew and Code under docsDir/_users/<id>/Chats/{Work,Code}/projects/<project>
@@ -347,6 +350,23 @@ type productOwnerMigrationReport struct {
 // Idempotent, never changes a registered owner or an existing owner_id, moves nothing, and never follows a
 // symlink (see the file comment).
 func migrateProductOwners(docsDir string) productOwnerMigrationReport {
+	report := scanProductOwners(docsDir)
+	// A Crew at the shared root that the registry does not know belongs to nobody (the registry is its only owner source).
+	if docs, err := os.OpenRoot(docsDir); err == nil {
+		defer docs.Close()
+		registry := defaultProjectOwners()
+		for _, folder := range dirNames(docs, workspaceref.SharedCrewRoot) {
+			if _, ok := registry.Lookup("work", folder); !ok {
+				report.SharedOrphans++
+				log.Printf("[CREW_ORPHAN] %s/%s has no owner in the registry: nobody can open it until the registry is restored or the owner is registered", workspaceref.SharedCrewRoot, folder)
+			}
+		}
+	}
+	return report
+}
+
+// scanProductOwners is the scan of the per-user trees (see migrateProductOwners).
+func scanProductOwners(docsDir string) productOwnerMigrationReport {
 	report := productOwnerMigrationReport{}
 	docs, err := os.OpenRoot(docsDir)
 	if err != nil {

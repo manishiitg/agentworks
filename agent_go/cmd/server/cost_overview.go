@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -106,10 +107,21 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 			return "Workflow/" + folder, costOverviewKindWorkflow, folder, ""
 		}
 	}
+	// A Crew at the shared root (PLAT-442 step 4): the row is its Crew/<folder>, owned by its registered owner.
+	if folder, shared := workspaceref.MustParse(path).SharedProject(); shared {
+		root := workspaceref.SharedProjectPath(folder)
+		owner, _ := crewProjectOwnerID(root)
+		return root, costOverviewKindCrew, folder, owner
+	}
 	if i := strings.Index(path, crewProjectsSegment); i >= 0 && (i == 0 || path[i-1] == '/') {
 		project, _, _ := strings.Cut(path[i+len(crewProjectsSegment):], "/")
 		if project != "" {
 			root := path[:i+len(crewProjectsSegment)] + project
+			// Spend recorded before the Crew moved folds into the same row as the spend after it.
+			if moved := crewPathAliases.lookupFolder(context.Background(), project); moved != "" {
+				owner, _ := crewProjectOwnerID(moved)
+				return moved, costOverviewKindCrew, project, owner
+			}
 			owner, _ := crewProjectOwnerID(root)
 			return root, costOverviewKindCrew, project, owner
 		}

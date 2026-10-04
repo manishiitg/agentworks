@@ -1699,6 +1699,26 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 		}
 	}
 
+	// Crews of the paired user that moved to the shared root (PLAT-442 step 4).
+	for _, crew := range listOwnSharedCrews(ctx, owner.UserID) {
+		id, title := strings.TrimSpace(crew.ID), strings.TrimSpace(crew.Title)
+		if id == "" || title == "" || seenCrewIDs[strings.ToLower(id)] {
+			continue
+		}
+		seenCrewIDs[strings.ToLower(id)] = true
+		candidates = append(candidates, whatsappDestinationCandidate{
+			Kind:            "crew",
+			ID:              id,
+			Label:           title,
+			WorkspacePath:   strings.TrimSpace(crew.WorkspacePath),
+			Slug:            slugifyWhatsAppWorkflow(title),
+			WorkshopMode:    "run",
+			ProfileID:       "work",
+			ConversationKey: id,
+			ProfileLabel:    title,
+		})
+	}
+
 	ownCrews := map[string]bool{}
 	for _, candidate := range candidates {
 		if candidate.Kind == "crew" {

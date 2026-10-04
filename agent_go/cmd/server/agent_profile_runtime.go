@@ -128,11 +128,21 @@ func cleanAgentProfileWorkspace(raw, userID string) (string, error) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", fmt.Errorf("selected_folder must stay inside the workspace")
 	}
-	// A shared crew root is reachable only as a verified crew binding
-	// (resolveCrewProjectBinding), never as a free-form selected folder:
-	// unlike _users/<id>/, its location says nothing about who may use it.
-	if clean == crewSharedRootName || strings.HasPrefix(clean, crewSharedRootName+"/") {
-		return "", fmt.Errorf("selected_folder must be a crew you can open")
+	// A shared crew root names no owner (unlike _users/<id>/, its location says nothing about who may use it),
+	// so it is accepted only for the crew's OWNER, read from the server's registry (PLAT-442 step 4, PLAT-449). A reader
+	// reaches someone else's crew only as a verified crew binding (resolveCrewProjectBinding), which the caller
+	// of this function substitutes before cleaning; the bare root, a hidden entry, a crew nobody owns and
+	// another owner's crew are refused here.
+	if ref := workspaceref.MustParse(clean); ref.IsShared() {
+		project, ok := ref.SharedProject()
+		if !ok {
+			return "", fmt.Errorf("selected_folder must be a crew you can open")
+		}
+		owner, ownerOK := crewProjectOwnerID(workspaceref.SharedProjectPath(project))
+		if !ownerOK || owner != sanitizeUserIDForPath(userID) {
+			return "", fmt.Errorf("selected_folder must be a crew you can open")
+		}
+		return ref.Logical(), nil
 	}
 	if ref := workspaceref.MustParse(clean); ref.IsUsersRoot() || !ref.OwnedByOrUnowned(userID) {
 		return "", fmt.Errorf("selected_folder must stay inside your own workspace")
@@ -392,7 +402,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
-			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
+			// The client may still send the old spelling of a migrated crew (PLAT-442 step 4): same crew when
+			// the alias resolver says so, and the verified binding root is what the turn runs in.
+			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) && !workspacePathsMatchForUser(userID, selectedFolder, crewRoot) {
 				return nil, fmt.Errorf("Work conversation does not match the selected session")
 			}
 			folderForClean = crewRoot
@@ -413,6 +425,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if !workspacePathsMatchForUser(userID, crewRoot, workspacePath) {
 			return nil, fmt.Errorf("%s conversation does not match the selected session", profile.Name)
 		}
+		// A Crew at the shared root (or reached by an old spelling of a migrated one) runs in the root the
+		// binding verified, never in the spelling the client happened to send.
+		workspacePath = crewTurnWorkspace(context.Background(), userID, workspacePath, crewRoot)
+		req.SelectedFolder = workspacePath
 	}
 
 	promptContext := req.AgentProfileContext

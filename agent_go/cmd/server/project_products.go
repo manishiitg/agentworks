@@ -51,7 +51,13 @@ func projectProductForProfile(profileID string) (projectProduct, bool) {
 // contains workspacePath (logical or physical _users/<owner>/ form) and the
 // project folder name. The path must address a project, not the root.
 func projectProductForPath(workspacePath string) (projectProduct, string, bool) {
-	root, project, ok := workspaceref.MustParse(workspacePath).Project()
+	ref := workspaceref.MustParse(workspacePath)
+	// A Crew at the shared root (Crew/<id>, PLAT-442 step 4) is a Crew project like any other.
+	if project, shared := ref.SharedProject(); shared {
+		product, _ := projectProductForProfile(crewProfileID)
+		return product, project, true
+	}
+	root, project, ok := ref.Project()
 	if !ok {
 		return projectProduct{}, "", false
 	}

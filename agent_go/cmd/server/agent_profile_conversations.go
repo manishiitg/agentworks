@@ -68,7 +68,20 @@ func conversationTitleFrom(session *ChatHistorySession, fallback string) string 
 // document root). It answers "which product/project is this", never "may this
 // caller touch it"; access identity is workspacepathsMatchForUser.
 func normalizeConversationWorkspace(workspacePath string) string {
-	return workspaceref.MustParse(workspacePath).Logical()
+	logical := workspaceref.MustParse(workspacePath).Logical()
+	// A migrated crew (PLAT-442 step 4) is one workspace under every spelling: its old per-user path, the
+	// "Chats/Work/projects/<f>" a chat history file recorded, and Crew/<f>. Folded to Crew/<f>; a crew that has
+	// not moved keeps its logical spelling.
+	if rest, ok := strings.CutPrefix(logical, workspaceref.CrewProjectsRoot+"/"); ok && rest != "" {
+		folder, below, _ := strings.Cut(rest, "/")
+		if moved := crewPathAliases.lookupFolder(context.Background(), folder); moved != "" {
+			if below != "" {
+				return moved + "/" + below
+			}
+			return moved
+		}
+	}
+	return logical
 }
 
 func chatHistorySessionWorkspace(session ChatHistorySession) string {
@@ -365,6 +378,12 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	if err := client.DeleteFolder(r.Context(), binding.WorkspacePath); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
+	}
+	if id, ok := projectIdentityOf(binding.WorkspacePath); ok {
+		// The project is gone: so is its registry entry (best effort; a stale entry only reserves a folder name).
+		if err := defaultProjectOwners().Remove(id.Product, id.Folder); err != nil {
+			log.Printf("[OWNER_REGISTRY] could not remove %s/%s: %v", id.Product, id.Folder, err)
+		}
 	}
 	removed, err := store.removeSlot(r.Context(), userID, profile, binding)
 	if err != nil {

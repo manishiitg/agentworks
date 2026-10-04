@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 const (
@@ -716,14 +718,17 @@ type productProjectManifest struct {
 	SchemaVersion int    `json:"schema_version"`
 	Product       string `json:"product,omitempty"`
 	// OwnerID is the project's owner (PLAT-442): carried so manifest rewrites keep it.
-	OwnerID     string `json:"owner_id,omitempty"`
-	ID          string `json:"id"`
-	Title       string `json:"title,omitempty"`
-	Label       string `json:"label,omitempty"`
-	Description string `json:"description,omitempty"`
-	SessionID   string `json:"session_id,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	OwnerID string `json:"owner_id,omitempty"`
+	// LegacyPaths are the places a Crew lived before the Crew move (PLAT-442 step 4), the migration's record of
+	// the old spellings that must keep resolving; carried so manifest rewrites keep them.
+	LegacyPaths []string `json:"legacy_paths,omitempty"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title,omitempty"`
+	Label       string   `json:"label,omitempty"`
+	Description string   `json:"description,omitempty"`
+	SessionID   string   `json:"session_id,omitempty"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
 	Identity    struct {
 		Name string `json:"name,omitempty"`
 		Icon string `json:"icon,omitempty"`
@@ -781,6 +786,10 @@ func resolveProductProjectBinding(ctx context.Context, userID string, profile ag
 	return resolveProductProjectBindingWithStore(ctx, userID, profile, projectID, defaultProductProjectStore())
 }
 
+// errProjectNotFound marks "no such project in this root", as opposed to a project that is there and broken
+// (duplicate id, incomplete manifest, unreadable): only the former may fall through to another location.
+var errProjectNotFound = errors.New("project not found")
+
 func resolveProductProjectBindingWithStore(
 	ctx context.Context,
 	userID string,
@@ -804,12 +813,41 @@ func resolveProductProjectBindingWithStore(
 		return productConversationBinding{}, fmt.Errorf("invalid product projects root: %w", err)
 	}
 	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
+	binding, err := resolveProductProjectBindingInRoot(ctx, profile, runtimeRoot, conversationKey, resourceProjectID, store, nil)
+	if err == nil || !errors.Is(err, errProjectNotFound) || !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		return binding, err
+	}
+	// A Crew that has moved to the shared root (PLAT-442 step 4) is found there by its manifest owner: the
+	// caller's own, whichever way the move happened. Reading it never depends on the creation flag.
+	owner := sanitizeUserIDForPath(userID)
+	shared, sharedErr := resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, conversationKey, resourceProjectID, store, func(folder string) bool {
+		return sharedCrewOwner(folder) == owner
+	})
+	if sharedErr == nil {
+		return shared, nil
+	}
+	if !errors.Is(sharedErr, errProjectNotFound) {
+		return productConversationBinding{}, sharedErr
+	}
+	return productConversationBinding{}, err
+}
+
+// resolveProductProjectBindingInRoot finds one project in runtimeRoot by its manifest. ownerOK, when set, must accept
+// the project's folder name: a shared root holds every owner's projects, and who owns one is the server's registry
+// (PLAT-449), never the manifest.
+func resolveProductProjectBindingInRoot(
+	ctx context.Context,
+	profile agentprofiles.Profile,
+	runtimeRoot, conversationKey, resourceProjectID string,
+	store productProjectStore,
+	ownerOK func(folder string) bool,
+) (productConversationBinding, error) {
 	paths, exists, err := store.listPaths(ctx, runtimeRoot)
 	if err != nil {
 		return productConversationBinding{}, fmt.Errorf("list product projects: %w", err)
 	}
 	if !exists {
-		return productConversationBinding{}, fmt.Errorf("product projects root does not exist")
+		return productConversationBinding{}, fmt.Errorf("product projects root does not exist: %w", errProjectNotFound)
 	}
 	sort.Strings(paths)
 
@@ -820,6 +858,13 @@ func resolveProductProjectBindingWithStore(
 		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
 		if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") {
 			continue
+		}
+		if ownerOK != nil {
+			// The shared root: exactly <root>/<folder>/product.json, and not a hidden bookkeeping folder.
+			folder := strings.TrimSuffix(strings.TrimPrefix(candidate, rootPrefix), "/product.json")
+			if folder == "" || strings.Contains(folder, "/") || strings.HasPrefix(folder, ".") {
+				continue
+			}
 		}
 		// The workspace listing can return a folder both nested under its root
 		// and as a top-level item, which repeats the same file path. That is one
@@ -841,6 +886,13 @@ func resolveProductProjectBindingWithStore(
 			strings.TrimSpace(manifest.Product) != profile.ID ||
 			strings.TrimSpace(manifest.ID) != resourceProjectID {
 			continue
+		}
+		if ownerOK != nil && !ownerOK(strings.TrimSuffix(strings.TrimPrefix(candidate, rootPrefix), "/product.json")) {
+			continue
+		}
+		// While the Crew move command copies this Crew the server binds nothing to it (turns, schedules, webhooks, bots).
+		if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) && crewMoveInProgress(filepath.Base(filepath.Dir(filepath.FromSlash(candidate)))) {
+			return productConversationBinding{}, errCrewBeingMoved
 		}
 		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {
 			return productConversationBinding{}, fmt.Errorf("project %q has an incomplete product manifest", resourceProjectID)
@@ -890,7 +942,7 @@ func resolveProductProjectBindingWithStore(
 		}
 	}
 	if matched == nil {
-		return productConversationBinding{}, fmt.Errorf("project %q was not found", resourceProjectID)
+		return productConversationBinding{}, fmt.Errorf("project %q was not found: %w", resourceProjectID, errProjectNotFound)
 	}
 	return *matched, nil
 }

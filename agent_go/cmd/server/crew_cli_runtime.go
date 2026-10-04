@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func crewCLIMode(readOnly bool) string {
@@ -26,7 +27,13 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}
-	dir, err := cliruntime.PrepareLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, session, provider, crewCLIMode(readOnly))
+	// A Crew that moved to the shared root keeps its runtime folder: the digest input stays the path the Crew had when
+	// its chats began (the server's registry records it), so the native CLI sessions of its chats survive the move.
+	legacyRel := ""
+	if shared, ok := workspaceref.MustParse(strings.TrimSpace(folder)).SharedProject(); ok {
+		legacyRel = crewLegacyKey(shared)
+	}
+	dir, err := cliruntime.PrepareLinkedProjectMoved(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}

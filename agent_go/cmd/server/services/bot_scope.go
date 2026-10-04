@@ -13,13 +13,22 @@ var ErrLogicalCrewScope = errors.New("crew destination must use its physical pro
 
 // ValidateBotScope enforces the bot destination invariant
 // (docs/design/bot_destination_scope.md): a stored crew destination is always
-// the physical folder "_users/<owner>/...", which also names its owner. The
+// a physical folder: "_users/<owner>/..." (which also names its owner) or the
+// shared "Crew/<folder>" (whose owner is the server's registry). The
 // logical form ("Chats/Work/projects/<id>") names no folder on the server and
 // no owner; callers convert it at the API edge. Workflow destinations
 // (no profile) are not constrained.
 func ValidateBotScope(workspacePath, profileID string) error {
 	if strings.TrimSpace(profileID) == "" || strings.TrimSpace(workspacePath) == "" {
 		return nil
+	}
+	// A Crew at the shared root names its folder and no owner (the owner is the server's registry): it is a valid
+	// destination as it is (PLAT-442 step 4).
+	if ref := workspaceref.MustParse(workspacePath); ref.IsShared() {
+		if _, ok := ref.SharedProject(); ok {
+			return nil
+		}
+		return fmt.Errorf("%w: %q", ErrLogicalCrewScope, strings.TrimSpace(workspacePath))
 	}
 	if physicalBotScopeOwner(workspacePath) == "" {
 		return fmt.Errorf("%w: %q", ErrLogicalCrewScope, strings.TrimSpace(workspacePath))

@@ -48,15 +48,34 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 	switch {
 	case len(parts) == 2 && parts[0] == "Workflow" && parts[1] != "" && parts[1] != "." && parts[1] != "..":
 		return folder, true
-	case len(parts) == 4 && parts[0] == "Chats" && parts[1] == "Work" && parts[2] == "projects" && parts[3] != "" && parts[3] != "." && parts[3] != ".." && strings.TrimSpace(userID) != "":
-		return agentProfileRuntimeWorkspace(userID, folder), true
-	case isOtherOwnerCrewPath(parts) && strings.TrimSpace(userID) != "":
-		// Crews are shared server-wide: another owner's Crew is addressed by
-		// its physical _users/<owner>/Chats/Work/projects/<project> path.
-		return folder, true
+	case isCrewContextShape(parts) && strings.TrimSpace(userID) != "":
+		// A Crew is addressed by Crew/<project> (shared root), by its physical _users/<owner>/Chats/Work/projects/
+		// <project> path (anyone's), or by the caller's own Chats/Work/projects/<project>. The folder-guard root is
+		// where the Crew lives now: a reference stored before the Crew moved keeps working through the alias
+		// resolver (PLAT-442 step 4).
+		ref, ok := resolveCrewPath(context.Background(), userID, folder)
+		if !ok || ref.Rest != "" {
+			return "", false
+		}
+		return ref.Root, true
 	default:
 		return "", false
 	}
+}
+
+// isCrewContextShape reports whether parts spell a Crew project root in one of the three accepted spellings
+// (and nothing below it): Crew/<project>, Chats/Work/projects/<project>, _users/<owner>/Chats/Work/projects/<project>.
+func isCrewContextShape(parts []string) bool {
+	valid := func(name string) bool {
+		return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".")
+	}
+	switch {
+	case len(parts) == 2 && parts[0] == crewSharedRootName:
+		return valid(parts[1])
+	case len(parts) == 4 && parts[0] == "Chats" && parts[1] == "Work" && parts[2] == "projects":
+		return valid(parts[3])
+	}
+	return isOtherOwnerCrewPath(parts)
 }
 
 // authorizeWorkflowContextPathsWithReadRoots keeps the durable/user-visible
@@ -113,7 +132,7 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				logContextDenial(claims, folder, "workflow not readable by this user")
 				return nil, nil, denied
 			}
-		case (len(parts) == 4 && parts[0] == "Chats" && parts[1] == "Work" && parts[2] == "projects" && parts[3] != "" && parts[3] != "." && parts[3] != "..") || isOtherOwnerCrewPath(parts):
+		case isCrewContextShape(parts):
 			if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 				logContextDenial(claims, folder, "no user for a crew attachment")
 				return nil, nil, denied

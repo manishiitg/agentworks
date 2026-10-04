@@ -25,6 +25,8 @@ import (
 const (
 	fixtureUserA = "user-a"
 	fixtureUserB = "user-b"
+	// fixtureUserC has an account but not the Crew product: Crew access gives it nothing.
+	fixtureUserC = "user-c"
 	// Folder names under the project roots; the ids are what the manifests carry.
 	fixtureCrewFolder = "alpha-c1a2b3c4"
 	fixtureCrewID     = "c1a2b3c4-0000"
@@ -90,7 +92,11 @@ type multiUserFixture struct {
 func newMultiUserFixture(t *testing.T, layout identityLayout) *multiUserFixture {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"`+fixtureUserA+`","username":"a","can_create":true},{"id":"`+fixtureUserB+`","username":"b","can_create":true}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"`+fixtureUserA+`","username":"a","can_create":true,"products":["agentworks","work","code"]},{"id":"`+fixtureUserB+`","username":"b","can_create":true,"products":["agentworks","work","code"]},{"id":"`+fixtureUserC+`","username":"c","can_create":true,"products":["agentworks"]}]}`)
+
+	// The crew alias and owner caches are process-wide: a test that moved a Crew must not leak its alias into the next.
+	resetCrewLocationCaches()
+	t.Cleanup(resetCrewLocationCaches)
 
 	root := t.TempDir()
 	f := &multiUserFixture{t: t, Layout: layout, Docs: filepath.Join(root, "docs"), State: filepath.Join(root, "state"), Mock: &mockWorkspaceAPI{files: map[string]string{}}}
@@ -200,4 +206,44 @@ func (f *multiUserFixture) Proxy(userID, method, workspacePath string) int {
 func jsonBody(v interface{}) *bytes.Reader {
 	data, _ := json.Marshal(v)
 	return bytes.NewReader(data)
+}
+
+// WithSharing turns Crew project sharing on for the test (it is off by default: projects are private to their owner),
+// which is the mode where another user with the Crew product opens a Crew as a Run-mode reader.
+func (f *multiUserFixture) WithSharing(on bool) {
+	f.t.Helper()
+	prior := projectSharingEnabled
+	projectSharingEnabled = func() bool { return on }
+	f.t.Cleanup(func() { projectSharingEnabled = prior })
+}
+
+// resetCrewLocationCaches drops the cached crew aliases and owners.
+func resetCrewLocationCaches() {
+	crewPathAliases.mu.Lock()
+	crewPathAliases.aliases = nil
+	crewPathAliases.mu.Unlock()
+	crewOwners.mu.Lock()
+	crewOwners.entries = map[string]crewOwnerEntry{}
+	crewOwners.mu.Unlock()
+}
+
+// SyncMockFromDisk makes the mock workspace service hold exactly the regular files now on disk under the docs root
+// (after something moved them on disk, such as the Crew move command).
+func (f *multiUserFixture) SyncMockFromDisk() {
+	f.t.Helper()
+	files := map[string]string{}
+	_ = filepath.WalkDir(f.Docs, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, _ := filepath.Rel(f.Docs, path)
+		raw, readErr := os.ReadFile(path)
+		if readErr == nil {
+			files[filepath.ToSlash(rel)] = string(raw)
+		}
+		return nil
+	})
+	f.Mock.mu.Lock()
+	f.Mock.files = files
+	f.Mock.mu.Unlock()
 }
