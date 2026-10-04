@@ -65,6 +65,16 @@ async function render(config?: PresetLLMConfig) {
 }
 
 describe('project reasoning settings', () => {
+  it('uses the explicit profile for account lookup outside a Crew or Code context', async () => {
+    museFixture()
+    state.product.profileId = 'work'
+    vi.mocked(llmConfigService.getProviderConnections).mockClear()
+    const host = document.createElement('div'); document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root?.render(<WorkModelsPanel tabId="project" workspacePath="Chats/CapLayer"
+      profileId="caplayer" profileVersion={0} accountProduct="mcp-gateway" onRuntimeChange={vi.fn()} />))
+    expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ workspacePath: 'Chats/CapLayer', product: 'mcp-gateway' })
+  })
   it.each(['work', 'code'])('allows Muse effort changes in %s with the same saved account and model', async profileId => {
     museFixture(); state.product.profileId = profileId
     const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {

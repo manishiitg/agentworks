@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func TestVaultChatCreatesMissingUserWorkspaceBeforeCLILaunch(t *testing.T) {
@@ -95,6 +96,40 @@ func TestVaultChatHasDefaultModelAndNativeBuilderTools(t *testing.T) {
 	provider, model := resolveProfileRuntimeModel(profile.Runtime, "", "")
 	if provider == "" || model == "" || profile.Runtime.AgentTools.Mode != "full" {
 		t.Fatalf("Vault is missing its default builder configuration: %s / %s", provider, model)
+	}
+}
+
+func TestVaultChatResolvesReadyDefaultAndKeepsExplicitModel(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin","products":["mcp-gateway"]}]}`)
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", "")
+	original := providerReadyForEveryone
+	t.Cleanup(func() { providerReadyForEveryone = original })
+	providerReadyForEveryone = func(_ context.Context, provider, product string) bool {
+		return provider == "agy-cli" && product == "mcp-gateway"
+	}
+	profile := caplayerproduct.BuiltinAgentProfile()
+	profile.Product = "mcp-gateway"
+	registry := agentprofiles.NewRegistry()
+	if err := registry.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{agentProfiles: registry}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
+	for _, provider := range []string{"", "codex-cli"} {
+		query := QueryRequest{AgentProfileID: profile.ID, AgentMode: "multi-agent", SelectedFolder: caplayerproduct.WorkspaceRoot, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Vault"}, Provider: provider}
+		if provider != "" {
+			query.ModelID = "gpt-6-astra"
+		}
+		if _, err := api.resolveAgentProfileForQuery(ctx, &query, "admin", "vault-chat"); err != nil {
+			t.Fatal(err)
+		}
+		want := provider
+		if want == "" {
+			want = "agy-cli"
+		}
+		if query.Provider != want {
+			t.Fatalf("provider = %q, want %q", query.Provider, want)
+		}
 	}
 }
 

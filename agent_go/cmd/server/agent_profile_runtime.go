@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
 	"path/filepath"
@@ -338,6 +339,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal
+	if profile.ID == caplayerproduct.ProfileID {
+		// Vault has no project manifest that copies an installation default.
+		// Use the same configured/ready defaults served by the Models panel;
+		// resolveProfileRuntimeModel still preserves an explicit valid selection.
+		profile = profileWithProductDefault(ctx, profile)
+	}
 
 	selectedFolder := strings.TrimSpace(req.SelectedFolder)
 	if isGlobalScope && selectedFolder == "" {

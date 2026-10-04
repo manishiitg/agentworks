@@ -27,6 +27,7 @@ export function WorkModelsPanel({
   hideHeader,
   profileId,
   profileVersion,
+  accountProduct,
 }: {
   tabId: string
   workspacePath: string
@@ -36,6 +37,7 @@ export function WorkModelsPanel({
   hideHeader?: boolean
   profileId?: string
   profileVersion?: number
+  accountProduct?: string
 }) {
   // The provider options of this project's own product: a Code asks the Code
   // profile. Asking Crew's left a Code-only member (Excellence) with no
@@ -43,6 +45,7 @@ export function WorkModelsPanel({
   const product = useProjectProduct()
   const effectiveProfileId = profileId ?? product.profileId
   const effectiveProfileVersion = profileVersion ?? product.profileVersion
+  const effectiveAccountProduct = accountProduct ?? effectiveProfileId
   const tab = useChatStore(state => state.chatTabs[tabId])
   const events = useChatStore(state => tab?.sessionId ? state.tabEvents[tab.sessionId] : undefined)
   const activeRuntime = useChatStore(state => tab?.sessionId
@@ -91,21 +94,21 @@ export function WorkModelsPanel({
     let cancelled = false
     setAccounts(null)
     const refreshAccounts = () => {
-      void llmConfigService.getProviderConnections({ workspacePath, product: product.profileId }).then(records => {
+      void llmConfigService.getProviderConnections({ workspacePath, product: effectiveAccountProduct }).then(records => {
         if (!cancelled) setAccounts(records)
       }).catch(() => { if (!cancelled) setAccounts([]) })
     }
     refreshAccounts()
     window.addEventListener('provider-connections-changed', refreshAccounts)
     return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refreshAccounts) }
-  }, [workspacePath, product.profileId])
+  }, [workspacePath, effectiveAccountProduct])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
       const [loaded, records] = await Promise.all([
         loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion),
-        llmConfigService.getProviderConnections({ workspacePath, product: effectiveProfileId }),
+        llmConfigService.getProviderConnections({ workspacePath, product: effectiveAccountProduct }),
         loadProviderManifest(),
       ])
       setOptions(loaded)
@@ -113,7 +116,7 @@ export function WorkModelsPanel({
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion, workspacePath])
+  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion, effectiveAccountProduct, workspacePath])
 
   const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
   const cursorReady = readyProviders.some(provider => provider.id === 'cursor-cli')
@@ -307,7 +310,7 @@ export function WorkModelsPanel({
           splitPiProviders={false}
           showModelsPerRole={false}
           configurationSource="agent_profile"
-          product={product.profileId}
+          product={effectiveAccountProduct}
         />
         <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
           <button
