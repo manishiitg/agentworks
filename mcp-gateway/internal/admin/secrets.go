@@ -38,6 +38,25 @@ func (a *Admin) secretRoutes(mux *http.ServeMux) {
 			w.WriteHeader(405)
 		}
 	}))
+	mux.HandleFunc("/api/admin/secrets/{name}/grants", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+		var in struct {
+			GroupIDs []string `json:"group_ids"`
+		}
+		if !secretNamePattern.MatchString(r.PathValue("name")) || json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in) != nil {
+			http.Error(w, "invalid secret grant", 400)
+			return
+		}
+		if err := a.Store.SetSecretGrants(a.WorkspaceID, r.PathValue("name"), r.Header.Get("X-CapLayer-Actor"), in.GroupIDs, true); err != nil {
+			http.Error(w, "unknown group or secret, or persistence unavailable", 400)
+			return
+		}
+		w.WriteHeader(204)
+	}))
+
 	mux.HandleFunc("/api/admin/secrets/{name}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			w.WriteHeader(405)

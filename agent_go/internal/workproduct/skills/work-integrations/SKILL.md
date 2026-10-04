@@ -14,7 +14,7 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
 - `set_workflow_secret` and `delete_workflow_secret` manage project-scoped
   secrets in {{product}} (legacy tool names for the shared project store). There is
   no account-level secret: a credential shared across projects must be a
-  global, promoted by an administrator (see below).
+  shared Vault secret, copied by an administrator (see below).
 - After `set_workflow_secret` succeeds, `$SECRET_<NAME>` is available to shell
   tools immediately in the current chat and remains available in later turns.
   Continue the requested work in the same chat; do not ask the user to start a
@@ -24,9 +24,18 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   Secret values remain encrypted outside the manifest. Shared Vault credentials also require the executing user's current group permission. Respect the user's
   selections in **Integrations > Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets. To reuse a
-  credential across projects, an administrator must explicitly promote the
-  source project/workflow secret with `manage_global_secret(action="promote")`
-  or create it through Vault > Secrets. Grant use to an existing group in Vault > Access > Permissions > Secrets, then explicitly select that shared
+  credential across projects, an administrator can copy the source project/workflow secret with
+  `manage_global_secret(action="share", name="SOURCE_NAME", group_ids=["GROUP_ID"], vault_name="VAULT_NAME")`.
+  First use `manage_global_secret(action="list_groups")` to discover actual group IDs.
+  Use `list_secrets(source_workflow_path="EXACT_PATH")` when copying from another
+  accessible project, then pass the same `source_workflow_path` to the share action.
+  Ask which groups should receive access when the user's intent is unclear;
+  do not default to Platform. Sharing keeps the source and existing attachments
+  intact, never overwrites a Vault name, and never returns plaintext. The two
+  copies rotate independently. The legacy `action="promote"` removes the source
+  copy; prefer share for requests to share a credential.
+  Alternatively create it through Vault > Secrets and grant use to an existing
+  group in Vault > Access > Secrets. Explicitly select that shared
   name in each destination {{product}} project with
   `update_project_global_secret_selection(action="select", name="NAME")`.
   Call `list_secrets` first and use an exact name from `global.names`. {{product}} persists this allowlist in

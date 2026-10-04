@@ -11,6 +11,7 @@ vi.mock("../../hooks/useCanWriteWorkflow", () => ({
 }));
 vi.mock("../../api/secrets", () => ({
   secretsApi: {
+    getVaultShareGroups: vi.fn().mockRejectedValue(new Error("Vault unavailable")),
     listWorkflowSecrets: vi
       .fn()
       .mockResolvedValue([{ name: "LOCAL_KEY", encrypted_value: "sealed" }]),

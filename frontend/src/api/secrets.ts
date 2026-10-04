@@ -40,6 +40,13 @@ export const secretsApi = {
   setVaultSecretAccess: async (groupId: string, name: string, allowed: boolean): Promise<void> => {
     await api.post('/api/secrets/vault/access', { group_id: groupId, name, allowed });
   },
+  getVaultShareGroups: async (): Promise<{ groups: { ID: string; Name: string; Description?: string }[] }> => {
+    const response = await api.get('/api/secrets/vault/share');
+    return response.data;
+  },
+  shareWorkflowSecret: async (workspacePath: string, name: string, vaultName: string, groupIds: string[]): Promise<void> => {
+    await api.post('/api/secrets/vault/share', { workspace_path: workspacePath, name, vault_name: vaultName, group_ids: groupIds });
+  },
   promoteWorkflowSecret: async (workspacePath: string, name: string): Promise<void> => {
     await api.post('/api/secrets/global', { workspace_path: workspacePath, name });
   },

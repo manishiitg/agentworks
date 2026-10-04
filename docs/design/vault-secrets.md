@@ -19,6 +19,45 @@ points administrators to **Access > Groups > Permissions**. Project selection
 describes only the shared secrets permitted by the user's groups. The copied-value
 warning remains available under **Removing access**.
 
+## Share a project secret to Vault
+
+In the shared project Secrets list, Vault administrators with project write access
+can click the **Share to Vault** icon beside a stored secret. Choose a Vault name
+and one or more existing groups, then share. No group is preselected, including
+Platform. Ordinary project users cannot publish shared values or grant access.
+This works through the same component in Crew, Code, Goals, workflows, Relays,
+Video Studio and SparkQuill wherever the project secrets list is used.
+
+The server authorizes both Vault management and the source workspace, reads and
+decrypts the source internally, and encrypts a new global copy with its Vault name
+as authenticated data. The browser and builder send only source/name/group
+references. The source encrypted record, selected names, and existing project
+execution stay unchanged. Existing Vault names are never overwritten: choose a
+new name or manage the existing secret in Vault. Copies rotate independently.
+Recipients still explicitly select the Vault name in destination projects, and
+runtime use remains subject to their current group membership and grants.
+
+Builder chats use the existing shared `manage_global_secret` tool:
+
+- `action="list_groups"` returns group IDs and descriptions, with no values.
+- `action="share"`, `name`, `group_ids`, optional `vault_name`, and optional
+  `source_workflow_path` perform the same host-side operation as the UI.
+- Omit the source path to use the active project; use `list_secrets` to discover
+  source names. Ask the user about recipient groups when unspecified.
+- Read-only sessions omit management tools; authorization is checked again when
+  the tool runs. The integrations skill documents this flow.
+- The legacy `promote` action retains its move semantics for compatibility.
+
+`GET /api/secrets/vault/share` lists available groups for administrators;
+`POST` shares by reference. Group selections are checked before saving a value.
+The Vault grant endpoint validates the whole group list before changing grants
+and persists it in one store operation. There is no distributed transaction
+between the host value store and Vault: if metadata or grant persistence fails
+after the copy, the response explicitly reports that the value was saved and
+access needs review in Vault. It never reports a completed share, removes the
+source, or overwrites an existing global on retry. The UI keeps the form and
+shows the error.
+
 ## Built-in platform group
 
 Vault installation creates **Platform**, a built-in group for sharing MCP tools

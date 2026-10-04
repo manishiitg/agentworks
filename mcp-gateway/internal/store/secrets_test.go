@@ -72,3 +72,43 @@ func TestVaultSecretGrantsPersistAndRevoke(t *testing.T) {
 		t.Fatal("recreated secret inherited deleted grants")
 	}
 }
+
+func TestBatchSecretGrantsValidateAllRecipientsAndPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.sqlite")
+	s, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AddWorkspace(Workspace{ID: "w"})
+	s.AddWorkspace(Workspace{ID: "foreign"})
+	s.AddGroup(Group{ID: "a", WorkspaceID: "w"})
+	s.AddGroup(Group{ID: "b", WorkspaceID: "w"})
+	s.AddGroup(Group{ID: "foreign", WorkspaceID: "foreign"})
+	if err = s.RegisterSecrets("w", []SecretResource{{Name: "TEAM_KEY", Managed: true}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, groups := range [][]string{nil, {"a", "missing"}, {"a", "foreign"}} {
+		if s.SetSecretGrants("w", "TEAM_KEY", "admin", groups, true) == nil {
+			t.Fatal("accepted invalid batch")
+		}
+		if len(s.ListSecrets("w", "", "a", false)) != 0 {
+			t.Fatal("partial grant from invalid batch")
+		}
+	}
+	if err = s.SetSecretGrants("w", "TEAM_KEY", "admin", []string{"a", "b", "a"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, group := range []string{"a", "b"} {
+		if len(s.ListSecrets("w", "", group, false)) != 1 {
+			t.Fatal("batch did not persist")
+		}
+	}
+}

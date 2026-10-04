@@ -78,27 +78,46 @@ func (s *MemoryStore) ListSecrets(workspace, user, group string, all bool) []Sec
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
 }
-func (s *MemoryStore) SetSecretGrant(workspace, group, name, actor string, allow bool) error {
+
+// SetSecretGrants validates the entire selection before changing any grants.
+// It adds access only to the supplied groups; existing grants remain unchanged.
+func (s *MemoryStore) SetSecretGrants(workspace, name, actor string, groups []string, allow bool) error {
 	s.mu.Lock()
-	g, ok := s.groups[group]
 	row, exists := s.secretResources[name]
-	if !ok || g.WorkspaceID != workspace || !exists || row.WorkspaceID != workspace {
+	if !exists || row.WorkspaceID != workspace || len(groups) == 0 || len(groups) > 100 {
 		s.mu.Unlock()
-		return errors.New("unknown group or secret")
+		return errors.New("unknown secret or invalid group selection")
 	}
-	if s.secretGrants[group] == nil {
-		s.secretGrants[group] = map[string]bool{}
+	for _, group := range groups {
+		g, ok := s.groups[group]
+		if !ok || g.WorkspaceID != workspace {
+			s.mu.Unlock()
+			return errors.New("unknown group or secret")
+		}
 	}
-	if allow {
-		s.secretGrants[group][name] = true
-	} else {
-		delete(s.secretGrants[group], name)
+	seen := map[string]bool{}
+	for _, group := range groups {
+		if seen[group] {
+			continue
+		}
+		seen[group] = true
+		if s.secretGrants[group] == nil {
+			s.secretGrants[group] = map[string]bool{}
+		}
+		if allow {
+			s.secretGrants[group][name] = true
+		} else {
+			delete(s.secretGrants[group], name)
+		}
+		action := "revoke_secret"
+		if allow {
+			action = "grant_secret"
+		}
+		s.policyEvents[workspace] = append(s.policyEvents[workspace], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: action, PackageID: name, GroupID: group})
 	}
-	action := "revoke_secret"
-	if allow {
-		action = "grant_secret"
-	}
-	s.policyEvents[workspace] = append(s.policyEvents[workspace], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: action, PackageID: name, GroupID: group})
 	s.persistUnlock()
 	return s.PersistenceError()
+}
+func (s *MemoryStore) SetSecretGrant(workspace, group, name, actor string, allow bool) error {
+	return s.SetSecretGrants(workspace, name, actor, []string{group}, allow)
 }

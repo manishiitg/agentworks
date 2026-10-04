@@ -110,13 +110,15 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 	}
 
 	if canManageGlobalSecrets(userID) {
-		if err := registerTool("manage_global_secret", "Admin-only server-wide secret management. action=promote moves an existing secret from source_workflow_path (defaults to the active project or workflow) into the encrypted global store. Admins can promote from another accessible Crew project or workflow without switching chats; existing source attachments continue working. Other projects and workflows may explicitly select it from Global Secrets. action=set creates or updates a managed global value; action=delete removes a managed global. Environment globals cannot be changed here. Promotion never overwrites a global name. Values are never returned. Promotion registers the secret in Vault; existing groups receive no automatic grant.", map[string]interface{}{
+		if err := registerTool("manage_global_secret", "Admin-only Vault secret management. For sharing, first use action=list_groups to discover recipient group IDs; ask the user to choose groups when unspecified. action=share copies a source project/workflow secret into Vault, keeps its source and attachments unchanged, and grants the explicit group_ids. Optional vault_name renames the copy; source_workflow_path defaults to the active workspace. Existing Vault names are never overwritten. Values transfer inside the backend: do not request plaintext. Copies rotate independently; destinations explicitly select the Vault name. Legacy action=promote MOVES the source and creates no grants; prefer share. action=set creates/updates a managed global value; delete removes it. Environment globals cannot be changed. Values are never returned", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
-				"action":               map[string]interface{}{"type": "string", "enum": []string{"promote", "set", "delete"}},
+				"action":               map[string]interface{}{"type": "string", "enum": []string{"share", "list_groups", "promote", "set", "delete"}},
 				"name":                 map[string]interface{}{"type": "string"},
-				"source_workflow_path": map[string]interface{}{"type": "string", "description": "For promote only: source workspace path such as Workflow/rts-latency or the exact path returned for a Crew project. Omit to use the active project/workflow. Use list_secrets with this path to discover names first."},
+				"source_workflow_path": map[string]interface{}{"type": "string", "description": "For share or promote: source workspace path such as Workflow/rts-latency or the exact path returned for a Crew project. Omit to use the active project/workflow. Use list_secrets with this path to discover names first."},
+				"vault_name":           map[string]interface{}{"type": "string", "description": "For share: optional new name in Vault; defaults to name. Existing names are never overwritten."},
+				"group_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "minItems": 1, "maxItems": 100, "description": "For share: explicit recipient group IDs from action=list_groups. Never infer access from admin status."},
 				"value":                map[string]interface{}{"type": "string", "description": "New value for action=set only; omit when promoting an existing workflow secret."},
-			}, "required": []string{"action", "name"},
+			}, "required": []string{"action"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if !canManageGlobalSecrets(userID) {
 				return "", errGlobalAdmin
@@ -125,7 +127,57 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 			name = strings.TrimSpace(name)
 			action, _ := args["action"].(string)
 			var err error
+			if action == "list_groups" {
+				groups, err := vaultSecretShareGroups(ctx, userID)
+				if err != nil {
+					return "", err
+				}
+				data, err := json.Marshal(map[string]any{"groups": groups})
+				return string(data), err
+			}
+			if name == "" {
+				return "", fmt.Errorf("name is required")
+			}
 			switch action {
+			case "share":
+				sourcePath := workflowPath
+				if raw, supplied := args["source_workflow_path"]; supplied {
+					path, ok := raw.(string)
+					if !ok || strings.TrimSpace(path) == "" {
+						return "", fmt.Errorf("source_workflow_path must be a non-empty workspace path")
+					}
+					sourcePath = path
+				}
+				vaultName := ""
+				if raw, supplied := args["vault_name"]; supplied {
+					var ok bool
+					vaultName, ok = raw.(string)
+					if !ok {
+						return "", fmt.Errorf("vault_name must be a string")
+					}
+				}
+				if vaultName == "" {
+					vaultName = name
+				}
+				ids := []string{}
+				switch raw := args["group_ids"].(type) {
+				case []string:
+					ids = raw
+				case []interface{}:
+					for _, value := range raw {
+						id, ok := value.(string)
+						if !ok {
+							return "", fmt.Errorf("group_ids must contain strings")
+						}
+						ids = append(ids, id)
+					}
+				default:
+					return "", fmt.Errorf("group_ids is required for sharing")
+				}
+				if err := api.shareWorkflowSecretToVault(ctx, userID, sourcePath, name, vaultName, ids); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("Secret %q copied to Vault as %q with access for the selected groups. The project copy and its attachments are unchanged. Copies rotate independently. Select %q in destination projects to use it. No value returned.", name, vaultName, vaultName), nil
 			case "promote":
 				sourcePath := workflowPath
 				if raw, supplied := args["source_workflow_path"]; supplied {
@@ -142,7 +194,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 			case "delete":
 				err = api.deleteManagedGlobalSecret(ctx, userID, name)
 			default:
-				return "", fmt.Errorf("action must be promote, set, or delete")
+				return "", fmt.Errorf("action must be share, list_groups, promote, set, or delete")
 			}
 			if err != nil {
 				return "", err

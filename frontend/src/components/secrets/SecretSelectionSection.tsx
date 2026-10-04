@@ -12,6 +12,7 @@ import {
   Check,
   RotateCw,
   ChevronDown,
+  Share2,
 } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/checkbox'
@@ -60,10 +61,16 @@ export function SecretSelectionSection({
   fillAvailableHeight,
   showGlobalSecrets = true,
   workspaceSecretsAlwaysEnabled = false,
+  allowGlobalPromotion = true,
   mode = 'project',
   groupSelectedNames = [],
   onGroupAccessChange,
 }: SecretSelectionSectionProps) {
+  const [shareGroups, setShareGroups] = useState<{ ID: string; Name: string; Description?: string }[]>([])
+  const [sharing, setSharing] = useState<Row | null>(null)
+  const [shareName, setShareName] = useState('')
+  const [shareGroupIds, setShareGroupIds] = useState<string[]>([])
+  const [shareNotice, setShareNotice] = useState('')
   const [source, setSource] = useState<'project' | 'vault'>('project')
   const loadGeneration = useRef(0)
   const viewGeneration = useRef(0)
@@ -74,6 +81,18 @@ export function SecretSelectionSection({
     }
   }, [workflowPath, mode, source])
   const canWrite = useCanWriteWorkflow(workflowPath || undefined)
+  useEffect(() => {
+    let cancelled = false
+    setShareGroups([])
+    setSharing(null)
+    setShareNotice('')
+    if (mode === 'project' && workflowPath && canWrite && allowGlobalPromotion) {
+      void secretsApi.getVaultShareGroups().then(({ groups }) => {
+        if (!cancelled) setShareGroups(groups)
+      }).catch(() => { /* The server exposes sharing only to Vault administrators. */ })
+    }
+    return () => { cancelled = true }
+  }, [workflowPath, mode, canWrite, allowGlobalPromotion])
   const [project, setProject] = useState<Row[]>([])
   const [vault, setVault] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -142,6 +161,8 @@ export function SecretSelectionSection({
     setEditor(false)
     setCopied('')
     setBusy('')
+    setSharing(null)
+    setShareNotice('')
   }, [source])
   useEffect(() => {
     if (!copied) return
@@ -273,6 +294,24 @@ export function SecretSelectionSection({
       setBusy('')
     }
   }
+  const share = async () => {
+    if (!sharing) return
+    const view = viewGeneration.current
+    setBusy(sharing.name)
+    setError('')
+    setShareNotice('')
+    try {
+      await secretsApi.shareWorkflowSecret(workflowPath, sharing.name, shareName.trim(), shareGroupIds)
+      if (view !== viewGeneration.current) return
+      setSharing(null)
+      setShareNotice(`Shared as ${shareName.trim()}. The project copy is unchanged.`)
+      window.dispatchEvent(new Event(PROJECT_SECRETS_REFRESH_EVENT))
+    } catch (e) {
+      if (view === viewGeneration.current) setError(message(e))
+    } finally {
+      if (view === viewGeneration.current) setBusy('')
+    }
+  }
   const renderRow = (row: Row) => (
     <div
       key={row.name}
@@ -364,6 +403,26 @@ export function SecretSelectionSection({
                 )}
               </Button>
             </>
+          )}
+          {mode === 'project' && !isVault && shareGroups.length > 0 && row.encrypted_value && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 [&_svg]:h-3.5 [&_svg]:w-3.5 text-muted-foreground hover:text-foreground"
+              aria-label={`Share ${row.name} to Vault`}
+              title="Share to Vault"
+              disabled={!!busy}
+              onClick={() => {
+                setSharing(row)
+                setShareName(row.name)
+                setShareGroupIds([])
+                setShareNotice('')
+                setError('')
+                setEditor(false)
+              }}
+            >
+              <Share2 />
+            </Button>
           )}
           {(mode !== 'vault' || row.managed) && (
             <>
@@ -492,6 +551,34 @@ export function SecretSelectionSection({
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
+      )}
+      {shareNotice && <p role="status" className="text-xs text-primary">{shareNotice}</p>}
+      {sharing && !isVault && (
+        <form
+          aria-label={`Share ${sharing.name} to Vault`}
+          className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3"
+          onSubmit={(e) => { e.preventDefault(); void share() }}
+        >
+          <h4 className="text-sm font-medium">Share {sharing.name} to Vault</h4>
+          <p className="text-xs text-muted-foreground">Keeps the project copy. Copies rotate independently.</p>
+          <label className="block space-y-1 text-xs">
+            <span>Vault secret name</span>
+            <Input aria-label="Vault secret name" value={shareName} disabled={!!busy} onChange={(e) => setShareName(e.target.value)} />
+          </label>
+          <fieldset disabled={!!busy} className="space-y-2">
+            <legend className="mb-2 text-xs font-medium">Give access to</legend>
+            {shareGroups.map((g) => (
+              <label key={g.ID} className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-2 text-xs">
+                <Checkbox aria-label={`Share with ${g.Name}`} checked={shareGroupIds.includes(g.ID)} onCheckedChange={(checked) => setShareGroupIds((ids) => checked === true ? [...ids, g.ID] : ids.filter((id) => id !== g.ID))} />
+                <span><span className="font-medium">{g.Name}</span>{g.Description && <span className="mt-0.5 block text-muted-foreground">{g.Description}</span>}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={!!busy} onClick={() => setSharing(null)}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={!!busy || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(shareName.trim()) || !shareGroupIds.length}>{busy ? 'Sharing…' : 'Share to Vault'}</Button>
+          </div>
+        </form>
       )}
       {loading && !rows.length ? (
         <p className="text-sm text-muted-foreground">Loading secrets…</p>

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SecretSelectionSection } from './SecretSelectionSection'
 const api = vi.hoisted(() => ({
   getGlobalSecrets: vi.fn(),
+  getVaultShareGroups: vi.fn(),
+  shareWorkflowSecret: vi.fn(),
   listWorkflowSecrets: vi.fn(),
   decrypt: vi.fn(),
   revealGlobalSecret: vi.fn(),
@@ -26,6 +28,8 @@ let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
 beforeEach(() => {
   vi.resetAllMocks()
+  api.getVaultShareGroups.mockResolvedValue({ groups: [{ ID: 'platform', Name: 'Platform' }, { ID: 'finance', Name: 'Finance' }] })
+  api.shareWorkflowSecret.mockResolvedValue(undefined)
   clipboardWrite.mockResolvedValue(undefined)
   vi.stubGlobal('navigator', { clipboard: { writeText: clipboardWrite } })
   api.getGlobalSecrets.mockResolvedValue([{ name: 'TEAM_KEY', managed: true }])
@@ -51,6 +55,37 @@ async function click(label: string) {
   })
 }
 describe('shared secrets permissions UI', () => {
+  it('shares by reference with explicit groups and retains project selections', async () => {
+    const selected = vi.fn()
+    await act(async () => root.render(<SecretSelectionSection workflowPath="Workflow/test" selectedSecrets={['PROJECT_KEY']} onSecretChange={selected} />))
+    await click('Share PROJECT_KEY to Vault')
+    const form = host.querySelector('form[aria-label="Share PROJECT_KEY to Vault"]')!
+    const submit = form.querySelector('button[type="submit"]') as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    await click('Share with Platform')
+    await act(async () => { submit.click() })
+    expect(api.shareWorkflowSecret).toHaveBeenCalledWith('Workflow/test', 'PROJECT_KEY', 'PROJECT_KEY', ['platform'])
+    expect(selected).not.toHaveBeenCalled()
+    expect(api.decrypt).not.toHaveBeenCalled()
+    expect(api.encrypt).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('project copy is unchanged')
+    expect(host.querySelector('[aria-label="Use PROJECT_KEY"]')?.getAttribute('aria-checked')).toBe('true')
+  })
+  it('keeps the form and displays name conflicts without changing selections', async () => {
+    api.shareWorkflowSecret.mockRejectedValue(new Error('A global secret with this name already exists'))
+    await act(async () => root.render(<SecretSelectionSection workflowPath="Workflow/test" selectedSecrets={[]} onSecretChange={() => {}} />))
+    await click('Share PROJECT_KEY to Vault')
+    await click('Share with Finance')
+    await act(async () => { (host.querySelector('form button[type="submit"]') as HTMLElement).click() })
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('already exists')
+    expect(host.querySelector('form')).toBeTruthy()
+    expect(api.deleteWorkflowSecret).not.toHaveBeenCalled()
+  })
+  it('does not offer sharing to a user without Vault management permission', async () => {
+    api.getVaultShareGroups.mockRejectedValue(new Error('Forbidden'))
+    await act(async () => root.render(<SecretSelectionSection workflowPath="Workflow/test" selectedSecrets={[]} onSecretChange={() => {}} />))
+    expect(host.querySelector('[aria-label="Share PROJECT_KEY to Vault"]')).toBeNull()
+  })
   it('project Vault choices never expose central value or management actions', async () => {
     const select = vi.fn().mockResolvedValue(undefined)
     await act(async () =>
