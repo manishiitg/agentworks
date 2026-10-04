@@ -12,15 +12,17 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 type workflowChatPolicy struct {
-	Mode         string
-	Origin       string
-	Capabilities map[string]bool
-	AuthorityKey string
+	Mode             string
+	Origin           string
+	Capabilities     map[string]bool
+	AuthorityKey     string
+	ProductProfileID string
 }
 
 // readOnlyForRequest decides whether a turn runs with read-only treatment.
@@ -61,7 +63,7 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	if readOnly || strings.TrimSpace(req.AgentMode) == "workflow" {
 		normalized = "run"
 	}
-	return workflowChatPolicy{Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID}
+	return workflowChatPolicy{Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
 }
 
 func (p workflowChatPolicy) allows(capability string) bool { return p.Capabilities[capability] }
@@ -73,6 +75,9 @@ func (p workflowChatPolicy) sessionKey() string {
 	}
 	sort.Strings(names)
 	identity := p.Mode + "|" + p.Origin + "|" + strings.Join(names, ",")
+	if p.ProductProfileID != "" {
+		identity += "|profile:" + p.ProductProfileID
+	}
 	if p.AuthorityKey != "" {
 		identity += "|" + p.AuthorityKey
 	}
@@ -152,6 +157,12 @@ func chatPolicyRequiresReconnect(codingProvider bool, previous, current string, 
 func (api *StreamingAPI) registerMCPToolsForChat(registrar definitionToolRegistrar, policy workflowChatPolicy, disabled func(string) bool) error {
 	if policy.allows("mcp_management") {
 		return api.registerMultiAgentMCPServerTools(registrar, func(name string) bool {
+			// Vault's product profile explicitly owns the direct, governed call
+			// bridge. AgentWorks' workflow manifest must not remove that entry;
+			// the profile gate and execution-time identity checks still apply.
+			if name == "call_mcp_tool" && policy.ProductProfileID == caplayerproduct.ProfileID {
+				return disabled != nil && disabled(name)
+			}
 			return !agentworksproduct.ChatAllowsTool(policy.Mode, name) || disabled != nil && disabled(name)
 		})
 	}

@@ -293,6 +293,28 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	if len(registrar.admitted) != 2 || registrar.admitted[0] != "call_mcp_tool" || registrar.admitted[1] != "list_mcp_servers" {
 		t.Fatalf("Vault builder MCP registration = %v", registrar.admitted)
 	}
+	for _, tc := range []struct {
+		name     string
+		profile  string
+		readOnly bool
+		disabled bool
+	}{{"ordinary product", "", false, false}, {"read-only Vault", profile.ID, true, false}, {"disabled by profile", profile.ID, false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			narrowed := req
+			narrowed.AgentProfileID = tc.profile
+			registered := &gateRecordingRegistrar{gate: gate}
+			if err := api.registerMCPToolsForChat(registered, resolveWorkflowChatPolicy("caplayer-test", narrowed, nil, tc.readOnly), func(name string) bool {
+				return tc.disabled && name == "call_mcp_tool" || profileDisablesVirtualTool(resolved, name)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range registered.admitted {
+				if name == "call_mcp_tool" {
+					t.Fatal("Vault-only call admission widened another policy")
+				}
+			}
+		})
+	}
 }
 
 func TestCapLayerPromptDoesNotPromiseWorkspaceMemory(t *testing.T) {
