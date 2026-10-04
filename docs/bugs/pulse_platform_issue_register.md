@@ -1,3 +1,7 @@
+## The early selected-secret check refuses chats that select a project secret — PLAT-469
+
+[PLAT-469](pulse_platform/security-sandbox/plat-469.md), open, P1, owned by the Vault maintainer; GitHub issue #266. `validateVaultSecretSelection` runs before the project secrets are loaded, so a project secret is treated as a missing shared secret (403). Blocks the Vault rollout to Confida and RTS.
+
 ## The Vault systemd unit quoted paths and never started — PLAT-467
 
 [PLAT-467](pulse_platform/scheduler-runs/plat-467.md), fixed on main; Excellence redeploy pending. `EnvironmentFile=` and `WorkingDirectory=` were written with quotes, which
