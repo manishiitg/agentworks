@@ -26,6 +26,6 @@ Design work should be planned and reviewed with the owner before implementation.
 
 ## Done elsewhere
 
-- RTS `<app>/logs` was world-readable (`drwxr-xr-x`, agent.log 0664): set to 0750 live 2026-10-04; Hetzner products already 0750. Deploys should enforce 0750.
+- RTS `<app>/logs` was world-readable (`drwxr-xr-x`, agent.log 0664): set to 0750 live 2026-10-04; Hetzner products already 0750. **The RTS deploy of 2026-10-04 (c35e552) reset it to drwxr-xr-x**, so it was set to 0750 again by hand; the deploy must enforce 0750 (open item H2).
 - Partial, uncommitted, untested edits from the second attempt are in the worktree `/Users/mipl/ai-work/mabg-slotharden` (root-owned program check in slotctl,
   installed-copy lookup, no DOCKER_HOST for slot commands). Not merged: alone they break slot commands until the root install step exists.
