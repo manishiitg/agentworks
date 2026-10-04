@@ -13,7 +13,7 @@ agent_go (now `pkg/workspaceref`), the `workspace/` module (`slots.SlotForDir`, 
 
 ## Decisions (owner, 2026-10-04)
 
-1. Crew reader turns run as the **owner's slot**; the reader block, tools and folder guards limit the reader.
+1. Crew turns (owner and reader) run as the **app account**, as today (corrected 2026-10-04 by PLAT-446: the CLI starts in an app-owned runtime folder, not in the owner's folder); the reader block, tools and folder guards limit the reader.
 2. Goals keep running as the **app account** with Landlock and per-workflow folders; no slot per workflow.
 3. Crews **move to `Crew/<id>`** in this round, after steps 1-3, with backup, dry run and old paths kept as aliases; Confida first.
 

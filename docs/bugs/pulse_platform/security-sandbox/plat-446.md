@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | open, needs an owner decision (found while doing PLAT-442 step 2; nothing changed) |
+| State | decided 2026-10-04: keep the app account; nothing to build (found while doing PLAT-442 step 2) |
 | Date | 2026-10-04 |
 | Owner | security-sandbox |
 
@@ -29,7 +29,11 @@ Pinned by `cmd/server/multiuser_identity_test.go` `TestRunAsRegressionTable` (th
   to live where the slot can use it (the slot's state area), the provider launch files and tmux session would follow, and the Crew reader's
   turn would use the owner's slot while the shell tool uses the reader's, which must then be settled too.
 
+## Decision (owner, 2026-10-04)
+
+Keep the app account for Crew CLI turns, as today. The limits on a Crew reader stay the platform's tools, folder guards and the reader block, with Landlock underneath.
+Decision 1 of PLAT-442 is corrected accordingly (DECISIONS.md, plat-442.md). Making Crew turns run as the owner's slot stays a possible later change; it is not planned.
+
 ## Left
 
-An owner decision: keep the app account for Crew CLI turns (then correct decision 1 in DECISIONS.md and plat-442.md) or move them to the owner's
-slot (a separate change; `decideTurnRunAs` and the fixture expectation `todayIdentity` are the two places that say who runs as whom).
+Nothing. `decideTurnRunAs` and the fixture's `todayIdentity` stay the two places that state who runs as whom.

@@ -22,8 +22,7 @@ Design references for the linked runtime decisions:
 ### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
 
 - The owner of a Goal, Crew or Code comes from its manifest, and the platform names the slot a CLI runs as. Neither is read from the folder path any more.
-- A Crew Run-mode reader's turn runs as the Crew owner's slot (one Crew agent, the owner's logins). The reader block, tools and folder guards limit the reader.
-  Correction found while building it: Crew CLI turns of the owner AND of a reader run as the app account today (the CLI starts in an isolated runtime folder, not in the Crew folder), so this line is the intent, not the behaviour; the build only declared what happens and changed nothing. Open decision: [PLAT-446](bugs/pulse_platform/security-sandbox/plat-446.md).
+- Crew turns (owner and reader alike) run as the app account, with Landlock; the reader block, tools and folder guards limit a reader. (The CLI starts in an app-owned runtime folder, not in the owner's folder, so it never ran as the owner's slot; owner confirmed keeping it, PLAT-446.)
 - Goals keep running as the app account with Landlock and per-workflow folders. Workflows have several owners, so no single person's slot fits.
 - Crews move to the shared `Crew/<slug>-<id8>` root once the explicit owner and slot are in place. Old paths stay as aliases. Code stays private in its owner's tree.
 - Ticket: [PLAT-442](bugs/pulse_platform/security-sandbox/plat-442.md).
