@@ -312,6 +312,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeOrchestratorStep(
 		Items:            items,
 		NextStepID:       orchestratorStep.NextStepID,
 		AgentConfigs:     orchestratorStep.AgentConfigs,
+		AuthoredPrompt:   orchestratorStep.AuthoredPrompt,
+		SystemPrompt:     orchestratorStep.SystemPrompt,
 	}
 	opts := messageSequenceCallOptions{
 		Source: "configured_queue",
@@ -354,6 +356,8 @@ func delegatingMessageSequenceAsOrchestrator(step *MessageSequencePlanStep) *Orc
 		NextStepID:       step.NextStepID,
 		Messages:         step.Items,
 		AgentConfigs:     step.AgentConfigs,
+		AuthoredPrompt:   step.AuthoredPrompt,
+		SystemPrompt:     step.SystemPrompt,
 	}
 }
 

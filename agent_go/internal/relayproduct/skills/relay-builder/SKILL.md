@@ -34,6 +34,35 @@ available through the shared sandboxed command runner in all products.
 - Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with a configured `group_name` and `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
 - Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
 
+## Agent tools: saved Python scripts
+
+An agent that needs live data or an action during its turn (a customer lookup,
+a price check) gets a saved Python script it calls as a tool. Relays support
+only these script tools on agents; they do not support sub-agents. Prefer a
+script node in the graph when the work does not depend on the agent's
+reasoning.
+
+- Add the tool with `manage_step_route` on the agent: `route_id` and the
+  `sub_agent_step.id` are the same (`lookup-customer`), `type: regular`,
+  `script_only: true`, a clear `description` (the agent reads it to decide when
+  to call), and `script_parameters` (flat typed list) or
+  `script_parameters_schema` (one full JSON Schema), never both.
+- Write `code/lookup-customer/main.py` yourself. It reads its inputs from
+  `json.loads(os.environ["STEP_PARAMS_JSON"])` and returns its answer by writing
+  one JSON value to `os.path.join(os.environ["STEP_OUTPUT_DIR"], "route_result.json")`;
+  the agent receives exactly that JSON. A lookup that finds nothing returns e.g.
+  `{"found": false}` rather than failing.
+- Relays have no workflow database, knowledge base or learnings. A tool reaches
+  the user's own systems with their client library and a secret (for example a
+  connection string in `SECRET_*`), or a file granted through
+  `additional_read_paths`.
+- The agent's authored system prompt is kept as written; the platform appends a
+  short list of its tools. Test the tool with `execute_step`, then the whole
+  Relay with `run_full_workflow`, and check the named tool call and its result.
+  A script is never rewritten at run time: a failing script fails the tool call
+  with its real error, which the agent sees. Publishing requires every tool's
+  saved `main.py`.
+
 ## Validation boundaries
 
 - Relay agents accept authored `user_message` items only. Workflow

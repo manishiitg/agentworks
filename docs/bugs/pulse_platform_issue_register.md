@@ -1,3 +1,9 @@
+## Relay agents call saved Python scripts as tools — PLAT-441
+
+[PLAT-441](pulse_platform/plans-contracts/plat-441.md), fixed on `main`, not
+deployed: a Relay agent may own `script_only` scripted routes (named tools) and
+keeps its authored prompt; sub-agents stay unsupported; Relays skip DB/KB migrations.
+
 ## Physical _users paths built from an unsanitized user id — PLAT-440
 
 [PLAT-440](pulse_platform/security-sandbox/plat-440.md), open: found during PLAT-435; a few call sites build

@@ -45,8 +45,8 @@ chat:
       - get_relay_releases
       - publish_relay
       # Shared workflow contract migrations (PLAT-431): a Relay owes the
-      # runtime migrations (steps, scripts, code layout, database), never the
-      # goal-driven ones, and must be able to run them from its own Builder.
+      # runtime migrations (steps, scripts, code layout), never the goal-driven
+      # ones nor those for stores a Relay lacks (database, KB, learnings).
       - get_contract_upgrades
       - set_workflow_contract_version
       - set_code_layout_version
@@ -54,10 +54,6 @@ chat:
       - migrate_orchestrator_step_type
       - migrate_declared_execution_mode
       - strip_declared_execution_mode
-      - scan_workflow_script_db_usage
-      - apply_workflow_db_migration
-      - query_workflow_db
-      - mutate_workflow_db
       - get_step_prompts
       - manage_custom_commands
       - get_llm_config

@@ -25,12 +25,14 @@ func TestRelayOwesOnlySharedWorkflowMigrations(t *testing.T) {
 		t.Fatalf("relay plan has %d of %d migrations; want the shared subset", len(relay), len(goals))
 	}
 	for _, upgrade := range relay {
-		if goalsOnlyWorkflowUpgrades[upgrade.label] {
-			t.Errorf("a Relay was given the goal-driven migration %q", upgrade.label)
+		if goalsOnlyWorkflowUpgrades[upgrade.label] || relayStoreUpgrades[upgrade.label] {
+			t.Errorf("a Relay was given %q, which is goal-driven or for a store a Relay lacks", upgrade.label)
 		}
 	}
-	if last := relay[len(relay)-1]; last.label != "upgrade-managed-db-scripts" || last.to != WorkflowContractCurrentVersion {
-		t.Errorf("the Relay plan must still end at the current contract, got %+v", last)
+	for label := range relayStoreUpgrades {
+		if !labels[label] {
+			t.Errorf("relayStoreUpgrades names %q, which is not on the ladder (renamed?)", label)
+		}
 	}
 }
 
@@ -41,11 +43,17 @@ func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
 			t.Errorf("kind %q on the current contract must run", kind)
 		}
 	}
-	// 1.0.44 owes the shared managed-DB migration: both are blocked.
-	for _, kind := range []string{"", "relay"} {
-		if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: kind}) {
-			t.Errorf("kind %q on 1.0.44 owes a shared migration and must be blocked", kind)
-		}
+	// 1.0.44 owes the managed-DB migration. A Goals workflow is blocked; a
+	// Relay has no database, owes nothing and runs.
+	if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion}) {
+		t.Error("a Goals workflow on 1.0.44 must be blocked")
+	}
+	if !manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay"}) {
+		t.Error("a Relay on 1.0.44 owes nothing (it has no database) and must run")
+	}
+	// A Relay that still owes a shared runtime migration is blocked.
+	if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractEvalRetirementVersion, Kind: "relay"}) {
+		t.Error("a Relay on 1.0.43 owes the nested-artifacts migration and must be blocked")
 	}
 	// An unknown (newer) version is never compatible.
 	if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: "9.9.9", Kind: "relay"}) {

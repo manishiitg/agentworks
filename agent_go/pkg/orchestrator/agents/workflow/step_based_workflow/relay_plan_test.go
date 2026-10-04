@@ -69,3 +69,63 @@ func TestRelayDecisionReadsInputValue(t *testing.T) {
 		t.Fatalf("decision = %+v, %v", selection, err)
 	}
 }
+
+// PLAT-441: a Relay agent may call saved Python scripts as named tools
+// (scripted routes); it may not have sub-agents or a script that is rewritten.
+func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
+	route := func(step PlanStepInterface) PlanOrchestrationRoute {
+		return PlanOrchestrationRoute{RouteID: step.GetID(), RouteName: step.GetID(), Condition: "When a customer id is known", SubAgentStep: step}
+	}
+	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
+
+	plan := relayTestPlan()
+	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(lookup)}
+	if err := ValidateRelayPlanStructure(plan, "answer"); err != nil {
+		t.Fatalf("a script tool on a Relay agent was rejected: %v", err)
+	}
+
+	rewritable := *lookup
+	rewritable.ScriptOnly = false
+	plan = relayTestPlan()
+	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(&rewritable)}
+	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "script_only") {
+		t.Fatalf("a script tool that could be rewritten was accepted: %v", err)
+	}
+
+	subAgent := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "helper", Title: "Helper", Description: "d"}, AuthoredPrompt: true, SystemPrompt: "x",
+		Items: []MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "go"}}}
+	plan = relayTestPlan()
+	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(subAgent)}
+	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "sub-agents") {
+		t.Fatalf("a sub-agent on a Relay agent was accepted: %v", err)
+	}
+}
+
+func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
+	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
+	agent := &MessageSequencePlanStep{
+		CommonStepFields: CommonStepFields{ID: "deep-agent", Title: "Deep", Description: "Produce JSON"},
+		AuthoredPrompt:   true, SystemPrompt: "Return JSON about {{input.kind}}",
+		Items:            []MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "go"}},
+		PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "lookup-customer", RouteName: "Lookup customer", Condition: "When a customer id is known", SubAgentStep: lookup}},
+	}
+	orchestratorStep := delegatingMessageSequenceAsOrchestrator(agent)
+	if !orchestratorStep.AuthoredPrompt || orchestratorStep.SystemPrompt != agent.SystemPrompt {
+		t.Fatalf("the delegation runtime lost the authored prompt: %+v", orchestratorStep)
+	}
+	block := authoredRoutesPromptBlock(agent.PredefinedRoutes)
+	for _, want := range []string{"`lookup_customer`", "When a customer id is known", "final answer is still the JSON"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("tools block missing %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "Sub-agents") {
+		t.Errorf("a script-only agent must not be told about sub-agents:\n%s", block)
+	}
+	if authoredRoutesPromptBlock(nil) != "" {
+		t.Error("an agent without routes gets no block")
+	}
+	if err := validateMessageSequenceStepFieldsTyped(agent); err != nil {
+		t.Errorf("an authored agent with routes must pass plan validation: %v", err)
+	}
+}

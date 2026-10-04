@@ -1081,6 +1081,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 		if promptErr != nil {
 			return "", fmt.Errorf("message_sequence step %q system_prompt: %w", step.ID, promptErr)
 		}
+		if delegation != nil && delegation.ExecCtx != nil && delegation.ExecCtx.OrchestratorStep != nil {
+			systemPrompt += authoredRoutesPromptBlock(delegation.ExecCtx.OrchestratorStep.PredefinedRoutes)
+		}
 		templateVars["AuthoredSystemPrompt"] = systemPrompt
 		templateVars["AuthoredUserMessage"] = message
 	}
@@ -1882,4 +1885,39 @@ func messageSequencePromptKBAccess(stepAccess string, writeAccess MessageSequenc
 		return KBAccessReadWrite
 	}
 	return KBAccessRead
+}
+
+// authoredRoutesPromptBlock tells an authored agent (whose system prompt is used
+// verbatim) which routes it owns. Scripted routes are named tools; agent routes
+// are called with call_sub_agent. The author's text is never altered (PLAT-441).
+func authoredRoutesPromptBlock(routes []PlanOrchestrationRoute) string {
+	if len(routes) == 0 {
+		return ""
+	}
+	var tools, agents []string
+	for _, route := range routes {
+		condition := strings.TrimSpace(route.Condition)
+		if condition == "" && route.SubAgentStep != nil {
+			condition = strings.TrimSpace(route.SubAgentStep.GetDescription())
+		}
+		if route.SubAgentStep != nil && isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep)) {
+			tools = append(tools, fmt.Sprintf("- `%s`: %s", scriptedRouteToolName(route.RouteID), condition))
+		} else {
+			agents = append(agents, fmt.Sprintf("- `%s`: %s", route.RouteID, condition))
+		}
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Tools and sub-agents of this agent\n")
+	if len(tools) > 0 {
+		b.WriteString("Call these tools when the task needs them; each runs a saved script and returns JSON:\n")
+		b.WriteString(strings.Join(tools, "\n"))
+		b.WriteString("\n")
+	}
+	if len(agents) > 0 {
+		b.WriteString("Sub-agents (call_sub_agent with the route_id and clear instructions); use them only when the task cannot be done directly:\n")
+		b.WriteString(strings.Join(agents, "\n"))
+		b.WriteString("\n")
+	}
+	b.WriteString("Your final answer is still the JSON this prompt asks for.")
+	return b.String()
 }

@@ -1889,13 +1889,23 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// Categories for built-in delegation tools are registered once when the
 		// BaseOrchestrator is constructed; the map stays immutable so nested
 		// orchestrators can be created in parallel safely.
+		// An authored agent (a Relay agent) calls only its saved scripts, through
+		// the named route tools below: no sub-agent, generic agent or delegation
+		// tools (PLAT-441).
+		authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
 		for _, tool := range subAgentTools {
+			if authoredAgent {
+				break
+			}
 			toolsToRegister = append(toolsToRegister, tool)
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added sub-agent tool '%s' to todo task orchestrator (category: %s)", tool.Function.Name, subAgentCategory))
 		}
 
 		// Wrap sub-agent executors with context injection
 		for toolName, executor := range subAgentExecutors {
+			if authoredAgent {
+				break
+			}
 			wrappedExecutor := hcpo.wrapSubAgentToolExecutor(executor, subAgentExecCtx)
 			executorsToUse[toolName] = wrappedExecutor
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
@@ -1980,6 +1990,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) restoreSubAgentToolExecutors(execCtx 
 	}
 	if sessionID == "" {
 		return
+	}
+	if execCtx.OrchestratorStep != nil && execCtx.OrchestratorStep.AuthoredPrompt {
+		return // an authored (Relay) agent never had delegation executors
 	}
 	subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
 	wrappedExecutors := make(map[string]func(ctx context.Context, args map[string]interface{}) (string, error), len(subAgentExecutors))

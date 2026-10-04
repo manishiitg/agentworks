@@ -28,8 +28,17 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 		steps[step.GetID()] = step
 		switch s := step.(type) {
 		case *MessageSequencePlanStep:
-			if !s.AuthoredPrompt || strings.TrimSpace(s.SystemPrompt) == "" || len(s.PredefinedRoutes) != 0 {
-				return fmt.Errorf("Relay agent %q needs an authored system prompt and no nested routes", s.ID)
+			if !s.AuthoredPrompt || strings.TrimSpace(s.SystemPrompt) == "" {
+				return fmt.Errorf("Relay agent %q needs an authored system prompt", s.ID)
+			}
+			// A Relay agent may own saved Python scripts it calls as named tools
+			// (scripted routes, PLAT-441). Sub-agents are not supported, and a
+			// script is never rewritten, like a Relay script node.
+			for _, route := range s.PredefinedRoutes {
+				script, ok := route.SubAgentStep.(*RegularPlanStep)
+				if !ok || !script.ScriptOnly {
+					return fmt.Errorf("Relay agent %q route %q must be a saved script (type regular, script_only: true); Relays do not support sub-agents", s.ID, route.RouteID)
+				}
 			}
 			for _, item := range s.Items {
 				if item.Type != "" && item.Type != "user_message" {

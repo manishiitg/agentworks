@@ -284,14 +284,27 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			return nil, fmt.Errorf("Relay needs %s before publishing", required)
 		}
 	}
+	// Script nodes and the scripts agents call as tools (scripted routes,
+	// PLAT-441) both run saved code; a release must carry it.
+	var scripts []*stepworkflow.RegularPlanStep
 	for _, step := range plan.Steps {
 		if script, ok := step.(*stepworkflow.RegularPlanStep); ok && script.ScriptOnly {
-			if manifest.CodeLayoutVersion != 1 {
-				return nil, fmt.Errorf("Relay script %q needs code_layout_version 1 before publishing", script.ID)
+			scripts = append(scripts, script)
+		}
+		if agent, ok := step.(*stepworkflow.MessageSequencePlanStep); ok {
+			for _, route := range agent.PredefinedRoutes {
+				if script, ok := route.SubAgentStep.(*stepworkflow.RegularPlanStep); ok {
+					scripts = append(scripts, script)
+				}
 			}
-			if _, exists := content[path.Join("code", script.ID, "main.py")]; !exists {
-				return nil, fmt.Errorf("Relay script %q needs saved code/%s/main.py", script.ID, script.ID)
-			}
+		}
+	}
+	for _, script := range scripts {
+		if manifest.CodeLayoutVersion != 1 {
+			return nil, fmt.Errorf("Relay script %q needs code_layout_version 1 before publishing", script.ID)
+		}
+		if _, exists := content[path.Join("code", script.ID, "main.py")]; !exists {
+			return nil, fmt.Errorf("Relay script %q needs saved code/%s/main.py", script.ID, script.ID)
 		}
 	}
 	// Hash the exact file names and contents, independent of workspace listing order.

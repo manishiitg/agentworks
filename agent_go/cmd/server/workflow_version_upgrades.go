@@ -54,6 +54,13 @@ var goalsOnlyWorkflowUpgrades = map[string]bool{
 	"upgrade-eval-verdict-schema":            true,
 }
 
+// relayStoreUpgrades migrate the workflow database, knowledge base or learnings.
+// A Relay has none of those stores, so it never owes them.
+var relayStoreUpgrades = map[string]bool{
+	"upgrade-kb-write-method":    true,
+	"upgrade-managed-db-scripts": true,
+}
+
 func manifestIsRelay(manifest *WorkflowManifest) bool {
 	return manifest != nil && manifest.Kind == "relay"
 }
@@ -448,7 +455,7 @@ func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpg
 	}
 	shared := plan[:0:0]
 	for _, upgrade := range plan {
-		if !goalsOnlyWorkflowUpgrades[upgrade.label] {
+		if !goalsOnlyWorkflowUpgrades[upgrade.label] && !relayStoreUpgrades[upgrade.label] {
 			shared = append(shared, upgrade)
 		}
 	}

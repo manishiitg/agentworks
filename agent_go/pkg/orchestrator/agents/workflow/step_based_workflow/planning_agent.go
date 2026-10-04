@@ -895,6 +895,11 @@ type OrchestratorPlanStep struct {
 	Messages             []MessageSequenceItem    `json:"messages,omitempty"`          // Optional scripted message sequence fed into the orchestrator's own conversation after its first turn
 	OrchestratorDecision *OrchestratorDecision    `json:"-"`                           // runtime: stores orchestrator decisions - not stored in plan.json
 	AgentConfigs         *AgentConfigs            `json:"-"`                           // runtime: per-agent configuration - not stored in plan.json
+	// AuthoredPrompt and SystemPrompt carry an authored agent (a Relay agent)
+	// through the delegation runtime when it owns routes, so its exact system
+	// prompt and JSON result contract survive (PLAT-441). Runtime only.
+	AuthoredPrompt bool   `json:"-"`
+	SystemPrompt   string `json:"-"`
 }
 
 // A todo_task step's optional scripted message sequence reuses MessageSequenceItem
@@ -6007,9 +6012,6 @@ func validateMessageSequenceStepFieldsTypedWithOptions(step *MessageSequencePlan
 	if step.AuthoredPrompt {
 		if strings.TrimSpace(step.SystemPrompt) == "" {
 			return fmt.Errorf("message_sequence step %q: authored_prompt requires system_prompt", step.ID)
-		}
-		if len(step.PredefinedRoutes) > 0 {
-			return fmt.Errorf("message_sequence step %q: authored_prompt does not support predefined_routes", step.ID)
 		}
 		if lastType := strings.TrimSpace(step.Items[len(step.Items)-1].Type); lastType != "" && lastType != "user_message" {
 			return fmt.Errorf("message_sequence step %q: authored_prompt must end with a user_message that returns JSON", step.ID)

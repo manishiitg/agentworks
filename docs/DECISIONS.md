@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relay agents get script tools, never sub-agents; Relays have no DB/KB/learnings
+
+A Relay agent may call saved Python scripts as named tools (scripted routes,
+`script_only`); it keeps its authored system prompt. Sub-agents are not supported
+in Relays. Relays have no workflow database, knowledge base or learnings, so they
+skip those migrations and their Builder has no DB tools.
+Ticket: [PLAT-441](bugs/pulse_platform/plans-contracts/plat-441.md).
+
 ### 2026-10-04 — Product selectors no longer expose the Code inspector
 
 Remove the admin/reviewer workspace inspection button and popup from the
