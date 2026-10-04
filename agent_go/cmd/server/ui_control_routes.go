@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // AuthMiddleware supplies the user; a binding additionally requires ownership
@@ -40,8 +41,8 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 	}
 	isWorkflow := strings.HasPrefix(workspace, "Workflow/")
 	cleanWorkspace := path.Clean(strings.Trim(strings.TrimSpace(workspace), "/"))
-	ownedPrefix := path.Join("_users", sanitizeUserIDForPath(user)) + "/"
-	isOwnedWork := (!strings.HasPrefix(cleanWorkspace, "_users/") || strings.HasPrefix(cleanWorkspace, ownedPrefix)) && isProjectWorkspacePath(cleanWorkspace)
+	workspaceRef := workspaceref.MustParse(cleanWorkspace)
+	isOwnedWork := workspaceRef.OwnedByOrUnowned(user) && workspaceRef.IsProject()
 	if !isWorkflow && !isOwnedWork {
 		fail("unsupported_surface", http.StatusConflict)
 		return

@@ -17,6 +17,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
 )
@@ -133,15 +134,8 @@ func cleanAgentProfileWorkspace(raw, userID string) (string, error) {
 	if clean == crewSharedRootName || strings.HasPrefix(clean, crewSharedRootName+"/") {
 		return "", fmt.Errorf("selected_folder must be a crew you can open")
 	}
-	if clean == "_users" || strings.HasPrefix(clean, "_users/") {
-		owner := strings.TrimPrefix(clean, "_users")
-		owner = strings.TrimPrefix(owner, "/")
-		if idx := strings.Index(owner, "/"); idx >= 0 {
-			owner = owner[:idx]
-		}
-		if owner == "" || owner != sanitizeUserIDForPath(userID) {
-			return "", fmt.Errorf("selected_folder must stay inside your own workspace")
-		}
+	if ref := workspaceref.MustParse(clean); ref.IsUsersRoot() || !ref.OwnedByOrUnowned(userID) {
+		return "", fmt.Errorf("selected_folder must stay inside your own workspace")
 	}
 	return clean, nil
 }
@@ -194,14 +188,14 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical form alone resolves outside any user tree and finds nothing — which
 // made restored Crews start a fresh native session (RTS 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
-	clean := strings.Trim(filepath.ToSlash(strings.TrimSpace(selectedFolder)), "/")
-	if clean == "" {
+	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
+	if ref.IsEmpty() && !ref.IsUsersRoot() {
 		return ""
 	}
-	if strings.HasPrefix(clean, "_users/") {
-		return clean
+	if ref.HasOwner() {
+		return ref.PhysicalKeepOwner(userID)
 	}
-	return agentProfileRuntimeWorkspace(userID, normalizeConversationWorkspace(clean))
+	return agentProfileRuntimeWorkspace(userID, ref.Logical())
 }
 
 // isActiveWorkProjectWorkspace distinguishes an actual Crew or Code project

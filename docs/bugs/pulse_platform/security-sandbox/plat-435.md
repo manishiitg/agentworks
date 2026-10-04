@@ -41,3 +41,14 @@ PLAT-434 fixed the Code/Crew UI-control instance.
   `CodeProjectRoot`.
 - Pre-existing failures on main 0cf79e4cf, unrelated: TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID,
   TestSalesCrewCatalogHasInstallableRoles, TestCrewProductSurfaceE2E (native-subagents undeclared).
+- Migrated (commit 3, cmd/server): `cleanAgentProfileWorkspace`, `productConversationRuntimeWorkspace`,
+  `crewProjectOwnerID` / `isCrewProjectPath` / `crewProjectOwnedByCaller`, place MCP roots (`cleanAttachRoot`,
+  `isCodePlaceRoot`, `placeRootOf`, `attachRootForCaller`, `placeMCPCanAttach`), `command_routes` shape check,
+  `ui_control_routes` ownership, `workspaceProxyPathIsOtherUser`, `chat_history_persistence` (restored-path check,
+  legacy owner check, `ownedWorkProjectWorkspacePath`). Tests: `workspaceref_sites_test.go` (both spellings + another
+  user's physical path). `Parse` counts a mid-path `_users` segment as a prefix only for absolute paths (a relative
+  `Chats/x/_users/bob/y` is an ordinary folder name; the old code stripped it).
+- Found while migrating: `crewProjectOwnedByCaller` treated an absolute doc-root path of ANOTHER user's crew as the
+  caller's own (the `_users/` prefix test missed it); `crewProjectOwnerID` read the owner from an uncleaned
+  `_users/alice/../bob/...`. Both now go through `Parse`.
+- Also failing on main, unrelated: TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration.

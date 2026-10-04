@@ -36,8 +36,11 @@ func TestParse(t *testing.T) {
 		{"/Users/me/docs/_users/alice", "alice", "", true},
 		{"/var/x_users/alice/Chats", "", "var/x_users/alice/Chats", true},
 		{"x_users/alice/Chats", "", "x_users/alice/Chats", true},
+		{"Chats/foo/_users/bob/x", "", "Chats/foo/_users/bob/x", true},
+		{"/Chats/foo/_users/bob/x", "bob", "x", true},
 		{"Chats/x_users/y", "", "Chats/x_users/y", true},
 		{"/var/x_users/y/_users/alice/Chats", "alice", "Chats", true},
+		{"var/x_users/y/_users/alice/Chats", "", "var/x_users/y/_users/alice/Chats", true},
 	}
 	for _, c := range cases {
 		got, ok := Parse(c.in)

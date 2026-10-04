@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew Run mode (issue #205, BUG_ID_001): every crew has a single owner and
@@ -40,11 +41,11 @@ type crewProjectBinding struct {
 // path. Crew roots are always physical per-user paths
 // ("_users/<owner>/Chats/..."); anything else has no crew owner.
 func crewProjectOwnerID(workspacePath string) (string, bool) {
-	segments := strings.Split(strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/"), "/")
-	if len(segments) < 3 || segments[0] != "_users" || segments[1] == "" {
+	ref, ok := workspaceref.Parse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
+	if !ok || !ref.HasOwner() || ref.Logical() == "" {
 		return "", false
 	}
-	return segments[1], true
+	return ref.Owner(), true
 }
 
 // canonicalCrewWorkspaceRoot normalizes a crew workspace root for exact
@@ -58,24 +59,19 @@ func canonicalCrewWorkspaceRoot(workspacePath string) string {
 // project of any owner: a physical per-user path, or the caller's own
 // logical path, under Chats/Work/projects/<project>.
 func isCrewProjectPath(workspacePath string) bool {
-	canonical := normalizeConversationWorkspace(workspacePath)
-	const prefix = "Chats/Work/projects/"
-	if !strings.HasPrefix(canonical, prefix) {
-		return false
-	}
-	return strings.Trim(strings.TrimPrefix(canonical, prefix), "/") != ""
+	root, _, ok := workspaceref.MustParse(workspacePath).Project()
+	return ok && root == workspaceref.CrewProjectsRoot
 }
 
 // crewProjectOwnedByCaller reports whether the caller owns the crew project
 // at workspacePath. Logical (prefix-less) project paths address the
 // caller's own tree; physical paths name their owner explicitly.
 func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
-	trimmed := strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/")
-	if !strings.HasPrefix(trimmed, "_users/") {
-		return isProjectWorkspacePath(trimmed)
+	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
+	if !ref.HasOwner() {
+		return ref.IsProject()
 	}
-	ownerID, ok := crewProjectOwnerID(trimmed)
-	return ok && ownerID == sanitizeUserIDForPath(callerID)
+	return ref.OwnedBy(callerID) && ref.Logical() != ""
 }
 
 // resolveConversationBindingForUser binds one conversation for one caller.

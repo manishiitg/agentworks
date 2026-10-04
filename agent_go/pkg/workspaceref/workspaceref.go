@@ -70,10 +70,12 @@ type Ref struct {
 
 // Parse accepts every spelling in use: logical, physical, an absolute path
 // under a document root that contains "/_users/<owner>/", backslashes,
-// leading/trailing slashes and "."/".." segments (cleaned). ok is false when
+// leading/trailing slashes and "."/".." segments (cleaned). "_users" after
+// other segments counts only when the path is absolute. ok is false when
 // a ".." escapes the root. An empty path is a valid empty Ref.
 func Parse(p string) (Ref, bool) {
 	s := strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
+	absolute := strings.HasPrefix(s, "/")
 	s = strings.Trim(s, "/")
 	if s == "" {
 		return Ref{}, true
@@ -95,7 +97,10 @@ func Parse(p string) (Ref, bool) {
 			break
 		}
 		i += from
-		if i == 0 || s[i-1] == '/' {
+		// A "_users" segment after other segments names an owner only in an
+		// absolute path (document root in front); in a relative path it is
+		// an ordinary folder name and must not be mistaken for a prefix.
+		if i == 0 || (absolute && s[i-1] == '/') {
 			rest := s[i+len(marker):]
 			owner, logical, _ := strings.Cut(rest, "/")
 			return Ref{owner: owner, logical: logical}, true
