@@ -1,3 +1,7 @@
+## Muse launch ended at once: sweep prelude could not find `muse` — PLAT-421
+
+[PLAT-421](pulse_platform/coding-agent-bridge/plat-421.md), P1, fixed on `main`; deploy to Excellence and RTS in progress.
+
 ## Bulk writes and paged reads in the DB tools — PLAT-420
 
 [PLAT-420](pulse_platform/security-sandbox/plat-420.md), fixed on `main`, not
