@@ -24,9 +24,22 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); de
 afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
+  it('preserves deployment title and favicon when entering Vault', async () => {
+    Object.assign(window.__APP_RUNTIME_CONFIG__!, { appName: 'Confida', faviconUrl: '/brand/icon.svg' })
+    const icon = document.createElement('link'); icon.rel = 'icon'; document.head.append(icon)
+    try {
+      await render()
+      await act(async () => useProductSurfaceStore.setState({ productSurface: 'mcp-gateway' }))
+      expect(document.title).toBe('Confida')
+      expect(icon.getAttribute('href')).toBe('/brand/icon.svg')
+      await act(async () => useProductSurfaceStore.setState({ productSurface: 'work' }))
+      expect(document.title).toBe('Confida')
+      expect(icon.getAttribute('href')).toBe('/brand/icon.svg')
+    } finally { icon.remove() }
+  })
   it('shows the current icon and reveals permitted products on hover', async () => {
     await render()
-    expect(host.querySelectorAll('button').length).toBe(1)
+    expect(host.querySelectorAll('[role="group"][aria-label="Products"] button').length).toBe(1)
     const trigger = host.querySelector<HTMLButtonElement>('button')!
     expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
     const group = host.querySelector('[role="group"]')!
@@ -56,7 +69,7 @@ describe('collapsible product navigation', () => {
   })
   it('keeps the account product allowlist applied', async () => {
     auth.allowed = ['work']; await render()
-    expect(host.querySelectorAll('button').length).toBe(1)
+    expect(host.querySelectorAll('[role="group"][aria-label="Products"] button').length).toBe(1)
     expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Switch product: Crew')
     await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
     expect(host.querySelector('[role="menu"]')).toBeNull()
