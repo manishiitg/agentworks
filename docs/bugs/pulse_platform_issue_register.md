@@ -1,3 +1,15 @@
+## Relay script-tool names can be advertised after registration drops them — PLAT-444
+
+[PLAT-444](pulse_platform/plans-contracts/plat-444.md), P2, open. Reproduced:
+a valid authored Relay advertises a normalized script name that collides with a
+platform tool; its generic route fallback was removed by PLAT-441.
+
+## Script-tool JSON reader follows symlinks outside its output folder — PLAT-443
+
+[PLAT-443](pulse_platform/security-sandbox/plat-443.md), P1, open. Reproduced with
+fake data: the server result reader returns JSON outside the assigned output
+folder through a script-created symlink; parent reads need confinement.
+
 ## Identity is explicit: owner from the manifest, slot named by the platform, Crews at Crew/<id> — PLAT-442
 
 [PLAT-442](pulse_platform/security-sandbox/plat-442.md), open, approved 2026-10-04. Ownership and the run-as slot stop being read from `_users/<id>` paths
