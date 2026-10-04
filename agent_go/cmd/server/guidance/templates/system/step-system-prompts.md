@@ -224,7 +224,7 @@ HTTP bridge. Prefer direct sub-agent tools whenever the provider exposes them.
 Use the managed database tool only; never open `db.sqlite` with shell or Python. This is **READ-ONLY workflow evidence**.
 
 - Use `query_workflow_db` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`.
-- Query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` when a result may exceed the default limit.
+- Query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` (up to 10000) when a result may exceed the default limit of 500. For a bigger result give the SELECT an ORDER BY and page with `offset`: a truncated result carries `next_offset`, pass it as `offset` for the next page.
 - In HTTP/code-execution mode, keep SQL in a shell variable and JSON-encode it with `jq -n --arg sql "$sql" '{sql:$sql}'`; never place SQL containing single quotes (including `'$.field'`) inside an outer single-quoted JSON literal, because the shell strips the inner quotes.
 - This session is read-only: do not call `mutate_workflow_db`.
 - A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `query_workflow_db` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}
@@ -233,8 +233,8 @@ Use the managed database tool only; never open `db.sqlite` with shell or Python.
 
 Use the managed database tools only; never open `db.sqlite` with shell or Python.
 
-- Use `query_workflow_db` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`; then query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` when a result may exceed the default limit.
-- Use `mutate_workflow_db` for transactional INSERT/UPDATE/DELETE operations: one change uses `sql` + `params`; related changes use `statements: [{sql, params}, ...]` as one atomic batch.
+- Use `query_workflow_db` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`; then query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` (up to 10000) when a result may exceed the default limit of 500; for a bigger result add an ORDER BY and page with `offset` (a truncated result carries `next_offset`).
+- Use `mutate_workflow_db` for transactional INSERT/UPDATE/DELETE operations: one change uses `sql` + `params`; related changes use `statements: [{sql, params}, ...]` (up to 200) as one atomic batch. Many rows of one statement use `param_sets: [[v1, v2], [v3, v4], ...]` with a single `sql` (up to 5000 rows per call, one transaction, rolled back if any row fails): send an import in chunks of a few thousand rows, not one call per row.
 - In HTTP/code-execution mode, keep SQL in a shell variable and JSON-encode it with `jq -n --arg sql "$sql" '{sql:$sql}'`; never place SQL containing single quotes (including `'$.field'`) inside an outer single-quoted JSON literal, because the shell strips the inner quotes.
 - Prefer primary-key upserts. Never drop, recreate, or wholesale replace tables.
 - A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `query_workflow_db` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}

@@ -68,8 +68,14 @@ const (
 	defaultQueryMaxRows = 10_000
 	maximumQueryMaxRows = 50_000
 	maximumMutationSQL  = 100_000
-	maximumStatements   = 20
-	maximumPragmaErrors = 1_000
+	maximumStatements   = 200
+	// maximumMutationRows bounds the executions of one mutation call: every
+	// statement counts once, a statement with param_sets once per set. The
+	// transaction must also finish inside queryTimeout.
+	maximumMutationRows = 5_000
+	// Managed migrations keep their own, small cap.
+	maximumMigrationStatements = 20
+	maximumPragmaErrors        = 1_000
 )
 
 // Managed migration statements are schema-only DDL, individually allow-listed
@@ -309,8 +315,8 @@ func InitializeWorkflowDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid request body", Error: err.Error()})
 		return
 	}
-	if len(req.Migrations) > maximumStatements {
-		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid migrations", Error: fmt.Sprintf("migrations must contain at most %d statements", maximumStatements)})
+	if len(req.Migrations) > maximumMigrationStatements {
+		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid migrations", Error: fmt.Sprintf("migrations must contain at most %d statements", maximumMigrationStatements)})
 		return
 	}
 	cleanRequest, normalizeErr := normalizeOwnedPerUserDBPath(c, req.DBPath)
@@ -902,11 +908,25 @@ func MutateWorkflowDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid statements", Error: fmt.Sprintf("statements must contain 1-%d operations", maximumStatements)})
 		return
 	}
+	executions := 0
 	for i, statement := range req.Statements {
 		if err := validateMutationSQL(statement.SQL); err != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Mutation rejected", Error: fmt.Sprintf("statement %d: %v", i+1, err)})
 			return
 		}
+		if len(statement.ParamSets) > 0 && len(statement.Params) > 0 {
+			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Mutation rejected", Error: fmt.Sprintf("statement %d: pass params or param_sets, not both", i+1)})
+			return
+		}
+		if len(statement.ParamSets) > 0 {
+			executions += len(statement.ParamSets)
+		} else {
+			executions++
+		}
+	}
+	if executions > maximumMutationRows {
+		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid statements", Error: fmt.Sprintf("a mutation may run at most %d statements and param_sets rows in total (got %d); split it into several calls", maximumMutationRows, executions)})
+		return
 	}
 
 	fullPath, err := resolveReadonlyDBPath(c, req.DBPath)
@@ -937,6 +957,16 @@ func MutateWorkflowDB(c *gin.Context) {
 
 	response := models.MutationResponse{Results: make([]models.MutationStatementResult, 0, len(req.Statements))}
 	for i, statement := range req.Statements {
+		if len(statement.ParamSets) > 0 {
+			receipt, execErr := execParamSets(ctx, tx, statement)
+			if execErr != nil {
+				c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Mutation failed and was rolled back", Error: fmt.Sprintf("statement %d: %v", i+1, execErr)})
+				return
+			}
+			response.Results = append(response.Results, receipt)
+			response.TotalRowsAffected += receipt.RowsAffected
+			continue
+		}
 		result, execErr := tx.ExecContext(ctx, statement.SQL, statement.Params...)
 		if execErr != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Mutation failed and was rolled back", Error: fmt.Sprintf("statement %d: %v", i+1, execErr)})
@@ -1361,4 +1391,32 @@ func recordReportFieldUpdateLog(ctx context.Context, tx *sql.Tx, req models.Repo
 		}
 	}
 	return nil
+}
+
+// execParamSets runs one statement once per parameter set on a prepared
+// statement inside the caller's transaction, and returns one receipt for the
+// whole statement: the rows affected summed over every set and the last insert
+// id. The first failing set aborts it (the caller rolls the transaction back).
+func execParamSets(ctx context.Context, tx *sql.Tx, statement models.MutationStatement) (models.MutationStatementResult, error) {
+	prepared, err := tx.PrepareContext(ctx, statement.SQL)
+	if err != nil {
+		return models.MutationStatementResult{}, err
+	}
+	defer prepared.Close()
+	var receipt models.MutationStatementResult
+	for row, params := range statement.ParamSets {
+		result, err := prepared.ExecContext(ctx, params...)
+		if err != nil {
+			return models.MutationStatementResult{}, fmt.Errorf("param_sets row %d: %w", row+1, err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return models.MutationStatementResult{}, err
+		}
+		receipt.RowsAffected += affected
+		if id, idErr := result.LastInsertId(); idErr == nil {
+			receipt.LastInsertID = id
+		}
+	}
+	return receipt, nil
 }
