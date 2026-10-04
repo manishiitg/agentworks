@@ -38,6 +38,7 @@ export function startRestoredTransportTerminal(
       workspacePath: workspace || undefined,
       fallbackToChatHistory: true,
       preferChatHistory: true,
+      compact: false,
     })
     .catch((error) => {
       console.warn('[RestoredTerminal] Failed to hydrate formatted conversation; continuing with terminal restore', {

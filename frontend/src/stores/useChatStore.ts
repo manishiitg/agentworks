@@ -587,7 +587,7 @@ export interface ChatState extends StoreActions {
   // Cursor for durable conversation-history paging. The live event stream has
   // its own index; this cursor only applies to the formatted transcript's
   // older, persisted conversation pages.
-  tabHistoryPagination: Record<string, { hasMore: boolean; nextOffset: number }>
+  tabHistoryPagination: Record<string, { hasMore: boolean; nextOffset: number; compact?: boolean }>
   // Stash for the latest human message around Terminal view mode. This
   // remains as a fallback for optimistic input while Tree catches up from
   // poll-based backfill.
@@ -690,8 +690,8 @@ export interface ChatState extends StoreActions {
       setTabLastEventIndex: (sessionId: string, index: number) => void
       getTabHasMoreOlderEvents: (sessionId: string) => boolean
       setTabHasMoreOlderEvents: (sessionId: string, hasMore: boolean) => void
-      getTabHistoryPagination: (sessionId: string) => { hasMore: boolean; nextOffset: number } | undefined
-      setTabHistoryPagination: (sessionId: string, pagination: { hasMore: boolean; nextOffset: number } | null) => void
+      getTabHistoryPagination: (sessionId: string) => { hasMore: boolean; nextOffset: number; compact?: boolean } | undefined
+      setTabHistoryPagination: (sessionId: string, pagination: { hasMore: boolean; nextOffset: number; compact?: boolean } | null) => void
   
   // User message actions
   setCurrentUserMessage: (message: string) => void
@@ -1637,7 +1637,7 @@ export const useChatStore = create<ChatState>()(
         const current = get().tabHistoryPagination[sessionId]
         if (
           (pagination === null && current === undefined) ||
-          (pagination !== null && current?.hasMore === pagination.hasMore && current?.nextOffset === pagination.nextOffset)
+          (pagination !== null && current?.hasMore === pagination.hasMore && current?.nextOffset === pagination.nextOffset && current?.compact === pagination.compact)
         ) return
         set((state) => {
           const next = { ...state.tabHistoryPagination }

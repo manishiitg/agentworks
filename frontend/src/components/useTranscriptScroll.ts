@@ -6,10 +6,22 @@ export interface TranscriptReadingState {
   following: boolean
   anchor?: ReadingAnchor
   disclosures: Map<string, boolean>
+  // True only while following=false / anchor come from the reader's own scroll
+  // gesture. A position not marked deliberate is never honoured: a transcript
+  // that was still mounting (it starts at index 0 and rebuilds over a few
+  // hundred ms) must not leave "reading at the top" behind for the next visit.
+  deliberate?: boolean
 }
+
+// How long a freshly mounted transcript is considered to be still building.
+// Scroll positions it reports in this window are layout, not reading, unless
+// the reader has already used a scroll gesture.
+export const TRANSCRIPT_SETTLE_MS = 700
+
 const positions = new Map<string, TranscriptReadingState>()
 export function transcriptReadingState(key: string): TranscriptReadingState {
   const saved = positions.get(key) ?? { following: true, disclosures: new Map<string, boolean>() }
+  if (!saved.deliberate) { saved.following = true; saved.anchor = undefined }
   positions.delete(key)
   positions.set(key, saved)
   if (positions.size > 40) positions.delete(positions.keys().next().value!)
@@ -34,6 +46,7 @@ export function followTranscriptLatest(key: string | undefined) {
   if (saved) {
     saved.following = true
     saved.anchor = undefined
+    saved.deliberate = false
   }
   window.dispatchEvent(new CustomEvent<string>(FOLLOW_LATEST_EVENT, { detail: key }))
 }
@@ -145,6 +158,11 @@ export function useTranscriptScroll(
   const focusAnchor = useRef<ReadingAnchor | undefined>(undefined)
   const restoreFrame = useRef<number | null>(null)
   const mounted = useRef(false)
+  // The reader has used a scroll gesture in this mount, or the list has had
+  // time to build: only then may a scroll position be saved as a reading state.
+  const settledRef = useRef(false)
+  const deliberateRef = useRef(false)
+  const [settled, setSettled] = useState(false)
   const blankCheck = useRef<number | null>(null)
   const [controller] = useState(() => new TranscriptScrollController(
     saved.following,
@@ -174,15 +192,20 @@ export function useTranscriptScroll(
     restoreFrame.current = null
   }, [])
   const pause = useCallback(() => {
+    deliberateRef.current = true
+    saved.deliberate = true
     focusAnchor.current = undefined
     cancelRestore()
     controller.pause()
-  }, [cancelRestore, controller])
+  }, [cancelRestore, controller, saved])
   const jumpToLatest = useCallback(() => {
+    deliberateRef.current = false
+    saved.deliberate = false
+    saved.anchor = undefined
     focusAnchor.current = undefined
     cancelRestore()
     controller.resume()
-  }, [cancelRestore, controller])
+  }, [cancelRestore, controller, saved])
   const layoutChanged = useCallback(() => {
     controller.layoutChanged()
     const anchor = focusAnchor.current
@@ -205,6 +228,7 @@ export function useTranscriptScroll(
   }, [controller, virtuoso])
   const remember = useCallback(() => {
     if (!scroller?.isConnected) return
+    if (!deliberateRef.current && !settledRef.current) return
     const top = scroller.getBoundingClientRect().top
     const row = Array.from(scroller.querySelectorAll<HTMLElement>('[data-transcript-key]'))
       .find(item => item.getBoundingClientRect().bottom > top)
@@ -234,6 +258,9 @@ export function useTranscriptScroll(
   useEffect(() => {
     if (!scroller) return
     mounted.current = true
+    settledRef.current = false
+    setSettled(false)
+    const settleTimer = window.setTimeout(() => { settledRef.current = true; setSettled(true) }, TRANSCRIPT_SETTLE_MS)
     let lastTop = scroller.scrollTop
     let manual = false
     let touchY = 0
@@ -306,6 +333,7 @@ export function useTranscriptScroll(
     observer.observe(scroller)
     if (saved.following) layoutChanged()
     return () => {
+      window.clearTimeout(settleTimer)
       remember()
       mounted.current = false
       if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
@@ -330,5 +358,5 @@ export function useTranscriptScroll(
     window.addEventListener(FOLLOW_LATEST_EVENT, follow)
     return () => window.removeEventListener(FOLLOW_LATEST_EVENT, follow)
   }, [readingKey, jumpToLatest])
-  return { following, scrollerRef, layoutChanged, jumpToLatest, pause, preserveDisclosure, preserveReadingPosition }
+  return { following, settled, scrollerRef, layoutChanged, jumpToLatest, pause, preserveDisclosure, preserveReadingPosition }
 }

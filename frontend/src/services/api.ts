@@ -447,6 +447,13 @@ const dedupedGetRequests = new Map<string, { promise: Promise<unknown>; expiresA
 // First durable chat page on open; "Load earlier messages" pages backwards.
 export const DURABLE_CHAT_FIRST_PAGE_LIMIT = 100
 
+// Compact interactive-chat restore (view=messages): the latest turn complete,
+// older turns as messages only. The limit counts messages, not events: the
+// first load takes about two dozen exchanges beyond the whole latest turn,
+// older pages about fifty messages, and neither ever splits a turn.
+export const COMPACT_CHAT_FIRST_PAGE_MESSAGES = 40
+export const COMPACT_CHAT_OLDER_PAGE_MESSAGES = 50
+
 export function workflowManifestKey(workspacePath: string): string {
   return `workflow-manifest:${workspacePath}`
 }
@@ -792,6 +799,8 @@ export const agentApi = {
       durableChat?: boolean
       syncNativeTranscript?: boolean
       beforeSequence?: number
+      // Opt in to the compact chat view (older turns as messages only).
+      compactView?: boolean
       workspacePath?: string
     }
   ): Promise<GetEventsResponse> => {
@@ -800,6 +809,7 @@ export const agentApi = {
     if (options?.durableChat) params.durable_chat = 1
     if (options?.syncNativeTranscript) params.sync_native_transcript = 1
     if (options?.beforeSequence !== undefined) params.before_sequence = options.beforeSequence
+    if (options?.compactView) params.view = 'messages'
     if (options?.workspacePath) params.workspace_path = options.workspacePath
 
     // Forward polling mode: use sinceIndex
@@ -833,9 +843,10 @@ export const agentApi = {
     })
   },
 
-  getRecentChatEvents: async (sessionId: string, workspacePath?: string): Promise<GetEventsResponse> => {
+  getRecentChatEvents: async (sessionId: string, workspacePath?: string, compact = false): Promise<GetEventsResponse> => {
     return agentApi.getSessionEvents(sessionId, undefined, {
-      limit: DURABLE_CHAT_FIRST_PAGE_LIMIT,
+      limit: compact ? COMPACT_CHAT_FIRST_PAGE_MESSAGES : DURABLE_CHAT_FIRST_PAGE_LIMIT,
+      compactView: compact,
       durableChat: true,
       syncNativeTranscript: true,
       workspacePath,

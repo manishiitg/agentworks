@@ -16,6 +16,7 @@ export function useFormattedTranscriptHydration(
       fallbackToChatHistory: true,
       preferChatHistory: true,
       includeUiEvents: true,
+      compact: false,
     }).catch(error => {
       console.error('[SessionRestore] Formatted transcript hydration failed:', error)
     })

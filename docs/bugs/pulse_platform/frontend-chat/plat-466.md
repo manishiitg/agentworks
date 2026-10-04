@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | backend fixed on `main`; frontend pending (see Done / Left) |
+| State | fixed on `main`; not deployed |
 | Date | 2026-10-04 |
 | Owner | frontend-chat |
 
@@ -78,9 +78,13 @@ clears it. "Load earlier messages" is shown only once the transcript has settled
 
 - Backend: compact journal read, opt-in on the events endpoint, Go tests
   (`event_journal_compact_test.go`, `polling_test.go`).
+- Frontend: restore opt-in (`hydrateTabEvents`, `getRecentChatEvents`), compact
+  "Load earlier messages" paging (pagination carries `compact`), the single
+  tool-call visibility switch, the position fix and its tests
+  (`sessionRestore.compact.test.ts`, `useTranscriptScroll.dom.test.tsx`).
 
 ## Left
 
-- Frontend (next commit): restore opt-in, compact paging, tool-visibility
-  switch, position fix, tests.
-- Not verified in a browser.
+- Not verified in a browser (a chat with a very long running turn, fast Cmd+K
+  A->B->A->B).
+- Not deployed.

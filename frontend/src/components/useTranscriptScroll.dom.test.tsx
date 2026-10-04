@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { VirtuosoHandle } from 'react-virtuoso'
-import { followTranscriptLatest, transcriptBlank, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
+import { TRANSCRIPT_SETTLE_MS, followTranscriptLatest, transcriptBlank, transcriptIsFollowing, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.unstubAllGlobals() })
@@ -139,5 +139,90 @@ describe('transcriptBlank', () => {
   it('is not blank when any row is visible', () => {
     expect(transcriptBlank(scrollerWith([[-300, 150]]))).toBe(false)
     expect(transcriptBlank(scrollerWith([[200, 300]]))).toBe(false)
+  })
+})
+
+describe('reading position is saved only when deliberate', () => {
+  it('a scroll reported while the list is still mounting is not saved as a reading position', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const test = mountTranscript()
+      act(() => test.hook.scrollerRef(test.element))
+      test.element.scrollTop = 0
+      const row = document.createElement('div')
+      row.dataset.transcriptKey = 'row-0'
+      test.element.append(row)
+      act(() => { test.element.dispatchEvent(new Event('scroll')) })
+      act(() => test.hook.scrollerRef(null))
+      expect(test.saved.anchor).toBeUndefined()
+      expect(test.saved.following).toBe(true)
+      expect(test.saved.deliberate).not.toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('a wheel-up during mounting is a deliberate scroll-up and is kept', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const test = mountTranscript()
+      act(() => test.hook.scrollerRef(test.element))
+      act(() => { test.element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 })) })
+      expect(test.saved.following).toBe(false)
+      expect(test.saved.deliberate).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('after the settle window scroll positions are remembered', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const test = mountTranscript()
+      act(() => test.hook.scrollerRef(test.element))
+      const row = document.createElement('div')
+      row.dataset.transcriptKey = 'row-9'
+      row.getBoundingClientRect = () => ({ top: 0, bottom: 100, left: 0, right: 0, width: 0, height: 100 } as DOMRect)
+      test.element.append(row)
+      act(() => { vi.advanceTimersByTime(TRANSCRIPT_SETTLE_MS + 1) })
+      act(() => { test.element.dispatchEvent(new Event('scroll')) })
+      expect(test.saved.anchor?.key).toBe('row-9')
+      expect(test.hook.settled).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('sending a message clears a deliberate reading position', () => {
+    const test = mountTranscript()
+    act(() => test.hook.scrollerRef(test.element))
+    act(() => { test.element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 })) })
+    act(() => test.hook.jumpToLatest())
+    expect(test.saved.deliberate).toBe(false)
+    expect(test.saved.following).toBe(true)
+  })
+})
+
+describe('saved reading state across fast switching', () => {
+  it('A->B->A->B never leaves a bogus top state; a deliberate scroll-up is kept', () => {
+    const a = transcriptReadingState('chat-a')
+    // A is mid-mount and leaves a bogus "reading at the top" state behind.
+    a.following = false
+    a.anchor = { key: 'row-0', offset: 0 }
+    const b = transcriptReadingState('chat-b')
+    expect(transcriptReadingState('chat-a')).toBe(a)
+    expect(a.following).toBe(true)
+    expect(a.anchor).toBeUndefined()
+    expect(transcriptReadingState('chat-b')).toBe(b)
+    expect(transcriptReadingState('chat-a').following).toBe(true)
+    expect(transcriptReadingState('chat-b').following).toBe(true)
+    expect(transcriptIsFollowing('chat-a')).toBe(true)
+    // B's reader scrolled up on purpose: honoured on every later visit.
+    b.following = false
+    b.deliberate = true
+    b.anchor = { key: 'row-7', offset: 12 }
+    for (let visit = 0; visit < 3; visit++) {
+      transcriptReadingState('chat-a')
+      const again = transcriptReadingState('chat-b')
+      expect(again.following).toBe(false)
+      expect(again.anchor).toEqual({ key: 'row-7', offset: 12 })
+    }
+    expect(transcriptIsFollowing('chat-b')).toBe(false)
+    // A running-turn chat with no deliberate state opens at the bottom and follows.
+    expect(transcriptReadingState('chat-running')).toMatchObject({ following: true, anchor: undefined })
   })
 })

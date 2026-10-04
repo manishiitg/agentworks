@@ -44,7 +44,8 @@ describe('product chat SQLite restore', () => {
     }, sessionId)
 
     await expect(restoreSession(sessionId, { source: 'product-open', workspacePath })).resolves.toBe(tabId)
-    expect(getRecentChatEvents).toHaveBeenCalledWith(sessionId, workspacePath)
+    // A product chat is an interactive chat: it restores through the compact view.
+    expect(getRecentChatEvents).toHaveBeenCalledWith(sessionId, workspacePath, true)
     expect(useChatStore.getState().getTabEvents(sessionId)).toEqual([
       expect.objectContaining({ id: 'reply', sequence: 7 }),
     ])

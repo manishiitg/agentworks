@@ -21,6 +21,7 @@ import {
   selectTerminalEvents,
   type TranscriptItem,
 } from '../utils/terminalEventTranscript'
+import { withToolCallVisibility } from '../utils/toolCallVisibility'
 import { formatDurationCompact } from '../utils/duration'
 import { formatToolCallArguments, formatToolCallResult } from '../utils/toolCallFormatting'
 import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
@@ -865,7 +866,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
   const items = useMemo<TranscriptRenderItem[]>(
-    () => removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped))),
+    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped)))),
     [scoped],
   )
   // Retry belongs to the latest human turn, never an older failed message
@@ -882,9 +883,6 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // the older durable page.
   const [isAtTranscriptStart, setIsAtTranscriptStart] = useState(false)
   const [isAtTranscriptEnd, setIsAtTranscriptEnd] = useState(true)
-  const showEarlierMessagesControl = Boolean(
-    error || (isAtTranscriptStart && (hasOlder || loadingOlder) && onLoadOlder),
-  )
   const listData = useMemo<TranscriptRenderItem[]>(
     () => ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
       || (runtimeActivity?.state !== undefined && runtimeActivity.state !== 'ready' && (!items.length || isUserItem(items.at(-1))))
@@ -907,6 +905,13 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     setPagination({ keys, first: firstItemIndex })
   }
   const scroll = useTranscriptScroll(keys, readingState, virtuosoRef, readingKey)
+  // The list mounts at its first row and then jumps to the bottom, reporting
+  // "at the top" in between. The row is shown only once the transcript has
+  // settled (or the reader scrolled), so a freshly opened chat never first
+  // shows "Load earlier messages" above its latest turn.
+  const showEarlierMessagesControl = Boolean(
+    error || (isAtTranscriptStart && scroll.settled && (hasOlder || loadingOlder) && onLoadOlder),
+  )
   const latestUserMessageKey = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index--) {
       const item = items[index]
@@ -926,7 +931,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const [initialPosition, setInitialPosition] = useState<{ index: number; align: 'start' | 'end'; offset?: number } | null>(null)
   if (!initialPosition && keys.length > 0) {
     const anchorIndex = readingState.anchor ? keys.indexOf(readingState.anchor.key) : -1
-    setInitialPosition(readingState.following || anchorIndex < 0
+    setInitialPosition(readingState.following || !readingState.deliberate || anchorIndex < 0
       ? { index: keys.length - 1, align: 'end' }
       : { index: anchorIndex, align: 'start', offset: readingState.anchor!.offset })
   }
