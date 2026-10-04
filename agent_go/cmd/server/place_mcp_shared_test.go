@@ -114,3 +114,46 @@ func TestAttachedServersAreTheirPlacesNotTheirAdders(t *testing.T) {
 		t.Errorf("another person got a Code's connections: %v", names)
 	}
 }
+
+// A connection lives where it was added and nowhere else: from inside a workflow, Relay, Crew or Code a person's
+// own connection (kept in their store, or added to another place) never resolves; a chat outside any place
+// keeps resolving the person's own connections until those chats have a place of their own.
+func TestPlaceSessionsNeverReachAPersonsOtherConnections(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	t.Setenv("CAPLAYER_SERVICE_URL", "")
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	if _, err := addPlaceMCPServer("alice", placeMCPServer{Name: "linear", Catalog: "Linear", URL: "https://example.com/mcp", Transport: "http"}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	outside := personContext("alice")
+	if own, err := api.resolveGovernedMCP(outside, "alice", "Linear"); err != nil || own == nil {
+		t.Fatalf("a chat outside any place lost the person's own connection: %+v %v", own, err)
+	}
+	inside := context.WithValue(outside, placeScopedKey{}, true)
+	resolved, err := api.resolveGovernedMCP(inside, "alice", "Linear")
+	if err == nil || resolved != nil {
+		t.Fatalf("a place session reached the person's own connection: %+v", resolved)
+	}
+	internal := placeMCPInternalName("alice", "linear")
+	if _, err := api.resolveGovernedMCP(inside, "alice", internal); err == nil || !strings.Contains(err.Error(), "not attached to this") {
+		t.Fatalf("a place session reached another place's internal name: %v", err)
+	}
+}
+
+// placeAttachmentNamed finds a place's connection by its plain or internal name, whoever added it.
+func TestPlaceAttachmentNamedFindsByPlainOrInternalName(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	root := "Workflow/named"
+	internal := connectPlaceForTest(t, "alice", root, "upwork")
+	for _, name := range []string{"upwork", "Upwork", internal} {
+		if a, ok := placeAttachmentNamed(root, name); !ok || a.Owner != "alice" || a.Server != "upwork" {
+			t.Errorf("%q not found: %+v %v", name, a, ok)
+		}
+	}
+	if _, ok := placeAttachmentNamed(root, "linear"); ok {
+		t.Error("a connection the place does not have was found")
+	}
+}

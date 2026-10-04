@@ -375,16 +375,26 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		return nil, errors.New("active MCP user required")
 	}
 	selector := server
+	inPlace := placeScopedContext(ctx)
 	if isPlaceMCPInternalName(server) {
+		if inPlace {
+			// A place's own connections resolve before this point; any other place's is not available here.
+			return nil, errors.New("this connection is not attached to this workflow, Crew or Code")
+		}
 		plain := placeMCPPlainName(server)
 		if placeMCPInternalName(person, plain) != server {
 			return nil, errors.New("private MCP does not belong to this user")
 		}
 		selector = plain
 	}
-	p, found, lookupErr := lookupPrivateMCP(person, selector)
-	if lookupErr != nil {
-		return nil, lookupErr
+	var p placeMCPServer
+	var found bool
+	if !inPlace {
+		var lookupErr error
+		p, found, lookupErr = lookupPrivateMCP(person, selector)
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
 	}
 	if found {
 		dir, _ := placeMCPDir(person)
@@ -438,6 +448,10 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 
 func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, names []string, overrides mcpclient.RuntimeOverrides) ([]string, mcpclient.RuntimeOverrides, map[string]string, error) {
 	person := mcpCaller(ctx)
+	inPlace := api.placeRootForSession(sessionID) != ""
+	if inPlace {
+		ctx = context.WithValue(ctx, placeScopedKey{}, true)
+	}
 	if owner := api.mcpSessionPerson(sessionID); owner != "" {
 		if person != "" && person != owner {
 			return nil, nil, nil, errors.New("MCP user does not own this session")
@@ -448,7 +462,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// This is only discovery: the gateway still authorizes every live call.
 	for _, name := range names {
 		if name != mcpclient.NoServers && !isPlaceMCPInternalName(name) {
-			if _, found := privateMCPByCatalog(person, name); !found && !common.IsBuiltinToolCategory(name) {
+			if _, found := privateMCPByCatalog(person, name); (inPlace || !found) && !common.IsBuiltinToolCategory(name) {
 				rows, err := vaultServersFor(ctx, person)
 				ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, err})
 				break
@@ -464,7 +478,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 		if common.IsBuiltinToolCategory(name) {
-			if _, private := privateMCPByCatalog(person, name); !private {
+			if _, private := privateMCPByCatalog(person, name); inPlace || !private {
 				selected = append(selected, name)
 				continue
 			}
@@ -485,7 +499,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		// Legacy per-place credentials remain sealed at the original path, private
 		// to their original owner. The caller's matching internal prefix is required.
-		if isPlaceMCPInternalName(name) && api.ownsLegacyPlaceMCP(ctx, person, name) {
+		if !inPlace && isPlaceMCPInternalName(name) && api.ownsLegacyPlaceMCP(ctx, person, name) {
 			placeMCPMu.Lock()
 			all, _ := readPlaceMCPAttachmentsLocked()
 			placeMCPMu.Unlock()
@@ -623,6 +637,11 @@ func (api *StreamingAPI) discoverGovernedServerTools(ctx context.Context, person
 	if err != nil {
 		return nil, err
 	}
+	return api.discoverResolvedServerTools(ctx, resolved)
+}
+
+// discoverResolvedServerTools reads the tools of one already-resolved server (a place's connection or a Vault one).
+func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolved *executor.ResolvedMCPServer) (*ToolStatus, error) {
 	// Only a single actor-scoped server enters this temporary metadata config.
 	file, err := os.CreateTemp("", "private-mcp-discovery-*.json")
 	if err != nil {
@@ -658,5 +677,6 @@ func (api *StreamingAPI) discoverGovernedServerTools(ctx context.Context, person
 		_ = json.Unmarshal(encoded, &parameters)
 		details = append(details, mcpclient.ToolDetail{Name: tool.Function.Name, Description: tool.Function.Description, Parameters: parameters})
 	}
-	return &ToolStatus{Name: server, Server: server, Connection: connectionConnected, Status: "ok", Tools: details, FunctionNames: names, ToolsEnabled: len(names)}, nil
+	shown := placeMCPPlainName(resolved.Name)
+	return &ToolStatus{Name: shown, Server: shown, Connection: connectionConnected, Status: "ok", Tools: details, FunctionNames: names, ToolsEnabled: len(names)}, nil
 }

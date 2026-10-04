@@ -640,3 +640,15 @@ func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
 	}
 	return "", fmt.Errorf("this connection needs the secret %q; add it under Setup > Secrets", name)
 }
+
+// placeAttachmentNamed finds the connection of root called name (its plain or internal name).
+func placeAttachmentNamed(root, name string) (placeMCPAttachment, bool) {
+	attachments, _ := placeMCPAttachmentsFor(root)
+	for _, a := range attachments {
+		internal, _, err := placeMCPServerConfig(attachmentStore(a, root), a.Server)
+		if a.Server == name || strings.EqualFold(a.Server, name) || (err == nil && internal == name) {
+			return a, true
+		}
+	}
+	return placeMCPAttachment{}, false
+}

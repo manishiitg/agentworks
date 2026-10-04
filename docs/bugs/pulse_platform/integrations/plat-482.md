@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | phase 1 fixed on `main` (behaviour); needs a restart. Phase 2 (remove the "private MCP" concept, wording and personal list) is open |
+| State | phase 1 and the enforcement part of phase 2 fixed on `main`; needs a restart. Wording and UI cleanup of phase 2 in progress |
 | Date | 2026-10-04 |
 | Owner | integrations |
 | Related | PLAT-474/475 (OAuth), PLAT-477 (trigger_mcp_discovery) |
@@ -43,6 +43,24 @@ schedules and step runs. See DECISIONS.md.
 - Tests: resolution for a run step (plain, upper-case and internal name), another place's session, no place,
   removal, ambiguity, the access rule, the Code owner. The two old owner-only tests were rewritten to the new
   rule. The full cmd/server package has no failure that main does not already have.
+
+## Done (phase 2: a connection lives only where it was added)
+
+Owner, 2026-10-04: "if I add an MCP to a Code it is there for that Code only, not for Crew or workflows; the same for
+a Crew and for a workflow."
+
+- A session that belongs to a workflow, Relay, Crew or Code (`placeRootForSession`: a pinned Code, the session's
+  server-set shell config, then the server-recorded project folder) is marked place-scoped. From such a session
+  the resolvers and the agent inventory no longer look in a person's own store: only that place's attached
+  connections and Vault resolve; a connection added to another place, or kept only in the person's store, is
+  refused ("not attached to this workflow, Crew or Code").
+- The agent tools follow the place: `list_mcp_servers` lists the place's connections (with who added them) under
+  `connections`, `install_mcp_server` attaches the new connection to the chat's place (editors only),
+  `remove_mcp_server` detaches it from the place for everyone, `trigger_mcp_discovery` discovers the place's
+  connection.
+- Chats outside any place keep using the person's own connections for now (they have no place to attach to).
+- Tests: a place session never reaches a person's other connection while a place-less chat still does; lookup of a
+  place connection by plain or internal name.
 
 ## Left
 

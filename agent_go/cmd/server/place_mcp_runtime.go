@@ -37,6 +37,11 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if authority, builder := ctx.Value(vaultBuilderKey{}).(vaultBuilderAuthority); builder && authority.Session != sessionID {
 		return nil, fmt.Errorf("Vault builder scope does not match the requested MCP session")
 	}
+	// A session of a workflow, Relay, Crew or Code uses that place's connections and Vault; a connection added
+	// to another place, or kept in a person's own store, is never reachable from it.
+	if api.placeRootForSession(sessionID) != "" {
+		ctx = context.WithValue(ctx, placeScopedKey{}, true)
+	}
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
 		return resolved, err
 	}
@@ -150,15 +155,38 @@ func serverListHasName(names []string, name string) bool {
 	return false
 }
 
+// placeScopedKey marks a context as belonging to a session of a workflow, Relay, Crew or Code: every MCP resolver
+// below it then sees only that place's connections and Vault, never a person's connections from elsewhere.
+type placeScopedKey struct{}
+
+func placeScopedContext(ctx context.Context) bool {
+	scoped, _ := ctx.Value(placeScopedKey{}).(bool)
+	return scoped
+}
+
 // placeRootForSession is the workflow, Relay, Crew or Code a session works in, taken only from data the server
-// set when it started the session (never from anything the client sent); "" when it has none.
-func placeRootForSession(sessionID string) string {
-	cfg := common.GetSessionShellConfig(sessionID)
-	if cfg == nil {
+// recorded for the session (never from anything the client sent); "" when it has none (a chat outside any place).
+func (api *StreamingAPI) placeRootForSession(sessionID string) string {
+	if sessionID == "" {
 		return ""
 	}
-	for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
-		if root := placeRootOf(candidate); root != "" {
+	if pin, ok, _ := codeSessionPinFor(sessionID); ok {
+		if root := placeRootOf(pin.CodeRoot); root != "" {
+			return root
+		}
+	}
+	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil {
+		for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
+			if root := placeRootOf(candidate); root != "" {
+				return root
+			}
+		}
+	}
+	if api != nil {
+		api.sessionWorkspaceMu.RLock()
+		folder := api.sessionWorkspaceFolders[sessionID]
+		api.sessionWorkspaceMu.RUnlock()
+		if root := placeRootOf(folder); root != "" {
 			return root
 		}
 	}
@@ -170,7 +198,7 @@ func placeRootForSession(sessionID string) string {
 // falls through to the platform and Vault servers; denied is true when it has one the session may not use.
 func (api *StreamingAPI) placeAttachedMatch(ctx context.Context, sessionID, server string) (internal string, cfg mcpclient.MCPServerConfig, found, denied bool, err error) {
 	server = strings.TrimSpace(server)
-	root := placeRootForSession(sessionID)
+	root := api.placeRootForSession(sessionID)
 	if root == "" || server == "" {
 		return "", mcpclient.MCPServerConfig{}, false, false, nil
 	}

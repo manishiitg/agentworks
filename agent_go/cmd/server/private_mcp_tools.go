@@ -14,26 +14,48 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 	if !activeMCPPerson(person) {
 		return "", fmt.Errorf("active user required")
 	}
+	// Inside a workflow, Relay, Crew or Code the connections are that place's (shared with everyone who has
+	// access to it); outside any place they are still the person's own.
+	session := executor.SessionIDFromContext(ctx)
+	place := api.placeRootForSession(session)
+	if place != "" {
+		ctx = context.WithValue(ctx, placeScopedKey{}, true)
+	}
 	if operation == "list_mcp_servers" {
 		if _, _, err := api.vaultBuilderAuthority(ctx, person); err != nil {
 			return "", err
 		}
-		private, _ := listPlaceMCPServers(person)
 		rows := []map[string]any{}
-		for _, s := range private {
-			dir, _ := placeMCPDir(person)
-			rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, person, s)})
+		if place != "" {
+			attachments, _ := placeMCPAttachmentsFor(place)
+			for _, a := range attachments {
+				store := attachmentStore(a, place)
+				servers, _ := listPlaceMCPServers(store)
+				for _, s := range servers {
+					if s.Name != a.Server {
+						continue
+					}
+					dir, _ := placeMCPDir(store)
+					rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, store, s), "added_by": a.Owner})
+				}
+			}
+		} else {
+			own, _ := listPlaceMCPServers(person)
+			for _, s := range own {
+				dir, _ := placeMCPDir(person)
+				rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, person, s)})
+			}
 		}
 		vault, err := vaultAccessFor(ctx, person)
 		vaultError := ""
 		if err != nil {
 			vaultError = err.Error()
 		}
-		sharing := "Private connections run only for their owner. Shared MCPs require Vault group permissions."
+		sharing := "Connections added to this workflow, Relay, Crew or Code are used by everyone with access to it. Vault connections are shared by group permissions."
 		if _, builder, _ := api.vaultBuilderAuthority(ctx, person); builder {
 			sharing = "Vault administrator setup access covers connected Vault MCPs and secret metadata independently of group grants. Other products and external clients remain group scoped. Secret values are excluded."
 		}
-		inventory := map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing}
+		inventory := map[string]any{"connections": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing}
 		if vault.Users != nil {
 			inventory["vault_users"] = vault.Users
 		}
@@ -48,13 +70,26 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 	if name == "" {
 		return "", fmt.Errorf("name is required")
 	}
+	if operation == "remove_mcp_server" && place != "" {
+		a, found := placeAttachmentNamed(place, name)
+		if !found {
+			return "", fmt.Errorf("this place has no connection named %q; use its exact connection name (list_mcp_servers)", name)
+		}
+		if !placeMCPCanAttach(ctx, person, place) {
+			return "", fmt.Errorf("you can remove connections only where you can edit")
+		}
+		if err := removePlaceMCP(a.Owner, a.Server, place); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Removed %s from this place. It stops working here for everyone; other places that use the same login keep it.", a.Server), nil
+	}
 	if operation == "remove_mcp_server" {
 		saved, found, lookupErr := lookupPrivateMCP(person, name)
 		if lookupErr != nil {
 			return "", lookupErr
 		}
 		if !found {
-			return "", fmt.Errorf("private MCP not found")
+			return "", fmt.Errorf("connection not found")
 		}
 		if err := forgetPlaceMCPLogin(person, saved.Name); err != nil {
 			return "", err
@@ -63,14 +98,27 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 			return "", err
 		}
 		closePlaceMCPConnection(person, saved.Name)
-		return "Removed your private MCP connection.", nil
+		return "Removed your connection and its sign-in.", nil
 	}
 	if operation == "trigger_mcp_discovery" {
-		status, err := api.discoverGovernedServerTools(ctx, person, name)
+		var status *ToolStatus
+		var err error
+		if place != "" {
+			if resolved, handled, resolveErr := api.resolvePlaceAttachedMCP(ctx, session, name); handled {
+				if resolveErr != nil {
+					return "", resolveErr
+				}
+				status, err = api.discoverResolvedServerTools(ctx, resolved)
+			} else {
+				status, err = api.discoverGovernedServerTools(ctx, person, name)
+			}
+		} else {
+			status, err = api.discoverGovernedServerTools(ctx, person, name)
+		}
 		if err != nil {
 			return "", err
 		}
-		data, _ := json.Marshal(map[string]any{"server": name, "tools": status.FunctionNames, "tool_count": status.ToolsEnabled, "message": "Discovered tools for your private or permitted Vault connection."})
+		data, _ := json.Marshal(map[string]any{"server": name, "tools": status.FunctionNames, "tool_count": status.ToolsEnabled, "message": "Discovered tools for this place's connection or a permitted Vault connection."})
 		return string(data), nil
 	}
 
@@ -92,6 +140,9 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 	catalog, _ := args["catalog"].(string)
 	if catalog == "" && url == "" {
 		catalog = name
+	}
+	if place != "" && operation != "edit_mcp_server" && !placeMCPCanAttach(ctx, person, place) {
+		return "", fmt.Errorf("you can add connections only where you can edit this workflow, Crew or Code")
 	}
 	var saved placeMCPServer
 	var err error
@@ -129,10 +180,11 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 	}
 	// Remember this project attachment for the owner's Integrations panel.
 	// Other users of the project never inherit this private account.
-	session := executor.SessionIDFromContext(ctx)
-	root := ""
-	if pin, ok, _ := codeSessionPinFor(session); ok && pin.Person == person {
-		root = pin.CodeRoot
+	root := place
+	if root == "" {
+		if pin, ok, _ := codeSessionPinFor(session); ok && pin.Person == person {
+			root = pin.CodeRoot
+		}
 	}
 	if root == "" {
 		api.lastQueryMu.RLock()
