@@ -13,14 +13,12 @@ import (
 
 // identityRows are the turn kinds whose CLI identity is pinned. The same rows run against every layout.
 func (f *multiUserFixture) identityRows() []struct {
-	name       string
-	in         turnRunAsInput
-	readOnly   bool
-	workflow   bool
-	wantUser   string
-	wantSlot   string
-	pathRule   string // the slot the pre-PLAT-442 folder rule gives the CLI's real starting folder
-	sameAsPath bool
+	name     string
+	in       turnRunAsInput
+	readOnly bool
+	workflow bool
+	wantUser string
+	wantSlot string
 } {
 	e := todayIdentity
 	crewA := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
@@ -37,14 +35,12 @@ func (f *multiUserFixture) identityRows() []struct {
 		return ""
 	}
 	type row = struct {
-		name       string
-		in         turnRunAsInput
-		readOnly   bool
-		workflow   bool
-		wantUser   string
-		wantSlot   string
-		pathRule   string
-		sameAsPath bool
+		name     string
+		in       turnRunAsInput
+		readOnly bool
+		workflow bool
+		wantUser string
+		wantSlot string
 	}
 	return []row{
 		{name: "Code, A's turn", in: turnRunAsInput{ProfileID: "code", WorkingFolder: codeA, CallerID: fixtureUserA}, wantUser: owner(e.CodeOwnerSlot), wantSlot: e.CodeOwnerSlot},

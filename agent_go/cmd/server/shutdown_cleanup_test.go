@@ -585,3 +585,45 @@ func TestCleanupCodingAgentInteractiveSessionsCallsEveryProvider(t *testing.T) {
 		}
 	}
 }
+
+// A Builder chat whose turn was lost has no query-ID mapping. Stop must still
+// stop the tracker listing it as running: a run left "running" answers every
+// new Builder chat on the workflow with 409 workflow_busy and is re-adopted by
+// the workflow tab as the live chat.
+func TestStopSessionWithoutQueryIDsClearsTrackedBuilderChat(t *testing.T) {
+	api := &StreamingAPI{
+		agentCancelFuncs:             map[string]context.CancelFunc{},
+		workflowOrchestratorContexts: map[string]context.CancelFunc{},
+		activeSessions:               map[string]*ActiveSessionInfo{"session-1": {SessionID: "session-1", Status: "running"}},
+		stoppedSessions:              map[string]bool{},
+		sessionQueryIDs:              map[string][]string{},
+		sessionBusy:                  map[string]bool{},
+		bgAgentRegistry:              NewBackgroundAgentRegistry(),
+		pendingCompletions:           map[string][]string{},
+		lastQueryRequests:            map[string]QueryRequest{},
+		sessionWorkspaceFolders:      map[string]string{},
+		sessionAgents:                map[string]*agent.LLMAgentWrapper{},
+		completionLoopStarted:        map[string]bool{},
+		workflowObjectives:           map[string]string{},
+		activeWorkflowExecutions:     map[string]*ActiveWorkflowExecution{},
+		trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
+			"exec-1": {SessionID: "session-1", PhaseID: "workflow-builder", Status: trackedExecutionStatusRunning},
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/session/stop?cancelAgents=true", nil)
+	req.Header.Set("X-Session-ID", "session-1")
+	rec := httptest.NewRecorder()
+
+	api.handleStopSession(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop status = %d body=%s, want 200", rec.Code, rec.Body.String())
+	}
+	exec := api.trackedWorkflowExecutions["exec-1"]
+	if exec == nil {
+		return // pruned: no longer listed as running either
+	}
+	if exec.Status == trackedExecutionStatusRunning {
+		t.Fatalf("tracked execution still %q after stop; it would block new Builder chats", exec.Status)
+	}
+}
