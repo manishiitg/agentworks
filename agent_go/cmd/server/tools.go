@@ -596,6 +596,7 @@ const (
 // servers before it was made explicit. Callers that iterate many servers must
 // read this once and pass the result into connectionState rather than
 // re-reading the file per server.
+//nolint:unused // its caller was dropped in the Vault checkpoint; kept for its owner (PLAT-466 only unblocks the cmd/server lint gate)
 func (api *StreamingAPI) loadOverlayServerNames() map[string]bool {
 	names := make(map[string]bool)
 	overlay, err := mcpclient.LoadConfig(api.getUserConfigPath(), api.logger)

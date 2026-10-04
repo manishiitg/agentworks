@@ -324,7 +324,19 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 				pageOpts.BeforeSequence = beforeSequence
 			}
 		}
-		page, err := api.eventStore.ReadDurableChatPage(sessionID, pageOpts)
+		var page events.DurableEventPage
+		var err error
+		if compactChatView(r, cursorOnly, sinceStr) {
+			// Interactive chat restore opt-in (PLAT-466): latest turn whole,
+			// older turns as messages only. limit counts messages here.
+			compactOpts := events.CompactPageOptions{BeforeSequence: pageOpts.BeforeSequence}
+			if limitStr != "" {
+				compactOpts.Messages = pageOpts.Limit
+			}
+			page, err = api.eventStore.ReadDurableChatCompactPage(sessionID, compactOpts)
+		} else {
+			page, err = api.eventStore.ReadDurableChatPage(sessionID, pageOpts)
+		}
 		if err != nil {
 			http.Error(w, "Failed to read durable chat events", http.StatusInternalServerError)
 			return
@@ -431,6 +443,13 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// compactChatView reports whether the caller opted into the compact chat view
+// with view=messages. Only interactive chat restore passes it; every other
+// reader of this endpoint keeps the full durable page.
+func compactChatView(r *http.Request, cursorOnly bool, since string) bool {
+	return r.URL.Query().Get("view") == "messages" && !cursorOnly && since == ""
 }
 
 // durableForwardCursor clamps a caller's cursor to the journal tip so a cursor

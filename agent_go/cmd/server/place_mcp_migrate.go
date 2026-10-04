@@ -25,6 +25,7 @@ import (
 // project secrets so the connection keeps working.
 
 // migrateCodePersonalMCP runs the move for every known person.
+//nolint:unused // its caller was dropped in the Vault checkpoint; kept for its owner (PLAT-466 only unblocks the cmd/server lint gate)
 func (api *StreamingAPI) migrateCodePersonalMCP() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
