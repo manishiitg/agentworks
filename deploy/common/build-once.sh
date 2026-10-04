@@ -48,6 +48,15 @@ build_release_remote() {
   printf '%s\n' "$name"
 }
 
+# Removes old builds on the build host: all but the newest BUILD_KEEP (default 1), never a pinned one or one younger than 15 minutes. Run after every
+# successful deploy; a pruning problem never fails a deploy.
+prune_builds_remote() {
+  build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.build-release.sh' && chmod 0755 '$BUILDS_DIR/.build-release.sh'" < "$REPO_ROOT/deploy/common/build-release.sh" \
+    || { echo "Build pruning skipped (cannot reach the build host)" >&2; return 0; }
+  build_ssh "BUILDS_DIR='$BUILDS_DIR' '$BUILDS_DIR/.build-release.sh' --prune-only --builds-dir '$BUILDS_DIR' --keep '${BUILD_KEEP:-1}'" >&2 \
+    || echo "Build pruning failed (the deploy itself succeeded)" >&2
+}
+
 # find_build <name|sha prefix>: prints "<name> <sha1> <sha2> <sha3>" for the one matching build, or fails.
 find_build() {
   [[ "$1" =~ ^[0-9A-Za-z._-]+$ ]] || { echo "Invalid build selector: $1" >&2; return 1; }

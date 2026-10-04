@@ -3,7 +3,8 @@
 #
 #   build-release.sh --source mcp-agent-builder-go <url> <sha> \
 #                    --source mcpagent <url> <sha> --source multi-llm-provider-go <url> <sha> \
-#                    [--builds-dir /srv/_builds] [--keep 3] [--force]
+#                    [--builds-dir /srv/_builds] [--keep 1] [--force]
+#   build-release.sh --prune-only [--builds-dir /srv/_builds] [--keep 1]     (removes old builds, builds nothing)
 #
 # Runs on the build host (the Hetzner box, x86_64, as root by default: set BUILD_AS=<user> to drop to an unprivileged account that
 # owns the builds dir). It
@@ -13,7 +14,8 @@
 #      browser, landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), frontend/, static/, downloads/ (AgentWorks
 #      CLI for four targets), packages/, source/ (the three repos without .git), SOURCE_REVISIONS and manifest.json (revisions, arch,
 #      glibc, build time, sha256 of every file; deploy/common/release_manifest.py);
-#   4. prunes all but the newest --keep builds (never one younger than an hour, never one pinned with `./deploy.sh pin`).
+#   4. prunes old builds: all but the newest --keep (default 1; the products keep their own previous releases for rollback), never one younger than
+#      15 minutes (an activation may still be copying from it), never one pinned with `./deploy.sh pin`. deploy.sh also prunes after every successful deploy.
 # Product-specific parts (runtime-config.js, brand, MCP catalog, binary names, version.json) are added by each target's activation,
 # so the one build serves every product. The last output lines are BUILD_NAME=<name> and BUILD_DIR=<path>.
 set -euo pipefail
@@ -22,9 +24,10 @@ umask 022
 if [[ "$(uname -sm)" != "Linux x86_64" ]]; then echo "Builds run on Linux x86_64 only" >&2; exit 1; fi
 
 BUILDS="${BUILDS_DIR:-/srv/_builds}"
-KEEP=3
+KEEP=1
 FORCE=0
 INNER=0
+PRUNE_ONLY=0
 WORK=""
 NAME=""
 STARTED="$(date +%s)"
@@ -39,10 +42,35 @@ while [[ $# -gt 0 ]]; do
     --builds-dir) BUILDS="$2"; shift 2 ;;
     --keep) KEEP="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --prune-only) PRUNE_ONLY=1; shift ;;
     --source) URL[$2]="$3"; REV[$2]="$4"; shift 4 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+# Keep the newest $KEEP builds; never remove a pinned one or one younger than 15 minutes (an activation or a shipment to RTS may still be reading it);
+# clear stale scratch folders.
+prune_builds() {
+python3 - "$BUILDS" "$KEEP" <<'PY'
+import re, shutil, sys, time
+from pathlib import Path
+root, keep = Path(sys.argv[1]), int(sys.argv[2])
+# A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: it is never
+# removed and does not count toward the newest $KEEP.
+pinned = {m.name for m in (root / ".pinned").glob("*")} if (root / ".pinned").is_dir() else set()
+builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name, reverse=True)
+for old in builds[keep:]:
+    if time.time() - (old / "manifest.json").stat().st_mtime > 900:
+        print(f"pruning old build {old.name}")
+        shutil.rmtree(old)
+for stale in list(root.glob("*.partial")) + list((root / ".work").glob("*")):
+    if time.time() - stale.stat().st_mtime > 86400:
+        shutil.rmtree(stale, ignore_errors=True)
+PY
+}
+if [[ "$PRUNE_ONLY" == 1 ]]; then
+  prune_builds
+  exit 0
+fi
 for repo in "${ORDER[@]}"; do
   [[ -n "${URL[$repo]:-}" && "${REV[$repo]:-}" =~ ^[0-9a-f]{40}$ ]] || { echo "--source $repo <url> <40-hex sha> is required" >&2; exit 2; }
 done
@@ -217,23 +245,7 @@ chmod 0644 "$OUT/manifest.json"
 mv "$OUT" "$BUILDS/$NAME"
 chmod 0755 "$BUILDS/$NAME"
 
-# Keep the newest $KEEP builds; never remove one younger than an hour (an activation may still be copying from it) and clear stale scratch.
-python3 - "$BUILDS" "$KEEP" <<'PY'
-import re, shutil, sys, time
-from pathlib import Path
-root, keep = Path(sys.argv[1]), int(sys.argv[2])
-# A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: it is never
-# removed and does not count toward the newest $KEEP.
-pinned = {m.name for m in (root / ".pinned").glob("*")} if (root / ".pinned").is_dir() else set()
-builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name, reverse=True)
-for old in builds[keep:]:
-    if time.time() - (old / "manifest.json").stat().st_mtime > 3600:
-        print(f"pruning old build {old.name}")
-        shutil.rmtree(old)
-for stale in list(root.glob("*.partial")) + list((root / ".work").glob("*")):
-    if time.time() - stale.stat().st_mtime > 86400:
-        shutil.rmtree(stale, ignore_errors=True)
-PY
+prune_builds
 trap 'rm -rf "$WORK"' EXIT
 step "Build complete"
 echo "BUILD_NAME=$NAME"

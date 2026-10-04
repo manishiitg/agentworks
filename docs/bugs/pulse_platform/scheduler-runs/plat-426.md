@@ -30,8 +30,9 @@ All of it is on `main`; `deploy/rootless-linux/README.md` has the commands.
    with `bin/lib` sherpa-onnx + onnxruntime, workspace, gateway, shared-browser, landlock runner, slotctl, slottmux, mcpbridge,
    workspace-security.test, update-coding-clis), `frontend/`, `static/`, `downloads/` (CLI, 4 targets), `packages/`, `source/`,
    `SOURCE_REVISIONS`, `manifest.json`. It reuses the existing build steps (`build-linux-agent.sh`, `slots_build`, the same go/npm
-   commands) and reuses an existing build of the same three revisions. Keeps the newest 3 builds (never one younger than an hour or
-   pinned). Builds into `<name>.partial` and renames, so a folder without a trailing `.partial` is complete. Go is installed pinned
+   commands) and reuses an existing build of the same three revisions. Old builds are pruned by default (owner, 2026-10-04): only the newest is kept, plus pinned ones and any younger than
+   15 minutes (an activation or the RTS shipment may still be reading it); `build-release.sh --prune-only`, run by deploy.sh after every successful deploy
+   (once at the end of all-hetzner) and by `./deploy.sh prune-builds`; `BUILD_KEEP` raises the number. Test `test_prune_builds.py` (run on the box as the unprivileged `agents` account). Builds into `<name>.partial` and renames, so a folder without a trailing `.partial` is complete. Go is installed pinned
    (1.27.1, checksum-verified, as `bootstrap-build.sh` does) into `/srv/_builds/.toolchain` because root has none.
 2. **`deploy/common/release_manifest.py`**: `manifest.json` = revisions, os, arch, glibc, build seconds, node/go versions, sha256, size
    and executable bit of every file and every symlink target. `verify` refuses a build for another architecture, one that needs a

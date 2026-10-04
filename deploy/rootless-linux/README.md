@@ -53,8 +53,9 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
    landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), `frontend/`, `static/`, `downloads/`, `packages/`,
    `source/` (the three repos without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
    sha256 of every file; `deploy/common/release_manifest.py`). The folder is world-readable, so every product account can copy
-   from it. A build of the same three revisions is reused; the newest 3 builds are kept (a build younger than an hour or pinned is
-   never removed).
+   from it. A build of the same three revisions is reused. Old builds are removed by default: after every deploy (and after each build)
+   only the newest build is kept, plus pinned ones and any younger than 15 minutes (`./deploy.sh prune-builds` does it now;
+   `BUILD_KEEP=2` keeps more). The products keep their own previous releases for rollback.
 2. `bootstrap-build.sh` (given a `prebuilt` file instead of repository URLs) runs `build-and-activate.sh --prebuilt <build>` from
    the build's own `source/`. It first verifies the manifest: wrong CPU architecture, a build that needs a newer glibc than the
    host has, a missing, changed or unlisted file, or an agent that cannot load its libraries all **refuse** the deploy before

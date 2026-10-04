@@ -21,7 +21,8 @@ Servers:
   report [server]       how each server differs from the standard runtime profile (read-only)
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
   builds                list the builds on the build host (name, age, the three revisions, pinned)
-  pin|unpin <build>     keep a known-good build from being pruned by later builds (the newest 3 are kept otherwise)
+  pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
+  prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
 Build once, deploy everywhere (PLAT-426): rts, excellence, confida, sparkquill and all-hetzner build the release ONCE on the
 Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
@@ -384,6 +385,11 @@ if [[ "$SERVER" == builds ]]; then
   build_ssh "python3 - list '$BUILDS_DIR'" < "$REPO_ROOT/deploy/common/release_manifest.py"
   exit 0
 fi
+if [[ "$SERVER" == prune-builds ]]; then
+  reject_extra_arguments "$@"
+  prune_builds_remote
+  exit 0
+fi
 if [[ "$SERVER" == pin || "$SERVER" == unpin ]]; then
   [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh $SERVER <build name or sha>" >&2; exit 2; }
   found="$(find_build "$1")" || { echo "No unique build matches '$1' (see ./deploy.sh builds)" >&2; exit 1; }
@@ -416,16 +422,19 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
+    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
   confida|sparkquill)
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
+    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
   excellence)
     # agents.excellencetechnologies.in; its account, units and product
     # folder are named "agents" on the host.
     reject_extra_arguments "$@"
     deploy_rootless_product agents
+    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
   all-hetzner)
     # Excellence, Confida and SparkQuill from ONE build, one after the other; stops at the first failure. Never Dominion.
@@ -438,6 +447,7 @@ case "$SERVER" in
     deploy_rootless_product agents
     deploy_rootless_product confida
     deploy_rootless_product sparkquill
+    prune_builds_remote  # once, after all three: a chosen older build must still exist for the next product
     ;;
   dominion)
     [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "Dominion has its own deploy path; --build does not apply to it." >&2; exit 2; }

@@ -28,6 +28,11 @@ run/model details expand on demand. Missing-usage and unpriced counters stay
 visible so incomplete accounting is not mistaken for zero cost.
 [PLAT-430](bugs/pulse_platform/cost-telemetry/plat-430.md).
 
+### 2026-10-04 — Old builds are pruned by default after every deploy — PLAT-426
+
+The build host keeps only the newest build, plus pinned ones and any younger than 15 minutes. Why: a build is 0.5 GB and a rollback needs a product's previous release (which each product keeps), not an older shared build;
+a build that should outlive the next one is pinned (`./deploy.sh pin`). Deploys prune at their end, so a chosen older build (`--build`) survives until all its products are done.
+
 ### 2026-10-04 — Build a release once; every server copies and activates it, and refuses a build that does not match — PLAT-426
 
 `./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box
