@@ -212,3 +212,24 @@ func TestBuilderAccessRequiresExplicitBoundedConsent(t *testing.T) {
 		t.Fatalf("Builder roundtrip: %+v %v", got, err)
 	}
 }
+
+func TestRelayAuthoringConsentDoesNotGrantAgentWorksBuilder(t *testing.T) {
+	now := time.Now()
+	base := Token{Name: "Relay builder", UserID: "owner", Scopes: []string{"relays:write", "workflows:read", "files:read", "runs:execute"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}
+	if err := Validate(base, now); err != nil || !base.RelayBuilderAccess() || base.BuilderAccess() {
+		t.Fatalf("Relay consent: %+v %v", base, err)
+	}
+	for i := range base.Scopes {
+		token := base
+		token.Scopes = append(append([]string(nil), base.Scopes[:i]...), base.Scopes[i+1:]...)
+		if token.RelayBuilderAccess() {
+			t.Fatalf("missing %s still authorized", base.Scopes[i])
+		}
+	}
+	bounded := base
+	bounded.AllWorkflows = false
+	bounded.WorkflowIDs = []string{"relay-one"}
+	if Validate(bounded, now) != nil || !bounded.RelayBuilderAccess() || bounded.AllowsWorkflow("other") {
+		t.Fatal("bounded Relay consent widened")
+	}
+}

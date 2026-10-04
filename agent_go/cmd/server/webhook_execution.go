@@ -15,31 +15,10 @@ import (
 type directWebhookExecutionKey struct{}
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
-	if manifest == nil || !workflowContractVersionIsExecutionCompatible(workflowContractVersionForUpgrade(manifest)) || manifest.CodeLayoutVersion != 1 {
+	if manifest == nil || !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil
-}
-
-// relayScheduledInput maps a timed trigger's JSON payload onto the same INPUT
-// variable contract as an API call. The schedule then uses the direct plan
-// executor, with no Builder turn or schedule-local message sequence.
-func relayScheduledInput(sctx *ScheduleContext, runID string) (*WorkflowWebhookDelivery, error) {
-	if sctx == nil || len(sctx.Schedule.GroupNames) != 1 {
-		return nil, fmt.Errorf("a Relay schedule requires exactly one variable group")
-	}
-	payload := sctx.Schedule.TriggerPayload
-	if len(payload) == 0 {
-		payload = json.RawMessage(`{}`)
-	}
-	var input map[string]interface{}
-	if err := json.Unmarshal(payload, &input); err != nil || input == nil {
-		return nil, fmt.Errorf("Relay schedule trigger_payload must be a JSON object")
-	}
-	return &WorkflowWebhookDelivery{
-		RunID: runID, DeliveryID: runID, Event: "relay.schedule", ReceivedAt: time.Now().UTC(),
-		Payload: append(json.RawMessage(nil), payload...), Variables: map[string]string{"INPUT": string(payload)}, Group: sctx.Schedule.GroupNames[0],
-	}, nil
 }
 
 func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleContext, runFolder string) (*stepworkflow.ExecutionOptions, error) {

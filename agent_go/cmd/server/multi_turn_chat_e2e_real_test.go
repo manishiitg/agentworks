@@ -469,7 +469,7 @@ func TestMultiTurnChatE2E_ClaudeCode(t *testing.T) {
 func TestMultiTurnChatE2E_Codex(t *testing.T) {
 	model := strings.TrimSpace(os.Getenv("CODEX_CLI_REAL_CONTRACT_MODEL"))
 	if model == "" {
-		model = "gpt-5.3-codex-spark"
+		model = "gpt-5.4-mini"
 	}
 	runMultiTurnChatE2E(t, multiTurnChatE2ESpec{
 		providerName: "codex",

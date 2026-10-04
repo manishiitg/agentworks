@@ -4040,7 +4040,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if productDefinitionRefreshed {
 		log.Printf("[CHAT_HISTORY] Product definition changed for session %s; relaunching the coding CLI and resuming its native session where supported", sessionID)
 	}
-	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !requestLLMConfigOverridesManifest(req) {
+	// A different coding provider than the retained CLI's makes that CLI the wrong target, whatever the definition says: a message must never be steered into
+	// (or fail against) the old provider's terminal. Before this a provider change was invisible here, so after switching Muse to Codex mid-chat the next sends went to the old Muse
+	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on Excellence, 2026-10-04). Like any runtime change it waits for a running turn
+	// and then relaunches on the selected provider (the native conversation resumes across providers).
+	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, requestedProviderOf(req))
+	if providerChanged {
+		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, requestedProviderOf(req))
+		retainedProfileCompatible = false
+	}
+	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
 		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
 		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
 		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
@@ -5702,6 +5711,21 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.LLMConfig != nil && req.LLMConfig.Primary.ConnectionID != "" {
 			resolvedConnectionID = req.LLMConfig.Primary.ConnectionID
 		}
+		// Allowed models: whatever settled finalModelID above (request, saved
+		// project or workflow, product default), the account's list decides. A
+		// saved model it does not allow runs on the first allowed one.
+		if constrained, changed, constrainErr := resolveAccountModel(streamCtx, finalProvider, resolvedConnectionID, finalModelID); constrainErr != nil {
+			sendError(constrainErr.Error(), true)
+			return
+		} else if changed {
+			finalModelID = constrained
+			req.ModelID = constrained
+			if req.LLMConfig != nil {
+				configCopy := *req.LLMConfig
+				configCopy.Primary.ModelID = constrained
+				req.LLMConfig = &configCopy
+			}
+		}
 		agentConfig := agent.LLMAgentConfig{
 			ConnectionID:       resolvedConnectionID,
 			Name:               "chat-agent",
@@ -6171,7 +6195,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Workflow/"}, additionalFolders...)
+					// Other workflows are readable only when attached to this chat
+					// (workflowReadOnlyFolders below), never the whole Workflow/ tree.
+					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}, additionalFolders...)
 					readPaths = append(readPaths, resolvedGrants.ReadOnlyExtra...)
 					readPaths = append(readPaths, workflowReadOnlyFolders...)
 					workspace.SetSessionFolderGuard(sessionID,
@@ -6200,7 +6226,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
 				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", workflowReadRoot}, extraFolders...)
+				readPaths := []string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}
+				if workflowReadRoot != "" {
+					readPaths = append(readPaths, workflowReadRoot)
+				}
+				readPaths = append(readPaths, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
 				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
@@ -6768,7 +6798,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			//    assembler logs what it applied. See prompt_sections.go for why
 			//    these stopped being inline ifs.
 			promptCtx := promptContext{
-				Provider:                 req.Provider,
+				// The CLI that actually runs: a workflow's manifest LLM replaces the
+				// requested one (the log named the request's CLI, not Muse/Codex).
+				Provider:                 finalProvider,
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
 				CrewReadOnly:             crewReaderCLI,
@@ -10512,6 +10544,13 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		fallbackCancel()
 		if handled {
 			if err != nil {
+				// The same proof the warm-session branch above accepts: the retained terminal is gone (Stop, a died CLI or a provider switch ended it), so nothing
+				// was sent and a fresh turn is safe. Answering 409 delivery_uncertain here left every send, and each of its 30 s retries, rejected until the
+				// stale record cleared (Code on Excellence, 2026-10-04: three 409s after a provider switch).
+				if liveInputErrorProvesNoTarget(err) {
+					log.Printf("[QUERY->LIVE] Retained terminal for session %s has no live target; starting a new turn: %v", sessionID, err)
+					return false
+				}
 				log.Printf("[QUERY->LIVE] Retained-terminal fallback uncertain for session %s: %v", sessionID, err)
 				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
 				return true
@@ -13622,10 +13661,16 @@ func workshopConvertAgentLLMConfig(config *workflowtypes.AgentLLMConfig) *todo_c
 	if config == nil {
 		return nil
 	}
+	// A saved role model its account does not allow (the admin restricted the
+	// account after the workflow was set up) runs on the first allowed model.
+	modelID, publishedID := config.ModelID, config.PublishedLLMID
+	if constrained, changed, err := resolveAccountModel(context.Background(), config.Provider, config.ConnectionID, config.ModelID); err == nil && changed && strings.TrimSpace(config.ModelID) != "" {
+		modelID, publishedID = constrained, ""
+	}
 	return &todo_creation_human.AgentLLMConfig{
-		PublishedLLMID: config.PublishedLLMID,
+		PublishedLLMID: publishedID,
 		Provider:       config.Provider,
-		ModelID:        config.ModelID,
+		ModelID:        modelID,
 		Options:        config.Options,
 		ConnectionID:   config.ConnectionID,
 	}

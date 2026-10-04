@@ -172,3 +172,11 @@ func BuiltinAgentProfiles() ([]agentprofiles.Profile, error) {
 	}
 	return manifest.BuiltinProfiles(files, nil)
 }
+
+// BuilderExternalTools is the Relay-owned platform MCP admission list.
+func BuilderExternalTools() ([]string, error) {
+	if err := loadProduct(); err != nil {
+		return nil, err
+	}
+	return append([]string(nil), manifest.Chat["builder"].ExternalTools...), nil
+}

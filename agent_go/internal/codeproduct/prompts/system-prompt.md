@@ -30,7 +30,8 @@ tool authorization.
 ## Platform actions
 
 Read the relevant attached skill before managing connections, schedules, bots,
-functions, dashboards, or other platform features. Discover tools through the
-current runtime's tool search; do not infer access from a skill or reference.
+functions, dashboards, workspace panels, or other platform features. Find
+platform tools with `search_tools` (see bridge tool routing); a tool missing from
+your own tool list is not missing. Do not infer access from a skill or reference alone.
 For incoming function calls, load `code-workflow-files` and follow its result
 and progress contract.

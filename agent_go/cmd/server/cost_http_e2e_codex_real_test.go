@@ -44,7 +44,7 @@ func TestCostSummaryHTTPCapturesRealCodexCLITmuxTurn(t *testing.T) {
 	}
 	model := strings.TrimSpace(os.Getenv("CODEX_CLI_REAL_CONTRACT_MODEL"))
 	if model == "" {
-		model = "gpt-5.3-codex-spark"
+		model = "gpt-5.4-mini"
 	}
 	t.Cleanup(func() { _ = codexcliadapter.CleanupCodexCLIInteractiveSessions(context.Background()) })
 

@@ -87,6 +87,7 @@ export interface RoutingStepNodeData extends Record<string, unknown> {
 }
 
 export interface MessageSequenceNodeData extends Record<string, unknown> {
+  isRelayOutput?: boolean
   id: string
   title: string
   description?: string

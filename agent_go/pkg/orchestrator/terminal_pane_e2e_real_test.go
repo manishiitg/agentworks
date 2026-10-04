@@ -463,7 +463,7 @@ func buildCodexTmuxTerminalAdapter(t *testing.T) (llmtypes.Model, []llmtypes.Cal
 	}
 	model := strings.TrimSpace(os.Getenv("CODEX_REAL_E2E_MODEL"))
 	if model == "" {
-		model = "gpt-5.3-codex-spark"
+		model = "gpt-5.4-mini"
 	}
 	t.Cleanup(func() {
 		_ = codexcliadapter.CleanupCodexCLIInteractiveSessions(context.Background())

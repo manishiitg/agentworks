@@ -21,8 +21,9 @@ it('shows fresh/cache split and opens the associated chat without starting a run
     expect(host.textContent).toContain('Five-minute health check')
     expect(host.textContent).toContain('1 recorded turn / agent run')
     expect(host.textContent).toContain('Fresh input200')
-    expect(host.textContent).toContain('Cached input (read)800')
-    const tokenDetails = Array.from(host.querySelectorAll('details')).find(detail => detail.querySelector('summary')?.textContent === '80.0% of input cached · Token details')!
+    expect(host.textContent).toContain('Cached input800')
+    expect(host.textContent).toContain('80.0% cached')
+    const tokenDetails = Array.from(host.querySelectorAll('details')).find(detail => detail.querySelector('summary')?.textContent === 'Token details')!
     expect(tokenDetails).toBeDefined()
     expect(tokenDetails.open).toBe(false)
     await act(async () => { tokenDetails.querySelector('summary')!.click() })
@@ -32,13 +33,12 @@ it('shows fresh/cache split and opens the associated chat without starting a run
     await act(async () => { view.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(agentApi.getChatHistoryResumeConversation).toHaveBeenCalledWith('product-health', row.workflow_id, 50, 0, false, true)
     expect(host.textContent).toContain('Check the server')
-    expect(host.textContent).toContain('Prompt size')
+    expect(host.textContent).toContain('Latest prompt size')
     expect(host.textContent).toContain('12,345 characters')
     expect(host.textContent).toContain('678 characters')
     expect(host.textContent).toContain('Developer instructions')
     expect(host.textContent).not.toContain('Use the project tools to check health.')
     expect(host.querySelector('pre')).toBeNull()
-    expect(host.textContent).toContain('Earlier runs may have used different instructions')
     const earlier = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Earlier messages')!
     await act(async () => { earlier.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(agentApi.getChatHistoryResumeConversation).toHaveBeenLastCalledWith('product-health', row.workflow_id, 50, 50, false, true)

@@ -47,7 +47,7 @@ func TestBuilderSurfaceIsRelaySpecific(t *testing.T) {
 	if len(tools) == 0 || !BuilderAllowsTool("add_step") || !BuilderAllowsTool("manage_workflow_webhook") || !BuilderAllowsTool("google_workspace_cli") || !BuilderAllowsTool("list_gmail_connections") {
 		t.Fatal("Relay Builder is missing graph or trigger tools")
 	}
-	for _, excluded := range []string{"slack", "send_slack_message", "create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user"} {
+	for _, excluded := range []string{"slack", "send_slack_message", "create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user", "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs"} {
 		if BuilderAllowsTool(excluded) {
 			t.Errorf("Relay Builder admits %s", excluded)
 		}
@@ -79,7 +79,7 @@ func TestRelayCommandCatalog(t *testing.T) {
 		}
 		commands[command.Name] = command.Prompt
 	}
-	for _, name := range []string{"design-graph", "test", "publish", "versions", "setup-api", "schedule"} {
+	for _, name := range []string{"design-graph", "test", "publish", "versions", "setup-api"} {
 		if commands[name] == "" {
 			t.Errorf("missing Relay command %s", name)
 		}
@@ -87,9 +87,36 @@ func TestRelayCommandCatalog(t *testing.T) {
 	if !strings.Contains(commands["publish"], "publish_relay") {
 		t.Fatal("publishes the wrong artifact")
 	}
-	for _, name := range []string{"design-dashboard", "setup-goals", "run-goal-work", "pulse", "backup"} {
+	for _, name := range []string{"design-dashboard", "setup-goals", "run-goal-work", "pulse", "backup", "schedule"} {
 		if commands[name] != "" {
 			t.Errorf("workflow command leaked: %s", name)
 		}
+	}
+}
+
+func TestRelayMCPAdmissionIsOwnedByBuilderManifest(t *testing.T) {
+	names, err := BuilderExternalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if seen[name] {
+			t.Fatalf("duplicate %s", name)
+		}
+		seen[name] = true
+	}
+	for _, name := range []string{"create_relay", "builder_chat", "test_relay", "publish_relay", "run_relay", "get_relay_run"} {
+		if !seen[name] {
+			t.Fatalf("missing %s", name)
+		}
+	}
+	names[0] = "changed"
+	again, _ := BuilderExternalTools()
+	if again[0] == "changed" {
+		t.Fatal("caller mutated manifest")
+	}
+	if _, err := ChatTools("run"); err == nil {
+		t.Fatal("MCP added Run chat")
 	}
 }

@@ -164,6 +164,90 @@ func (iso *Isolator) toolEnv(env []string) []string {
 	return sandboxToolEnv(env, canonicalPath(iso.WorkDir), writes)
 }
 
+// platformGitIgnoreLine keeps the platform's private folder out of every git command a sandboxed command runs (the agent's `git add -A`, the terminal,
+// the Files pane): .sandbox-cache holds per-person tool homes and, in a Crew or workflow project, git credentials, ssh keys and CLI logins that must never be
+// committed or pushed. Git reads $XDG_CONFIG_HOME/git/ignore by default, and every sandbox home sets XDG_CONFIG_HOME to <home>/.config.
+const platformGitIgnoreLine = SandboxPersistentDirName + "/"
+
+// EnsurePlatformGitIgnore makes <configDir>/git/ignore list the platform's private folder. An existing file (a person's own ignore list) is kept and the
+// line appended once; every failure is ignored, since a home the service cannot write is the slot's own to manage. A repo or person that sets
+// core.excludesFile themselves overrides this; the Files pane has its own list.
+func EnsurePlatformGitIgnore(configDir string) {
+	dir := filepath.Join(configDir, "git")
+	if err := os.MkdirAll(dir, 0o770); err != nil {
+		return
+	}
+	_ = os.Chmod(dir, 0o770|os.ModeSetgid)
+	file := filepath.Join(dir, "ignore")
+	existing, err := os.ReadFile(file)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for _, line := range strings.Split(string(existing), "\n") {
+		if strings.TrimSpace(line) == platformGitIgnoreLine || strings.TrimSpace(line) == SandboxPersistentDirName {
+			return
+		}
+	}
+	text := string(existing)
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	if text == "" {
+		text = "# Platform-private folder: never part of a project\n"
+	}
+	_ = os.WriteFile(file, []byte(text+platformGitIgnoreLine+"\n"), 0o660)
+}
+
+// withPlatformGitIgnoreEnv points git at an ignore list for the platform's private folder, for a command whose home the service cannot write (a user's slot
+// home is owner-only). The list is <project>/.sandbox-cache/git-ignore, in the project's own .sandbox-cache (which must already exist: it is never created
+// here), set through GIT_CONFIG_COUNT so a person's repo and global config keep working. Any failure leaves env unchanged.
+func withPlatformGitIgnoreEnv(env []string, workDir string, writePaths []string) []string {
+	private := ""
+	for _, wp := range writePaths {
+		candidate := wp
+		if filepath.Base(wp) != SandboxPersistentDirName {
+			if workDir == "" || !pathWithin(workDir, wp) {
+				continue
+			}
+			candidate = filepath.Join(wp, SandboxPersistentDirName)
+		}
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			private = candidate
+			break
+		}
+	}
+	if private == "" {
+		return env
+	}
+	file := filepath.Join(private, "git-ignore")
+	want := "# Platform-private folder: never part of a project\n" + platformGitIgnoreLine + "\n"
+	if current, err := os.ReadFile(file); err != nil || string(current) != want {
+		if os.WriteFile(file, []byte(want), 0o660) != nil {
+			return env
+		}
+		_ = os.Chmod(file, 0o660)
+	}
+	count := 0
+	for _, kv := range env {
+		if value, ok := strings.CutPrefix(kv, "GIT_CONFIG_COUNT="); ok {
+			if n, err := strconv.Atoi(value); err == nil && n > 0 {
+				count = n
+			}
+		}
+	}
+	out := make([]string, 0, len(env)+3)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GIT_CONFIG_COUNT=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out,
+		"GIT_CONFIG_COUNT="+strconv.Itoa(count+1),
+		"GIT_CONFIG_KEY_"+strconv.Itoa(count)+"=core.excludesFile",
+		"GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+file,
+	)
+}
+
 // privateSandboxHome replaces the shared HOME=/tmp of the Docker-mode
 // environment with home, a folder only this workflow or Crew can write: git,
 // ssh, CLI logins and tool config written under HOME used to land in a /tmp
@@ -193,6 +277,7 @@ func privateSandboxHome(env []string, home string) []string {
 			_ = os.Chmod(dir, 0o770|os.ModeSetgid)
 		}
 	}
+	EnsurePlatformGitIgnore(config)
 	out := make([]string, 0, len(env)+2)
 	socketDirSet := false
 	for _, kv := range env {
@@ -231,8 +316,10 @@ func ensureScratchDir(dir string) {
 // `sh -c` (which never reads ~/.bashrc) runs the same node as the terminal.
 func SlotHomeEnv(env []string, workDir string, writePaths []string, userHome string) []string {
 	if userHome != "" {
-		// The slot's own home (Code): it belongs to the slot, which creates what it needs there; the service does not touch it.
-		return withHome(env, userHome)
+		// The slot's own home (Code): it belongs to the slot, which creates what it needs there; the service does not touch it. The platform's
+		// git ignore list therefore cannot live there: it goes in the project's .sandbox-cache (the service writes it, the slot reads it) and
+		// git is pointed at it through the environment.
+		return withPlatformGitIgnoreEnv(withHome(env, userHome), workDir, writePaths)
 	}
 	home := ""
 	for _, wp := range writePaths {
@@ -262,6 +349,7 @@ func SlotHomeEnv(env []string, workDir string, writePaths []string, userHome str
 	for _, dir := range []string{filepath.Dir(home), home, config} {
 		_ = os.Chmod(dir, 0o770|os.ModeSetgid)
 	}
+	EnsurePlatformGitIgnore(config) // the project's own home: the service owns it
 	return withHome(env, home)
 }
 

@@ -93,10 +93,15 @@ type BatchExecutionProgress struct {
 // ExecutionContext represents immutable execution configuration
 // Created once at execution start and passed through the call chain
 type ExecutionContext struct {
-	SkipHumanInput    bool   // Whether to skip human feedback requests (auto-approve steps)
-	RunSingleStepOnly bool   // Whether to run only a single step and stop
-	SingleStepTarget  int    // Target step index to run (0-based)
-	SavedScriptOnly   bool   // Whether to run only saved learnings/{step-id}/main.py with no LLM fallback
+	SkipHumanInput    bool // Whether to skip human feedback requests (auto-approve steps)
+	RunSingleStepOnly bool // Whether to run only a single step and stop
+	SingleStepTarget  int  // Target step index to run (0-based)
+	SavedScriptOnly   bool // Whether to run only saved learnings/{step-id}/main.py with no LLM fallback
+	// AllowScriptRepair lets an LLM author or repair a scripted step's main.py
+	// in this execution. Only the Builder's own execute_step sets it; every run
+	// (schedule, webhook/Relay, run_full_workflow, a route called by an agent)
+	// runs the saved script and fails on its error (PLAT-436).
+	AllowScriptRepair bool
 	StepPathOverride  string // If set, overrides the default "step-{N}" path for the target step (used for inner steps in workshop)
 
 	// ArtifactFolderNameOverride writes execution artifacts/logs to this folder

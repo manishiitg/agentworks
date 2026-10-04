@@ -2,9 +2,11 @@ package step_based_workflow
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/scriptdb"
 )
 
 const contractUpgradeHistoryField = "contract_upgrade_history"
@@ -43,6 +45,32 @@ func appendContractUpgradeHistory(manifest map[string]interface{}, version strin
 // contract ladder because the stamp executor must enforce this migration's
 // source-layout prerequisite, not merely describe it in a prompt.
 const NestedAgentArtifactsContractVersion = "1.0.44"
+
+// ManagedDBScriptsContractVersion is the contract where scripted steps reach the
+// workflow database through the built-in agentworks_db helper (the managed
+// query/mutate tools) instead of opening db.sqlite themselves (PLAT-428).
+const ManagedDBScriptsContractVersion = "1.0.45"
+
+// validateManagedDBScriptsStamp refuses the 1.0.45 stamp while any script of the
+// workflow (workflowDir is its absolute folder) still opens the database itself or
+// carries a schema statement. Like the 1.0.44 layout check it lives in the stamp
+// executor, not in the prompt: the stamp arrives by tool call or by shell, and
+// only the executor sees both.
+func validateManagedDBScriptsStamp(version, workflowDir string) error {
+	if version != ManagedDBScriptsContractVersion {
+		return nil
+	}
+	findings, scanned, err := scriptdb.ScanDir(filepath.Join(workflowDir, "code"))
+	if err != nil {
+		return fmt.Errorf("could not scan the scripts under code/: %w", err)
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%d of %d scripts still open the database themselves or carry schema statements:\n%s"+
+		"Convert each to the agentworks_db helper (schema statements become db/migrations/ files applied with apply_workflow_db_migration), then run scan_workflow_script_db_usage until it is clean before stamping %s",
+		len(findings), scanned, scriptdb.Summary(findings), version)
+}
 
 func validateContractVersionStampPrerequisites(version string, manifest map[string]interface{}) error {
 	if version != NestedAgentArtifactsContractVersion {

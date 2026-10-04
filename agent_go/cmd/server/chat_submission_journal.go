@@ -419,12 +419,25 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	if api == nil || strings.TrimSpace(record.Session) == "" || strings.TrimSpace(record.Message) == "" {
 		return false
 	}
-	_, err := time.Parse(time.RFC3339Nano, record.UpdatedAt)
-	if err != nil || api.hasActiveTurnCancel(record.Session) || api.sessionHasLiveMainCodingTmux(record.Session) {
+	recordTime, err := time.Parse(time.RFC3339Nano, record.UpdatedAt)
+	if err != nil {
 		return false
 	}
-	if retainedSession, ok := mcpagent.LookupSession(record.Session); ok && retainedSession.ActiveTurnID() != "" {
-		return false
+	// A live terminal, a running turn or a retained session may be the very CLI the submission went to, so they keep it uncertain. But a live terminal that
+	// started AFTER the submission cannot hold it (any CLI: the provider was switched, or the old CLI closed and a new one launched): it and its turns say nothing
+	// about this submission. Without this an old uncertain message of a chat that is in use again was never reconciled: the browser re-sent it, waited 30 s and got
+	// 409 every time, although the chat kept working (Code on Excellence, 2026-10-04). The transcript check below stays the proof of non-delivery.
+	if snapshot, live := api.liveMainCodingTmuxSnapshot(record.Session); live {
+		if snapshot.CreatedAt.IsZero() || !snapshot.CreatedAt.After(recordTime) {
+			return false
+		}
+	} else {
+		if api.hasActiveTurnCancel(record.Session) {
+			return false
+		}
+		if retainedSession, ok := mcpagent.LookupSession(record.Session); ok && retainedSession.ActiveTurnID() != "" {
+			return false
+		}
 	}
 
 	raw, err := ReadChatHistoryConversation(record.Owner, record.Session, record.Project)

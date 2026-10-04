@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--cycles", type=int, default=20)
     parser.add_argument("--docs-dir", help="workspace docs root (default /srv/<product>/data/docs)")
+    parser.add_argument("--user-id", help="X-User-ID to send, as the app does on multi-user servers (Excellence: any user id)")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]*", args.product):
         parser.error("invalid product")
@@ -39,7 +40,7 @@ def main():
     ).strip()
     env = dict(item.split("=", 1) for item in Path(f"/proc/{pid}/environ").read_text().split("\0") if "=" in item)
     # A project browser, like a Crew's: exercises the -projects profile grant.
-    root = Path(env["AGENT_BROWSER_SHARED_PROFILE"] + "-projects")
+    root = Path(env.get("AGENT_BROWSER_SHARED_PROFILE", f"/srv/{args.product}/state/browser-profile") + "-projects")
     session = "project-" + uuid.uuid4().hex[:16] + "--browser"
     profile = root / session
     profile.mkdir(mode=0o700, parents=True)
@@ -49,12 +50,17 @@ def main():
     flags = "--no-sandbox,--disable-gpu,--disable-blink-features=AutomationControlled,--lang=en-US,--restore-last-session,--use-fake-device-for-media-stream,--use-fake-ui-for-media-stream"
     prefix = ["agent-browser", "--session", session, "--profile", str(profile), "--idle-timeout", "0", "--args", flags, "--json"]
 
+    token = env.get("WORKSPACE_API_TOKEN", "")
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + token, "X-Workspace-Token": token}
+    if args.user_id:
+        headers["X-User-ID"] = args.user_id
+
     def call(*command):
         body = {"command": shlex.join(prefix + list(command)), "working_directory": relative_work,
-                "timeout": 40, "folder_guard": {"enabled": True, "read_paths": [relative_work], "write_paths": [relative_work]}}
+                "timeout": 40, "folder_guard": {"enabled": True, "read_paths": [relative_work], "write_paths": [relative_work], "browser_session": session}}
         request = urllib.request.Request(
             f"http://127.0.0.1:{args.port}/api/execute", data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json", "X-Workspace-Token": env.get("WORKSPACE_API_TOKEN", "")},
+            headers=headers,
         )
         with urllib.request.urlopen(request, timeout=50) as response:
             result = json.load(response)

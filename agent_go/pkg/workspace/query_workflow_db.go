@@ -23,6 +23,8 @@ type QueryWorkflowDBResult struct {
 	Columns   []string                 `json:"columns"`
 	Rows      []map[string]interface{} `json:"rows"`
 	Truncated bool                     `json:"truncated,omitempty"`
+	// NextOffset is the offset to pass to read the next page when Truncated.
+	NextOffset int `json:"next_offset,omitempty"`
 }
 
 // queryAPIResponse mirrors the workspace /api/query envelope.
@@ -80,6 +82,8 @@ func (c *Client) queryWorkflowDB(ctx context.Context, params QueryWorkflowDBPara
 type WorkflowDBMutationStatement struct {
 	SQL    string        `json:"sql"`
 	Params []interface{} `json:"params,omitempty"`
+	// ParamSets runs SQL once per entry inside the same transaction (excludes Params).
+	ParamSets [][]interface{} `json:"param_sets,omitempty"`
 }
 
 type MutateWorkflowDBParams struct {

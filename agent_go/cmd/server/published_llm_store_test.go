@@ -20,7 +20,7 @@ func TestAutoPublishedCodingAgentLLMsIncludeConcreteClaudeAndCodexModels(t *test
 		"auto:claude-code:claude-haiku-4-5-20251001:max",
 		"auto:claude-code:claude-sonnet-5-5:high",
 		"auto:claude-code:claude-opus-5-5:max",
-		"auto:codex-cli:gpt-5.3-codex-spark:high",
+		"auto:codex-cli:gpt-5.4-mini:high",
 	} {
 		if !containsPublishedLLMID(llms, want) {
 			t.Fatalf("auto-published ids missing %q; got %#v", want, publishedLLMIDs(llms))

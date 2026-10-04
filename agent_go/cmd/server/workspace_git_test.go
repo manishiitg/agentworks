@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -236,5 +237,39 @@ func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) 
 	}
 	if !roots["app"] || !roots["code/service"] || roots["node_modules/pkg"] {
 		t.Fatalf("repos: %v", roots)
+	}
+}
+
+// The platform's private .sandbox-cache folder never shows up as a change, is never walked into (an unreadable folder inside it must not warn), and
+// "stage everything" does not add it.
+func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	private := filepath.Join(repo, ".sandbox-cache", "cli-home", "muse-cli", "tmp", "muse-workspace-probe-abc")
+	if err := os.MkdirAll(private, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(private, "note.txt"), "x\n")
+	writeFile(t, filepath.Join(repo, ".sandbox-cache", "home.txt"), "x\n")
+	if err := os.Chmod(private, 0); err == nil {
+		t.Cleanup(func() { _ = os.Chmod(private, 0o755) })
+	}
+	status, err := workspaceGitStatus(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range status.Files {
+		if strings.Contains(f.Path, ".sandbox-cache") {
+			t.Fatalf("platform folder listed as a change: %+v", f)
+		}
+	}
+	if out, err := workspaceGitRunWrite(context.Background(), repo, nil, "add", "-A"); err != nil || strings.Contains(out, "warning") {
+		t.Fatalf("stage everything: %v %q", err, out)
+	}
+	staged, _ := workspaceGitRunWrite(context.Background(), repo, nil, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, ".sandbox-cache") {
+		t.Fatalf("stage everything added the platform folder: %q", staged)
+	}
+	if !strings.Contains(staged, "loose.txt") {
+		t.Fatalf("stage everything must still add real changes: %q", staged)
 	}
 }

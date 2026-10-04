@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythontools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -564,6 +565,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 		readPaths = append(readPaths, opts.WebhookInputFile)
 	}
 	readPaths = appendAdditionalWorkflowReadPaths(readPaths, baseWorkspacePath, stepConfig)
+	readPaths = appendPythonToolReadPaths(readPaths, baseWorkspacePath, stepConfig)
 	readPaths, writePaths, _, _ = appendWorkflowFolderAccess(baseWorkspacePath, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	readPaths, writePaths = hcpo.appendCDPHostDownloadsPaths(readPaths, writePaths)
 	// PLAT-284: one persistent, workflow-scoped folder for anything a step
@@ -1281,6 +1283,14 @@ func parentStepIndexFromContext(ctx context.Context, fallback int) int {
 func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.Context, phase string, stepPath string, agentName string, stepConfig *AgentConfigs, planStep PlanStepInterface, stepIDOverride string, artifactFolderNameOverride string) (agents.OrchestratorAgent, error) {
 	// 1. Resolve stepID first (needed for folder guard setup)
 	stepID := hcpo.resolveStepID(stepPath, stepIDOverride)
+	var pythonSelections []string
+	if stepConfig != nil {
+		pythonSelections = stepConfig.EnabledCustomTools
+	}
+	_, err := pythontools.SelectedNames(pythonSelections)
+	if err != nil {
+		return nil, err
+	}
 	artifactStepID := stepID
 	artifactStepPath := stepPath
 	if artifactFolderNameOverride = strings.TrimSpace(artifactFolderNameOverride); artifactFolderNameOverride != "" {
@@ -1388,6 +1398,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	// in registerCustomToolsForAgent, ensuring each agent gets its own correct paths.
 	config.FolderGuardReadPaths = readPaths
 	config.FolderGuardWritePaths = writePaths
+	pythonLoadCtx := context.WithValue(ctx, common.ChatSessionIDKey, config.MCPSessionID)
+	pythonTools, err := pythontools.Load(pythonLoadCtx, pythonSelections, hcpo.ReadWorkspaceFile)
+	if err != nil {
+		return nil, err
+	}
 
 	// Setup Downloads folder for agent-browser.
 	// Use shared function to ensure both execution and orchestrator agents set the override correctly
@@ -1451,6 +1466,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		registerStepSessionShellEnv(config.MCPSessionID, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, workspaceEnv)
 		injectStepEnvIntoShellExecutor(executorsToUse, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, config.MCPSessionID, workspaceEnv)
 		hcpo.GetLogger().Info(fmt.Sprintf("📂 Injecting step shell env into execute_shell_command for %s: STEP_OUTPUT_DIR=%s MCP_SESSION_ID=%s", stepID, stepOutputAbsPath, config.MCPSessionID))
+	}
+
+	if len(pythonTools) > 0 {
+		if err := hcpo.bindPythonTools(config, pythonTools, &toolsToRegister, executorsToUse); err != nil {
+			return nil, err
+		}
 	}
 
 	// 6. Use base factory! (This handles all setup automatically)
@@ -1722,6 +1743,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	// normal execution steps. Without this, shell calls fall back to the broader parent
 	// workflow/group MCP session and can see workflow-root files or sibling groups.
 	todoReadPaths, todoWritePaths := hcpo.GetFolderGuardPaths()
+	todoReadPaths = append(todoReadPaths, hcpo.scriptedRouteSourceReadPaths(subAgentExecCtx)...)
 	todoSessionID := hcpo.setupSubAgentSessionGuard("todo", stepID, todoReadPaths, todoWritePaths)
 	config.MCPSessionID = todoSessionID
 	dbAccess := resolveDBAccess(stepConfig)
@@ -1899,6 +1921,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 			executorsToUse[toolName] = wrappedExecutor
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
 		}
+
+		// PLAT-432: each saved scripted route is also a named tool.
+		reserved := map[string]bool{}
+		for _, tool := range append(append([]llmtypes.Tool(nil), hcpo.WorkspaceTools...), toolsToRegister...) {
+			if tool.Function != nil {
+				reserved[tool.Function.Name] = true
+			}
+		}
+		for _, definition := range config.DirectTools {
+			reserved[definition.Name] = true
+		}
+		routeTools := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+		config.DirectTools = append(config.DirectTools, routeTools...)
+		for _, definition := range routeTools {
+			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))
+		}
 	} else {
 		hcpo.GetLogger().Info("🔧 Sub-agent execution context not provided - sub-agent tools will not be available")
 	}
@@ -2020,6 +2058,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 					desc += "\n\nDescription: " + ResolveVariables(route.SubAgentStep.GetDescription(), hcpo.variableValues)
 					if contract := formatScriptParameterContract(scriptedParameterDefinitions(route.SubAgentStep)); contract != "" {
 						desc += "\n\nScript parameters (pass these as call_scripted_sub_agent.parameters):\n" + contract
+					}
+					if schema := scriptedParametersSchema(route.SubAgentStep); len(schema) > 0 {
+						encoded, _ := json.MarshalIndent(schema, "", "  ")
+						desc += "\n\nScript parameters JSON Schema (call_scripted_sub_agent.parameters must match it):\n" + string(encoded)
 					}
 					if sequenceRouteInfo := formatMessageSequenceRoutePromptBlock(route.SubAgentStep); sequenceRouteInfo != "" {
 						desc += "\n\n" + sequenceRouteInfo

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -663,6 +664,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		if (command == "close" || command == "quit" || command == "exit") && !SessionHasOtherTabOwners(session, sessionTabOwner) {
 			log.Printf("[BROWSER_TRACKER] Closing browser: browser=%q agent=%q", session, agentSessionID)
 			defer tracker.Remove(session)
+			defer browserconfig.RemoveEmptySessionSocketDirs(session)
 		}
 	}
 
@@ -1024,6 +1026,11 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		// be compared against what was actually alive right before the attempt.
 		logPreKillDiagnostics(session)
 	}
+	if isHeadless && command == "screenshot" && wantsFullPageScreenshot(commandArgs) {
+		if refusal := e.fullPageScreenshotRefusal(ctx, session, commandOpts); refusal != nil {
+			return "", refusal
+		}
+	}
 	output, err := e.Client.ExecuteCommand(ctx, cmdArgs, commandOpts)
 	if err != nil && isHeadless && strings.Contains(err.Error(), "timed out after") {
 		// The daemon is stuck behind the page: capture evidence straight from
@@ -1058,6 +1065,11 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 			return false
 		}
 		msg := e.Error()
+		// "Failed to save screenshot to <path>: No such file or directory" is an unwritable output folder, not a dead daemon:
+		// killing a healthy browser for it only lost the user's page.
+		if strings.Contains(msg, "Failed to save") {
+			return false
+		}
 		return strings.Contains(msg, "CDP response channel closed") ||
 			strings.Contains(msg, "No such file or directory") ||
 			strings.Contains(msg, "ProcessSingleton")
@@ -1132,6 +1144,31 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 					captureChromePID(session)
 				}
 			}
+		}
+	}
+
+	// A managed (headless) browser whose tab crashed, or whose command never finished, stays stuck until the session is closed
+	// ("open" hangs after chrome://crash). Close the session once and retry the command once; say so plainly if it still fails.
+	if err != nil && isHeadless && isStuckBrowserError(err) {
+		switch {
+		case command == "close" || command == "quit" || command == "exit":
+			log.Printf("[BROWSER] close of stuck session %q (%v): tearing the runtime down", session, err)
+			killSessionRuntimeFully(session)
+			return `{"success":true,"message":"session closed"}`, nil
+		case isBrowserOpenCommand(command) || shouldRetryCDPTimeout(command):
+			log.Printf("[BROWSER] Stuck session %q on %q (%v): closing it and retrying once", session, command, err)
+			killSessionRuntimeFully(session)
+			time.Sleep(stuckSessionRetryPause)
+			firstErr := err
+			output, err = e.Client.ExecuteCommand(ctx, cmdArgs, commandOpts)
+			if err == nil && isOpenCommand {
+				captureChromePID(session)
+			}
+			if err != nil {
+				err = fmt.Errorf("BROWSER_STUCK: the browser session was stuck (%w); it was closed and %q retried once, which failed again: %w", firstErr, command, err)
+			}
+		default:
+			err = fmt.Errorf("BROWSER_STUCK: %q did not finish and may have partly run, so it was not retried automatically. Inspect the page with snapshot or get; if the page stays unresponsive, call close and open it again: %w", command, err)
 		}
 	}
 
@@ -2117,6 +2154,7 @@ func killSessionRuntimeFully(session string) {
 	killSessionRuntime(session)
 	removeSessionFiles(session)
 	removeStaleChromeSingletonLock(session)
+	browserconfig.RemoveEmptySessionSocketDirs(session)
 }
 
 // removeSessionFiles removes agent-browser session state files (.pid, .sock, etc.)
@@ -2128,7 +2166,7 @@ func removeSessionFiles(session string) {
 	}
 	for _, dir := range sessionDirs() {
 		removed := false
-		for _, ext := range []string{".pid", ".chrome-pid", ".sock", ".stream", ".engine", ".version"} {
+		for _, ext := range []string{".pid", ".chrome-pid", ".sock", ".stream", ".engine", ".version", ".config", ".target"} {
 			f := filepath.Join(dir, session+ext)
 			if err := os.Remove(f); err == nil {
 				removed = true
@@ -2166,4 +2204,63 @@ func removeStaleChromeSingletonLock(session string) {
 	if removed {
 		log.Printf("[BROWSER] Removed stale Chrome singleton lock for %q in %s", session, profile)
 	}
+}
+
+// stuckSessionRetryPause lets the OS finish tearing down a closed browser before the retry launches a fresh one.
+var stuckSessionRetryPause = time.Second
+
+// isStuckBrowserError reports the shapes of a browser that no longer answers: agent-browser's own "Operation timed out" (a crashed
+// tab never finishes loading), a command the workspace killed at its deadline, and an explicit crashed-target error.
+func isStuckBrowserError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{"operation timed out", "timed out after", "command timed out", "command execution timed out", "cdp command timed out",
+		"target crashed", "page crashed", "tab crashed", "targetcrashed"} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// maxFullPageScreenshotHeight is the tallest page a full-page screenshot is attempted for: a taller capture exceeds Chrome's texture
+// limit and kills the browser ("CDP response channel closed") instead of returning an error.
+const maxFullPageScreenshotHeight = 16000
+
+func wantsFullPageScreenshot(args []string) bool {
+	for _, arg := range args {
+		if arg == "--full" {
+			return true
+		}
+	}
+	return false
+}
+
+var pageHeightPattern = regexp.MustCompile(`"result"\s*:\s*"?(\d+(?:\.\d+)?)`)
+
+// fullPageScreenshotRefusal measures the page and returns an ordinary error when a full-page capture would be too tall. A page whose
+// height cannot be read is not blocked.
+func (e *Executor) fullPageScreenshotRefusal(ctx context.Context, session string, opts *ExecuteOptions) error {
+	probe := append(append([]string{}, HeadlessLaunchArgsForSession(session)...), "--session", session, "eval", "document.documentElement.scrollHeight", "--json")
+	probeOpts := &ExecuteOptions{}
+	if opts != nil {
+		cloned := *opts
+		cloned.ArtifactTransfer, cloned.UploadTransfers = nil, nil
+		probeOpts = &cloned
+	}
+	out, err := e.Client.ExecuteCommand(ctx, probe, probeOpts)
+	if err != nil {
+		return nil
+	}
+	match := pageHeightPattern.FindStringSubmatch(out)
+	if match == nil {
+		return nil
+	}
+	height, parseErr := strconv.ParseFloat(match[1], 64)
+	if parseErr != nil || height <= maxFullPageScreenshotHeight {
+		return nil
+	}
+	return fmt.Errorf("SCREENSHOT_TOO_TALL: the page is %.0f px tall; a full-page screenshot is limited to %d px because Chrome cannot capture more. Take a viewport screenshot (without --full) after scrolling to the part you need", height, maxFullPageScreenshotHeight)
 }

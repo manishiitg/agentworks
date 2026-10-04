@@ -838,3 +838,49 @@ func TestWorkspaceRoutesGoThroughAgent(t *testing.T) {
 		t.Fatalf("status=%d path=%q user=%q", rec.Code, seenPath, seenUser)
 	}
 }
+
+func TestSandboxedLessonMediaUsesJWTWithoutLoginCookie(t *testing.T) {
+	var seenPath, seenAuth, seenRange, seenUser string
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath, seenAuth, seenRange, seenUser = r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Range"), r.Header.Get("X-User-ID")
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Range", "bytes 0-3/100")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("MP4!"))
+	}))
+	defer agent.Close()
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "family-user"}
+	g.agent = proxyFor(agent.URL)
+	token, err := g.agentToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaPath := "/api/wp/api/documents/Chats/SparkQuill/activities/lesson/lesson.mp4/raw"
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		req := httptest.NewRequest(method, mediaPath+"?token="+token, nil)
+		req.Header.Set("Range", "bytes=0-3")
+		req.Header.Set("X-User-ID", "spoofed")
+		rec := httptest.NewRecorder()
+		g.ServeHTTP(rec, req)
+		if rec.Code != http.StatusPartialContent || seenPath != mediaPath || seenAuth != "Bearer "+token || seenRange != "bytes=0-3" || seenUser != "family-user" {
+			t.Fatalf("%s: status=%d path=%q range=%q user=%q", method, rec.Code, seenPath, seenRange, seenUser)
+		}
+		if rec.Header().Get("Content-Type") != "video/mp4" || rec.Header().Get("Content-Range") != "bytes 0-3/100" {
+			t.Fatal("media type and byte range must reach the browser")
+		}
+	}
+	for _, test := range []struct{ method, path, token string }{
+		{http.MethodGet, mediaPath, ""},
+		{http.MethodGet, mediaPath, "invalid"},
+		{http.MethodGet, mediaPath, "aw_pat_test-token"},
+		{http.MethodGet, mediaPath, token[:len(token)-2] + "xx"},
+		{http.MethodPut, mediaPath, token},
+		{http.MethodGet, strings.TrimSuffix(mediaPath, "/raw"), token},
+	} {
+		rec := httptest.NewRecorder()
+		g.ServeHTTP(rec, httptest.NewRequest(test.method, test.path+"?token="+test.token, nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s without required credential/session got %d", test.method, test.path, rec.Code)
+		}
+	}
+}

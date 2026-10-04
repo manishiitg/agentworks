@@ -10,7 +10,16 @@ if ! mkdir -m 700 "$browser_tmp" 2>/dev/null; then
     fi
 fi
 export TMPDIR="$browser_tmp" TMP="$browser_tmp" TEMP="$browser_tmp"
+# Chrome needs a writable HOME even with --user-data-dir: with the service's own HOME (read-only under the sandbox, native mode)
+# it dies at startup (crashpad "--database is required", SIGTRAP) before writing DevToolsActivePort. The profile itself lives under
+# --user-data-dir, so nothing worth keeping is written here.
+browser_home="$browser_tmp/home"
+mkdir -p -m 700 "$browser_home/.config" "$browser_home/.cache"
+export HOME="$browser_home" XDG_CONFIG_HOME="$browser_home/.config" XDG_CACHE_HOME="$browser_home/.cache"
+unset XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 # The zygote and separate GPU startup paths require child /proc entries that
 # Landlock cannot grant dynamically. Keep existing sandbox permissions intact.
 # The managed headless launcher already supplies --no-sandbox.
-exec "$(dirname "$0")/chrome" --disable-dev-shm-usage --no-zygote --in-process-gpu "$@"
+# Run Chrome by its resolved path: it finds libvulkan/libvk_swiftshader next to the path it was started as, so through a
+# `chrome -> /opt/google/chrome/chrome` symlink SwANGLE could not initialise and the browser died (SIGTRAP) on the first screenshot.
+exec "$(readlink -f "$(dirname "$0")/chrome")" --disable-dev-shm-usage --no-zygote --in-process-gpu "$@"

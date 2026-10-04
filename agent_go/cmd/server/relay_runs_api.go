@@ -63,6 +63,11 @@ func relayCallPayloadMatches(raw string, function string, input map[string]inter
 }
 
 func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Request) {
+	api.startRelayRun(w, r, false)
+}
+
+// draft is supplied only by the authenticated MCP authoring adapter.
+func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, draft bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	workspace, manifest, claims, ok := api.relayForRunRequest(w, r)
 	if !ok {
@@ -87,6 +92,17 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "function, input object and idempotency_key (1-128 characters) are required", http.StatusBadRequest)
 		return
 	}
+	if draft {
+		access := workflowAccessForManifest(claims, manifest)
+		if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+			http.Error(w, "Draft tests require write access", http.StatusForbidden)
+			return
+		}
+		if request.Version != "" {
+			http.Error(w, "Draft tests cannot select a published version", 400)
+			return
+		}
+	}
 	caller := triggerCaller{Type: triggerCallerUser, ID: claims.UserID}
 	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, request.Function)
 	if liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, caller) {
@@ -95,6 +111,9 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 	}
 	args := map[string]interface{}{"INPUT": request.Input}
 	deliveryID := claims.UserID + "\x00" + request.IdempotencyKey
+	if draft {
+		deliveryID = "draft\x00" + deliveryID
+	}
 	// Search old and published bindings before choosing today's active version.
 	// An idempotency key must still find its original run after a republish.
 	candidates := []struct {
@@ -102,7 +121,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		manifest  *WorkflowManifest
 		version   string
 	}{{workspace, manifest, ""}}
-	if releases, listErr := listRelayReleases(r.Context(), workspace); listErr == nil {
+	if releases, listErr := listRelayReleases(r.Context(), workspace); listErr == nil && !draft {
 		for _, release := range releases {
 			releaseWorkspace := relayReleaseWorkspace(workspace, release.Version)
 			published, found, readErr := ReadWorkflowManifest(r.Context(), releaseWorkspace)
@@ -139,7 +158,12 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	release, releaseWorkspace, err := resolveRelayRelease(r.Context(), workspace, request.Version)
+	release := &relayRelease{}
+	releaseWorkspace := workspace
+	var err error
+	if !draft {
+		release, releaseWorkspace, err = resolveRelayRelease(r.Context(), workspace, request.Version)
+	}
 	if err != nil {
 		status := http.StatusConflict
 		if request.Version != "" && errors.Is(err, errRelayVersionNotFound) {
@@ -162,7 +186,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, delivery, err := api.scheduler.dispatchWorkflowFunction(r.Context(), workflowFunctionCall{WorkflowID: manifest.ID, Function: request.Function, RelayVersion: release.Version, Caller: caller, DeliveryID: deliveryID, Args: args, Payload: map[string]interface{}{"relay_caller": claims.UserID}})
+	_, delivery, err := api.scheduler.dispatchWorkflowFunction(r.Context(), workflowFunctionCall{WorkflowID: manifest.ID, Function: request.Function, RelayVersion: release.Version, draftRelay: draft, Caller: caller, DeliveryID: deliveryID, Args: args, Payload: map[string]interface{}{"relay_caller": claims.UserID}})
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, ErrWebhookConcurrencyLimit) || errors.Is(err, ErrWebhookRunStoreMissing) {

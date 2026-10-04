@@ -74,6 +74,14 @@ describe('buildCleanConversationItems', () => {
     ])
   })
 
+  it('shows a raw background tool payload as its description, not the whole command', () => {
+    const raw = JSON.stringify({ chunk_id: 'exec-1', command: 'for i in $(seq 1 24); do sleep 10; done', description: 'Poll test run until completion' })
+    const items = buildCleanConversationItems([
+      event('task-out', 'coding_agent_background_task', { kind: 'output', task_id: 'task-a', message: raw }),
+    ])
+    expect(items.map((item) => item.content)).toEqual(['Background task task-a output: Poll test run until completion'])
+  })
+
   it('classifies provider restart context as continuity instead of a user message', () => {
     const content = '[AGENTWORKS CONVERSATION CONTINUITY]\nRead the complete 423-message conversation archive.'
     expect(buildCleanConversationItems([

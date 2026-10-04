@@ -29,6 +29,10 @@ type QueryResponse struct {
 type MutationStatement struct {
 	SQL    string        `json:"sql" binding:"required"`
 	Params []interface{} `json:"params,omitempty"`
+	// ParamSets runs SQL once per entry (an executemany), inside the same
+	// transaction. It excludes Params: a statement has one or the other. The
+	// receipt for the statement sums the rows affected over every set.
+	ParamSets [][]interface{} `json:"param_sets,omitempty"`
 }
 
 // MutationRequest executes all statements in one transaction against an

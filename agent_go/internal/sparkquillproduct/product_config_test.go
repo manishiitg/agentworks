@@ -51,6 +51,9 @@ func TestManifestDeclaresParentAndChild(t *testing.T) {
 		t.Fatal("both profiles must allowlist their tools")
 	}
 	for _, p := range profiles {
+		if p.Runtime.AgentTools.Mode != "full" {
+			t.Fatalf("%s must use platform native tools: %q", p.ID, p.Runtime.AgentTools.Mode)
+		}
 		if err := agentprofiles.Validate(p); err != nil {
 			t.Fatalf("%s: %v", p.ID, err)
 		}

@@ -287,6 +287,17 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[name] = category
 		}
 
+		// PLAT-428. The scripts that still open the database themselves, for the
+		// contract 1.0.45 migration to the agentworks_db helper.
+		scriptDBRegistry := virtualtools.CreateScriptDBToolRegistry(sessionID)
+		allTools = append(allTools, scriptDBRegistry.Tools...)
+		for name, executor := range scriptDBRegistry.Executors {
+			allExecutors[name] = executor
+		}
+		for name, category := range scriptDBRegistry.Categories {
+			toolCategories[name] = category
+		}
+
 		// PLAT-184. This workflow's own per-workspace cost ledger, readable
 		// through its normal folder-guard-scoped tools -- unlike the global
 		// human-facing Cost Analysis ledger, which sits outside every
@@ -674,7 +685,8 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 				} else {
 					ctx = context.WithValue(ctx, common.FolderGuardAllowedWriteFolderKey, shellAllowedFolders)
 				}
-				readFolders := []string{"skills/", "subagents/", "Workflow/"}
+				// Other workflows only when attached (readOnlyFolders), never all of Workflow/.
+				readFolders := []string{"skills/", "subagents/"}
 				readFolders = append(readFolders, shellAllowedFolders...)
 				readFolders = append(readFolders, readOnlyFolders...)
 				readFolders = cleanFolderGuardFolders(readFolders)

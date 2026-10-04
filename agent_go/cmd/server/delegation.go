@@ -621,6 +621,14 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		}
 	}
 
+	// Allowed models: a tier or inherited model the account does not allow
+	// runs on the account's first allowed model.
+	if constrained, changed, constrainErr := resolveAccountModel(ctx, string(provider), connectionID, modelID); constrainErr != nil {
+		return "", constrainErr
+	} else if changed {
+		modelID = constrained
+	}
+
 	// Build server name — use delegation-specific servers if provided, otherwise all parent servers
 	var serverName string
 	var serversList []string
@@ -995,7 +1003,8 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			// spawned with their own folder scope). Pass nil.
 			workspaceExecutors = wrapExecutorsWithChatModeFolderGuard(workspaceExecutors, workflowReadOnlyFolders, nil, extraFolders...)
 			workspace.SetSessionWorkingDir(sessionID, subPerUserChatsFolder)
-			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "skills/", "subagents/", "Workflow/"}, extraFolders...)
+			// Other workflows only when attached (workflowReadOnlyFolders below).
+			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "skills/", "subagents/"}, extraFolders...)
 			readPaths = append(readPaths, subResolvedGrants.ReadOnlyExtra...)
 			readPaths = append(readPaths, workflowReadOnlyFolders...)
 			workspace.SetSessionFolderGuard(sessionID,

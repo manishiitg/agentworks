@@ -1,3 +1,236 @@
+## Scripted steps never self-heal in a run — PLAT-436
+
+[PLAT-436](pulse_platform/step-execution/plat-436.md), fixed on `main`, not
+deployed: runs execute the saved script and fail on its error; only the
+Builder's own `execute_step` authors or repairs scripts.
+
+## Code and Crew pages could not connect their panel on multi-user servers — PLAT-434
+
+[PLAT-434](pulse_platform/frontend-chat/plat-434.md), fixed on main; deployment pending. A project under `_users/<id>/` got the workflow
+view list, so the page's connect call was refused (`invalid_state`) and the agent saw "browser disconnected".
+
+## One workspace path type instead of `_users/` string handling everywhere — PLAT-435
+
+[PLAT-435](pulse_platform/security-sandbox/plat-435.md), open (proposal). The logical/physical path mix-up is the root of a long series of
+multi-user-only bugs: 82 files, 17 raw prefix checks, three disagreeing normalisers.
+
+## Relays use external API triggers without timed schedules — PLAT-433
+
+[PLAT-433](pulse_platform/scheduler-runs/plat-433.md), fixed on main; deployment
+pending. Remove scheduling from Relay UI/Builder/runtime, keep function APIs and
+shared delivery tracking; retire saved Relay timers without rewriting releases.
+
+## Scripted routes are named tools — PLAT-432
+
+[PLAT-432](pulse_platform/plans-contracts/plat-432.md), fixed on `main`, not
+deployed: each saved scripted route is a named tool of its Agent step, returns
+`route_result.json`, and may declare `script_parameters_schema`.
+
+## Relays reuse workflow migrations, minus goal-driven ones — PLAT-431
+
+[PLAT-431](pulse_platform/plans-contracts/plat-431.md), fixed on `main`, not
+deployed: a Relay owes only the shared migrations and its Builder can run them;
+the 1.0.45 bump no longer strands Relays without migration tools.
+
+## Workflow Costs emphasizes numbers and removes explanatory copy — PLAT-430
+
+[PLAT-430](pulse_platform/cost-telemetry/plat-430.md), fixed on main; deployment
+pending. Short input/cache/output/cost columns, compact missing-data counters,
+secondary run/model details, and independently expandable dates.
+
+## A CLI chat said the UI control tools were unavailable (they are bridge tools) — PLAT-429
+
+[PLAT-429](pulse_platform/coding-agent-bridge/plat-429.md), P3, fixed on `main`; deploy pending. The UI-control skill now says how to reach them.
+
+## Relay creation, Builder editing and versioned runs through platform MCP — PLAT-427
+
+[PLAT-427](pulse_platform/mcp/plat-427.md), fixed on main; deployment pending.
+Relay product manifest owns MCP tools; explicit authoring consent, shared Builder
+operations/publisher/scheduler, draft tests and immutable version calls.
+
+## Build a release once, deploy everywhere — PLAT-426
+
+[PLAT-426](pulse_platform/scheduler-runs/plat-426.md), P3, fixed on `main`; not deployed. `deploy.sh` builds once on the Hetzner
+box (`/srv/_builds`, manifest with revisions, arch, glibc, file hashes; about 3 min warm) and Excellence, Confida, SparkQuill
+and RTS only copy and activate it after verifying the manifest; `--build` deploys a chosen older build.
+
+## Provider switch: next sends rejected with 409 delivery_uncertain — PLAT-425
+
+[PLAT-425](pulse_platform/chat-reliability/plat-425.md), P1, fixed on `main`; deploy pending. A gone retained terminal now starts a fresh turn instead of 409.
+
+## CLI delivery health: smoke test, duplicate and launch-death checks — PLAT-424
+
+[PLAT-424](pulse_platform/chat-reliability/plat-424.md), P2, open (planned, not started). Notice duplicate sends, instant launch deaths and slow acceptance without a user report.
+
+## Named custom Python tools for Relay agents — PLAT-423
+
+[PLAT-423](pulse_platform/coding-agent-bridge/plat-423.md), fixed on main;
+deployment pending. User-authored run(input) functions register as named tools
+with per-step selection, schemas and the shared sandbox/registry. Published
+versions freeze tool source. The original custom-tool requirement is implemented.
+
+## Muse messages ran three or more times: stale refusal notice — PLAT-422
+
+[PLAT-422](pulse_platform/coding-agent-bridge/plat-422.md), P1, fixed on `main`; deploy in progress. A refusal now needs a new notice or the draft still in the input box.
+
+## Muse launch ended at once: sweep prelude could not find `muse` — PLAT-421
+
+[PLAT-421](pulse_platform/coding-agent-bridge/plat-421.md), P1, fixed on `main`; deploy to Excellence and RTS in progress.
+
+## Scripted steps use the managed DB helper — PLAT-428
+
+[PLAT-428](pulse_platform/security-sandbox/plat-428.md), contract 1.0.45: scripts
+read and write through `agentworks_db` (the managed tools), not `sqlite3` /
+`$DB_PATH`; every workflow must be migrated before it runs.
+
+## Bulk writes and paged reads in the DB tools — PLAT-420
+
+[PLAT-420](pulse_platform/security-sandbox/plat-420.md), fixed on `main`, not
+deployed: `mutate_workflow_db` takes `param_sets` (many rows, one transaction) and
+up to 200 statements; `query_workflow_db` takes `offset`/`next_offset` and up to
+10,000 rows.
+
+## Codex on a Mac: own CODEX_HOME, personal MCP servers off — PLAT-418
+
+[PLAT-418](pulse_platform/coding-agent-bridge/plat-418.md), fixed on `main`, not
+deployed (Mac only): Codex loaded the person's own MCP servers and could not see
+its session profile; it now runs with its own `CODEX_HOME` like under Landlock.
+
+## What a workflow step may do (measured) — PLAT-419
+
+[PLAT-419](pulse_platform/security-sandbox/plat-419.md), open question for the
+owner: the permission map of agent steps vs scripted steps, from the new
+`cli-step-contract`.
+
+## Muse on a confined host: runtime folder, refused messages, probe folders — PLAT-417
+
+[PLAT-417](pulse_platform/coding-agent-bridge/plat-417.md), fixed on `main`, not
+deployed: registry_io warning (own runtime folder), "another run is still
+starting" (retry), probe folder leak (sweep as the slot user). The mid-run
+auth-file error is open.
+
+## Codex Spark dropped; allowed-models 422 on a stale saved model — PLAT-416
+
+[PLAT-416](pulse_platform/coding-agent-bridge/plat-416.md), P2, fixed on `main`; deploy pending. A model the account does not allow now runs on the first allowed one instead of failing the chat.
+
+## Structured Python step output API — PLAT-415
+
+[PLAT-415](pulse_platform/security-sandbox/plat-415.md), fixed on main;
+deployment pending. Shared set_output(value) helper persists structured JSON
+for downstream references without user-managed files; slot runtime imports
+and artifact permissions are verified.
+
+## Stop browser finds nothing, stuck tab recovery, tall screenshots — PLAT-414
+
+[PLAT-414](pulse_platform/browser/plat-414.md), fixed on main, not deployed. The browser list and cleanup now see Chrome; a stuck
+managed browser is closed and the command retried once; full-page screenshots above 16000 px are refused with a clear error.
+
+## Coding-agent background tasks show one readable line, not raw payload — PLAT-413
+
+[PLAT-413](pulse_platform/frontend-chat/plat-413.md), P3, fixed on `main`; deploy pending. Full text behind "Show details".
+
+## Relay user message and validation guidance — PLAT-412
+
+[PLAT-412](pulse_platform/coding-agent-bridge/plat-412.md), fixed on main;
+deployment pending. Explicit prior-output references in authored messages,
+JSON-only final responses and current validation limits are documented in the
+manifest-owned builder prompt and skill.
+
+## Relay agent tool errors in the invoice run — PLAT-411
+
+[PLAT-411](pulse_platform/security-sandbox/plat-411.md), open. An archived invoice
+run returned prose after JSON following missing database sandbox-path and
+browser slot errors. The latest run succeeded with both outputs saved; the
+failed tool paths still need isolated verification.
+
+## Source Control listed and would have committed the private `.sandbox-cache` folder — PLAT-410
+
+[PLAT-410](pulse_platform/frontend-chat/plat-410.md), P2, fixed on `main`; deploy pending. Panel git and sandbox git (agent, terminal) ignore the platform folder.
+## Relays use the shared Ctrl+K switcher — PLAT-409
+
+[PLAT-409](pulse_platform/frontend-chat/plat-409.md), fixed on main; deployment
+pending. Include Relays in keyboard and custom-event entry points, label Relay
+presets correctly, and open them through existing product-aware navigation.
+
+## Workflow header Ops collapsed by default — PLAT-408
+
+[PLAT-408](pulse_platform/frontend-chat/plat-408.md), fixed on main; deployment
+pending. Keep the Ops label and expand its existing icons on click. Views and
+icon-only Setup remain open.
+
+## Models: allowed models per account, one Model card, changes between turns — PLAT-407
+
+[PLAT-407](pulse_platform/frontend-chat/plat-407.md), fixed on `main`; deployed to Excellence only (the
+between-turns change also in the RTS build from `ad3956735`). Optional `allowed_models` per provider account enforced on
+the server; workflow Models tab with one Model card; a model or effort change waits for the running turn.
+
+## Chat composer: New chat in Code, mic, layout, toolbar order — PLAT-406
+
+[PLAT-406](pulse_platform/frontend-chat/plat-406.md), fixed on `main`; New chat deployed widely, mic and layout on
+Excellence only. No model picker in the chat input; terminal and attach left, New chat, wand, mic and send right.
+
+## Deploy behaviour and one runtime profile — PLAT-405
+
+[PLAT-405](pulse_platform/scheduler-runs/plat-405.md), fixed on `main`; step 2 (standard profile written by the
+rootless-linux deploy) still to reach Dominion and SparkQuill. Slack notices silent by default, deploys switch over at
+once, stale `.deploying` markers no longer pin releases, drift report.
+
+## Slot accounts: private home, system Chrome, socket folder, slot table, Usage terminal — PLAT-404
+
+[PLAT-404](pulse_platform/security-sandbox/plat-404.md), P1, fixed on `main`; Chrome grant deployed to Excellence only.
+Group-accessible sandbox home, one home per person in Code, `/opt/google/chrome` granted, browser socket folder always
+set, slot table readable after re-init, Usage terminal slash allowlist, tunnels allowed in the Code prompt.
+
+## Code terminal: own-account shell, tabs, colours, copy and scrolling — PLAT-403
+
+[PLAT-403](pulse_platform/frontend-chat/plat-403.md), fixed on `main`; server scroll batching on Excellence only. Real
+shell as the person's slot, up to 3 tabs, themed xterm.js, copy and wheel scroll through tmux; RTS has no terminal yet.
+
+## Native agent tools always on for workflows and Relays — PLAT-402
+
+[PLAT-402](pulse_platform/coding-agent-bridge/plat-402.md), P3, fixed on `main`; deployed to Excellence only. No switch any more; a stored "off" is ignored.
+
+## Code project browser starts, screenshots and live-views under the sandbox — PLAT-401
+
+[PLAT-401](pulse_platform/browser/plat-401.md), fixed on main; installed and proved on Excellence, other servers pending.
+Managed Chrome launcher with a writable HOME and the resolved binary, installed by the deploy; regression tests and a
+52-row browser matrix script.
+
+## Supply-chain loader on the Excellence box; scanner missed it — PLAT-400
+
+[PLAT-400](pulse_platform/security-sandbox/plat-400.md), P1, contained; sweep tool on main. Account owners must rotate
+credentials; scheduled sweep not wired yet.
+
+## Script outputs blocked by slot directory permissions — PLAT-399
+
+[PLAT-399](pulse_platform/security-sandbox/plat-399.md), fixed on main; deployment
+pending. Shared shell preparation makes granted output directories writable by
+slots. Relay guidance requires file outputs; pip listing itself succeeded.
+
+## Relay output labels and always-open workflow toolbar — PLAT-398
+
+[PLAT-398](pulse_platform/frontend-chat/plat-398.md), fixed on main; deployment
+pending. Output selector removed, output agent marked, authored user messages
+named clearly; Automation moves into always-open Ops and setup is icons only.
+
+## Full CLI uses its own subagents; run_in_background narrowed — PLAT-397
+
+[PLAT-397](pulse_platform/coding-agent-bridge/plat-397.md), fixed on `main`, not
+deployed: in-turn parallel work goes to the CLI's own subagents;
+`run_in_background` only for read-only reviewers and long supervision loops.
+
+## Full mode: no bridge edit tool — PLAT-396
+
+[PLAT-396](pulse_platform/coding-agent-bridge/plat-396.md), fixed on `main`, not
+deployed: with native tools on, the CLI edits natively and
+`diff_patch_workspace_file` is not offered; kept for mcp_only, Pi and step agents.
+
+## Chats read other workflows only when attached — PLAT-395
+
+[PLAT-395](pulse_platform/security-sandbox/plat-395.md), fixed on `main`, not
+deployed: the blanket read grant on `Workflow/` is gone; a chat reads its own
+workflow and attached ones (bridge tools and the CLI sandbox alike).
+
 ## Seatbelt for every coding CLI on a Mac; full_unconfined removed — PLAT-394
 
 [PLAT-394](pulse_platform/security-sandbox/plat-394.md), P1, on `main`, Mac-only
@@ -42,7 +275,8 @@ with manifest and runtime enforcement.
 [PLAT-386](pulse_platform/frontend-chat/plat-386.md), fixed on main; included in
 the recorded RTS source release; app-level live qualification pending. Providers
 owns agent/account setup; products select ready accounts, models and supported
-effort. Includes the provider UI cleanup and Cursor effort forwarding.
+effort. Includes the provider UI cleanup and Cursor effort forwarding. The
+2026-10-04 removal of product provider search is fixed on main; deploy pending.
 
 ## Cursor account model availability — PLAT-387
 

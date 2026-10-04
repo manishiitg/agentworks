@@ -559,7 +559,7 @@ function App() {
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
   useEffect(() => {
-    if (productSurface !== 'agentworks' && productSurface !== 'work' && productSurface !== 'code') setShowQuickSwitcher(false)
+    if (productSurface !== 'agentworks' && productSurface !== 'work' && productSurface !== 'code' && productSurface !== 'relays') setShowQuickSwitcher(false)
   }, [productSurface])
 
   
@@ -573,7 +573,7 @@ function App() {
   useEffect(() => {
     const handleOpenQuickSwitcher = (event: Event) => {
       const surface = useProductSurfaceStore.getState().productSurface
-      if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code') return
+      if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code' && surface !== 'relays') return
       const detail = (event as CustomEvent<{ query?: string }>).detail
       setQuickSwitcherInitialQuery(detail?.query || '')
       setShowQuickSwitcher(true)
@@ -862,10 +862,10 @@ function App() {
         chatStore.setAutoScroll(!chatStore.autoScroll)
         return
       }
-      // Ctrl/Cmd + K opens the shared AgentWorks/Crew switcher.
+      // Ctrl/Cmd + K opens the shared AgentWorks/Crew/Code/Relay switcher.
       if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         const surface = useProductSurfaceStore.getState().productSurface
-        if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code') return
+        if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code' && surface !== 'relays') return
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
         setShowQuickSwitcher(prev => !prev)

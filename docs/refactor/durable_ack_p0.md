@@ -21,6 +21,13 @@ correctness bugs after the FIFO-receipt and append-then-apply fixes; the
 regression coverage. Historical live passes do not cover those cases, and the
 reviewer has not yet re-verified.
 
+### Muse refusal notice: no retype (2026-10-04)
+
+The PLAT-417 retry retyped the message whenever the pane showed "Message not sent -- another run is still starting", and a notice left on screen made every later submit
+look refused: one message ran three or more times on Excellence (seven copies in the pane). That violated this document (attempt once, observe-only, pane never decides).
+Now `museSendPrompt` only logs the notice and `museWaitIntake` decides from `runtime.user_intent.accepted`. Ticket: PLAT-422. Open: a Muse that truly refuses while a resume
+is starting leaves its text in the input and ends the turn as unconfirmed; a structured readiness record to wait on before submitting is not identified yet.
+
 ### AGY onboarding extension (2026-09-27)
 
 AGY is the sixth coding CLI with a provider-side durable live-input receipt.

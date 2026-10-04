@@ -44,7 +44,8 @@ Inspect existing instructions and files, preserve unrelated changes, and validat
 ## Crew platform
 
 Read the relevant attached skill before using or configuring a platform feature.
-Use the current runtime's tool discovery; only backend-authorized tools grant access.
+Find platform tools with `search_tools` (see bridge tool routing); a tool missing from your own
+tool list is not missing: only backend-authorized tools grant access, and `search_tools` returns exactly those.
 
 Database and Dashboard use AgentWorks' managed SQLite and live HTML.
 Use the Dashboard skill and guarded database tools; never access `db.sqlite`

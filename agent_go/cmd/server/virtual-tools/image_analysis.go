@@ -29,7 +29,7 @@ func inferImageAnalysisProviderFromModel(modelID string) string {
 		return "claude-code"
 	case "cursor-cli", "gpt-5", "sonnet-4", "sonnet-4-thinking":
 		return "cursor-cli"
-	case "codex-cli", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.3-codex-spark":
+	case "codex-cli", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex":
 		return "codex-cli"
 	default:
 		return ""
@@ -64,7 +64,7 @@ func hasImageAnalysisProviderAuth(provider string, _ *llm.ProviderAPIKeys) bool 
 }
 
 func supportedImageAnalysisProviderSummary() string {
-	return "Supported image analysis providers: codex-cli (codex-cli, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex, gpt-5.3-codex-spark), cursor-cli (cursor-cli, gpt-5, sonnet-4-thinking, sonnet-4), claude-code (claude-code, claude-sonnet-5-5, claude-sonnet-4-6)"
+	return "Supported image analysis providers: codex-cli (codex-cli, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex), cursor-cli (cursor-cli, gpt-5, sonnet-4-thinking, sonnet-4), claude-code (claude-code, claude-sonnet-5-5, claude-sonnet-4-6)"
 }
 
 func pathBasedImageAnalysisProvider(provider string) bool {

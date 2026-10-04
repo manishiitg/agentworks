@@ -13,6 +13,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
 type Isolator struct {
@@ -77,6 +78,12 @@ const defaultBaseDir = "/app/workspace-docs"
 
 //go:embed runtime/agentworks_browser.py
 var browserRuntime []byte
+
+//go:embed runtime/agentworks_output.py
+var outputRuntime []byte
+
+//go:embed runtime/agentworks_db.py
+var dbRuntime []byte
 
 // getBaseDir returns the configured base directory or the default
 func (iso *Isolator) getBaseDir() string {
@@ -183,9 +190,56 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		return nil, nil, fmt.Errorf("allocate sandbox scratch: %w", err)
 	}
 	local := *iso
+	// The service's private /tmp cannot be imported by a slot. Put the
+	// immutable output helper in its shared run area and serialize PYTHONPATH
+	// before the command is wrapped as that user.
+	if iso.Slot != "" {
+		runDir, err := slots.RunDirFor(iso.Slot)
+		if err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare output helper run area: %w", err)
+		}
+		helperDir, err := os.MkdirTemp(runDir, "output-helper-")
+		if err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare output helper directory: %w", err)
+		}
+		originalRelease := releaseScratch
+		releaseScratch = func() { _ = os.RemoveAll(helperDir); originalRelease() }
+		if err := os.Chmod(helperDir, 0750|os.ModeSetgid); err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare output helper permissions: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(helperDir, "agentworks_output.py"), outputRuntime, 0640); err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare slot output helper: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(helperDir, "agentworks_db.py"), dbRuntime, 0640); err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare slot database helper: %w", err)
+		}
+		local.ReadPaths = append(append([]string{}, iso.ReadPaths...), helperDir)
+		local.ExtraEnv = make(map[string]string, len(iso.ExtraEnv)+1)
+		for key, value := range iso.ExtraEnv {
+			local.ExtraEnv[key] = value
+		}
+		pythonPath := helperDir
+		if existing := local.ExtraEnv["PYTHONPATH"]; existing != "" {
+			pythonPath += string(os.PathListSeparator) + existing
+		}
+		local.ExtraEnv["PYTHONPATH"] = pythonPath
+	}
 	if err := os.WriteFile(filepath.Join(tmp, "agentworks_browser.py"), browserRuntime, 0600); err != nil {
 		releaseScratch()
 		return nil, nil, fmt.Errorf("prepare browser helper: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "agentworks_output.py"), outputRuntime, 0600); err != nil {
+		releaseScratch()
+		return nil, nil, fmt.Errorf("prepare structured output helper: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "agentworks_db.py"), dbRuntime, 0600); err != nil {
+		releaseScratch()
+		return nil, nil, fmt.Errorf("prepare database helper: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	browserSocket := local.scopeBrowser()

@@ -10,6 +10,10 @@ interactive {{product}} project chat that actually exposes them. They control th
 visible right-side project pane; they do not edit project data, run automation,
 or prove that the user read the result.
 
+In a coding-CLI chat these are bridge tools, not direct tools: find them with
+`search_tools(query="ui")`, as bridge tool routing says. Say they are unavailable
+only after `search_tools` returns none.
+
 ## Receipt contract
 
 - Use only view IDs, actions, and targets returned by `list_ui_capabilities`.

@@ -87,7 +87,7 @@ export function AutomationHubPanel({
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(chatContent ? ['chats' as const] : []),
-    'schedules' as const,
+    ...(!relayMode ? ['schedules' as const] : []),
     ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
@@ -102,8 +102,8 @@ export function AutomationHubPanel({
   }, [])
 
   useEffect(() => {
-    if (availableSections.has(initialSection)) setSection(initialSection)
-  }, [availableSections, initialSection])
+    setSection(fallbackSection)
+  }, [fallbackSection])
 
   useEffect(() => {
     if (workspaceViewTarget?.view !== 'workshop') return
@@ -146,7 +146,7 @@ export function AutomationHubPanel({
         icon={Zap}
         title={relayMode ? 'Relay' : 'Automation'}
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle={relayMode ? 'Schedules, API triggers, and chat history for this Relay.' : 'Chat history and the channels that can start work.'}
+        subtitle={relayMode ? 'API triggers and chat history for this Relay.' : 'Chat history and the channels that can start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />
@@ -166,7 +166,6 @@ export function AutomationHubPanel({
         }}
       />
 
-      {relayMode && section === 'schedules' && <p role="note" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Relay schedules run the current draft. They do not use the active published API version; draft edits affect the next scheduled run.</p>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
         {section === 'chats' && chatContent && (
@@ -176,7 +175,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {section === 'schedules' && <WorkflowScheduleRunsPanel
+        {!relayMode && section === 'schedules' && <WorkflowScheduleRunsPanel
           embedded
           active
           entityType={entityType}

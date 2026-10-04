@@ -178,10 +178,10 @@ func TestTokenSessionWorkflowReadRoot(t *testing.T) {
 	}{
 		{"token session scoped to its workflow", tokenClaims, "Workflow/Invoices", "Workflow/Invoices/"},
 		{"token session trims trailing slash", tokenClaims, "Workflow/Invoices/", "Workflow/Invoices/"},
-		{"app session keeps full grant", appClaims, "Workflow/Invoices", "Workflow/"},
-		{"nil claims keep full grant", nil, "Workflow/Invoices", "Workflow/"},
-		{"unresolved folder keeps full grant", tokenClaims, "", "Workflow/"},
-		{"blank folder keeps full grant", tokenClaims, "   ", "Workflow/"},
+		{"app session scoped to its workflow too", appClaims, "Workflow/Invoices", "Workflow/Invoices/"},
+		{"nil claims scoped to the workflow", nil, "Workflow/Invoices", "Workflow/Invoices/"},
+		{"unresolved folder grants nothing", tokenClaims, "", ""},
+		{"blank folder grants nothing", appClaims, "   ", ""},
 	}
 	for _, tc := range cases {
 		if got := tokenSessionWorkflowReadRoot(tc.claims, tc.folder); got != tc.want {

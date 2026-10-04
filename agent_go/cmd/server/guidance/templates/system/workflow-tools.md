@@ -38,7 +38,8 @@ nothing to answer with, and the call fails as "not registered for session".
 The function-style names in this catalog are logical workflow tool names;
 they do not mean every tool is exposed natively by `api-bridge`. In a coding
 CLI, the native bridge exposes only `execute_shell_command`,
-`diff_patch_workspace_file`, `agent_browser`, and `get_api_spec`. Never try
+`diff_patch_workspace_file` (not when your own tools are on: edit with them),
+`agent_browser`, and `get_api_spec`. Never try
 `api-bridge.list_executions`, `api-bridge.query_step`, or another catalog name
 as a native bridge call. For every non-native tool, call
 `get_api_spec(tool_name="<name>")` first, then use
@@ -72,7 +73,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **`debug_step(step_id, iteration, group_name)`** — Rich insights: learning status, validation result, log paths.
 - **`list_executions(status_filter?)`** — List all background executions. Use it to find an execution id or debug ambiguity, not as a repeated progress poll.
 - **`stop_step(execution_id)` / `stop_all_executions()`** — Cancel running steps.
-- **`run_in_background(name, instruction, message_sequence?)`** — Spawn an independent background agent with the same tools. `message_sequence` is optional. Use it only when one executor needs ordered follow-up turns in the same conversation; each item needs a non-empty `message`, e.g. `[ {"message":"Review the evidence."}, {"message":"Apply and verify safe fixes."} ]`. Optional labels are generated automatically.
+- **`run_in_background(name, instruction, message_sequence?)`** — Spawn an independent background agent with the same tools. Use it for a reviewer that must stay read-only (`access_mode="read_only"`) or a long supervision loop that outlives this turn; `execute_step` and `run_full_workflow` are already background calls, and with native tools on, your own subagents handle in-turn parallel work. `message_sequence` is optional. Use it only when one executor needs ordered follow-up turns in the same conversation; each item needs a non-empty `message`, e.g. `[ {"message":"Review the evidence."}, {"message":"Apply and verify safe fixes."} ]`. Optional labels are generated automatically.
 - **`run_full_workflow(group_name, human_inputs?, route_selections?)`** — Execute the complete workflow (all steps) for a single variable group in background and start from the beginning. Interactive Builder runs use `iteration-0`; saved schedules and webhooks use their server-bound immutable `iteration-N-sched` / `iteration-N-hook` folder. If the selected path has `human_input` steps, provide `human_inputs` (object mapping step_id to response string). For deterministic routers, pass `route_selections` keyed by routing or branch step ID, with each value as a `route_id` or unique `next_step_id`. Returns `execution_id`. In scheduled/run-mode flows, call it once for the intended group, then stop instead of polling substeps; auto-notifications report progress/completion.
 
 {{if ne .WorkshopMode "run"}}

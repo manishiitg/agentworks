@@ -1,8 +1,7 @@
 /**
- * "Native agent tools" is on by default for every workflow and crew: an unset
- * capabilities.native_agent_tools means on, and only an explicit false turns
- * it off. Mirrors nativeAgentToolsEnabled in the server.
+ * "Native agent tools" is always on for every workflow, Relay, Crew and Code (owner, 2026-10-03): a value an older manifest saved as false
+ * is ignored, because there is no switch left to turn it back on. Mirrors nativeAgentToolsEnabled in the server.
  */
-export function nativeAgentToolsEnabled(setting: unknown): boolean {
-  return setting !== false
+export function nativeAgentToolsEnabled(_setting: unknown): boolean {
+  return true
 }

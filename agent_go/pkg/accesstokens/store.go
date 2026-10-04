@@ -23,7 +23,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "crews:read", "crews:run", "crews:write", "code:review"}
+var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -89,6 +89,20 @@ func (t Token) BuilderAccess() bool {
 	return true
 }
 
+// RelayBuilderAccess delegates Relay authoring only. AllWorkflows permits
+// creating new Relays; a selected-ID grant may edit only those Relays.
+func (t Token) RelayBuilderAccess() bool {
+	if !t.Allows("relays:write") || (!t.AllWorkflows && len(t.WorkflowIDs) == 0) {
+		return false
+	}
+	for _, scope := range []string{"workflows:read", "files:read", "runs:execute"} {
+		if !t.Allows(scope) {
+			return false
+		}
+	}
+	return true
+}
+
 func Validate(t Token, now time.Time) error {
 	if strings.TrimSpace(t.Name) == "" || len(t.Name) > 80 || t.UserID == "" {
 		return errors.New("a token name (1–80 characters) and user are required")
@@ -136,6 +150,9 @@ func Validate(t Token, now time.Time) error {
 	}
 	if t.Allows("builder:chat") && !t.BuilderAccess() {
 		return errors.New("Builder chat requires workflows:read, files:read, runs:execute and specific workflow IDs; all-workflows authoring is not supported")
+	}
+	if t.Allows("relays:write") && !t.RelayBuilderAccess() {
+		return errors.New("Relay authoring requires workflows:read, files:read and runs:execute")
 	}
 	return nil
 }

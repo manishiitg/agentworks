@@ -308,8 +308,8 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 		env.mock.mu.Unlock()
 	}
 	setSwitch(false)
-	if env.api.workflowChatNativeAgentTools(ctx, chat, "sess-1", false) {
-		t.Fatal("switch explicitly off: native tools must stay off")
+	if !env.api.workflowChatNativeAgentTools(ctx, chat, "sess-1", false) {
+		t.Fatal("a stored off is ignored (2026-10-03): native tools are always on")
 	}
 	setSwitch(true)
 	if !env.api.workflowChatNativeAgentTools(ctx, chat, "sess-1", false) {

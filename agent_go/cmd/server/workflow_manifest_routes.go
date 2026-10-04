@@ -85,7 +85,7 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 	currentVersion := workflowContractVersionForUpgrade(manifest)
 	pendingUpgrades := workflowVersionUpgradePlan(manifest)
 	pendingUpgradeItems, appliedUpgradeItems := workflowContractUpgradeLists(manifest)
-	upgradeRequired := !workflowContractVersionIsExecutionCompatible(currentVersion) || manifest.CodeLayoutVersion != 1
+	upgradeRequired := !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1
 	upgradeStatus := map[string]interface{}{
 		"required":         upgradeRequired,
 		"current_version":  currentVersion,

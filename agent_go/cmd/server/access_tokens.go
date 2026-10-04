@@ -209,7 +209,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			for _, wf := range visible {
 				if wf.Manifest != nil {
 					role := workflowAccessForManifest(c, wf.Manifest)
-					allowed[wf.Manifest.ID] = !t.Allows("builder:chat") || role == WorkflowAccessOwner || role == WorkflowAccessWrite
+					allowed[wf.Manifest.ID] = !(t.Allows("builder:chat") || t.Allows("relays:write")) || role == WorkflowAccessOwner || role == WorkflowAccessWrite
 				}
 			}
 			for _, id := range t.WorkflowIDs {
@@ -249,17 +249,17 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// tokenSessionWorkflowReadRoot scopes a token-owned run/chat session's
-// workflow reads to its own workflow folder. Every external session runs
-// exactly one workflow, so narrowing costs nothing — and without it, a
-// token restricted to selected workflows could reach other
-// account-visible workflow files through assistant turns. App sessions (no
-// token) and unresolved folders keep the full Workflow/ grant.
-func tokenSessionWorkflowReadRoot(claims *UserClaims, workflowPhaseFolder string) string {
-	if claims == nil || claims.AccessToken == nil || strings.TrimSpace(workflowPhaseFolder) == "" {
-		return "Workflow/"
+// tokenSessionWorkflowReadRoot scopes a workflow chat's workflow reads to
+// its own workflow folder, for app and token sessions alike: other workflows
+// are readable only when attached (PLAT-395; they arrive as read-only
+// folders). An unresolved folder grants nothing ("" — the caller skips it),
+// never the whole Workflow/ tree.
+func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) string {
+	folder := strings.Trim(strings.TrimSpace(workflowPhaseFolder), "/")
+	if folder == "" {
+		return ""
 	}
-	return strings.TrimSuffix(workflowPhaseFolder, "/") + "/"
+	return folder + "/"
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
@@ -272,7 +272,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
 	}
 	if strings.HasPrefix(tool.Name, "builder_") {
-		return externalBuilderEnabled() && c.AccessToken != nil && c.AccessToken.BuilderAccess()
+		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
+	}
+	if isExternalRelayAuthoringTool(tool.Name) {
+		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
 	}
 	if c.AccessToken == nil {
 		return true
@@ -305,6 +308,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("files:read")
 	case "write_file", "patch_file":
 		return t.Allows("files:write")
+	case "run_relay", "get_relay_run":
+		return t.Allows("runs:execute")
+	case "get_relay_releases":
+		return t.Allows("workflows:read")
 	case "get_agent_context", "list_guidance_topics", "get_guidance_topic":
 		// Canonical server-owned guidance carries no workflow content.
 		return reads

@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -179,11 +180,23 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		for _, name := range agentworksproduct.RunExternalDenylist() {
 			delete(want, name)
 		}
+		relayNames, err := relayproduct.BuilderExternalTools()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range relayNames {
+			if externalTokenAllows(claims, externalTool{Name: name}) {
+				want[name] = true
+			}
+		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
 		native := map[string]bool{}
 		for _, name := range agentworksproduct.RunExternalTools() {
+			native[name] = true
+		}
+		for _, name := range relayNames {
 			native[name] = true
 		}
 		for _, name := range []string{"list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "stop_step", "stop_all_executions"} {
@@ -240,6 +253,19 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		denied[name] = true
 	}
 	wantCatalog := append(append([]string(nil), admitted...), agentworksproduct.BuilderExternalTools()...)
+	relayTools, err := relayproduct.BuilderExternalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range relayTools {
+		seen := false
+		for _, prior := range wantCatalog {
+			seen = seen || prior == name
+		}
+		if !seen {
+			wantCatalog = append(wantCatalog, name)
+		}
+	}
 	for _, name := range run {
 		if denied[name] {
 			continue
@@ -262,7 +288,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && !strings.HasPrefix(tool.Name, "builder_") {
+		if tool.mutates && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}

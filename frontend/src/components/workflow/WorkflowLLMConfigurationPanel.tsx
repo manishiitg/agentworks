@@ -1,23 +1,23 @@
 import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountConfigured, accountRelation, accountUsable } from '../providers/ProviderAccounts'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, Search, UserRound, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, UserRound, ShieldCheck } from 'lucide-react'
 import LLMRoleSelector from '../LLMRoleSelector'
+import { WorkflowRoleModels } from './WorkflowRoleModels'
 import { providerStatus } from '../llm/providerStatus'
 import type { AgentLLMConfig, LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type DynamicModelEntry, type ProviderManifestEntry } from '../../services/llm-config-api'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import type { LLMOption } from '../../types/llm'
-import { llmOptionsKey } from '../../utils/llmConfigDisplay'
 import { resolvePiModelGroup } from '../../utils/llmDisplay'
 import { getWorkflowLLMOptions, getWorkflowLLMTierDefaults, getWorkflowProviderOptions } from '../../utils/workflowLLMTierDefaults'
 import { effectiveLLMUnderLock } from '../../utils/effectiveLLM'
 import { installedCodingProviders, readyCodingProviders } from '../../utils/providerCatalogFilter'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
+import { hasModelLimit, isModelAllowed } from '../../utils/allowedModels'
 
 type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'pulse_llm'
 const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'pulse_llm']
@@ -30,11 +30,11 @@ type RoleRow = {
 }
 
 const ROLE_ROWS: RoleRow[] = [
-  { key: 'tier_1', label: 'High reasoning', description: 'First runs and complex execution.', group: 'Execution' },
-  { key: 'tier_2', label: 'Medium reasoning', description: 'Execution after useful learnings exist, and Pulse upkeep (Plan Drift, Technical, Architecture).', group: 'Execution' },
-  { key: 'tier_3', label: 'Low reasoning', description: 'Validation and mature learned tasks.', group: 'Execution' },
-  { key: 'builder_llm', label: 'Builder', description: 'Chat, planning, evaluation design, scheduled runs, and the post-run Pulse conversation.', group: 'Workflow agents' },
-  { key: 'pulse_llm', label: 'Pulse Goal Work', description: 'Goal Work: the Pulse pass that does work toward your goals. Pick your strongest model here.', group: 'Workflow agents' },
+  { key: 'tier_1', label: 'High reasoning', description: 'Main work: first runs and complex steps', group: 'Execution' },
+  { key: 'tier_2', label: 'Medium reasoning', description: 'Routine runs and upkeep', group: 'Execution' },
+  { key: 'tier_3', label: 'Low reasoning', description: 'Quick checks', group: 'Execution' },
+  { key: 'builder_llm', label: 'Builder', description: 'Chat, planning and scheduled runs', group: 'Workflow agents' },
+  { key: 'pulse_llm', label: 'Pulse Goal Work', description: 'Goal Work: your strongest model, working toward your goals', group: 'Workflow agents' },
 ]
 
 const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']
@@ -65,16 +65,6 @@ type ProviderRow = {
   groupFilter?: string
   /** Row comes from a published LLM entry rather than Pi's curated catalog. */
   published?: boolean
-}
-
-// "Models per role" starts collapsed; once the user opens it, it stays open on
-// later visits (a single preference for all workflows, kept in localStorage).
-const ROLES_OPEN_STORAGE_KEY = 'workflow_llm_roles_open'
-const readRolesOpen = (): boolean => {
-  try { return window.localStorage.getItem(ROLES_OPEN_STORAGE_KEY) === '1' } catch { return false }
-}
-const writeRolesOpen = (open: boolean) => {
-  try { window.localStorage.setItem(ROLES_OPEN_STORAGE_KEY, open ? '1' : '0') } catch { /* storage unavailable */ }
 }
 
 type WorkflowLLMConfigurationPanelProps = {
@@ -110,12 +100,6 @@ function toAgentLLMConfig(llm: LLMOption): AgentLLMConfig {
     model_id: llm.model,
     ...(hasOptions(llm.options) ? { options: llm.options } : {}),
   }
-}
-
-function configKey(config: { provider?: string; model_id?: string; published_llm_id?: string; connection_id?:string; options?: Record<string, unknown> }): string {
-  return config.published_llm_id
-    ? `id:${config.published_llm_id}/${config.connection_id || "global"}`
-    : `model:${config.provider}/${config.model_id}/${llmOptionsKey(config.options)}/${config.connection_id || "global"}`
 }
 
 function roleConfig(config: PresetLLMConfig | undefined, key: RoleKey): AgentLLMConfig | undefined {
@@ -213,7 +197,6 @@ export default function WorkflowLLMConfigurationPanel({
   const globalLockApplies = llmConfigLocked && configurationSource !== 'agent_profile'
   const readOnly = !(canWriteOverride ?? workflowCanWrite) || globalLockApplies
   const disabledTitle = globalLockApplies ? 'Set by your administrator for this deployment' : readOnlyReason || READ_ONLY_TITLE
-  const [query, setQuery] = useState('')
   const [accountSelectionError, setAccountSelectionError] = useState<string | null>(null)
   const [expandedAccountProviders, setExpandedAccountProviders] = useState<Set<string>>(() => new Set())
   const [accountRecords, setAccountRecords] = useState<import('../../services/llm-config-api').ProviderConnection[]>([])
@@ -226,7 +209,6 @@ export default function WorkflowLLMConfigurationPanel({
   // A workflow that already runs on a provider opens on the compact "runs on
   // X" line; the provider list only appears on "Change provider".
   const [changing, setChanging] = useState(false)
-  const [rolesOpen, setRolesOpen] = useState<boolean>(() => readRolesOpen())
   // Pi backends list one company row each; its models unfold underneath on
   // click. The backend the workflow runs on is always unfolded.
   const [openPiGroups, setOpenPiGroups] = useState<Set<string>>(() => new Set())
@@ -236,7 +218,6 @@ export default function WorkflowLLMConfigurationPanel({
     else next.add(group)
     return next
   })
-  const toggleRolesOpen = () => setRolesOpen(open => { writeRolesOpen(!open); return !open })
 
   useEffect(() => {
     if (!providerManifestLoaded) void loadProviderManifest()
@@ -301,6 +282,13 @@ export default function WorkflowLLMConfigurationPanel({
     () => getWorkflowLLMOptions(availableLLMs.filter(option => readyProviderIds.includes(option.provider)), readyEntries),
     [availableLLMs, readyProviderIds, readyEntries],
   )
+
+  // A role offers only the models its account allows (the server enforces the same list).
+  const optionsForRoleAccount = useCallback((role?: { provider?: string; connection_id?: string }) => {
+    const allowed = role?.provider ? accountRecords.find(record => record.id === (role.connection_id || `global:${role.provider}`))?.allowed_models : undefined
+    if (!hasModelLimit(allowed)) return workflowOptions
+    return workflowOptions.filter(option => option.provider !== role?.provider || isModelAllowed(option.model, allowed))
+  }, [accountRecords, workflowOptions])
 
   const rows = useMemo<ProviderRow[]>(() => {
     const codingAgents = manifestEntries
@@ -407,34 +395,22 @@ export default function WorkflowLLMConfigurationPanel({
   }, [globalLockApplies, llmConfig, manifestEntries, piRowFor, publishedLLMs])
 
   const visibleRows = useMemo(() => {
-    const q = query.trim().toLowerCase()
     const readyRows = rows.filter(providerIsReadyForUse)
-    const filtered = q
-      ? readyRows.filter(row => [row.name, row.id, row.modelId, row.entry.description]
-          .some(value => value?.toLowerCase().includes(q)))
-      : readyRows
     // The row this workflow is actually using bubbles to the top -- scanning
     // status dots down the list otherwise can't tell "in use" from "also ready".
     // Pi rows keep their catalog order: the company in use is already
     // marked, and reordering models under it would just look like a jump.
-    if (!selectedRowId) return filtered
-    return [...filtered].sort((a, b) => {
+    if (!selectedRowId) return readyRows
+    return [...readyRows].sort((a, b) => {
       if (a.groupFilter || b.groupFilter) return 0
       if (a.id === selectedRowId) return -1
       if (b.id === selectedRowId) return 1
       return 0
     })
-  }, [query, rows, selectedRowId, providerIsReadyForUse])
+  }, [rows, selectedRowId, providerIsReadyForUse])
 
   const selectedRow = useMemo(() => rows.find(row => row.id === selectedRowId) ?? null, [rows, selectedRowId])
 
-  // A custom per-role setup has no provider row to read; the per-role list is
-  // the only place that shows what the workflow runs on, so it opens itself.
-  const customPerRole = advanced && Boolean(llmConfig) && !selectedRow
-  useEffect(() => {
-    if (customPerRole) setRolesOpen(true)
-  }, [customPerRole])
-  const selectedBaseProvider = selectedRow ? (selectedRow.groupFilter ? 'pi-cli' : selectedRow.id) : null
 
   const selectedProfile = useMemo(() => {
     const provider = llmConfig?.mode === 'provider_profile'
@@ -533,10 +509,6 @@ export default function WorkflowLLMConfigurationPanel({
   const useManagedDefaults = () => {
     if (!selectedProfile) return
     onChange({ schema_version: 2, mode: 'provider_profile', provider: selectedProfile.provider as LLMProvider, connection_id: llmConfig?.connection_id || llmConfig?.builder_llm?.connection_id })
-    // Back on the provider's defaults there is nothing per-role left to look
-    // at, so fold the section (and remember it folded).
-    setRolesOpen(false)
-    writeRolesOpen(false)
   }
 
   // Pinning any one role switches the workflow from the managed provider
@@ -580,6 +552,47 @@ export default function WorkflowLLMConfigurationPanel({
     const defaultValue = defaultForRole(key)
     if (!advanced || !defaultValue) return
     updateRole(key, defaultValue)
+  }
+
+  // The single Model card: one agent, model, effort and account for every role.
+  const updateAllRoles = (next: AgentLLMConfig) => {
+    const primary = roleConfig(llmConfig, 'tier_1') ?? defaultForRole('tier_1')
+    const value: AgentLLMConfig = {
+      ...next,
+      connection_id: next.connection_id || (primary?.provider === next.provider ? primary?.connection_id : undefined),
+    }
+    onChange(stripRetiredLLMFallbacks({
+      ...llmConfig,
+      schema_version: 2,
+      mode: 'explicit',
+      builder_llm: { ...value },
+      pulse_llm: { ...value },
+      tiered_config: { tier_1: { ...value }, tier_2: { ...value }, tier_3: { ...value } },
+    }))
+  }
+
+  // The account chooser only appears when there is a real choice: more than one
+  // account usable for the provider here (or the selected one cannot be used).
+  const usableAccountIds = (providerId: string): string[] => {
+    const entry = manifestEntries.find(candidate => candidate.id === providerId)
+    return accountRecords
+      .filter(record => record.provider === providerId && accountRelation(record) !== 'admin_view'
+        && accountUsable(record) && accountConfigured(record) !== false
+        && (record.scope === 'global' ? Boolean(entry?.usable) : accountRecords.find(item => item.id === `global:${providerId}`)?.personal_accounts_allowed !== false))
+      .map(record => record.id)
+  }
+
+  const renderPickers = (value: AgentLLMConfig, onSelect: (next: AgentLLMConfig) => void) => {
+    const usable = usableAccountIds(value.provider)
+    const selectedId = value.connection_id || `global:${value.provider}`
+    const showAccounts = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'].includes(value.provider)
+      && (usable.length > 1 || (usable.length > 0 && !usable.includes(selectedId) && Boolean(value.connection_id)))
+    return (
+      <div className="space-y-2">
+        <LLMRoleSelector availableLLMs={optionsForRoleAccount(value)} allowedProviderIds={readyProviderIds} value={value} onLLMSelect={llm => onSelect(toAgentLLMConfig(llm))} disabled={readOnly} />
+        {showAccounts && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly workspacePath={workspacePath} product={product} onSelect={connection_id => onSelect({ ...value, connection_id })} />}
+      </div>
+    )
   }
 
   const handleRefresh = async () => {
@@ -729,7 +742,7 @@ export default function WorkflowLLMConfigurationPanel({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <span className="text-muted-foreground">This {scopeNoun} uses a</span>
           <span className="font-medium text-foreground">custom per-role setup</span>
-          <span className="text-muted-foreground">— see Models per role below.</span>
+          <span className="text-muted-foreground">— see the models below.</span>
           {!readOnly && (
             <Button
               type="button"
@@ -888,14 +901,13 @@ export default function WorkflowLLMConfigurationPanel({
       const group = row.groupFilter ?? ''
       byGroup.set(group, [...(byGroup.get(group) ?? []), row])
     })
-    const searching = query.trim().length > 0
     return Array.from(byGroup.entries()).map(([group, models]) => {
       const head = models[0]
       const status = providerStatus(head.entry, isProviderLocked(head.id))
       const tone = statusTone(status.label)
       const selectedInGroup = models.find(row => row.id === selectedRowId) ?? null
       const connected = providerIsReadyForUse(head)
-      const open = searching || openPiGroups.has(group) || selectedInGroup !== null
+      const open = openPiGroups.has(group) || selectedInGroup !== null
       return (
         <div key={group} className="divide-y divide-border">
           <div className={`flex items-center gap-2 px-3 py-2 ${selectedInGroup ? 'bg-primary/5' : ''}`}>
@@ -985,44 +997,15 @@ export default function WorkflowLLMConfigurationPanel({
     })
   }
 
-  // One flat row per role: what it runs on now, and the picker right there.
-  // Changing a role switches the workflow to per-role (explicit) mode via
-  // updateRole, which seeds the other roles from the provider's defaults, so
-  // there is no separate "pin models" step.
-  const renderRole = (row: RoleRow) => {
+  const renderBuilderRole = (row: RoleRow) => {
     const value = roleConfig(llmConfig, row.key) ?? defaultForRole(row.key)
-    const defaultValue = defaultForRole(row.key)
-    const isCustomized = advanced && (configKey(value ?? {}) !== configKey(defaultValue ?? {}))
-
     return (
-      <div key={row.key} className="flex flex-col gap-2 border-t border-border px-3 py-2.5 first:border-t-0 sm:flex-row sm:items-center sm:gap-3">
-        <div className="min-w-0 sm:w-[38%]">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-foreground">{row.label}</span>
-            {isCustomized && (
-              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">Customized</span>
-            )}
-          </div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{builderOnly && row.key === 'builder_llm' ? 'Used for the Relay Builder chat and graph editing.' : row.description}</div>
+      <div className="space-y-2 px-3 py-2.5">
+        <div>
+          <div className="text-xs font-medium text-foreground">{row.label}</div>
+          <div className="text-[11px] text-muted-foreground">Used for the Relay Builder chat and graph editing.</div>
         </div>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          {value ? (
-            <>
-            <LLMRoleSelector availableLLMs={workflowOptions} allowedProviderIds={readyProviderIds} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
-            {value?.provider && ["claude-code","codex-cli","cursor-cli","pi-cli","muse-cli"].includes(value.provider) && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly workspacePath={workspacePath} product={product} onSelect={connection_id=>updateRole(row.key,{...value,connection_id})} />}
-            </>
-          ) : (
-            <span className="text-xs text-muted-foreground">Select a provider first.</span>
-          )}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {isCustomized && defaultValue && (
-              <Button type="button" variant="link" size="xs" onClick={() => resetRole(row.key)} disabled={readOnly} title={readOnly ? disabledTitle : undefined}>
-                Reset to provider default
-              </Button>
-            )}
-
-          </div>
-        </div>
+        {value ? renderPickers(value, next => updateRole(row.key, next)) : <span className="text-xs text-muted-foreground">Select a provider first.</span>}
       </div>
     )
   }
@@ -1048,18 +1031,7 @@ export default function WorkflowLLMConfigurationPanel({
           Every {scopeNoun} on this deployment uses the provider marked “In use”. The others are shown for reference and cannot be selected here — ask your administrator to enable one.
         </p>
       )}
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder="Search providers"
-            aria-label="Search providers"
-            className="pl-9"
-          />
-        </div>
+      <div className="flex justify-end">
         <Button
           type="button"
           variant="outline"
@@ -1079,7 +1051,7 @@ export default function WorkflowLLMConfigurationPanel({
           <div className="py-6 text-center text-sm text-muted-foreground">Loading providers…</div>
         ) : visibleRows.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
-            {query.trim() ? `No providers match "${query}".` : 'No providers are ready to use. Connect an account in Providers.'}
+            No providers are ready to use. Connect an account in Providers.
           </div>
         ) : (
           <>
@@ -1101,50 +1073,24 @@ export default function WorkflowLLMConfigurationPanel({
       )}
 
       {builderOnly && !changing && (selectedRow || advanced) && (
-        <div className="overflow-hidden rounded-md border border-border bg-background">{renderRole(ROLE_ROWS.find(row => row.key === 'builder_llm')!)}</div>
+        <div className="overflow-hidden rounded-md border border-border bg-background">{renderBuilderRole(ROLE_ROWS.find(row => row.key === 'builder_llm')!)}</div>
       )}
       {!builderOnly && showModelsPerRole && !changing && (selectedRow || advanced) && (
-      <div className="rounded-md border border-border">
-        <button
-          type="button"
-          onClick={toggleRolesOpen}
-          aria-expanded={rolesOpen}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
-        >
-          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${rolesOpen ? 'rotate-90' : ''}`} />
-          Models per role
-          <span className="font-normal text-muted-foreground">
-            — {advanced ? 'pinned per role' : "following the selected provider's defaults"}
-          </span>
-        </button>
-        {rolesOpen && (
-          <div className="space-y-3 border-t border-border p-3">
-            {advanced && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="link"
-                  size="xs"
-                  onClick={useManagedDefaults}
-                  disabled={readOnly || !selectedProfile}
-                  title={readOnly ? disabledTitle : selectedProfile ? undefined : 'No provider profile to return to'}
-                  className="shrink-0"
-                >
-                  Use provider defaults for all roles
-                </Button>
-              </div>
-            )}
-            {(['Execution', 'Workflow agents'] as const).map(group => (
-              <div key={group}>
-                <div className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{group}</div>
-                <div className="overflow-hidden rounded-md border border-border bg-background">
-                  {ROLE_ROWS.filter(row => row.group === group).map(renderRole)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <WorkflowRoleModels
+          roles={ROLE_ROWS}
+          values={Object.fromEntries(ROLE_KEYS.map(key => [key, roleConfig(llmConfig, key) ?? defaultForRole(key)]))}
+          defaults={Object.fromEntries(ROLE_KEYS.map(key => [key, defaultForRole(key)]))}
+          pinned={advanced}
+          readOnly={readOnly}
+          disabledTitle={disabledTitle}
+          available={workflowOptions}
+          renderPickers={renderPickers}
+          onApplyAll={updateAllRoles}
+          onUpdateRole={(key, next) => updateRole(key as RoleKey, next)}
+          onResetRole={key => resetRole(key as RoleKey)}
+          onUseDefaults={useManagedDefaults}
+          canUseDefaults={Boolean(selectedProfile)}
+        />
       )}
     </div>
   )

@@ -52,3 +52,14 @@ it('cannot approve Builder when no workflows are editable', async () => {
     expect([...view.host.querySelectorAll('button')].find(button => button.textContent === 'Deny')!.disabled).toBe(false)
   } finally { await view.cleanup() }
 })
+
+
+it('explains explicit Relay authoring without requiring an existing workflow selection', async () => {
+  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'relays:write'], [])
+  try {
+    expect(view.host.textContent).toContain('Create, edit, test and publish Relays')
+    expect(view.host.querySelector('input[type="checkbox"]')).toBeNull()
+    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    expect(allow.disabled).toBe(false)
+  } finally { await view.cleanup() }
+})

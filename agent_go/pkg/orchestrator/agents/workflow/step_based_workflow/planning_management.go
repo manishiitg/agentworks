@@ -194,7 +194,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) checkExistingPlan(ctx context.Context
 func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex int, allowLegacyMessageSequenceCode bool) error {
 	switch step := typedStep.(type) {
 	case *RegularPlanStep:
-		if err := validateScriptParameterDefinitions(step.ScriptParameters); err != nil {
+		if err := validateScriptParameterContract(&step.CommonStepFields); err != nil {
 			return fmt.Errorf("invalid script_parameters: %w", err)
 		}
 		return nil

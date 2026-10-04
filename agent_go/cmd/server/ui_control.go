@@ -184,7 +184,9 @@ func validUIViewForContract(contract uiContract, view string) bool {
 }
 
 func uiContractForScope(scope string) uiContract {
-	if clean := path.Clean(strings.Trim(strings.TrimSpace(scope), "/")); !strings.HasPrefix(clean, "_users/") && isProjectWorkspacePath(clean) {
+	// isProjectWorkspacePath already reads a project the same way with or without
+	// its _users/<id>/ prefix; who may bind is checked by the route, not here.
+	if clean := path.Clean(strings.Trim(strings.TrimSpace(scope), "/")); isProjectWorkspacePath(clean) {
 		return projectUIControlContract(clean)
 	}
 	return uiControlContract

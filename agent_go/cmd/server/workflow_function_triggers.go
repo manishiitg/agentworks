@@ -342,9 +342,11 @@ type workflowFunctionCall struct {
 	WorkflowID   string
 	Function     string
 	RelayVersion string
-	Caller       triggerCaller
-	DeliveryID   string
-	Args         map[string]interface{}
+	// draftRelay is server-maintained authoring provenance, never a request field.
+	draftRelay bool
+	Caller     triggerCaller
+	DeliveryID string
+	Args       map[string]interface{}
 	// Payload is the JSON the run sees (arguments, call id, caller).
 	Payload map[string]interface{}
 }
@@ -367,22 +369,24 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		if !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
 			return liveSchedule.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, call.Function)
 		}
-		release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
-		if releaseErr != nil {
-			return "", internalTriggerDeliveryResult{}, releaseErr
+		if !call.draftRelay {
+			release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
+			if releaseErr != nil {
+				return "", internalTriggerDeliveryResult{}, releaseErr
+			}
+			if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
+				return "", internalTriggerDeliveryResult{}, err
+			}
+			workspacePath = releaseWorkspace
+			manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
+			if err != nil || manifest == nil {
+				return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Relay %s: %w", release.Version, err)
+			}
+			if call.Payload == nil {
+				call.Payload = map[string]interface{}{}
+			}
+			call.Payload["relay_version"] = release.Version
 		}
-		if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
-			return "", internalTriggerDeliveryResult{}, err
-		}
-		workspacePath = releaseWorkspace
-		manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
-		if err != nil || manifest == nil {
-			return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Relay %s: %w", release.Version, err)
-		}
-		if call.Payload == nil {
-			call.Payload = map[string]interface{}{}
-		}
-		call.Payload["relay_version"] = release.Version
 	}
 	sched, err := findWorkflowFunctionTrigger(manifest, call.Function)
 	if err != nil {

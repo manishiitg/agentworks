@@ -36,8 +36,8 @@ import { useLLMStore } from '../../../stores/useLLMStore'
 
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
-const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'flow', 'browser', 'workshop'])
-const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
+const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'flow', 'browser'])
+const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
 const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
   identity: 'Identity',
   playbooks: 'Playbooks',
@@ -80,8 +80,8 @@ function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, ...at
 // Product-tour / test hooks on specific toolbar buttons. Kept here rather
 // than in the view registry because they describe this toolbar's buttons,
 // not the views themselves.
-// Dashboard and Pulse are always visible. The small remaining sets of workspace
-// views and setup controls stay expanded so their icons are directly available.
+// Primary views and setup controls stay expanded. Ops starts collapsed and
+// expands inline when the user opens it.
 
 const CAPABILITY_BUTTON_ATTRS: Partial<Record<WorkspaceViewId, { 'data-tour': string; 'data-testid': string }>> = {
   mcp: { 'data-tour': 'bot-connector', 'data-testid': 'tour-bot-connector' },
@@ -124,6 +124,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   monitorOn,
   className = ''
 }) => {
+  const [operationsOpen, setOperationsOpen] = useState(false)
   const { count: pendingDecisionCount, loaded: pendingDecisionsLoaded } = usePendingDecisionState(workspacePath)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const canManageAccess = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
@@ -154,29 +155,14 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
 
   // No explicit view means the pane is on whichever canvas view was last open.
   const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
-  // Setup stays permanently expanded (no toggle); the toggle switches
-  // between Views and Ops only.
-  const [openToolbarMenu, setOpenToolbarMenu] = useState<'views' | 'ops'>('views')
-  const toggleToolbarMenu = useCallback((menu: 'views' | 'ops') => {
-    setOpenToolbarMenu(current => current === menu ? 'views' : menu)
-  }, [])
-
   // Button clusters come from the view registry, in registry order. Plan is
   // always present, including for a new workflow with no steps yet.
-  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report' && (!relayMode || ['flow', 'workshop'].includes(view.id)))
-  const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['costs', 'execution-logs', 'files'].includes(view.id)))
+  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report' && (!relayMode || view.id === 'flow'))
+  const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['workshop', 'costs', 'execution-logs', 'files'].includes(view.id)))
   const capabilityViewDefinitions = useMemo(
     () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp' || view.id === 'identity')),
     [relayMode],
   )
-
-  // The toggle follows the active view between Views and Ops. Setup views
-  // leave the toggle alone because Setup is always expanded.
-  const isSetupView = capabilityViewDefinitions.some(def => def.id === activeWorkspaceView) || activeWorkspaceView === 'access'
-  useEffect(() => {
-    if (OPERATIONS_TOOLBAR_VIEW_IDS.has(activeWorkspaceView)) setOpenToolbarMenu('ops')
-    else if (!isSetupView) setOpenToolbarMenu('views')
-  }, [activeWorkspaceView, isSetupView])
 
   // Backup/publish/notify status dots -- lightweight polls independent of
   // whether the pane is showing that view.
@@ -388,22 +374,21 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       {/* Right side - View controls */}
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
-          {/* Report stays visible while the remaining tools use two compact groups. */}
+          {/* Report stays visible beside the expanded tool groups. */}
           {workspacePath && !relayMode && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
 
-          {/* One continuous pill: frequent tools | compact menus. */}
+          {/* One continuous pill: frequent views | operations | setup icons. */}
           {(workspacePath || canWriteWorkflow) && (
           <WorkspaceToolbarFrame>
-          {/* Views and Ops toggle; Setup stays permanently expanded. */}
+          {/* Setup and primary views stay open; Ops expands on demand. */}
           {workspacePath && (
             <WorkspaceToolbarGroup
               label="Views"
               data-tour="workflow-views"
               hideLabel
               hideToggleWhenOpen
-              open={openToolbarMenu === 'views'}
-              onToggle={() => toggleToolbarMenu('views')}
-              title={relayMode ? 'Relay views: Graph and Triggers' : 'Views: Pulse, Plan, Browser and Automation'}
+              open
+              title={relayMode ? 'Relay views: Graph' : 'Views: Pulse, Plan and Browser'}
             >
               <div className="inline-flex items-center gap-0.5 px-0.5">
                 {!relayMode && <Tooltip>
@@ -446,7 +431,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                   }}
                 />}
                 {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={relayMode ? view === 'flow' ? 'Graph' : view === 'workshop' ? 'Triggers' : label : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? 'Graph' : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
                 ))}
               </div>
             </WorkspaceToolbarGroup>
@@ -457,14 +442,13 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
           <WorkspaceToolbarGroup
             label="Ops"
             data-tour="workflow-operations"
-            hideToggleWhenOpen
-            open={openToolbarMenu === 'ops'}
-            onToggle={() => toggleToolbarMenu('ops')}
-            title={relayMode ? 'Relay operations: costs, execution logs and files' : 'Operations: knowledge, costs, execution logs, files, backup, publish and notifications'}
+            open={operationsOpen}
+            onToggle={() => setOperationsOpen(open => !open)}
+            title={relayMode ? 'Relay operations: triggers, costs, execution logs and files' : 'Operations: automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
           >
             <div className="inline-flex items-center gap-0.5">
               {operationsWorkspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                <ToolbarInlineItem key={view} label={label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                <ToolbarInlineItem key={view} label={relayMode && view === 'workshop' ? 'Triggers' : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
               ))}
               {!relayMode && <ToolbarInlineItem label="Backup" Icon={Cloud} active={activeWorkspaceView === 'backup'} onClick={() => openWorkspaceView('backup')} indicatorClass={getBackupDotClass(backupState)} />}
               {!relayMode && <ToolbarInlineItem label="Publish" Icon={Globe} active={activeWorkspaceView === 'publish'} onClick={() => openWorkspaceView('publish')} indicatorClass={getPublishDotClass(publishState)} />}
@@ -480,6 +464,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
           <WorkspaceToolbarGroup
             label="Setup"
             data-tour="workflow-setup"
+            hideToggleWhenOpen
             open
             title={relayMode ? 'Relay setup: identity, models, and integrations' : 'Setup: identity, integrations, playbooks and access'}
           >

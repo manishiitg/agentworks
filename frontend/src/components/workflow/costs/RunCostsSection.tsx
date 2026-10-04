@@ -51,7 +51,6 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                 <div className="space-y-3">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">Workflow runs</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Open a run only when you need its step or model-level cost detail.</p>
                 </div>
                 {runCosts.map((runCost) => {
                   const isExpanded = expandedRunFolders.has(runCost.runFolder)

@@ -7,6 +7,16 @@ export PATH="$HOME/.local/go/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 exec 9>"$HOME/video-studio/deploy.lock"
 flock -n 9 || { echo 'Another deployment is already running.' >&2; exit 1; }
 trap 'rm -rf "$JOB"' EXIT
+# Prebuilt release (PLAT-426): shipped into $JOB/build by `./deploy.sh rts`; nothing to install, clone or compile. The activation
+# script that runs is the one from the very revisions the build was made from.
+if [[ -f "$JOB/prebuilt" ]]; then
+  PREBUILT="$JOB/build"
+  test -f "$PREBUILT/manifest.json" || { echo "Prebuilt release is missing from $JOB" >&2; exit 1; }
+  bash "$PREBUILT/source/mcp-agent-builder-go/deploy/aws-ec2/server/build-and-activate.sh" "$PREBUILT/source" "$JOB/globals" \
+    --prebuilt "$PREBUILT" --manifest-sha256 "$(cat "$JOB/prebuilt")"
+  exit $?
+fi
+
 if ! command -v go >/dev/null; then
   echo 'Installing the pinned Go toolchain on the server'
   curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o "$JOB/go.tar.gz"

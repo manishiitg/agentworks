@@ -1,6 +1,7 @@
-import CostTokenBreakdown, { CostPricingNotice } from '../../providers/CostTokenBreakdown'
+import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import React from 'react'
 import type { CostSummary } from '../../../services/api-types'
+import CostPricingNotice from '../../providers/CostPricingNotice'
 import { DollarSign, Coins } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatUSD, formatTokens } from './helpers'
@@ -45,10 +46,10 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
         <div className="font-semibold text-foreground">
           {overallSummary.totalCost === 0 && (scopedCosts?.total.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(overallSummary.totalCost)}
         </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
+        {!scopedCosts && <div className="flex items-center gap-1.5 text-muted-foreground">
           <Coins className="w-3.5 h-3.5" />
           {formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output
-        </div>
+        </div>}
         {aggregateSummary && (
           <div className="text-muted-foreground">
             {aggregateSummary.totalRuns} run{aggregateSummary.totalRuns !== 1 ? 's' : ''}
@@ -59,13 +60,13 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
             LLM {formatUSD(aggregateSummary.totalLLMCost)} | Tools {formatUSD(aggregateSummary.totalToolCost)}
           </div>
         )}
-        {phaseCostSummary && (
+        {phaseCostSummary && !scopedCosts && (
           <div className="text-muted-foreground">
             Builder {formatUSD(phaseCostSummary.totalCost)}
           </div>
         )}
-        {scopedCosts && <div className="w-full"><CostTokenBreakdown usage={scopedCosts.total} /></div>}
-        {scopedCosts && <CostPricingNotice usage={scopedCosts.total} className="w-full" />}
+        {scopedCosts && <div className="w-full"><CostTokenBreakdown compact usage={scopedCosts.total} /></div>}
+        {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
         </div>
       ) : undefined}
     />

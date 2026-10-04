@@ -79,12 +79,17 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 		}
 	}
 
-	// The workflow's switch set to false turns it off for every turn type.
+	// No switch any more (2026-10-03): a workflow that saved "off" earlier decides exactly what an untouched workflow decides, for every turn type.
+	turns := []QueryRequest{workflowTurn(QueryRequest{}), workflowTurn(QueryRequest{TriggeredBy: "cron"}), workflowTurn(QueryRequest{BotPlatform: "slack"})}
+	want := make([]string, len(turns))
+	for i, req := range turns {
+		want[i] = env.queryDecidedToolsMode(t, "alice", "default-1", req)
+	}
 	off := false
 	env.setWorkflowNativeTools(t, &off)
-	for _, req := range []QueryRequest{workflowTurn(QueryRequest{}), workflowTurn(QueryRequest{TriggeredBy: "cron"}), workflowTurn(QueryRequest{BotPlatform: "slack"})} {
-		if got := env.queryDecidedToolsMode(t, "alice", "off-1", req); got != "mcp_only" {
-			t.Errorf("switch off: decided %q, want mcp_only (%+v)", got, req)
+	for i, req := range turns {
+		if got := env.queryDecidedToolsMode(t, "alice", "off-1", req); got != want[i] {
+			t.Errorf("a stored off decided %q, want %q like an untouched workflow (%+v)", got, want[i], req)
 		}
 	}
 

@@ -16,6 +16,8 @@ vi.mock('../../services/llm-config-api', () => ({
     getProviderAccountStatus: vi.fn(),
     signOutProviderAccount: vi.fn(),
     getProviderAccountCosts: vi.fn(),
+    getProviderModels: vi.fn(),
+    setAccountAllowedModels: vi.fn(),
   },
   providerApiErrorText: (error: { response?: { data?: unknown } }, fallback: string) => typeof error?.response?.data === 'string' ? error.response.data : fallback,
 }))
@@ -225,4 +227,44 @@ it('selection-only accounts hide setup choices and preserve a signed-out saved a
   expect(select.selectedOptions[0].disabled).toBe(true)
   expect([...select.options].filter(option => !option.disabled).map(option => option.value)).toEqual(['acct-dana'])
   expect(onSelect).not.toHaveBeenCalled()
+})
+
+const catalog = { provider: 'claude-code', model_selection_mode: 'static', source: 'test', models: [
+  { model_id: 'gpt-5.3-codex', model_name: 'GPT-5.3 Codex' }, { model_id: 'gpt-5.5', model_name: 'GPT-5.5' },
+] }
+
+it('shows each account\'s models and lets an admin limit the admin-managed account', async () => {
+  vi.mocked(llmConfigService.getProviderModels).mockResolvedValue(catalog)
+  vi.mocked(llmConfigService.setAccountAllowedModels).mockResolvedValue(undefined)
+  const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
+  expect(container.textContent).toContain('Models: All models')
+  await click(await menuItem(container, 'More for the admin-managed account', 'Models'))
+  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Models allowed on this account"]')!, 'only')
+  // Nothing picked yet: cannot save a limit that allows nothing.
+  expect(buttonByText(container, 'Save models')?.disabled).toBe(true)
+  await click(container.querySelector('fieldset[aria-label="Allowed models"] input[type="checkbox"]'))
+  // The server list after the save (the page reloads accounts when one changes).
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, allowed_models: ['gpt-5.3-codex'] }, own, sharedWithMe, adminView])
+  await click(buttonByText(container, 'Save models'))
+  expect(llmConfigService.setAccountAllowedModels).toHaveBeenCalledWith('global:claude-code', ['gpt-5.3-codex'])
+  expect(container.textContent).toContain('Models: 1 model')
+})
+
+it('lets the owner set models on their own account, and sends [] for All models', async () => {
+  vi.mocked(llmConfigService.getProviderModels).mockResolvedValue(catalog)
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([server, { ...own, allowed_models: ['gpt-5.5'] }])
+  vi.mocked(llmConfigService.setAccountAllowedModels).mockResolvedValue(undefined)
+  const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
+  expect(container.textContent).toContain('Models: 1 model')
+  await click(await menuItem(container, 'More for My Max', 'Models'))
+  const checked = [...container.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Allowed models"] input')].filter(box => box.checked)
+  expect(checked).toHaveLength(1)
+  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Models allowed on this account"]')!, 'all')
+  await click(buttonByText(container, 'Save models'))
+  expect(llmConfigService.setAccountAllowedModels).toHaveBeenCalledWith('acct-own', [])
+})
+
+it('offers no Models control for an account the caller does not manage', async () => {
+  const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
+  expect(await menuItems(container, 'More for Dana team')).not.toContain('Models')
 })

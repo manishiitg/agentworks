@@ -9,14 +9,43 @@
 # an optional mcp-servers.override.json) live under deploy/rootless-linux/products/$PRODUCT/ and
 # are read from the checkout on the deployed branch, never from the
 # triggering machine.
+#
+#   build-and-activate.sh WORKSPACE_ROOT PRODUCT [--prebuilt BUILD_DIR] [--stage-only]
+#
+# Without --prebuilt (or PREBUILT_DIR) it builds on this host from the three checkouts under WORKSPACE_ROOT (the original path,
+# kept as the fallback). With --prebuilt it compiles nothing: BUILD_DIR is a release made once by deploy/common/build-release.sh
+# (PLAT-426); WORKSPACE_ROOT must be its source/ folder. The manifest (CPU architecture, glibc, sha256 of every file) is verified
+# before anything is touched, then the files are copied into this product's own release folder and the same activation runs.
+# --stage-only (prebuilt only) stops after the release is assembled, before preflight, `current` or any service is touched, and
+# may be combined with DEPLOY_APP_ROOT=<scratch dir> to rehearse the copy without the product's own folders.
 set -euo pipefail
 [[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "Build must run on Linux x86_64" >&2; exit 1; }
 WORKSPACE_ROOT="$1"
 PRODUCT="$2"
+shift 2
+PREBUILT="${PREBUILT_DIR:-}"
+STAGE_ONLY=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --prebuilt) PREBUILT="$2"; shift 2 ;;
+    --stage-only) STAGE_ONLY=1; shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
 REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
 SCRIPT_DIR="$REPO_ROOT/deploy/rootless-linux"
 PRODUCT_DIR="$SCRIPT_DIR/products/$PRODUCT"
 REMOTE_APP="/srv/$PRODUCT"
+if [[ -n "${DEPLOY_APP_ROOT:-}" ]]; then
+  [[ "$STAGE_ONLY" == 1 ]] || { echo "DEPLOY_APP_ROOT is only allowed together with --stage-only" >&2; exit 2; }
+  REMOTE_APP="$DEPLOY_APP_ROOT"
+fi
+if [[ "$STAGE_ONLY" == 1 && -z "$PREBUILT" ]]; then echo "--stage-only needs --prebuilt" >&2; exit 2; fi
+if [[ -n "$PREBUILT" ]]; then
+  [[ "$WORKSPACE_ROOT" == "$PREBUILT/source" ]] || { echo "With --prebuilt, WORKSPACE_ROOT must be $PREBUILT/source" >&2; exit 2; }
+fi
+# shellcheck disable=SC1091
+source "$REPO_ROOT/deploy/common/prebuilt.sh"
 export GOMAXPROCS=4 GOFLAGS=-p=4 NODE_OPTIONS=--max-old-space-size=2048
 export PATH="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$PATH"
 
@@ -25,7 +54,7 @@ test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/prod
 source "$PRODUCT_DIR/product.env"
 [[ "$PRODUCT" == "$(basename "$PRODUCT_DIR")" ]] || { echo "product.env PRODUCT=$PRODUCT does not match directory $(basename "$PRODUCT_DIR")" >&2; exit 1; }
 
-python3 - "$REMOTE_APP/.env" "${REQUIRED_PERSISTED_ENV_KEYS[@]:-}" <<'PY'
+[[ "$STAGE_ONLY" == 1 ]] || python3 - "$REMOTE_APP/.env" "${REQUIRED_PERSISTED_ENV_KEYS[@]:-}" <<'PY'
 from pathlib import Path
 import sys
 
@@ -50,7 +79,13 @@ for snippet in "${RUNTIME_CONFIG_REQUIRED_SNIPPETS[@]:-}"; do
   }
 done
 
-for command in git go gcc npm python3 file sha256sum openssl; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
+if [[ -n "$PREBUILT" ]]; then
+  # Nothing is compiled here: refuse the build before touching anything if it does not match this host or its files differ.
+  for command in python3 file sha256sum openssl ldd; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
+  prebuilt_verify "$REPO_ROOT" "$PREBUILT"
+else
+  for command in git go gcc npm python3 file sha256sum openssl; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
+fi
 # gog (Gmail connector) needs its encrypted file keyring on a headless box;
 # on "auto" it uses the service user's gnome-keyring, which has no unlocked
 # default collection, and every Gmail connect fails. Generate the password
@@ -61,9 +96,13 @@ if [[ -f "$REMOTE_APP/.env" ]]; then
   grep -q '^GOG_KEYRING_BACKEND=' "$REMOTE_APP/.env" || echo 'GOG_KEYRING_BACKEND=file' >> "$REMOTE_APP/.env"
   chmod 600 "$REMOTE_APP/.env"
 fi
-PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
+[[ "$STAGE_ONLY" == 1 ]] || PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
 
-builder_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+if [[ -n "$PREBUILT" ]]; then
+  builder_revision="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go)"
+else
+  builder_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+fi
 test -n "$builder_revision"
 RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
@@ -75,10 +114,25 @@ cleanup_build() {
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
     systemctl --user restart "$PRODUCT-agent" >/dev/null 2>&1 || true
   fi
-  if [[ "$(readlink -f "$REMOTE_APP/current")" != "$BUILD_DIR" ]]; then rm -rf "$BUILD_DIR"; fi
+  if [[ "$(readlink -f "$REMOTE_APP/current")" != "$BUILD_DIR" && "${KEEP_STAGED:-0}" != 1 ]]; then rm -rf "$BUILD_DIR"; fi
 }
 trap cleanup_build EXIT
 
+# slotctl/slottmux helpers (slots_build in the build path, slots_install_shim at activation).
+source "$REPO_ROOT/deploy/common/slots.sh"
+if [[ -n "$PREBUILT" ]]; then
+echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
+# Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did. The carried-over asset cleanup below
+# deletes files by age, and an old build must not have its assets removed for the age of the build.
+cp "$PREBUILT/SOURCE_REVISIONS" "$BUILD_DIR/SOURCE_REVISIONS"
+mkdir -p "$BUILD_DIR/source" "$BUILD_DIR/downloads"
+cp -R "$PREBUILT/source/." "$BUILD_DIR/source/"
+# browser, workspace-security.test and update-coding-clis are used by the RTS host only.
+prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser workspace-security.test update-coding-clis"
+cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
+printf '{"version":"%s","release":"%s"}\n' "$builder_revision" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
+cp -R "$PREBUILT/frontend/." "$BUILD_DIR/frontend/"
+else
 # Build exactly the requested checkout while resolving the shared sibling
 # modules from the declared workspace root, rather than trusting whatever
 # checked-in go.work happens to be sitting in the cloned repo.
@@ -141,6 +195,7 @@ echo "==> [$RELEASE_ID] Building frontend"
 (cd "$REPO_ROOT/frontend" && npm ci)
 (cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
 cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
+fi
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
 cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
@@ -152,7 +207,9 @@ cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
 # this copy preview_report always 503s with "Report preview runtime is
 # missing" regardless of how many times the frontend gets built.
 mkdir -p "$BUILD_DIR/static"
-cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$BUILD_DIR/static/"
+static_source="$REPO_ROOT/agent_go/cmd/server/static"
+[[ -z "$PREBUILT" ]] || static_source="$PREBUILT/static"
+cp -R "$static_source/." "$BUILD_DIR/static/"
 install -m 0644 "$PRODUCT_DIR/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
 # A deployment's own branding assets (logo, mark, favicon), served at /brand/.
 if [[ -d "$PRODUCT_DIR/brand" ]]; then
@@ -187,7 +244,10 @@ chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
 if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
-  python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
+  # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
+  # next to the playbooks (Confida's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
+  # (build-release.sh); the release's own writable copy is validated below.
+  [[ -n "$PREBUILT" ]] || python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
   mkdir -p "$BUILD_DIR/playbooks"
   cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
   python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py"
@@ -209,6 +269,13 @@ if [[ -d "$prev" && -d "$next" ]]; then
   find "$next" -type f -mtime +14 -delete
 fi
 
+if [[ "$STAGE_ONLY" == 1 ]]; then
+  rm -f "$BUILD_DIR/.deploying"
+  KEEP_STAGED=1
+  echo "==> [$RELEASE_ID] Stage only: release assembled in $BUILD_DIR; preflight, current and services untouched."
+  exit 0
+fi
+
 echo "==> [$RELEASE_ID] Activating release and restarting services"
 # Check again after the build, before switching current or restarting services.
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
@@ -224,6 +291,11 @@ for key, value in json.load(open(profile))["same_everywhere"].items():
     print(f"{key}={value.replace('{app}', app).replace('{data}', data)}")
 PY
 )
+# The managed browser's launcher (chrome-agentworks) goes beside the host's Chrome on every server; without a Chrome the setting is
+# dropped rather than pointing the browser at a missing file.
+if ! "$SCRIPT_DIR/install-managed-chrome.sh" "$REMOTE_APP" >/dev/null; then
+  STANDARD_ENV=("${STANDARD_ENV[@]/AGENT_BROWSER_EXECUTABLE_PATH=*/}")
+fi
 EXTRA_ENV=("${STANDARD_ENV[@]}" "${EXTRA_ENV[@]:-}")
 install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/mcp" "$REMOTE_APP/state/browser-profile"
 

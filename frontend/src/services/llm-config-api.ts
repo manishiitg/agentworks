@@ -47,6 +47,8 @@ export interface ProviderConnection {
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
+  /** Models allowed on this account; absent or empty = every model. */
+  allowed_models?: string[]
   // Account view fields. Optional so an older server still reads.
   kind?: ProviderAccountKind
   relation?: ProviderAccountRelation
@@ -292,7 +294,11 @@ export const llmConfigService = {
     return response.data
   },
 
-  updateProviderConnection: async (id: string, changes: { display_name?: string; credential?: string; sharing?: ProviderAccountSharing }): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, changes) },
+  updateProviderConnection: async (id: string, changes: { display_name?: string; credential?: string; sharing?: ProviderAccountSharing; allowed_models?: string[] }): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, changes) },
+
+  // Which models may run on an account: [] = every model. Admins for the
+  // admin-managed account (global:<provider>), the owner for a personal one.
+  setAccountAllowedModels: async (id: string, models: string[]): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, { allowed_models: models }) },
 
   // Admin: who may use a server account. null returns to the installation policy.
   setServerAccountAvailability: async (provider: string, availableTo: ProviderAvailableTo | null): Promise<void> => {

@@ -5,12 +5,17 @@ dependencies: {}
 # and executor. This manifest owns built-in chat prompts, skills, and tool
 # surfaces. An individual Relay's authored step prompts and selected runtime
 # integrations remain in its workflow.json and planning/plan.json.
+# Custom Python tools use this Builder's existing file authoring and
+# update_step_config capability; runtime selection is python_tools:<name>.
 prompt:
   file: prompts/builder.md
   variables: {}
 
 chat:
   builder:
+    # Platform MCP uses the same Builder operation lifecycle. Direct Relay
+    # calls test the draft or run an immutable version without Run chat.
+    external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, publish_relay, test_relay, run_relay, get_relay_run]
     prompt:
       file: prompts/builder.md
     skills: [relay-builder]
@@ -41,15 +46,23 @@ chat:
       - list_executions
       - get_relay_releases
       - publish_relay
+      # Shared workflow contract migrations (PLAT-431): a Relay owes the
+      # runtime migrations (steps, scripts, code layout, database), never the
+      # goal-driven ones, and must be able to run them from its own Builder.
+      - get_contract_upgrades
+      - set_workflow_contract_version
+      - set_code_layout_version
+      - migrate_message_sequence_code_items
+      - migrate_orchestrator_step_type
+      - migrate_declared_execution_mode
+      - strip_declared_execution_mode
+      - scan_workflow_script_db_usage
+      - apply_workflow_db_migration
+      - query_workflow_db
+      - mutate_workflow_db
       - get_step_prompts
       - manage_custom_commands
       - get_llm_config
-      - list_schedules
-      - create_schedule
-      - create_calendar_schedule
-      - update_schedule
-      - delete_schedule
-      - trigger_schedule
       - manage_workflow_webhook
       - list_mcp_servers
       - search_mcp_catalog
@@ -68,7 +81,6 @@ chat:
       - google_workspace_cli
       - get_notification_history
       - get_cost_summary
-      - get_schedule_runs
       - get_ui_state
       - list_ui_capabilities
       - perform_ui_action
@@ -110,12 +122,6 @@ profile:
       icon: terminal
       prompt: |
         Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and a default variable group if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
-        {{context}}
-    - name: schedule
-      description: Configure a schedule and its input payload for this Relay
-      icon: bell-ring
-      prompt: |
-        Configure a Relay schedule using the relay-builder skill and registered schedule tools. Inspect existing schedules first, gather the user's timing, timezone and required INPUT payload, then create or update the requested schedule. Explain that schedules execute the current draft and later draft edits affect the next occurrence. Do not enable Pulse or conversational bot routes.
         {{context}}
 
 branding:

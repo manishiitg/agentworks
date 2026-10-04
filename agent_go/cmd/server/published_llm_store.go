@@ -18,8 +18,8 @@ const publishedLLMsFilePath = "config/published-llms.json"
 const autoPublishedLLMSource = "auto_coding_agent"
 const autoPublishedLLMIDPrefix = "auto:"
 
+// gpt-5.3-codex-spark is not offered (owner, 2026-10-04): OpenAI refuses it for Codex signed in with a ChatGPT account.
 var autoPublishedCodexCLIModelIDs = []string{
-	"gpt-5.3-codex-spark",
 	"gpt-5.4-mini",
 }
 

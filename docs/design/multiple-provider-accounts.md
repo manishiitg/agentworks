@@ -34,7 +34,8 @@ labeled **Admin-managed account**. Users select only accounts available to them.
 
 Workflow, Crew, Code and Relay consume configured accounts and choose models and
 supported reasoning effort. Their Models panels do not collect credentials or
-embed provider setup. Management links open Providers. A coding provider is
+embed provider setup. The short provider list has no search field; refresh remains
+available. Management links open Providers. A coding provider is
 selectable only when its runtime is installed and an authorized account is usable.
 A previously saved unavailable selection stays visible for diagnosis; opening the
 panel must not silently switch provider or account. Existing stored project

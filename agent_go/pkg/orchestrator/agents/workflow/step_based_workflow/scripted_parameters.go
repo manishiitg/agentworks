@@ -1,6 +1,7 @@
 package step_based_workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 const ScriptedParametersEnv = "STEP_PARAMS_JSON"
@@ -49,7 +52,88 @@ func validateScriptParameterDefinitions(definitions map[string]ScriptParameterDe
 	return nil
 }
 
+// validateScriptParameterContract checks a scripted step's input contract: the
+// flat script_parameters list, or one full JSON Schema, never both.
+func validateScriptParameterContract(fields *CommonStepFields) error {
+	if fields == nil {
+		return nil
+	}
+	if err := validateScriptParameterDefinitions(fields.ScriptParameters); err != nil {
+		return err
+	}
+	if len(fields.ScriptParametersSchema) == 0 {
+		return nil
+	}
+	if len(fields.ScriptParameters) > 0 {
+		return fmt.Errorf("declare either script_parameters or script_parameters_schema, not both")
+	}
+	_, err := compileScriptParametersSchema(fields.ScriptParametersSchema)
+	return err
+}
+
+// compileScriptParametersSchema compiles a full parameters schema. Only refs
+// inside the schema are allowed: an authored $ref never reads server files or
+// fetches a URL.
+func compileScriptParametersSchema(schema map[string]interface{}) (*jsonschema.Schema, error) {
+	if schema["type"] != "object" {
+		return nil, fmt.Errorf("script_parameters_schema must be a JSON Schema with \"type\": \"object\"")
+	}
+	encoded, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("script_parameters_schema: %w", err)
+	}
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("script_parameters_schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.UseLoader(jsonschema.SchemeURLLoader{})
+	const uri = "https://agentworks.invalid/script-parameters.json"
+	if err := compiler.AddResource(uri, document); err != nil {
+		return nil, fmt.Errorf("invalid script_parameters_schema: %w", err)
+	}
+	compiled, err := compiler.Compile(uri)
+	if err != nil {
+		return nil, fmt.Errorf("invalid script_parameters_schema: %w", err)
+	}
+	return compiled, nil
+}
+
+func scriptedParametersSchema(step PlanStepInterface) map[string]interface{} {
+	if step == nil {
+		return nil
+	}
+	return step.GetCommonFields().ScriptParametersSchema
+}
+
 func validateAndResolveScriptParameters(step PlanStepInterface, supplied map[string]interface{}) (map[string]interface{}, error) {
+	if schema := scriptedParametersSchema(step); len(schema) > 0 {
+		fields := step.GetCommonFields()
+		if err := validateScriptParameterContract(&fields); err != nil {
+			return nil, err
+		}
+		compiled, err := compileScriptParametersSchema(schema)
+		if err != nil {
+			return nil, err
+		}
+		value := map[string]interface{}{}
+		for key, item := range supplied {
+			value[key] = item
+		}
+		// Round-trip so numbers and nested values have the types the validator expects.
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("parameters for scripted route %q: %w", step.GetID(), err)
+		}
+		document, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+		if err != nil {
+			return nil, fmt.Errorf("parameters for scripted route %q: %w", step.GetID(), err)
+		}
+		if err := compiled.Validate(document); err != nil {
+			return nil, fmt.Errorf("parameters for scripted route %q do not match its script_parameters_schema: %w", step.GetID(), err)
+		}
+		return value, nil
+	}
 	definitions := scriptedParameterDefinitions(step)
 	if err := validateScriptParameterDefinitions(definitions); err != nil {
 		return nil, err

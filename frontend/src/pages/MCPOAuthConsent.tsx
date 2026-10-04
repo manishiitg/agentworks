@@ -7,6 +7,7 @@ type Consent = { client_name: string; redirect_uri: string; scopes: string[]; ed
 const scopeDescriptions: Record<string, string> = {
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
+  'relays:write': 'Create, edit, test and publish Relays you can edit; uses your saved Builder model and usage budget',
   'builder:chat': 'Edit plans and code in selected workflows using their Builder model in your existing chat',
   'runs:execute': 'Start, watch, and cancel workflow runs',
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',

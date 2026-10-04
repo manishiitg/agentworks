@@ -240,7 +240,7 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 		"work-skills":             {"list_skills", "search_skills", "update_project_skill_selection", "skills/<skill-name>/SKILL.md", "account-wide `skills/custom/`", "Crew should remember that", "When asked to do X, Crew should", "link them rather than duplicating", "same topic", "independently reusable topics", "catch-all", "150 lines or fewer", "references/", "scripts/", "skill authoring is a capability", "Setup > Skills"},
 		"work-schedules-and-bots": {"list_project_schedules", "five-field cron", "list_project_triggers", "Project webhook triggers", "Setup > Bots", "Slack", "WhatsApp", "list_gmail_connections", "google_workspace_cli", "gmail.readonly"},
 		"work-dashboard":          {"db/reports/index.html", "window.report.sendChatMessage", "query_workflow_db", "validate_report_html", "get_report_link"},
-		"work-ui-control":         {"list_ui_capabilities", "perform_ui_action", "`memory`", "`workshop`", "`identity`", "`mcp`", "Do not use Workflow-only views", "Scheduled, webhook, bot"},
+		"work-ui-control":         {"list_ui_capabilities", "perform_ui_action", "search_tools", "bridge tool routing", "`memory`", "`workshop`", "`identity`", "`mcp`", "Do not use Workflow-only views", "Scheduled, webhook, bot"},
 		"background-work":         {"run_in_background", "[AUTO-NOTIFICATION]", "query_agent"},
 	}
 	for name, required := range checks {

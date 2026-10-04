@@ -2390,10 +2390,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			execOpts := &WorkshopExecuteOptions{
-				GroupName:              resolvedGroupName,
-				Iteration:              iteration,
-				RunFolder:              runFolder,
-				SavedScriptOnly:        fastPathOnly,
+				GroupName:       resolvedGroupName,
+				Iteration:       iteration,
+				RunFolder:       runFolder,
+				SavedScriptOnly: fastPathOnly,
+				// The Builder running a step itself may author or repair its
+				// script; a scheduled session never does (PLAT-436).
+				AllowScriptRepair: !fastPathOnly && iwm.currentWorkshopModeFromConfigs(nil) == "workshop" &&
+					(iwm.workshopConfig == nil || iwm.workshopConfig.ScheduleInvocation == nil),
 				Instructions:           instructions,
 				HumanInput:             humanInput,
 				Tier:                   tierValue,
@@ -6375,6 +6379,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
+			}
+			if err := validateManagedDBScriptsStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
 			}
 			if current, _ := manifest["version"].(string); strings.TrimSpace(current) == version {
 				return fmt.Sprintf("Workflow contract version is already %s.", version), nil

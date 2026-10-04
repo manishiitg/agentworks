@@ -25,9 +25,6 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                         <DollarSign className="w-4 h-4 text-amber-500" />
                         Automation Builder Costs
                       </h3>
-                      <p className="text-xs text-muted-foreground">
-                        Costs captured outside run folders, including workflow builder and other phase-only sessions.
-                      </p>
                       {phaseCostSummary.updatedAt && (
                         <p className="text-[10px] text-muted-foreground mt-1">
                           Last updated: {formatTimestampLabel(phaseCostSummary.updatedAt)}
@@ -157,7 +154,7 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
 
                   {phaseDailyCostSummaries.length === 0 && (
                     <p className="mt-5 text-xs text-muted-foreground">
-                      Daily builder history appears only for phase costs written to the new daily ledger. Older builder totals remain included in the aggregate above.
+                      Daily history unavailable.
                     </p>
                   )}
                 </div>

@@ -95,6 +95,37 @@ func (api *StreamingAPI) workflowRetainedPolicyCompatible(ctx context.Context, s
 	return found && runtime != nil && runtime.ChatPolicyKey == key, nil
 }
 
+// requestedProviderOf is the coding provider a request selects ("" when it names none).
+func requestedProviderOf(req QueryRequest) string {
+	provider := strings.TrimSpace(req.Provider)
+	if provider == "" && req.LLMConfig != nil {
+		provider = strings.TrimSpace(req.LLMConfig.Primary.Provider)
+	}
+	return provider
+}
+
+// retainedCLIProviderDiffers reports whether the CLI or agent retained for this chat runs a different provider than the request selects. It is false when the
+// request names no provider or nothing is retained.
+func (api *StreamingAPI) retainedCLIProviderDiffers(sessionID, requested string) bool {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	if api == nil || requested == "" || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	live := ""
+	if snapshot, ok := api.liveMainCodingTmuxSnapshot(sessionID); ok {
+		live = retainedCodingAgentProvider(snapshot)
+	} else {
+		api.runningAgentsMux.RLock()
+		agent := api.runningAgents[sessionID]
+		api.runningAgentsMux.RUnlock()
+		if agent != nil {
+			live = string(mcpagent.ReadAgentRuntimeInfo(agent).Provider)
+		}
+	}
+	live = strings.ToLower(strings.TrimSpace(live))
+	return live != "" && live != requested
+}
+
 func (api *StreamingAPI) interruptWorkflowPolicySession(session, provider string) {
 	api.conversationMux.Lock()
 	delete(api.launchedAgentProfileKeyBySession, session)

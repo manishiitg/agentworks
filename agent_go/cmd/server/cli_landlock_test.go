@@ -1,6 +1,8 @@
 package server
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -118,6 +120,20 @@ func TestCLISandboxPolicyDropsHostGrantsOnServers(t *testing.T) {
 			if p == "/srv/secrets" || p == "/home/someone" {
 				t.Errorf("%s multi-user=%q: host grant %s reached the policy", tc.os, tc.multiUser, p)
 			}
+		}
+	}
+}
+
+// Seatbelt leaves the home open, so the AgentWorks app folder (every chat's
+// runtime, logins, the server token in config.json) must be closed explicitly.
+func TestCLISeatbeltProtectsAppState(t *testing.T) {
+	docs, app := t.TempDir(), t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(app, "state"))
+	got := strings.Join(cliSeatbeltProtectedRoots(), "|")
+	for _, want := range []string{docs, filepath.Join(app, "state"), app} {
+		if !strings.Contains("|"+got+"|", "|"+want+"|") {
+			t.Errorf("protected roots %q miss %s", got, want)
 		}
 	}
 }

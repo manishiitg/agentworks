@@ -19,22 +19,255 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
-### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome)
+### 2026-10-04 — Scripted steps never self-heal in a run
 
-- **Found (user).** "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied" starting the Code browser on Excellence:
-  /usr/bin/google-chrome resolves to /opt/google/chrome, which the Landlock sandbox did not grant. It worked before PLAT-374 only because the
-  mount-namespace fallback (removed) could see /opt.
-- **Done.** `/opt/google/chrome` is in landlockSystemReadPaths (read + execute, dropped when absent); TestSystemChromeRunsInsideTheSandbox
-  runs the real Chrome in the sandbox. Applies to every Linux server.
+A run (schedule, webhook/Relay, `run_full_workflow`, a route called by an agent)
+executes a scripted step's saved `main.py` only; a missing or failing script
+fails the step and Pulse reports it. Only the Builder's own `execute_step` may
+author or repair a script. `lock_code` now only stops that Builder repair.
+Ticket: [PLAT-436](bugs/pulse_platform/step-execution/plat-436.md).
 
-### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order
+### 2026-10-04 — Relays expose external API triggers only
 
-- **Decided (owner).** The mic is on for Code (it needs the server's speech engine: Excellence has it); New chat and the live-view toggle sit
-  on the right with the send controls; Code's workspace toolbar reads Dashboard | Files, Terminal, Browser | Automation, Costs | Setup.
-- **Done.** product.yaml (code) declares `voice: preferred`; ChatInput renders New chat and the live-view control inside the send controls;
-  WorkWorkspaceToolbar orders a Code's groups as above (a Crew's order is unchanged).
-- **Note.** "Unable to load project browser sessions" and "Could not stop the session" seen right after a deploy were the 502 window while the
-  agent restarted (deploys no longer wait for turns); both work on a retry.
+Relays integrate with existing products through API function triggers. Remove
+cron/calendar scheduling from their UI, Builder tools and commands, and runtime.
+Older Relay timers are ignored on read and removed on the next draft save;
+frozen release files stay immutable. The shared scheduler still handles API
+function deliveries and ordinary product schedules.
+Ticket: [PLAT-433](bugs/pulse_platform/scheduler-runs/plat-433.md).
+
+### 2026-10-04 — Agents call scripts through scripted routes, not a second tool concept
+
+An agent calls a workflow script as a named tool backed by a saved scripted route
+(arguments from `script_parameters` or `script_parameters_schema`, answer from
+`route_result.json`). Relay Python tools (PLAT-423) are to be retired in favour of
+this, so Goals and Relays share one mechanism.
+Ticket: [PLAT-432](bugs/pulse_platform/plans-contracts/plat-432.md).
+
+### 2026-10-04 — Builds are published to a public GitHub repo; servers download and verify them
+
+The build box publishes each build to `github.com/manishiitg/agentworks-builds` (releases only, newest 8 kept, no source) and RTS downloads its trimmed copy itself,
+accepting it only if `manifest.json` hashes to the value `deploy.sh` read on the box (then the normal manifest verify). The repo is public so servers need no credential; only
+the box holds a write token (Contents read+write on that one repo, root-only 0600 file). Streaming through the owner's Mac took 5+ minutes. Without a token or a release, `./deploy.sh rts`
+falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetzner products still copy from `/srv/_builds`. Ticket: [PLAT-426](bugs/pulse_platform/scheduler-runs/plat-426.md).
+
+### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
+
+A Relay reuses the workflow runtime, so it owes the same contract migrations for
+steps, scripts, code layout and the database, run from its own Builder. It skips
+migrations about schedules, Pulse, reports and notifications, and is runnable
+when no shared migration is pending.
+Ticket: [PLAT-431](bugs/pulse_platform/plans-contracts/plat-431.md).
+
+### 2026-10-04 — Costs shows numbers and short labels
+
+Workflow Costs removes explanatory copy entirely at the user's request. Token
+cards show fresh/cached input, output and cache share; daily rows use numeric
+input/cache/output/cost columns. Conversations remain inspectable and secondary
+run/model details expand on demand. Missing-usage and unpriced counters stay
+visible so incomplete accounting is not mistaken for zero cost.
+[PLAT-430](bugs/pulse_platform/cost-telemetry/plat-430.md).
+
+### 2026-10-04 — Old builds are pruned by default after every deploy — PLAT-426
+
+The build host keeps only the newest build, plus pinned ones and any younger than 15 minutes. Why: a build is 0.5 GB and a rollback needs a product's previous release (which each product keeps), not an older shared build;
+a build that should outlive the next one is pinned (`./deploy.sh pin`). Deploys prune at their end, so a chosen older build (`--build`) survives until all its products are done.
+
+### 2026-10-04 — Build a release once; every server copies and activates it, and refuses a build that does not match — PLAT-426
+
+`./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box
+(`deploy/common/build-release.sh` into `/srv/_builds/<sha>-<time>/`, with `manifest.json`) and each server only copies that build and runs
+its usual activation. Before touching anything the target verifies the manifest and refuses on another CPU architecture, a glibc older than
+the build's, or any missing, changed or unlisted file. Before, every server cloned and compiled the same commit (5 min each, RTS 7 min), and
+each build could differ. `--build <name|sha>` deploys an existing build instead of main's head, allowed only when its three revisions are
+ancestors of `origin/main`, so a known-good older build can go out while main is held. `DEPLOY_BUILD_MODE=server` keeps the old on-server
+build. Dominion is not part of it.
+
+### 2026-10-04 — Scripts use the managed DB layer; `$DB_PATH` is compatibility only
+
+Scripted steps reach the workflow database through the built-in `agentworks_db`
+helper (the same managed query/mutate tools agents use), not `sqlite3`. DDL is a
+Builder migration, never a script statement; a script that no longer matches the
+schema fails and autofix repairs it. Contract 1.0.45 migrates existing scripts and
+blocks execution until done. `$DB_PATH` stays set for old scripts only.
+Managed writes enforce declared foreign keys (scripts used to set the PRAGMA
+themselves; agent writes never had it); only new writes are checked.
+Ticket: [PLAT-428](bugs/pulse_platform/security-sandbox/plat-428.md).
+
+### 2026-10-04 — Relay MCP authoring is explicit and execution uses direct graph runs
+
+Relay product.yaml admits its external tools. A relays:write grant can create
+Relays when it covers all accessible workflows and the account may create;
+editing/publishing still require live owner/editor access. This grant does not
+authorize AgentWorks Builder. Shared Builder operations edit drafts; direct
+scheduler calls test drafts or execute frozen versions without Relay Run chat.
+Ticket: [PLAT-427](bugs/pulse_platform/mcp/plat-427.md).
+
+### 2026-10-04 — A provider change is a runtime change: it waits for the running turn, then the chat relaunches on the new provider — PLAT-425
+
+Changing the coding provider of a chat (Models page) never sends the next message into the old provider's CLI. A running turn finishes first, the message waits in the turn queue, then the old CLI is closed and the turn runs on the selected provider
+(the native conversation resumes across providers). It applies to every retained coding CLI. Before, only a definition change counted, so a provider switch killed the running turn and the next sends were rejected as uncertain.
+An uncertain earlier submission is reconciled even while a terminal is live, if that terminal started after the submission (it cannot hold it); a terminal that started before it keeps it uncertain.
+
+### 2026-10-04 — Product model panels show the short provider list without search
+
+Setup → Models offers only a handful of ready coding providers. Show that list
+directly when changing provider; omit provider search and keep refresh available.
+Ticket: [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-04 — Named Python tools reuse the step registry and sandbox
+
+User-authored functions in code/tools/<name> become named agent tools through
+explicit python_tools:<name> step selections. They use immutable direct tool
+definitions and the guarded step shell, with existing credentials and limits.
+Returned JSON goes directly to the agent; published versions freeze tool source
+with their existing workspace snapshot. No wildcard selection or host executor.
+Ticket: [PLAT-423](bugs/pulse_platform/coding-agent-bridge/plat-423.md).
+
+
+### 2026-10-04 — A platform session never loads a person's own CLI config or MCP servers (Codex on a Mac) — PLAT-418
+
+- **Decided.** Whatever the home is, a coding CLI in a platform session runs with a config of its own: on a
+  Mac, Codex gets `CODEX_HOME = <private home>/.codex` (login linked in), like Landlock already did. The
+  person's own MCP servers, plugins and settings do not load next to the platform's tools.
+- **Why.** A chat answered from the owner's own AgentWorks MCP connection (their real workflows) instead of
+  the platform's tools. Their home stays open to the CLI's shell; their *config* is not part of the session.
+- **Where.** `llmtypes.SandboxHomeEnvironment`, `clisandbox.prepareSeatbeltCodexHome`.
+  [PLAT-418](bugs/pulse_platform/coding-agent-bridge/plat-418.md).
+
+### 2026-10-04 — Codex `gpt-5.3-codex-spark` is no longer offered — PLAT-416
+
+OpenAI refuses it for Codex signed in with a ChatGPT account, and the platform cannot tell which accounts could use it, so it is not offered anywhere (visible catalog, auto-published fast models, web search,
+image analysis and generation); the fast Codex choice is `gpt-5.4-mini`. A saved selection of Spark still resolves its pricing but is no longer offered.
+
+### 2026-10-04 — Python steps publish structured values through set_output
+
+Use the shared sandbox's set_output(value) helper for Python JSON handoff.
+The platform persists result.json for inspection and recovery; users pass data
+through existing step-output references without managing files. Stdout stays
+a log, and existing direct output writes remain compatible.
+Ticket: [PLAT-415](bugs/pulse_platform/security-sandbox/plat-415.md).
+
+### 2026-10-04 — A stuck managed browser is closed and the command retried once; very tall full-page screenshots are refused
+
+- **Decided.** In headless mode, when `open` or a read-only command (snapshot, get, is, screenshot, console, errors) fails with a timeout or a
+  crashed-tab error, the agent_browser tool closes that session once and retries the command once; a second failure returns
+  `BROWSER_STUCK` saying so. A side-effecting command (click, fill, ...) that times out is not retried and gets the same code with advice.
+  A `screenshot --full` of a page taller than 16000 px returns `SCREENSHOT_TOO_TALL` instead of crashing Chrome. A "Failed to save" error
+  no longer counts as a dead session. The runtime-health browser list and cleanup see Chrome (not only "chromium") and only this
+  account's processes; closing a managed session removes its empty socket folder.
+- **Why.** After a tab crash `open` hung until the user closed and reopened; a 600000 px capture killed Chrome; the "stop browsers"
+  control found no process to stop because it matched the name "chromium".
+- **Where.** `agent_go/pkg/browser/executor.go` (`isStuckBrowserError`, `fullPageScreenshotRefusal`), `workspace/handlers/browser_processes.go`,
+  `shell.go`, `workspace/browserconfig` (`RemoveEmptySessionSocketDirs`). [PLAT-414](bugs/pulse_platform/browser/plat-414.md).
+
+### 2026-10-04 — Source Control never shows or commits the platform's `.sandbox-cache` folder — PLAT-410
+
+- **Decided.** Git ignores `.sandbox-cache/` in the Files pane (a platform ignore list) and in every sandboxed command (a default ignore file in each sandbox home), whatever a project's own `.gitignore` says. It is the platform's
+  private space (tool homes, CLI state, owned by the person's sandbox user), never part of a person's project, and "Commit all" must not be able to put it in their repository.
+### 2026-10-04 — Relays participate in the shared Ctrl+K switcher
+
+Relays reuse the global switcher and workflow preset directory alongside
+AgentWorks, Crew and Code. Relay selections use existing product-aware
+navigation and show Relay labels so users can identify the product.
+Ticket: [PLAT-409](bugs/pulse_platform/frontend-chat/plat-409.md).
+
+### 2026-10-04 — Keep Ops labeled and collapsed by default
+
+The workflow and Relay header retains the Ops label and opens its icons on
+click, per the user's revised preference. Views and setup icons stay expanded.
+This supersedes the always-open Ops choice in PLAT-398.
+Ticket: [PLAT-408](bugs/pulse_platform/frontend-chat/plat-408.md).
+
+### 2026-10-03 — Granted slot output directories must also permit Unix writes
+
+The shared shell prepares only authorized workspace write directories for its
+user slot, repairing service-created group permissions before launch. Ancestors
+get traversal; Folder Guard remains the access boundary. Relay scripts write
+JSON files explicitly; stdout and context_output do not create them.
+Ticket: [PLAT-399](bugs/pulse_platform/security-sandbox/plat-399.md).
+
+### 2026-10-03 — Builder owns Relay output selection; workflow tools stay visible
+
+Remove the output dropdown and mark its selected agent Output. Authored prompts
+are shown as User messages. Workflow setup is icons only, all groups stay open,
+and Automation sits in Ops, per the user.
+Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
+
+### 2026-10-03 — Native agent tools are always on for every product — PLAT-402
+
+- **Decided (owner).** Workflow, Relay, Crew and Code all use native agent tools; there is no per-product switch, and a stored `native_agent_tools: false`
+  is ignored. One rule is simpler to explain and to test than a hidden setting that only some products had, and workflows keep the same sandbox and protected-file rules.
+
+### 2026-10-03 — Full CLI: own subagents; run_in_background only for read-only reviewers and long loops — PLAT-397
+
+- **Decided (owner).** With native tools on, in-turn parallel work uses the CLI's own subagents; steps are
+  already background calls. `run_in_background` is kept for read-only reviewers and supervision loops that
+  outlive the turn.
+- **Why.** Native subagents cover in-turn work but inherit write rights and end with the turn.
+- **Where.** `native-subagents` in `cmd/server/prompt_sections.go`; workflow-tools guidance.
+  [PLAT-397](bugs/pulse_platform/coding-agent-bridge/plat-397.md).
+
+### 2026-10-03 — One managed-browser launcher on every server
+
+- **Decided.** Every rootless server starts Chrome through `chrome-agentworks` beside the host's Chrome, selected by
+  `AGENT_BROWSER_EXECUTABLE_PATH=<app>/tools/chrome/current/chrome-agentworks` from the standard runtime profile; the deploy installs it
+  (`install-managed-chrome.sh`, system Chrome gets `tools/chrome/system`). The launcher runs the real Chrome binary by its resolved path
+  (not the `/usr/bin/google-chrome` shell script, and not through a symlink) and exports a writable HOME/XDG dir.
+- **Why.** The Landlock sandbox runs Chrome as the service account with a read-only HOME, so Chrome died at start; through the `chrome`
+  symlink it could not find `libvulkan` and died on the first screenshot or live-view frame.
+- **Where.** `deploy/rootless-linux/chrome-agentworks`, `install-managed-chrome.sh`, `build-and-activate.sh`,
+  `deploy/common/runtime_profile.json`. [PLAT-401](bugs/pulse_platform/browser/plat-401.md).
+
+### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
+
+- **Decided (owner).** With native tools on, `diff_patch_workspace_file` is not offered; the CLI edits with
+  its own tools inside the sandbox. `mcp_only` chats, Pi and workflow step agents keep it; the bridge shell
+  stays everywhere.
+- **Why.** Two edit tools for the same file only split the model's choice; the sandbox already refuses
+  protected files.
+- **Where.** `admitsBridgeTool` in mcpagent `agent/coding_agents_bridge.go`.
+  [PLAT-396](bugs/pulse_platform/coding-agent-bridge/plat-396.md).
+
+### 2026-10-03 — Chats read other workflows only when attached — PLAT-395
+
+- **Decided (owner).** A chat (Builder, generic chat, delegated workers) reads its own workflow and the
+  workflows attached to it, not the whole `Workflow/` tree.
+- **Why.** The sandbox self-test showed a Builder reading another workflow's files; attachment is the
+  explicit way to share one.
+- **Where.** Read grants in `cmd/server/server.go`, `delegation.go`, `tool_setup.go`.
+  [PLAT-395](bugs/pulse_platform/security-sandbox/plat-395.md).
+
+### 2026-10-03 — Workflow Models tab: one Model card, per-role list behind a switch — PLAT-407
+
+The workflow Models tab shows one Model card that sets every role to the same value; "Use different models for different roles" (off by default, on
+when saved roles differ) reveals a compact per-role list, and switching it off sets every role to High reasoning's value (owner). Role ids and the
+saved `llm_config` format are unchanged. Ticket: [PLAT-407](bugs/pulse_platform/frontend-chat/plat-407.md).
+
+### 2026-10-03 — Composer layout: terminal and attach left; New chat, commands, mic, send right. Workflow page: no Native agent tools toggle — PLAT-406
+
+In every chat input the live-view (terminal) toggle and attach sit on the left; New chat, commands (wand), mic and send on the right. The workflow
+Models page no longer offers "Native agent tools" (always on, as in Crew and Code); a value already saved as off is left untouched and not editable
+(owner). Ticket: [PLAT-406](bugs/pulse_platform/frontend-chat/plat-406.md), [PLAT-402](bugs/pulse_platform/coding-agent-bridge/plat-402.md).
+
+### 2026-10-03 — Allowed models per provider account — PLAT-407
+
+Every provider account (admin-managed or personal) has an optional `allowed_models` list; empty means every model (owner request). An admin sets it
+for the server account, the owner for a personal account. Enforced on the server: a model the account does not allow, however it arrives (picked, saved, default),
+runs on the first allowed model so a chat never fails on it (refusing a "new pick" 422'd every message once a fallback had bound the chat to another model, PLAT-416).
+Ticket: [PLAT-407](bugs/pulse_platform/frontend-chat/plat-407.md).
+
+### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome) — PLAT-404
+
+`/opt/google/chrome` is granted to the Landlock sandbox (read + execute, on every Linux server). Why: `/usr/bin/google-chrome` resolves there and the
+Code browser could not start; it worked before only because the removed mount-namespace fallback could see /opt. Ticket:
+[PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
+
+### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order — PLAT-406
+
+The mic is on for Code (owner; needs the server's speech engine); New chat and the live-view toggle sit with the send controls; Code's toolbar reads
+Dashboard | Files, Terminal, Browser | Automation, Costs | Setup. Ticket: [PLAT-406](bugs/pulse_platform/frontend-chat/plat-406.md).
+
 ### 2026-10-03 — Mac: Seatbelt for every coding CLI, home open; no unconfined mode — PLAT-394
 
 - **Decided (owner).** On a person's own Mac every CLI runs Full CLI under Seatbelt. Their home stays open
@@ -46,21 +279,17 @@ Design references for the linked runtime decisions:
 - **Where.** `internal/clisandbox/seatbelt.go` (provider), `cmd/server/cli_landlock.go` (builder).
   [PLAT-394](bugs/pulse_platform/security-sandbox/plat-394.md).
 
-### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work)
+### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work) — PLAT-403
 
-- **Found (user).** With tmux's alternate screen off (smcup@:rmcup@) the wheel did nothing: tmux repaints its screen instead of scrolling
-  it, so the browser's scrollback never held the history.
-- **Done.** The override is removed; the wheel sends `{"type":"scroll","lines":N}` again, at most once per animation frame (deltas add
-  up), and the workspace runs one tmux command per message (`if-shell #{pane_in_mode} '' 'copy-mode -e'; send-keys -X -N N scroll-up`).
-  The first keystroke after scrolling back cancels the history view. tmux's mouse stays off, so copy still works.
+The terminal wheel scrolls tmux history on the server again, sent at most once per animation frame as one tmux command; the first keystroke cancels
+the history view and tmux's mouse stays off so copy works. Why: with tmux's alternate screen off the browser never held history, so browser-side
+scroll did nothing. Supersedes the browser-side scroll in the one-home entry. Ticket: [PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
-### 2026-10-03 — A model or reasoning-effort change applies between turns, never mid-turn
+### 2026-10-03 — A model or reasoning-effort change applies between turns, never mid-turn — PLAT-407
 
-- **Decided (owner).** "Reasoning or model change should apply only when the agent has completed turns."
-- **Found.** Changing Muse's reasoning effort while a turn ran, then sending a message, relaunched the retained CLI at once
-  (interruptWorkflowPolicySession): the running turn was cancelled ("muse tmux session … died before run completion").
-- **Done.** When the runtime changed and a turn is running, the message waits in the durable turn queue; when it runs, nothing is in
-  flight and the CLI relaunches with the new model/effort (server.go, before interruptWorkflowPolicySession).
+A model or reasoning-effort change applies only when the agent has completed its turn: if a turn is running, the message waits in the durable turn
+queue and the CLI relaunches with the new setting when it runs (owner). Why: relaunching at once cancelled the running turn. Ticket:
+[PLAT-407](bugs/pulse_platform/frontend-chat/plat-407.md).
 
 ### 2026-10-03 — Compact browser chrome and recovery preserve the working browser
 
@@ -73,23 +302,19 @@ managed browser once; passive viewers and local CDP do not launch browsers.
 Interrupted teaching stays interrupted. Ticket:
 [PLAT-393](bugs/pulse_platform/browser/plat-393.md).
 
-### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy
+### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy — PLAT-405
 
-- **Done.** build-and-activate.sh reads deploy/common/runtime_profile.json and writes every same_everywhere setting into .env and both
-  services (like EXTRA_ENV, verified in the running processes): NATIVE_WORKSPACE, CDP off, CLI lock and Full CLI, AGENTWORKS_STATE_ROOT,
-  AGENTWORKS_MCP_STATE_DIR (state/mcp on every product; a release's MCP user config is carried over once) and
-  AGENT_BROWSER_SHARED_PROFILE=<app>/state/browser-profile. Applies to Excellence, Confida, SparkQuill.
-- **Decided.** MULTI_USER_MODE is per server: SparkQuill is single-user (data in _users/default); switching it on would hide that data.
-  No rollback step (owner: "if anything goes down it's fine").
+The rootless-linux deploy writes every same-everywhere setting of `deploy/common/runtime_profile.json` into `.env` and both services (native
+workspace, CDP off, CLI lock and Full CLI, state root, MCP state dir, shared browser profile). `MULTI_USER_MODE` stays per server: SparkQuill is
+single-user and switching it on would hide its data. No rollback step (owner: "if anything goes down it's fine"). Ticket:
+[PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
-### 2026-10-03 — Deployment unification, step 1: a read-only drift report
+### 2026-10-03 — Deployment unification, step 1: a read-only drift report — PLAT-405
 
-- **Decided (owner).** All servers are deployed one way with one runtime profile (docs/design/deploy_unification.md).
-- **Done.** deploy/common/runtime_profile.json is the standard profile; `./deploy.sh report [server]` prints how each running server
-  differs (agent and workspace process environment, private /tmp, kept releases, release source, slots/bin on PATH). Report only; the
-  rootless-linux deploy prints it at the end and never fails on it. First run: every server differs (state root, MCP state dir and browser
-  profile mostly unset; SparkQuill without MULTI_USER_MODE; SparkQuill, Dominion and RTS without the CLI lock settings; RTS not native;
-  Excellence and Dominion keep one release).
+All servers are deployed one way with one runtime profile (owner; `docs/design/deploy_unification.md`). `./deploy.sh report [server]` prints how each
+running server differs from `deploy/common/runtime_profile.json`; report only, the deploy never fails on it. Ticket:
+[PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
+
 ### 2026-10-03 — Codex resume adoption handles interactive options and historical startup banners
 
 A confined Codex resume copies only its explicitly selected thread into the
@@ -99,16 +324,16 @@ scrollback. The original rollout and existing private copies are retained.
 Shared provider `648234b`, validated with a real two-turn resumed conversation
 and deployed to SparkQuill in `sparkquill-7fc2ae97-20261003181010`. [PLAT-392](bugs/pulse_platform/coding-agent-bridge/plat-392.md).
 
-### 2026-10-03 — Deploy Slack notices are silent by default again
+### 2026-10-03 — Deploy Slack notices are silent by default again — PLAT-405
 
-- **Decided (owner).** "For now make Slack posts silent": `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1`.
+Deploy Slack notices are silent by default: `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1` (owner: "for now make Slack posts
+silent"). Ticket: [PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
-### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks
+### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks — PLAT-404
 
-- **Decided (owner).** "Our platform should be secure; people can already do anything from the terminal": the Code agent may set up a tunnel
-  (cloudflared, ngrok) when the user asks, saying once that the app becomes reachable by anyone with the link.
-- **Done.** codeHostSafetyInstructions no longer forbids tunnels, reverse proxies and port forwarders; it still forbids browser IDEs,
-  SSH/remote-desktop servers and VPNs (the 2026-09-30 code-server incident) and binding ports to all interfaces.
+The Code agent may set up a tunnel (cloudflared, ngrok) when the user asks, saying once that the app becomes reachable by anyone with the link. Why
+(owner): the platform should be secure and people can already do anything from the terminal. Browser IDEs, SSH/remote-desktop servers, VPNs and
+binding ports to all interfaces stay forbidden. Ticket: [PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
 
 ### 2026-10-03 — Gmail sender exceptions require separate owner confirmation
 
@@ -121,14 +346,11 @@ rejected. The pane remains read-only for configuration, with a dedicated owner
 security confirmation/revocation. Ticket:
 [PLAT-391](bugs/pulse_platform/security-sandbox/plat-391.md).
 
-### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal)
+### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal) — PLAT-404
 
-- **Found (user).** "Cannot start browser: Socket directory '/run/user/990/agent-browser' is not writable". A project browser
-  (`agents--project-…`) is not a per-user session, so it gets no scoped socket folder, and in native mode nothing set
-  AGENT_BROWSER_SOCKET_DIR, so agent-browser used $XDG_RUNTIME_DIR. That worked only under the mount-namespace fallback removed by
-  PLAT-374 (6f630cc25).
-- **Done.** A sandboxed command without a scoped browser socket always gets AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser, the folder
-  the sandbox grants. New chat button: icon only in the composer's neutral colours; "New chat" slides out on hover/focus.
+A sandboxed command without a scoped browser socket always gets `AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser`, the folder the sandbox grants. Why: a
+project browser has no per-user socket folder and agent-browser's default (`$XDG_RUNTIME_DIR`) is not writable without the removed fallback. Ticket:
+[PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
 
 ### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
 
@@ -136,27 +358,20 @@ Owner decision. The reads-only hybrid mode is gone; on means the CLI's own
 tools inside Landlock/Seatbelt, or mcp_only when it cannot be confined. Pi
 stays bridge-only. Ticket: [PLAT-390](bugs/pulse_platform/coding-agent-bridge/plat-390.md).
 
-### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser
+### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser — PLAT-404
 
-- **Decided (owner).** Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it.
-  Workflows and Crew keep per-project homes (unattended, shareable, bot-triggered).
-- **Found (user).** The Code agent's shell had HOME=/srv/agents/home (native mode keeps the real host HOME in privateSandboxHome), so it
-  did not see the terminal's nvm and ran Node 22 while the terminal ran Node 24.
-- **Done.** A Code command run as the owner's slot (terminal, and the agent's execute_shell_command in a Code project) gets the slot's own
-  home (`/srv/<app>/slots/home/<slot>`) as HOME plus a Landlock write grant (`Isolator.UserHome`); nvm's default Node from that home leads
-  PATH, so a non-interactive `sh -c` runs the same node. Other slot commands get the project's private home whatever the native setting
-  (`SlotHomeEnv`). Users without a slot keep the per-project home. Verified on Excellence and Confida.
-- **Scroll.** tmux no longer uses the alternate screen (`terminal-overrides smcup@:rmcup@`), so lines that scroll off reach the browser
-  terminal's own scrollback: the wheel scrolls locally and smoothly. The server-driven scroll message is removed. After a reconnect the
-  browser only has the visible screen; older output stays in tmux.
-### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server
+Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it. A Code command run as the owner's slot
+(terminal and the agent's shell) gets the slot's own home as HOME with a Landlock write grant; users without a slot keep the per-project home.
+Workflows and Crew keep per-project homes (unattended, shareable, bot-triggered). Why: the agent's shell and the terminal must see the same installs.
+Ticket: [PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md) (the scroll part is superseded, see
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md)).
 
-- **Found (user).** Nothing could be selected or copied in the terminal: tmux's mouse mode (turned on for wheel scrolling) took every drag.
-  Also a pre-fix shell kept being reused: tmux answers a refused client with "access not allowed" and exit 0, which read as running.
-- **Done.** tmux runs with its mouse off, so a drag is the browser's own selection. The page turns the wheel into `{"type":"scroll","lines":N}`
-  (the agent server forwards only resize and scroll, rebuilt from their fields); the workspace runs tmux `copy-mode -e` + `scroll-up/down`, and
-  the first keystroke after scrolling back sends `{"type":"scroll","cancel":true}` so typing reaches the shell. `interactiveShellRunning`
-  treats "access not allowed" as not running. Verified on a Mac and on Excellence/Confida (normal and as a user's slot).
+### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server — PLAT-403
+
+tmux runs with its mouse off so a drag is the browser's own selection (copy works); the wheel is sent to the server as a scroll message that the
+workspace turns into tmux copy-mode, and the first keystroke after scrolling cancels it. Why: tmux's mouse mode took every drag. Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
+
 ### 2026-10-03 — Relays keep Google apps and exclude Slack/WhatsApp
 
 Relays are API products with schedules and selected tools/skills. Keep Drive,
@@ -166,11 +381,10 @@ Slack/WhatsApp configuration and block retained Slack tool routes at runtime.
 Plan creation requires no Google connection. This reverses the earlier Relay
 Slack scope per the user. Ticket: [PLAT-389](bugs/pulse_platform/integrations/plat-389.md).
 
-### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now
+### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now — PLAT-405
 
-- **Decided (owner).** "Force deploys for now": a deploy restarts the services without waiting for running agent turns to finish.
-- **Done.** `deploy.sh` passes `DEPLOY_DRAIN_SECONDS` (default 0) into the build job as `DRAIN_TIMEOUT_SECONDS`, so build-and-activate.sh's drain
-  restarts immediately. `DEPLOY_DRAIN_SECONDS=300 ./deploy.sh <server>` waits up to 5 minutes again. A running turn is cut off by a deploy.
+A deploy restarts the services without waiting for running agent turns (`DEPLOY_DRAIN_SECONDS` default 0; set it, e.g. 300, to wait). Why (owner):
+"force deploys for now". A running turn is cut off by a deploy. Ticket: [PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
 ### 2026-10-03 — User slot shells exclude the service account's Google CLI store
 
@@ -188,23 +402,12 @@ A workflow's `folder_access` needs the same admin-assigned roots as a Work
 folder, and absolute host grants (including the host Downloads) never reach a
 server's CLI or shell sandbox. Ticket: [PLAT-383](bugs/pulse_platform/security-sandbox/plat-383.md).
 
-### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu)
+### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu) — PLAT-403
 
-- **Decided (user).** Up to 3 terminals per person per Code (tabs); the toolbar actions live in one menu in the top bar with keyboard shortcuts.
-- **Done.** The stream/stop routes take `tab` (1..3; anything else is refused, which is the cap); tab 1 keeps the pre-tab shell id so a running
-  terminal carries over. The panel shows a tab strip (`+`, close stops that shell), keeps hidden tabs connected, and remembers the tabs per Code.
-  Search stays in the toolbar; copy, paste, clear, text size, colours, full screen and new terminal are in a `⋯` menu with their shortcuts
-  (⌘ on a Mac; Ctrl+Shift+C/V/K elsewhere so Ctrl+C stays the shell's interrupt; Alt+1..3 switches tabs).
-- **Found (user, Excellence).** (1) A slot terminal kept the service account's HOME: a login shell read `/srv/agents/home/.profile`
-  ("Permission denied") and did not share the agent's home. (2) tmux 3.3+ refuses clients of another user, and the slot's tmux runs in the
-  sandbox's user namespace where the service arrives as the overflow user: the service could not see or stop a slot shell, so every start
-  left another tmux server running (five for one terminal). (3) With mouse on, tmux's right-click menu (split, kill, respawn) covered the
-  browser's menu.
-- **Done.** Every sandboxed terminal gets the project's private home (group-accessible). Slot shells grant `server-access -a -w` to the
-  overflow user (the socket's file mode still limits who can connect: the slot and the service). tmux's prefix and right-click bindings are
-  removed; the wheel still scrolls. The launcher refuses a policy with fields it does not know (an old launcher ignored `hidden_paths`).
-  Verified on Excellence and Confida as a user's slot: HOME in the project, service reaches the shell, bindings off, Stop leaves no tmux server.
-- **Open.** Four orphaned tmux servers of one user's Code terminal from before this fix are still running on Excellence (left for the user to decide).
+Up to 3 terminals per person per Code (tabs), and the toolbar actions live in one menu with keyboard shortcuts (user). Slot shells get the project's
+private home, are reachable and stoppable by the service, and tmux's own prefix and right-click menus are off so they do not cover the browser's.
+Ticket: [PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
+
 ### 2026-10-03 — Manual browser clipboard stays with the controlled browser
 
 Use native local clipboard gestures to copy the active page selection and insert
@@ -251,41 +454,31 @@ while keeping their lifetime controlled by session Close rather than the HTTP
 request. Missing identities stay unknown; current workflow ownership is not
 evidence of who launched a historical run. [PLAT-377](bugs/pulse_platform/cost-telemetry/plat-377.md).
 
-### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only
+### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only — PLAT-406
 
-- **Decided (user).** The chat input has no model picker (models change in the right-side panel). Code gets a New chat button; it must replace the current chat, never open a
-  parallel one: Code always has one active tab.
-- **Done.** Code's composer shows the existing New chat action (owner only, not on a shared Code). It stops the running session, rotates the project's conversation on the
-  server (the project manifest gets a new session id, so the coding agent starts a fresh conversation) and resets the same tab. The previous conversation stays listed.
-- **Model picker removed (user).** The chat input no longer renders a model/reasoning picker on any surface (it was only shown for `inputVariant="product"`: Video Studio,
-  Dominion, SparkQuill). Models change in each product's own settings; a workflow's model lives in its LLM configuration panel, not in the chat box.
+Code gets a New chat button that replaces the current conversation in the same tab (Code always has one active tab). The chat input has no model
+picker on any surface: models change in each product's settings, a workflow's model in its LLM configuration panel (user). Ticket:
+[PLAT-406](bugs/pulse_platform/frontend-chat/plat-406.md).
 
-### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals
+### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals — PLAT-404
 
-- **Found (user).** A manager of a shared provider account gets a live terminal for Usage, and could type `/logout` (or change settings) for everyone on the account.
-- **Done.** In a `usage` setup session, typed input goes through the same slash allowlist as the coding agents' live terminals (`AGENTWORKS_TERMINAL_SLASH_COMMANDS`,
-  default `/usage` only): other slash lines are erased, menu navigation is dropped. Non-managers still get server-collected text. Supersedes the unpushed
-  "usage read-only for everyone" branch (managers keep the live view).
+In a provider Usage setup session typed input goes through the same slash allowlist as the coding agents' live terminals (default `/usage` only), so a
+manager of a shared account cannot type `/logout` or change settings for everyone. Managers keep the live view. Ticket:
+[PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
+
 ### 2026-10-03 — The old workspace `Downloads/` folder is no longer granted
 
 Folder guards stop granting `Downloads/` and prompts stop pointing at it; outputs
 and browser artifacts go to the chat or workflow folder. It was a leftover whose
 local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/security-sandbox/plat-373.md).
 
-### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account
+### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account — PLAT-374
 
-- **Found.** A Code agent installed nvm into the service account's home (`/srv/agents/home`). Traced: every Code agent shell call blocks the project's `db/db.sqlite`
-  (inside the writable project). Landlock cannot carve a subpath out of a grant, so `landlockPolicy()` failed and `ExecuteIsolated` silently fell back to the
-  mount-namespace backend. That backend ignores `Isolator.Slot` (ran as the service account, "root" in its namespace) and left the host as the service account sees it:
-  replayed as a slot user on Excellence it read the platform `.env` (server secrets) and could write the service home and the release folder. Other users' trees stayed hidden.
-  Affects every server with slots or Landlock (Excellence, Confida, RTS) since blocked paths were added to Code; the terminal was not affected (no blocked paths).
-- **Done.** Blocked paths inside a granted path become `HiddenPaths`: the launcher mounts an empty, mode-000, read-only placeholder over each (like the read-only overlays for
-  blocked-write paths). A policy Landlock cannot carry is refused, never downgraded; a slot command never uses the mount-namespace backend. Verified on Excellence as the user's
-  slot with the new launcher: runs as the slot, `db.sqlite` unreadable and read-only, `.env` unreadable, service home not writable, project writable, `HOME` is
-  `<project>/.sandbox-cache/home` (the same home as the Code terminal, so agent and terminal now share installs and logins, as the user asked).
-- **Open.** The launcher binary must ship with the release (normal deploy). Secrets in `.env` were readable by Code agent shells until deployed: rotation is the owner's call.
-  `TestLandlockEnforcesExternalFolderAccess` fails on Excellence with the released launcher too (pre-existing, not this change): a blocked-write folder that is only a read path
-  accepted a write; to investigate. A missing blocked file (e.g. `db.sqlite-wal`) cannot be hidden and could be created.
+A slot command never runs on the mount-namespace backend, and a policy Landlock cannot carry is refused, never downgraded. Blocked paths inside a
+granted path are hidden by an empty read-only placeholder mounted over each. Why: a blocked `db.sqlite` inside the Code project made
+`landlockPolicy()` fail and agent shells silently fell back to a backend that ran as the service account and could read the platform `.env`. The agent
+shell's `HOME` is now the same private home as the Code terminal (user request). Ticket: [PLAT-374](bugs/pulse_platform/security-sandbox/plat-374.md).
+
 ### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
 
 - **Decision (user).** One Crew/Code can use different saved messages for different
@@ -354,16 +547,11 @@ capabilities and preserve account identity on changes. Existing credentials rema
 compatible. Implementation, verification and rollout are tracked in
 [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
-### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
+### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed) — PLAT-404
 
-- **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the
-  service account with mode 0700, so the slot (same group, different user) could not enter it: `mkdir: Permission denied` for any installer that writes under `$HOME`. The same
-  folder is used by the Shell tool, so it affected slot users there too.
-- **Done.** `privateSandboxHome` makes `.sandbox-cache`, `home` and `.config` group rwx + setgid every time (existing folders heal on the next start); the terminal creates an empty
-  `~/.bashrc` (installers say "Profile not found" otherwise). Verified with the real nvm installer as the slot: install, new terminal has `nvm`, `nvm install 24` gives Node 24.
-  Fixed in the shared workspace code, so Excellence, Confida and RTS get it from a normal deploy; no per-host step.
-- **Open (found while checking).** A coding agent's own nvm install landed in the platform account's real home `/srv/agents/home` (`.nvm`, `.bashrc`, `.profile` edited), not in the
-  project: that agent's shell is not on the private home, so the terminal cannot see what the agent installs, and the agent can write to a home shared by every user.
+The private sandbox home is group-accessible (rwx + setgid, healed on each start) so a user's slot can use it, and the terminal creates an empty
+`~/.bashrc`. Why: the service created it 0700, so slot users could not install anything under `$HOME` (nvm). Ticket:
+[PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
 
 ### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
 
@@ -385,14 +573,12 @@ compatible. Implementation, verification and rollout are tracked in
   The app already preserves these flags; the isolated runtime test now does too.
 
 
-### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found"
+### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found" — PLAT-403
 
-- **Found (user).** The wheel did nothing; the tmux status bar showed at the bottom; `ls`/`grep` were one colour; `nvm install 24` (nvm not installed) printed Ubuntu's Python
-  "command-not-found has crashed" report, because its database cannot be opened inside the sandbox.
-- **Done.** tmux starts with `mouse on`, `history-limit 50000`, `status off` (the browser has no scrollback of its own, tmux draws the screen). A sandboxed shell sets colour
-  aliases (GNU) or `CLICOLOR` (BSD), defines a plain `command_not_found_handle`, and sources the person's own `~/.bashrc` once (the private home, where `nvm` puts itself).
-  Tested: Mac (sandboxed, unconfined, wheel), Linux non-slot, and as a user's own account on Excellence and Confida.
-- **Open.** Whether the nvm installer itself works inside the sandbox is not yet tested as a slot user.
+A sandboxed terminal sets colour aliases, a plain `command_not_found_handle` (Ubuntu's Python handler crashes in the sandbox), hides tmux's status
+bar, keeps 50000 lines of history and sources the person's own `~/.bashrc` once (where `nvm` puts itself). Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
+
 ### 2026-10-03 — Coding CLI confinement has no switches: the platform decides, and servers fail closed
 
 - **User decision.** Test with Full native tools everywhere, never run a server
@@ -420,26 +606,17 @@ compatible. Implementation, verification and rollout are tracked in
   `TestInteractiveShellUnconfinedIsLocalOnly`.
 
 
-### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder
+### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder — PLAT-403
 
-- **Found (user).** An empty `cd` went to "some root folder" with no way to tell where it was or how to get back: in a sandboxed terminal `$HOME` is the shell's private
-  home inside the project (`.sandbox-cache/home`), which bash showed as `~`.
-- **Done.** The terminal's `PROMPT_COMMAND` defines `cd` so that no argument (or `~`) goes to the folder the terminal started in (`AGENTWORKS_START_DIR`); `cd -`,
-  `cd <path>` and `cd ..` are unchanged. The prompt names the folder (`${PWD##*/}`), so the private home reads `home`, not `~`. An unconfined terminal (the person's own
-  machine, real home) keeps the normal `cd`. Tested on a Mac (sandboxed and unconfined) and as a user's own account on Excellence and Confida.
+In a sandboxed terminal `cd` with no argument (or `~`) goes to the folder the terminal started in, and the prompt names the folder; an unconfined
+terminal keeps the normal `cd`. Why: `$HOME` is a private home inside the project, so a bare `cd` left the person in an unexplained folder. Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
-### 2026-10-03 — Code's terminal: Homebrew colours and a short prompt
+### 2026-10-03 — Code's terminal: Homebrew colours and a short prompt — PLAT-403
 
-- **Decision (user).** The terminal was plain white on black (it only set a background; xterm's default text is white), and on a server the prompt was
-  `user@host:/srv/agents/data/docs/_users/<id>/Chats/Code/projects/<project>/code$`, wider than the screen.
-- **Colours.** A Homebrew scheme (macOS Terminal's classic profile: black, bright green `#28fe14`, a green cursor, a full 16-colour palette) is the default;
-  a palette button in the toolbar switches to Classic (the coding-tool terminals' look) and the choice is remembered. Homebrew's blues are lightened: the
-  original dark blue is unreadable on black, and `ls` prints directories in it.
-- **Prompt.** The shell sets `PROMPT_COMMAND` so the prompt is just the current folder's name in bold (`code $`); bash runs it before every prompt, so it holds
-  whatever `/etc/bash.bashrc` or a profile sets `PS1` to. A shell already running keeps its old prompt until Stop and Start.
-- **Checked.** Frontend tests (palette, readability of the blues, wiring); on a Mac the sandboxed and the unconfined shell show `a $`; on Excellence a
-  user's own-account shell reports the short `PS1`. One non-slot Linux e2e run failed on a loaded server and did not fail again in five re-runs (those tests
-  use fixed waits).
+The terminal's default is a Homebrew colour scheme (black, bright green, readable lightened blues) with a toolbar switch to Classic, remembered; the
+prompt is just the current folder's name (`code $`). Why (user): plain white on black, and the server prompt was wider than the screen. Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
 ### 2026-10-03 — Browser teaching presents reusable skills and supports tabs
 
@@ -468,26 +645,17 @@ compatible. Implementation, verification and rollout are tracked in
 - **Guide.** See [Browser](core/browser.md) for storage conventions and remaining
   unsupported interactions; the reusable file belongs to its workflow/project.
 
-### 2026-10-03 — Deploy notices in Slack are back on by default (reverses the opt-in earlier the same day)
+### 2026-10-03 — Deploy notices in Slack are back on by default (reverses the opt-in earlier the same day) — PLAT-405
 
-- **Decision (user).** `deploy.sh` posts "deploying" and "finished" (or the "finished with a problem" warning) to the Slack channel again. Silence one run with
-  `DEPLOY_SLACK_NOTIFY=0` (or `false`, `no`, `off`). The webhook is read from `DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`
-  as before; with none set nothing is sent. The false "problem" notices that made the opt-in attractive came from the early health probe, fixed on
-  2026-10-01 (deploys now wait for the agent), so a healthy release no longer reports a problem.
-- **Checked** against a local fake receiver (the real channel was not posted to): default success 2 messages, default failing run 2 messages (start + warning),
-  `=0` and `=off` none, `=1` 2; the deploy's exit code is kept in every case. Both the start and finish notice respect the switch.
+`deploy.sh` posts the deploying and finished notices to Slack by default again; `DEPLOY_SLACK_NOTIFY=0` silences a run (user). Why: the false
+"problem" notices behind the opt-in came from the early health probe, fixed 2026-10-01. Superseded by the silent-by-default entry above. Ticket:
+[PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
-### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals
+### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals — PLAT-403
 
-- **Decision (user):** a better designed terminal, using open source out of the box. We already use xterm.js (the engine behind VS Code, Hyper,
-  Tabby and JupyterLab); ttyd/wetty/GoTTY would add a second server and bypass the slot and sandbox setup, so they were not used.
-- **Done.** `CodeShellPanel` now uses the coding-tool terminals' theme and font (`RAW_XTERM_THEMES`, `RAW_XTERM_FONT_FAMILY`), and adds the official
-  add-ons: WebGL rendering (falls back by itself), clickable links (http/https only, in a new tab), search (Ctrl/Cmd+F, highlights, Enter / Shift+Enter),
-  Unicode 11. A toolbar offers search, copy, paste, clear, text size (10-22, remembered), full screen, a status dot and a quiet automatic reconnect
-  (4 tries, 1-8 s) before it asks for a click. New packages: `@xterm/addon-webgl`, `-web-links`, `-search`, `-unicode11` (the start script's
-  `npm install` picks them up locally; servers build with `npm ci`).
-- **Checked.** Unit tests for the helpers and the wiring; the real panel rendered in a browser against a fake connection (colors, toolbar, search
-  highlight). Not yet checked against a real shell in a browser.
+The Code terminal stays xterm.js with its official add-ons (WebGL, links, search, Unicode 11), the coding-tool terminals' theme and a toolbar (user: a
+better designed terminal from open source). Why not ttyd/wetty/GoTTY: they add a second server and bypass the slot and sandbox setup. Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
 ### 2026-10-03 — Builder chooses Gmail senders; email fetch and access disclosure
 
@@ -529,28 +697,18 @@ compatible. Implementation, verification and rollout are tracked in
   unchanged.
 - Tests: `TestIsExistingHostGrant` in `shell_guard_writepath_test.go`.
 
-### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined)
+### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined) — PLAT-403
 
-- **Decision (user):** the terminal should have the same settings as the coding agents, locally and on servers.
-- **Local (done).** On a person's own machine the coding agents run with full native tools unconfined, real home and rights
-  (`AGENTWORKS_CLI_FULL_UNCONFINED`, on by default in the start script, refused by the agent server on a multi-user server). The terminal now
-  follows that same switch: the agent server sends `unconfined`, and the workspace service honours it only when `AGENTWORKS_TERMINAL_UNCONFINED=on`
-  (the start script derives it from the switch above), `NATIVE_WORKSPACE=true` and per-user accounts are off. So `git`, `codex`, `claude` find their
-  normal config in the real home. Tests: `TestInteractiveShellUnconfinedIsLocalOnly` (six cases incl. servers) and a Mac end-to-end check that the
-  unconfined shell has the readable real home while a non-requested one stays sandboxed.
-- **Server (unchanged, deliberately).** The terminal keeps the strict Landlock sandbox and runs as the person's own account, which is stronger than the
-  chat coding tools get today (they run as the shared platform account except for the one rollout user). Aligning the server terminal *down* to the chat
-  tools' rollout would weaken it; making the chat tools match the terminal is the open "widen CLI-as-slot" item.
+The terminal has the same sandbox settings as the coding agents (user). Locally it follows the agents' unconfined switch (own machine, real home),
+honoured only with native workspace on, per-user accounts off and the terminal switch on. On servers it keeps the strict Landlock sandbox as the
+person's own account: aligning it down to the chat tools' weaker rollout would weaken it. Ticket:
+[PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
-### 2026-10-03 — The local terminal had the real home folder, which the sandbox forbids
+### 2026-10-03 — The local terminal had the real home folder, which the sandbox forbids — PLAT-403
 
-- **Found (user, local terminal).** `bash: /Users/mipl/.bash_profile: Operation not permitted`, `git` unable to read `~/.gitconfig`, `codex` unable
-  to read `~/.codex/config.toml`. In native mode (the local app) the sandboxed command keeps the real `HOME` so host tools find their config
-  (`privateSandboxHome`), but Code's strict sandbox forbids reading it. The terminal now gets a private home inside the project
-  (`<project>/.sandbox-cache/home`) when it does not run as a slot; slots and servers already had one. `claude` and `codex` are not on the
-  sandbox's PATH and have no login there: the coding agents run through the chat, not the terminal.
-- **Test.** `interactive_shell_darwin_test.go` now runs natively and fails with exactly these errors without the fix.
-- **Terminal icon** changed to the plain `>_` (`Terminal`) in the toolbar and the panel header.
+A sandboxed terminal that does not run as a slot gets a private home inside the project instead of the real home, which Code's strict sandbox forbids
+reading. Coding agents run through the chat, not the terminal (`claude` and `codex` are not on the sandbox PATH). The toolbar icon is the plain `>_`.
+Ticket: [PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
 ### 2026-10-03 — Browser startup, scope settings and structured teaching implemented
 
@@ -694,11 +852,10 @@ Preserve unavailable saved selections for diagnosis without selecting a replacem
 Remove GPT-5.5/GPT-5.4 from new Codex choices while retaining saved-session metadata.
 See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
-### 2026-10-03 — Deploy notices in Slack are opt-in
+### 2026-10-03 — Deploy notices in Slack are opt-in — PLAT-405
 
-- **Decision (user).** `deploy.sh` no longer posts to the Slack channel by default (it posted "deploying" and "finished" for every deploy,
-  including false "problem" notices). Set `DEPLOY_SLACK_NOTIFY=1` for a run to get them back; the webhook settings are unchanged
-  (`DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`). Change: aa70c8802.
+`deploy.sh` no longer posts to Slack by default; `DEPLOY_SLACK_NOTIFY=1` turns the notices on for a run (user). Why: noise, including false "problem"
+notices. Reversed by the entry above. Ticket: [PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
 ### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
 
@@ -775,36 +932,17 @@ Keep uninstalled coding providers in Providers management, outside product model
 selection. The later ready-account decision also requires a usable account.
 See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
-### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28)
+### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28) — PLAT-403
 
-- **Decision (user, 2026-10-03).** Code gets a Terminal tab again: a real shell on the server in the Code's folder. The
-  2026-09-28 removal ("the user decided it wasn't needed") is reversed on the user's request; what changed is that every
-  person now has their own Linux account (slot), so a raw shell no longer runs as the shared service account.
-- **Design.** The old panel (commits 7affa8a90 / dc8cdb8c4) was ported, not reverted (the code had moved on). The agent
-  server authorizes the owner (Code is owner-only, so the terminal is too), builds the Code's Folder Guard and stamps the
-  user on every call; the workspace service starts a tmux server in the same Landlock sandbox as the shell tool (private
-  /tmp, private /dev/pts) and attaches from inside it. **Where slots are on, all of it runs as the caller's slot**:
-  `slots.WrapCommandFile` leaves the request in a file in the slot's run folder so the terminal stays the command's stdin
-  (the stdin form of `WrapCommand` cannot), the tmux files live in `<slot run folder>/shells/<id>` (group-shared with the
-  service; tmux makes its socket owner-only, so it is `chmod 0660` after start), and **a person without a slot gets no
-  terminal** (403) instead of a shell as the service account. Hosts without slots keep the old sandboxed behaviour.
-- **Scratch folders** the platform creates for a sandboxed command (`.tmp`, `.cache`, ...) are now group-writable: a slot
-  could not create a temp file in its own TMPDIR (the private-terminal launcher failed on this).
-- **Not on RTS yet.** A raw shell can reach the instance role through IMDS; that exposure is still open there.
-- **Known limit.** Code's sandbox is strict, so this works. A *non-strict* guard as a slot still fails on a host where the platform's
-  Gmail tool config folder is service-only (Excellence: `stat .../gog: permission denied`); that affects non-strict workflow
-  shells too and is tracked as the open gog-config gap.
-- **Tests.** Real-sandbox shell tests on a Linux host (`interactive_shell_e2e_linux_test.go`, including private PTY) and
-  `interactive_shell_slot_e2e_linux_test.go`, run on Confida: the shell is the user's slot, has a pty, cannot read the
-  service `.env` or list other people's folders. Sweep of orphaned shells: `interactive_shell_sweep_test.go`.
+Code gets a Terminal tab again (user), a real shell in the Code's folder in the same sandbox as the shell tool, reversing the 2026-09-28 removal
+because every person now has their own Linux account. Where slots are on it runs as the caller's slot; a person without a slot gets no terminal (403)
+rather than a shell as the service account. Ticket: [PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 
-### 2026-10-03 — Re-running the slot setup for Excellence took Confida's slot table away again
+### 2026-10-03 — Re-running the slot setup for Excellence took Confida's slot table away again — PLAT-404
 
-- **Found.** `provision-slots.sh init` for the default product resets `/etc/agentworks` to 0750 root:agents. Confida's
-  service reads its table through that folder (`o+x` on it, added after the 2026-10-01 incident), so after Excellence's
-  init (done during the 2026-10-02 slot-program refresh) Confida's shells would have failed with "slot table
-  unavailable". Found while testing the terminal on Confida; `chmod 0751 /etc/agentworks` fixed it by hand.
-- **Done.** The script now sets `o+x` on `/etc/agentworks` unconditionally after creating the folder.
+`provision-slots.sh init` sets `o+x` on `/etc/agentworks` unconditionally. Why: init for the default product reset it to 0750 and Confida's service,
+which reads its slot table through that folder, would fail with "slot table unavailable". Ticket:
+[PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
 
 ### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
 
@@ -824,17 +962,11 @@ See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
   Gmail inbound delivery: Pub/Sub, topic mapping and receiver authentication
   still need operator setup on Excellence before triggers can be enabled.
 
-### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them
+### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them — PLAT-405
 
-- **Found.** Confida kept 15 releases (14 GB) and Excellence 5, because the pruner keeps any release with a
-  `.deploying` marker. The rootless deploy removes the marker only on its very last line, so a deploy that exited after the
-  release went live but before that line (the false "exit 7" health probe, fixed 2026-10-01) left it behind.
-  14 of 15 Confida releases and 4 of 5 Excellence releases carried one. All were in fact finished and not in use.
-- **Done.** Removed the stale markers by hand and pruned with `--keep` for the two newest previous releases (rollback
-  copies): Confida 15 -> 3 (10 GB), Excellence 5 -> 3. Also cleared both Go build caches (7 GB + 5 GB, rebuilt by the next
-  deploy) and set `/etc/logrotate.d/agentworks` (100 MB, 3 copies) for the product logs. The pruner now ignores a
-  `.deploying` marker older than 6 hours (test: `test_a_stale_deploying_marker_does_not_pin_a_release`).
-- **Context.** The shared Hetzner disk hit 100% on 2026-10-02 (issue #260); free space is now 71 GB.
+The release pruner ignores a `.deploying` marker older than 6 hours. Why: the rootless deploy removes it only on its last line, so a deploy that
+exited after the release went live left it behind and pinned the release (14 GB on Confida). Ticket:
+[PLAT-405](bugs/pulse_platform/scheduler-runs/plat-405.md).
 
 ### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
 

@@ -33,7 +33,7 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractNestedAgentArtifactsVersion
+const WorkflowContractCurrentVersion = workflowContractManagedDBScriptsVersion
 
 const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitPulseContractVersion
 
@@ -52,6 +52,11 @@ const workflowContractEvalRetirementVersion = "1.0.43"
 // Workflows must migrate authored path assumptions and use the canonical code/
 // source tree before execution can resume.
 const workflowContractNestedAgentArtifactsVersion = step_based_workflow.NestedAgentArtifactsContractVersion
+
+// Scripted steps reach the workflow database through the built-in agentworks_db
+// helper, not by opening db.sqlite themselves (PLAT-428). The stamp is refused
+// while any script still opens the database or carries a schema statement.
+const workflowContractManagedDBScriptsVersion = step_based_workflow.ManagedDBScriptsContractVersion
 
 const workflowContractInitialVersion = "1.0.0"
 const workflowContractMessageSequenceCodeVersion = "1.0.10"
@@ -647,8 +652,8 @@ type WorkflowCapabilities struct {
 	// sandbox limited to the chat's folders (mcp_only when it cannot be
 	// confined), with protected files refused. Interactive chats of owners and editors only: step
 	// agents, schedules, webhooks, bots and read-only users keep
-	// AgentWorks-only tools. On by default: nil means on and only an explicit
-	// false turns it off. Read it through NativeAgentToolsEnabled.
+	// AgentWorks-only tools. Always on (2026-10-03): the field is kept so older
+	// manifests still load, and a stored false is ignored. Read it through NativeAgentToolsEnabled.
 	NativeAgentTools *bool `json:"native_agent_tools,omitempty"`
 }
 
@@ -658,10 +663,10 @@ func (c WorkflowCapabilities) NativeAgentToolsEnabled() bool {
 	return nativeAgentToolsEnabled(c.NativeAgentTools)
 }
 
-// nativeAgentToolsEnabled applies the on-by-default rule shared by workflows
-// and crew projects.
-func nativeAgentToolsEnabled(setting *bool) bool {
-	return setting == nil || *setting
+// nativeAgentToolsEnabled: native agent tools are on for every workflow, Relay, Crew and Code (owner, 2026-10-03). A value an older workflow
+// saved as false is ignored, as it already is for a Crew or a Code: there is no switch left to turn it back on.
+func nativeAgentToolsEnabled(_ *bool) bool {
+	return true
 }
 
 // WorkflowNotificationConfig contains only safe references. Credential values
@@ -1196,14 +1201,8 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	for i, sched := range m.Schedules {
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() && scheduleTypeOrDefault(sched.ScheduleType) != "cron" && scheduleTypeOrDefault(sched.ScheduleType) != "calendar" {
-			return fmt.Errorf("schedules[%d]: Relays support function, cron, or calendar triggers", i)
-		}
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() && len(sched.TriggerPayload) > 0 {
-			var payload map[string]interface{}
-			if err := json.Unmarshal(sched.TriggerPayload, &payload); err != nil || payload == nil {
-				return fmt.Errorf("schedules[%d].trigger_payload must be a JSON object for a Relay", i)
-			}
+		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
+			return fmt.Errorf("schedules[%d]: Relays support API function triggers only; cron and calendar schedules are not supported", i)
 		}
 		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) != 1 {
 			return fmt.Errorf("schedules[%d]: a Relay trigger must select exactly one variable group", i)
@@ -1457,6 +1456,35 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 
 	// Apply defaults for missing fields from older schema versions
 	applyManifestDefaults(&m)
+	// Retired Relay timers never execute. Ignore them on read so an older
+	// draft or frozen release remains callable; the next draft save removes
+	// them through the normal manifest writer and changelog. Never rewrite a
+	// published snapshot for this product policy change.
+	if m.Kind == "relay" {
+		retired := map[string]bool{}
+		kept := make([]WorkflowSchedule, 0, len(m.Schedules))
+		for _, schedule := range m.Schedules {
+			kind := scheduleTypeOrDefault(schedule.ScheduleType)
+			if kind == "cron" || kind == "calendar" {
+				retired[schedule.ID] = true
+				continue
+			}
+			kept = append(kept, schedule)
+		}
+		if len(retired) > 0 {
+			for i := range kept {
+				deps := []string{}
+				for _, id := range scheduleDependencyIDs(kept[i]) {
+					if !retired[id] {
+						deps = append(deps, id)
+					}
+				}
+				kept[i].AfterScheduleID = ""
+				kept[i].AfterScheduleIDs = deps
+			}
+		}
+		m.Schedules = kept
+	}
 	llmConfigMigrated := workflowtypes.NormalizePresetLLMConfig(m.Capabilities.LLMConfig)
 
 	// A field retired from the Go schema (e.g. a past execution_defaults knob

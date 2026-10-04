@@ -930,6 +930,9 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
+	if err := constrainProductChatModel(ctx, &query); err != nil {
+		return QueryRequest{}, err
+	}
 	// A conversation that started on the shared account stays there: the query path defaults a
 	// chat with no account to the person's own one, which would move it under a different CLI
 	// login while its saved history stays under the old one. Only new conversations get the default.

@@ -44,10 +44,10 @@ it('opens two dates together and collapses only the selected date', async () => 
     await act(async () => buttons[0].click())
     await act(async () => buttons[1].click())
     expect(buttons.map(button => button.getAttribute('aria-expanded'))).toEqual(['true', 'true'])
-    expect(host.textContent?.match(/This older daily record/g)).toHaveLength(2)
+    expect(host.textContent?.match(/Activity details unavailable/g)).toHaveLength(2)
     await act(async () => buttons[0].click())
     expect(buttons.map(button => button.getAttribute('aria-expanded'))).toEqual(['false', 'true'])
-    expect(host.textContent?.match(/This older daily record/g)).toHaveLength(1)
+    expect(host.textContent?.match(/Activity details unavailable/g)).toHaveLength(1)
   } finally {
     await act(async () => root.unmount())
     host.remove()

@@ -1774,10 +1774,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				templateVars["ScriptedMetadataPath"] = metaRelPath
 			}
 
-			strictScript := execCtx != nil && execCtx.SavedScriptOnly
-			if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
-				strictScript = true
-			}
+			// A run never asks an LLM to write, repair or stand in for a scripted
+			// step: it runs the saved main.py and fails on its error, which Pulse
+			// reports. Authoring and repair happen only when the Builder runs the
+			// step itself (AllowScriptRepair), PLAT-436.
+			strictScript := scriptedRunIsStrict(execCtx, step)
 			if strictScript {
 				if scriptedDecision.FastPathDone {
 					hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] Saved-script-only run succeeded for step %d", stepIndex+1))
@@ -3938,4 +3939,15 @@ func buildValidationContinuationUserMessage(vr *ValidationResponse, attempt int)
 	sb.WriteString("Fix the specific issues above and re-produce the required outputs. ")
 	sb.WriteString("Do not restart from scratch — your prior tool calls and outputs are still valid where they passed; only address the listed failures.")
 	return sb.String()
+}
+
+// scriptedRunIsStrict reports whether a scripted step must run only its saved
+// main.py, with no LLM writing, repairing or standing in for it (PLAT-436).
+// That is every run; only the Builder's own execute_step may repair, and never
+// for a step marked script_only or a fast_path_only test.
+func scriptedRunIsStrict(execCtx *ExecutionContext, step PlanStepInterface) bool {
+	if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
+		return true
+	}
+	return execCtx == nil || execCtx.SavedScriptOnly || !execCtx.AllowScriptRepair
 }

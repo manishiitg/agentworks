@@ -229,7 +229,11 @@ func ExecuteShellCommand(c *gin.Context) {
 			if physicalPath == "" {
 				continue
 			}
-			if mkErr := os.MkdirAll(physicalPath, 0755); mkErr != nil {
+			if mkErr := prepareGuardWriteDirectory(physicalPath, docsDir, userSlot != ""); mkErr != nil {
+				if userSlot != "" {
+					c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to prepare slot write directory", Error: mkErr.Error()})
+					return
+				}
 				log.Printf("[SHELL ISOLATOR] Warning: failed to pre-create write path %s: %v", physicalPath, mkErr)
 			}
 		}
@@ -497,6 +501,9 @@ func ExecuteShellCommand(c *gin.Context) {
 		}
 	}
 	finishShellProcess(processRecord.PID, status, &exitCode)
+	if exitCode == 0 && req.FolderGuard != nil && req.FolderGuard.BrowserSession != "" && commandClosesBrowser(req.Command) {
+		removeSocketFolderAfterClose(req.FolderGuard.BrowserSession)
+	}
 
 	// Browser daemons are intentionally persistent and may have inherited a
 	// different workflow step's sandbox. Finalize their staged artifacts in this

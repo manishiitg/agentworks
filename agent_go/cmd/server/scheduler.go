@@ -711,6 +711,11 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 			delete(s.jobs, key)
 		}
 	}
+	// Relays retain the shared function-delivery ledger, but register no timers.
+	if sctx.WorkflowKind == "relay" && !sched.IsFunctionTrigger() {
+		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
+		return nil
+	}
 	// Legacy manifests may still contain a dedicated Pulse cron. It now serves
 	// only as a backwards-compatible enablement signal; recurring Pulse is
 	// triggered by completion of a normal scheduled run instead.
@@ -1679,6 +1684,10 @@ func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason str
 
 // triggerSchedule is called by the tick loop when a schedule is due.
 func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor time.Time) {
+	if sctx.WorkflowKind == "relay" {
+		s.logf(sctx, "[SCHEDULER] Relay timers are not supported; use an authenticated API function trigger")
+		return
+	}
 	triggerCtx := *sctx
 	triggerCtx.ScheduledFor = scheduledFor.UTC()
 	sctx = &triggerCtx
@@ -2288,20 +2297,10 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		})
 		s.cleanupRemovedScheduleRuntimeState(runtimeKey)
 	}
-	if sctx.WorkflowKind == "relay" && sctx.WebhookInput == nil && !sctx.PulseOnly {
-		input, inputErr := relayScheduledInput(sctx, runID)
-		if inputErr == nil {
-			var data []byte
-			data, inputErr = json.Marshal(input)
-			if inputErr == nil {
-				inputErr = writeFileToWorkspace(ctx, webhookInputPath(sctx.WorkspacePath, runID), string(data))
-			}
-		}
-		if inputErr != nil {
-			failBeforeHistory(inputErr, "")
-			return "", inputErr
-		}
-		sctx.WebhookInput = input
+	if sctx.WorkflowKind == "relay" && (!sctx.Schedule.IsFunctionTrigger() || sctx.WebhookInput == nil) {
+		err := errors.New("Relays require an authenticated API function delivery; schedules are not supported")
+		failBeforeHistory(err, "")
+		return "", err
 	}
 
 	if !sctx.PulseOnly && sctx.WebhookInput == nil {

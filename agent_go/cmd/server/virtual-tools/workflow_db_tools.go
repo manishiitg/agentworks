@@ -85,6 +85,10 @@ const workflowDBDescribeRows = 500
 // caller can still get the full list with action=describe.
 const workflowDBSchemaHintBudget = 1000
 
+// workflowDBMaxRows is the most rows one query_workflow_db call returns (the
+// workspace service itself allows 50,000); page past it with offset.
+const workflowDBMaxRows = 10000
+
 // workflowDBDescribeTableSQL renders the column-listing PRAGMA. Callers must
 // have checked the name against safeWorkflowDBTableName first.
 func workflowDBDescribeTableSQL(table string) string {
@@ -109,7 +113,8 @@ func workflowDBQueryToolDefinition() llmtypes.Tool {
 				"sql":      map[string]any{"type": "string", "description": "One SELECT, read-only WITH/EXPLAIN, or allowlisted read-only PRAGMA statement. Supported integrity checks include PRAGMA integrity_check, quick_check[(N)], and foreign_key_check[(table)]. This is the normal way to use the tool. Through the shell HTTP bridge, put SQL in a variable and JSON-encode it with jq -n --arg sql \"$sql\" '{sql:$sql}'; never inline SQL containing single quotes inside an outer single-quoted JSON literal."},
 				"params":   map[string]any{"type": "array", "description": "Optional positional values for ? placeholders in sql."},
 				"query":    map[string]any{"type": "string", "description": "Compatibility alias for sql. Prefer sql. If both are supplied they must be identical."},
-				"max_rows": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum rows to return for action=query. Default 500."},
+				"max_rows": map[string]any{"type": "integer", "minimum": 1, "maximum": 10000, "description": "Maximum rows to return for action=query. Default 500, at most 10000. Page through a bigger result with offset."},
+				"offset":   map[string]any{"type": "integer", "minimum": 0, "description": "Optional. Skip this many rows of the SELECT/WITH result (give it an ORDER BY so pages are stable). When a result is truncated it carries next_offset: pass that as offset to read the next page."},
 			},
 		}),
 	}}
@@ -118,23 +123,25 @@ func workflowDBQueryToolDefinition() llmtypes.Tool {
 func workflowDBMutateToolDefinition() llmtypes.Tool {
 	return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "mutate_workflow_db",
-		Description: "Mutate rows in the current workflow SQLite database. Needs trusted DB write authority. Pass sql (and optional params) for one statement, same shape as query_workflow_db; pass statements with 1-20 entries for an all-or-nothing batch. Prefer INSERT ... ON CONFLICT DO UPDATE (upsert by the table's declared primary key) over DELETE or a wholesale overwrite — a table is shared across groups/runs, and deleting/replacing rows can clobber another writer's data. Check db/README.md for the table's primary key and upsert rule before writing; a genuine DELETE is for rows this step itself owns and is retiring, not routine updates. Schema changes (new tables/indexes) are not accepted here -- write the migration to db/migrations/ with ordinary file tools, then call apply_workflow_db_migration.",
+		Description: "Mutate rows in the current workflow SQLite database. Needs trusted DB write authority. Pass sql (and optional params) for one statement, same shape as query_workflow_db; pass statements with 1-200 entries for an all-or-nothing batch. To write many rows with one statement, pass param_sets: one list of values per row, run in order inside the same transaction (at most 5000 executions per call in total; a statement takes params or param_sets, never both; the receipt sums the rows affected). Prefer INSERT ... ON CONFLICT DO UPDATE (upsert by the table's declared primary key) over DELETE or a wholesale overwrite — a table is shared across groups/runs, and deleting/replacing rows can clobber another writer's data. Check db/README.md for the table's primary key and upsert rule before writing; a genuine DELETE is for rows this step itself owns and is retiring, not routine updates. Schema changes (new tables/indexes) are not accepted here -- write the migration to db/migrations/ with ordinary file tools, then call apply_workflow_db_migration.",
 		Parameters: llmtypes.NewParameters(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"statements": map[string]any{
-					"type": "array", "minItems": 1, "maxItems": 20,
+					"type": "array", "minItems": 1, "maxItems": 200,
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"sql":    map[string]any{"type": "string", "description": "One INSERT, UPDATE, or DELETE statement, optionally prefixed by WITH CTEs. Use ? placeholders for values."},
-							"params": map[string]any{"type": "array", "description": "Optional positional values for ? placeholders."},
+							"sql":        map[string]any{"type": "string", "description": "One INSERT, UPDATE, or DELETE statement, optionally prefixed by WITH CTEs. Use ? placeholders for values."},
+							"params":     map[string]any{"type": "array", "description": "Optional positional values for ? placeholders."},
+							"param_sets": map[string]any{"type": "array", "items": map[string]any{"type": "array"}, "description": "Optional. Run sql once per entry (each entry is the positional values for one row). Instead of params."},
 						},
 						"required": []string{"sql"},
 					},
 				},
-				"sql":    map[string]any{"type": "string", "description": "One INSERT, UPDATE, or DELETE statement for the single-statement form. Same shape as query_workflow_db. Use ? placeholders for values. Through the shell HTTP bridge, keep SQL in a variable and JSON-encode it with jq -n --arg; never inline quoted SQL inside a single-quoted JSON literal."},
-				"params": map[string]any{"type": "array", "description": "Optional positional values for the ? placeholders in sql."},
+				"sql":        map[string]any{"type": "string", "description": "One INSERT, UPDATE, or DELETE statement for the single-statement form. Same shape as query_workflow_db. Use ? placeholders for values. Through the shell HTTP bridge, keep SQL in a variable and JSON-encode it with jq -n --arg; never inline quoted SQL inside a single-quoted JSON literal."},
+				"params":     map[string]any{"type": "array", "description": "Optional positional values for the ? placeholders in sql."},
+				"param_sets": map[string]any{"type": "array", "items": map[string]any{"type": "array"}, "description": "Single-statement form of many rows: run sql once per entry, in one transaction. Instead of params."},
 			},
 		}),
 	}}
@@ -339,8 +346,14 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 		} else if raw, ok := args["max_rows"].(int); ok && raw > 0 {
 			maxRows = raw
 		}
-		if maxRows > 1000 {
-			maxRows = 1000
+		if maxRows > workflowDBMaxRows {
+			maxRows = workflowDBMaxRows
+		}
+		offset := 0
+		if raw, ok := args["offset"].(float64); ok && raw > 0 {
+			offset = int(raw)
+		} else if raw, ok := args["offset"].(int); ok && raw > 0 {
+			offset = raw
 		}
 		// Raw SQL is the contract, exactly as on mutate_workflow_db; the only
 		// difference between the two tools is that this one opens the database with
@@ -383,7 +396,17 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 				sortedArgumentKeys(args),
 			)
 		}
+		if offset > 0 {
+			paged, pageErr := workflowDBPagedSQL(sqlText, offset)
+			if pageErr != nil {
+				return "", pageErr
+			}
+			sqlText = paged
+		}
 		result, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: sqlText, Params: workflowDBParams(args), MaxRows: maxRows})
+		if err == nil && result.Truncated {
+			result.NextOffset = offset + len(result.Rows)
+		}
 		if err != nil {
 			if workflowDBUnrecognizedSigilPattern.MatchString(err.Error()) {
 				return "", workflowDBUnquotedBindSigilHint(err)
@@ -436,6 +459,15 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 				if rawParams, ok := args["params"].([]interface{}); ok {
 					statement.Params = rawParams
 				}
+				if rawSets, ok := args["param_sets"].([]interface{}); ok {
+					for _, rawSet := range rawSets {
+						set, isList := rawSet.([]interface{})
+						if !isList {
+							return "", fmt.Errorf("param_sets must be a list of lists: one list of values per row")
+						}
+						statement.ParamSets = append(statement.ParamSets, set)
+					}
+				}
 				payload.Statements = []workspace.WorkflowDBMutationStatement{statement}
 			}
 		}
@@ -448,7 +480,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 				"no mutation supplied. Received top-level keys %v. "+
 					"Pass sql for one statement, exactly like query_workflow_db: "+
 					`{"sql":"UPDATE t SET c = ? WHERE id = ?","params":["value",1]}. `+
-					"For an all-or-nothing batch pass statements with 1-20 entries of the same shape. There is no `set` or `upsert` argument",
+					"For an all-or-nothing batch pass statements with 1-200 entries of the same shape, or param_sets for many rows of one statement. There is no `set` or `upsert` argument",
 				sortedArgumentKeys(args),
 			)
 		}
@@ -1042,4 +1074,20 @@ func sortedArgumentKeys(args map[string]any) []string {
 // schema while their storage owner supplies atomic execution and authorization.
 func WorkflowDBSQLToolDefinitions() []llmtypes.Tool {
 	return []llmtypes.Tool{workflowDBQueryToolDefinition(), workflowDBMutateToolDefinition()}
+}
+
+// workflowDBPagedSQL skips the first offset rows of a SELECT or WITH
+// statement by wrapping it as a subquery; the caller's ORDER BY keeps pages
+// stable and positional params keep their order. Other read statements (PRAGMA
+// and friends) have no rows to page.
+func workflowDBPagedSQL(sqlText string, offset int) (string, error) {
+	trimmed := strings.TrimSpace(sqlText)
+	for strings.HasSuffix(trimmed, ";") {
+		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ";"))
+	}
+	lower := strings.ToLower(trimmed)
+	if !strings.HasPrefix(lower, "select") && !strings.HasPrefix(lower, "with") {
+		return "", fmt.Errorf("offset applies to a SELECT or WITH statement")
+	}
+	return fmt.Sprintf("SELECT * FROM (%s) LIMIT -1 OFFSET %d", trimmed, offset), nil
 }

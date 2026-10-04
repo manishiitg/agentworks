@@ -691,7 +691,8 @@ Other tools: ` + "`query_agent(agent_id)`" + `, ` + "`terminate_agent(agent_id)`
 Generic chat does **not** run workflows directly. The user runs workflows from the automation UI when they want execution.
 
 **How to handle workflow execution requests:**
-1. Find the workflow path — ` + "`execute_shell_command(command: \"ls Workflow/\")`" + `
+You can read a workflow only when it is attached to this chat (the user mentions it with ` + "`#`" + `). If it is not attached, ask the user to attach it; do not search ` + "`Workflow/`" + ` for it.
+1. Use the attached workflow's path (` + "`Workflow/<name>`" + `)
 2. Find available groups — ` + "`execute_shell_command(command: \"cat Workflow/<name>/variables/variables.json\")`" + ` and look at the ` + "`groups`" + ` array
 3. Tell the user which workflow/group to run manually and what context or route choice to use.
 4. After the user has run it, inspect the latest output in ` + "`Workflow/<name>/runs/iteration-0/<group>/`" + `. Report status using run folders, typed Pulse state from ` + "`get_pulse_state`" + `, ` + "`reports/`" + `, and ` + "`db/db.sqlite`" + `.
