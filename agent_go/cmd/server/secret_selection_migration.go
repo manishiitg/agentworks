@@ -309,6 +309,13 @@ func runSecretSelectionMigration(opts secretSelectionMigrationOptions) (*secretS
 	if err != nil {
 		return nil, err
 	}
+	// Legacy manifests can predate owner metadata. An encrypted record under
+	// any user for this exact project path is evidence that a value exists;
+	// retaining its selection grants no authority to read or use that record.
+	legacyUsers, err := secretMigrationChildren(root, filepath.Dir(workspaceref.UserRoot("default")))
+	if err != nil {
+		return nil, err
+	}
 	for _, path := range paths {
 		raw, mode, err := secretMigrationRead(root, path)
 		if err != nil {
@@ -332,22 +339,11 @@ func runSecretSelectionMigration(opts secretSelectionMigrationOptions) (*secretS
 			return nil, err
 		}
 		owners := []string{chathistory.SharedWorkflowSecretsUserID}
-		ref, _ := workspaceref.Parse(workspace)
-		if ref.HasOwner() {
-			owners = append(owners, ref.Owner())
-		}
-		for _, key := range []string{"created_by", "owner_id"} {
-			var owner string
-			_ = json.Unmarshal(manifest[key], &owner)
-			if owner != "" {
-				owners = append(owners, owner)
+		for _, user := range legacyUsers {
+			if user != chathistory.SharedWorkflowSecretsUserID && user != managedGlobalSecretsUserID {
+				owners = append(owners, user)
 			}
 		}
-		var access struct {
-			Owners []string `json:"owners"`
-		}
-		_ = json.Unmarshal(manifest["access"], &access)
-		owners = append(owners, access.Owners...)
 		available := map[string]bool{}
 		for name := range globals {
 			available[name] = true

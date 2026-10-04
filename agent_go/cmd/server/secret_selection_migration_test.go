@@ -125,6 +125,12 @@ func TestSecretSelectionMigrationPreservesScopedLegacyAndProjectBoundaries(t *te
 	if err := store.UpsertWorkflowSecret(t.Context(), "alice", crew, "LEGACY", "legacy-ciphertext"); err != nil {
 		t.Fatal(err)
 	}
+	// Older manifests have no complete owner registry. A same-project legacy
+	// value must not be detached merely because its storing user isn't named.
+	if err := store.UpsertWorkflowSecret(t.Context(), "bob", crew, "BOB_LEGACY", "bob-ciphertext"); err != nil {
+		t.Fatal(err)
+	}
+	selectionManifest(t, opts.DocsRoot, crew, "product.json", []string{"LEGACY", "BOB_LEGACY", "OTHER_PROJECT"}, nil)
 	if err := store.UpsertWorkflowSecret(t.Context(), chathistory.SharedWorkflowSecretsUserID, code, "OTHER_PROJECT", "project-ciphertext"); err != nil {
 		t.Fatal(err)
 	}

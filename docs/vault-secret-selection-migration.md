@@ -20,7 +20,8 @@ backups. No installation-specific secret names are hardcoded.
 For each selected name in `selected_secrets` and
 `selected_global_secret_names`, it checks:
 
-1. The project's shared encrypted store and legacy stores for its owners.
+1. The project's shared encrypted store and legacy user stores for that exact
+   project path, including records predating owner metadata.
 2. The encrypted managed global store.
 3. `GLOBAL_SECRET_*` settings from the deployment environment.
 
