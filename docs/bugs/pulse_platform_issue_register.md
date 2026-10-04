@@ -3,6 +3,13 @@
 [PLAT-467](pulse_platform/scheduler-runs/plat-467.md), fixed on main; Excellence redeploy pending. `EnvironmentFile=` and `WorkingDirectory=` were written with quotes, which
 systemd takes literally, so the first Vault install failed and ended the Excellence deploy (new release was up, Vault was not).
 
+## Muse chats on a Mac start with no MCP bridge — PLAT-468
+
+[PLAT-468](pulse_platform/coding-agent-bridge/plat-468.md), fixed on `main` (provider
+`4dba54e`), not deployed, needs a backend restart: the Mac Seatbelt refused Muse's read
+of the folders above its runtime folder, so Muse's MCP startup failed. Muse now gets a
+listing grant on those folders; proven by reproduction and a real-sandbox test.
+
 ## Lighter chat restore and opening at the latest message — PLAT-466
 
 [PLAT-466](pulse_platform/frontend-chat/plat-466.md), see ticket for state:
