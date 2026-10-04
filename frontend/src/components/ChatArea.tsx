@@ -3635,6 +3635,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
             onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+            closedCodingAgentQuestions={closedCodingAgentQuestions}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
         ) : selectedModeCategory === 'workflow' ? (

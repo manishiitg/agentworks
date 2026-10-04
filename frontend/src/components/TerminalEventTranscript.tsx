@@ -1,5 +1,5 @@
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
-import { codingAgentQuestionCards, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
+import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1061,7 +1061,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const slot = turnSlots[index]
           const testId = item.kind === 'event' ? `terminal-clear-event-${item.event.id || item.key}` : undefined
           const question = item.kind === 'event' ? questions.cards.get(item.event.id) : undefined
-          const questionPrompt = question && closedCodingAgentQuestions?.has(question.promptId) ? { ...question, state: 'interrupted' as const } : question
+          const questionPrompt = question ? withClosedQuestions(question, closedCodingAgentQuestions) : question
           const body = questionPrompt
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} />
             : item.kind === 'live'

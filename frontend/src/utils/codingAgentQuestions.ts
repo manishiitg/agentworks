@@ -64,3 +64,12 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
   }
   return { cards, hiddenEvents }
 }
+
+// A prompt the server answered "no longer pending" (it was lost with a server restart) is shown closed in
+// every view, never answerable again.
+export function withClosedQuestions<T extends { promptId: string; state: CodingAgentQuestionPrompt['state'] }>(
+  prompt: T,
+  closed?: ReadonlySet<string>,
+): T {
+  return closed?.has(prompt.promptId) && prompt.state === 'pending' ? { ...prompt, state: 'interrupted' as const } : prompt
+}

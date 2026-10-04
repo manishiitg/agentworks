@@ -2,6 +2,12 @@
 
 [PLAT-478](pulse_platform/security-sandbox/plat-478.md), open, P1. Three stacked failures (allowed_cwd, releases/ 0700, Landlock launcher fails closed on an unreadable browser-profile grant); RTS admin slot released as mitigation; slots are canary-stage.
 
+## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
+
+[PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
+review fixes), needs a restart: selectable cards for clarification questions in every
+attended coding chat; Claude's native question uses the same lifecycle; verified live.
+
 ## slotctl refuses commands that start in the docs tree on RTS — PLAT-476
 
 [PLAT-476](pulse_platform/security-sandbox/plat-476.md), script fixed on main; live RTS config still to be corrected (root). `provision-slots.sh` built `allowed_cwd` from the app folder while the docs live at `/data/video-studio/docs`, so the slot shell tool failed with exit 126 and the Crew fell back to a no-ask native shell.
