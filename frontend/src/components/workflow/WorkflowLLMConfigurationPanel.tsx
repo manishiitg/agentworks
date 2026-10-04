@@ -1,10 +1,9 @@
 import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountConfigured, accountRelation, accountUsable } from '../providers/ProviderAccounts'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, Search, UserRound, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, UserRound, ShieldCheck } from 'lucide-react'
 import LLMRoleSelector from '../LLMRoleSelector'
 import { WorkflowRoleModels } from './WorkflowRoleModels'
 import { providerStatus } from '../llm/providerStatus'
@@ -198,7 +197,6 @@ export default function WorkflowLLMConfigurationPanel({
   const globalLockApplies = llmConfigLocked && configurationSource !== 'agent_profile'
   const readOnly = !(canWriteOverride ?? workflowCanWrite) || globalLockApplies
   const disabledTitle = globalLockApplies ? 'Set by your administrator for this deployment' : readOnlyReason || READ_ONLY_TITLE
-  const [query, setQuery] = useState('')
   const [accountSelectionError, setAccountSelectionError] = useState<string | null>(null)
   const [expandedAccountProviders, setExpandedAccountProviders] = useState<Set<string>>(() => new Set())
   const [accountRecords, setAccountRecords] = useState<import('../../services/llm-config-api').ProviderConnection[]>([])
@@ -397,24 +395,19 @@ export default function WorkflowLLMConfigurationPanel({
   }, [globalLockApplies, llmConfig, manifestEntries, piRowFor, publishedLLMs])
 
   const visibleRows = useMemo(() => {
-    const q = query.trim().toLowerCase()
     const readyRows = rows.filter(providerIsReadyForUse)
-    const filtered = q
-      ? readyRows.filter(row => [row.name, row.id, row.modelId, row.entry.description]
-          .some(value => value?.toLowerCase().includes(q)))
-      : readyRows
     // The row this workflow is actually using bubbles to the top -- scanning
     // status dots down the list otherwise can't tell "in use" from "also ready".
     // Pi rows keep their catalog order: the company in use is already
     // marked, and reordering models under it would just look like a jump.
-    if (!selectedRowId) return filtered
-    return [...filtered].sort((a, b) => {
+    if (!selectedRowId) return readyRows
+    return [...readyRows].sort((a, b) => {
       if (a.groupFilter || b.groupFilter) return 0
       if (a.id === selectedRowId) return -1
       if (b.id === selectedRowId) return 1
       return 0
     })
-  }, [query, rows, selectedRowId, providerIsReadyForUse])
+  }, [rows, selectedRowId, providerIsReadyForUse])
 
   const selectedRow = useMemo(() => rows.find(row => row.id === selectedRowId) ?? null, [rows, selectedRowId])
 
@@ -908,14 +901,13 @@ export default function WorkflowLLMConfigurationPanel({
       const group = row.groupFilter ?? ''
       byGroup.set(group, [...(byGroup.get(group) ?? []), row])
     })
-    const searching = query.trim().length > 0
     return Array.from(byGroup.entries()).map(([group, models]) => {
       const head = models[0]
       const status = providerStatus(head.entry, isProviderLocked(head.id))
       const tone = statusTone(status.label)
       const selectedInGroup = models.find(row => row.id === selectedRowId) ?? null
       const connected = providerIsReadyForUse(head)
-      const open = searching || openPiGroups.has(group) || selectedInGroup !== null
+      const open = openPiGroups.has(group) || selectedInGroup !== null
       return (
         <div key={group} className="divide-y divide-border">
           <div className={`flex items-center gap-2 px-3 py-2 ${selectedInGroup ? 'bg-primary/5' : ''}`}>
@@ -1039,18 +1031,7 @@ export default function WorkflowLLMConfigurationPanel({
           Every {scopeNoun} on this deployment uses the provider marked “In use”. The others are shown for reference and cannot be selected here — ask your administrator to enable one.
         </p>
       )}
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder="Search providers"
-            aria-label="Search providers"
-            className="pl-9"
-          />
-        </div>
+      <div className="flex justify-end">
         <Button
           type="button"
           variant="outline"
@@ -1070,7 +1051,7 @@ export default function WorkflowLLMConfigurationPanel({
           <div className="py-6 text-center text-sm text-muted-foreground">Loading providers…</div>
         ) : visibleRows.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
-            {query.trim() ? `No providers match "${query}".` : 'No providers are ready to use. Connect an account in Providers.'}
+            No providers are ready to use. Connect an account in Providers.
           </div>
         ) : (
           <>

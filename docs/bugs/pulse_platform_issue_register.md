@@ -205,7 +205,8 @@ with manifest and runtime enforcement.
 [PLAT-386](pulse_platform/frontend-chat/plat-386.md), fixed on main; included in
 the recorded RTS source release; app-level live qualification pending. Providers
 owns agent/account setup; products select ready accounts, models and supported
-effort. Includes the provider UI cleanup and Cursor effort forwarding.
+effort. Includes the provider UI cleanup and Cursor effort forwarding. The
+2026-10-04 removal of product provider search is fixed on main; deploy pending.
 
 ## Cursor account model availability — PLAT-387
 

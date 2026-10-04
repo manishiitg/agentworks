@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Product model panels show the short provider list without search
+
+Setup → Models offers only a handful of ready coding providers. Show that list
+directly when changing provider; omit provider search and keep refresh available.
+Ticket: [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
 ### 2026-10-04 — Named Python tools reuse the step registry and sandbox
 
 User-authored functions in code/tools/<name> become named agent tools through
@@ -27,6 +33,7 @@ definitions and the guarded step shell, with existing credentials and limits.
 Returned JSON goes directly to the agent; published versions freeze tool source
 with their existing workspace snapshot. No wildcard selection or host executor.
 Ticket: [PLAT-423](bugs/pulse_platform/coding-agent-bridge/plat-423.md).
+
 
 ### 2026-10-04 — A platform session never loads a person's own CLI config or MCP servers (Codex on a Mac) — PLAT-418
 

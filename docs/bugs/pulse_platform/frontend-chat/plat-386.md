@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on main; included in recorded RTS source release; app-level live qualification pending |
+| State | fixed on main; initial fixes in recorded RTS source release; 2026-10-04 search removal awaits deployment |
 | Date | 2026-10-03 |
 | Owner | frontend-chat; runtime forwarding in coding-agent-bridge |
 
@@ -45,6 +45,16 @@ The final setup/effort implementation is AgentWorks `e5f25e3d7`, mcpagent
 `7effecb` and llm-provider-mcp `6baebb0`. Earlier provider UI/catalog fixes are
 also on main (`4a5b7820b`, `18617827a`, `d98903c99`, `f18606520`, `dca64cc0b`,
 `c5c6f92d4`; provider `a8a1445`, `c37b65a`).
+
+## 2026-10-04 — Remove product provider search
+
+The user requested a direct list because Setup → Models offers only five or six
+coding providers. Removed the Search providers field, search state/filtering,
+search-only empty message and search-driven Pi expansion from the shared product
+panel. Ready-account filtering, selected-provider ordering, manual Pi expansion
+and Refresh providers remain. This follow-up is fixed on main; its deployment
+and live product acceptance remain pending. Validation uses the existing shared
+panel tests and frontend type check.
 
 ## Verification
 
