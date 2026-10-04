@@ -54,7 +54,7 @@ func TestRuntimeInventoryRejectsBrowserCookieAuthentication(t *testing.T) {
 	}
 }
 
-func TestPlatformRuntimeBindingRequiresTrustedServiceAndUsesExplicitDefaultGrants(t *testing.T) {
+func TestPlatformRuntimeBindingRequiresTrustedServiceAndGrantsPlatformResourcesAutomatically(t *testing.T) {
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w"})
 	if err := st.EnsurePlatformGroup("w"); err != nil {
@@ -90,17 +90,21 @@ func TestPlatformRuntimeBindingRequiresTrustedServiceAndUsesExplicitDefaultGrant
 	if _, exists := st.GetUser("attacker"); exists {
 		t.Fatal("untrusted identity provisioned")
 	}
-	if out := request("/api/admin/runtime/servers", "new-user", "secret", ""); out.Code != 200 || strings.Contains(out.Body.String(), "c__read") {
+	// The first request of an unbound user binds it to Platform, which already
+	// has the server and the secret registered before it.
+	if _, exists := st.GetUser("new-user"); exists {
+		t.Fatal("user bound before any request")
+	}
+	if out := request("/api/admin/runtime/servers", "new-user", "secret", ""); out.Code != 200 || !strings.Contains(out.Body.String(), "c__read") {
 		t.Fatal(out.Code, out.Body.String())
 	}
 	if _, exists := st.GetUser("new-user"); !exists {
 		t.Fatal("trusted platform user not bound")
 	}
-	group := store.PlatformGroupID("w")
-	st.AddGroupGrant(store.GroupGrant{GroupID: group, PublicName: "c__read"})
-	if err := st.SetSecretGrant("w", group, "TEAM_KEY", "admin", true); err != nil {
-		t.Fatal(err)
+	if out := request("/api/admin/runtime/secrets", "second-user", "secret", ""); out.Code != 200 || !strings.Contains(out.Body.String(), "TEAM_KEY") {
+		t.Fatal(out.Code, out.Body.String())
 	}
+	group := store.PlatformGroupID("w")
 	if out := request("/api/admin/runtime/servers", "later-user", "secret", ""); out.Code != 200 || !strings.Contains(out.Body.String(), "c__read") {
 		t.Fatal(out.Code, out.Body.String())
 	}

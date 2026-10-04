@@ -37,6 +37,8 @@ func TestExternalPlatformMCPPermissionsAreLiveAndAuditedPerUser(t *testing.T) {
 	st.AddGroup(store.Group{ID: "readers", WorkspaceID: "w"})
 	for _, id := range []string{"one", "two"} {
 		st.AddConnector(store.Connector{ID: id, WorkspaceID: "w", Provider: id, Status: store.StatusActive})
+		// New servers go to Platform automatically; this test is about group-scoped access.
+		st.RevokeGroupServerGrant(store.PlatformGroupID("w"), id)
 	}
 	gw := mcpserver.New(st, nil, map[string]*upstream.Client{"one": up, "two": up}, nil)
 	if err := gw.SyncTools(context.Background(), "w"); err != nil {

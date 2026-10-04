@@ -19,6 +19,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — The Platform group automatically has every shared secret and platform MCP; admin revokes persist
+
+The first Vault install granted nothing, so every run selecting a shared secret
+was refused. Products now automatically get what the Platform group has: at
+every gateway start (`EnsurePlatformGroup`) and whenever a shared secret or MCP
+server is registered, the group is granted every one that exists, so an upgrade
+changes nothing for people who could use them before. An admin's removal from
+Platform is recorded (`platformRevoked`) and never undone automatically; other
+groups are untouched and project secrets still win over same-named shared ones.
+This grants only things that exist and never creates or reads a value, so it
+does not conflict with "do not broaden grants as a workaround" for missing
+secrets. Servers without Vault behave as before Vault. Ticket:
+[PLAT-471](bugs/pulse_platform/security-sandbox/plat-471.md).
+
 ### 2026-10-04 — One Google account UI supports both company and named OAuth clients
 
 Choose the administrator's company app or a saved/new named OAuth JSON client

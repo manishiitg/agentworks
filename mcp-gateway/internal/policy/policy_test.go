@@ -121,8 +121,12 @@ func TestEveryoneGrantDoesNotExpandAnUnrelatedGroupKey(t *testing.T) {
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f"})
 	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	id := auth.Identity{UserID: "user", WorkspaceID: "w"}
+	if _, err := Authorize(s, id, "c__read"); err != nil {
+		t.Fatal("new server was not granted to Platform automatically", err)
+	}
+	s.RevokeGroupServerGrant(store.PlatformGroupID("w"), "c")
 	if _, err := Authorize(s, id, "c__read"); !errors.Is(err, ErrNoGrant) {
-		t.Fatal("default group implicitly grants tool", err)
+		t.Fatal("revoked Platform server still grants tool", err)
 	}
 	s.AddGroupGrant(store.GroupGrant{GroupID: store.PlatformGroupID("w"), PublicName: "c__read"})
 	if _, err := Authorize(s, id, "c__read"); err != nil {

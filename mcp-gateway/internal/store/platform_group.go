@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
+	"time"
 )
 
 // PlatformGroupID is stable and workspace-specific, including on reinstall.
@@ -41,7 +43,11 @@ func (s *MemoryStore) EnsurePlatformGroup(workspace string) error {
 			s.members[id][uid] = true
 		}
 	}
+	secrets, servers := s.grantPlatformDefaultsLocked(workspace)
 	s.persistUnlock()
+	if secrets+servers > 0 {
+		log.Printf("Vault: Platform group granted %d shared secrets and %d MCP servers that existed without a grant", secrets, servers)
+	}
 	return s.PersistenceError()
 }
 
@@ -76,4 +82,60 @@ func (s *MemoryStore) EnsurePlatformUser(workspace, id string) error {
 	s.members[group][id] = true
 	s.persistUnlock()
 	return s.PersistenceError()
+}
+
+// The Platform group automatically has every shared secret and MCP server of
+// its workspace, so installing or upgrading Vault changes nothing for people who
+// could use them before. Admin removals are remembered in platformRevoked and
+// are never undone here. Only items that exist are granted; no value is created.
+// A server grant covers all of the server's tools, including ones discovered
+// later, so no per-tool grant is written (it would survive detaching the server).
+const platformAutoGrantActor = "system:platform-auto-grant"
+
+// isPlatformGroupLocked reports whether id is some workspace's built-in Platform group.
+func (s *MemoryStore) isPlatformGroupLocked(id string) bool {
+	g, ok := s.groups[id]
+	return ok && g.BuiltIn && g.WorkspaceID != "" && PlatformGroupID(g.WorkspaceID) == id
+}
+
+func (s *MemoryStore) autoGrantSecretLocked(workspace, name string) bool {
+	id := PlatformGroupID(workspace)
+	if !s.isPlatformGroupLocked(id) || s.platformRevoked["secret:"+name] || s.secretGrants[id][name] {
+		return false
+	}
+	if s.secretGrants[id] == nil {
+		s.secretGrants[id] = map[string]bool{}
+	}
+	s.secretGrants[id][name] = true
+	s.policyEvents[workspace] = append(s.policyEvents[workspace], PolicyEvent{At: time.Now().UTC(), Actor: platformAutoGrantActor, Action: "grant_secret", PackageID: name, GroupID: id})
+	return true
+}
+
+func (s *MemoryStore) autoGrantServerLocked(c Connector) bool {
+	id := PlatformGroupID(c.WorkspaceID)
+	if !s.isPlatformGroupLocked(id) || s.platformRevoked["server:"+c.ID] || s.groupServers[id][c.ID] {
+		return false
+	}
+	if s.groupServers[id] == nil {
+		s.groupServers[id] = map[string]bool{}
+	}
+	s.groupServers[id][c.ID] = true
+	s.policyEvents[c.WorkspaceID] = append(s.policyEvents[c.WorkspaceID], PolicyEvent{At: time.Now().UTC(), Actor: platformAutoGrantActor, Action: "attach_server_to_group", GroupID: id, ConnectorID: c.ID})
+	return true
+}
+
+func workspace(c Connector) string { return c.WorkspaceID }
+
+func (s *MemoryStore) grantPlatformDefaultsLocked(ws string) (secrets, servers int) {
+	for name, row := range s.secretResources {
+		if row.WorkspaceID == ws && s.autoGrantSecretLocked(ws, name) {
+			secrets++
+		}
+	}
+	for _, c := range s.connectors {
+		if c.WorkspaceID == ws && s.autoGrantServerLocked(c) {
+			servers++
+		}
+	}
+	return secrets, servers
 }

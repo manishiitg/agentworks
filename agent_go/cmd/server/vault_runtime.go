@@ -214,6 +214,10 @@ func vaultAccessFor(ctx context.Context, person string) (vaultAccessInventory, e
 		}
 		path = "/api/admin/runtime/builder/servers"
 	}
+	if !vaultConfigured() {
+		// No Vault: nothing is shared through it, and that is not an error.
+		return out, nil
+	}
 	data, err := vaultRuntimeRequest(ctx, person, path)
 	if err != nil {
 		return out, err

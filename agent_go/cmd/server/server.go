@@ -2360,6 +2360,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := api.loadManagedGlobalSecrets(context.Background()); err != nil {
 		log.Fatalf("Failed to load managed global secrets: %v", err)
 	}
+	// Register shared secret names with Vault so they are grantable and
+	// revocable without an administrator opening Vault > Secrets first.
+	startVaultSecretRegistration()
 
 	// Setup routes
 	router := mux.NewRouter()

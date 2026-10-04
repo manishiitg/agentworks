@@ -15,8 +15,8 @@ func TestPlatformGroupInstallationIsIdempotentAndMembershipAutomatic(t *testing.
 	if !ok || !group.BuiltIn || group.Name != "Platform" || len(s.MembersOf(id)) != 1 {
 		t.Fatal(group)
 	}
-	if len(s.GroupGrantsFor(id)) != 0 || len(s.GroupServersFor(id)) != 0 {
-		t.Fatal("installation granted tools")
+	if len(s.GroupGrantsFor(id)) != 0 {
+		t.Fatal("installation wrote per-tool grants")
 	}
 	s.AddWorkspace(Workspace{ID: "other"})
 	if err := s.EnsurePlatformGroup("other"); err != nil {
@@ -35,11 +35,8 @@ func TestPlatformGroupInstallationIsIdempotentAndMembershipAutomatic(t *testing.
 	if err := s.RegisterSecrets("w", []SecretResource{{Name: "TEAM_KEY", Managed: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if len(s.ListSecrets("w", "new-user", "", false)) != 0 {
-		t.Fatal("secret shared automatically")
-	}
-	if err := s.SetSecretGrant("w", id, "TEAM_KEY", "admin", true); err != nil {
-		t.Fatal(err)
+	if len(s.ListSecrets("w", "new-user", "", false)) != 1 {
+		t.Fatal("new shared secret was not granted to Platform")
 	}
 	s.AddGroupGrant(GroupGrant{GroupID: id, PublicName: "c__read"})
 	s.AddUser(User{ID: "later", WorkspaceID: "w"})
