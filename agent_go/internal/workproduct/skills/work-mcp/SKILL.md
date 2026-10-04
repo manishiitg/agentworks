@@ -39,7 +39,7 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
   the person back to the same Connect button that invoked this request, retry
   identical failing commands, or describe a filesystem error as a missing role.
 - Never ask for passwords, API keys or OAuth client secrets in chat. Direct
-  users to **Integrations** for secure credential entry. Display
+  users to Integrations > Connections for secure credential entry. Display
   OAuth links only when the setup tool actually returns one.
 
 ## Multiple accounts

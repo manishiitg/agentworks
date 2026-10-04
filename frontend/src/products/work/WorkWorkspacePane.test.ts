@@ -16,7 +16,7 @@ describe('Work Dashboard', () => {
     expect(source).toContain("From this project's dashboard:")
     expect(source).toContain('emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}')
     expect(source).toContain('selectedGlobalSecrets={selectedGlobalSecrets}')
-    // Secret selection moved out of Identity into Integrations > Plugins > Vault/Secrets.
+    // Secret selection moved out of Identity into Integrations > Connections > Vault/Secrets.
     expect(identity).not.toContain('persistExplicitGlobalSelection')
     expect(readFileSync('src/products/work/WorkIntegrationsPanel.tsx', 'utf8')).toContain('onSelectedGlobalSecretsChange')
   })
@@ -77,8 +77,8 @@ describe('Work Setup consolidation', () => {
     expect(integrations).toContain('<IntegrationSectionPicker')
     expect(integrations).toContain('<WorkspaceViewBreadcrumbs parent="Integrations"')
     expect(integrations).toContain('<WorkspaceViewHeader')
-    expect(integrations).toContain("{ value: 'apps', label: 'Plugins' }")
-    expect(integrations).toContain("ariaLabel: 'Plugins'")
+    expect(integrations).toContain("{ value: 'apps', label: 'Connections' }")
+    expect(integrations).toContain("ariaLabel: 'Integrations'")
     const plugins = readFileSync('src/components/integrations/ProjectPluginsPanel.tsx', 'utf8')
     for (const tab of ["{ value: 'connected', label: 'Connected' }", "{ value: 'secrets', label: 'Secrets' }", "{ value: 'skills', label: 'Skills' }", "{ value: 'vault', label: 'Vault' }"]) expect(plugins).toContain(tab)
     expect(integrations).toContain("{ value: 'slack', label: 'Slack' }")

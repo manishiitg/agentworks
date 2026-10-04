@@ -71,7 +71,7 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 					return "", err
 				}
 				if discovery != nil {
-					return fmt.Sprintf("Added %s to this Code, but this provider needs the user's own OAuth app. Ask them to open Integrations → Available, click Sign in on %s, and enter their app's client ID and secret there (never in chat). Callback URL to register on the app: %s", saved.Name, saved.Name, discovery.RedirectURI), nil
+					return fmt.Sprintf("Added %s to this Code, but this provider needs the user's own OAuth app. Ask them to open Integrations → Connections → Available, click Sign in on %s, and enter their app's client ID and secret there (never in chat). Callback URL to register on the app: %s", saved.Name, saved.Name, discovery.RedirectURI), nil
 				}
 				return fmt.Sprintf("Added %s to this Code. Ask the user to open this link to sign in with their own account: %s — it is available from their next message after signing in.", saved.Name, authURL), nil
 			case "select", "deselect":

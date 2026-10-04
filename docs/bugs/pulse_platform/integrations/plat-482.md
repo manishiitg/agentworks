@@ -77,6 +77,13 @@ a Crew and for a workflow."
 - Checks: the full cmd/server package has no failure that main does not already have; the frontend suite has one
   failure (`gatewayConsoleShared`, which also fails without these changes).
 
+## Done (follow-up, 2026-10-05)
+
+- The Integrations tab is named **Connections** now (it was Plugins). Agent prompts (Work, Relay, Code), the
+  `work-mcp` skill and tool messages say "Integrations → Connections", and two stale frontend source tests
+  were updated. The Work and Relay prompts still said "Private MCP logins belong to the signed-in user"; they
+  now say a connection belongs to the workflow or Relay and is used by everyone with access.
+
 ## Left
 
 - Chats that belong to no place (an ordinary personal chat) still use the person's own connections, because they

@@ -235,7 +235,7 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 	}
 	checks := map[string][]string{
 		"crew-builder":            {"## Coding rules", "create_crew", "builder/conversation/", "Crew should remember that", "When asked to do X, Crew should"},
-		"work-mcp":                {"list_mcp_servers", "Integrations > Plugins", "Vault", "trigger_mcp_discovery", "update_project_mcp_server_selection", "next user message"},
+		"work-mcp":                {"list_mcp_servers", "Integrations > Connections", "Vault", "trigger_mcp_discovery", "update_project_mcp_server_selection", "next user message"},
 		"work-integrations":       {"set_workflow_secret", "available to shell", "do not ask the user to start", "manage_global_secret", "update_project_global_secret_selection", "selected_global_secret_names", "list_work_folders", "Setup > Models"},
 		"work-workflow-files":     {"list_accessible_workflows", "WORK_FOLDER_<ALIAS>", "workflow.json", "knowledgebase/", "learnings/", "db/db.sqlite", "db/reports/", "runs/run_index.json", "sqlite3 -readonly", "get_file_link", "get_report_link", "same signed-in Crew account", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "delivery_id", "public webhook"},
 		"work-skills":             {"list_skills", "search_skills", "update_project_skill_selection", "skills/<skill-name>/SKILL.md", "account-wide `skills/custom/`", "Crew should remember that", "When asked to do X, Crew should", "link them rather than duplicating", "same topic", "independently reusable topics", "catch-all", "150 lines or fewer", "references/", "scripts/", "skill authoring is a capability", "Setup > Skills"},
