@@ -43,8 +43,8 @@ route `/api/vault/mcp`.
    work; preserve exact labels/connection identities and existing project choices.
 
 Initial activation and connection migration are complete. Final live acceptance
-is in progress; Notion remains pending sign-in and the legacy workflow secret
-selections described below need reconciliation.
+is in progress; Notion remains pending sign-in. The legacy workflow secret
+selections described below have been reconciled during deployment.
 
 ## Migration preparation
 
@@ -173,3 +173,29 @@ fixed/auto-hide preference remains shared across products.
   subsequent [one-time migration](../vault-secret-selection-migration.md)
   reconciles confirmed absent selections during deployment, with private
   backups, while retaining all existing records and group permission checks.
+
+## Secret selection migration applied
+
+- The standard deployer activated `confida-fb32b8bb-20261004152351` from build
+  `fb32b8bb-20261004131821` (source `fb32b8bba4e20d91d0de1f12c1bd157bf48acbcc`).
+  Deployment and private/public health checks passed.
+- The migration scanned 36 canonical manifests. It detached `ADMIN_USER`,
+  `LOGIN_PASSWORD`, and `MEMBER_USER` from `confida-login`'s global selection,
+  and the absent `PAT` from `testingv2`'s project/global selections. No other
+  manifest needed a change. Stored names, ciphertext and Vault grants were
+  not modified by this migration.
+- Original manifests and the name-only report are in the private directory
+  `/srv/confida/state/migrations/secret-selections-v1/backups-2101975034/`.
+  Completion is recorded in `secret-selections-v1/completed.json`; subsequent
+  deployments/startups skip the cleanup.
+- All nine secret-store files match their pre-deployment byte hashes. All
+  13 selected `confida-login` project secrets still decrypt with the deployment
+  key and their project-bound additional data. No missing global selections
+  remain in that manifest. Vault's normal runtime MCP inventory is available.
+  The private acceptance record is
+  `/srv/confida/state/vault/secret-selection-acceptance.json`.
+- The Confida browser was refreshed and its unsent chat draft was preserved.
+  Stored project secrets are visible with values masked. The existing manual
+  workflow contract update banner (`v1.0.44` to `v1.0.45`) remains a separate
+  prerequisite for starting this workflow from chat. It was not applied during
+  this secret migration, and the whole workflow was not executed.
