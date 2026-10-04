@@ -68,6 +68,11 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
     const LIVE_BIND_RETRY_MS = 1000
     const LIVE_BIND_RETRIES = 4
     let liveRetries = 0
+    // After a server restart the page still holds a binding the server no longer knows (every
+    // sync or ack answers inactive_scope). Re-bind at once instead of waiting for the next
+    // five-minute renewal, during which the agent sees browser_disconnected.
+    const STALE_REBINDS = 3
+    let staleRebinds = 0
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     let queuedReason: SyncReason = 'poll'
     const weakReason = (reason: SyncReason) => reason === 'poll' || reason === 'view'
@@ -127,6 +132,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
           await release(); return
         }
         const commands = await boundCall({ operation: 'sync', state: state() }) as UIAction[]
+        staleRebinds = 0
         for (const command of commands) {
           if (stopped) break
           const before = state()
@@ -164,6 +170,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
         const response = (error as { response?: { status?: number; data?: unknown } })?.response
         const code = typeof response?.data === 'string' && /^[a-z_]+\s*$/.test(response.data)
           ? response.data.trim() : 'connection_failed'
+        const hadBinding = !!binding
         if (!binding && response?.status === 409 && code === 'session_not_active') {
           dormant = true
           if (!stopped && liveRetries < LIVE_BIND_RETRIES && sessionLooksLive(useChatStore.getState(), session)) {
@@ -178,6 +185,11 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
         // An uncertain outcome is never replayed. A new lease cannot ACK or
         // claim the previous lease's commands; the server expires those.
         await release()
+        if (hadBinding && code === 'inactive_scope' && staleRebinds < STALE_REBINDS && !stopped) {
+          staleRebinds++
+          syncQueued = true
+          queuedReason = 'wake'
+        }
       } finally {
         busy = false
         if (syncQueued && !stopped) {

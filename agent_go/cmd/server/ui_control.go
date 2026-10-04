@@ -125,6 +125,7 @@ func (b *uiControlBroker) prune() {
 		// explicit commands arrive over the chat's SSE, so the lease only
 		// needs to outlive the renewal interval.
 		if now.Sub(c.seen) > uiControlBindingLease {
+			log.Printf("[UI-CONTROL] session=%s binding lease expired (not renewed for %s)", c.session, now.Sub(c.seen).Round(time.Second))
 			delete(b.bindings, id)
 			for _, a := range b.actions {
 				if a.binding == id {

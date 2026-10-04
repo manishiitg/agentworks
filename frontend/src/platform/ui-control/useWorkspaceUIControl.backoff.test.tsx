@@ -107,4 +107,23 @@ describe('UI control lease for chats without a live session', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
     expect(bindCalls()).toBe(5)
   })
+
+  it('re-binds at once when the server no longer knows its binding (after a restart)', async () => {
+    const host = document.createElement('div')
+    host.dataset.uiWorkspace = 'w'
+    document.body.appendChild(host)
+    useChatStore.setState({ activeSessionsCache: [{ session_id: 'chat-1' } as never] })
+    const stale = () => Object.assign(new Error('conflict'), { response: { status: 409, data: 'inactive_scope\n' } })
+    let syncs = 0
+    workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => {
+      if (body.operation === 'bind') return { binding: `b${bindCalls()}`, token: 't', workspace: 'w' }
+      if (body.operation === 'sync' && ++syncs === 1) throw stale()
+      return []
+    })
+    await act(async () => { root.render(<Probe session="chat-1" />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    // First bind, the stale sync, then an immediate second bind: no five-minute wait.
+    expect(bindCalls()).toBe(2)
+    host.remove()
+  })
 })

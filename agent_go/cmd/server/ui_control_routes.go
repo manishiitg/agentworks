@@ -106,6 +106,11 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 		fail(err.Error(), http.StatusConflict)
 		return
 	}
+	// Bind and unbind are rare (a lease renews every few minutes); log them so a
+	// browser_disconnected can be traced to the binding that went away.
+	if req.Operation == "bind" || req.Operation == "unbind" {
+		log.Printf("[UI-CONTROL] session=%s operation=%s ok workspace=%s", session, req.Operation, workspace)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(out)

@@ -44,6 +44,16 @@ open); this one is a restart.
   an idle chat still goes dormant at once. Two tests (they fail on the old hook).
   Frontend only: a page reload is enough.
 
+- Third cause, from the log after the retry fix: after a restart the page still holds a
+  binding the server no longer knows, so its next sync and its release both answer
+  `inactive_scope` (20:36:58, two lines). The page then dropped the binding and waited
+  for the next five-minute renewal; the agent saw browser_disconnected meanwhile.
+  `useWorkspaceUIControl.ts` now re-binds at once (up to three times, reset by a good
+  sync). A test fails on the old hook.
+- The server now logs successful bind and unbind and a lease expiry
+  (`[UI-CONTROL] ... operation=bind ok`, `binding lease expired`), where it used to log
+  failures only, so the next browser_disconnected can be traced from the log.
+
 ## Left
 
 - Takes effect after the next backend restart; a chat already stuck keeps
