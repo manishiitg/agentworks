@@ -1,6 +1,6 @@
 # PLAT-476 — slotctl refuses every command that starts in the docs tree on RTS ("the working folder is outside the allowed folders")
 
-Status: script fixed on main; the RTS config file is NOT yet corrected (needs root on RTS); not deployed.
+Status: script fixed on main; the live RTS config corrected 2026-10-04 (root, via SSM); Excellence and Confida checked and fine.
 
 ## What was wrong
 
@@ -15,7 +15,12 @@ runs in "don't ask" mode and refuses network commands (GitHub, Notion), so the C
 
 `allowed_cwd` now lists `$DOCS` (the same variable as `docs_root`). Shared hosts keep the default `DOCS=$HOME_DIR/data/docs`, so their config is unchanged. Test `deploy/common/test_provision_slots_config.py`.
 
+## Done on RTS (2026-10-04, owner approved)
+
+Through `aws ssm send-command` (the repo's admin channel): `/data/video-studio/docs` appended to `allowed_cwd` in `/usr/local/libexec/agentworks/slotctl.json`, backup beside it as
+`slotctl.json.bak-20261004-plat476`, atomic replace, owner root and mode 0644 unchanged, no restart (slotctl reads the file on each call). Excellence and Confida were read: their `allowed_cwd`
+already contains their docs root (it sits under the app folder), so only RTS had the mismatch. A stray older `/etc/agentworks/slotctl.json` on the Hetzner box has no `docs_root`; slotctl reads the file beside its launcher, so it is not in use.
+
 ## Left
 
-Correct the live RTS file (root-owned, written by the SSM channel `deploy/aws-ec2/slots-admin.sh`): add `/data/video-studio/docs` to `allowed_cwd` (back it up first). slotctl reads the file on each call, so no restart is needed.
-Then check Excellence/Confida's `slotctl.json` for the same mismatch (their `docs_root` and `allowed_cwd` should agree).
+Confirm in the Crew (a `pwd` through the workspace shell tool must succeed). To undo: copy the `.bak-20261004-plat476` file back over `slotctl.json` (root).
