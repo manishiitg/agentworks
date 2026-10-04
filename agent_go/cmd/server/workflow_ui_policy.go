@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -56,4 +57,25 @@ func (api *StreamingAPI) registerWorkflowUIForCaller(registrar definitionToolReg
 		return nil
 	}
 	return api.registerGmailConnectionManagementTools(registrar, session, workspace)
+}
+
+// restoredWorkflowUIScopeFor reconstructs the workflow a live Builder chat belongs to when the
+// server restarted and the chat has not had a turn since: the scope is otherwise set only when
+// the chat's tools are registered at a turn, so until then the page's panel cannot connect
+// (unsupported_surface) and the agent sees browser_disconnected. It restores for exactly the
+// callers that would have received the UI tools (an interactive Builder chat); who may bind is
+// still checked by the route. Empty when the session is not such a chat.
+func restoredWorkflowUIScopeFor(session string, active *ActiveSessionInfo) string {
+	if active == nil || active.AgentMode != "workflow_phase" {
+		return ""
+	}
+	workspace := path.Clean(strings.Trim(strings.TrimSpace(active.WorkspacePath), "/"))
+	if !strings.HasPrefix(workspace, "Workflow/") {
+		return ""
+	}
+	req := QueryRequest{TriggeredBy: active.TriggeredBy}
+	if !workflowUICallerAllowed(workflowtypes.WorkflowStatusWorkflowBuilder, session, req, active) {
+		return ""
+	}
+	return workspace
 }

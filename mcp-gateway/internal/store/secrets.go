@@ -28,6 +28,9 @@ func (s *MemoryStore) RegisterSecrets(workspace string, rows []SecretResource) e
 	}
 	for _, row := range rows {
 		row.WorkspaceID = workspace
+		if _, known := s.secretResources[row.Name]; !known {
+			s.autoGrantSecretLocked(workspace, row.Name)
+		}
 		s.secretResources[row.Name] = row
 	}
 	s.persistUnlock()
@@ -40,6 +43,7 @@ func (s *MemoryStore) DeleteSecret(workspace, name, actor string) error {
 		return errors.New("secret belongs to another workspace")
 	}
 	delete(s.secretResources, name)
+	delete(s.platformRevoked, "secret:"+name)
 	for _, grants := range s.secretGrants {
 		delete(grants, name)
 	}
@@ -106,8 +110,14 @@ func (s *MemoryStore) SetSecretGrants(workspace, name, actor string, groups []st
 		}
 		if allow {
 			s.secretGrants[group][name] = true
+			if s.isPlatformGroupLocked(group) {
+				delete(s.platformRevoked, "secret:"+name)
+			}
 		} else {
 			delete(s.secretGrants[group], name)
+			if s.isPlatformGroupLocked(group) {
+				s.platformRevoked["secret:"+name] = true
+			}
 		}
 		action := "revoke_secret"
 		if allow {

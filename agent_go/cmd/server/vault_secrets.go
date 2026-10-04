@@ -7,12 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 )
+
+// vaultConfigured is false on servers without Vault (CAPLAYER_SERVICE_URL
+// unset). They behave as before Vault existed: every shared secret is usable
+// by every user, and nothing is registered or revoked anywhere. A URL that is set
+// but unusable stays fail-closed.
+func vaultConfigured() bool { return strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" }
 
 // The host holds encrypted values. Vault owns metadata and live group grants.
 // There is no fallback from a failed permission lookup to server-wide access.
@@ -48,17 +56,61 @@ func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, bo
 	}
 	return nil
 }
+
+// Registers names and the managed flag only, never values. Vault grants a
+// newly registered name to the Platform group unless an admin removed it there.
 func syncVaultSecretMetadata(ctx context.Context, actor string) error {
+	if !vaultConfigured() {
+		return nil
+	}
 	rows := []map[string]any{}
 	for _, s := range getGlobalSecrets() {
+		// The gateway rejects the whole batch for a name it cannot store.
+		if len(s.Name) > 128 {
+			continue
+		}
 		rows = append(rows, map[string]any{"name": s.Name, "managed": s.Managed})
 	}
 	return vaultSecretAdminRequest(ctx, actor, http.MethodPost, "/api/admin/secrets", map[string]any{"secrets": rows})
+}
+
+const vaultSecretRegistrationActor = "system:secret-registration"
+
+// startVaultSecretRegistration registers shared secret names at backend start,
+// without an administrator opening Vault > Secrets. The gateway may start after
+// this process, so it retries (up to a minute apart) until it succeeds. Saving a
+// managed secret registers again through syncVaultSecretMetadata.
+func startVaultSecretRegistration() {
+	if !vaultConfigured() {
+		return
+	}
+	go func() {
+		for attempt := 1; ; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			err := syncVaultSecretMetadata(ctx, vaultSecretRegistrationActor)
+			cancel()
+			if err == nil {
+				log.Printf("[VAULT] registered %d shared secret names", len(getGlobalSecrets()))
+				return
+			}
+			if attempt == 1 || attempt%10 == 0 {
+				log.Printf("[VAULT] could not register shared secret names yet (attempt %d): %v", attempt, err)
+			}
+			delay := time.Duration(attempt) * 5 * time.Second
+			if delay > time.Minute {
+				delay = time.Minute
+			}
+			time.Sleep(delay)
+		}
+	}()
 }
 func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretEntry, error) {
 	all := getGlobalSecrets()
 	if len(all) == 0 {
 		return []globalSecretEntry{}, nil
+	}
+	if !vaultConfigured() {
+		return all, nil
 	}
 	data, err := vaultRuntimeRequest(ctx, userID, "/api/admin/runtime/secrets")
 	if err != nil {
@@ -119,6 +171,9 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 
 // Removing metadata and grants first ensures a failed value deletion cannot leave usable access.
 func revokeVaultSecret(ctx context.Context, actor, name string) error {
+	if !vaultConfigured() {
+		return nil
+	}
 	return vaultSecretAdminRequest(ctx, actor, http.MethodDelete, "/api/admin/secrets/"+url.PathEscape(name), nil)
 }
 func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.Request) {

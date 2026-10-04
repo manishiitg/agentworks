@@ -205,10 +205,13 @@ type MemoryStore struct {
 	packageLive   map[string]access.Package
 	governedTools map[string]map[string]bool // workspace -> names ever governed by a live package
 	policyEvents  map[string][]PolicyEvent
-	apiKeys       map[string]APIKey // by SHA-256 of token
-	auditBinding  auditBinding
-	audit         []AuditEvent
-	auditStart    int // oldest event in the bounded ring after it fills
+	// platformRevoked records admin removals from the built-in Platform group
+	// ("secret:NAME", "server:ID") so automatic granting never restores them.
+	platformRevoked map[string]bool
+	apiKeys         map[string]APIKey // by SHA-256 of token
+	auditBinding    auditBinding
+	audit           []AuditEvent
+	auditStart      int // oldest event in the bounded ring after it fills
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -230,6 +233,7 @@ func NewMemoryStore() *MemoryStore {
 		packageLive:     map[string]access.Package{},
 		governedTools:   map[string]map[string]bool{},
 		policyEvents:    map[string][]PolicyEvent{},
+		platformRevoked: map[string]bool{},
 		apiKeys:         map[string]APIKey{},
 	}
 }
@@ -356,6 +360,9 @@ func (s *MemoryStore) MembersOf(groupID string) []string {
 func (s *MemoryStore) AddConnector(c Connector) {
 	s.mu.Lock()
 	defer s.persistUnlock()
+	if _, exists := s.connectors[c.ID]; !exists {
+		s.autoGrantServerLocked(c)
+	}
 	s.connectors[c.ID] = c
 }
 
@@ -382,6 +389,7 @@ func (s *MemoryStore) AddConnectorUnique(c Connector) bool {
 			return false
 		}
 	}
+	s.autoGrantServerLocked(c)
 	s.connectors[c.ID] = c
 	return true
 }
@@ -423,6 +431,7 @@ func (s *MemoryStore) DeleteConnector(id string) {
 	for _, servers := range s.groupServers {
 		delete(servers, id)
 	}
+	delete(s.platformRevoked, "server:"+id)
 	for packageID, p := range s.packageDrafts {
 		kept := make([]access.ToolRule, 0, len(p.Rules))
 		for _, rule := range p.Rules {
@@ -849,12 +858,18 @@ func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
 		s.groupServers[groupID] = map[string]bool{}
 	}
 	s.groupServers[groupID][connectorID] = true
+	if s.isPlatformGroupLocked(groupID) {
+		delete(s.platformRevoked, "server:"+connectorID)
+	}
 }
 
 func (s *MemoryStore) RevokeGroupServerGrant(groupID, connectorID string) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	delete(s.groupServers[groupID], connectorID)
+	if s.isPlatformGroupLocked(groupID) {
+		s.platformRevoked["server:"+connectorID] = true
+	}
 }
 
 // RemoveGroupConnectorAccess atomically removes this group's server grant,
@@ -869,6 +884,9 @@ func (s *MemoryStore) RemoveGroupConnectorAccess(workspaceID, groupID, connector
 		return false
 	}
 	delete(s.groupServers[groupID], connectorID)
+	if s.isPlatformGroupLocked(groupID) {
+		s.platformRevoked["server:"+connectorID] = true
+	}
 	names := map[string]bool{}
 	for name, tool := range s.tools {
 		if tool.WorkspaceID == workspaceID && tool.ConnectorID == connectorID {

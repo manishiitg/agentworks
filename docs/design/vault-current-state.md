@@ -9,7 +9,7 @@ the current behavior. The product remains a single-user, loopback alpha.
 
 - Local and server installations use the same Vault functionality.
 - Crew, Code, workflows and Relays retain their own private MCP connections and project secrets.
-- Shared MCPs and secrets are managed in Vault and granted through the built-in Platform group. Projects explicitly select shared resources; connections and secret creation do not automatically grant use.
+- Shared MCPs and secrets are managed in Vault and granted through the built-in Platform group. The Platform group automatically has every shared secret and platform MCP server (grandfathered at install/upgrade, then granted when registered or connected; an administrator's removal from Platform persists and is never undone automatically, see PLAT-471). Projects still explicitly select the shared resources they use, and other groups are granted explicitly.
 - MCP installation supports named accounts, OAuth and custom servers. Tool grants and argument conditions (exact equality or full-string regex) remain deterministic gateway checks on each call.
 - Regex only constrains schema-visible string arguments; opaque IDs and query languages need upstream scope enforcement or an adapter.
 - Audit logs use SQLite by default for both local and MVP server installs. SQLite is the only MVP audit storage backend; collection can be disabled. Asynchronous logging, bounded storage and local 24-hour retention remain available.
@@ -209,7 +209,7 @@ whether a change was saved successfully.
 
 | Tool | Implemented authority |
 |---|---|
-| `manage_vault_access` | Inspect inventory/schemas, connect a server without chat credentials, save and immediately apply validated advanced permissions. Connection does not grant group access. |
+| `manage_vault_access` | Inspect inventory/schemas, connect a server without chat credentials, save and immediately apply validated advanced permissions. Connection grants the Platform group automatically (unless an administrator removed it there); other groups are explicit. |
 | `query_workflow_db` | Read bounded governance metadata and schemas from this Vault project's SQLite database. |
 | `mutate_workflow_db` | Apply validated, atomic group, membership, simple tool-grant changes to persistent and live state. |
 | `manage_vault_secret_access` | Grant or revoke use of an existing secret for a group, without revealing its value. |
@@ -422,7 +422,7 @@ browser components.
 1. Open **Available MCPs** and choose **Add connection**. Providers remain available after their first connection.
 2. Name the connection, for example **Notion · Engineering** or **Notion · Sales**.
 3. The new row appears in **Connected MCPs** with **Sign-in required**. Click its **Sign in** button and choose the intended provider account/workspace.
-4. OAuth completion discovers that connection’s tools. Assign its tools to groups in **Access**; connection/sign-in never grants group access automatically.
+4. OAuth completion discovers that connection’s tools. Assign its tools to groups in **Access**; connection/sign-in grants the Platform group automatically (PLAT-471) and never any other group.
 
 Connection settings reauthorize only that row. Disconnect removes that connection and its permissions. Other connections to the same provider retain their own credentials, sessions and grants. Labels describe accounts chosen by the administrator; they are not verified account identities returned by providers. The provider controls account selection during authorization; use its account chooser or a separate browser session if it automatically selects an existing login.
 

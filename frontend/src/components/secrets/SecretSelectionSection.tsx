@@ -559,7 +559,7 @@ export function SecretSelectionSection({
               <p>
                 {mode === 'project'
                   ? 'Shared secrets your groups allow you to use in this project.'
-                  : 'Shared across products. Assign access in Access → Groups → Permissions.'}
+                  : 'Shared across products. Assign access in Vault > Access > (pick a group) > Secrets.'}
               </p>
             </div>
           )}

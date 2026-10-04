@@ -62,6 +62,13 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
     let lastVisible = false
     let lastTarget: string | undefined
     let dormant = false
+    // A chat that looks live can be a moment ahead of the server (the page sees it streaming
+    // before the server tracks the session), so a refused bind retries a few times instead of
+    // going dormant with nothing left to wake it. An idle chat still goes dormant at once.
+    const LIVE_BIND_RETRY_MS = 1000
+    const LIVE_BIND_RETRIES = 4
+    let liveRetries = 0
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
     let queuedReason: SyncReason = 'poll'
     const weakReason = (reason: SyncReason) => reason === 'poll' || reason === 'view'
     const controller = new AbortController()
@@ -113,6 +120,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
             return
           }
           binding = next
+          liveRetries = 0
         }
         if (!workspaceHost(binding.workspace)) {
           console.warn('[WorkspaceUIControl] bind workspace_host_missing')
@@ -158,6 +166,12 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
           ? response.data.trim() : 'connection_failed'
         if (!binding && response?.status === 409 && code === 'session_not_active') {
           dormant = true
+          if (!stopped && liveRetries < LIVE_BIND_RETRIES && sessionLooksLive(useChatStore.getState(), session)) {
+            const delay = LIVE_BIND_RETRY_MS * 2 ** liveRetries
+            liveRetries++
+            clearTimeout(retryTimer)
+            retryTimer = setTimeout(() => { void sync('live') }, delay)
+          }
         } else {
           console.warn(`[WorkspaceUIControl] ${binding ? 'sync' : 'bind'} status=${response?.status ?? 'network_error'} code=${code}`)
         }
@@ -200,6 +214,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
       stopped = true
       controller.abort()
       clearInterval(timer)
+      clearTimeout(retryTimer)
       unsubscribeViewState()
       unsubscribeLiveness()
       wake.current = null

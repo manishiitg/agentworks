@@ -39,6 +39,8 @@ type durableState struct {
 	Governed        map[string]map[string]bool
 	History         map[string][]PolicyEvent
 	Keys            map[string]APIKey
+	// Absent in older snapshots; nil means no Platform revocations.
+	PlatformRevoked map[string]bool `json:",omitempty"`
 }
 type sqlitePersistence struct {
 	db           *sql.DB
@@ -52,7 +54,7 @@ type sqlitePersistence struct {
 }
 
 func (s *MemoryStore) durableState() durableState {
-	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys}
+	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.platformRevoked}
 }
 func (s *MemoryStore) restore(data []byte) error {
 	var state durableState
@@ -68,7 +70,10 @@ func (s *MemoryStore) restore(data []byte) error {
 	if state.SecretGrants == nil {
 		state.SecretGrants = map[string]map[string]bool{}
 	}
-	s.secretResources, s.secretGrants = state.SecretResources, state.SecretGrants
+	if state.PlatformRevoked == nil {
+		state.PlatformRevoked = map[string]bool{}
+	}
+	s.secretResources, s.secretGrants, s.platformRevoked = state.SecretResources, state.SecretGrants, state.PlatformRevoked
 	s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer = state.Workspaces, state.Users, state.Groups, state.Members, state.Connectors, state.Bearers
 	s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers = state.Tools, state.ToolVersions, state.Grants, state.GroupGrants, state.GroupServers
 	s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys = state.Drafts, state.Live, state.Governed, state.History, state.Keys
