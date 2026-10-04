@@ -140,6 +140,10 @@ This allows internally contradictory states such as:
 - available in scheduled Pulse but missing from standalone or converted-chat
   Pulse.
 
+> **Update 2026-10-04:** the `run_in_background` tool described below was removed
+> (PLAT-452); this section is kept as the history of why a child needs its
+> parent's complete tool definition.
+
 ### Confirmed background-child incident (2026-08-08)
 
 A now-retired standalone `/bug-review` was launched through the Workflow Builder's

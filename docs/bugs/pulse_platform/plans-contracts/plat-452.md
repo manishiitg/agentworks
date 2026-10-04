@@ -42,7 +42,8 @@ Builder had delegated "test all routes" to a background runner that had no
 
 ## Consequences (known)
 
-- **Goal Work and review limits are no longer enforced by tools.** Strategic and
+- **Goal Work and review limits are no longer enforced by tools. The owner
+  accepted this trade-off (2026-10-04), including `autonomy: ask`.** Strategic and
   Architecture "do not mutate" and Goal Work's autonomy are held by the agent from
   prose; a scheduled strategic review could edit the plan or run steps despite
   `autonomy: ask` if the agent ignores it.
@@ -54,5 +55,7 @@ Builder had delegated "test all routes" to a background runner that had no
 ## Left
 
 - No live scheduled Pulse run has been exercised on this change.
-- `docs/` design documents and the built `static/assets` bundle still describe the
-  tool; a frontend test fixture (`registry.test.ts`) still has its old text.
+- The built `static/assets` bundle still contains the tool name (regenerate it);
+  a frontend test fixture (`registry.test.ts`) still has its old text. Living docs
+  (Pulse improvement system, Pulse Goal Work design, Builder interactive) were
+  updated 2026-10-04; dated audits and the Work design doc were left as history.

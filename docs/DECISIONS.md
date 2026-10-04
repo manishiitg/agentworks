@@ -24,7 +24,8 @@ Design references for the linked runtime decisions:
 The Builder/Pulse `run_in_background` tool is removed. Coding CLIs have their own
 subagents; an agent does reviews and runs workflow steps itself, and Pulse's own
 agent does each module review in its turn. Review limits (read-only, Goal Work
-autonomy) are stated in the prompt rather than enforced by a filtered tool set.
+autonomy) are stated in the prompt rather than enforced by a filtered tool set;
+the owner accepted that trade-off.
 Ticket: [PLAT-452](bugs/pulse_platform/plans-contracts/plat-452.md).
 
 ### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
