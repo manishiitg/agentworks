@@ -28,6 +28,15 @@ class ProvisionSlotsConfigTest(unittest.TestCase):
         # Excellence/Confida/SparkQuill do not pass DOCS: the default must keep them where they were.
         self.assertIn('DOCS="${DOCS:-$HOME_DIR/data/docs}"', SCRIPT)
 
+    def test_table_rewrites_keep_the_owner_and_group(self):
+        # assign and release rewrite the slot table as root; without a chown it became root:root, unreadable by the
+        # service, and every slot user was refused (RTS, 2026-10-04, PLAT-478).
+        rewrites = SCRIPT.count('os.replace(tmp, path)')
+        chowns = SCRIPT.count('os.chown(tmp, current.st_uid, current.st_gid)')
+        table_writes = SCRIPT.count('json.dump(table, open(tmp, "w"), indent=2)')
+        self.assertEqual(table_writes, 2)
+        self.assertGreaterEqual(chowns, table_writes, "every slot-table rewrite must keep the file's owner and group")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -260,6 +260,10 @@ with open(path + ".lock", "a") as lock:
     tmp = path + ".new"
     json.dump(table, open(tmp, "w"), indent=2)
     os.chmod(tmp, 0o640)
+    # Keep the owner and group of the table, root and the product group: the service reads it through that group.
+    # A plain rewrite as root left it root:root and the platform refused every slot user, RTS 2026-10-04.
+    current = os.stat(path)
+    os.chown(tmp, current.st_uid, current.st_gid)
     os.replace(tmp, path)
     print(free)
 PY
@@ -309,6 +313,10 @@ with open(path + ".lock", "a") as lock:
     tmp = path + ".new"
     json.dump(table, open(tmp, "w"), indent=2)
     os.chmod(tmp, 0o640)
+    # Keep the owner and group of the table, root and the product group: the service reads it through that group.
+    # A plain rewrite as root left it root:root and the platform refused every slot user, RTS 2026-10-04.
+    current = os.stat(path)
+    os.chown(tmp, current.st_uid, current.st_gid)
     os.replace(tmp, path)
 PY
   echo "$user_id released (files keep their group; clear them before reusing the slot)"

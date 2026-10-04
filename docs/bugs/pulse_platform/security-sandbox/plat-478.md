@@ -18,6 +18,14 @@ Excellence: the slot shell ran 13 times on 2026-10-04, all in a workflow, 0 fail
 `deploy/aws-ec2/slots-admin.sh release aa73da63e26b40a1bb701c2b4c024870` (the admin account; held `slot01`). Its shell tool runs as the app account again, as before slots.
 Restore with `slots-admin.sh assign aa73da63e26b40a1bb701c2b4c024870 slot01`. The other 6 assigned RTS accounts (slot02-07) still hit layer 3 in project chats.
 
+## Incident caused by the mitigation (2026-10-04, fixed)
+
+`slots-admin.sh release` rewrote `/etc/agentworks/slots.json` as root with mode 0640 but without restoring its group, so the file became `root:root`
+(it must be `root:<product>`, as `provision-slots.sh` line ~276 sets it). The RTS service could no longer read the table and, with slots in opt-in mode,
+refused every slot user's shell command: "HTTP 403: No account slot for this user / slot table unavailable: permission denied". Restored live via SSM
+(`chown root:video-studio`, 0640; the service reads it again, slots 02-07 listed). Script fixed: `assign` and `release` keep the existing owner and group
+(`os.chown` before the atomic replace); test in `deploy/common/test_provision_slots_config.py`. `docker`'s rewrite of slotctl.json was already correct (root:root 0644).
+
 ## Left
 
 1. Fix layer 3 in code: the launcher (`workspace/cmd/landlock-runner`, `workspace/security`) must not fail the whole command on a grant path the slot user cannot see; skipping that grant (granting nothing) is the safe default. Or do not grant the browser profile to slot shell commands at all. Tests on both servers.
