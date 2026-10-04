@@ -1,5 +1,3 @@
-//go:build linux
-
 // slottmux is the `tmux` the platform services find first in PATH. A session started in a slot's
 // runtime folder is created by that slot's own tmux server (run as the slot through sudo and
 // slotctl) and later commands for it are sent to that server's socket. Everything else goes to the
@@ -23,6 +21,17 @@ import (
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
+
+// The three ways the front-end starts a program. Tests replace them to observe a decision without executing tmux
+// (the execution-level test builds the real binary instead).
+var (
+	passthroughFn = passthrough
+	asSlotFn      = asSlot
+	runAsSlotFn   = runAsSlot
+)
+
+// exitMismatch is the status of a refused launch: nothing was executed.
+const exitMismatch = 126
 
 func passthrough(args []string) int {
 	err := syscall.Exec(slots.TmuxPath, append([]string{"tmux"}, args...), os.Environ())
@@ -308,15 +317,15 @@ func sockets(cfg slots.ExecConfig) map[string]string {
 func run(args []string) int {
 	cfg, err := slots.LoadExecConfig(slots.ConfigPath())
 	if err != nil || cfg.SlotRunRoot == "" || cfg.SlotStateRoot == "" {
-		return passthrough(args) // slots are not set up on this host
+		return passthroughFn(args) // slots are not set up on this host
 	}
 	me, err := user.Current()
 	if err != nil || slots.ValidSlot(me.Username) {
-		return passthrough(args) // a slot's own tmux is plain tmux
+		return passthroughFn(args) // a slot's own tmux is plain tmux
 	}
 	c := slots.ParseTmux(args)
 	if c.ExplicitSocket || c.Subcommand == "" {
-		return passthrough(args)
+		return passthroughFn(args)
 	}
 	registry := filepath.Join(cfg.SlotRunRoot, ".sessions")
 
@@ -325,7 +334,13 @@ func run(args []string) int {
 		name, dir := c.NewSessionFlags()
 		// The slot is the one the platform named by putting the launch script in its run folder (PLAT-442); the
 		// folder the session starts in no longer decides.
-		slot := cfg.SlotForLaunch(dir, launchCommand(c))
+		slot, err := cfg.SlotForLaunch(dir, launchCommand(c))
+		if err != nil {
+			// A launch whose script and folder disagree about the slot is refused before anything runs: not
+			// as the slot, not as the app account, not on the platform's tmux (PLAT-451).
+			_, _ = io.WriteString(os.Stderr, "tmux: "+err.Error()+"\n")
+			return exitMismatch
+		}
 		if name != "" && !commandUsesSlotFolder(c, filepath.Join(cfg.SlotRunRoot, slot)) {
 			forget(registry, name) // a session of this name is about to live on the platform's own tmux
 		}
@@ -339,30 +354,30 @@ func run(args []string) int {
 					args = withLaunchLog(c, args, file)
 				}
 			}
-			return passthrough(args)
+			return passthroughFn(args)
 		}
 		if slot == "" || name == "" || !c.NewSessionDetached() {
-			return passthrough(args)
+			return passthroughFn(args)
 		}
 		// Only a launch prepared for the slot runs as the slot: its script lives in the slot's run folder.
 		// A session whose command was prepared by the platform for itself (a user whose CLIs do not run as
 		// a slot) is not readable by the slot and stays on the platform's own tmux.
 		if !commandUsesSlotFolder(c, filepath.Join(cfg.SlotRunRoot, slot)) {
-			return passthrough(args)
+			return passthroughFn(args)
 		}
 		sock := slots.SlotSocket(cfg.SlotRunRoot, slot)
 		// Keep the pane's error output in the slot's run folder: a CLI that fails to start otherwise
 		// takes its reason with it when the session ends.
 		args = withLaunchLog(c, args, filepath.Join(cfg.SlotRunRoot, slot, "last-launch.stderr"))
-		code := asSlot(cfg, slot, args, slotEnv(cfg, slot), os.Stdout, os.Stderr)
+		code := asSlotFn(cfg, slot, args, slotEnv(cfg, slot), os.Stdout, os.Stderr)
 		if code != 0 {
 			return code
 		}
 		// tmux makes its socket owner-only, so open it to the slot's group (the platform is a member), then
 		// let the platform account talk to it (tmux only accepts its own user otherwise). Always done:
 		// a stale socket file from an earlier server must not be taken for a configured one.
-		_ = runAsSlot(cfg, slot, []string{slots.ChmodPath, "660", sock})
-		_ = asSlot(cfg, slot, []string{"server-access", "-aw", me.Username}, []string{"PATH=/usr/bin:/bin"}, io.Discard, io.Discard)
+		_ = runAsSlotFn(cfg, slot, []string{slots.ChmodPath, "660", sock})
+		_ = asSlotFn(cfg, slot, []string{"server-access", "-aw", me.Username}, []string{"PATH=/usr/bin:/bin"}, io.Discard, io.Discard)
 		remember(registry, name, slot)
 		return 0
 
@@ -385,19 +400,19 @@ func run(args []string) int {
 	default:
 		target := c.Target()
 		if target == "" {
-			return passthrough(args)
+			return passthroughFn(args)
 		}
 		if slot := liveLookup(cfg, registry, target); slot != "" {
 			return direct(slots.SlotSocket(cfg.SlotRunRoot, slot), args)
 		}
-		return passthrough(args)
+		return passthroughFn(args)
 	}
 }
 
 // direct runs tmux as this account against a slot's socket (the platform is in the slot's group and
 // was granted access by the server).
 func direct(sock string, args []string) int {
-	return passthrough(onSocket(sock, args))
+	return passthroughFn(onSocket(sock, args))
 }
 
 func listAll(cfg slots.ExecConfig, args []string) int {

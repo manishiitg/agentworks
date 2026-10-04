@@ -30,6 +30,16 @@ Ticket: [PLAT-452](bugs/pulse_platform/plans-contracts/plat-452.md).
 
 ### 2026-10-04 — Run-as identity is explicit; Crew readers use the owner's slot; Goals stay on the app account; Crews move to `Crew/<id>`
 
+### 2026-10-04 — A slot mismatch refuses the launch
+
+A launch whose script names one slot and whose folder names another is refused:
+slottmux exits non-zero before running tmux, and the provider refuses a launch
+whose declared user+slot the host table does not confirm. It never falls back
+to the app account, which would silently drop isolation. A declared app account
+(Crew/goal CLI turns) and hosts without slots are unaffected. Code:
+`workspace/slots` `SlotForLaunch`, `workspace/cmd/slottmux`, provider
+`internal/slotfs`. Ticket: [PLAT-451](bugs/pulse_platform/security-sandbox/plat-451.md).
+
 ### 2026-10-04 — Relay execution has no platform DB, KB or learnings
 
 Relay product.yaml declares `execution.platform_stores: false`. The shared step

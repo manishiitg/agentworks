@@ -2,8 +2,8 @@ package slots
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,21 +148,36 @@ func (cfg ExecConfig) SlotForDir(dir string) string {
 	return slot
 }
 
+// ErrSlotMismatch is the error a launch whose script names one slot and whose folder names another carries
+// (PLAT-451). It is a refusal, never "no slot requested": a caller that gets it must not run the launch on any
+// account.
+var ErrSlotMismatch = errors.New("slot mismatch")
+
+// SlotMismatchError says which slot the script named and which the working folder belongs to.
+type SlotMismatchError struct{ ScriptSlot, Dir, DirSlot string }
+
+func (e *SlotMismatchError) Error() string {
+	return fmt.Sprintf("[SLOT_EXPLICIT_MISMATCH] launch refused: the launch script is in %s's run folder but the folder %s belongs to %s", e.ScriptSlot, e.Dir, e.DirSlot)
+}
+
+// Is makes errors.Is(err, ErrSlotMismatch) true for a *SlotMismatchError.
+func (e *SlotMismatchError) Is(target error) bool { return target == ErrSlotMismatch }
+
 // SlotForLaunch is the slot a tmux new-session runs as: the one the platform named by placing the launch script in
 // that slot's run folder (<run root>/<slot>/..., created by the provider only for a launch it decided runs as the
-// slot). command is the pane's command line. A script that is not in any slot's run folder is not a slot launch.
-// The folder the session starts in is not consulted any more (PLAT-442); if it names a different slot than the
-// script does, the launch is refused as a mismatch rather than run as either.
-func (cfg ExecConfig) SlotForLaunch(dir, command string) string {
+// slot). command is the pane's command line. A script that is not in any slot's run folder is not a slot launch:
+// ("", nil). The folder the session starts in is not consulted to choose the slot (PLAT-442); if it names a
+// different slot than the script does, the launch is refused: ("", *SlotMismatchError), which a caller must treat
+// as a refusal, never as a launch without a slot (PLAT-451).
+func (cfg ExecConfig) SlotForLaunch(dir, command string) (string, error) {
 	slot := cfg.SlotNamedByScript(command)
 	if slot == "" {
-		return ""
+		return "", nil
 	}
 	if byDir := cfg.SlotForDir(dir); byDir != "" && byDir != slot {
-		log.Printf("[SLOT_EXPLICIT_MISMATCH] launch script is in %s's run folder but the folder %s belongs to %s: not run as a slot", slot, dir, byDir)
-		return ""
+		return "", &SlotMismatchError{ScriptSlot: slot, Dir: dir, DirSlot: byDir}
 	}
-	return slot
+	return slot, nil
 }
 
 // SlotNamedByScript returns the slot whose run folder the command refers to ("" when none).

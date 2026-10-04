@@ -7,9 +7,11 @@ filters.
 
 ## Slot/folder mismatch falls back to the app account — PLAT-451
 
-[PLAT-451](pulse_platform/security-sandbox/plat-451.md), P1, open. The slot
-selector logs a refusal but returns the same value as a non-slot launch;
-slottmux then passes it to the app account's tmux.
+[PLAT-451](pulse_platform/security-sandbox/plat-451.md), P1, fixed on main (not
+deployed). The slot selector logs a refusal but returned the same value as a
+non-slot launch; slottmux then passed it to the app account's tmux. A mismatch is
+now an explicit error in the selector, slottmux and the provider; the root-owned
+slottmux must be deployed with the matching release.
 
 ## Product owner migration follows cross-user manifest symlinks — PLAT-450
 
