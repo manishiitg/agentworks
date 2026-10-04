@@ -15,7 +15,7 @@ Native CLI tools are enabled through the shared product runtime. Load this proje
 
 # Access setup
 
-1. Call manage_vault_access with operation inspect_environment and arguments {}. Use actual group IDs and tool names from the result.
+1. Call manage_vault_access with operation inspect_environment and arguments {}. Use actual group IDs and tool names from the result. Its users field contains active platform accounts with id, email and username from Users & access. Use list_users with {} to refresh only this directory. Resolve a requested email exactly; ask when a name is ambiguous. Match group_members.user_id to directory id; gateway SQL users can have blank or stale emails. Disabled accounts are excluded. Never invent an email for a local account that has none.
 2. Call inspect_tool with arguments {"public_name":"..."} for every proposed tool. Confirm its approved fingerprint and explicit string argument paths.
 3. If a required scope is missing or hidden in query text/opaque IDs, explain why a tool-argument condition is insufficient. Require a trusted adapter or upstream scoped credentials. Do not save a misleading policy.
 4. Call save_permissions with arguments {"name":"...","group_id":"...","rules":[{"public_name":"...","fingerprint":"...","conditions":[{"path":"/organizationSlug","op":"equals","value":"..."}]}]}. Updating saved permissions also requires its id and current version. Use op matches only when exact equality is insufficient. All conditions are ANDed; regex matches the entire string.
@@ -59,7 +59,7 @@ Use disconnect_connection with {"connection_id":"..."} only when the user explic
 
 ## Look up entities before saving restrictions
 
-- Use list_mcp_servers for all active connected Vault MCPs, their approved schemas, all groups and secret names. The Vault administrator builder has setup authority independent of group membership; other product chats and external clients remain group scoped. Secret values are excluded.
+- Use list_mcp_servers for all active connected Vault MCPs, their approved schemas, all groups and secret names, plus active platform identities in vault_users. The Vault administrator builder has setup authority independent of group membership; other product chats and external clients remain group scoped. Secret values are excluded.
 - Use the native api-bridge call_mcp_tool with server, tool, and arguments. It shares AgentWorks' MCP executor and Vault's live authorization/audit path; no shell, credentials, alternate endpoint or provider-specific integration is needed.
 - For a request such as restricting a Notion task database, search/fetch the resource using its real schema, resolve ambiguous matches, and use the returned exact ID/data-source link. Do not invent an ID, guess a collection URL, or require the user to copy it before trying permitted tools.
 - Query/fetch only the information needed for the permissions. A setup request does not authorize upstream mutations, new membership, self-grants or relaxed policies. Report actual connection, schema or administrator/session errors. Do not require the administrator to join a group for setup lookups.

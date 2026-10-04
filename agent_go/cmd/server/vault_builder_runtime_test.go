@@ -18,7 +18,7 @@ import (
 func TestVaultBuilderAuthorityIsBoundToAdminProfileAndRevokedLive(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "true")
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin","products":[]},{"id":"member","role":"creator","products":["mcp-gateway"]}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"admin","email":"admin@example.com","role":"admin","products":[]},{"id":"member","email":"member@example.com","role":"creator","products":["mcp-gateway"]},{"id":"disabled","email":"disabled@example.com","disabled":true}]}`)
 	secret := strings.Repeat("s", 32)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
@@ -62,6 +62,17 @@ func TestVaultBuilderAuthorityIsBoundToAdminProfileAndRevokedLive(t *testing.T) 
 	inventory, err := vaultAccessFor(ctx, "admin")
 	if err != nil || len(inventory.Servers) != 1 || len(inventory.Secrets) != 1 {
 		t.Fatalf("builder inventory %v %v", inventory, err)
+	}
+	if len(inventory.Users) != 2 || inventory.Users[1].ID != "member" || inventory.Users[1].Email != "member@example.com" {
+		t.Fatal("builder lacks the active platform directory", inventory.Users)
+	}
+	listing, err := api.privateMCPTool(ctx, "admin", "list_mcp_servers", nil)
+	if err != nil || !strings.Contains(listing, `"vault_users"`) || !strings.Contains(listing, "member@example.com") || strings.Contains(listing, "disabled@example.com") {
+		t.Fatal("shared builder tool lacks active emails", listing, err)
+	}
+	ordinary, err := vaultAccessFor(executor.WithSessionID(requestCtx, "vault-chat"), "admin")
+	if err != nil || ordinary.Users != nil {
+		t.Fatal("ordinary product inventory exposed directory", ordinary.Users, err)
 	}
 	if _, err := api.resolveMCPServer(ctx, "another-chat", "vault_notion", "fetch"); err == nil {
 		t.Fatal("builder scope crossed chat sessions")

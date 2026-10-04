@@ -203,6 +203,10 @@ func TestCapLayerProfileUsesSharedNativeToolsAndGovernanceBridge(t *testing.T) {
 	if err != nil || tool.Name != "manage_vault_access" || tool.Category != "vault" {
 		t.Fatalf("management tool still exposes legacy branding: %+v, %v", tool, err)
 	}
+	parameters, err := json.Marshal(tool.Parameters)
+	if err != nil || !strings.Contains(string(parameters), `"list_users"`) {
+		t.Fatal("Vault tool schema does not expose account lookup", err)
+	}
 	if len(profile.Skills) != 1 || profile.Skills[0] != "vault-access" {
 		t.Fatal("Vault skill still exposes legacy branding")
 	}

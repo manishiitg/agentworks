@@ -33,7 +33,11 @@ func (api *StreamingAPI) privateMCPTool(ctx context.Context, person, operation s
 		if _, builder, _ := api.vaultBuilderAuthority(ctx, person); builder {
 			sharing = "Vault administrator setup access covers connected Vault MCPs and secret metadata independently of group grants. Other products and external clients remain group scoped. Secret values are excluded."
 		}
-		data, _ := json.Marshal(map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing})
+		inventory := map[string]any{"private": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing}
+		if vault.Users != nil {
+			inventory["vault_users"] = vault.Users
+		}
+		data, _ := json.Marshal(inventory)
 		return string(data), nil
 	}
 	name, _ := args["name"].(string)

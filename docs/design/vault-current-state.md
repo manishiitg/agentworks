@@ -440,7 +440,8 @@ Connection settings reauthorize only that row. Disconnect removes that connectio
 
 | Operation | Arguments | Result |
 | --- | --- | --- |
-| `inspect_environment` | `{}` | Actual catalog providers, connectors, groups and tools |
+| `inspect_environment` | `{}` | Actual catalog providers, connectors, groups, tools and active platform users (ID, email, username) |
+| `list_users` | `{}` | Fresh active platform account directory, matching Users & access; no gateway dependency |
 | `connect_server` | `{provider, label, instance?}` | Create a named catalog connection; OAuth starts pending |
 | `connect_server` | `{name, url, instance?}` | Existing custom-server flow; credentials stay outside chat |
 | `sign_in_connection` | `{connection_id}` | Same OAuth flow as the UI; returns an authorization link or directs client-app setup to the secure form |
@@ -666,3 +667,22 @@ This test used the connected Codex CLI temporarily because Muse did not load its
 The merge retains main's ownership registry, explicit CLI run-as identity and Crew migration to `Crew/<id>`, including native session continuity. Product manifests declare main's existing `native-subagents` guidance. Workflow MCP registration now obeys its manifest tool admission so the Vault call wrapper does not silently widen the workflow surface. Gateway end-to-end fixtures explicitly include approved tool fingerprints. Main's pinned provider version and its module checksums are retained.
 
 Verification after integration: the gateway Go suite, focused Vault/Crew/migration/product-surface tests, linked runtime tests, 35 Vault UI tests, TypeScript checking and 16 installer/deployment transport tests passed. Confida deployment acceptance remains a separate server test; this merge does not verify or resolve the local Muse MCP-loading issue.
+
+
+### Vault builder user identities
+
+Vault profile v8 resolves people from the central platform account directory,
+the same source as Users & access. `manage_vault_access(list_users, {})` and
+`inspect_environment.users` return only active accounts with `id`, `email` and
+`username`. The authorized Vault builder's shared `list_mcp_servers` inventory
+includes the same directory as `vault_users`. These reads recheck administrator
+access and current account state, omit disabled users, and never expose password
+hashes, SSO identifiers, credentials or slot configuration. Ordinary product
+and external-client MCP inventories do not receive the directory.
+
+Gateway SQL `users` is an identity binding used for authorization and may have
+blank or old emails. The builder joins `group_members.user_id` to the live
+directory `id` and matches the administrator's requested email exactly. It asks
+when a name is ambiguous and never invents an address for a local account with
+no email. Directory failures are reported as errors. Reading this metadata does
+not create accounts, sync gateway users, or change memberships or grants.

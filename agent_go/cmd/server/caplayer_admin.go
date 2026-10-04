@@ -41,19 +41,14 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 			writeUsersError(w, http.StatusMethodNotAllowed, "manage accounts in Users & access")
 			return
 		}
-		dir, err := readUserDirectoryFile()
+		directoryUsers, err := vaultDirectoryUsers(claims)
 		if err != nil {
 			writeUsersError(w, http.StatusServiceUnavailable, "user directory unavailable")
 			return
 		}
-		users := make([]map[string]string, 0, len(dir.Users))
-		for _, user := range dir.Users {
-			if !user.Disabled {
-				users = append(users, map[string]string{"ID": user.ID, "Email": user.Email, "WorkspaceID": ""})
-			}
-		}
-		if !IsMultiUserMode() && len(users) == 0 {
-			users = append(users, map[string]string{"ID": claims.UserID, "Email": claims.Email, "WorkspaceID": ""})
+		users := make([]map[string]string, 0, len(directoryUsers))
+		for _, user := range directoryUsers {
+			users = append(users, map[string]string{"ID": user.ID, "Email": user.Email, "WorkspaceID": ""})
 		}
 		writeUsersJSON(w, http.StatusOK, map[string]any{"users": users})
 		return
@@ -207,6 +202,19 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 		return "", errors.New("Vault management requires an administrator account")
 	}
 	switch operation {
+	case "list_users":
+		var empty struct{}
+		decoder := json.NewDecoder(bytes.NewReader(arguments))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&empty) != nil || decoder.Decode(&struct{}{}) != io.EOF || len(bytes.TrimSpace(arguments)) == 0 || bytes.TrimSpace(arguments)[0] != '{' {
+			return "", errors.New("list_users requires an empty arguments object")
+		}
+		users, err := vaultDirectoryUsers(claims)
+		if err != nil {
+			return "", errors.New("user directory unavailable")
+		}
+		data, err := json.Marshal(map[string]any{"users": users})
+		return string(data), err
 	case "inspect_environment", "inspect_tool", "save_permissions", "connect_server":
 	default:
 		return "", errors.New("unsupported Vault operation")
@@ -215,7 +223,21 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 	if err != nil {
 		return "", err
 	}
-	return capLayerAgentRequest(ctx, userID, "/api/admin/setup/tool", payload)
+	result, err := capLayerAgentRequest(ctx, userID, "/api/admin/setup/tool", payload)
+	if err != nil || operation != "inspect_environment" {
+		return result, err
+	}
+	users, err := vaultDirectoryUsers(claims)
+	if err != nil {
+		return "", errors.New("user directory unavailable")
+	}
+	var environment map[string]any
+	if err := json.Unmarshal([]byte(result), &environment); err != nil || environment == nil {
+		return "", errors.New("invalid Vault environment response")
+	}
+	environment["users"] = users
+	data, err := json.Marshal(environment)
+	return string(data), err
 }
 
 func capLayerAgentRequest(ctx context.Context, userID, path string, payload json.RawMessage) (string, error) {

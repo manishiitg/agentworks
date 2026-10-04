@@ -193,6 +193,8 @@ type vaultAccessInventory struct {
 	Servers []vaultRuntimeServer  `json:"servers"`
 	Groups  []vaultAccessGroup    `json:"groups"`
 	Secrets []vaultSecretMetadata `json:"secrets"`
+	// Only the host's directory populates this; never deserialize gateway data.
+	Users []vaultDirectoryUser `json:"-"`
 }
 type vaultSecretMetadata struct {
 	Name string `json:"name"`
@@ -224,6 +226,15 @@ func vaultAccessFor(ctx context.Context, person string) (vaultAccessInventory, e
 	}
 	if err = json.Unmarshal(data, &out); err != nil {
 		return out, err
+	}
+	// Only the authorized Vault builder receives the platform directory.
+	// Discard any upstream user list for ordinary product inventories.
+	out.Users = nil
+	if path == "/api/admin/runtime/builder/servers" {
+		out.Users, err = vaultDirectoryUsers(&UserClaims{UserID: person})
+		if err != nil {
+			return out, errors.New("user directory unavailable")
+		}
 	}
 	for i := range out.Servers {
 		out.Servers[i].Name = vaultServerName(out.Servers[i].ID)
