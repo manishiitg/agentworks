@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Costs shows numbers and short labels
+
+Workflow Costs removes explanatory copy entirely at the user's request. Token
+cards show fresh/cached input, output and cache share; daily rows use numeric
+input/cache/output/cost columns. Conversations remain inspectable and secondary
+run/model details expand on demand. Missing-usage and unpriced counters stay
+visible so incomplete accounting is not mistaken for zero cost.
+[PLAT-430](bugs/pulse_platform/cost-telemetry/plat-430.md).
+
 ### 2026-10-04 — Build a release once; every server copies and activates it, and refuses a build that does not match — PLAT-426
 
 `./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box

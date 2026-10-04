@@ -110,7 +110,7 @@ it('shows cost by account with the split by work and person', async () => {
   const container = await render()
   expect(container.textContent).toContain('Total input1.0K')
   expect(container.textContent).toContain('Fresh input200')
-  expect(container.textContent).toContain('80.0% of input was read from cache')
+  expect(container.textContent).toContain('80.0% cached')
   expect(container.textContent).toContain('Output tokens25')
   expect(container.textContent).toContain('Cached input800')
   expect(container.textContent).toContain('1.0K input · 25 output')

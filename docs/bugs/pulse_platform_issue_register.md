@@ -1,3 +1,9 @@
+## Workflow Costs emphasizes numbers and removes explanatory copy — PLAT-430
+
+[PLAT-430](pulse_platform/cost-telemetry/plat-430.md), fixed on main; deployment
+pending. Short input/cache/output/cost columns, compact missing-data counters,
+secondary run/model details, and independently expandable dates.
+
 ## A CLI chat said the UI control tools were unavailable (they are bridge tools) — PLAT-429
 
 [PLAT-429](pulse_platform/coding-agent-bridge/plat-429.md), P3, fixed on `main`; deploy pending. The UI-control skill now says how to reach them.

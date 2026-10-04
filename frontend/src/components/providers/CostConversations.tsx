@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ChatHistoryConversation, CostConversation } from '../../services/api-types'
 import { formatUSD } from '../workflow/costs/helpers'
-import { pricingCoverageText } from '../../utils/costTokens'
+import CostPricingNotice from './CostPricingNotice'
 import CostTokenBreakdown from './CostTokenBreakdown'
 
 const ConversationRenderer = lazy(() => import('../ui/ConversationRenderer').then(module => ({ default: module.ConversationRenderer })))
@@ -22,14 +22,14 @@ function ChatPreview({ conversation }: { conversation: CostConversation }) {
   }, [conversation.session_id, conversation.workflow_id, offset])
   return <div className="mt-3 rounded-lg border border-border p-3">
     <h5 className="text-sm font-semibold">Chat history</h5>
-    <p className="mb-2 text-xs text-muted-foreground">Saved messages and tool activity for this conversation. Cost rows below use the recorded time (UTC).</p>
+
     {loading && <p className="text-xs text-muted-foreground">Loading chat…</p>}
     {error && <p role="alert" className="text-xs text-red-600">Could not load chat: {error}</p>}
     {history && <>
       <div className="mb-3 rounded border border-border p-3">
-        <h6 className="text-sm font-medium">Prompt size</h6>
-        <p className="mt-1 text-xs text-muted-foreground">Latest saved instructions. Earlier runs may have used different instructions.</p>
-        {!history.saved_prompt_sizes?.length && <p className="mt-2 text-xs text-muted-foreground">Prompt size was not recorded for this conversation.</p>}
+        <h6 className="text-sm font-medium">Latest prompt size</h6>
+
+        {!history.saved_prompt_sizes?.length && <p className="mt-2 text-xs text-muted-foreground">Not recorded.</p>}
         {history.saved_prompt_sizes?.map(prompt => <p key={prompt.role} className="mt-2 flex justify-between gap-3 text-xs">
           <span>{prompt.role === 'system' ? 'System prompt' : 'Developer instructions'}</span>
           <span className="font-mono">{prompt.character_count.toLocaleString()} characters</span>
@@ -63,8 +63,8 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
   }, [paths])
   if (rows.length === 0) return null
   return <section className="mt-4 space-y-2">
-    <h4 className="text-sm font-semibold text-foreground">Conversations behind this cost</h4>
-    <p className="text-xs text-muted-foreground">Expand a conversation for the cost of each recorded turn or agent run, then view its chat. Cache totals come from provider usage; reasons for cache misses are not included in the report.</p>
+    <h4 className="text-sm font-semibold text-foreground">Conversations</h4>
+
     {ordered.slice(0, limit).map(row => {
       const key = `${row.workflow_id}:${row.user_id}:${row.session_id}:${row.source_platform ?? ""}`
       const executions = Object.entries(row.by_execution || {}).sort(([, a], [, b]) => b.first_seen.localeCompare(a.first_seen))
@@ -74,7 +74,7 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
           <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} recorded {executions.length === 1 ? 'turn / agent run' : 'turns / agent runs'} · {row.first_seen.slice(0, 10)} to {row.last_seen.slice(0, 10)} (UTC)</span>
         </summary>
         <div className="mt-3"><CostTokenBreakdown compact usage={row} /></div>
-        {pricingCoverageText(row) && <p className="mt-2 text-xs text-muted-foreground">{pricingCoverageText(row)}</p>}
+        <div className="mt-2"><CostPricingNotice usage={row} /></div>
         <button type="button" className="mt-3 text-xs text-primary underline" onClick={() => setChat(chat === key ? null : key)}>{chat === key ? 'Hide chat' : 'View chat'}</button>
         {chat === key && <ChatPreview key={key} conversation={row} />}
         <div className="mt-3 max-h-[30rem] space-y-2 overflow-auto">
@@ -82,7 +82,7 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
             <summary className="cursor-pointer text-xs">{new Date(turn.first_seen).toISOString().replace('T', ' ').slice(0, 19)} UTC · {turn.scope.replaceAll('_', ' ')} <span className="float-right font-mono">{turn.total_cost_usd === 0 && turn.unpriced_call_count ? 'Not priced' : formatUSD(turn.total_cost_usd)}</span></summary>
             <div className="mt-2"><CostTokenBreakdown compact usage={turn} /></div>
             <p className="mt-2 text-xs text-muted-foreground">Models: {Object.keys(turn.by_model || {}).join(', ') || 'Not recorded'}</p>
-            {pricingCoverageText(turn) && <p className="mt-1 text-xs text-muted-foreground">{pricingCoverageText(turn)}</p>}
+            <div className="mt-1"><CostPricingNotice usage={turn} /></div>
           </details>)}
         </div>
       </details>

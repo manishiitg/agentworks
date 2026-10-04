@@ -1,7 +1,8 @@
+import CostPricingNotice from '../../providers/CostPricingNotice'
 import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import CostConversations from '../../providers/CostConversations'
 import React from 'react'
-import { inputTokens, totalTokens, tokenSummary, pricingCoverageText } from '../../../utils/costTokens'
+import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
 import type { CostAggregate } from '../../../services/api-types'
 import { Loader2, TrendingUp } from 'lucide-react'
 import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdown'
@@ -11,6 +12,9 @@ import type { CostsData } from './useCostsData'
 
 const recordedCost = (usage: CostAggregate) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(usage.total_cost_usd)
+
+const hasUsage = (usage: CostAggregate) =>
+  usage.total_cost_usd > 0 || totalTokens(usage) > 0 || (usage.unpriced_call_count ?? 0) > 0
 
 type CostsDailySectionProps = Pick<
   CostsData,
@@ -43,29 +47,20 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
 }) => (
   <>
               {/* Canonical product activity hierarchy */}
-              {hasScopedActivity && (
+              {hasScopedActivity && (!projectMode || activityBreakdown.filter(category => hasUsage(category.total)).length > 1) && (
                 <section className="space-y-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Cost by activity</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {projectMode
-                        ? 'Project chat and background-agent costs from the authoritative event ledger.'
-                        : 'Builder, Pulse, workflow, and evaluation costs from the authoritative event ledger.'}
-                    </p>
+                    <h3 className="text-sm font-semibold text-foreground">By activity</h3>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                    {activityBreakdown.filter(category => !projectMode || category.total.total_cost_usd > 0 || totalTokens(category.total) > 0 || (category.total.unpriced_call_count ?? 0) > 0).map(category => {
+                  <div className="grid grid-cols-2 gap-3">
+                    {activityBreakdown.filter(category => hasUsage(category.total)).map(category => {
                       return (
                       <div key={category.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-foreground">{projectMode && category.id === 'builder' ? 'Chat' : category.label}</div>
-                          <div className="truncate text-xs text-muted-foreground">{projectMode && category.id === 'builder' ? 'Project conversation and background coding tasks' : category.description}</div>
                         </div>
                           <div className="text-right">
                             <div className="font-mono font-semibold text-foreground">{recordedCost(category.total)}</div>
-                            <div className="text-xs text-muted-foreground">{tokenSummary(category.total)}</div>
-                            <div className="text-xs text-muted-foreground">{pricingCoverageText(category.total)}</div>
-                            <div className="text-xs text-muted-foreground">LLM time: {formatDuration(category.total.llm_generation_duration_ms)}</div>
                           </div>
                       </div>
                       )
@@ -81,11 +76,9 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 text-primary" />
-                        Daily Cost Breakdown
+                        Daily costs
                       </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {projectMode ? 'Daily project totals by UTC accounting date.' : 'Daily totals by UTC accounting date using the same Builder, Pulse, Workflow, and Evaluation categories above.'}
-                      </p>
+
                     </div>
                   </div>
 
@@ -94,13 +87,9 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       <thead>
                         <tr className="text-muted-foreground border-b border-border pb-2">
                           <th className="text-left font-medium pb-2">Date (UTC)</th>
-                          {!projectMode && <th className="text-right font-medium pb-2">Runs</th>}
-                          <th className="text-right font-medium pb-2">{projectMode ? 'Chat' : 'Builder'}</th>
-                          {!projectMode && <th className="text-right font-medium pb-2">Pulse</th>}
-                          {!projectMode && <th className="text-right font-medium pb-2">Workflow</th>}
-                          {!projectMode && <th className="text-right font-medium pb-2">Evaluation</th>}
-                          <th className="text-right font-medium pb-2">LLM time</th>
-                          <th className="text-right font-medium pb-2">Input / output</th>
+                          <th className="text-right font-medium pb-2">Input</th>
+                          <th className="text-right font-medium pb-2">Cached</th>
+                          <th className="text-right font-medium pb-2">Output</th>
                           <th className="text-right font-medium pb-2">Total</th>
                         </tr>
                       </thead>
@@ -133,43 +122,31 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                     </button>
                                   </div>
                                 </td>
-                                {!projectMode && <td className="py-2 text-right font-mono text-muted-foreground">{entry.runCount.toLocaleString()}</td>}
-                                <td className="py-2 text-right font-mono text-muted-foreground">
-                                  <div>{formatUSD(entry.builderCost)}</div>
-                                  <div className="text-[10px] text-muted-foreground/70">{formatTokens(entry.builderTokens)} tok</div>
-                                </td>
-                                {!projectMode && <td className="py-2 text-right font-mono text-muted-foreground">
-                                  <div>{entry.pulseCost === null ? '—' : formatUSD(entry.pulseCost)}</div>
-                                  {entry.pulseTokens !== null && (
-                                    <div className="text-[10px] text-muted-foreground/70">{formatTokens(entry.pulseTokens)} tok</div>
-                                  )}
-                                </td>}
-                                {!projectMode && <td className="py-2 text-right font-mono text-muted-foreground">
-                                  <div>{formatUSD(entry.workflowCost)}</div>
-                                  <div className="text-[10px] text-muted-foreground/70">{formatTokens(entry.workflowTokens)} tok</div>
-                                </td>}
-                                {!projectMode && <td className="py-2 text-right font-mono text-muted-foreground">
-                                  <div>{formatUSD(entry.evaluationCost)}</div>
-                                  <div className="text-[10px] text-muted-foreground/70">{formatTokens(entry.evaluationTokens)} tok</div>
-                                </td>}
-                                <td className="py-2 text-right font-mono text-muted-foreground">{formatDuration(entry.llmDurationMS)}</td>
-                                <td className="py-2 text-right font-mono text-muted-foreground">{entry.totalInputTokens !== undefined ? `${formatTokens(entry.totalInputTokens)} input · ${formatTokens(entry.totalOutputTokens)} output` : `${formatTokens(entry.totalTokens)} tokens`}</td>
+                                <td className="py-2 text-right font-mono text-muted-foreground">{entry.totalInputTokens === undefined ? '—' : formatTokens(entry.totalInputTokens)}</td>
+                                <td className="py-2 text-right font-mono text-muted-foreground">{dayUsage ? formatTokens(dayUsage.cache_read_tokens) : '—'}</td>
+                                <td className="py-2 text-right font-mono text-muted-foreground">{entry.totalOutputTokens === undefined ? '—' : formatTokens(entry.totalOutputTokens)}</td>
                                 <td className="py-2 text-right font-bold text-green-600 dark:text-green-400">{entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(entry.totalCost)}</td>
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-muted/20">
-                                  <td colSpan={projectMode ? 5 : 9} className="p-3">
-                                    {dayUsage && <CostTokenBreakdown usage={dayUsage} />}
+                                  <td colSpan={5} className="p-3">
+                                    {dayUsage && <CostTokenBreakdown compact usage={dayUsage} />}
+                                    {dayUsage && <div className="mt-2"><CostPricingNotice usage={dayUsage} /></div>}
+                                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                                      {!projectMode && <span>{entry.runCount.toLocaleString()} runs</span>}
+                                      <span>LLM time {formatDuration(entry.llmDurationMS)}</span>
+                                    </div>
                                     <CostConversations rows={Object.values(dayUsage?.by_conversation || {})} />
                                     {!categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
-                                      <p className="text-xs text-muted-foreground">This older daily record has totals but no activity attribution.</p>
+                                      <p className="text-xs text-muted-foreground">Activity details unavailable.</p>
                                     ) : (
-                                      <div className="space-y-3">
+                                      <details className="mt-3 rounded-md border border-border p-3">
+                                        <summary className="cursor-pointer text-xs font-medium text-foreground">Activity and model details</summary>
+                                        <div className="mt-3 space-y-3">
                                         {dailyRuns.length > 0 && (
                                           <div className="overflow-hidden rounded-md border border-border bg-card">
                                             <div className="border-b border-border px-3 py-2">
                                               <div className="text-xs font-semibold text-foreground">Workflow runs</div>
-                                              <div className="text-[10px] text-muted-foreground">Repriced immutable run detail contributing to this date.</div>
                                             </div>
                                             <div className="divide-y divide-border">
                                               {dailyRuns.map(run => (
@@ -195,7 +172,6 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                           <div className="overflow-hidden rounded-md border border-border bg-card">
                                             <div className="border-b border-border px-3 py-2">
                                               <div className="text-xs font-semibold text-foreground">Model split</div>
-                                              <div className="text-[10px] text-muted-foreground">Actual coding provider and model recorded for this date.</div>
                                             </div>
                                             <div className="overflow-x-auto px-3 pb-2">
                                               <table className="w-full text-[10px]">
@@ -226,7 +202,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                             </div>
                                           </div>
                                         )}
-                                        {(categories || []).filter(category => !projectMode || category.total.total_cost_usd > 0 || totalTokens(category.total) > 0 || (category.total.unpriced_call_count ?? 0) > 0).map(category => {
+                                        {(categories || []).filter(category => hasUsage(category.total)).map(category => {
                                                                                     return (
                                             <div key={category.id} className="overflow-hidden rounded-md border border-border bg-card">
                                               <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
@@ -240,7 +216,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                 </div>
                                               </div>
                                               {category.executions.length === 0 ? (
-                                                <p className="px-3 py-2 text-[10px] text-muted-foreground">No activity recorded.</p>
+                                                <p className="px-3 py-2 text-[10px] text-muted-foreground">No activity.</p>
                                               ) : (
                                                 <div className="max-h-48 overflow-y-auto px-3">
                                                   {category.executions.map(execution => {
@@ -291,7 +267,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                             </div>
                                           )
                                         })}
-                                      </div>
+                                        </div>
+                                      </details>
                                     )}
                                   </td>
                                 </tr>
