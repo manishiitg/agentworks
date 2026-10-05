@@ -17,7 +17,8 @@ import (
 
 func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, tool string, args map[string]any) (string, error) {
 	claims := GetUserFromContext(ctx)
-	if claims == nil || strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseProductAllowed(claims) {
+	if claims == nil || strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseMCPAllowed(claims) {
+		// Agents and connections act within the person's folder roles and a bound folder; the app product is not needed.
 		return "", fmt.Errorf("Brain is unavailable to this principal")
 	}
 	if caller, _ := ctx.Value(common.UserIDKey).(string); caller != "" && caller != claims.UserID {

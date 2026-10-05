@@ -15,6 +15,10 @@ func TestProductEnabled(t *testing.T) {
 	if productEnabled("dominion") {
 		t.Fatal("unlisted product must not be registered")
 	}
+	// Vault and Brain are core: no allowlist turns them off.
+	if !productEnabled("mcp-gateway") || !productEnabled("knowledgebase") {
+		t.Fatal("Vault and Brain must be enabled whatever AGENT_PRODUCTS lists")
+	}
 }
 
 func TestIsSingleProductServerDeployment(t *testing.T) {

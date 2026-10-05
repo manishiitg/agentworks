@@ -43,9 +43,10 @@ func TestKnowledgebaseTokenToolAdmission(t *testing.T) {
 			t.Errorf("KB writer with workflow viewer account role denied %s", definition.Name)
 		}
 	}
+	// Brain is core: no product allowlist switches it off for a connection.
 	t.Setenv("AGENT_PRODUCTS", "work")
-	if externalTokenAllows(write, externalTool{Name: "read_knowledgebase"}) || externalTokenAllows(write, externalTool{Name: "update_knowledgebase", mutates: true}) {
-		t.Fatal("disabled product admitted KB tools")
+	if !externalTokenAllows(write, externalTool{Name: "read_knowledgebase"}) || !externalTokenAllows(write, externalTool{Name: "update_knowledgebase", mutates: true}) {
+		t.Fatal("Brain must stay available whatever AGENT_PRODUCTS lists")
 	}
 }
 

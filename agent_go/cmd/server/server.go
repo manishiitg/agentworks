@@ -128,12 +128,22 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 
 var mcpBridgeVirtualToolCategories = map[string]bool{}
 
+// coreProducts are never switched off by AGENT_PRODUCTS.
+var coreProducts = []string{"mcp-gateway", "knowledgebase"}
+
 // productEnabled reports whether a product's profiles and skills should be
 // loaded by this server. An unset AGENT_PRODUCTS preserves the shared-server
 // behavior of loading every product. Dedicated deployments can set a
 // comma-separated allowlist (for example, "video-studio") so unrelated
 // product startup failures cannot take down their agent API.
 func productEnabled(product string) bool {
+	// Vault and Brain are core: on in every installation, local included. What a person may do in them is decided by
+	// their account (product access and role) and by folder grants, never by this list.
+	for _, core := range coreProducts {
+		if strings.EqualFold(strings.TrimSpace(product), core) {
+			return true
+		}
+	}
 	configured := strings.TrimSpace(os.Getenv("AGENT_PRODUCTS"))
 	if configured == "" {
 		return true
