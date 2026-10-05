@@ -1,3 +1,7 @@
+## Code browser setup, notices and background control — PLAT-516
+
+[PLAT-516](pulse_platform/browser/plat-516.md), P2, fixed on main, not deployed. Chat-queue notices, idle browser choices, branded shared-tab groups, opt-in foreground activation and inline-ref/per-tab console fixes.
+
 ## Webhook step cannot write the workflow database ("caller does not own this tool session") — PLAT-514
 
 [PLAT-514](pulse_platform/scheduler-runs/plat-514.md), P1, open, diagnosed to the tool lookup path, not fixed. Blocks the RTS PR review once the run folder is writable (PLAT-502).

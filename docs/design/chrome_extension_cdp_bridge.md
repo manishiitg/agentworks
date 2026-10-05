@@ -93,14 +93,43 @@ never exposes workspace Start browser/teaching controls in that state. Setup
 lives inside the ordinary picker, with three short steps, collapsed installation
 instructions and raw JSON hidden behind Copy manually. Waiting ends only after
 an actual new connection, not a poll of the prior live browser.
+An idle pane displays browser choice cards after successful session discovery.
+Opening an existing browser keeps those choices in the header settings. This
+avoids flashing setup over a running session while discovery is pending.
 
 The branded popup hides setup after connecting. It shows a Connected badge,
 Code project/server identity, empty or populated shared-tab list, Share this tab,
-New shared tab, Group shared tabs and Disconnect browser. New tabs may be
-created by either the popup or the agent and join an existing managed group.
+New shared tab, Regroup tabs and Disconnect browser. Sharing the first tab
+automatically creates a deployment-brand · project group in its window. New tabs may
+be created by either the popup or the agent and join that managed group.
 Grouping applies only to already shared tabs, separately per window. It does
 not share other tabs, including tabs dragged into a group. Stop/unshare removes
 our shared tabs from our managed groups without touching unrelated groups.
+The copied connection includes the existing runtime appName as display-only
+branding. Validate the name with the frontend's branding helper; the extension
+also rejects blank, overlong or control-character names and falls back to
+AgentWorks for older codes. This metadata never changes the account/project
+credential or grants authority.
+
+Extension commands keep the user's active tab by default. The optional
+agent_browser active=true parameter permits Target.activateTarget,
+Page.bringToFront and foreground tab creation during one serialized call; its
+gate release clears permission. Popup New shared tab remains a human foreground
+action. Inline tab selection reuses the current tab without the CLI's
+ref-clearing switch; changed tabs still require a fresh snapshot.
+Console/errors read bounded per-target relay caches (100 entries per kind,
+2048 bytes per text), including child sessions. Removing a shared target or
+disconnecting clears its cache; --clear affects only the selected tab.
+Status returns screenshot_write_paths from the trusted folder guard. Output
+must remain inside those paths; global /tmp/tool_output_folder paths stay denied.
+The active interactive Code chat observes status every 2.5 seconds even with
+its Browser pane closed. Connection, first-share and disconnection notices use
+the existing global durable chat queue, preserve drafts and wait behind running
+turns. Per-connection receipts prevent repeats; failed status requests do not
+mean disconnection. Notices tell the agent to verify status, discard old refs
+and use ordinary agent_browser commands through the backend-owned connection.
+Code has explicit browser choices; missing or legacy Automatic settings select
+Workspace browser. Workflow/Crew settings are unchanged.
 Reusing a code in another browser replaces the prior browser on successful
 connection; each new binding receives a fresh private relay capability.
 Sharing another tab is explicit. Removing a shared tab detaches its debugger;

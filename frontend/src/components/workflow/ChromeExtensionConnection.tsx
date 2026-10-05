@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
+import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
 
 export interface ChromeExtensionStatus {
   selected: boolean; connected: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
@@ -71,7 +72,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
       if (generation.current !== turn) return
       const url = new URL('/api/browser/extension/connect', base)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      const value = JSON.stringify({ url: url.href, token: data.token })
+      const value = JSON.stringify({ url: url.href, token: data.token, brand: getRuntimeAppName(runtimeBrandingConfig()) || 'AgentWorks' })
       awaiting.current = { previous: status.connection_id || '' }
       setPairing(value)
       if (reset) setStatus(current => ({ ...current, connected: false, tabs: 0 }))

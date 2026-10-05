@@ -23,6 +23,29 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 )
 
+func TestCodeBrowserLegacyAutomaticUsesWorkspaceBrowser(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/missing/") {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": `{"mode":"auto","port":9222}`}})
+	}))
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	for _, tc := range []struct{ path, mode string }{
+		{"Chats/Code/projects/legacy", "headless"},
+		{"_users/alice/Chats/Code/projects/missing", "headless"},
+		{"Chats/Work/projects/legacy", "auto"},
+	} {
+		settings, err := readWorkspaceBrowserSettings(context.Background(), tc.path)
+		if err != nil || settings.Mode != tc.mode {
+			t.Fatalf("%s: mode=%s err=%v, want %s", tc.path, settings.Mode, err, tc.mode)
+		}
+	}
+}
+
 func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]},{"id":"stranger","username":"stranger","can_create":true,"products":[]}]}`)

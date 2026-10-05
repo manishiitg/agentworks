@@ -45,6 +45,9 @@ type Binding struct {
 	expires                            time.Time
 	extension, cdp                     *websocket.Conn
 	tabs                               int
+	active                             bool
+	diagnostics                        map[string]*tabDiagnostics
+	childTargets                       map[string]string
 	gate                               chan struct{}
 }
 type Manager struct {
@@ -179,6 +182,11 @@ func (b *Binding) Acquire(ctx context.Context) (string, func(), error) {
 // Switching conversations requires explicit re-pairing, so cached refs from
 // another chat can never become actions in this browser session.
 func (b *Binding) AcquireFor(ctx context.Context, owner string) (string, func(), error) {
+	return b.AcquireForActive(ctx, owner, false)
+}
+
+// Visible activation is opt-in for one serialized tool call, never sticky.
+func (b *Binding) AcquireForActive(ctx context.Context, owner string, active bool) (string, func(), error) {
 	select {
 	case b.gate <- struct{}{}:
 	case <-ctx.Done():
@@ -198,7 +206,13 @@ func (b *Binding) AcquireFor(ctx context.Context, owner string) (string, func(),
 		}
 		b.owner = owner
 	}
-	return b.endpoint, release, nil
+	b.active = active
+	return b.endpoint, func() {
+		b.mu.Lock()
+		b.active = false
+		b.mu.Unlock()
+		release()
+	}, nil
 }
 func (m *Manager) Disconnect(user, scope string) error {
 	m.mu.Lock()
@@ -227,6 +241,8 @@ func (b *Binding) close() {
 	}
 	b.tabs = 0
 	b.tabTitles = nil
+	b.diagnostics = nil
+	b.childTargets = nil
 }
 func (m *Manager) Close() {
 	m.mu.Lock()
@@ -250,6 +266,7 @@ type envelope struct {
 	Tabs      int             `json:"tabs,omitempty"`
 	TabTitles []string        `json:"tab_titles,omitempty"`
 	Message   json.RawMessage `json:"message,omitempty"`
+	Active    bool            `json:"active,omitempty"`
 }
 
 // ServeExtension authenticates in the first frame. No app JWT is given to the
@@ -352,6 +369,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 				}
 			}
 		case "cdp":
+			b.collectDiagnostics(e.Message)
 			if b.cdp != nil && len(e.Message) > 0 {
 				b.cdp.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				err = b.cdp.WriteMessage(websocket.TextMessage, e.Message)
@@ -437,7 +455,7 @@ func (m *Manager) serveCDP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		err = b.extension.WriteJSON(envelope{Type: "cdp", Message: data})
+		err = b.extension.WriteJSON(envelope{Type: "cdp", Message: data, Active: b.active})
 		b.mu.Unlock()
 		if err != nil {
 			return

@@ -1,8 +1,9 @@
 import { cloneElement, isValidElement, useState, useEffect, type ReactNode } from 'react'
 import { ChromeExtensionConnection, useChromeExtensionConnection } from './ChromeExtensionConnection'
 import { Button } from '../ui/Button'
-import { Settings2, X, Monitor, PlugZap, Loader2 } from 'lucide-react'
+import { Settings2, X, Monitor, PlugZap, Loader2, ArrowRight } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode, type BrowserChoice } from '../BrowserAutomationSettings'
+import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
 import WorkflowLiveBrowser from './WorkflowLiveBrowser'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
@@ -69,6 +70,20 @@ export function BrowserWorkspacePanel({
     if (connection.status.selected && !await connection.disconnect()) return
     setExtensionSetup(false); onBrowserModeChange(next)
   }
+  const browserOptions = !readOnly && workspacePath ? <div className="space-y-4 text-left" aria-label="Choose a browser">
+    <div><h3 className="text-base font-semibold">Choose a browser</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Select where your agent should browse.</p></div>
+    <div className="space-y-2">
+      {([
+        {value:'headless', title:'Workspace browser', description:`A separate browser for this ${scopeNoun}. Watch and control it here.`, icon:Monitor},
+        ...(extensionAvailable ? [{value:'extension', title:'My Chrome or Edge', description:'Use your signed-in tabs with the AgentWorks extension.', icon:PlugZap}] : []),
+        ...(isBrowserCDPEnabled() ? [{value:'cdp', title:'Chrome · direct connection', description:'Connect to Chrome running on this machine.', icon:Settings2}] : []),
+      ] as const).map(option => <button type="button" key={option.value} disabled={connection.busy} onClick={() => { void changeChoice(option.value as BrowserChoice).then(() => setSettingsOpen(true)) }} className="flex w-full items-start gap-3 rounded-xl border border-border bg-muted/20 p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+        <option.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.description}</span></span>
+        <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </button>)}
+    </div>
+  </div> : undefined
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
   const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
     ? cloneElement(assistantControl, {
@@ -95,8 +110,8 @@ export function BrowserWorkspacePanel({
           </div>
           <div className="flex items-center gap-2"><WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />{guidedAssistantControl}</div>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
-          <div className="max-w-xs space-y-4 text-center">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="mx-auto my-6 max-w-sm space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"><PlugZap className="h-6 w-6" /></div>
             <div className="space-y-2"><p className="text-sm font-medium">{connection.status.connected ? connection.status.tabs > 0 ? 'Your browser is ready' : 'Share your first tab' : connection.status.selected ? 'Browser disconnected' : 'Connect your browser'}</p>
               <p className="break-words text-xs text-muted-foreground">{(connection.status.workspace || workspacePath || '').split('/').filter(Boolean).pop()}</p>
@@ -105,9 +120,10 @@ export function BrowserWorkspacePanel({
             <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${connection.status.connected ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border text-muted-foreground'}`}><span className={`h-1.5 w-1.5 rounded-full ${connection.status.connected ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{connection.status.connected ? `Connected · ${connection.status.tabs} shared ${connection.status.tabs === 1 ? 'tab' : 'tabs'}` : connection.status.selected ? 'Disconnected' : 'Not connected'}</span>
             {connection.status.connected && connection.status.tab_titles?.length ? <ul className="space-y-1.5 text-left" aria-label="Shared browser tabs">{connection.status.tab_titles.map((title, index) => <li key={index} title={title} className="truncate rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">{title}</li>)}</ul> : null}
             <div><Button size="sm" variant="outline" onClick={() => setSettingsOpen(true)}>{connection.status.connected ? 'Connection settings' : 'Set up connection'}</Button></div>
+            {!connection.status.connected && browserOptions}
           </div>
         </div>
-      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} showGuide={false} toolbar={<>
+      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} emptyContent={browserOptions} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
       </>} />}
@@ -136,6 +152,7 @@ export function BrowserWorkspacePanel({
             onBrowserModeChange={onBrowserModeChange}
             browserChoice={choice}
             onBrowserChoiceChange={next => { void changeChoice(next) }}
+            allowAutomatic={profileId !== 'code'}
             extensionAvailable={extensionAvailable}
             extensionContent={<ChromeExtensionConnection connection={connection} />}
             cdpPort={cdpPort}

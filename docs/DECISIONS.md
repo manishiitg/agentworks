@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Code browser changes notify chat and shared tabs group automatically
+
+Use the existing global durable queue to notify the active interactive Code chat
+on extension connection, first share and disconnection; wait behind running turns
+and deduplicate each connection. Code has explicit browser choices, with legacy
+Automatic mapped to Workspace browser, and show choices in idle panes after
+session discovery. Automatically group authorized tabs under deployment brand ·
+project (AgentWorks fallback); moving other tabs into a group never grants access.
+Keep extension operations in the background unless a tool call explicitly sets
+active=true; human popup actions may still select their new tab. Console/errors
+are scoped to the selected shared target. Reuse inline tab selection without
+clearing existing refs when that tab is already selected.
+Why: the agent must notice routing changes and the user must see its shared tabs
+without extra setup actions. Ticket: [PLAT-516](bugs/pulse_platform/browser/plat-516.md).
+
 ### 2026-10-05 — Code-only extension choice with reusable private connection codes
 
 Roll out personal browser extensions in Code projects first. Use the existing

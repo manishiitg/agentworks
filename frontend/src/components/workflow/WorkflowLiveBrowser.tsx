@@ -51,8 +51,9 @@ const PAGE_SIZES = [
   { value: '1280x800', label: 'Wide page · 1280 × 800' },
 ]
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, allowTeaching = true, profileId, onLearn }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; allowTeaching?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown> }) {
+export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, allowTeaching = true, profileId, onLearn, emptyContent }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; allowTeaching?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown>; emptyContent?: ReactNode }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
   const [address, setAddress] = useState('')
   const [clipboardMenu, setClipboardMenu] = useState<{ x: number; y: number } | null>(null)
@@ -190,6 +191,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     let cancelled = false
     const controller = new AbortController()
     setSessions([])
+    setSessionsLoaded(false)
     setSession('')
     setLastPlaywrightFrame(null)
     try { selectedBrowser.current = sessionStorage.getItem(`browser-selection:${workspacePath}`) || '' }
@@ -209,6 +211,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
         if (cancelled) return
         const nextSessions = data.sessions ?? []
         setSessions(nextSessions)
+        setSessionsLoaded(true)
         const tests = nextSessions.filter(item => item.kind === 'playwright')
         for (const item of tests) if (item.recording_state && replayScope.current?.workspace === workspacePath) replayScope.current.ids.add(item.browser_session)
         const activeTests = tests.filter(item => item.state !== 'completed')
@@ -667,7 +670,7 @@ Review this browser demonstration. Inspect its recorded evidence and test errors
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>
         </div>}
         {retainedFrame && <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-background/90 px-3 py-1 text-xs shadow">{completed ? 'Completed' : 'Disconnected'} · Last frame</span>}
-      </div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
+      </div> : emptyContent && sessionsLoaded && sessions.length === 0 && !startingBrowser ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
       {(readOnly && !minimal) || session === 'shared-browser' ? <p className="live-browser-footer shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground">{readOnly && !minimal ? 'Playwright test · Watch-only. Video replay is recorded automatically.' : 'Shared browser · everyone uses the same tabs and sign-ins. Coordinate before making changes.'}</p> : null}
     </section>
   )

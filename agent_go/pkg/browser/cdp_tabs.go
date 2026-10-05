@@ -705,21 +705,23 @@ func fallbackCDPTabListMessage(port int, ownerID string, err error) string {
 
 type cdpTabListOutput struct {
 	Data struct {
-		Tabs   []cdpTabInfo `json:"tabs"`
-		Active bool         `json:"active"`
-		Label  string       `json:"label"`
-		TabID  string       `json:"tabId"`
-		Title  string       `json:"title"`
-		URL    string       `json:"url"`
+		Tabs     []cdpTabInfo `json:"tabs"`
+		Active   bool         `json:"active"`
+		Label    string       `json:"label"`
+		TabID    string       `json:"tabId"`
+		TargetID string       `json:"targetId"`
+		Title    string       `json:"title"`
+		URL      string       `json:"url"`
 	} `json:"data"`
 }
 
 type cdpTabInfo struct {
-	Active bool   `json:"active"`
-	Label  string `json:"label"`
-	TabID  string `json:"tabId"`
-	Title  string `json:"title"`
-	URL    string `json:"url"`
+	Active   bool   `json:"active"`
+	Label    string `json:"label"`
+	TabID    string `json:"tabId"`
+	TargetID string `json:"targetId"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
 }
 
 func isCDPTabID(tab string) bool {
@@ -775,11 +777,12 @@ func parseCDPTabs(output string) ([]cdpTabInfo, error) {
 	tabs := append([]cdpTabInfo(nil), parsed.Data.Tabs...)
 	if directID := strings.TrimSpace(parsed.Data.TabID); directID != "" {
 		tabs = append(tabs, cdpTabInfo{
-			Active: parsed.Data.Active,
-			Label:  strings.TrimSpace(parsed.Data.Label),
-			TabID:  directID,
-			Title:  strings.TrimSpace(parsed.Data.Title),
-			URL:    strings.TrimSpace(parsed.Data.URL),
+			Active:   parsed.Data.Active,
+			Label:    strings.TrimSpace(parsed.Data.Label),
+			TabID:    directID,
+			TargetID: parsed.Data.TargetID,
+			Title:    strings.TrimSpace(parsed.Data.Title),
+			URL:      strings.TrimSpace(parsed.Data.URL),
 		})
 	}
 	return tabs, nil

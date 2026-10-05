@@ -85,9 +85,13 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		c.Close()
 		t.Fatal("wrong capability admitted")
 	}
+	_, focusRelease, err := b.AcquireForActive(context.Background(), "chat-one", true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client.WriteMessage(websocket.TextMessage, []byte(`{"id":1,"method":"Target.getTargets"}`))
 	extension.ReadJSON(&reply)
-	if reply.Type != "cdp" || !strings.Contains(string(reply.Message), "getTargets") {
+	if reply.Type != "cdp" || !reply.Active || !strings.Contains(string(reply.Message), "getTargets") {
 		t.Fatal("request not forwarded")
 	}
 	extension.WriteJSON(envelope{Type: "cdp", Message: json.RawMessage(`{"id":1,"result":{"targetInfos":[]}}`)})
@@ -95,6 +99,13 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	_, message, err := client.ReadMessage()
 	if err != nil || !strings.Contains(string(message), "targetInfos") {
 		t.Fatal("response not forwarded", err)
+	}
+	focusRelease()
+	client.WriteMessage(websocket.TextMessage, []byte(`{"id":2,"method":"Target.getTargets"}`))
+	reply = envelope{}
+	extension.ReadJSON(&reply)
+	if reply.Active {
+		t.Fatal("activation permission survived the tool call")
 	}
 	reused := dial()
 	reused.WriteJSON(envelope{Type: "pair", Token: token})

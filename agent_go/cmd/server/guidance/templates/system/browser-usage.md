@@ -2,6 +2,15 @@
 When `agent_browser(command="status")` reports `effective_mode: "extension"`,
 use ordinary `agent_browser` commands without `--cdp`. The connected Chrome
 extension exposes only tabs shared by the current account in this workspace.
+Actions, logical tab selection and new tabs stay in the background by default.
+Set the optional tool parameter `active: true` only when intentionally bringing
+a shared tab forward, for example `command="tab", args=["t1"], active=true`.
+It applies to that call only. Inline `tab tN` actions reuse the selected tab;
+after switching to a different tab, take a fresh snapshot before using refs.
+Console/errors are scoped to the selected shared tab. Screenshots require an
+explicit project-relative path inside your granted writable workspace, such as
+`<project-workspace>/evidence/screenshot.png`; `/tmp` and global
+`tool_output_folder` destinations are outside that grant.
 Read a fresh snapshot before acting. A disconnected extension must be reconnected
 by the user; do not switch to another browser, restart Chrome, or recover through
 shell commands. Local upload/download transfer, recording and teaching are not

@@ -33,6 +33,7 @@ interface BrowserAutomationSettingsProps {
   onCheckCdpConnection: (port: number) => void
   browserChoice?: BrowserChoice
   onBrowserChoiceChange?: (choice: BrowserChoice) => void
+  allowAutomatic?: boolean
   extensionAvailable?: boolean
   extensionContent?: React.ReactNode
   readOnly?: boolean
@@ -88,15 +89,16 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   cdpError,
   cdpChecking,
   onCheckCdpConnection,
-  browserChoice, onBrowserChoiceChange, extensionAvailable = false, extensionContent,
+  browserChoice, onBrowserChoiceChange, allowAutomatic = true, extensionAvailable = false, extensionContent,
   readOnly = false,
   scopeNoun = 'workflow',
 }) => {
   const platform = typeof navigator !== 'undefined' ? navigator.platform : undefined
   const isMac = platform?.includes('Mac')
   const cdpEnabled = isBrowserCDPEnabled()
-  const choice = browserChoice ?? (browserMode === 'none' ? 'auto' : browserMode)
-  const usesCdp = cdpEnabled && choice !== 'extension' && (browserMode === 'auto' || browserMode === 'cdp')
+  const requestedChoice = browserChoice ?? (browserMode === 'none' ? 'auto' : browserMode)
+  const choice = !allowAutomatic && requestedChoice === 'auto' ? 'headless' : requestedChoice
+  const usesCdp = cdpEnabled && (choice === 'auto' || choice === 'cdp')
 
   const connectionLabel = cdpChecking
     ? 'Checking'
@@ -124,7 +126,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
             if (onBrowserChoiceChange) onBrowserChoiceChange(next)
             else if (next !== 'extension') onBrowserModeChange(next)
           }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="auto">Automatic (recommended)</option>
+            {allowAutomatic && <option value="auto">Automatic (recommended)</option>}
             <option value="headless">Workspace browser</option>
             {extensionAvailable && <option value="extension">My Chrome or Edge · extension</option>}
             {cdpEnabled && <option value="cdp">Chrome · direct connection</option>}

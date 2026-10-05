@@ -30,15 +30,36 @@ back to the platform/model. Keep Chrome and the laptop running and connected.
 
 **Disconnect browser** in the popup revokes access immediately. The platform
 keeps the disconnected selection so subsequent actions fail instead of switching
-browsers. Choosing **Workspace browser** (or Automatic/direct connection) in Browser
+browsers. Choosing **Workspace browser** (or direct connection) in Browser
 settings explicitly disconnects the extension and restores ordinary controls. Reconnect with the same saved code after browser/server restart or disconnection;
 there is no automatic reconnect. Connections expire after eight hours.
 
-**New shared tab** creates a tab for the connected project. **Group shared tabs**
-organizes already shared tabs in a named group; grouping or dragging an unshared
-tab into that group does not share it. Agent-created tabs join that group.
+Shared tabs automatically join a **brand · project** group in their window,
+using the deployment's app name (AgentWorks by default). Copy a fresh connection
+to include the current branding; your private token stays the same.
+**New shared tab** creates a tab for the connected project; agent-created tabs
+join the group too. **Regroup tabs** restores the grouping after moving tabs.
+Dragging an unshared tab into the group does not share it.
 The popup clearly shows Connected even before the first tab is shared. Its
 connection form disappears after connection.
+
+The active Code chat receives connection, first-shared-tab and disconnection
+notices through the same durable message queue as MCP notifications. Notices
+queue behind a running turn and preserve unsent drafts. Status is checked every
+2.5 seconds while the chat is open, including with its Browser pane closed.
+Code offers explicit browser choices; older Automatic settings use Workspace browser.
+An idle Browser pane shows those choices directly; a running browser keeps them
+in its header settings.
+
+Agent operations and new tabs stay in the background by default. An explicit
+`active: true` tool parameter allows that call to bring its shared tab forward,
+for example `command="tab", args=["t1"], active=true`. Popup **New shared tab**
+is a human action and selects its new tab. Inline `tab tN` actions preserve refs
+when the selected tab is unchanged; switch to another tab and take a fresh
+snapshot before acting. Console/errors are scoped to that shared tab.
+For screenshots use an explicit path inside the project's granted writable
+workspace (shown by status), such as `<project>/evidence/screenshot.png`.
+Global `/tmp` and `tool_output_folder` destinations are outside that grant.
 
 Copying the code repeatedly returns the same private account/project code.
 Connecting another browser with it replaces the prior connection. **Reset

@@ -1,6 +1,7 @@
 // Authority is held only by this live worker. Restart requires human pairing.
 let socket = null;
 let workspace = '';
+let brand = 'AgentWorks';
 let error = '';
 let heartbeat;
 let discover = false;
@@ -42,14 +43,33 @@ async function announce(tab) {
     event('Target.attachedToTarget', { sessionId, targetInfo: target(tab), waitingForDebugger: false });
   }
 }
+// Groups organize only tabs already authorized for this live connection.
+async function groupSharedTab(tabId, connection = socket) {
+  if (!connection || socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
+  const tab = await chrome.tabs.get(tabId);
+  if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
+  const title = `${brand} · ${workspace.split('/').pop()}`;
+  let groupId;
+  try { groupId = await chrome.tabs.group({ ...(groups.has(tab.windowId) ? { groupId: groups.get(tab.windowId) } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
+  catch { if (socket !== connection || !shared.has(tabId)) throw new Error('Connection stopped'); groupId = await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tabId] }); }
+  if (socket !== connection || !workspace || !shared.has(tabId)) {
+    try { if ((await chrome.tabs.get(tabId)).groupId === groupId) await chrome.tabs.ungroup(tabId); } catch {}
+    throw new Error('Connection stopped');
+  }
+  groups.set(tab.windowId, groupId);
+  await chrome.tabGroups.update(groupId, { title, color: 'blue' });
+}
 async function share(tabId) {
   if (socket?.readyState !== WebSocket.OPEN || !workspace) throw new Error('Connect to a workspace first');
   if (shared.size >= 32) throw new Error('At most 32 tabs may be shared');
-  const tab = await chrome.tabs.get(tabId); safeURL(tab.url);
+  const connection = socket;
+  const tab = await chrome.tabs.get(tabId); safeURL(tab.pendingUrl || tab.url);
+  if (socket !== connection || !workspace) throw new Error('Connection stopped');
   if (!shared.has(tabId)) {
     // Attach immediately: if Chrome rejects access, do not advertise authority.
     await attach(tab);
     shared.set(tabId, tab);
+    try { await groupSharedTab(tabId, connection); } catch (e) { if (socket !== connection || !workspace) throw e; error = 'Tab shared, but its group could not be created.'; }
     await announce(tab);
     announceTabs();
   }
@@ -67,7 +87,7 @@ async function unshare(tabId) {
   announceTabs();
 }
 async function stop(reason = '') {
-  const previous = socket; socket = null; workspace = ''; error = reason;
+  const previous = socket; socket = null; workspace = ''; brand = 'AgentWorks'; error = reason;
   clearInterval(heartbeat); discover = false; autoAttach = false;
   if (previous) { if (previous.readyState === WebSocket.OPEN) previous.send(JSON.stringify({ type: 'stop' })); previous.close(); }
   const ids = [...shared.keys()], previousGroups = new Map(groups); shared.clear(); sessions.clear(); groups.clear();
@@ -80,6 +100,8 @@ async function stop(reason = '') {
 function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
 async function connect(raw) {
   const pairing = JSON.parse(raw);
+  // Display metadata follows the app's runtime branding; it grants no access.
+  const displayBrand = typeof pairing.brand === 'string' && pairing.brand.trim().length > 0 && pairing.brand.trim().length <= 120 && !/[\x00-\x1f\x7f]/.test(pairing.brand) ? pairing.brand.trim() : 'AgentWorks';
   const endpoint = new URL(pairing.url);
   if (endpoint.pathname !== '/api/browser/extension/connect' || endpoint.search || endpoint.hash || endpoint.username || endpoint.password) throw new Error('Invalid pairing connection');
   if (endpoint.protocol !== 'wss:' && !(endpoint.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(endpoint.hostname))) throw new Error('A secure platform connection is required');
@@ -93,14 +115,14 @@ async function connect(raw) {
       if (socket !== ws) return;
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
       if (e.type === 'paired') {
-        clearTimeout(timer); workspace = e.workspace; error = '';
+        clearTimeout(timer); workspace = e.workspace; brand = displayBrand; error = '';
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
         void chrome.action.setBadgeText({ text: 'ON' }); resolve(state());
       } else if (e.type === 'error') {
         clearTimeout(timer); reject(new Error(e.workspace)); void stop(e.workspace);
       } else if (e.type === 'cdp') {
         // CDP events are asynchronous; requests execute in arrival order.
-        queue = queue.then(() => handleCDP(e.message, ws)).catch(() => {});
+        queue = queue.then(() => handleCDP(e.message, ws, e.active === true)).catch(() => {});
       } else if (e.type === 'client-disconnected') {
         discover = false; autoAttach = false;
       }
@@ -110,7 +132,7 @@ async function connect(raw) {
   });
 }
 
-async function command(message) {
+async function command(message, active = false) {
   const { method, sessionId, params = {} } = message;
   if (!sessionId) {
     switch (method) {
@@ -125,17 +147,19 @@ async function command(message) {
       case 'Target.createTarget': {
         if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
-        const tab = await chrome.tabs.create({ url: safeURL(params.url || 'about:blank'), active: false });
-        try { await attach(tab); shared.set(tab.id, tab); if (groups.has(tab.windowId)) { try { await chrome.tabs.group({ groupId: groups.get(tab.windowId), tabIds: [tab.id] }); } catch { groups.delete(tab.windowId); } } await announce(tab); announceTabs(); return { targetId: `tab-${tab.id}` }; }
+        const tab = await chrome.tabs.create({ url: safeURL(params.url || 'about:blank'), active });
+        try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); announceTabs(); return { targetId: `tab-${tab.id}` }; }
         catch (e) { await chrome.tabs.remove(tab.id); throw e; }
       }
       case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id); await chrome.tabs.remove(tab.id); return { success: true }; }
-      case 'Target.activateTarget': { const tab = await tabForTarget(params.targetId); await chrome.tabs.update(tab.id, { active: true }); return {}; }
+      case 'Target.activateTarget': { const tab = await tabForTarget(params.targetId); if (active) await chrome.tabs.update(tab.id, { active: true }); return {}; }
       default: throw new Error(`Unsupported browser operation: ${method}`);
     }
   }
   const source = sessions.get(sessionId);
   if (!source || !shared.has(source.tabId)) throw new Error('Session is not shared with this workspace');
+  // agent-browser also sends Page.bringToFront during logical tab selection.
+  if (method === 'Page.bringToFront' && !active) return {};
   const domain = method.split('.')[0];
   const allowed = new Set(['Accessibility', 'DOM', 'DOMSnapshot', 'Runtime', 'Page', 'Input', 'CSS', 'Log', 'Console', 'Performance']);
   if (!allowed.has(domain) && !['Network.enable', 'Network.disable', 'Network.getResponseBody', 'Network.setCacheDisabled', 'Network.emulateNetworkConditions', 'Network.setUserAgentOverride', 'Target.setAutoAttach', 'Target.detachFromTarget'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
@@ -144,10 +168,10 @@ async function command(message) {
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
   return await chrome.debugger.sendCommand(source, method, params) || {};
 }
-async function handleCDP(message, connection) {
+async function handleCDP(message, connection, active) {
   if (socket !== connection || !workspace) return;
   if (!message || typeof message.id !== 'number' || typeof message.method !== 'string') return;
-  try { const result = await command(message); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
+  try { const result = await command(message, active); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
   catch (e) { if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
 }
 chrome.debugger.onEvent.addListener((source, method, params) => {
@@ -177,18 +201,8 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     }
     if (request.action === 'group') {
       if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
-      const byWindow = new Map();
-      for (const id of shared.keys()) { const tab = await chrome.tabs.get(id); byWindow.set(tab.windowId, [...(byWindow.get(tab.windowId) || []), id]); }
       const connection = socket;
-      for (const [windowId, ids] of byWindow) {
-        if (socket !== connection || !workspace) throw new Error('Connection stopped');
-        let groupId;
-        try { groupId = await chrome.tabs.group({ ...(groups.has(windowId) ? { groupId: groups.get(windowId) } : { createProperties: { windowId } }), tabIds: ids }); }
-        catch { groupId = await chrome.tabs.group({ createProperties: { windowId }, tabIds: ids }); }
-        if (socket !== connection || !workspace) { try { await chrome.tabs.ungroup(ids); } catch {} throw new Error('Connection stopped'); }
-        groups.set(windowId, groupId);
-        await chrome.tabGroups.update(groupId, { title: `AgentWorks · ${workspace.split('/').pop()}`, color: 'blue' });
-      }
+      for (const id of [...shared.keys()]) await groupSharedTab(id, connection);
       return state();
     }
     if (request.action === 'unshare') { await unshare(request.tabId); return state(); }

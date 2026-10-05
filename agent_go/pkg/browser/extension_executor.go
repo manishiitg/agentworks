@@ -110,7 +110,14 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		data, _ := json.Marshal(map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Call agent_browser with ordinary commands and no --cdp. tab lists only shared tabs. Files/download transfer, teaching and recording are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."})
+		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Call agent_browser with ordinary commands and no --cdp. tab lists only shared tabs. Tabs stay in the background by default; set active=true on a tab selection or other command only when visible activation is needed. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Files/download transfer, teaching and recording are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
+		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
+		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
+			result["screenshot_write_paths"] = opts.FolderGuard.WritePaths
+			result["working_directory"] = opts.WorkingDirectory
+		}
+		data, _ := json.Marshal(result)
 		return string(data), nil
 	}
 	allowed := map[string]bool{"open": true, "navigate": true, "snapshot": true, "click": true, "dblclick": true, "fill": true, "type": true, "press": true, "keydown": true, "keyup": true, "hover": true, "scroll": true, "scrollintoview": true, "select": true, "check": true, "uncheck": true, "get": true, "find": true, "wait": true, "tab": true, "back": true, "forward": true, "reload": true, "screenshot": true, "console": true, "errors": true, "eval": true}
@@ -135,7 +142,8 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if owner == "" {
 		return "", fmt.Errorf("CHROME_EXTENSION_ACCESS: a trusted chat identity is required")
 	}
-	endpoint, release, err := b.AcquireFor(ctx, owner)
+	active, _ := args["active"].(bool)
+	endpoint, release, err := b.AcquireForActive(ctx, owner, active)
 	if err != nil {
 		return "", err
 	}
@@ -152,16 +160,50 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if err != nil {
 		return "", err
 	}
-	if tab != "" && command != "tab" {
-		if _, err = e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", tab, "--cdp", endpoint, "--json"}, opts); err != nil {
-			return "", fmt.Errorf("Chrome tab selection failed: %s", strings.ReplaceAll(err.Error(), endpoint, "[private Chrome connection]"))
-		}
-	}
 	// Let a fresh CLI attach to an explicitly shared tab before making its
 	// binding strict. Once pinned, a closed tab must fail instead of selecting
 	// another shared tab while retaining stale element references.
-	if _, bootstrapErr := e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", "--cdp", endpoint, "--json"}, opts); bootstrapErr != nil {
+	listed, bootstrapErr := e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", "--cdp", endpoint, "--json"}, opts)
+	if bootstrapErr != nil {
 		return "", fmt.Errorf("Chrome connection failed: %s", strings.ReplaceAll(bootstrapErr.Error(), endpoint, "[private Chrome connection]"))
+	}
+	tabs, listErr := parseCDPTabs(listed)
+	if listErr != nil {
+		return "", fmt.Errorf("Chrome tab list could not be verified")
+	}
+	var selected cdpTabInfo
+	for _, current := range tabs {
+		if current.Active {
+			selected = current
+		}
+	}
+	if tab != "" && command != "tab" && selected.TabID != tab && selected.Label != tab && selected.TargetID != tab {
+		if _, err = e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", tab, "--cdp", endpoint, "--json"}, opts); err != nil {
+			return "", fmt.Errorf("Chrome tab selection failed: %s", strings.ReplaceAll(err.Error(), endpoint, "[private Chrome connection]"))
+		}
+		selected = cdpTabInfo{}
+		for _, current := range tabs {
+			if current.TabID == tab || current.Label == tab || current.TargetID == tab {
+				selected = current
+				break
+			}
+		}
+	}
+	if command == "console" || command == "errors" {
+		if selected.TargetID == "" {
+			return "", fmt.Errorf("Select a shared tab before reading browser diagnostics")
+		}
+		clear := len(values) == 1 && values[0] == "--clear"
+		if len(values) > 0 && !clear {
+			return "", fmt.Errorf("Browser diagnostics accept only an optional --clear")
+		}
+		data, err := b.Diagnostics(selected.TargetID, command, clear)
+		if err != nil {
+			return "", err
+		}
+		data["tabId"] = selected.TabID
+		output, err := json.Marshal(map[string]interface{}{"success": true, "data": data})
+		return string(output), err
 	}
 	values = normalizeAgentBrowserCommandArgs(command, values)
 	if command == "screenshot" && (opts.FolderGuard == nil || !opts.FolderGuard.Enabled) {
