@@ -33,18 +33,18 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	browserrelay.Default = m
 	defer func() { m.Close(); browserrelay.Default = previous }()
 	root := t.TempDir()
-	workspace := "Workflow/extension-e2e"
+	workspace := "Chats/Code/projects/extension-e2e"
 	evidence := workspace + "/evidence"
 	os.MkdirAll(filepath.Join(root, evidence), 0755)
 	oldDocs := viper.GetString("docs-dir")
 	viper.Set("docs-dir", root)
 	defer viper.Set("docs-dir", oldDocs)
 	session := "chrome-extension-e2e"
-	common.BindSessionBrowserIsolationForWorkflow(session, workspace)
+	common.BindSessionBrowserIsolationForProject(session, "_users/alice/"+workspace)
 	common.SetSessionWorkingDir(session, workspace)
 	common.SetSessionFolderGuard(session, []string{workspace}, []string{workspace})
 	defer common.ClearSessionShellConfig(session)
-	token, err := m.Pair("alice", common.SandboxBrowserSession(session), "Fixture workspace")
+	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "code")
 	if err != nil {
 		t.Fatal(err)
 	}

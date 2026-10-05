@@ -10,6 +10,13 @@ shared tabs in a user's existing local Chrome through an extension. Retain
 agent-browser and the existing browser tool, with an authenticated extension/CDP
 adapter. [Design](../../../design/chrome_extension_cdp_bridge.md).
 
+## Current scope
+
+[PLAT-513](plat-513.md) supersedes the original five-minute single-use pairing
+and broad rollout below: Code only, reusable private codes with explicit Reset,
+and integrated browser settings/connected popup. Original qualification here
+records the implementation as it was tested at the time.
+
 ## Implemented
 
 - Manifest V3 extension using Chrome 125+ debugger/tabs, explicit sharing,
@@ -45,6 +52,26 @@ adapter. [Design](../../../design/chrome_extension_cdp_bridge.md).
 - Full workspace handler suite has the existing capture fixture failure tracked
   in PLAT-511; reproduced after restoring the unchanged tracker in this owned
   worktree. It is not evidence of a Chrome bridge regression.
+
+## Local requalification of main, 2026-10-05
+
+The implementation commit `dc05cd0e7` is already contained in main. Tested main
+at `832f0adf5` in a new owned worktree, using temporary browser profiles and the
+real guarded workspace shell; the user's running checkout was not used for
+builds or tests.
+
+- Chrome-for-Testing 153.0.8010.12: the complete extension end-to-end check passed
+  again, including actions, screenshot transfer, cookies, tab isolation, pinned
+  closed-tab refusal and Stop with host CDP disabled.
+- Microsoft Edge desktop 154.0.4258.53: the same unpacked package and complete
+  end-to-end check passed. No Google login or store installation was used.
+- Relay race test, focused server authentication/workspace-browser checks,
+  gateway tests and four existing frontend browser-panel/settings tests passed.
+- Browser-rendered pairing, responsive controls at 1000px/420px and explicit
+  disconnect passed; the narrow pairing screenshot was visually inspected.
+
+These checks do not qualify console/network inspection, the public deployment's
+WSS gateway, or every older Edge version. Production deployment remains pending.
 
 ## Remaining release scope
 

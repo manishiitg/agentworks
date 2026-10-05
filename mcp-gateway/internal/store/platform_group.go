@@ -43,6 +43,9 @@ func (s *MemoryStore) EnsurePlatformGroup(workspace string) error {
 			s.members[id][uid] = true
 		}
 	}
+	if revoked := s.revokeVaultOwnedFromPlatformLocked(workspace); revoked > 0 {
+		log.Printf("Vault: removed %d company-wide grants from person-owned vault connections and secrets", revoked)
+	}
 	secrets, servers := s.grantPlatformDefaultsLocked(workspace)
 	s.persistUnlock()
 	if secrets+servers > 0 {
@@ -99,6 +102,10 @@ func (s *MemoryStore) isPlatformGroupLocked(id string) bool {
 }
 
 func (s *MemoryStore) autoGrantSecretLocked(workspace, name string) bool {
+	// A secret that belongs to a person-owned vault is shared only through that vault (PLAT-507).
+	if s.secretResources[name].VaultID != "" {
+		return false
+	}
 	id := PlatformGroupID(workspace)
 	if !s.isPlatformGroupLocked(id) || s.platformRevoked["secret:"+name] || s.secretGrants[id][name] {
 		return false
@@ -112,6 +119,10 @@ func (s *MemoryStore) autoGrantSecretLocked(workspace, name string) bool {
 }
 
 func (s *MemoryStore) autoGrantServerLocked(c Connector) bool {
+	// A connection that belongs to a person-owned vault is shared only through that vault (PLAT-507).
+	if c.VaultID != "" {
+		return false
+	}
 	id := PlatformGroupID(c.WorkspaceID)
 	if !s.isPlatformGroupLocked(id) || s.platformRevoked["server:"+c.ID] || s.groupServers[id][c.ID] {
 		return false
@@ -138,4 +149,33 @@ func (s *MemoryStore) grantPlatformDefaultsLocked(ws string) (secrets, servers i
 		}
 	}
 	return secrets, servers
+}
+
+// revokeVaultOwnedFromPlatformLocked removes any grant of a person-owned vault's connection or secret to the Platform
+// group (a connection used to be granted to everyone when it was created, before it was bound to its vault) and
+// remembers the removal so nothing grants it again (PLAT-507). It runs at every start and changes nothing when clean.
+func (s *MemoryStore) revokeVaultOwnedFromPlatformLocked(workspace string) int {
+	id := PlatformGroupID(workspace)
+	revoked := 0
+	for cid, c := range s.connectors {
+		if c.WorkspaceID != workspace || c.VaultID == "" {
+			continue
+		}
+		if s.groupServers[id][cid] {
+			delete(s.groupServers[id], cid)
+			revoked++
+		}
+		s.platformRevoked["server:"+cid] = true
+	}
+	for name, secret := range s.secretResources {
+		if secret.WorkspaceID != workspace || secret.VaultID == "" {
+			continue
+		}
+		if s.secretGrants[id][name] {
+			delete(s.secretGrants[id], name)
+			revoked++
+		}
+		s.platformRevoked["secret:"+name] = true
+	}
+	return revoked
 }

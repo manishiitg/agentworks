@@ -29,6 +29,7 @@ import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
 import McpControl from './topbar/McpControl'
 import UsersControl from './topbar/UsersControl'
+import VaultsControl from './topbar/VaultsControl'
 import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { GlobalActivityButton } from './topbar/GlobalActivityButton'
@@ -836,6 +837,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
 
               <McpControl />
 
+              <VaultsControl />
               <UsersControl />
 
               <span className="mx-0.5 h-px w-full bg-border" />

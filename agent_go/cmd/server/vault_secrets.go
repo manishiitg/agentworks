@@ -69,6 +69,11 @@ func syncVaultSecretMetadata(ctx context.Context, actor string) error {
 		if len(s.Name) > 128 {
 			continue
 		}
+		// A person-owned vault's secrets are registered by the vault itself, never by this platform-wide sync, which
+		// would otherwise grant a stray name to everyone (PLAT-507).
+		if isVaultSecretName(s.Name) {
+			continue
+		}
 		rows = append(rows, map[string]any{"name": s.Name, "managed": s.Managed})
 	}
 	return vaultSecretAdminRequest(ctx, actor, http.MethodPost, "/api/admin/secrets", map[string]any{"secrets": rows})

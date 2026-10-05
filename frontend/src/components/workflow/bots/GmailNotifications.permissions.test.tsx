@@ -86,6 +86,8 @@ describe('Gmail management permissions with either OAuth source', () => {
     expect(button('Save').disabled).toBe(true)
     expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(true)
     expect(host.textContent).toContain('An admin manages shared Gmail accounts')
+    expect(host.textContent).toContain('Workflow email notifications')
+    expect(host.textContent).not.toContain('Enable Gmail')
     await act(async () => button('Connect Google account').click())
     expect(agentApi.createGmailOAuthClient).not.toHaveBeenCalled()
   })

@@ -1,21 +1,24 @@
-# AgentWorks Chrome Bridge
+# AgentWorks Browser Bridge
 
 The source is in `agentworks-chrome/`. The design and implementation tracking are
 in [the design document](../docs/design/chrome_extension_cdp_bridge.md) and
-[PLAT-510](../docs/bugs/pulse_platform/browser/plat-510.md).
+[PLAT-513](../docs/bugs/pulse_platform/browser/plat-513.md).
 
 ## Install and connect
 
 Requires Chrome 125 or newer for flattened debugger sessions.
+The same unpacked package also passed the complete local end-to-end check in
+desktop Microsoft Edge 154.0.4258.53.
 
-1. Build/restart the platform with this change. In a writable workflow or project,
-   open Browser and choose **Connect Chrome**.
+1. Build/restart the platform with this change. In a writable Code project,
+   open **Browser → Settings** and choose **My Chrome or Edge · extension**.
+   Workflows and Crews do not offer the extension yet.
 2. Download the extension ZIP from that panel and unzip it.
-3. In Chrome, open `chrome://extensions`, enable **Developer mode**, choose
+3. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose
    **Load unpacked**, and select the unzipped folder. Pin the extension if useful.
 4. Copy the connection from AgentWorks into the extension popup and choose
-   **Connect**. The connection is single-use and expires in five minutes.
-5. Open the tab to use and select **Share current tab** in the extension.
+   **Connect browser**. The same code works until you explicitly reset it.
+5. Open the tab to use and select **Share this tab** in the extension.
 6. Ask the existing chat to work in Chrome. `agent_browser(command="status")`
    reports extension mode. Use ordinary browser commands without `--cdp`.
 
@@ -25,16 +28,33 @@ connection; its delegates inherit access. Reconnect to switch controlling chats.
 with its existing login session. Shared page contents and screenshots are sent
 back to the platform/model. Keep Chrome and the laptop running and connected.
 
-**Stop and disconnect** in the popup revokes access immediately. The platform
+**Disconnect browser** in the popup revokes access immediately. The platform
 keeps the disconnected selection so subsequent actions fail instead of switching
-browsers. **Use workspace browser** in the platform explicitly restores the
-ordinary browser choice. Re-pair after browser/server restart or disconnection;
+browsers. Choosing **Workspace browser** (or Automatic/direct connection) in Browser
+settings explicitly disconnects the extension and restores ordinary controls. Reconnect with the same saved code after browser/server restart or disconnection;
 there is no automatic reconnect. Connections expire after eight hours.
+
+**New shared tab** creates a tab for the connected project. **Group shared tabs**
+organizes already shared tabs in a named group; grouping or dragging an unshared
+tab into that group does not share it. Agent-created tabs join that group.
+The popup clearly shows Connected even before the first tab is shared. Its
+connection form disappears after connection.
+
+Copying the code repeatedly returns the same private account/project code.
+Connecting another browser with it replaces the prior connection. **Reset
+connection code** invalidates saved copies and disconnects the current browser.
+Server access is checked again on each connection/heartbeat; saved codes do not
+bypass revoked access. The extension retains no code or automatic authority
+across worker/browser restart.
 
 Downloads remain on your laptop. Upload transfer, teaching, recording, HAR,
 internal Chrome pages and complete CDP compatibility are not supported in this
 release. The extension is loaded unpacked; Chrome Web Store publication is not
 part of the implementation.
+
+Loading unpacked does not require Google login or Chrome Web Store approval.
+Keep the extracted folder available while using the extension. Company-managed
+browser policies can restrict developer-mode installations.
 
 ## Develop and verify
 
@@ -70,4 +90,4 @@ To check the app controls visually, run the frontend dev server from this
 worktree, then run `node scripts/test-chrome-extension-ui.mjs` with
 `CHROME_EXTENSION_UI_URL` set to that server's URL. The fixture is served only
 by the development server; it is not a production build entry point. Screenshots
-are saved beneath `/tmp/agentworks-chrome-extension-qa` by default.
+are saved beneath `/tmp/agentworks-chrome-extension-ui` by default.

@@ -222,6 +222,12 @@ func (a *Admin) SetMember(groupID, userID string, add bool) error {
 }
 
 func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string, oauthServer ...string) (store.Connector, error) {
+	return a.addConnectorRowFor("", provider, label, slug, upstreamURL, oauthServer...)
+}
+
+// addConnectorRowFor creates the connection row; vaultID makes it a person-owned vault's connection from the moment it
+// exists, so it is never granted to the whole company (PLAT-507).
+func (a *Admin) addConnectorRowFor(vaultID, provider, label, slug, upstreamURL string, oauthServer ...string) (store.Connector, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		label = provider
@@ -233,7 +239,7 @@ func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string, oauth
 	c := store.Connector{
 		ID: "c-" + hex.EncodeToString(identity[:]), WorkspaceID: a.WorkspaceID, Provider: provider,
 		InstanceSlug: strings.TrimSpace(slug), Label: label,
-		UpstreamURL: upstreamURL, Status: store.StatusActive,
+		UpstreamURL: upstreamURL, Status: store.StatusActive, VaultID: vaultID,
 	}
 	if len(label) > 100 || len(c.InstanceSlug) > 100 {
 		return store.Connector{}, errors.New("connection name and instance must be at most 100 characters")
@@ -264,6 +270,10 @@ func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string, oauth
 
 // AddConnectorFromCatalog connects a catalog provider template.
 func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label, slug string) (store.Connector, error) {
+	return a.addConnectorFromCatalogFor(ctx, "", providerName, label, slug)
+}
+
+func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, providerName, label, slug string) (store.Connector, error) {
 	p, ok := a.Catalog.Find(providerName)
 	if !ok {
 		return store.Connector{}, errors.New("unknown provider")
@@ -281,7 +291,7 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	if strings.TrimSpace(label) == "" {
 		label = p.Name
 	}
-	c, err := a.addConnectorRow(p.Key, label, slug, p.URL, oauthServer)
+	c, err := a.addConnectorRowFor(vaultID, p.Key, label, slug, p.URL, oauthServer)
 	if err != nil {
 		return store.Connector{}, err
 	}
