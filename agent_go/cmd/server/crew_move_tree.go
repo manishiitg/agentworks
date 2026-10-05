@@ -70,10 +70,21 @@ func walkCrewTree(root *os.Root) ([]crewTreeEntry, []crewTreeFinding, error) {
 			return err
 		}
 		sort.Strings(names)
+		present := make(map[string]bool, len(names))
+		for _, name := range names {
+			present[name] = true
+		}
 		for _, name := range names {
 			child := name
 			if rel != "" {
 				child = rel + "/" + name
+			}
+			// SQLite's shared-memory index (<db>-shm) holds no data: it is created and deleted as processes open and close the
+			// database and is rebuilt on the next open. Copying it is meaningless and it can vanish mid-copy, which aborted a
+			// real move (RTS 2026-10-05). The database and its -wal file are still copied and still must not change.
+			if strings.HasSuffix(name, "-shm") && present[strings.TrimSuffix(name, "-shm")] {
+				findings = append(findings, crewTreeFinding{Rel: child, Kind: "sqlite-shm", Detail: "SQLite shared-memory index, rebuilt on open"})
+				continue
 			}
 			info, err := root.Lstat(child)
 			if err != nil {

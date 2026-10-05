@@ -351,6 +351,8 @@ func discoverCrews(docs *os.Root, registry *projectOwnerRegistry, opts *crewMove
 					plan.Blockers = append(plan.Blockers, fmt.Sprintf("symlink %s leaves the Crew folder (%s): remove or replace it", finding.Rel, finding.Detail))
 				case "special-file":
 					plan.Blockers = append(plan.Blockers, fmt.Sprintf("special file %s (%s) cannot be moved", finding.Rel, finding.Detail))
+				case "sqlite-shm":
+					plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s is not copied (%s)", finding.Rel, finding.Detail))
 				case "internal-symlink":
 					plan.Warnings = append(plan.Warnings, fmt.Sprintf("symlink %s %s is copied as a symlink", finding.Rel, finding.Detail))
 				}
