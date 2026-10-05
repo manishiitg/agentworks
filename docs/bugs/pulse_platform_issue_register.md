@@ -106,6 +106,10 @@ usable node_modules if the install fails.
 
 [PLAT-498](pulse_platform/security-sandbox/plat-498.md), open: the package lacks `lib/` (fixed on main, not released); the release script was stale after the repo rename (fixed).
 
+## Codex "model at capacity" only in the terminal — PLAT-504
+
+[PLAT-504](pulse_platform/coding-agent-bridge/plat-504.md), fixed on main: a failed Codex turn is reported from structured records (rollout `codex_error_info`, `turn.failed`). Left: retry policy.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
