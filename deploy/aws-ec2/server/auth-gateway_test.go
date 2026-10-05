@@ -898,3 +898,19 @@ func TestSandboxedLessonMediaUsesJWTWithoutLoginCookie(t *testing.T) {
 		}
 	}
 }
+
+func TestChromeExtensionGatewayExemptionIsExact(t *testing.T) {
+	for _, item := range []struct {
+		method, path string
+		allowed      bool
+	}{
+		{"GET", "/api/browser/extension/connect", true},
+		{"POST", "/api/browser/extension/connect", false},
+		{"GET", "/api/browser/extension", false},
+		{"GET", "/api/browser/extension/connect/other", false},
+	} {
+		if got := isChromeExtensionBrowserRequest(httptest.NewRequest(item.method, item.path, nil)); got != item.allowed {
+			t.Fatalf("%s %s: %v", item.method, item.path, got)
+		}
+	}
+}

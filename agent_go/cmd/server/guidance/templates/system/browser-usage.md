@@ -1,3 +1,13 @@
+<!-- Chrome extension uses the same tool and backend-owned workspace scope. -->
+When `agent_browser(command="status")` reports `effective_mode: "extension"`,
+use ordinary `agent_browser` commands without `--cdp`. The connected Chrome
+extension exposes only tabs shared by the current account in this workspace.
+Read a fresh snapshot before acting. A disconnected extension must be reconnected
+by the user; do not switch to another browser, restart Chrome, or recover through
+shell commands. Local upload/download transfer, recording and teaching are not
+available through this connection. This status overrides local-port setup advice
+below, including on deployments where local operator CDP is disabled.
+
 ## Browser Automation
 
 Read this skill for interactive managed browsing when you need to drive a real browser — open pages, click,

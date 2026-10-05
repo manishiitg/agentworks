@@ -838,8 +838,14 @@ func isGmailSetupBrowserRequest(r *http.Request) bool {
 		(r.URL.Path == "/api/oauth/callback" || r.URL.Path == "/api/human-feedback/gmail/auth/callback")
 }
 
+// Chrome cannot send the app JWT with its outbound WebSocket. The agent API
+// authenticates the exact connection route with a single-use pairing frame.
+func isChromeExtensionBrowserRequest(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/api/browser/extension/connect"
+}
+
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) {
+	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)
 		return
