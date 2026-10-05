@@ -191,7 +191,7 @@ before step tool assembly. Dedicated execution, message-sequence and todo tool
 sessions register under that parent run, so fresh script/CLI HTTP calls resolve
 the same extension while keeping the child's file grants. Dropping account
 identity must never turn a selected extension into a local-CDP fallback.
-Tracking: [PLAT-545](../bugs/pulse_platform/browser/plat-545.md).
+Tracking: [PLAT-546](../bugs/pulse_platform/browser/plat-546.md).
 
 Live bindings last at most eight hours and remain process-local. Server selection
 is recorded without credentials or target IDs. Extension 0.4.0 remembers explicitly

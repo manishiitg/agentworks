@@ -1,6 +1,6 @@
-## Workflow step browser bridge loses the selected extension — PLAT-545
+## Workflow step browser bridge loses the selected extension — PLAT-546
 
-[PLAT-545](pulse_platform/browser/plat-545.md), P2, fixed on main, not deployed. Authenticate workshop/full-run browser executors and register dedicated step sessions under the root run; preserve step file grants and refuse fallback from an offline selected extension. HTTP bridge and isolated real Chrome checks pass.
+[PLAT-546](pulse_platform/browser/plat-546.md), P2, fixed on main, not deployed. Authenticate workshop/full-run browser executors and register dedicated step sessions under the root run; preserve step file grants and refuse fallback from an offline selected extension. HTTP bridge and isolated real Chrome checks pass.
 
 ## Plan reload leaves variables, connections and open details stale — PLAT-544
 

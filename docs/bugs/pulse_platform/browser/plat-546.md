@@ -1,4 +1,4 @@
-# PLAT-545 — Workflow steps fall back to local CDP instead of the selected extension
+# PLAT-546 — Workflow steps fall back to local CDP instead of the selected extension
 
 State: fixed on main, not deployed. Date: 2026-10-05. Priority: P2. Reported by owner.
 

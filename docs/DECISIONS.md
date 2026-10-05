@@ -25,7 +25,7 @@ HTTP requests use that authenticated account and controller while keeping their
 step-local file grants. Why: dropping the account identity made steps miss the
 selected private extension and silently use local CDP. A selected offline
 extension must continue to stop browser actions.
-Ticket: [PLAT-545](bugs/pulse_platform/browser/plat-545.md).
+Ticket: [PLAT-546](bugs/pulse_platform/browser/plat-546.md).
 
 ### 2026-10-05 — Plan refresh includes the displayed variables
 
