@@ -36,10 +36,15 @@ Use breadcrumb navigation when a section has its own tabs. Render
 to the parent section picker. Only the current section's tabs appear in
 `WorkspaceViewHeader.tabs`; do not stack parent tabs above child tabs.
 
-Integrations uses the shared `IntegrationSectionPicker` for Plugins, Slack,
-WhatsApp, Google apps and Connect (subject to product permissions). Inside
-Plugins, one header row contains Connected, Available, Secrets, Skills and
-Vault. `ProjectPluginsPanel` accepts the controlled header tab and renders
+Integrations uses the shared `IntegrationSectionPicker` and
+`PROJECT_INTEGRATION_SECTIONS` for Tools & secrets, Slack, WhatsApp, Google apps
+and Use in AI apps (subject to product permissions). Each entry has a small icon
+and one brief description explaining its destination. Tools & secrets contains
+MCPs, secrets, skills and shared Vault access; Use in AI apps connects an external
+AI client to AgentWorks. Avoid ambiguous parent names such as Connections or
+Connect. The current section's name stays in the header breadcrumb.
+Inside Tools & secrets, one header row contains Connected, Available, Secrets,
+Skills and Vault. `ProjectPluginsPanel` accepts the controlled header tab and renders
 content without another tab row. Crew, Code, workflows and Relay reuse it.
 
 Connected lists project MCPs first and authorized Vault MCPs below, with one

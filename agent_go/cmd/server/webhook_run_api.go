@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"io"
 	"io/fs"
 	"mime"
@@ -85,6 +86,14 @@ func allocateWebhookRunFolder(workspace, runID string) (string, error) {
 		}
 		if err != nil {
 			return "", err
+		}
+		// With slots on, a step runs as the owner's slot account (a member of the host's shared group, which the setgid
+		// parent folder passes on): the run folder must be group-writable or its code steps cannot write their outputs
+		// (PLAT-502). The scheduled-run allocator does the same; this one was missed.
+		if slots.Enabled() {
+			if err := root.Chmod("runs/"+folder, 0o770|os.ModeSetgid); err != nil {
+				return "", err
+			}
 		}
 		f, e := root.OpenFile("runs/"+folder+"/.webhook-run-id", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if e != nil {

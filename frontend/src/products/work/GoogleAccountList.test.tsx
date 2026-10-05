@@ -14,7 +14,7 @@ const account = (extra: Partial<GmailConnection>): GmailConnection => ({
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach(fn => fn()))
 
-describe('Google accounts in a Code', () => {
+describe('Google accounts across products', () => {
   it('permits only removal when an account owner cannot manage shared settings', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
@@ -36,19 +36,29 @@ describe('Google accounts in a Code', () => {
     expect(googleAccessSummary(account({ allow_agent_write_access: true, services: [{ service: 'docs', write: true }] }))).toBe('Gmail: read, draft and send · Docs: read and edit')
   })
 
-  it('shows one row per account and opens the Connect form prefilled for Change access', async () => {
+  it('keeps accounts compact, opens only one permission comparison, and prefills Change access', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     cleanups.push(() => { act(() => root.unmount()); host.remove() })
     const seen = vi.fn()
     window.addEventListener(CHANGE_GOOGLE_ACCESS_EVENT, seen)
     cleanups.push(() => window.removeEventListener(CHANGE_GOOGLE_ACCESS_EVENT, seen))
-    await act(async () => { root.render(<GoogleAccountList connections={[account({})]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />) })
+    await act(async () => { root.render(<GoogleAccountList connections={[account({}), account({ id: 'c2', email: 'other@x.com', services: [] })]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />) })
     expect(host.textContent).toContain('me@x.com')
-    expect(host.textContent).toContain('AgentWorks settings')
+    expect(host.querySelectorAll('table')).toHaveLength(0)
     expect(host.textContent).toContain('Gmail: Read only')
     expect(host.textContent).toContain('Drive: Read only')
-    expect(host.textContent).toContain('Docs: No access')
+    expect(host.textContent).not.toContain('No access')
+    await act(async () => (host.querySelector('[aria-label="Show permissions for me@x.com"]') as HTMLButtonElement).click())
+    expect(host.querySelectorAll('table')).toHaveLength(1)
+    expect(host.querySelector('table')!.textContent).toContain('Google granted')
+    expect(host.querySelector('table')!.textContent).toContain('No access')
+    await act(async () => (host.querySelector('[aria-label="Show permissions for other@x.com"]') as HTMLButtonElement).click())
+    expect(host.querySelectorAll('table')).toHaveLength(1)
+    expect(host.querySelector('caption')!.textContent).toBe('Permissions for other@x.com')
+    expect(host.querySelector('[aria-label="Show permissions for me@x.com"]')!.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => (host.querySelector('[aria-label="Hide permissions for other@x.com"]') as HTMLButtonElement).click())
+    expect(host.querySelectorAll('table')).toHaveLength(0)
     expect(host.textContent).not.toContain('Raw granted scopes')
     const change = [...host.querySelectorAll('button')].find(button => button.textContent === 'Change access')!
     await act(async () => { change.click() })
@@ -63,7 +73,8 @@ it('distinguishes Google-granted Gmail reading from disabled AgentWorks reading'
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => root.render(<GoogleAccountList connections={[account({ allow_read_access: false, services: [], auth: { scopes: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send'] } as GmailConnection['auth'] })]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />))
   expect(host.textContent).toContain('Gmail: Notifications only')
-  expect(host.textContent).toContain('Google: Read, Send')
+  await act(async () => (host.querySelector('[aria-label="Show permissions for me@x.com"]') as HTMLButtonElement).click())
+  expect(host.querySelector('table')!.textContent).toContain('Read, Send')
   expect(host.textContent).toContain('Gmail reading is granted by Google but disabled in AgentWorks')
 })
 

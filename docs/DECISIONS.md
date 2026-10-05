@@ -17,6 +17,27 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Code-only extension choice with reusable private connection codes
+
+Roll out personal browser extensions in Code projects first. Use the existing
+Browser picker and show only the selected method in the Browser pane. Keep one
+private code per account/workspace across copying, reconnecting and server
+restarts; rotate only on explicit Reset. Recheck current access on connections
+and heartbeats. A successful reconnect replaces the prior browser and creates
+fresh refs; grouping already shared tabs is visual organization, never consent
+to additional tabs. Why: setup must be understandable and repeatable without
+competing browser controls or unexpected token changes. Ticket:
+[PLAT-513](bugs/pulse_platform/browser/plat-513.md).
+
+### 2026-10-05 — Google accounts use compact summaries and one permission comparison
+
+Show identity, status and selected app access for each connected account; expand
+only one full AgentWorks/Google grant comparison at a time. Keep permission
+warnings visible while collapsed. Why: repeated inactive-app tiles obscure
+multiple accounts. Label the existing delivery switch Workflow email
+notifications, because account sign-in/access and notification delivery are
+separate states. Ticket: [PLAT-512](bugs/pulse_platform/integrations/plat-512.md).
+
 ### 2026-10-05 — Personal Chrome extension connections are private and explicit
 
 An extension shares selected tabs with one account/workspace, through a paired

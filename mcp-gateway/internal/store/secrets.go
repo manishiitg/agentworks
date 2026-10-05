@@ -12,6 +12,8 @@ type SecretResource struct {
 	Name        string `json:"name"`
 	WorkspaceID string `json:"workspace_id"`
 	Managed     bool   `json:"managed"`
+	// VaultID is the person-owned vault the secret belongs to; empty for a platform secret (PLAT-507).
+	VaultID string `json:"vault_id,omitempty"`
 }
 
 func (s *MemoryStore) RegisterSecrets(workspace string, rows []SecretResource) error {
@@ -28,7 +30,10 @@ func (s *MemoryStore) RegisterSecrets(workspace string, rows []SecretResource) e
 	}
 	for _, row := range rows {
 		row.WorkspaceID = workspace
-		if _, known := s.secretResources[row.Name]; !known {
+		old, known := s.secretResources[row.Name]
+		// The host's name sync never carries a vault; a vault's secret keeps the vault it was created in.
+		row.VaultID = old.VaultID
+		if !known {
 			s.autoGrantSecretLocked(workspace, row.Name)
 		}
 		s.secretResources[row.Name] = row

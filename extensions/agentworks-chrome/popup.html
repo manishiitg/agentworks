@@ -1,2 +1,29 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentWorks browser connection</title><link rel="stylesheet" href="popup.css"></head>
-<body><main><h1>Connect your Chrome</h1><p>In AgentWorks, open Browser settings and choose Connect Chrome. Paste the connection below.</p><label for="pairing">Connection</label><textarea id="pairing" rows="3" placeholder="Paste your connection"></textarea><button id="connect">Connect</button><p id="status" role="status" aria-live="polite">Not connected</p><p id="error" role="alert"></p><section id="controls" hidden><p>Shared tabs can be read and controlled by this workspace. Page contents and screenshots are sent to the platform.</p><button id="share">Share current tab</button><ul id="tabs"></ul><button id="stop" class="stop">Stop and disconnect</button></section></main><script src="popup.js" type="module"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentWorks Browser Bridge</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <main>
+    <header><img src="icon-32.png" width="32" height="32" alt=""><div><h1>AgentWorks</h1><p class="subtitle">Browser connection</p></div><span id="status" class="badge" role="status" aria-live="polite">Not connected</span></header>
+    <p id="error" class="error" role="alert" hidden></p>
+    <section id="setup">
+      <h2>Connect to your Code project</h2>
+      <p class="muted">In AgentWorks, open <strong>Browser → Settings</strong> and choose <strong>My Chrome or Edge · extension</strong>.</p>
+      <label for="pairing">Paste your connection code</label>
+      <textarea id="pairing" rows="3" spellcheck="false" autocomplete="off" placeholder="Copy connection in AgentWorks, then paste here"></textarea>
+      <button id="connect" class="primary" disabled>Connect browser</button>
+      <p class="hint">Your code stays the same until you reset it in AgentWorks.</p>
+    </section>
+    <section id="controls" hidden>
+      <div class="workspace"><span class="eyebrow">CONNECTED CODE PROJECT</span><h2 id="workspace"></h2><p id="server" class="muted"></p></div>
+      <div class="tabs-heading"><h2>Shared tabs</h2><span id="tab-count" class="count">0</span></div>
+      <div id="empty" class="empty"><strong>Share your first tab</strong><p>Open a website and share it below, or create a new tab for your agent.</p></div>
+      <ul id="tabs" aria-label="Shared tabs"></ul>
+      <button id="share" class="primary">Share this tab</button>
+      <div class="secondary-actions"><button id="newtab" class="secondary">New shared tab</button><button id="group" class="secondary" title="Organize shared tabs without granting access to other tabs">Group shared tabs</button></div>
+      <button id="stop" class="stop">Disconnect browser</button>
+    </section>
+    <footer>Only shared tabs can be read and controlled. Their contents and screenshots are sent to your AgentWorks project.</footer>
+  </main>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

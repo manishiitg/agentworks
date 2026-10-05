@@ -27,3 +27,19 @@
 - Not built: secrets in a personal vault (names must be namespaced per vault and run-time secret resolution must honour vault membership); the "My vaults" UI; limits on connections per vault.
 
 **Left:** deploy and check live on RTS (create a vault, promote the Notion connection into it, add a second account, see the tools from that account); then secrets; then the UI.
+
+**Verified live (RTS, 2026-10-05):** create vault and promote an existing Notion sign-in into it worked (see PLAT-503). Still to check live: second account as a member sees the tools; member cannot add people; sixth-vault refusal. Secrets and the UI are not built.
+
+## 2026-10-05: security flaw found in my first build, fixed; secrets built
+
+**Flaw (live on RTS from 4a25761d4 until the next deploy):** the Vault service grants every newly created connection to the Platform group (everyone) unless the grant is revoked, and the vault connection was bound to its vault only after it was created. A vault's connection (the promoted Notion one) was therefore visible to the whole company, not only the vault's members. Found by reading `autoGrantServerLocked`, not by exploitation. Fix: the connection row is created already carrying its `VaultID`; `autoGrantServerLocked` and `autoGrantSecretLocked` skip anything vault-owned (including the startup backfill); and a repair at every Vault start (`revokeVaultOwnedFromPlatformLocked`) removes any company-wide grant from vault-owned connections and secrets and remembers the removal. One store test pins all of it (create-time, startup backfill, repair of an earlier wrongly granted connection).
+
+**Secrets built (not deployed, not verified live):** a vault secret's value is stored encrypted in the host's managed global store as `VLT_<vault>__<NAME>`; the Vault service records only that name and grants it to the vault's group, never to the Platform group; the platform's own name sync skips `VLT_` names. Owner-only set (replace needs an explicit flag), remove, and `promote_secret` (copies a Crew/Code/workflow secret server-side, the agent never sees the value, confirm step, original stays). Values are typed only into the vault screen endpoint `POST /api/my-vaults/{id}/secrets` or promoted; never through a tool or chat. Admins cannot create `VLT_` names. Vault connections are created from the Vault catalog only (no custom URL), per the owner's no-fallbacks rule.
+
+**Left:** deploy and verify live (connection no longer visible to a non-member; secret usable by a member, not by a stranger); the "My vaults" screen (endpoints exist: `/api/my-vaults/op`, `/api/my-vaults/{id}/secrets`); a limit on connections and secrets per vault.
+
+## 2026-10-05: "My vaults" screen built (not verified live)
+
+`frontend/src/components/MyVaultsPage.tsx`, opened from a new top-bar entry (`topbar/VaultsControl.tsx`, shown to accounts that may create things) through the existing full-page slot (`adminPage: 'vaults'`). Create a vault (5 per person), add and remove people by email, make or remove owners, connect a catalog server and open its sign-in, sync or remove a connection, add a secret (the value is typed only here, never shown again, "Replace" is explicit), remove a secret, delete an empty vault. A member sees the vault read-only. It calls `/api/my-vaults/op` and `/api/my-vaults/{id}/secrets`, which the server checks against the vault's owners on every call.
+
+**Left:** check live on RTS (as owner and as a second account); a limit on connections and secrets per vault.

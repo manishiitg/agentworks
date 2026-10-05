@@ -21,24 +21,26 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const PairLifetime = 5 * time.Minute
 const ConnectionLifetime = 8 * time.Hour
 const maxMessage = 16 << 20
 
 type grant struct {
-	User, Scope, Label string
-	Expires            time.Time
+	User, Scope, Label, ProfileID string
 }
 type Status struct {
-	Selected  bool   `json:"selected"`
-	Connected bool   `json:"connected"`
-	Workspace string `json:"workspace,omitempty"`
-	Tabs      int    `json:"tabs"`
+	Selected     bool     `json:"selected"`
+	Connected    bool     `json:"connected"`
+	Workspace    string   `json:"workspace,omitempty"`
+	Tabs         int      `json:"tabs"`
+	ConnectionID string   `json:"connection_id,omitempty"`
+	TabTitles    []string `json:"tab_titles,omitempty"`
 }
 type Binding struct {
 	mu                                 sync.Mutex
 	key, capability, endpoint, session string
 	owner                              string
+	profile                            string
+	tabTitles                          []string
 	label                              string
 	expires                            time.Time
 	extension, cdp                     *websocket.Conn
@@ -46,12 +48,13 @@ type Binding struct {
 	gate                               chan struct{}
 }
 type Manager struct {
-	mu            sync.Mutex
-	pairs         map[string]grant
-	bindings      map[string]*Binding
-	listener      net.Listener
-	base          string
-	selectionPath string
+	mu              sync.Mutex
+	pairs           map[string]grant
+	bindings        map[string]*Binding
+	listener        net.Listener
+	base            string
+	selectionPath   string
+	credentialsPath string
 }
 
 var Default = New()
@@ -91,25 +94,62 @@ func (m *Manager) start() error {
 	go server.Serve(listener)
 	return nil
 }
+
+// Pair returns the same private connection code for an account/workspace.
+// Copying or reconnecting never rotates it; Reset explicitly revokes the code.
 func (m *Manager) Pair(user, scope, label string) (string, error) {
+	return m.PairForProfile(user, scope, label, "")
+}
+func (m *Manager) PairForProfile(user, scope, label, profile string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.connectionCode(user, scope, label, profile, false)
+}
+func (m *Manager) Reset(user, scope, label, profile string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	token, err := m.connectionCode(user, scope, label, profile, true)
+	if err == nil {
+		if b := m.bindings[key(user, scope)]; b != nil {
+			b.close()
+		}
+	}
+	return token, err
+}
+
+// Caller holds m.mu. Persist before changing credentials or live authority.
+func (m *Manager) connectionCode(user, scope, label, profile string, reset bool) (string, error) {
 	if user == "" || scope == "" {
 		return "", errors.New("account and browser scope required")
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	if m.bindings[key(user, scope)] == nil && len(m.bindings) >= 1000 {
+		return "", errors.New("too many browser selections")
+	}
 	if err := m.start(); err != nil {
 		return "", err
 	}
-	for token, g := range m.pairs {
-		if time.Now().After(g.Expires) || key(g.User, g.Scope) == key(user, scope) {
-			delete(m.pairs, token)
+	token := ""
+	next := make(map[string]grant, len(m.pairs)+1)
+	for existing, g := range m.pairs {
+		if key(g.User, g.Scope) == key(user, scope) {
+			if !reset {
+				token = existing
+			}
+			continue
 		}
+		next[existing] = g
 	}
-	if len(m.pairs) >= 1000 || (m.bindings[key(user, scope)] == nil && len(m.bindings) >= 1000) {
-		return "", errors.New("too many pending browser connections")
+	if len(next) >= 1000 {
+		return "", errors.New("too many browser connections")
 	}
-	token := secret()
-	m.pairs[token] = grant{user, scope, label, time.Now().Add(PairLifetime)}
+	if token == "" {
+		token = secret()
+	}
+	next[token] = grant{User: user, Scope: scope, Label: label, ProfileID: profile}
+	if err := m.persistCredentials(next); err != nil {
+		return "", err
+	}
+	m.pairs = next
 	return token, nil
 }
 func (m *Manager) Lookup(user, scope string) *Binding {
@@ -127,9 +167,10 @@ func (m *Manager) Status(user, scope string) Status {
 func (b *Binding) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs}
+	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...)}
 }
 func (b *Binding) Session() string { return b.session }
+func (b *Binding) Profile() string { return b.profile }
 func (b *Binding) Acquire(ctx context.Context) (string, func(), error) {
 	return b.AcquireFor(ctx, "")
 }
@@ -167,11 +208,6 @@ func (m *Manager) Disconnect(user, scope string) error {
 		return err
 	}
 	delete(m.bindings, key(user, scope))
-	for token, g := range m.pairs {
-		if key(g.User, g.Scope) == key(user, scope) {
-			delete(m.pairs, token)
-		}
-	}
 	m.mu.Unlock()
 	if b != nil {
 		b.close()
@@ -190,6 +226,7 @@ func (b *Binding) close() {
 		b.cdp = nil
 	}
 	b.tabs = 0
+	b.tabTitles = nil
 }
 func (m *Manager) Close() {
 	m.mu.Lock()
@@ -211,12 +248,17 @@ type envelope struct {
 	Token     string          `json:"token,omitempty"`
 	Workspace string          `json:"workspace,omitempty"`
 	Tabs      int             `json:"tabs,omitempty"`
+	TabTitles []string        `json:"tab_titles,omitempty"`
 	Message   json.RawMessage `json:"message,omitempty"`
 }
 
 // ServeExtension authenticates in the first frame. No app JWT is given to the
-// extension, and a credential cannot be reused after disconnect/restart.
+// extension. The stable credential is rechecked against current access on every
+// connection and heartbeat; live authority is never restored after restart.
 func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
+	m.ServeExtensionAuthorized(w, r, nil)
+}
+func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Request, authorize func(user, scope, workspace, profile string) error) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", 405)
 		return
@@ -235,13 +277,27 @@ func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	g, ok := m.pairs[hello.Token]
-	if ok && time.Now().Before(g.Expires) {
-		delete(m.pairs, hello.Token)
-	} else {
-		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Pairing expired or already used"})
+	m.mu.Unlock()
+	if !ok {
+		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code is invalid or was reset"})
 		return
 	}
+	if authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
+		conn.WriteJSON(envelope{Type: "error", Workspace: "This account no longer has browser access to the workspace"})
+		return
+	}
+	m.mu.Lock()
+	// Reset may have revoked the code while the workspace access check ran.
+	if current, exists := m.pairs[hello.Token]; !exists || current != g {
+		m.mu.Unlock()
+		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code was reset; copy it again"})
+		return
+	}
+	if err := m.start(); err != nil {
+		m.mu.Unlock()
+		return
+	}
+
 	if err := m.persistSelection("", &g); err != nil {
 		m.mu.Unlock()
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Cannot save Chrome selection; reconnect after checking server storage"})
@@ -250,14 +306,17 @@ func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
 	old := m.bindings[key(g.User, g.Scope)]
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
-	b := &Binding{key: key(g.User, g.Scope), label: g.Label, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "ext-" + hex.EncodeToString(hash[:12]), expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "ext-" + hex.EncodeToString(hash[:12]), expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	b.mu.Lock()
 	m.bindings[b.key] = b
 	m.mu.Unlock()
 	if old != nil {
 		old.close()
 	}
 	defer b.close()
-	if err := conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label}); err != nil {
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label})
+	b.mu.Unlock()
+	if err != nil {
 		return
 	}
 	for {
@@ -270,6 +329,9 @@ func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
 		if conn.ReadJSON(&e) != nil {
 			return
 		}
+		if e.Type == "ping" && authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
+			return
+		}
 		b.mu.Lock()
 		switch e.Type {
 		case "ping":
@@ -278,6 +340,16 @@ func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
 		case "tabs":
 			if e.Tabs >= 0 && e.Tabs <= 32 {
 				b.tabs = e.Tabs
+				b.tabTitles = nil
+				for _, title := range e.TabTitles {
+					if len(b.tabTitles) >= e.Tabs {
+						break
+					}
+					if len(title) > 512 {
+						title = title[:512]
+					}
+					b.tabTitles = append(b.tabTitles, title)
+				}
 			}
 		case "cdp":
 			if b.cdp != nil && len(e.Message) > 0 {

@@ -2684,6 +2684,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/secrets/vault/share", api.handleShareVaultSecret).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/vault/access", api.handleVaultSecretAccess).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/global", api.handleGetGlobalSecrets).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/my-vaults/op", api.handleMyVaultsOp).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/my-vaults/{id}/secrets", api.handleMyVaultSecret).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/global", api.handleManageGlobalSecret).Methods("POST", "PUT", "DELETE")
 	apiRouter.HandleFunc("/secrets/global/reveal", api.handleRevealGlobalSecret).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/store", api.handleStoreWorkflowSecret).Methods("PUT", "OPTIONS")

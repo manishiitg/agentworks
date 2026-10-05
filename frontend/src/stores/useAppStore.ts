@@ -18,7 +18,7 @@ interface AppState {
   showWorkflowsOverview: boolean
   showSchedulesOverview: boolean
   /** Admin full pages opened from the top bar (Users & access, Connect an AI agent). */
-  adminPage: 'users' | 'mcp' | null
+  adminPage: 'users' | 'mcp' | 'vaults' | null
   activityWorkflowPath: string | null
   
   // Code execution mode (for multi-agent mode when no preset is active)
@@ -42,7 +42,7 @@ interface AppState {
   setWorkspaceMinimizedForLayout: (minimized: boolean) => void
   setShowWorkflowsOverview: (show: boolean) => void
   setShowSchedulesOverview: (show: boolean) => void
-  setAdminPage: (page: 'users' | 'mcp' | null) => void
+  setAdminPage: (page: 'users' | 'mcp' | 'vaults' | null) => void
   setActivityWorkflowPath: (workspacePath: string | null) => void
   setUseCodeExecutionMode: (enabled: boolean) => void
   // Last-used tab settings — inherited by new tabs

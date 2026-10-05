@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// NewPersistent restores selection only, never credentials, target identifiers
-// or connections. A server restart therefore requires fresh human pairing.
+// NewPersistent restores stable private connection codes and disconnected
+// selections. A restart never restores browser authority or target IDs.
 func NewPersistent(root string) (*Manager, error) {
 	if !filepath.IsAbs(root) {
 		return nil, errors.New("Chrome selection state root must be absolute")
@@ -19,6 +19,10 @@ func NewPersistent(root string) (*Manager, error) {
 	}
 	m := New()
 	m.selectionPath = filepath.Join(root, "selected.json")
+	m.credentialsPath = filepath.Join(root, "credentials.json")
+	if err := m.loadCredentials(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(m.selectionPath)
 	if os.IsNotExist(err) {
 		return m, nil
@@ -37,7 +41,19 @@ func NewPersistent(root string) (*Manager, error) {
 		if !strings.Contains(key, "\x00") || len(key) > 8192 || len(label) > 8192 {
 			return nil, errors.New("invalid Chrome selection state")
 		}
-		m.bindings[key] = &Binding{key: key, label: label, gate: make(chan struct{}, 1)}
+		profile := ""
+		for _, g := range m.pairs {
+			if g.User+"\x00"+g.Scope == key {
+				profile = g.ProfileID
+				break
+			}
+		}
+		// Preserve fail-closed Code selections from the initial release, which
+		// persisted labels but no profile or reusable credential.
+		if profile == "" && strings.Contains("/"+label+"/", "/Chats/Code/projects/") {
+			profile = "code"
+		}
+		m.bindings[key] = &Binding{key: key, label: label, profile: profile, gate: make(chan struct{}, 1)}
 	}
 	return m, nil
 }

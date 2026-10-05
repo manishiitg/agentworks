@@ -1,10 +1,11 @@
 # Chrome extension CDP bridge
 
-Date: 2026-10-05. Tracking: [PLAT-510](../bugs/pulse_platform/browser/plat-510.md).
+Date: 2026-10-05. Tracking: [PLAT-510](../bugs/pulse_platform/browser/plat-510.md),
+[PLAT-513](../bugs/pulse_platform/browser/plat-513.md) (current Code-only UI and connection policy).
 
 ## Goal
 
-Let an AgentWorks, Crew or Code agent use explicitly shared tabs in the user's
+Let a Code agent use explicitly shared tabs in the user's
 existing Chrome profile, locally or from a hosted platform. Keep the existing
 `agent_browser` tool and agent-browser CLI. Chrome remains on the user's machine;
 its login cookies are not exported. Page text, screenshots and action results
@@ -31,10 +32,15 @@ chrome.debugger are implemented with chrome.tabs or rejected explicitly.
 
 ## Pairing and ownership
 
-The existing authenticated browser workspace panel creates a random, single-use
-pairing credential (five-minute expiry). Creation uses the existing workspace
-write/product-browser checks. The user pastes the pairing connection into the
-extension and explicitly chooses Share current tab. The extension opens an
+The authenticated Code Browser settings picker exposes My Chrome or Edge ·
+extension. Copy connection returns the same random code for this account and
+server-derived Code workspace. Workflows and Crews are deferred and both
+management/connection routes enforce this scope. Codes survive server restarts
+in a private 0600 credentials file; status/selection state never includes them.
+Reset connection code explicitly rotates the code and closes current access.
+Every connection and heartbeat rechecks the enabled account and current Code
+product/workspace write access. The user pastes the connection into the
+extension and explicitly chooses Share this tab. The extension opens an
 outbound connection to the same deployment; only HTTPS/WSS is accepted except
 loopback development. Authentication happens in the first WebSocket message,
 so no app JWT is stored in the extension or placed in its URL.
@@ -43,8 +49,8 @@ A binding is private to `(account identity, server-derived browser workspace
 identity)`. A collaborator's run never inherits another person's Chrome.
 Live bindings last at most eight hours and remain process-local. The selected
 browser is recorded separately in private server state, without any credential
-or target ID. A restart restores a disconnected selection and requires fresh
-human pairing; it never restores access or silently chooses a server browser. Pairing replaces an older binding only on successful
+or target ID. A restart restores a disconnected selection and requires explicit
+human reconnection with the same saved code; it never restores access or silently chooses a server browser. Pairing replaces an older binding only on successful
 connection. Only tabs explicitly shared from the extension are exposed. New
 tabs may be created within that connected workspace and are included in it.
 
@@ -63,7 +69,7 @@ execution path, never included in tool results, prompts or UI status. Split
 agent/workspace services can explicitly configure listener address and advertised
 host; this requires private-network routing and preserves capability checks.
 The extension's public WebSocket route is a narrow exception to ordinary JWT
-and gateway auth: its own single-use credential and subsequent live socket are
+and gateway auth: its own reusable private credential and subsequent live socket are
 the authorization boundary. Adjacent management routes remain authenticated.
 
 Commands for a binding are serialized. The first action claims control for its
@@ -82,7 +88,21 @@ the next tool call explains that Chrome was stopped.
 
 Chrome 125 or newer is required for flattened debugger sessions.
 
-The popup shows the connected workspace, shared tabs, connection state and Stop.
+The Browser pane exclusively shows the extension connection when chosen; it
+never exposes workspace Start browser/teaching controls in that state. Setup
+lives inside the ordinary picker, with three short steps, collapsed installation
+instructions and raw JSON hidden behind Copy manually. Waiting ends only after
+an actual new connection, not a poll of the prior live browser.
+
+The branded popup hides setup after connecting. It shows a Connected badge,
+Code project/server identity, empty or populated shared-tab list, Share this tab,
+New shared tab, Group shared tabs and Disconnect browser. New tabs may be
+created by either the popup or the agent and join an existing managed group.
+Grouping applies only to already shared tabs, separately per window. It does
+not share other tabs, including tabs dragged into a group. Stop/unshare removes
+our shared tabs from our managed groups without touching unrelated groups.
+Reusing a code in another browser replaces the prior browser on successful
+connection; each new binding receives a fresh private relay capability.
 Sharing another tab is explicit. Removing a shared tab detaches its debugger;
 Stop closes the socket, detaches every debugger and clears the pairing secret.
 No automatic reconnect or silent reattachment follows user revocation. Chrome
@@ -110,10 +130,10 @@ Use a real extension loaded into an isolated Chrome-for-Testing profile, the
 real relay and the installed agent-browser version. Prove snapshot/reference
 click, fill, screenshot, navigation, tab creation, existing cookie retention,
 unshared-tab exclusion and immediate stop. Also cover cross-account lookup,
-expired/reused pairing, a second CDP controller, wrong capability and target
+stable codes, reset revocation and disabled accounts, a second CDP controller, wrong capability and target
 revocation through real WebSocket requests. Verify app pairing/control UI,
 build the server/frontend and package the unpacked extension as a downloadable
-ZIP. Record actual checks and remaining qualifications in PLAT-510.
+ZIP. Record actual checks and remaining qualifications in PLAT-513.
 
 References: [agent-browser CDP](https://agent-browser.dev/cdp-mode),
 [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger),

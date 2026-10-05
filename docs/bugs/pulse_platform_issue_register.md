@@ -1,3 +1,11 @@
+## Code browser extension UI and stable private connection codes — PLAT-513
+
+[PLAT-513](pulse_platform/browser/plat-513.md), P2, fixed on main, not deployed. Integrated Code-only browser choice, connected popup and browser pane, branded icons, stable codes and explicit reset.
+
+## Compact Google accounts and workflow email notification label — PLAT-512
+
+[PLAT-512](pulse_platform/integrations/plat-512.md), P2, fixed on main, not deployed. Collapsed account summaries, one permission comparison open at a time, and a notification-specific label instead of Enable Gmail.
+
 ## Recording stale-state test lacks native browser IPC — PLAT-511
 
 [PLAT-511](pulse_platform/browser/plat-511.md), P3, open. Existing capture fixture fails with `browser IPC unavailable`, reproduced unchanged; real browser IPC qualification remains.
