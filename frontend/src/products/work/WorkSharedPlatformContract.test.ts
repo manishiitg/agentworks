@@ -36,7 +36,8 @@ describe('Crew shared AgentWorks platform contract', () => {
     for (const sharedSetupPrimitive of [
       "../../components/workflow/WorkflowBotsPanel",
       "../../components/skills/SkillsManagerPanel",
-      "../../components/secrets/SecretSelectionSection",
+      // Secret selection is composed through the shared Integrations panel (it renders SecretSelectionSection).
+      "../../components/integrations/ProjectSecretsPanel",
     ]) {
       expect(setup).toContain(sharedSetupPrimitive)
     }

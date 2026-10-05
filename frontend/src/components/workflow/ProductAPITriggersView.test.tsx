@@ -6,6 +6,7 @@ import ProductAPITriggersView from './ProductAPITriggersView'
 import { productWebhooksApi } from '../../api/productWebhooks'
 import { TooltipProvider } from '../ui/tooltip'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 
 vi.mock('../../api/productWebhooks', () => ({ productWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn().mockResolvedValue({}) }))
@@ -15,6 +16,8 @@ const scope = { profileId: 'work', projectId: 'p1' }
 const trigger = { id: 'trigger-1', name: 'Deploy hook', enabled: true, message: 'Deploy the app', auth_mode: 'bearer' as const, path: '/api/hooks/product/trigger-1', run_destination: 'crew_chat' as const }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
+  // Automatic incoming Gmail is a server-deployment surface (PLAT-500); the panel renders only when local_mode is false.
+  useCapabilitiesStore.setState({ capabilities: { providers: [], streaming: true, sse: true, agent_modes: [], tracing: { enabled: false, provider: 'noop' }, workspace: {}, servers: [], local_mode: false } })
   vi.mocked(productWebhooksApi.list).mockResolvedValue({ triggers: [trigger, { ...trigger, id: 'trigger-2', name: 'Nightly ping', enabled: false }] })
 })
 afterEach(() => { cleanups.splice(0).forEach(clean => clean()); vi.clearAllMocks() })
