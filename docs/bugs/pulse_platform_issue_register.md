@@ -1,8 +1,7 @@
-<<<<<<< HEAD
 ## Knowledge Base migration and access review fixes — PLAT-496
 
 [PLAT-496](pulse_platform/learnings-knowledge/plat-496.md), P1, fixed in [PR #268](https://github.com/manishiitg/agentworks/pull/268), merge/deploy pending. Restricts migration to owner connections, refuses consumer cutover, retains app confirmation for chat proposals while allowing authorized external MCP access changes directly, reuses shared Files, adds initial backup setup, gates bound tools, and closes OAuth/session/identity/confinement gaps.
-=======
+
 ## Any account could list all workflows' schedules and pause every schedule — PLAT-505
 
 [PLAT-505](pulse_platform/scheduler-runs/plat-505.md), P1, fixed on main, not deployed or checked live as a non-admin. The schedules list is now filtered to what the account may open; the global pause is administrators only.
@@ -18,7 +17,6 @@
 ## Empty schedule state file makes "Failed to load automation schedules" — PLAT-501
 
 [PLAT-501](pulse_platform/scheduler-runs/plat-501.md), P2, fixed on main, not deployed. An existing zero-byte `product-schedules.json` was read as a failed read, so the whole Automations list returned 500 for that user (Excellence, 2026-10-05). The reader now treats it as an empty file.
->>>>>>> codex/shared-clarification-choices
 
 ## Automatic incoming Gmail stays out of the local UI — PLAT-500
 
