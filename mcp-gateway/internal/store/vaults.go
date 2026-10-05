@@ -27,13 +27,24 @@ func (g Group) HasOwner(userID string) bool {
 	return false
 }
 
+// VaultConnection is what a member needs to recognise a connection in a vault: its name, its provider and whether it
+// is signed in. No upstream URL and no credential.
+type VaultConnection struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Provider string `json:"provider"`
+	Status   string `json:"status"`
+}
+
 // VaultSummary is a vault as one person sees it.
 type VaultSummary struct {
 	Group        Group    `json:"group"`
 	Role         string   `json:"role"` // "owner" or "member"
 	Members      []string `json:"members"`
 	ConnectorIDs []string `json:"connector_ids"`
-	SecretNames  []string `json:"secret_names"`
+	// Connections is ConnectorIDs with names and sign-in status.
+	Connections []VaultConnection `json:"connections"`
+	SecretNames []string          `json:"secret_names"`
 }
 
 // CreateVault makes a vault owned by ownerID, who is also its first member. A person owns at most MaxVaultsPerOwner.
@@ -87,13 +98,14 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 		if owner {
 			role = "owner"
 		}
-		view := VaultSummary{Group: g, Role: role, Members: []string{}, ConnectorIDs: []string{}, SecretNames: []string{}}
+		view := VaultSummary{Group: g, Role: role, Members: []string{}, ConnectorIDs: []string{}, Connections: []VaultConnection{}, SecretNames: []string{}}
 		for member := range s.members[g.ID] {
 			view.Members = append(view.Members, member)
 		}
 		for _, c := range s.connectors {
 			if c.VaultID == g.ID {
 				view.ConnectorIDs = append(view.ConnectorIDs, c.ID)
+				view.Connections = append(view.Connections, VaultConnection{ID: c.ID, Label: c.Label, Provider: c.Provider, Status: c.Status})
 			}
 		}
 		for name, secret := range s.secretResources {
@@ -103,6 +115,7 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 		}
 		sort.Strings(view.Members)
 		sort.Strings(view.ConnectorIDs)
+		sort.Slice(view.Connections, func(i, j int) bool { return view.Connections[i].ID < view.Connections[j].ID })
 		sort.Strings(view.SecretNames)
 		out = append(out, view)
 	}
