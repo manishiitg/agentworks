@@ -49,6 +49,10 @@ Direct chat-tab selection uses the same `activateTab` coordinator, with
 workflow tabs committed through `activateWorkflowTab`. A direct schedule/main
 tab click invalidates pending asynchronous navigation even within one workflow.
 
+Scheduled-run tab labels use the scheduler-stamped session title, falling back
+to the saved job name before the owning workflow's name. Ctrl+K and Global
+Monitor must preserve that schedule identity when reopening its tab.
+
 Formatted transcripts own their scrolling. New conversations open at the latest
 message; revisiting one preserves deliberate reading position and expanded tools.
 Reading state is scoped to both tab and session, so a reused schedule tab does

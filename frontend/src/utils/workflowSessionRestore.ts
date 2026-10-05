@@ -335,10 +335,17 @@ async function restoreScheduledWorkflowRunChat(
   session: ActiveSessionInfo,
   options: RestoreWorkflowSessionOptions = {},
 ): Promise<string> {
-  const jobName = options.runningWorkflow?.preset_name ||
-    options.runningWorkflow?.title ||
-    session.preset_name ||
-    session.title ||
+  // The scheduler stamps the job name on Title. preset_name identifies its
+  // owning workflow; preferring it renamed a schedule tab on Ctrl+K/monitor
+  // opens (e.g. "News Briefing" became "trading"). Keep a known job name
+  // when a sparse activity record omits its title.
+  const existingJobName = findTabForSession(useChatStore.getState().chatTabs, session.session_id)
+    ?.metadata?.scheduledJobName
+  const jobName = session.title?.trim() ||
+    existingJobName?.trim() ||
+    options.runningWorkflow?.title?.trim() ||
+    options.runningWorkflow?.preset_name?.trim() ||
+    session.preset_name?.trim() ||
     'Scheduled run'
 
   return restoreReadOnlyWorkflowRunChat(session, {
