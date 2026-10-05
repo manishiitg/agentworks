@@ -1,4 +1,4 @@
-# PLAT-518: an MCP tool named like a platform tool stops the chat from starting
+# PLAT-519: an MCP tool named like a platform tool stops the chat from starting
 
 **State:** stopgap fixed in mcpagent b619356 (not deployed, not verified live); the real fix (server prefix on a clash) is open. P1.
 
