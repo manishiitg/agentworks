@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -28,10 +29,16 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", "chrome-extension-e2e")
-	m := browserrelay.New()
+	stateRoot := t.TempDir()
+	m, err := browserrelay.NewPersistent(stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var live atomic.Pointer[browserrelay.Manager]
+	live.Store(m)
 	previous := browserrelay.Default
 	browserrelay.Default = m
-	defer func() { m.Close(); browserrelay.Default = previous }()
+	defer func() { live.Load().Close(); browserrelay.Default = previous }()
 	root := t.TempDir()
 	workspace := "Chats/Code/projects/extension-e2e"
 	evidence := workspace + "/evidence"
@@ -85,32 +92,54 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	defer shell.Close()
 	executor := NewExecutor(NewClient(shell.URL), WithBrowserRuntimeConfig(NewBrowserRuntimeConfig("auto", nil)))
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/browser/extension/connect", m.ServeExtension)
+	mux.HandleFunc("/api/browser/extension/connect", func(w http.ResponseWriter, r *http.Request) { live.Load().ServeExtension(w, r) })
+	mux.HandleFunc("/fixture/code-status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(live.Load().Status("alice", common.SandboxBrowserSession(session)))
+	})
+	mux.HandleFunc("/fixture/restart-relay", func(w http.ResponseWriter, r *http.Request) {
+		next, err := browserrelay.NewPersistent(stateRoot)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		old := live.Swap(next)
+		browserrelay.Default = next
+		old.Close()
+	})
+	mux.HandleFunc("/fixture/disconnect-code", func(w http.ResponseWriter, r *http.Request) {
+		live.Load().Disconnect("alice", common.SandboxBrowserSession(session))
+	})
+	mux.HandleFunc("/fixture/reset-code", func(w http.ResponseWriter, r *http.Request) {
+		_, err := live.Load().Reset("alice", common.SandboxBrowserSession(session), workspace, "code")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
 	mux.HandleFunc("/fixture/connect-crew", func(w http.ResponseWriter, r *http.Request) {
-		if !m.RequestProjectConnection("alice", common.SandboxBrowserSession(crewSession)) {
+		if !live.Load().RequestProjectConnection("alice", common.SandboxBrowserSession(crewSession)) {
 			http.Error(w, "not paired", 409)
 			return
 		}
 		w.WriteHeader(202)
 	})
 	mux.HandleFunc("/fixture/disconnect-crew", func(w http.ResponseWriter, r *http.Request) {
-		m.Disconnect("alice", common.SandboxBrowserSession(crewSession))
+		live.Load().Disconnect("alice", common.SandboxBrowserSession(crewSession))
 	})
 	mux.HandleFunc("/fixture/crew-status", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(m.Status("alice", common.SandboxBrowserSession(crewSession)))
+		json.NewEncoder(w).Encode(live.Load().Status("alice", common.SandboxBrowserSession(crewSession)))
 	})
 	mux.HandleFunc("/fixture/connect-workflow", func(w http.ResponseWriter, r *http.Request) {
-		if !m.RequestProjectConnection("alice", common.SandboxBrowserSession(workflowSession)) {
+		if !live.Load().RequestProjectConnection("alice", common.SandboxBrowserSession(workflowSession)) {
 			http.Error(w, "not paired", 409)
 			return
 		}
 		w.WriteHeader(202)
 	})
 	mux.HandleFunc("/fixture/workflow-status", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(m.Status("alice", common.SandboxBrowserSession(workflowSession)))
+		json.NewEncoder(w).Encode(live.Load().Status("alice", common.SandboxBrowserSession(workflowSession)))
 	})
 	mux.HandleFunc("/fixture/cdp", func(w http.ResponseWriter, r *http.Request) {
-		b := m.Lookup("alice", common.SandboxBrowserSession(session))
+		b := live.Load().Lookup("alice", common.SandboxBrowserSession(session))
 		if b == nil {
 			http.Error(w, "not paired", 409)
 			return

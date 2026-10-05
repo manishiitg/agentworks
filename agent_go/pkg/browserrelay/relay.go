@@ -125,7 +125,7 @@ func (m *Manager) Reset(user, scope, label, profile string) (string, error) {
 	if err == nil {
 		for bindingKey, b := range m.bindings {
 			if strings.HasPrefix(bindingKey, user+"\x00") {
-				b.close()
+				b.closeWithReason("Account connection code reset")
 			}
 		}
 	}
@@ -407,11 +407,14 @@ func (m *Manager) Disconnect(user, scope string) error {
 	delete(m.bindings, key(user, scope))
 	m.mu.Unlock()
 	if b != nil {
-		b.close()
+		b.closeWithReason("Disconnected in browser settings")
 	}
 	return nil
 }
 func (b *Binding) close() {
+	b.closeWithReason("")
+}
+func (b *Binding) closeWithReason(reason string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.newTabResult != nil {
@@ -421,6 +424,10 @@ func (b *Binding) close() {
 		}
 	}
 	if b.extension != nil {
+		if reason != "" {
+			// Explicit revocation must not look like a retryable network outage.
+			_ = b.extension.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(4001, reason), time.Now().Add(time.Second))
+		}
 		b.extension.Close()
 		b.extension = nil
 	}
@@ -452,6 +459,7 @@ type envelope struct {
 	Type      string          `json:"type"`
 	Token     string          `json:"token,omitempty"`
 	Scope     string          `json:"scope,omitempty"`
+	Resume    bool            `json:"resume,omitempty"`
 	ProfileID string          `json:"profile_id,omitempty"`
 	Projects  []projectGrant  `json:"projects,omitempty"`
 	Workspace string          `json:"workspace,omitempty"`
@@ -511,6 +519,13 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code was reset; copy it again"})
 		return
 	}
+	// An offline browser may have missed the explicit Disconnect close frame.
+	// Resume cannot recreate a selection removed by the authenticated app.
+	if hello.Resume && m.bindings[key(g.User, g.Scope)] == nil {
+		m.mu.Unlock()
+		conn.WriteJSON(envelope{Type: "error", Workspace: "Browser connection was disconnected; connect again to enable access"})
+		return
+	}
 	if err := m.start(); err != nil {
 		m.mu.Unlock()
 		return
@@ -529,7 +544,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 	m.bindings[b.key] = b
 	m.mu.Unlock()
 	if old != nil {
-		old.close()
+		old.closeWithReason("Connected from another browser")
 	}
 	defer b.close()
 	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available})
@@ -548,6 +563,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if e.Type == "ping" && authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
+			b.closeWithReason("Browser access revoked")
 			return
 		}
 

@@ -3,8 +3,9 @@ let busy = false;
 let current = { connected: false, tabs: [] };
 function updateButtons() {
   for (const button of document.querySelectorAll('button')) button.disabled = busy;
+  for(const id of ['share','newtab','group'])$(id).disabled=busy || !current.connected;
   $('connect').disabled = busy || !$('pairing').value.trim();
-  $('group').disabled = busy || !current.tabs.length;
+  $('group').disabled = busy || !current.connected || !current.tabs.length;
   $('connect').textContent = busy && !current.connected ? 'Connecting…' : 'Connect browser';
 }
 async function run(request) {
@@ -15,16 +16,19 @@ async function run(request) {
 function showError(message = '') { $('error').textContent = message; $('error').hidden = !message; }
 function render(state) {
   current = state;
-  $('status').textContent = state.connected ? 'Connected' : 'Not connected';
+  $('status').textContent = state.connected ? 'Connected' : state.reconnecting ? 'Reconnecting…' : 'Not connected';
   $('status').classList.toggle('connected', state.connected);
   showError(state.error);
-  $('setup').hidden = state.connected;
-  $('controls').hidden = !state.connected;
+  $('setup').hidden = state.connected || state.remembered;
+  $('controls').hidden = !state.connected && !state.remembered;
   $('workspace').textContent = (state.workspace || '').split('/').filter(Boolean).pop() || '';
   $('server').textContent = state.server || '';
   $('project').replaceChildren(...(state.projects || []).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=`${p.profile_id === 'workflow' ? 'Workflow' : p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.workspace.split('/').pop()}${p.connected ? ' · connected' : ''}`;option.selected=p.scope === state.selectedScope;return option;}));
   $('tab-count').textContent = String(state.tabs.length);
   $('empty').hidden = !!state.tabs.length;
+  $('empty').querySelector('strong').textContent = state.connected ? 'Ready for your agent' : 'Restoring your connection';
+  $('empty').querySelector('p').textContent = state.connected ? 'Your agent can create its own tabs. Sharing an already-open page below is optional.' : 'This browser will reconnect automatically when the platform is available.';
+  document.querySelector('.workspace .eyebrow').textContent = state.connected ? 'CONNECTED PROJECT' : 'REMEMBERED PROJECT';
   $('tabs').replaceChildren(...state.tabs.map(tab => {
     const row = document.createElement('li'), title = document.createElement('span'), remove = document.createElement('button');
     title.textContent = tab.title; title.title = tab.title; remove.textContent = 'Unshare'; remove.setAttribute('aria-label', `Unshare ${tab.title}`);

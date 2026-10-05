@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Remember extension connections and resume after transient loss
+
+Persist explicitly enabled project pairings in trusted browser-local extension
+storage and reconnect after network loss or server/worker/browser restarts. Keep
+tab grants only in browser-session storage as exact IDs; a full browser restart
+returns connected with zero tabs, ready for agent-created tabs. Never adopt the
+current page or infer access from tab groups. Explicit Disconnect, account Reset
+and access revocation stop resume; server resume also requires the durable
+selection so offline Disconnect cannot be undone. Why: a stable account token
+should let users return without pasting again, while sharing and revocation stay
+explicit. This reverses the earlier memory-only, manual reconnect lifecycle.
+Ticket: [PLAT-532](bugs/pulse_platform/browser/plat-532.md).
+
 ### 2026-10-05 — Workflows use account-private extension connections; human Connect shares the current website
 
 Offer the same account token in editable workflows, with live product/write

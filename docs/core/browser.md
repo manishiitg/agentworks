@@ -175,12 +175,33 @@ a live controller; reconnect to change it. Scheduled or background steps can use
 the connection only while the local browser is online; disconnect fails closed.
 The account's connection is never borrowed by another workflow owner or reader.
 
-Live bindings last at most eight hours and remain process-local. Selection is
-recorded without credentials or target IDs. Server/browser/worker restart
-requires explicit reconnection; it restores no authority and chooses no fallback
-browser. Shared tabs and tabs created within that project are the only targets.
-The extension holds its account token only in the live worker, opens an outbound
-WebSocket to the copied deployment URL and authenticates in its first message.
+Live bindings last at most eight hours and remain process-local. Server selection
+is recorded without credentials or target IDs. Extension 0.4.0 remembers explicitly
+enabled project pairings in browser-local storage, restricted to trusted extension
+contexts and never synced to another browser. It opens an outbound WebSocket to
+the saved deployment URL and authenticates in its first message. Network loss,
+sleep/wake and server/worker/browser restarts trigger reconnect with bounded
+backoff and an alarm wake-up. Each successful handshake rechecks account/workspace
+access and creates a fresh private relay capability, controller and reference
+session; an eight-hour socket expiry renews through the same path. No fallback
+browser is selected. The app reports Connected only after the new socket pairs.
+
+Tab grants are separate, in browser-session storage as exact tab IDs. Within the
+same browser session, reconnect reattaches only surviving explicitly shared IDs.
+It never adopts the foreground page or discovers authority from URLs, titles or
+existing groups, and cannot detach a tab belonging to another project. A browser
+restart or extension reload clears session grants: the connection returns ready
+with zero tabs, and the agent can create its own first tab. Sharing an existing
+page again remains optional. Reconnection never brings tabs into focus.
+
+Disconnect in the popup removes that project's remembered pairing before
+stopping its debugger/socket; Disconnect all removes all remembered pairings.
+App Disconnect removes the durable server selection. Automatic resume requires
+that selection to still exist, so an offline browser cannot undo Disconnect.
+Account Reset invalidates the credential, and lost access or replacement by
+another live browser stops retries when received. Explicit Connect can enable
+the project again. Browser-local storage and alarms permissions implement this
+lifecycle; the account token itself stays stable until Reset.
 HTTPS/WSS is required except loopback development; no app JWT is stored in the
 extension or placed in its URL.
 
@@ -278,11 +299,12 @@ Reusing a code in another browser replaces that project's prior browser on succe
 connection; each new binding receives a fresh private relay capability.
 Sharing another tab is explicit. Removing a shared tab detaches its debugger;
 Disconnect project closes that socket and detaches only its debuggers.
-Disconnect all projects closes all sockets and clears the live account credential.
+Disconnect all projects closes all sockets and clears remembered credentials.
 No automatic reconnect or silent reattachment follows user revocation. Chrome
 also supplies its debugger indicator. Heartbeats, command deadlines and bounded
-message sizes handle idle periods and failed connections. State is reset rather
-than restored with authority after an extension worker/browser restart.
+message sizes handle idle periods and failed connections. Transient reconnect
+restores only explicit grants from the current browser session; a full browser
+restart restores the connection with zero tabs.
 
 ### Protocol boundaries
 
@@ -309,8 +331,9 @@ wrong capability and target revocation through real WebSocket requests. Verify a
 build the server/frontend and package the unpacked extension as a downloadable
 ZIP. Record actual checks and remaining qualifications in the linked platform tickets.
 Real Chrome and Edge qualification for the current behavior is recorded in
-[PLAT-516](../bugs/pulse_platform/browser/plat-516.md); this documentation update
-does not claim a new runtime or deployment verification.
+[PLAT-516](../bugs/pulse_platform/browser/plat-516.md). Browser/server restart,
+offline Disconnect and remembered pairing checks are recorded in
+[PLAT-532](../bugs/pulse_platform/browser/plat-532.md); deployment remains separate.
 
 References: [agent-browser CDP](https://agent-browser.dev/cdp-mode),
 [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger),
@@ -331,6 +354,11 @@ go -C agent_go test -race ./pkg/browserrelay
 Install Playwright's full Chromium browser if needed, or set
 `CHROME_EXTENSION_E2E_CHROME` to a Chrome-for-Testing executable. The live test
 uses its own temporary profile; it does not control the user's existing Chrome.
+
+After upgrading to extension 0.4.0, reload the unpacked extension (or load the
+new ZIP folder) and connect once to seed its remembered pairing. Subsequent
+returns do not require another paste. The upgraded server is also required for
+explicit revocation close frames and the automatic-resume selection check.
 
 The packager embeds the extension ZIP in the Go server, which serves it at
 `/api/downloads/chrome-extension.zip`. Repackage after every extension source edit.

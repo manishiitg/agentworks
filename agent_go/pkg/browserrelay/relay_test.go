@@ -116,6 +116,9 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	if m.Lookup("alice", "project-one").Session() == b.Session() {
 		t.Fatal("reconnect retained stale refs")
 	}
+	if err := extension.ReadJSON(&reply); !websocket.IsCloseError(err, 4001) {
+		t.Fatal("browser replacement did not stop automatic reconnect", err)
+	}
 	reused.WriteJSON(envelope{Type: "stop"})
 	client.SetReadDeadline(time.Now().Add(time.Second))
 	if _, _, err := client.ReadMessage(); err == nil {

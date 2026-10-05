@@ -1,4 +1,4 @@
-// Authority lives only in this worker; restart requires human pairing.
+// Remember explicitly enabled connections locally; tab grants survive only the browser session.
 // Each project has its own socket, target/session maps, controller and tab groups.
 const connections = new Map();
 const tabOwners = new Map();
@@ -6,24 +6,116 @@ let accountPairing = null;
 let availableProjects = [];
 let selectedScope = '';
 let popupQueue = Promise.resolve();
+const savedPairings = new Map();
+const savedTabs = new Map();
+const retries = new Map();
+const storageKey = 'browserConnections';
+const retryAlarm = 'browser-reconnect';
+let storageWrites = Promise.resolve();
+let retryTimer;
+let storageError = '';
+let resumeQueued = false;
+function saveRemembered() {
+ const record = {pairings:[...savedPairings.values()],selectedScope,projects:availableProjects};
+ const grants = Object.fromEntries(savedTabs);
+ const hasPairings = record.pairings.length > 0;
+ const write = () => Promise.all([
+  hasPairings ? chrome.storage.local.set({[storageKey]:record}) : chrome.storage.local.remove(storageKey),
+  chrome.storage.session.set({browserSharedTabs:grants})
+ ]);
+ storageWrites = storageWrites.then(write,write).catch(()=>{storageError='Connection is live, but could not be remembered. Reconnect after checking extension storage.';});
+ return storageWrites;
+}
+async function initialize() {
+ await Promise.all([
+  chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}),
+  chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})
+ ]);
+ const [{browserConnections:record},{browserSharedTabs:grants}] = await Promise.all([
+  chrome.storage.local.get(storageKey),chrome.storage.session.get('browserSharedTabs')
+ ]);
+ for(const pairing of record?.pairings || []) {
+  if(typeof pairing.scope==='string' && pairing.scope && typeof pairing.token==='string' && typeof pairing.url==='string') savedPairings.set(pairing.scope,pairing);
+ }
+ accountPairing = savedPairings.values().next().value || null;
+ if(accountPairing)accountPairing={...accountPairing,resume:false};
+ selectedScope = savedPairings.has(record?.selectedScope) ? record.selectedScope : savedPairings.keys().next().value || '';
+ availableProjects = Array.isArray(record?.projects) ? record.projects : [];
+ for(const [scope,ids] of Object.entries(grants || {})) if(savedPairings.has(scope) && Array.isArray(ids))savedTabs.set(scope,ids.filter(Number.isInteger).slice(0,32));
+ await chrome.alarms.create(retryAlarm,{periodInMinutes:0.5});
+}
+async function forgetProject(scope,reason='') {
+ savedPairings.delete(scope);savedTabs.delete(scope);retries.delete(scope);
+ const c=connections.get(scope);
+ connections.delete(scope);
+ if(selectedScope===scope)selectedScope=savedPairings.keys().next().value || '';
+ if(!savedPairings.size){accountPairing=null;availableProjects=[];}
+ await saveRemembered();
+ await c?.stop(reason);updateBadge();
+}
+function retryLater(scope) {
+ if(!savedPairings.has(scope))return;
+ const delay=Math.min((retries.get(scope)?.delay || 500)*2,30000);
+ retries.set(scope,{delay,after:Date.now()+delay});
+ clearTimeout(retryTimer);
+ retryTimer=setTimeout(queueResume,Math.max(100,[...retries.values()].reduce((n,r)=>Math.min(n,r.after-Date.now()),30000)));
+}
+function queueResume() {
+ if(resumeQueued || ![...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))return;
+ resumeQueued=true;
+ const resume=async()=>{
+  try {
+   await ready;
+   const previousScope=selectedScope;
+   for(const [scope,pairing] of [...savedPairings]) {
+    if(connections.get(scope)?.state().connected || Date.now()<(retries.get(scope)?.after || 0))continue;
+    const ids=[...(savedTabs.get(scope) || [])];
+    try {
+     await connectProject(JSON.stringify(pairing));
+     const c=connections.get(scope);
+     // IDs belong only to this browser session. Never restore tabs by URL/title,
+     // group membership, or whichever page is now in the foreground.
+     for(const id of ids) {
+      if(tabOwners.has(id) && tabOwners.get(id)!==c)continue;
+      try {await chrome.debugger.detach({tabId:id});} catch {}
+      try {await c.share(id);} catch {}
+     }
+     savedTabs.set(scope,c.state().tabs.map(t=>t.id));
+     retries.delete(scope);
+    } catch {retryLater(scope);}
+   }
+   if(savedPairings.has(previousScope))selectedScope=previousScope;
+   await saveRemembered();updateBadge();
+  } finally {resumeQueued=false;}
+ };
+ popupQueue=popupQueue.then(resume,resume);
+}
 function updateBadge() { void chrome.action.setBadgeText({text:[...connections.values()].some(c=>c.state().connected) ? 'ON' : ''}); }
 function state() {
  const c = connections.get(selectedScope);
- return {...(c?.state() || {connected:false,workspace:'',server:'',error:'',tabs:[]}), selectedScope,
+ const remembered=savedPairings.has(selectedScope);
+ const live=c?.state() || {connected:false,workspace:'',server:'',error:'',tabs:[]};
+ return {...live,
+  workspace:live.workspace || availableProjects.find(p=>p.scope===selectedScope)?.workspace || '',
+  server:live.server || (remembered ? new URL(savedPairings.get(selectedScope).url).host : ''),
+  error:live.error || storageError,
+  selectedScope, remembered, reconnecting:remembered && !live.connected,
   projects:availableProjects.map(p=>({...p,connected:connections.get(p.scope)?.state().connected || false}))};
 }
 async function connectProject(raw) {
  const pairing = JSON.parse(raw);
- if (![...connections.values()].some(c=>c.state().connected)) {accountPairing=null;availableProjects=[];connections.clear();}
- if (accountPairing && (accountPairing.url !== pairing.url || accountPairing.token !== pairing.token)) throw new Error('Disconnect all projects before connecting another account or server');
- const previous = connections.get(pairing.scope);
+ const changedAccount=accountPairing && (accountPairing.url!==pairing.url || accountPairing.token!==pairing.token);
+ if(changedAccount && [...connections.values()].some(c=>c.state().connected))throw new Error('Disconnect all projects before connecting another account or server');
+ const previous = changedAccount ? null : connections.get(pairing.scope);
  if (previous) await previous.stop();
  const c = createConnection();
  await c.connect(raw);
  if (!c.scope) {await c.stop(); throw new Error('Update the platform before connecting');}
+ if(changedAccount){connections.clear();savedPairings.clear();savedTabs.clear();retries.clear();}
  const old = connections.get(c.scope);
  if (old && old !== previous) await old.stop();
- accountPairing = pairing; connections.set(c.scope,c); selectedScope = c.scope; updateBadge();
+ accountPairing = {...pairing,resume:false}; connections.set(c.scope,c); selectedScope = c.scope;
+ savedPairings.set(c.scope,{...pairing,scope:c.scope,resume:true});await saveRemembered();updateBadge();
  return state();
 }
 function createConnection() {
@@ -45,7 +137,7 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
-function announceTabs() { send({ type: 'tabs', tabs: shared.size, tab_titles: [...shared.values()].map(tab => tab.title || 'Untitled tab') }); }
+function announceTabs() { send({ type: 'tabs', tabs: shared.size, tab_titles: [...shared.values()].map(tab => tab.title || 'Untitled tab') }); if(savedPairings.has(api.scope)){savedTabs.set(api.scope,[...shared.keys()]);return saveRemembered();}return Promise.resolve(); }
 function event(method, params, sessionId) { send({ type: 'cdp', message: { method, params, ...(sessionId ? { sessionId } : {}) } }); }
 function target(tab) { return { targetId: `tab-${tab.id}`, type: 'page', title: tab.title || '', url: tab.url || 'about:blank', attached: sessions.has(`session-${tab.id}`), browserContextId: 'agentworks' }; }
 async function tabForTarget(id) {
@@ -101,7 +193,7 @@ async function share(tabId) {
     shared.set(tabId, tab);
     try { await groupSharedTab(tabId, connection); } catch (e) { if (socket !== connection || !workspace) throw e; error = 'Tab shared, but its group could not be created.'; }
     await announce(tab);
-    announceTabs();
+    await announceTabs();
   }
   return state();
 }
@@ -115,7 +207,7 @@ async function unshare(tabId) {
   try { await chrome.debugger.detach({ tabId }); } catch {}
   if (tabOwners.get(tabId) === api) tabOwners.delete(tabId);
   event('Target.targetDestroyed', { targetId: `tab-${tabId}` });
-  announceTabs();
+  await announceTabs();
 }
 async function stop(reason = '') {
   const previous = socket; socket = null; workspace = ''; brand = 'AgentWorks'; error = reason;
@@ -141,8 +233,10 @@ async function connect(raw) {
   await stop();
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(endpoint.href); socket = ws;
-    const timer = setTimeout(() => { if (socket === ws) void stop('Connection timed out'); reject(new Error('Connection timed out')); }, 10000);
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'pair', token: pairing.token, scope: pairing.scope }));
+    const transientLoss=async(reason)=>{if(socket!==ws)return;await stop(reason);retryLater(pairing.scope);};
+    const revoke=()=>{const forget=()=>{const scope=api.scope || pairing.scope, saved=savedPairings.get(scope);if(saved?.token===pairing.token && saved.url===pairing.url)return forgetProject(scope,'Connection stopped. Connect again to enable access.');};popupQueue=popupQueue.then(forget,forget);};
+    const timer = setTimeout(() => {void transientLoss('Reconnecting to the platform…');reject(new Error('Connection timed out'));},10000);
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'pair', token: pairing.token, scope: pairing.scope, resume:pairing.resume===true }));
     ws.onmessage = ({ data }) => {
       if (socket !== ws) return;
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
@@ -152,14 +246,14 @@ async function connect(raw) {
         updateBadge(); resolve(state());
       } else if (e.type === 'connect-project') {
         const previousScope=selectedScope;
-        const attachProject=async()=>{if(socket!==ws || !accountPairing)return;try{await connectProject(JSON.stringify({...accountPairing,scope:e.scope}));}finally{if(connections.get(previousScope)?.state().connected)selectedScope=previousScope;}};
+        const attachProject=async()=>{if(socket!==ws || !accountPairing)return;try{await connectProject(JSON.stringify({...accountPairing,scope:e.scope}));}finally{if(connections.get(previousScope)?.state().connected)selectedScope=previousScope;await saveRemembered();}};
         popupQueue=popupQueue.then(attachProject,attachProject);
       } else if (e.type === 'target-command') {
         queue=queue.then(async()=>{if(socket!==ws || !workspace)return;try{const result=await command(e.target_id ? {method:'Target.closeTarget',params:{targetId:e.target_id}} : {method:'Target.createTarget',params:{url:e.url}},e.active===true);send({type:'target-result',request_id:e.request_id,target_id:e.target_id || result.targetId});}catch(error){send({type:'target-result',request_id:e.request_id,error:error.message});}}).catch(()=>{});
       } else if (e.type === 'projects' || e.type === 'pong') {
         if (Array.isArray(e.projects)) availableProjects = e.projects;
       } else if (e.type === 'error') {
-        clearTimeout(timer); reject(new Error(e.workspace)); void stop(e.workspace);
+        clearTimeout(timer); reject(new Error(e.workspace)); revoke();void stop(e.workspace);
       } else if (e.type === 'cdp') {
         // CDP events are asynchronous; requests execute in arrival order.
         queue = queue.then(() => handleCDP(e.message, ws, e.active === true)).catch(() => {});
@@ -168,7 +262,7 @@ async function connect(raw) {
       }
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('Cannot connect to the platform')); };
-    ws.onclose = () => { clearTimeout(timer); reject(new Error('Connection closed')); if (socket === ws) void stop('Browser disconnected. Paste your saved connection code to reconnect.'); };
+    ws.onclose = ({code}) => {clearTimeout(timer);reject(new Error('Connection closed'));if(socket!==ws)return;if(code===4001){revoke();void stop('Connection stopped. Connect again to enable access.');}else void transientLoss('Reconnecting to the platform…');};
   });
 }
 
@@ -188,7 +282,7 @@ async function command(message, active = false) {
         if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
         const tab = await chrome.tabs.create({ url: safeURL(params.url || 'about:blank'), active });
-        try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); announceTabs(); return { targetId: `tab-${tab.id}` }; }
+        try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); await announceTabs(); return { targetId: `tab-${tab.id}` }; }
         catch (e) { await chrome.tabs.remove(tab.id); throw e; }
       }
       case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id); await chrome.tabs.remove(tab.id); return { success: true }; }
@@ -242,9 +336,11 @@ chrome.tabs.onUpdated.addListener((tabId,change,tab)=>tabOwners.get(tabId)?.onUp
 chrome.runtime.onMessage.addListener((request,sender,respond)=>{
  if(sender.id !== chrome.runtime.id) return;
  const run=async()=>{
+  await ready;
   if(request.action==='state')return state();
   if(request.action==='connect') {
-   await connectProject(request.pairing);
+     await connectProject(request.pairing);
+   savedTabs.set(selectedScope,[]);await saveRemembered();
    const c=connections.get(selectedScope);
    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
    // Connect is a human action granting this workspace the current website.
@@ -258,25 +354,28 @@ chrome.runtime.onMessage.addListener((request,sender,respond)=>{
   if(request.action==='select-project') {
    if(!availableProjects.some(p=>p.scope===request.scope) || !accountPairing)throw new Error('Project is not available to this account');
    if(!connections.get(request.scope)?.state().connected)await connectProject(JSON.stringify({...accountPairing,scope:request.scope}));
-   selectedScope=request.scope;return state();
+   selectedScope=request.scope;await saveRemembered();return state();
   }
   if(request.action==='stop-all') {
-   await Promise.allSettled([...connections.values()].map(c=>c.stop()));connections.clear();accountPairing=null;availableProjects=[];selectedScope='';return state();
+   savedPairings.clear();savedTabs.clear();retries.clear();clearTimeout(retryTimer);
+   await saveRemembered();await Promise.allSettled([...connections.values()].map(c=>c.stop()));connections.clear();accountPairing=null;availableProjects=[];selectedScope='';return state();
   }
-  const c=connections.get(selectedScope);if(!c)throw new Error('Connect to a project first');
+  if(request.action==='stop'){await forgetProject(selectedScope);return state();}
+  const c=connections.get(selectedScope);if(!c)throw new Error('Browser is reconnecting. Wait until connected.');
   if(request.action==='share')await c.share(request.tabId);
   else if(request.action==='newtab')await c.newtab();
   else if(request.action==='group')await c.group();
   else if(request.action==='unshare')await c.unshare(request.tabId);
-  else if(request.action==='stop') {
-   await c.stop();connections.delete(selectedScope);selectedScope=[...connections.keys()].find(k=>connections.get(k).state().connected)||'';
-   if(!selectedScope){accountPairing=null;availableProjects=[];connections.clear();}
-  }
   else throw new Error('Unknown action');
   return state();
  };
  // Popup mutations serialize so two Share clicks cannot claim one tab twice.
- if(request.action==='state'){respond({ok:true,...state()});return;}
+ if(request.action==='state'){void ready.then(()=>{respond({ok:true,...state()});if([...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))queueResume();},e=>respond({ok:false,error:e.message}));return true;}
  popupQueue=popupQueue.then(run,run);
  popupQueue.then(value=>respond({ok:true,...value}),e=>respond({ok:false,error:e.message}));return true;
 });
+
+const ready=initialize();
+void ready.then(queueResume).catch(()=>{storageError='Could not restore the remembered browser connection.';});
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name===retryAlarm)queueResume();});
+chrome.runtime.onStartup.addListener(queueResume);

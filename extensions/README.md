@@ -12,4 +12,5 @@ Implementation tracking: [PLAT-510](../docs/bugs/pulse_platform/browser/plat-510
 [PLAT-513](../docs/bugs/pulse_platform/browser/plat-513.md) and
 [PLAT-516](../docs/bugs/pulse_platform/browser/plat-516.md) and
 [PLAT-524](../docs/bugs/pulse_platform/browser/plat-524.md) and
-[PLAT-530](../docs/bugs/pulse_platform/browser/plat-530.md).
+[PLAT-530](../docs/bugs/pulse_platform/browser/plat-530.md) and
+[PLAT-532](../docs/bugs/pulse_platform/browser/plat-532.md).
