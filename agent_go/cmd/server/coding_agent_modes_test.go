@@ -1493,6 +1493,27 @@ func TestRetainedTurnCompletionSkipsDuplicateForSameTurn(t *testing.T) {
 	}
 }
 
+// Once the structured completion has settled a turn it is no longer tracked. A sidecar settle that arrives
+// after that has no turn start: it must emit nothing rather than read the thread's FIRST reply and record it
+// as a new one (sales-outreach showed the 3 October sandbox answer after every turn).
+func TestRetainedTurnCompletionEmitsNothingWhenTheTurnIsNoLongerTracked(t *testing.T) {
+	const sessionID = "retained-untracked-completion"
+	store := internalevents.NewEventStore(10)
+	defer store.Stop()
+	api := &StreamingAPI{internalChatSubmissionStore: newTestChatSubmissionStore(),
+		eventStore:        store,
+		retainedMainTurns: map[string]time.Time{},
+		internalRetainedTurnFinalResponseReader: func(llmproviders.Provider, string, time.Time) string {
+			return "Ran from the CLI runtime directory using only my own shell tools."
+		},
+	}
+	snapshot := terminals.Snapshot{TerminalID: sessionID + ":main:" + sessionID, TmuxSession: "mlp-codex-cli-int-retained"}
+	api.emitRetainedMainTurnStreamCompletion(sessionID, snapshot, llmproviders.ProviderCodexCLI, "completed", "")
+	if recorded := store.GetAllEventsRaw(sessionID); len(recorded) != 0 {
+		t.Fatalf("recorded events=%d, want 0 for a turn that is no longer tracked: %+v", len(recorded), recorded)
+	}
+}
+
 // A genuinely new turn (retainedMainTurns advances to a new start time) must
 // still get its own completion -- the guard is per-turn, not per-session.
 func TestRetainedTurnCompletionEmitsAgainForANewTurn(t *testing.T) {

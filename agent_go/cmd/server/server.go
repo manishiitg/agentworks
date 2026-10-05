@@ -9324,6 +9324,14 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 		log.Printf("[RETAINED_TURN] Completion already emitted for this turn, skipping duplicate session=%s terminal=%s", sessionID, snapshot.TerminalID)
 		return
 	}
+	if turnStartedAt.IsZero() {
+		// The turn is no longer tracked: another path (the structured completion) already settled it. With no
+		// start time the duplicate guard above cannot work and the reader cannot tell this turn's reply from
+		// the thread's first one, so it returned the first turn's answer and the chat showed it as a new
+		// reply after every turn (sales-outreach, 2026-10-05: the 3 October sandbox test, over and over).
+		log.Printf("[RETAINED_TURN] No active retained turn, not emitting a completion session=%s terminal=%s status=%s", sessionID, snapshot.TerminalID, status)
+		return
+	}
 	if executionID == "" {
 		executionID = strings.TrimSpace(snapshot.ExecutionID)
 	}

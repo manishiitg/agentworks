@@ -234,6 +234,10 @@ usable node_modules if the install fails.
 
 [PLAT-537](pulse_platform/mcp/plat-537.md), open: pre-existing, found while testing PLAT-535/536.
 
+## A long Codex chat showed its first reply again after every turn — PLAT-539
+
+[PLAT-539](pulse_platform/chat-reliability/plat-539.md), fixed on main, not deployed: the sidecar completion path now emits nothing when the turn is no longer tracked.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
