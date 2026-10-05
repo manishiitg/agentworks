@@ -24,7 +24,7 @@ func Manifest() (agentprofiles.ProductManifest, error) {
 	once.Do(func() {
 		manifest, manifestErr = agentprofiles.LoadProductManifest(files, "product.yaml")
 		if manifestErr == nil && (manifest.Profile.ID != ProfileID || manifest.UI.Surface != ProfileID) {
-			manifestErr = fmt.Errorf("invalid Knowledge Base product identity")
+			manifestErr = fmt.Errorf("invalid Brain product identity")
 		}
 	})
 	return manifest, manifestErr
@@ -88,13 +88,13 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, execute Acces
 					}
 					return agentprofiles.ToolSpec{Name: def.Name, Description: def.Description, Parameters: def.InputSchema, Category: ProfileID, Execute: func(ctx context.Context, args map[string]any) (string, error) {
 						if factory.execute == nil {
-							return "", fmt.Errorf("Knowledge Base Git executor unavailable")
+							return "", fmt.Errorf("Brain Git executor unavailable")
 						}
 						return factory.execute(ctx, runtime, args)
 					}}, nil
 				}
 			}
-			return agentprofiles.ToolSpec{}, fmt.Errorf("Knowledge Base tool is not registered")
+			return agentprofiles.ToolSpec{}, fmt.Errorf("Brain tool is not registered")
 		}); err != nil {
 			return err
 		}

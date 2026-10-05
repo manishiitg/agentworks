@@ -33,7 +33,7 @@ async function openEntry(host: HTMLElement) {
   await act(async () => { [...host.querySelectorAll('[data-filepath]')].find(item => item.textContent?.includes('Payments'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await act(async () => { [...host.querySelectorAll('[data-filepath]')].find(item => item.textContent?.includes('checkout.md'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 }
-describe('Knowledge Base shared Files view', () => {
+describe('Brain shared Files view', () => {
   it('uses the shared explorer and viewer while fetching only permission-checked KB content', async () => {
     const { host } = await mount()
     expect(host.textContent).toContain('Explorer')

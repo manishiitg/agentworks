@@ -227,7 +227,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 			return err
 		}
 		if fresh.ID != project.ID || knowledgeHash(fresh.Bindings) != originalBindingsHash || knowledgeHash(fresh.Audience) != knowledgeHash(policy.Audience) {
-			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Shared Knowledge Base bindings or audience changed; retry under the current configuration."}
+			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Shared Brain bindings or audience changed; retry under the current configuration."}
 		}
 		return nil
 	}

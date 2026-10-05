@@ -39,7 +39,7 @@ const products: Array<{
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
-  { id: 'knowledgebase', label: 'Knowledge Base', description: 'Shared knowledge with folder access and MCP updates', icon: BookOpen },
+  { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BookOpen },
 ]
 
 export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {

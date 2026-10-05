@@ -36,7 +36,7 @@ func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]
 	}
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID != userID || !knowledgeInteractiveAccess(claims) || !knowledgebaseProductAllowed(claims) {
-		return "", fmt.Errorf("interactive Knowledge Base access required")
+		return "", fmt.Errorf("interactive Brain access required")
 	}
 	root, err := knowledgeIntegrationRoot()
 	if err != nil {
@@ -96,7 +96,7 @@ func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]
 func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	if !knowledgebaseProductAllowed(claims) || !knowledgeInteractiveAccess(claims) {
-		externalError(w, 403, "FORBIDDEN", "Interactive Knowledge Base access required.")
+		externalError(w, 403, "FORBIDDEN", "Interactive Brain access required.")
 		return
 	}
 	root, err := knowledgeIntegrationRoot()

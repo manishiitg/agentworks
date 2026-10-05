@@ -70,7 +70,7 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 	for _, docs := range []string{fsutil.WorkspaceDocsRoot(), fsutil.WorkspaceShellRoot()} {
 		docs = canonical(docs)
 		if inside(docs, root) || inside(root, docs) {
-			return knowledgebase.Config{}, fmt.Errorf("Knowledge Base data must be outside workspace tool roots")
+			return knowledgebase.Config{}, fmt.Errorf("Brain data must be outside workspace tool roots")
 		}
 	}
 	branch := strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_BRANCH"))
@@ -175,7 +175,7 @@ func knowledgebasePrincipal(r *http.Request, claims *UserClaims) knowledgebase.P
 func knowledgebaseHTTPError(w http.ResponseWriter, err error) {
 	var domain *knowledgebase.Error
 	if !errors.As(err, &domain) {
-		externalError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Knowledge Base is temporarily unavailable.")
+		externalError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Brain is temporarily unavailable.")
 		return
 	}
 	status := http.StatusBadRequest
@@ -241,7 +241,7 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 	}
 	claims := GetUserFromContext(r.Context())
 	if !knowledgebaseProductAllowed(claims) {
-		externalError(w, http.StatusNotFound, "NOT_FOUND", "Knowledge Base not found.")
+		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain not found.")
 		return
 	}
 	// Reader endpoints never admit a content mutation or an access mutation.
@@ -278,7 +278,7 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 	case "backup":
 		tool = "get_knowledgebase_backup_status"
 	default:
-		externalError(w, http.StatusNotFound, "NOT_FOUND", "Knowledge Base endpoint not found.")
+		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")
 		return
 	}
 	args := map[string]any{}
@@ -321,11 +321,11 @@ func isExternalKnowledgebaseTool(name string) bool {
 func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *http.Request, tool string, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if !knowledgebaseProductAllowed(claims) {
-		externalError(w, 404, "NOT_FOUND", "Knowledge Base not found.")
+		externalError(w, 404, "NOT_FOUND", "Brain not found.")
 		return
 	}
 	if !knowledgebaseConnectionAllowsAction(claims, tool, args) {
-		externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow the requested Knowledge Base action.")
+		externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow the requested Brain action.")
 		return
 	}
 	service, err := knowledgebaseService()

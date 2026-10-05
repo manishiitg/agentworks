@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 describe('ProductSurfaceSwitcher deployment allowlist', () => {
-  it('shows AgentWorks, Relays, Crew, and Knowledge Base in the local product switcher', () => {
+  it('shows AgentWorks, Relays, Crew, and Brain in the local product switcher', () => {
     expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
   })
   it('shows only AgentWorks and Video Studio on the dedicated server', () => {

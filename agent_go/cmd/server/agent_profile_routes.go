@@ -130,7 +130,7 @@ func hasSelectedServers(servers []string) bool {
 
 func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
 	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
-		return QueryRequest{}, fmt.Errorf("this profile does not accept Knowledge Base context")
+		return QueryRequest{}, fmt.Errorf("this profile does not accept Brain context")
 	}
 	if strings.TrimSpace(conversation.SessionID) == "" || strings.TrimSpace(conversation.WorkspacePath) == "" {
 		return QueryRequest{}, fmt.Errorf("product conversation has no runtime binding")
@@ -532,7 +532,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if input.KnowledgebaseFolderPath != nil {
 		folder := *input.KnowledgebaseFolderPath
 		if len(folder) > 1024 {
-			writeAgentProfileError(w, 400, "invalid Knowledge Base folder")
+			writeAgentProfileError(w, 400, "invalid Brain folder")
 			return
 		}
 		service, err := knowledgebaseService()
@@ -548,7 +548,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 			knowledgebaseHTTPError(w, err)
 			return
 		}
-		query.Query = "Selected Knowledge Base folder (context only): " + strconv.Quote(folder) + "\n\n" + query.Query
+		query.Query = "Selected Brain folder (context only): " + strconv.Quote(folder) + "\n\n" + query.Query
 	}
 
 	encoded, err := json.Marshal(query)

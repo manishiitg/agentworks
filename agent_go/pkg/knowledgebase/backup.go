@@ -139,7 +139,7 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	authFlags, env := backupGitAuth(ctx, args)
 	args = append(append(s.gitArgs(), authFlags...), args...)
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
+	cmd.Env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=Brain", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Brain", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
 	cmd.Env = append(cmd.Env, extraEnv...)
 	if stdin != nil {
 		cmd.Stdin = strings.NewReader(string(stdin))
@@ -550,7 +550,7 @@ func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a ma
 	st := s.backupState()
 	if st.ExternalChange {
 		unlock()
-		return nil, kbErr("BACKUP_REMOTE_CHANGED", "The repository changed outside Knowledge Base; administrator reconciliation is required.")
+		return nil, kbErr("BACKUP_REMOTE_CHANGED", "The repository changed outside Brain; administrator reconciliation is required.")
 	}
 	unlock()
 	if tool == "commit_knowledgebase" {

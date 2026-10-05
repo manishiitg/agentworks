@@ -1,7 +1,7 @@
 import { WorkModelsPanel } from '../work/WorkModelsPanel'
 import { useChatStore } from '../../stores/useChatStore'
 
-/** Knowledge Base shares the platform's provider, account, model and reasoning controls. */
+/** Brain shares the platform's provider, account, model and reasoning controls. */
 export function KnowledgebaseModelSettings({ tabId }: { tabId: string | null }) {
   if (!tabId) return null
   return <WorkModelsPanel tabId={tabId} workspacePath="Chats/Knowledgebase" profileId="knowledgebase" profileVersion={1} hideHeader

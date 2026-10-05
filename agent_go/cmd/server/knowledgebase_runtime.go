@@ -21,7 +21,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 		claims = principalClaims(userID)
 	}
 	if strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseProductAllowed(claims) {
-		return "", fmt.Errorf("Knowledge Base is unavailable to this principal")
+		return "", fmt.Errorf("Brain is unavailable to this principal")
 	}
 	if claims.AccessToken != nil {
 		store, err := openAccessTokens()
@@ -42,7 +42,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		return "", fmt.Errorf("Knowledge Base service unavailable")
+		return "", fmt.Errorf("Brain service unavailable")
 	}
 	if err = knowledgebaseSyncIdentities(ctx, service); err != nil {
 		return "", err
@@ -63,7 +63,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 
 func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.ToolRuntimeContext, args map[string]any) (string, error) {
 	if runtime.Product != "knowledgebase" {
-		return "", fmt.Errorf("access tool requires the Knowledge Base profile")
+		return "", fmt.Errorf("access tool requires the Brain profile")
 	}
 	action, _ := args["action"].(string)
 	if knowledgebase.ToolActionMutates("manage_knowledgebase_access", action) {
@@ -75,7 +75,7 @@ func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.Tool
 // The Files AI actions use the existing product chat and a narrow Git tool.
 func knowledgebaseBackupExecutor(ctx context.Context, runtime agentprofiles.ToolRuntimeContext, args map[string]any) (string, error) {
 	if runtime.Product != "knowledgebase" {
-		return "", fmt.Errorf("Git tool requires the Knowledge Base profile")
+		return "", fmt.Errorf("Git tool requires the Brain profile")
 	}
 	action, _ := args["action"].(string)
 	if action != "git" && action != "status" {

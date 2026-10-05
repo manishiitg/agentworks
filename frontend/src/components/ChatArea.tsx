@@ -506,7 +506,7 @@ interface ChatAreaProps {
   showNewChatAction?: boolean
   /** Product-specific composer placeholder (the product variant otherwise says "Describe what you want to create…"). */
   composerPlaceholder?: string
-  /** Knowledge Base context hint. The profile route validates access. */
+  /** Brain context hint. The profile route validates access. */
   knowledgebaseFolderPath?: string
 }
 

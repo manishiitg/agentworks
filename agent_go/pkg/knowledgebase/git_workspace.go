@@ -72,7 +72,7 @@ func (s *Service) RunGit(ctx context.Context, p Principal, a map[string]any, run
 	}
 	write := !GitReadOperation(op)
 	if p.IdentityID == "" || p.AccessOnly || p.BindingPolicy != nil || write && p.Caps != nil {
-		return nil, kbErr("FORBIDDEN", "Repository actions require an unrestricted Knowledge Base connection.")
+		return nil, kbErr("FORBIDDEN", "Repository actions require an unrestricted Brain connection.")
 	}
 	if p.Recheck != nil {
 		if err := p.Recheck(ctx); err != nil {
@@ -428,7 +428,7 @@ func gitWorkspaceBytes(ctx context.Context, dir string, args ...string) ([]byte,
 	flags = append(flags, authFlags...)
 	cmd := exec.CommandContext(ctx, "git", append(flags, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
+	cmd.Env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=Brain", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Brain", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
 	out := gitOutputBuffer{limit: 16 << 20}
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

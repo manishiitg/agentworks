@@ -1,13 +1,13 @@
 ---
 name: agentworks
-description: Use AgentWorks workflows, Crews and shared Knowledge Base through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
+description: Use AgentWorks workflows, Crews and shared Brain through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
 ---
 
 # AgentWorks
 
 This skill is an entry pointer, not a manual. All substantive guidance lives on the server and is fetched per task — nothing here can go stale.
 
-Use only the tools and actions exposed by this connection. Workflow runs use pinned Run-mode sessions; Builder, Crew edits and Knowledge Base updates require the corresponding permissions.
+Use only the tools and actions exposed by this connection. Workflow runs use pinned Run-mode sessions; Builder, Crew edits and Brain updates require the corresponding permissions.
 
 ## Connect
 
@@ -37,7 +37,7 @@ Use `get_api_spec` to inspect the available tools, then call `get_agent_context`
 
 List topics with `list_guidance_topics` and load only relevant ones via `get_guidance_topic`. Inspect workflow knowledge with `list_workflow_knowledge` / `read_workflow_knowledge` (learnings, knowledgebase notes, workspace skills, skill wiring). Use `get_file_link` for preview/download URLs.
 
-## Shared Knowledge Base
+## Shared Brain
 
 Discover the schemas through `get_api_spec`, then invoke actions through `call_tool`:
 - `browse_knowledgebase`: `folders` / `entries` for accessible skills, facts, notes and sources.
@@ -46,7 +46,7 @@ Discover the schemas through `get_api_spec`, then invoke actions through `call_t
 - `backup_knowledgebase`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
 - `manage_knowledgebase_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
 
-Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `manage_knowledgebase_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Knowledge Base.
+Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `manage_knowledgebase_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Brain.
 
 ## Run
 

@@ -23,7 +23,7 @@ import (
 // hostedSkillDescription is the SKILL.md frontmatter description: what the
 // skill does and when to use it. Keep it under 1024 chars with no XML
 // brackets (frontmatter constraints shared by the upload scanners).
-const hostedSkillDescription = "Use AgentWorks workflows, Crews and shared Knowledge Base over MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Use when the task touches an AgentWorks workflow or when agentworks tools are available."
+const hostedSkillDescription = "Use AgentWorks workflows, Crews and shared Brain over MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Use when the task touches an AgentWorks workflow or when agentworks tools are available."
 
 // buildHostedSkillMarkdown renders the hosted SKILL.md. It must stay
 // self-contained: ChatGPT delivers tools only (no MCP prompts, resources, or
@@ -49,7 +49,7 @@ Call `+"`get_api_spec`"+` with no arguments to list every available tool. Call `
 
 List topics with `+"`list_guidance_topics`"+` and load only relevant ones via `+"`get_guidance_topic`"+`. Inspect workflow knowledge with `+"`list_workflow_knowledge`"+` / `+"`read_workflow_knowledge`"+` (learnings, knowledgebase notes, workspace skills, skill wiring). Use `+"`get_file_link`"+` for preview/download URLs.
 
-## Shared Knowledge Base
+## Shared Brain
 
 Use get_api_spec to discover schemas and call_tool to invoke browse_knowledgebase (folders/entries), read_knowledgebase (read/search), update_knowledgebase (create/update/delete/create_folder), backup_knowledgebase (status/commit/push/git), and manage_knowledgebase_access. Updates/deletes require the current expected_version and a stable request_id. Diff patches support large files; saves are readable immediately. Git is explicit: commit selected versions only when requested, then push the receipt with a different request ID. Unrestricted root Editors can also use backup_knowledgebase action=git with op for Files-style staging, commit/push, pull, branches and stashes. Repository history needs root Reader. Pull/checkout update live knowledge and require a clean tree; stash/discard also affect live content. Retry uncertain Git pushes with the original request ID. Managed/scoped content connections retain selected receipt backups.
 

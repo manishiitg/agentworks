@@ -15,7 +15,7 @@ const scopeDescriptions: Record<string, string> = {
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
   'crews:write': 'Create Crews and edit the Crews you own (identity, skills, functions, schedules, files)',
-  'knowledgebase:read': 'Read shared Knowledge Base folders your identity can access',
+  'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Update shared knowledge and prepare or push backups within your folder grants',
   'code:review': 'Review every Code workspace: cost, chats and files, read-only. Every view is recorded in the audit log',
 }
@@ -27,7 +27,7 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'See and run your workflows', scopes: ['workflows:read', 'files:read', 'runs:execute'] },
   { summary: 'Use your Crews', scopes: ['crews:read', 'crews:run'] },
   { summary: 'Make changes: edit your Crews, Relays and workflows, as far as your role allows', scopes: ['crews:write', 'builder:chat', 'relays:write'] },
-  { summary: 'Use shared Knowledge Base within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
+  { summary: 'Use shared Brain within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
   { summary: 'Review Code workspaces (read-only, logged)', scopes: ['code:review'] },
 ]
 

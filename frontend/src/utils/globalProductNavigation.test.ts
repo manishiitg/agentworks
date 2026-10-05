@@ -68,7 +68,7 @@ afterEach(() => {
 })
 
 describe('global AgentWorks and Crew navigation', () => {
-  it('routes Knowledge Base access chats to their own product surface', async () => {
+  it('routes Brain access chats to their own product surface', async () => {
     const tab = { ...workTab, tabId: 'knowledge-chat', metadata: { mode: 'multi-agent', agentProfileId: 'knowledgebase' } } as ChatTab
     useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
     expect(openGlobalTab(tab.tabId)).toBe(true)

@@ -403,7 +403,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
-		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Knowledge Base action.")
+		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
 		return
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {

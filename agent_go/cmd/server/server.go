@@ -2155,10 +2155,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if productEnabled(knowledgebaseproduct.ProfileID) {
 		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
-			log.Fatalf("Failed to register Knowledge Base profile: %v", err)
+			log.Fatalf("Failed to register Brain profile: %v", err)
 		}
 		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor, knowledgebaseBackupExecutor); err != nil {
-			log.Fatalf("Failed to register Knowledge Base runtime: %v", err)
+			log.Fatalf("Failed to register Brain runtime: %v", err)
 		}
 	}
 	if productEnabled("work") {
@@ -2462,7 +2462,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		externalError(w, http.StatusNotFound, "NOT_FOUND", "Knowledge Base endpoint not found.")
+		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")
 	})
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation", api.handleResolveAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/new", api.handleRotateAgentProfileConversation).Methods("POST", "OPTIONS")

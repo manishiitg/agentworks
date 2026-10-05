@@ -28,7 +28,7 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(['agentworks', 'relays'], ['agentworks'])).toEqual(['agentworks'])
     expect(selectableProducts(['agentworks'], ['agentworks', 'relays'])).toEqual(['agentworks'])
   })
-  it('allows Knowledge Base access alongside the main products', () => {
+  it('allows Brain access alongside the main products', () => {
     expect(selectableProducts(['agentworks', 'knowledgebase', 'dominion'], ['agentworks', 'knowledgebase', 'dominion'])).toEqual(['agentworks', 'knowledgebase'])
   })
 })

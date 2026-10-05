@@ -23,7 +23,7 @@ var bindingAlias = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
 func ValidateBindings(bindings []Binding, reserved []string) error {
 	if len(bindings) > 20 {
-		return badArg("At most 20 shared Knowledge Base bindings are allowed.")
+		return badArg("At most 20 shared Brain bindings are allowed.")
 	}
 	seen := map[string]bool{}
 	for _, alias := range reserved {
@@ -55,7 +55,7 @@ func (s *Service) ResolveBinding(ctx context.Context, p Principal, b Binding, au
 		return "", err
 	}
 	if !s.IdentityActive(ctx, p.IdentityID) || s.effective(p, f.Path) < roleReader {
-		return "", kbErr("NOT_FOUND", "Shared Knowledge Base binding is unavailable.")
+		return "", kbErr("NOT_FOUND", "Shared Brain binding is unavailable.")
 	}
 	if b.Access == "write" && s.effective(p, f.Path) < roleEditor {
 		return "", kbErr("FORBIDDEN", "The binding requires Editor access.")

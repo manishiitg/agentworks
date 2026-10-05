@@ -1,6 +1,6 @@
-# Shared Knowledge Base: workflow/Crew integration and migration
+# Shared Brain: workflow/Crew integration and migration
 
-Status: implemented in Knowledge Base MVP PR #268. Adoption is explicit per
+Status: implemented in Brain MVP PR #268. Adoption is explicit per
 project. Merge and deployment do not import files, add grants, or rewrite
 existing projects.
 
@@ -79,7 +79,7 @@ workflow or user before Git commit/push.
 | Legacy workflow `knowledgebase_sources` | Continues for unmigrated sources; migrated sources become unavailable until the consumer owner replaces the alias with a shared binding |
 | Crew workspace attachments | Retain their separate read-only workspace contract |
 | `learnings/` | Remains local and is excluded from import |
-| Shared Knowledge Base | MCP reads/writes, live grants, explicit selected-version Git backup |
+| Shared Brain | MCP reads/writes, live grants, explicit selected-version Git backup |
 
 After cutover, `knowledgebase_mode` is `shared`. Workflow/Crew prompts direct
 agents to the shared MCP tools. Session file/shell guards deny the local
@@ -142,7 +142,7 @@ require `files:read`, a matching workflow cap, and `workflows:read` or
 `crews:read`, a matching Crew cap, and `crews:write` for every migration action.
 Migration is available only through the authenticated external owner connection;
 ordinary agent schemas omit it and managed executions reject it server-side.
-Knowledge Base scopes and caps still apply. Project bindings are available through the global MCP, root workflow Builder, and Attached folders UI. All three require current project ownership, KB authority, and audience grants. External connections additionally require authoring authority for that exact workflow/Crew; folder-capped content connections cannot configure bindings. Delegated agents and steps receive content tools only.
+Brain scopes and caps still apply. Project bindings are available through the global MCP, root workflow Builder, and Attached folders UI. All three require current project ownership, KB authority, and audience grants. External connections additionally require authoring authority for that exact workflow/Crew; folder-capped content connections cannot configure bindings. Delegated agents and steps receive content tools only.
 
 Private receipts record source hashes, destination entry IDs/versions,
 configuration versions, and migration state. Interrupted imports resume using
@@ -170,7 +170,7 @@ not execute paid model runs or migrate a production workspace during development
 
 Ordinary workflow/Crew tools are registered only for a project with shared
 bindings. Its guidance is supplied dynamically; Work/Code profiles do not carry
-an ambient Knowledge Base prompt. Each executor is pinned to its server session.
+an ambient Brain prompt. Each executor is pinned to its server session.
 Missing session shell policy fails closed rather than falling back to the
 identity's installation-wide grants. External connections remain explicitly
 scoped through `knowledgebase:read`/`knowledgebase:write`; OAuth supports both,
@@ -184,7 +184,7 @@ principals. Approval rechecks active identity, Owner authority, ACL/manifest CAS
 and audience grants. Names and returned text are untrusted data, including in
 the access builder. Proposals do not confer authority or change content.
 
-Both native CLI confinement policies protect the configured Knowledge Base
+Both native CLI confinement policies protect the configured Brain
 root, including roots outside the platform state directory. Multiuser identity
 sync refuses unavailable or empty directories without disabling the last known
 identities. The request fails closed while directory authority is unavailable.

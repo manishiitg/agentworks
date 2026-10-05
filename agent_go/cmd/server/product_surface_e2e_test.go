@@ -57,7 +57,7 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 		for name := range draft.tools {
 			names = append(names, name)
 		}
-		// Human and Knowledge Base tools use the shared custom-tool registration path
+		// Human and Brain tools use the shared custom-tool registration path
 		// before phase-specific tools. Include that real implementation pool in
 		// this end-to-end surface check, filtered by product.yaml admission.
 		customTools, customExecutors, customCategories := createCustomTools(true, "test-user", "surface-e2e")

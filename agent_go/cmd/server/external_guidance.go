@@ -395,7 +395,7 @@ func (api *StreamingAPI) externalReadKnowledge(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if strings.HasPrefix(clean, "knowledgebase/") && workflow.Manifest.KnowledgebaseMode == "shared" {
-		externalError(w, 403, "protected_path", "This workflow uses shared Knowledge Base MCP tools; its local knowledge archive is unavailable to agents.")
+		externalError(w, 403, "protected_path", "This workflow uses shared Brain MCP tools; its local knowledge archive is unavailable to agents.")
 		return
 	}
 	if strings.HasPrefix(clean, "skills/") {

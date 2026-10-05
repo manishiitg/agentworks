@@ -4,7 +4,7 @@ export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
   agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio', dominion: 'Dominion',
-  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', knowledgebase: 'Knowledge Base',
+  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', knowledgebase: 'Brain',
 }
 
 type ProductRuntimeConfig = {

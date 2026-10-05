@@ -3,7 +3,7 @@ const get = vi.hoisted(() => vi.fn())
 vi.mock('./api', () => ({ default: { get } }))
 import { knowledgebaseApi, normalizeKnowledgeAccess, normalizeKnowledgeSearch } from './knowledgebaseApi'
 
-describe('Knowledge Base viewer wire contract', () => {
+describe('Brain viewer wire contract', () => {
   it('uses permission-filtered paged items rather than an unpaged alias', async () => {
     get.mockResolvedValueOnce({ data: { items: [{ entry_id: 'visible', kind: 'entry' }, { kind: 'folder', path: 'Payments' }], entries: [{ entry_id: 'outside-page' }], next_cursor: 'next' } })
     const result = await knowledgebaseApi.entries({ folder_path: 'Payments' })

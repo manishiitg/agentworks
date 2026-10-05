@@ -75,5 +75,5 @@ export function knowledgebaseError(error: unknown): string {
   const response = (error as { response?: { data?: { error?: unknown; message?: string } } })?.response?.data
   if (typeof response?.error === 'string') return response.error
   if (response?.error && typeof response.error === 'object' && 'message' in response.error) return String(response.error.message)
-  return response?.message || (error instanceof Error ? error.message : 'Could not load Knowledge Base. Please try again.')
+  return response?.message || (error instanceof Error ? error.message : 'Could not load Brain. Please try again.')
 }

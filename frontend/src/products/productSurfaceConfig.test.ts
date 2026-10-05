@@ -15,7 +15,7 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
-  it('defaults to AgentWorks, Relays, Crew, and Knowledge Base when no deployment allowlist is configured', () => {
+  it('defaults to AgentWorks, Relays, Crew, and Brain when no deployment allowlist is configured', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
@@ -132,7 +132,7 @@ describe('gatewayBaseUrl', () => {
 })
 
 describe('intersectAllowedProductSurfaces', () => {
-  it('preserves Knowledge Base reader entitlement without granting other products', () => {
+  it('preserves Brain reader entitlement without granting other products', () => {
     expect(intersectAllowedProductSurfaces(['agentworks', 'work', 'knowledgebase'], ['knowledgebase'])).toEqual(['knowledgebase'])
     expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
   })

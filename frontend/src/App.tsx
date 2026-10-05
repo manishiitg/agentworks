@@ -938,7 +938,7 @@ function App() {
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'knowledgebase' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Knowledge Base" />}><KnowledgebaseSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Brain" />}><KnowledgebaseSurface /></Suspense>
         ) : productSurface === 'work' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'code' ? (

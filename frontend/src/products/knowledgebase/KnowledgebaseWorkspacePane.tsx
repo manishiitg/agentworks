@@ -13,7 +13,7 @@ export type KnowledgebaseView = 'library' | 'access' | 'models'
 function KnowledgebaseFiles({ onFolder, onAsk, onGitAsk, revision, active }: { onGitAsk?: (message: string) => void | Promise<unknown>; active: boolean; onFolder: (path: string) => void; onAsk: () => void; revision: number }) {
   const source = useKnowledgebaseFiles(revision, active, onFolder)
   const git = useKnowledgebaseGit(source, revision, active)
-  return <TooltipProvider><FileWorkspacePane title="Knowledge Base" source={{ ...source, git: active ? git : undefined }} testId="knowledgebase-files" onAsk={onGitAsk} hideAddToChat hideRootActions
+  return <TooltipProvider><FileWorkspacePane title="Brain" source={{ ...source, git: active ? git : undefined }} testId="knowledgebase-files" onAsk={onGitAsk} hideAddToChat hideRootActions
     headerAction={<AskAIButton workspacePath={null} onAsk={onAsk} message="Inspect the selected folder's access." label="Folder access" />} /></TooltipProvider>
 }
 export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision, modelSettings, onGitAsk }: { onGitAsk?: (message: string) => void | Promise<unknown>; view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number; modelSettings?: ReactNode }) {

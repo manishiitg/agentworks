@@ -210,14 +210,14 @@ func ValidateToolArguments(tool string, args map[string]any) error {
 		}
 	})
 	if mcpValidators.err != nil {
-		return kbErr("STORAGE_UNAVAILABLE", "Knowledge Base tool schemas are unavailable.")
+		return kbErr("STORAGE_UNAVAILABLE", "Brain tool schemas are unavailable.")
 	}
 	validator, ok := mcpValidators.byName[tool]
 	if !ok {
-		return badArg("Unknown Knowledge Base MCP tool.")
+		return badArg("Unknown Brain MCP tool.")
 	}
 	if err := validator.Validate(asMap(args)); err != nil {
-		return badArg("Arguments must match the selected Knowledge Base action.")
+		return badArg("Arguments must match the selected Brain action.")
 	}
 	return nil
 }
@@ -228,7 +228,7 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 	}
 	action := stringArg(args, "action")
 	if p.AccessOnly && tool != "manage_knowledgebase_access" || !p.AccessOnly && tool == "manage_knowledgebase_access" && action != "inspect" {
-		return nil, kbErr("FORBIDDEN", "Permission changes are restricted to the Knowledge Base access builder.")
+		return nil, kbErr("FORBIDDEN", "Permission changes are restricted to the Brain access builder.")
 	}
 	for _, definition := range mcpSurface {
 		if definition.name != tool {
@@ -247,5 +247,5 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 			return s.Call(ctx, p, operation.operation, translated)
 		}
 	}
-	return nil, badArg("Unknown Knowledge Base action %s.", strings.TrimSpace(action))
+	return nil, badArg("Unknown Brain action %s.", strings.TrimSpace(action))
 }

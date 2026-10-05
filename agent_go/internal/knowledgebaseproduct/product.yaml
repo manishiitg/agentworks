@@ -4,7 +4,7 @@ prompt:
   file: prompts/access-builder.md
 profile:
   id: knowledgebase
-  name: Knowledge Base
+  name: Brain
   version: 1
   scope: project
   tools:

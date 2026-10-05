@@ -1,6 +1,8 @@
-# Knowledge Base MVP operations
+# Brain MVP operations
 
-Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
+Brain is the product name. The stable product ID remains `knowledgebase`; API routes, MCP tool names, scopes, storage paths, and existing bindings retain their names for compatibility.
+
+Brain is a built-in product (`knowledgebase`). The app reads content and
 shows content and access settings. Its chat manages folder access, initial backup configuration and shared Files Git requests. The reader and Git controls reuse the platform Files view.
 Content saves and explicit Git backups happen through MCP, including in Crews,
 Code and workflows. An authorized reader sees a successful save immediately.
@@ -43,13 +45,13 @@ remain authoritative when configured.
 ## Connections
 
 Manage connections through the platform's global MCP connection settings.
-Knowledge Base uses the same `/api/external/v1/mcp` endpoint; there is no separate
+Brain uses the same `/api/external/v1/mcp` endpoint; there is no separate
 KB Connect tab or server. `knowledgebase:read` admits the
 reader tools; `knowledgebase:write` additionally admits save and backup tools.
 Write connections carry both scopes. Unrestricted external writers may use access list/grant/revoke directly within current Owner grants; administrative service-account actions and backup setup require a current administrator. Folder-capped tokens and managed workflow/Crew execution remain content-only. App chat continues to require confirmation of its frozen access/configuration proposals.
 Optional folder caps further restrict the identity's current grants. Omitting caps
 uses its current grants; an empty cap list grants nothing. Only administrators can
-mint a Knowledge Base token for a managed service account. Disabling a service
+mint a Brain token for a managed service account. Disabling a service
 account invalidates its connections.
 
 ## Workflow and Crew rollout
@@ -201,13 +203,13 @@ Access changes requested in chat are pending until approved in the app. Review
 the exact folder, identity and role; cancel incorrect proposals. Stale versions
 require a fresh inspection and proposal. Proposals expire after 15 minutes.
 
-Migration needs an explicit external owner connection with Knowledge Base write
+Migration needs an explicit external owner connection with Brain write
 scope and source-project builder authority for every action. It is unavailable
 in workflow/Crew agent execution, Run mode, schedules and steps. Import first,
 then rebind every consumer through its owner and confirmed access proposal,
 then cut over. Pause writers, schedules, executions and affected configuration
 changes; cutover re-scans and refuses remaining legacy consumers. No installation
-is migrated by merging this PR. OAuth Knowledge Base scopes are opt-in.
+is migrated by merging this PR. OAuth Brain scopes are opt-in.
 
 Activity tracking is deferred for MVP: no Activity view, API endpoint, or event
 recording. Recovery journals and retry/backup receipts remain in private state.
@@ -230,7 +232,7 @@ Push uses a remote lease and persists a delivery intent before transport. If its
 
 ## Attach to a workflow through MCP, Builder or UI
 
-In Workflow → Attached folders, the Knowledge Base folders panel follows the Vault project selection pattern: it lists caller-authorized folders, permits owners to select them, and offers Read only / Read-write. Selection never grants permission. The full workflow audience must already have Reader access; the execution identity needs Editor access for a write binding. The existing Ask AI button sends setup to the workflow Builder.
+In Workflow → Attached folders, the Brain folders panel follows the Vault project selection pattern: it lists caller-authorized folders, permits owners to select them, and offers Read only / Read-write. Selection never grants permission. The full workflow audience must already have Reader access; the execution identity needs Editor access for a write binding. The existing Ask AI button sends setup to the workflow Builder.
 
 The root Builder can discover folders with `browse_knowledgebase action=folders`, then use `manage_knowledgebase_access action=inspect_project` for its exact workspace and `bind_project` / `unbind_project` with the returned manifest version. These actions also work directly through the global MCP. External tokens need KB read/write plus existing authoring scopes for the exact workflow/Crew. KB-only writers and folder-capped tokens cannot change project bindings. No sixth MCP tool or dedicated connection is added.
 

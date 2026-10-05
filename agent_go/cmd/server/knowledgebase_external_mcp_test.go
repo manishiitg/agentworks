@@ -40,7 +40,7 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	srv := serveExternalMCP(t, api, claims)
 	cli := dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	init := initializeExternalMCP(t, t.Context(), cli)
-	if strings.Contains(init.Instructions, "Every tool reads") || !strings.Contains(init.Instructions, "Knowledge Base") {
+	if strings.Contains(init.Instructions, "Every tool reads") || !strings.Contains(init.Instructions, "Brain") {
 		t.Fatal("write MCP connection has incorrect instructions", init.Instructions)
 	}
 	discovery := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, nil)
@@ -63,7 +63,7 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 		t.Fatal("MCP exposes legacy or missing tools", found)
 	}
 	spec := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, map[string]any{"names": []any{"read_knowledgebase", "update_knowledgebase"}})
-	requireRemoteSuccess(t, spec, "Knowledge Base schemas")
+	requireRemoteSuccess(t, spec, "Brain schemas")
 	read := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "read_knowledgebase", "arguments": map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}})
 	requireRemoteSuccess(t, read, "MCP read")
 	var body struct {

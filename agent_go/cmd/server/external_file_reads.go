@@ -71,7 +71,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	shared := externalRootUsesSharedKnowledge(root)
 	if shared && (p == "knowledgebase" || strings.HasPrefix(p, "knowledgebase/")) {
-		return wf.Result{}, &externalUpstreamError{403, "local knowledge archive is unavailable; use shared Knowledge Base MCP"}
+		return wf.Result{}, &externalUpstreamError{403, "local knowledge archive is unavailable; use shared Brain MCP"}
 	}
 	switch req.Operation {
 	case "read":

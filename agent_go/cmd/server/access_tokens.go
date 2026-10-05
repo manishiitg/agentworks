@@ -217,7 +217,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		if t.KnowledgebaseAccess() {
 			if !knowledgebaseProductAllowed(c) {
-				externalError(w, 403, "forbidden", "Knowledge Base is not available for this account.")
+				externalError(w, 403, "forbidden", "Brain is not available for this account.")
 				return
 			}
 			if t.KnowledgebaseIdentityID != "" && !currentUserIsAdmin(r) {

@@ -71,16 +71,16 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false }: {
   if (!available) return null
   const blocked = disabled || !project?.can_manage || busy || loading
   const missing = bindings.filter(binding => !folders.some(folder => folder.folder_id === binding.folder_id))
-  return <section aria-label="Knowledge Base folders" className="space-y-3 rounded-lg border border-border p-4 text-xs">
+  return <section aria-label="Brain folders" className="space-y-3 rounded-lg border border-border p-4 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="h-4 w-4 text-primary"/>Knowledge Base folders</h3>
-      <div className="flex items-center gap-1"><AskAIButton workspacePath={disabled ? null : workspacePath} label="Ask AI to add" message="Attach a shared Knowledge Base folder to this workflow. Use browse_knowledgebase action=folders to find folders, inspect_project for the current manifest version, then bind_project with read access unless I request read-write. Confirm that the workflow audience already has access. Configure relevant steps with knowledgebase_access=read or read-write; writes need a knowledgebase_contribution. Do not change folder grants implicitly."/><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Knowledge Base folders" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
+      <h3 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="h-4 w-4 text-primary"/>Brain folders</h3>
+      <div className="flex items-center gap-1"><AskAIButton workspacePath={disabled ? null : workspacePath} label="Ask AI to add" message="Attach a shared Brain folder to this workflow. Use browse_knowledgebase action=folders to find folders, inspect_project for the current manifest version, then bind_project with read access unless I request read-write. Confirm that the workflow audience already has access. Configure relevant steps with knowledgebase_access=read or read-write; writes need a knowledgebase_contribution. Do not change folder grants implicitly."/><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Brain folders" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
     </div>
     <p className="text-muted-foreground">Select folders for this workflow. Selection uses existing access; it does not grant permission. Steps use their own read/write settings through MCP.</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {loading ? <p role="status" className="text-muted-foreground">Loading your access…</p> : <>
       {!project?.can_manage && <p className="text-muted-foreground">Only a workflow owner can change these selections.</p>}
-      {folders.length === 0 && <p className="text-muted-foreground">No Knowledge Base folders available.</p>}
+      {folders.length === 0 && <p className="text-muted-foreground">No Brain folders available.</p>}
       {folders.map(folder => {
         const binding = bindings.find(item => item.folder_id === folder.folder_id)
         return <div key={folder.folder_id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">

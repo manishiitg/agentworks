@@ -313,7 +313,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	for _, name := range run {
 		if isExternalKnowledgebaseTool(name) {
 			if byName[name].executes {
-				t.Fatalf("Knowledge Base tool %s must use its domain handler", name)
+				t.Fatalf("Brain tool %s must use its domain handler", name)
 			}
 			continue
 		}

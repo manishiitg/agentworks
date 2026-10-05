@@ -1,4 +1,4 @@
-Knowledge Base stores shared skills, facts, notes and sources in nested folders.
+Brain stores shared skills, facts, notes and sources in nested folders.
 Use five tools, each with an explicit action:
 - browse_knowledgebase: folders or entries.
 - read_knowledgebase: read (whole, line range, or heading section), or search.

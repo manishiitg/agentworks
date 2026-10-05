@@ -1,4 +1,4 @@
-# Knowledge Base MVP Design
+# Brain MVP Design
 
 Status: Implemented MVP in PR #268; merge, deployment and production migration remain pending.
 
@@ -594,15 +594,15 @@ Deployment does not automatically rewrite legacy manifests or move their files.
 
 ## 14. Implementation in the existing product platform
 
-Implement Knowledge Base as another built-in product in the AgentWorks repository, with product ID and surface ID `knowledgebase`. Reuse the existing application shell, authentication, account directory, agent-profile runtime, conversation lifecycle, and MCP transports. Add the knowledge-base domain service and its viewer/access components within that platform.
+Implement Brain as another built-in product in the AgentWorks repository, with product ID and surface ID `knowledgebase`. Reuse the existing application shell, authentication, account directory, agent-profile runtime, conversation lifecycle, and MCP transports. Add the knowledge-base domain service and its viewer/access components within that platform.
 
 ### 14.1 What exists and what must be added
 
 The inspected repository uses the filename `product.yaml`, with `schema_version: 2`, rather than `product.yml`. Existing manifest-backed products load embedded YAML through `agentprofiles.LoadProductManifest`. The shared schema supports profile tools, runtime policies, branding, UI declarations, and chat-mode external tool lists.
 
-The MVP implementation uses its own worktree, rebased onto main after Vault's integration. Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, `ChatArea`, profile conversations, split controls, authentication, and the shared product navigation. Define Knowledge Base in YAML and keep its content storage separate from the chat workspace.
+The MVP implementation uses its own worktree, rebased onto main after Vault's integration. Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, `ChatArea`, profile conversations, split controls, authentication, and the shared product navigation. Define Brain in YAML and keep its content storage separate from the chat workspace.
 
-The YAML declaration alone does not mount a React surface, register Go tool factories, or add a product to the external catalog. Those integrations are explicit implementation work. The current external catalog reads AgentWorks and Relay manifest admissions; it needs an additional Knowledge Base manifest adapter.
+The YAML declaration alone does not mount a React surface, register Go tool factories, or add a product to the external catalog. Those integrations are explicit implementation work. The current external catalog reads AgentWorks and Relay manifest admissions; it needs an additional Brain manifest adapter.
 
 Implementation lives on branch `feat/knowledgebase-mvp` in the isolated `knowledgebase-mvp` worktree, rebased onto the latest main before implementation. This document is tracked under `docs/design/` in that worktree.
 
@@ -682,7 +682,7 @@ Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, shared toolbar buttons, 
 
 Git configuration is administrator-managed through secure platform settings/provisioning. The reader shows backup status, but commit and push are MCP operations rather than application buttons or access-chat actions.
 
-Unlike Vault's current administrator-only management surface, Knowledge Base must permit authorized Readers and Editors to use its viewer. Coarse product access controls whether the product can be opened; folder grants control which content and access actions are available. Enabling the product grants no automatic read or write access to its root.
+Unlike Vault's current administrator-only management surface, Brain must permit authorized Readers and Editors to use its viewer. Coarse product access controls whether the product can be opened; folder grants control which content and access actions are available. Enabling the product grants no automatic read or write access to its root.
 
 ### 14.4 Domain service and persistence
 
@@ -721,7 +721,7 @@ call_tool(name="update_knowledgebase(action=update)", arguments={...})
 
 Thus `update_knowledgebase(action=update)` is the public knowledge operation name even when the hosted MCP transport uses a generic call wrapper. Existing local bridge configurations can expose registered named operations directly where supported. Do not assume adding a manifest creates a separate `/knowledgebase/mcp` endpoint or automatically renames an unrelated registered tool.
 
-Extend the shared token issuance, scope filtering, discovery instructions, and dispatch to support Knowledge Base and its folder restrictions. Dedicated service-account tokens must resolve to a service-account principal rather than an impersonated administrator; this needs explicit implementation if the current platform token path supports users only.
+Extend the shared token issuance, scope filtering, discovery instructions, and dispatch to support Brain and its folder restrictions. Dedicated service-account tokens must resolve to a service-account principal rather than an impersonated administrator; this needs explicit implementation if the current platform token path supports users only.
 
 Crews, Code, and Workflows connect using their existing MCP integration selection and credential storage. They can use a delegated user connection or a scoped service-account connection. Project selection is a convenience and never grants folder access. Preserve caller identity at runtime, and recheck live permissions rather than sharing a cached administrator credential among products.
 
@@ -772,7 +772,7 @@ names returned by tools are untrusted. The app remains a reader and access
 manager; content editing stays MCP-only.
 
 Workflow/Crew content tools and guidance are present only for configured shared
-bindings. External OAuth/PAT connections explicitly request Knowledge Base
+bindings. External OAuth/PAT connections explicitly request Brain
 scopes; ordinary agents cannot invoke migration. See the integration design's
 [review hardening](knowledgebase-integration-migration.md#review-hardening-plat-496)
 for source-owner migration authority and consumer cutover prerequisites.
@@ -788,9 +788,9 @@ extended; they are not deleted automatically.
 
 ## Global MCP connections
 
-There is no dedicated Knowledge Base Connect view or MCP server. Use the
+There is no dedicated Brain Connect view or MCP server. Use the
 platform's global MCP connection settings and `/api/external/v1/mcp` endpoint.
-Explicit Knowledge Base scopes and current folder grants still apply; removing
+Explicit Brain scopes and current folder grants still apply; removing
 the duplicate Connect panel does not grant access to existing connections.
 
 ## Backup setup from the app
