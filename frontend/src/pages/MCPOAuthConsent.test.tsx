@@ -76,3 +76,24 @@ it('uses the Vault consent API with the shared platform login page', async () =>
     expect(api.post).toHaveBeenCalledWith(expect.stringContaining('/api/oauth/vault/consent?request='), { decision: 'approve', workflow_ids: [] })
   } finally { await view.cleanup() }
 })
+
+it('leads with a few plain lines and keeps the exact permissions behind details', async () => {
+  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'crews:read', 'crews:run', 'crews:write'], [])
+  try {
+    const lines = [...view.host.querySelectorAll('main > div > ul > li')].map(li => li.textContent)
+    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Make changes: edit your Crews, Relays and selected workflows'])
+    expect(view.host.querySelector('details')).not.toBeNull()
+    expect(view.host.querySelector('details')!.textContent).toContain('Read workflow files, including test code')
+  } finally { await view.cleanup() }
+})
+
+it('shows the reason the server gives when a connection is refused', async () => {
+  const view = await mount(['workflows:read'], [])
+  try {
+    api.post.mockReset()
+    api.post.mockRejectedValue({ response: { data: { error_description: 'Relay authoring is not available to this account or deployment' } } })
+    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    await act(async () => allow.click())
+    expect(view.host.querySelector('[role=alert]')!.textContent).toContain('not available to this account or deployment')
+  } finally { await view.cleanup() }
+})

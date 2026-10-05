@@ -138,10 +138,16 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
-	if claimsCanReviewCode(user) {
+	canReview, builderOn := claimsCanReviewCode(user), externalBuilderEnabled()
+	if canReview && builderOn {
 		return scopes
 	}
-	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool { return scope == "code:review" })
+	// Builder editing and Relay authoring exist only where the server enables them (AGENTWORKS_MCP_BUILDER_ENABLED):
+	// a connection never asks for, shows or grants what the server would refuse (a client that requests every
+	// advertised scope used to get a 404 on Allow, Excellence 2026-10-05).
+	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
+		return scope == "code:review" && !canReview || (scope == "builder:chat" || scope == "relays:write") && !builderOn
+	})
 }
 
 func validMCPOAuthScopes(raw string) ([]string, bool) {
@@ -285,7 +291,7 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		var workflows []map[string]string
-		if slices.Contains(request.Scopes, "builder:chat") {
+		if slices.Contains(mcpOAuthScopesFor(claims, request.Scopes), "builder:chat") {
 			workflows, err = builderConsentWorkflows(r.Context(), claims)
 			if err != nil {
 				mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
@@ -311,6 +317,15 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 	}
 	request, code, err := store.Decide(r.Context(), id, claims, input.Decision == "approve", input.WorkflowIDs)
 	if err != nil {
+		var refused *mcpOAuthRefusal
+		if errors.As(err, &refused) {
+			// The request is still open: say why it was refused instead of a bare "not found".
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_request", "error_description": refused.Error()})
+			return
+		}
 		mcpOAuthError(w, http.StatusNotFound, "invalid_request")
 		return
 	}

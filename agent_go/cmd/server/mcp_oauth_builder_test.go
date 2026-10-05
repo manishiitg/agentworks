@@ -22,6 +22,8 @@ func builderOAuthSetup(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("AUTH_SECRET", "builder-mcp-oauth-test-signing-secret")
 	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
+	// These tests are about servers with Builder switched on; a server with it off never offers the scope.
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 }
 
 func TestMCPOAuthBuilderIsExplicitAndCLIDefaultsUnchanged(t *testing.T) {

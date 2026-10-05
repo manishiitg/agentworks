@@ -225,8 +225,13 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 		workflowIDs = slices.Clone(selected[0])
 	}
 	if approve {
-		if err := validateMCPOAuthBuilderSelection(ctx, user, req.Scopes, workflowIDs); err != nil {
-			return req, "", err
+		// Validate what will really be granted: the scopes this server and account allow, not everything requested.
+		granted := mcpOAuthScopesFor(user, req.Scopes)
+		if !slices.Contains(granted, "builder:chat") {
+			workflowIDs = nil
+		}
+		if err := validateMCPOAuthBuilderSelection(ctx, user, granted, workflowIDs); err != nil {
+			return req, "", &mcpOAuthRefusal{err}
 		}
 	}
 	code := ""
@@ -468,3 +473,8 @@ func (s *mcpOAuthStore) RevokeFamily(ctx context.Context, family, userID string)
 	}
 	return nil
 }
+
+// mcpOAuthRefusal is a consent the server refuses for a reason the person can act on (the request itself is intact).
+type mcpOAuthRefusal struct{ error }
+
+func (r *mcpOAuthRefusal) Unwrap() error { return r.error }

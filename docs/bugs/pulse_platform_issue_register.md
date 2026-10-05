@@ -1,3 +1,11 @@
+## MCP connect: 404 on Allow and an over-long consent page — PLAT-487
+
+[PLAT-487](pulse_platform/integrations/plat-487.md), P2, fixed on main. Builder/Relay scopes are no longer offered where the server has them off, refusals say why, and the page shows a few plain lines with details folded.
+
+## Relay command catalog test fails on main — PLAT-488
+
+[PLAT-488](pulse_platform/integrations/plat-488.md), P3, open. `TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration` fails on a clean origin/main.
+
 ## A refused builder send shows the raw 409 text — PLAT-485
 
 [PLAT-485](pulse_platform/frontend-chat/plat-485.md), P3, open. The one-builder-chat-per-workflow guard works, but a send from a different session id (second tab, API client) shows "Request failed with status code 409" with no stop/wait choice.
