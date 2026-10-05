@@ -212,40 +212,44 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
 }
 
 export async function loadProductProjects<P extends string>(root: string, product: P, storage: ProductProjectStorageOptions = {}): Promise<ProductProject<P>[]> {
-  const response = await agentApi.getPlannerFiles(root, -1, 2)
+  // The folder listing, the shared-project listing and each project's two manifest reads used to run one
+  // after another, so opening Crew or Code waited for 1 + 2N round trips in a row (slow on RTS, PLAT-531).
+  // Independent requests now run together.
+  const [response, own] = await Promise.all([
+    agentApi.getPlannerFiles(root, -1, 2),
+    storage.includeOwnSharedProjects
+      // A server without shared-root Crews (or an older one) has none to add.
+      ? agentApi.listOwnSharedProjects(product).catch(() => null)
+      : Promise.resolve(null),
+  ])
   const manifests = dedupeByFilepath(
     flattenFiles(responseFiles(response)).filter((file) => file.type !== 'folder' && file.filepath.endsWith('/product.json')),
   )
-  if (storage.includeOwnSharedProjects) {
-    try {
-      const own = await agentApi.listOwnSharedProjects(product)
-      for (const shared of own.projects || []) {
-        const filepath = `${shared.workspace_path}/product.json`
-        if (!manifests.some(file => file.filepath === filepath)) manifests.push({ filepath, type: 'file' } as (typeof manifests)[number])
-      }
-    } catch {
-      // A server without shared-root Crews (or an older one) has none to add.
-    }
+  for (const shared of own?.projects || []) {
+    const filepath = `${shared.workspace_path}/product.json`
+    if (!manifests.some(file => file.filepath === filepath)) manifests.push({ filepath, type: 'file' } as (typeof manifests)[number])
   }
   const projects = await Promise.all(manifests.map(async (file) => {
+    const workspacePath = file.filepath.replace(/\/product\.json$/, '')
+    const runtimeRead = storage.runtimeManifestName
+      ? agentApi.getPlannerFileContent(`${workspacePath}/${storage.runtimeManifestName}`).then(
+        (runtimeResponse) => { try { return responseContent(runtimeResponse) } catch { return undefined } },
+        () => undefined,
+      )
+      : undefined
     try {
       const response = await agentApi.getPlannerFileContent(file.filepath)
       const document = responseContent(response)
       if (!document) return null
       const project = parseProductProjectManifest(
         document.content,
-        file.filepath.replace(/\/product\.json$/, ''),
+        workspacePath,
         product,
         document.lastModified || file.last_modified,
       )
-      if (!project || !storage.runtimeManifestName) return project
-      try {
-        const runtimeResponse = await agentApi.getPlannerFileContent(`${project.workspacePath}/${storage.runtimeManifestName}`)
-        const runtimeDocument = responseContent(runtimeResponse)
-        return runtimeDocument ? applyRuntimeManifest(project, runtimeDocument.content) : { ...project, runtimeConfigInitialized: false }
-      } catch {
-        return { ...project, runtimeConfigInitialized: false }
-      }
+      if (!project || !runtimeRead) return project
+      const runtimeDocument = await runtimeRead
+      return runtimeDocument ? applyRuntimeManifest(project, runtimeDocument.content) : { ...project, runtimeConfigInitialized: false }
     } catch {
       return null
     }

@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | first part fixed on main (the cache); not deployed; owner to measure on RTS after a deploy |
+| State | fixed on main (cache + parallel loading); not deployed; owner to measure on RTS after a deploy |
 | Date | 2026-10-05 |
 | Owner | frontend-chat |
 
@@ -25,8 +25,11 @@ and there are more Crews, so it is visibly slow; locally it hides behind low lat
   switch, and refreshed from the server in the background; a local edit made during that fetch wins over the older fetch result. The surface is keyed by user too. First visit in a page session is unchanged.
 - Type-check clean; `src/products/work` tests 220/220. No new test (UI timing; checked by owner on RTS).
 
+## Done (2026-10-06)
+
+- `loadProductProjects` (`platform/chat/productProjects.ts`): the folder listing and the own-shared-projects listing run together, and each project's `product.json` and runtime manifest (`workflow.json`) are read together instead of one after the other. The chain on first open is now about two round trips deep instead of three plus one per project in sequence. A failed or unreadable runtime manifest still keeps the project (marked uninitialised), as before. Type-check clean; `platform/chat` and `products/work` tests 235/235.
+
 ## Left
 
-- First open after a page load is still the full chain. If it is still slow on RTS: one server call that returns the project list with manifests (replaces 1 + 2N round trips), or reading `workflow.json` in parallel with `product.json`.
-- PR #245 is superseded by this and can be closed (owner's call).
-- Measure on RTS after the next deploy (owner's go needed per server): time from Ctrl+K to the Crew view, first and second switch.
+- Not measured on RTS (needs a deploy, owner's go). If still slow: one server call that returns the project list with its manifests.
+- PR #245 is superseded and can be closed (owner's call).

@@ -245,7 +245,7 @@ usable node_modules if the install fails.
 
 ## Switching to Crew shows 'Opening workspace…' every time — PLAT-531
 
-[PLAT-531](pulse_platform/frontend-chat/plat-531.md), fixed on main (cache); not deployed; first load still the full request chain.
+[PLAT-531](pulse_platform/frontend-chat/plat-531.md), fixed on main (project list cached between switches, first-open reads run in parallel); not deployed.
 
 ## Returning browser extension loses its connection — PLAT-532
 
