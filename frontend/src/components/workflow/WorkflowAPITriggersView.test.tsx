@@ -7,6 +7,7 @@ import { agentApi } from '../../services/api'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { TooltipProvider } from '../ui/tooltip'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn().mockResolvedValue({ configured: true, route: null, deliveries: [] }) } }))
@@ -17,6 +18,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const trigger = { id: 'trigger-1', name: 'Issues', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/trigger-1', route_selections: { router: 'issues' }, group_names: ['prod'] }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
+  // Automatic incoming Gmail is a server-deployment surface (PLAT-500); the panel renders only when local_mode is false.
+  useCapabilitiesStore.setState({ capabilities: { providers: [], streaming: true, sse: true, agent_modes: [], tracing: { enabled: false, provider: 'noop' }, workspace: {}, servers: [], local_mode: false } })
   vi.mocked(useCanWriteWorkflow).mockReturnValue(true)
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger], groups: ['prod'], routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }] })
   vi.mocked(workflowWebhooksApi.save).mockImplementation(async value => ({ ...trigger, ...value }))

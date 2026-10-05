@@ -13,13 +13,14 @@ describe('identity section layout', () => {
     expect(panel).toContain('builderOnly={relayMode}')
   })
 
-  it('embeds identity, secrets, folders, llm, and upgrades panels inside the Identity tabs instead of standalone views', () => {
+  it('embeds identity, folders, llm, and upgrades panels inside the Identity tabs instead of standalone views; secrets live in Integrations', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
     const views = readFileSync('src/components/workflow/workspaceViews.ts', 'utf8')
     const host = readFileSync('src/components/workflow/canvas/WorkspaceViewHost.tsx', 'utf8')
 
     expect(panel).toMatch(/section === 'identity'[\s\S]*?<WorkflowIdentityPanel/)
-    expect(panel).toMatch(/section === 'identity'[\s\S]*?<SecretSelectionSection/)
+    // Secret selection moved from Identity to Integrations (DECISIONS 2026-10-03); it must not be back in Identity.
+    expect(panel).toContain('<ProjectSecretsPanel')
     expect(panel).toMatch(/section === 'identity'[\s\S]*?<WorkflowFolderAccessView/)
     expect(panel).toMatch(/section === 'identity'[\s\S]*?<WorkflowLLMConfigurationPanel/)
     expect(panel).toMatch(/section === 'identity'[\s\S]*?<WorkflowUpdatesView/)
@@ -54,8 +55,10 @@ describe('identity section layout', () => {
   it('attaches only workflow and global secrets, never personal ones', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
     const section = readFileSync('src/components/secrets/SecretSelectionSection.tsx', 'utf8')
+    const secretsPanel = readFileSync('src/components/integrations/ProjectSecretsPanel.tsx', 'utf8')
 
-    expect(panel).toContain('<SecretSelectionSection')
+    expect(panel).toContain('<ProjectSecretsPanel')
+    expect(secretsPanel).toContain('<SecretSelectionSection')
     expect(section).not.toContain('showSharedSecrets')
     expect(section).not.toContain('sharedSecrets')
     expect(section).not.toContain('>Shared<')
