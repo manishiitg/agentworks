@@ -3641,6 +3641,8 @@ export interface GetWorkflowManifestResponse {
   manifest: WorkflowManifest
   workspace_path: string
   contract_upgrade?: WorkflowContractUpgradeStatus
+  /** Selected secret names with no stored value; the run still starts without them. */
+  missing_secrets?: string[]
 }
 
 export interface WorkflowContractUpgradeStatus {

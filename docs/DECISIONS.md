@@ -648,6 +648,12 @@ write access and exclusive control for every transfer; never use the shared
 server OS clipboard. Browser controls use the selected neutral header/tab/address
 layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/plat-382.md).
 
+### 2026-10-05 — A missing secret does not stop a run
+
+Owner decision: a selected secret with no stored value must not fail a workflow or a schedule. The run starts with an
+empty value and the workflow shows a banner naming the missing secrets so the person can fix it. A secret that exists
+but is not granted to the person is still refused. Ticket: [PLAT-490](bugs/pulse_platform/step-execution/plat-490.md).
+
 ### 2026-10-05 — Vault is on by default locally
 
 Owner decision: a local run has Vault like the servers do, so grants and secret checks behave the same everywhere.

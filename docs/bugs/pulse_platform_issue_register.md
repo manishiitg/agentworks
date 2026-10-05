@@ -48,6 +48,11 @@ bridge mounted" text is stripped from Muse messages read back into the chat. Lef
 [PLAT-489](pulse_platform/security-sandbox/plat-489.md), fixed on main: the local launcher starts Vault in platform mode and
 wires the backend to it. Left: restart, then clean up selections with no value and check grants.
 
+## A missing secret stopped the whole run — PLAT-490
+
+[PLAT-490](pulse_platform/step-execution/plat-490.md), fixed on main: a selected secret with no value no longer refuses a run;
+the workflow shows a banner naming it.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

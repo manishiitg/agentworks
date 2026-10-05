@@ -903,6 +903,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   })
 
   const [contractUpgrade, setContractUpgrade] = useState<WorkflowContractUpgradeStatus | null>(null)
+  const [missingSecrets, setMissingSecrets] = useState<string[]>([])
   const [startingContractUpgrade, setStartingContractUpgrade] = useState(false)
   const [contractUpgradeChat, setContractUpgradeChat] = useState<{ workspacePath: string; tabId: string } | null>(null)
   useEffect(() => {
@@ -927,17 +928,20 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const refreshContractUpgrade = useCallback(async () => {
     if (!workspacePath) {
       setContractUpgrade(null)
+      setMissingSecrets([])
       return
     }
     try {
       const response = await workflowManifestApi.getWorkflowManifest(workspacePath)
       const status = response.contract_upgrade ?? null
       setContractUpgrade(status)
+      setMissingSecrets(response.missing_secrets ?? [])
       window.dispatchEvent(new CustomEvent(WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, {
         detail: { workspacePath, status },
       }))
     } catch {
       setContractUpgrade(null)
+      setMissingSecrets([])
     }
   }, [workspacePath])
 
@@ -2395,6 +2399,19 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
               <div className="flex items-center gap-2 border-b border-blue-100 bg-blue-50 px-3 py-1.5 dark:border-blue-800/50 dark:bg-blue-900/20">
                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400"></div>
                 <span className="text-xs text-blue-600 dark:text-blue-400">Loading conversation...</span>
+              </div>
+            )}
+
+            {missingSecrets.length > 0 && (
+              <div
+                role="status"
+                data-testid="missing-secrets-banner"
+                className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                {missingSecrets.length === 1 ? 'This workflow uses a secret that has no value: ' : 'This workflow uses secrets that have no value: '}
+                <span className="font-medium">{missingSecrets.join(', ')}</span>.
+                {' '}Runs still start, but anything that needs {missingSecrets.length === 1 ? 'it' : 'them'} will get an empty value.
+                {' '}Add the value in Integrations → Connections → Secrets, or remove the selection.
               </div>
             )}
 

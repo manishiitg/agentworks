@@ -107,6 +107,7 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 		"manifest":         manifest,
 		"workspace_path":   workspacePath,
 		"contract_upgrade": upgradeStatus,
+		"missing_secrets":  api.missingSelectedSecrets(r.Context(), GetUserIDFromContext(r.Context()), workspacePath, manifest),
 	})
 }
 

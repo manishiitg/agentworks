@@ -253,10 +253,16 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 	for _, s := range getGlobalSecrets() {
 		existing[s.Name] = true
 	}
-	for _, name := range *selection {
-		if wanted[name] && !existing[name] {
-			return fmt.Errorf("Secret %q does not exist", name)
+	// A selected name with no stored value anywhere does not stop the run
+	// (owner decision 2026-10-05): $SECRET_<NAME> is empty and the workflow
+	// shows a banner (missingSelectedSecrets) so the person can add it.
+	for name := range wanted {
+		if !existing[name] {
+			delete(wanted, name)
 		}
+	}
+	if len(wanted) == 0 {
+		return nil
 	}
 	rows, err := permittedGlobalSecrets(ctx, userID)
 	if err != nil {

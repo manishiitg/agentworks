@@ -143,8 +143,8 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 	if err := validateVaultSecretSelection(ctx, "anyone", nil, nil); err != nil {
 		t.Error(err)
 	}
-	if err := validateVaultSecretSelection(ctx, "anyone", nil, &missing); err == nil || strings.Contains(err.Error(), "Vault") {
-		t.Error("a missing secret must still be reported as missing, never as a Vault problem:", err)
+	if err := validateVaultSecretSelection(ctx, "anyone", nil, &missing); err != nil {
+		t.Error("a missing secret must not stop the run (the workflow shows a banner instead):", err)
 	}
 	if inv, err := vaultAccessFor(ctx, "anyone"); err != nil || len(inv.Servers) != 0 || len(inv.Secrets) != 0 {
 		t.Error("vaultAccessFor:", inv, err)
