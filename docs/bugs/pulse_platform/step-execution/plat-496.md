@@ -16,6 +16,9 @@ run fails:
   creating `toptal_submit.json`". No write was attempted. The day had nothing to submit (`no_job`). A recovery later wrote the file.
 - 2026-10-05 10:36 salesoutreach, group `india-engineering-ops`, `step-prepare-linkedin-engagement` item `quality-recheck`: "the session's read-only filesystem policy
   prevents creating the required `engagement_prep.json`". Failed the schedule "LinkedIn daily engagement" at 10:44.
+- 2026-10-05 11:28 Upwork "Twice-Daily Upwork Search + Bid", step `bid-read-and-draft` item `read-job-brief`: "the session's read-only filesystem restriction prevents creating `job_brief.json`".
+  Third occurrence today (01:32, 10:36, 11:28). The schedule's stored `workshop_mode: "run"` was suspected and changed to `workshop` by the Upwork chat: it is a legacy field the scheduler
+  ignores (`scheduledWorkshopTurn.workshopMode()` always returns "workshop"; 39 of 48 schedules carry it), so that is NOT the cause and the change did nothing.
 - 2026-10-04 `enrich-shortlist` (Upwork) and 2026-09-27 (Upwork, schedule.log) the same claim.
 
 ## What is known

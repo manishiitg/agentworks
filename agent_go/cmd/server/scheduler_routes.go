@@ -375,7 +375,8 @@ func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
 	apiRouter := router.PathPrefix("/api/scheduler").Subrouter()
 
 	apiRouter.HandleFunc("/config", getSchedulerConfigHandler(svc)).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/config", requireWorkflowWriteAccess(updateSchedulerConfigHandler(svc))).Methods("PUT", "OPTIONS")
+	// The global pause stops every schedule on the platform: administrators only (PLAT-504).
+	apiRouter.HandleFunc("/config", requireAdmin(updateSchedulerConfigHandler(svc))).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/jobs", listScheduledJobsHandler(svc)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/jobs", createScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}", getScheduledJobHandler(svc)).Methods("GET", "OPTIONS")
@@ -537,6 +538,9 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 				return
 			}
 
+			// Only the workflows this account may open (an administrator sees all): the list used to return every
+			// workflow's schedules to any signed-in account (PLAT-504).
+			workflows = filterWorkflowManifestsForUser(GetUserFromContext(r.Context()), workflows)
 			for _, dw := range workflows {
 				for _, sched := range dw.Manifest.Schedules {
 					if enabledFilter != "" {

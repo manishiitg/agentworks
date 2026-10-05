@@ -1,0 +1,39 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+)
+
+// registerVaultAccessChatTool offers manage_vault_access (the Vault chat's tool: connect MCP servers, sign them in,
+// grant groups use of them, inspect groups) in the other chats an administrator works in: Crew, Builder and Code
+// (PLAT-503). It follows the person, not the chat: the tool is registered only for an active administrator with the
+// Vault product, and capLayerConnectionAccess rechecks that on every call, so an account whose role changes mid-chat
+// loses it at once. Secret values never pass through it; secret grants stay in the Vault chat.
+func (api *StreamingAPI) registerVaultAccessChatTool(reg definitionToolRegistrar, userID string) error {
+	if !vaultAdminActive(userID) {
+		return nil
+	}
+	err := reg.RegisterCustomTool("manage_vault_access", caplayerproduct.AccessToolDescription, caplayerproduct.AccessToolParameters(),
+		func(ctx context.Context, args map[string]interface{}) (string, error) {
+			operation, _ := args["operation"].(string)
+			if operation == "" {
+				return "", fmt.Errorf("operation is required")
+			}
+			payload, err := json.Marshal(args["arguments"])
+			if err != nil {
+				return "", err
+			}
+			return api.capLayerConnectionAccess(ctx, userID, operation, payload)
+		}, "vault")
+	// A chat can reach this from two registration points (the query handler and the Builder phase tools); the second is
+	// identical, so a duplicate is not an error.
+	if err != nil && (strings.Contains(err.Error(), "already") || strings.Contains(err.Error(), "duplicate")) {
+		return nil
+	}
+	return err
+}

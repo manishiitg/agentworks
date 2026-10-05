@@ -2458,6 +2458,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/reserve", api.handleReserveAgentProfileProject).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
 	// Admin inspection of Code (read-only, audited; admin checked in-handler).
@@ -6610,6 +6611,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)
 				return
+			}
+			// Whoever may manage Vault can connect and share its MCPs from any chat (Code, Crew, workflows); the
+			// tool is only registered for an active administrator and rechecked on every call (PLAT-503).
+			if resolvedProfile == nil || resolvedProfile.Definition.ID != caplayerproduct.ProfileID {
+				if err := api.registerVaultAccessChatTool(llmAgent, currentUserID); err != nil {
+					sendError(fmt.Sprintf("Failed to register Vault access tool: %v", err), true)
+					return
+				}
 			}
 			// A Code chat's agent connects the person's own MCP servers.
 			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {

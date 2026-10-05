@@ -18,6 +18,7 @@ import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
 import { TooltipProvider } from '../../components/ui/tooltip'
+import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
@@ -103,7 +104,7 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
   return count
 }
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
   const isCode = useProjectProduct().profileId === 'code'
@@ -141,6 +142,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
       <TooltipProvider delayDuration={150}>
+        {showActivityMonitor && <GlobalActivityMonitor />}
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <WorkspaceToolbarFrame>
           {/* A Crew shows its views first; a Code shows them (Automation, Costs) after its working tools. */}

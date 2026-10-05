@@ -73,6 +73,10 @@ Crews are persistent AgentWorks agents. Discover them with `+"`list_crews`"+` (I
 
 Pass a fresh `+"`submission_id`"+` for each new Crew ask or function call, and reuse it after an uncertain delivery. If `+"`get_crew_function_call`"+` returns `+"`pending_inputs`"+`, answer a listed `+"`request_id`"+` with `+"`reply_crew_function_call`"+`. A workflow function call uses the matching `+"`reply_workflow_function_call`"+` tool.
 
+## Vault management
+
+When manage_vault_access appears in get_api_spec, this administrator connection can manage Vault. Inspect the environment and exact tool schemas before connecting MCPs or saving live permissions. Regex conditions require a human-readable description. Use manage_vault_groups for groups and active platform members, and manage_vault_secret_access to list secret names or grant/revoke a group. No workflow_id is needed. Secret values are never returned. Upstream tools use the separate Vault MCP connection; this management grant does not bypass user/group runtime access.
+
 ## Builder
 
 When builder_chat appears in get_api_spec, the connection can delegate plan/code edits to the workflow's configured Builder model on selected workflows where you have write access. Check get_agent_context for the workflow's effective tools. builder_chat continues your existing workflow chat (the owner's main chat); send a unique submission_id with each new request. Poll builder_status using operation_id, answer that operation's pending questions with builder_reply_input, and cancel only that operation with builder_cancel. Reuse the submission_id to retry uncertain delivery; do not resend the same edit with a new ID. Native shell and account tools are unavailable to this Builder mode.

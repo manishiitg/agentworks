@@ -85,13 +85,15 @@ interface ModePresetBarProps {
   productActions?: React.ReactNode
   /** Keep the AgentWorks bar and shared controls while omitting automation-only actions. */
   reduced?: boolean
+  /** An open product workspace renders the shared monitor beside its tools. */
+  activityMonitorInWorkspace?: boolean
   /** Product surface and readiness for its context-specific walkthrough. */
   walkthroughSurface?: WalkthroughSurface
   walkthroughReady?: boolean
   walkthroughPaused?: boolean
 }
 
-export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, productActions, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
+export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, productActions, reduced = false, activityMonitorInWorkspace = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const isRelaySurface = productSurface === 'relays'
   const hasProductActivity = productSurface === 'agentworks'
@@ -631,7 +633,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
             <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
-            {(reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
+            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
 
             {productControl}
 

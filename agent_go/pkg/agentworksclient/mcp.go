@@ -43,8 +43,14 @@ func NewMCPServer(ctx context.Context, client ToolCaller) (*server.MCPServer, er
 	for _, definition := range definitions {
 		// The server omits run tools from catalogs whose token lacks
 		// runs:execute, so execute_step's presence proves this bridge runs.
-		if definition.Name == "execute_step" {
+		if definition.Name == "execute_step" || definition.Name == "manage_vault_access" {
 			instructions = MCPInstructions
+			break
+		}
+	}
+	for _, definition := range definitions {
+		if definition.Name == "manage_vault_access" {
+			instructions += " Exception: authorized Vault management may make changes. Use use manage_vault_access for connections/tool/regex permissions, manage_vault_groups for membership, and manage_vault_secret_access for secret names/group grants. No workflow_id is needed. Secret values are never returned. Separate Vault MCP executes upstream tools using group permissions."
 			break
 		}
 	}

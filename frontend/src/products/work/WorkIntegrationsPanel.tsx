@@ -1,4 +1,4 @@
-import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
+import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Server } from 'lucide-react'
@@ -176,7 +176,9 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
         />)) : undefined}
-          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <SecretSelectionSection showGlobalSecrets={false} selectedSecrets={selectedSecrets} workflowPath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)} /> : undefined}
+          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <ProjectSecretsPanel placeNoun={product.profileId === 'code' ? 'Code' : 'Crew'}
+            selectedSecrets={selectedSecrets} workspacePath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)}
+            selectedGlobalSecrets={selectedGlobalSecrets} onGlobalSecretChange={onSelectedGlobalSecretsChange ? names => onSelectedGlobalSecretsChange(names ?? []) : undefined} /> : undefined}
           skills={(!enabledPanels || enabledPanels.has('skills')) ? (<SkillsManagerPanel
           compact
           selectedOnly

@@ -18,6 +18,7 @@ import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from '../automation/TriggerDeliveryHistoryPanel'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
+import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
 
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 
@@ -86,6 +87,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
     isUpdatingSchedulerPause,
     handleToggleGlobalPause,
   } = panel
+  const canPauseSchedules = useCanPauseSchedules()
 
   const compact = embedded && !isWorkflowScoped
 
@@ -181,7 +183,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                   </span>
                   <span className="text-muted-foreground">Timed runs won't start until you resume them.</span>
                 </div>
-                {!isReadOnlyUser && (
+                {!isReadOnlyUser && canPauseSchedules && (
                   <Button variant="outline" size="sm" onClick={() => void handleToggleGlobalPause()} disabled={isUpdatingSchedulerPause}>
                     {isUpdatingSchedulerPause ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                     Resume schedules

@@ -404,6 +404,10 @@ chat:
       - update_crew
       - export_crew
       - import_crew
+      # Vault management: active administrators only, with vault:manage consent.
+      - manage_vault_access
+      - manage_vault_groups
+      - manage_vault_secret_access
       # Code review (code:review; admins and Code reviewers; read-only, audited).
       - list_code_workspaces
       - get_code_costs

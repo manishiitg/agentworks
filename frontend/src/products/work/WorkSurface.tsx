@@ -1014,6 +1014,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       <ModePresetBar
         productControl={topBarControl}
         reduced
+        activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
         walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
         walkthroughReady={!sessionsLoading && !creating && !error}
         // Both products have their own tour; only active dialogs pause it.
@@ -1097,7 +1098,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               mobilePreview={reportPreviewPreference === 'mobile'}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} />}
+              toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>

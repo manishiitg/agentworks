@@ -203,6 +203,8 @@ func externalTools() ([]externalTool, error) {
 		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions, schedules, template references). Chats, memory, databases, secrets, and model connections are never included. Pass the result to import_crew on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name", "role", "purpose"}, "description": "A spec from export_crew (or a Crew Agent Playbook catalog entry)."}
 		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
+		// Vault management reuses the administrator builder and UI handlers.
+		externalVaultDefinitions(add)
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
@@ -386,6 +388,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if isExternalVaultTool(tool.Name) {
+		api.externalVaultCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if isExternalCrewTool(tool.Name) {

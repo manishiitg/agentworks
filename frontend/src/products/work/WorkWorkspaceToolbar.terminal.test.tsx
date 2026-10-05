@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('../../hooks/usePendingCrewSuggestions', () => ({ usePendingCrewSuggestions: () => 0 }))
+vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
 import { WorkWorkspaceToolbar } from './WorkWorkspacePane'
 import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
@@ -15,7 +16,7 @@ let host: HTMLDivElement
 beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
 afterEach(() => { act(() => root.unmount()); host.remove() })
 
-const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean }) => act(() => {
+const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean }) => act(() => {
   root.render(
     <ProjectProductProvider value={product}>
       <WorkWorkspaceToolbar workspacePath="p" view="files" onViewChange={() => undefined} {...props} />
@@ -36,4 +37,11 @@ it('shows the Terminal button in a Code the caller owns, and nowhere else', () =
   root = createRoot(host)
   render(CREW_PRODUCT, { showShell: false })
   expect(hasTerminal()).toBe(false)
+})
+
+it.each([['Crew', CREW_PRODUCT], ['Code', CODE_PRODUCT]] as const)('shows the shared Global Monitor in the %s workspace toolbar, including read-only projects', (_name, product) => {
+  render(product, { readOnly: true })
+  expect(host.querySelectorAll('[aria-label="Active work monitor"]')).toHaveLength(1)
+  render(product, { showActivityMonitor: false })
+  expect(host.querySelector('[aria-label="Active work monitor"]')).toBeNull()
 })

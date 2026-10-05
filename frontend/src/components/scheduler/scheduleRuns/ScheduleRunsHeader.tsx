@@ -5,6 +5,7 @@ import { WorkspaceViewHeader } from '../../workflow/WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../../workflow/WorkspaceViewIconButton'
 import { ScheduleStatusPills } from './ScheduleStatusPills'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
+import { useCanPauseSchedules } from '../../../hooks/useCanPauseSchedules'
 
 type ScheduleRunsHeaderProps = {
   panel: Pick<ScheduleRunsPanelState,
@@ -33,6 +34,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
     isUpdatingSchedulerPause,
     loadJobs,
   } = panel
+  const canPauseSchedules = useCanPauseSchedules()
 
   const statusPills = <ScheduleStatusPills status={{ summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped }} />
 
@@ -47,7 +49,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
       </> : undefined}
       below={!compact ? statusPills : undefined}
       actions={<>
-        {!isWorkflowScoped && !isReadOnlyUser && (
+        {!isWorkflowScoped && !isReadOnlyUser && canPauseSchedules && (
           <button
             onClick={handleToggleGlobalPause}
             disabled={isUpdatingSchedulerPause}

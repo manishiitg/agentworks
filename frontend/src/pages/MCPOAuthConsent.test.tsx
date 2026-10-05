@@ -84,3 +84,12 @@ it('asks for no workflow selection: Builder follows the account', async () => {
     expect(api.post).toHaveBeenCalledWith(expect.any(String), { decision: 'approve', workflow_ids: [] })
   } finally { await view.cleanup() }
 })
+
+it('explains Vault management separately from runtime tool access', async () => {
+  const view = await mount(['vault:manage'], [])
+  try {
+    expect(view.host.textContent).toContain('Manage Vault connections, groups and permissions (administrator)')
+    expect(view.host.textContent).toContain('Secret values are not returned')
+    expect(view.host.textContent).not.toContain('Use Vault MCP tools you are allowed to use')
+  } finally { await view.cleanup() }
+})

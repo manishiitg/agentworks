@@ -68,6 +68,7 @@ Code review (`code:review`; admins and Code reviewers only, re-checked on every 
 
 If the task needs a change, say so instead of attempting one — authoring is not exposed.
 
+<<<<<<< HEAD
 Administrators may configure an initial Git backup with `manage_knowledgebase_access`
 `action=configure_backup`, the user's exact SSH `remote_url`, optional `branch`
 (default `main`), and stable `request_id`. Never invent a destination or ask for
@@ -75,3 +76,14 @@ credentials. Setup is private and durable; it cannot redirect an existing backup
 or perform commit/push. The server must already have SSH repository access.
 
 For explicitly requested repository-wide Git work, use `backup_knowledgebase(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
+=======
+## Vault management
+
+When `get_api_spec` lists `manage_vault_access`, the connection has `vault:manage` and the account is a current Vault administrator. These global tools need no `workflow_id`:
+
+- `manage_vault_access`: inspect connections/users/tool schemas; connect, sign in, sync or disconnect an MCP; apply tool permissions and regex rules immediately. Regex conditions require a human-readable description.
+- `manage_vault_groups`: list/create/update groups and list/add/remove active platform members. Does not create platform accounts or provision product slots.
+- `manage_vault_secret_access`: list secret names and grant/revoke a group's access. Values are never accepted or returned. Add/rotate values in Vault's secure Secrets UI.
+
+Use the separate Vault MCP connection to execute upstream tools with the caller's live group/tool permissions. Management does not grant a runtime bypass.
+>>>>>>> codex/shared-clarification-choices

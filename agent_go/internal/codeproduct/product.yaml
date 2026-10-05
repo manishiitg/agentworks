@@ -73,6 +73,8 @@ profile:
       - get_report_link
       # The person's own MCP connections (registered for Code turns only).
       - manage_my_mcp_servers
+      # Vault MCP connections and group access, for an active administrator only (rechecked on every call, PLAT-503).
+      - manage_vault_access
   runtime:
     transport: auto
     provider_options:

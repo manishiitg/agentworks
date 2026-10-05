@@ -113,7 +113,7 @@ func (api *StreamingAPI) handleCLIOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": "AgentWorks CLI", "scopes": scopes, "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": "AgentWorks CLI", "scopes": mcpOAuthScopesFor(claims, scopes), "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
 		return
 	}
 	if r.Method != http.MethodPost {

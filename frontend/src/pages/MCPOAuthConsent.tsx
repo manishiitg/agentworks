@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 type Consent = { client_name: string; redirect_uri: string; scopes: string[] }
 
 const scopeDescriptions: Record<string, string> = {
+  'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
@@ -21,6 +22,7 @@ const scopeDescriptions: Record<string, string> = {
 
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
 const scopeGroups: { summary: string; scopes: string[] }[] = [
+  { summary: 'Manage Vault connections, groups and permissions (administrator)', scopes: ['vault:manage'] },
   { summary: 'Use Vault MCP tools you are allowed to use', scopes: ['vault:mcp'] },
   { summary: 'See and run your workflows', scopes: ['workflows:read', 'files:read', 'runs:execute'] },
   { summary: 'Use your Crews', scopes: ['crews:read', 'crews:run'] },
@@ -66,7 +68,7 @@ export function MCPOAuthConsent() {
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : 'AgentWorks'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{consent ? (vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{consent ? (vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
         <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>

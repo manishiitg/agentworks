@@ -25,7 +25,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "knowledgebase:read", "knowledgebase:write"}
+var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "knowledgebase:read", "knowledgebase:write"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -189,7 +189,7 @@ func Validate(t Token, now time.Time) error {
 		switch {
 		case strings.HasPrefix(s, "crews:"):
 			hasCrewScope = true
-		case s == "code:review":
+		case s == "code:review" || s == "vault:manage":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
 		case strings.HasPrefix(s, "knowledgebase:"):
 			// Bounded by current domain grants and optional folder caps.

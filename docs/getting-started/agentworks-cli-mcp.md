@@ -655,3 +655,19 @@ version supports a single hosted agent instance with persistent local storage;
 it does not introduce a distributed token store for independent replicas.
 Do not deploy independent token databases behind a load balancer. Multi-host
 replication requires a shared transactional authentication store.
+
+## Manage Vault through platform MCP
+
+The main AgentWorks endpoint (`/api/external/v1/mcp`) also supports Vault administration. Discover the following tools through `get_api_spec`, then invoke them with `call_tool`: `manage_vault_access`, `manage_vault_groups`, and `manage_vault_secret_access`. They need no workflow ID and reuse the existing Vault connection, live permission, membership and service transport handlers. MCP setup/policy schemas are shared with the Vault builder. Regex conditions require a plain-language description.
+
+The connection needs `vault:manage` and its current user must be an active Vault administrator. Local single-user mode uses its administrator account. SSO accounts follow the live directory role and Vault entitlement. OAuth consent filters this scope for non-administrators, and discovery and every invocation recheck the role. Older approved connections/PATs without the new scope must reconnect or receive a new token; existing grants are not expanded silently. Restart a legacy stdio bridge to refresh its cached catalog.
+
+Example read-only check:
+
+```json
+{"name":"manage_vault_access","arguments":{"operation":"inspect_environment","arguments":{}}}
+```
+
+Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `manage_vault_access` operation `list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
+
+The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Vault administration through platform MCP does not bypass those runtime restrictions.
