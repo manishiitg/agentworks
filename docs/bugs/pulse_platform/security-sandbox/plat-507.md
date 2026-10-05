@@ -27,3 +27,5 @@
 - Not built: secrets in a personal vault (names must be namespaced per vault and run-time secret resolution must honour vault membership); the "My vaults" UI; limits on connections per vault.
 
 **Left:** deploy and check live on RTS (create a vault, promote the Notion connection into it, add a second account, see the tools from that account); then secrets; then the UI.
+
+**Verified live (RTS, 2026-10-05):** create vault and promote an existing Notion sign-in into it worked (see PLAT-503). Still to check live: second account as a member sees the tools; member cannot add people; sixth-vault refusal. Secrets and the UI are not built.
