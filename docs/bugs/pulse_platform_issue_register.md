@@ -1,3 +1,7 @@
+## Empty schedule state file makes "Failed to load automation schedules" — PLAT-501
+
+[PLAT-501](pulse_platform/scheduler-runs/plat-501.md), P2, fixed on main, not deployed. An existing zero-byte `product-schedules.json` was read as a failed read, so the whole Automations list returned 500 for that user (Excellence, 2026-10-05). The reader now treats it as an empty file.
+
 ## Automatic incoming Gmail stays out of the local UI — PLAT-500
 
 [PLAT-500](pulse_platform/integrations/plat-500.md), P2, fixed on main. Connected backend local_mode hides Incoming email and receiving setup prompts in workflows, Crew and Code; ordinary Google connections and permissions remain available. Backend receiving capability is preserved.
