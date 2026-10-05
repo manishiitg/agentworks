@@ -84,4 +84,4 @@ Reload/reconnect using a newly copied code to receive the current deployment
 brand; the account/project token remains unchanged.
 Workflow/Crew extension access and store publication remain deferred.
 
-[Design](../../../design/chrome_extension_cdp_bridge.md).
+[Design](../../../core/browser.md#personal-chrome-extension).

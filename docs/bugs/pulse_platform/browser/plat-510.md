@@ -8,7 +8,7 @@ Date: 2026-10-05. Priority: P2. Requested by owner.
 Hosted agents can use managed server Chrome but cannot connect to explicitly
 shared tabs in a user's existing local Chrome through an extension. Retain
 agent-browser and the existing browser tool, with an authenticated extension/CDP
-adapter. [Design](../../../design/chrome_extension_cdp_bridge.md).
+adapter. [Design](../../../core/browser.md#personal-chrome-extension).
 
 ## Current scope
 

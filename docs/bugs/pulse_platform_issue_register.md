@@ -1,3 +1,7 @@
+## Single consolidated browser design — PLAT-517
+
+[PLAT-517](pulse_platform/browser/plat-517.md), P3, fixed on main. Merge extension design/setup/deployment into the canonical browser guide; correct stable-code and Code-only policy, preserve old links.
+
 ## Code browser setup, notices and background control — PLAT-516
 
 [PLAT-516](pulse_platform/browser/plat-516.md), P2, fixed on main, not deployed. Chat-queue notices, idle browser choices, branded shared-tab groups, opt-in foreground activation and inline-ref/per-tab console fixes.

@@ -1,13 +1,38 @@
 # Browser: ownership, automation, live control and teaching
 
-This is the single browser guide for our products. It consolidates the former
-core browser, workflow browser-authoring and live-workflow-browser guides.
-Runtime behavior below is based on implementation and local verification on
+This is the single browser design and implementation guide for our products.
+It consolidates the former core browser, workflow authoring, live browser and
+Chrome/Edge extension designs, including extension installation and deployment.
+The extension policy is current through PLAT-516 (2026-10-05); other browser
+runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
 their own release verification. See [PLAT-393](../bugs/pulse_platform/browser/plat-393.md).
 The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
 must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
+
+## Reading map and connection methods
+
+- [Ownership and product behavior](#ownership-and-product-behavior).
+- [Personal Chrome/Edge extension: setup, architecture, tokens, control and deployment](#personal-chrome-extension).
+- [Start browser and manual sign-in](#start-browser-and-manual-sign-in), [tabs and reconnection](#tabs-and-reconnection).
+- [Teaching](#teach-a-browser-task), [automation and modes](#current-automation-reference).
+- [Direct CDP tab lifecycle](#shared-cdp-tab-lifecycle), [state and isolation](#state-and-isolation).
+- [Artifacts and diagnostics](#debugging-and-evidence), [workflow authoring](#workflow-authoring).
+- [Live browser and manual control](#live-browser-and-manual-control), [persistent profiles](#persistent-managed-profiles).
+- [Recording](#diagnostic-recording-existing), [media](#synthetic-microphone-and-camera), [Playwright](#playwright-test-browsers).
+- [Deployment, verification and source map](#deployment-and-verification).
+
+| Connection | Browser location and transport | Current scope |
+| --- | --- | --- |
+| Workspace browser | Managed Chromium in the workspace; existing agent-browser execution and viewer. | Products with browser capability enabled. |
+| Chrome · direct connection | Configured debugging endpoint reachable by the runtime; direct CDP. | Where deployment settings permit operator-host CDP. |
+| My Chrome or Edge · extension | User's local browser; outbound WebSocket → private server relay → agent-browser CDP. | Writable Code projects only; Workflow/Crew rollout deferred. |
+
+The extension uses CDP internally but has its own authorization and supported
+command boundary. Later direct-CDP sections describing host file URLs, shared
+workflow tabs, recording or local upload/download paths do not grant those
+features to the extension. Its complete policy is in the extension section.
 
 ## Ownership and product behavior
 
@@ -27,10 +52,13 @@ session fallback. Browsers start on demand, not when a workflow is created.
 | SparkQuill | Parent can start and sign in through its browser drawer; teaching is hidden on this surface. Local CDP installation instructions appear only when enabled. Child browser remains explicitly disabled. |
 | Dominion | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
 
-Local supports Automatic, Managed browser and local Chrome/CDP. When
+Code offers Workspace browser, My Chrome or Edge · extension, and Chrome ·
+direct connection when enabled. Code has no Automatic choice; missing/legacy
+Automatic settings resolve to Workspace browser. Workflow/Crew retain their
+existing Automatic/managed/direct-CDP behavior. When
 `AGENT_BROWSER_CDP_ENABLED=false`, startup and workflow/project runtime use
-managed Chrome even if an old setting requests CDP. There is no per-user browser
-preference. Product capability/tool restrictions remain separate from mode
+managed Chrome even if an old setting requests direct CDP. Ordinary modes are
+workspace-scoped; extension selection is private to the account/workspace. Product capability/tool restrictions remain separate from mode
 migration. Missing or invalid workflow manifests still fail closed.
 
 Managed workflow/project profiles persist by default beneath the OS configuration
@@ -49,34 +77,242 @@ Neither dependency requires a source change for this feature.
 
 ## Personal Chrome extension
 
-A writable Browser panel offers **Connect Chrome** for the current account and
-workspace, including hosted installations. Download the bundled extension ZIP,
-load the unzipped folder through Chrome's **Load unpacked**, paste the five-minute
-connection into its popup, and explicitly **Share current tab**. The existing
-`agent_browser` tool then uses agent-browser through the paired CDP relay,
-without an operator debugging port or a model-supplied `--cdp` endpoint.
+Tracking: [PLAT-510](../bugs/pulse_platform/browser/plat-510.md),
+[PLAT-513](../bugs/pulse_platform/browser/plat-513.md) and
+[PLAT-516](../bugs/pulse_platform/browser/plat-516.md).
 
-Personal Chrome access is private to the paired account, even in a shared
-workflow/project. The first agent action claims the connection for that root
-chat/run; its delegates inherit access. Another conversation must reconnect to
-claim it. Only shared tabs and agent-created tabs are exposed. Native workspace
-services on the agent API host work by default; split-service deployments need
-a private relay bind and advertised host as described in
-[installation](../../extensions/README.md). The ordinary deployment flag that
-disables operator-host CDP does not disable this separately paired connection.
+Let a Code agent use explicitly shared tabs in the user's
+existing Chrome profile, locally or from a hosted platform. Keep the existing
+`agent_browser` tool and agent-browser CLI. Chrome remains on the user's machine;
+its login cookies are not exported. Page text, screenshots and action results
+do travel to the platform and model.
 
-Stop in Chrome, connection expiry or server/browser restart leaves a disconnected
-selection, so agent actions fail until the user re-pairs. **Use workspace browser**
-explicitly restores ordinary browser routing. Selection is stored in private
-server state without credentials or target IDs. Connections last at most eight
-hours, and Chrome/laptop must stay awake. Page contents and screenshots travel to
-the platform/model; Chrome retains its own login cookies. Screenshot files use
-the existing workspace artifact broker. Local upload/download transfer, teaching,
-recording, protected Chrome pages and complete CDP parity are unavailable.
+### Install and connect
 
-See [PLAT-510](../bugs/pulse_platform/browser/plat-510.md) and the
-[design](../design/chrome_extension_cdp_bridge.md). This is an unpacked-extension
-release; Chrome Web Store publication and deployment remain separate actions.
+1. Build/restart the platform with this change. In a writable Code project,
+   open **Browser → Settings** and choose **My Chrome or Edge · extension**.
+   Workflows and Crews do not offer the extension yet.
+2. Download the extension ZIP from that panel and unzip it.
+3. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose
+   **Load unpacked**, and select the unzipped folder. Pin the extension if useful.
+4. Copy the connection from AgentWorks into the extension popup and choose
+   **Connect browser**. The same code works until you explicitly reset it.
+5. Open the tab to use and select **Share this tab** in the extension.
+6. Ask the existing chat to work in Chrome. `agent_browser(command="status")`
+   reports extension mode. Use ordinary browser commands without `--cdp`.
+
+Loading unpacked does not require Google login or Chrome Web Store approval.
+Keep the extracted folder available while using the extension. Company-managed
+browser policies can restrict developer-mode installations. The same package
+passed the real local end-to-end check in Chrome 153.0.8010.12 and Microsoft Edge
+154.0.4258.53; see PLAT-516 for the qualified coverage.
+
+### Architecture
+
+```
+agent_browser → workspace service → agent-browser --cdp <private relay URL>
+                                              ↕ CDP WebSocket
+                                  agent API's authenticated CDP relay
+                                              ↕ outbound authenticated WebSocket
+                                  Manifest V3 extension
+                                              ↕ chrome.debugger / chrome.tabs
+                                  explicitly shared Chrome tabs
+```
+
+The extension uses Chrome's debugger transport, not a remote-debugging port.
+It does not run the CLI. The server brokers CDP frames over the paired socket.
+The extension implements the browser-level CDP operations agent-browser needs, maps targets and flattened
+sessions to shared tabs, and forwards page commands and events. The browser
+permission boundary is therefore enforced on the user’s machine. Browser/Target
+methods unavailable through `chrome.debugger` are implemented with `chrome.tabs`
+or rejected explicitly.
+
+### Pairing and ownership
+
+The authenticated Code Browser settings picker exposes My Chrome or Edge ·
+extension. Copy connection returns the same random code for this account and
+server-derived Code workspace. Workflows and Crews are deferred and both
+management/connection routes enforce this scope. Codes survive server restarts
+in a private 0600 credentials file; status/selection state never includes them.
+Reset connection code explicitly rotates the code and closes current access.
+Every connection and heartbeat rechecks the enabled account and current Code
+product/workspace write access. The user pastes the connection into the
+extension and explicitly chooses Share this tab. The extension opens an
+outbound connection to the same deployment; only HTTPS/WSS is accepted except
+loopback development. Authentication happens in the first WebSocket message,
+so no app JWT is stored in the extension or placed in its URL.
+
+A binding is private to `(account identity, server-derived browser workspace
+identity)`. A collaborator's run never inherits another person's Chrome.
+Live bindings last at most eight hours and remain process-local. The selected
+browser is recorded separately in private server state, without any credential
+or target ID. A restart restores a disconnected selection and requires explicit
+human reconnection with the same saved code; it never restores access or silently
+chooses a server browser. Pairing replaces an older binding only on successful
+connection. One extension instance holds one live project connection. Reusing a
+project code in another browser replaces that project's prior browser binding;
+it does not create a second independently controlled browser for the project. Only tabs explicitly shared from the extension are exposed. New
+tabs may be created within that connected workspace and are included in it.
+
+The connection overrides the workspace browser for that user's agent tool
+calls while selected. Product/tool restrictions still apply. The existing
+deployment setting that disables operator-host CDP does not disable this
+separately authenticated user connection. The browser's server-derived scope
+and trusted session identity select the binding; tool arguments cannot supply
+an arbitrary endpoint or another user's binding.
+
+### Transport and execution
+
+The server starts a private CDP listener on loopback with an unpredictable
+binding capability. The capability is passed only to the trusted workspace
+execution path, never included in tool results, prompts or UI status. Split
+agent/workspace services can explicitly configure listener address and advertised
+host; this requires private-network routing and preserves capability checks.
+The extension's public WebSocket route is a narrow exception to ordinary JWT
+and gateway auth: its own reusable private credential and subsequent live socket are
+the authorization boundary. Adjacent management routes remain authenticated.
+
+Commands for a binding are serialized. The first action claims control for its
+trusted root chat/run identity; delegated agents inherit it. Another conversation
+is refused until the user explicitly re-pairs. This first release has one
+controlling conversation per connection, avoiding shared stale element refs.
+The selected tab is pinned; closing it fails the next action instead of applying
+cached references to another shared tab. The CLI session/socket folder is derived
+from that binding and uses the existing workspace folder guard and artifact
+broker. A lost connection invalidates the CDP client. It does not restart
+Chrome, retry mutations or fall back to a managed browser. The user must pair
+again to recover. Choosing Workspace browser or direct connection in the app
+returns future calls to the ordinary browser; Stop in the extension leaves a disconnected selection so
+the next tool call explains that Chrome was stopped.
+
+### Extension experience
+
+Chrome 125 or newer is required for flattened debugger sessions.
+
+The Browser pane exclusively shows the extension connection when chosen; it
+never exposes workspace Start browser/teaching controls in that state. Setup
+lives inside the ordinary picker, with three short steps, collapsed installation
+instructions and raw JSON hidden behind Copy manually. Waiting ends only after
+an actual new connection, not a poll of the prior live browser.
+An idle pane displays browser choice cards after successful session discovery.
+Opening an existing browser keeps those choices in the header settings. This
+avoids flashing setup over a running session while discovery is pending.
+
+The branded popup hides setup after connecting. It shows a Connected badge,
+Code project/server identity, empty or populated shared-tab list, Share this tab,
+New shared tab, Regroup tabs and Disconnect browser. Sharing the first tab
+automatically creates a deployment-brand · project group in its window. New tabs
+may be created by either the popup or the agent and join that managed group.
+Grouping applies only to already shared tabs, separately per window. It does
+not share other tabs, including tabs dragged into a group. Stop/unshare removes
+our shared tabs from our managed groups without touching unrelated groups.
+The copied connection includes the existing runtime appName as display-only
+branding. Validate the name with the frontend's branding helper; the extension
+also rejects blank, overlong or control-character names and falls back to
+AgentWorks for older codes. This metadata never changes the account/project
+credential or grants authority.
+
+Extension commands keep the user's active tab by default. The optional
+`agent_browser` `active=true` parameter permits Target.activateTarget,
+Page.bringToFront and foreground tab creation during one serialized call; its
+gate release clears permission. Popup New shared tab remains a human foreground
+action. Inline tab selection reuses the current tab without the CLI's
+ref-clearing switch; changed tabs still require a fresh snapshot.
+
+#### Tab diagnostics and artifacts
+
+Console/errors read bounded per-target relay caches (100 entries per kind,
+2048 bytes per text), including child sessions. Removing a shared target or
+disconnecting clears its cache; --clear affects only the selected tab.
+Status returns screenshot_write_paths from the trusted folder guard. Output
+must remain inside those paths; global /tmp/tool_output_folder paths stay denied.
+
+#### Chat notices and connection lifecycle
+
+The active interactive Code chat observes status every 2.5 seconds even with
+its Browser pane closed. Connection, first-share and disconnection notices use
+the existing global durable chat queue, preserve drafts and wait behind running
+turns. Per-connection receipts prevent repeats; failed status requests do not
+mean disconnection. Notices tell the agent to verify status, discard old refs
+and use ordinary agent_browser commands through the backend-owned connection.
+Code has explicit browser choices; missing or legacy Automatic settings select
+Workspace browser. Workflow/Crew settings are unchanged.
+Reusing a code in another browser replaces the prior browser on successful
+connection; each new binding receives a fresh private relay capability.
+Sharing another tab is explicit. Removing a shared tab detaches its debugger;
+Stop closes the socket, detaches every debugger and clears the pairing secret.
+No automatic reconnect or silent reattachment follows user revocation. Chrome
+also supplies its debugger indicator. Heartbeats, command deadlines and bounded
+message sizes handle idle periods and failed connections. State is reset rather
+than restored with authority after an extension worker/browser restart.
+
+### Protocol boundaries
+
+HTTP(S) pages and about:blank are supported. Internal Chrome pages, extension
+pages, file URLs and debugger access to unrelated targets are refused. Target
+IDs are opaque to the backend and only the extension maps them to local tabs.
+CDP calls that expose cookies, global browser state, native file paths, network
+interception or browser shutdown are not part of the first release. They fail
+with an explicit protocol error. Ordinary snapshots, click/fill/keyboard,
+navigation, tab operations and screenshots are the qualification target.
+Downloads stay on the laptop; server paths cannot name local upload files.
+Teaching, HAR/video capture, native dialogs, store publication, unattended
+operation with a sleeping laptop and complete CDP parity are outside this
+release. Their availability must not be implied by the ordinary tool help.
+
+### Verification and release
+
+Use a real extension loaded into an isolated Chrome-for-Testing profile, the
+real relay and the installed agent-browser version. Prove snapshot/reference
+click, fill, screenshot, navigation, tab creation, existing cookie retention,
+unshared-tab exclusion and immediate stop. Also cover cross-account lookup,
+stable codes, reset revocation and disabled accounts, a second CDP controller,
+wrong capability and target revocation through real WebSocket requests. Verify app pairing/control UI,
+build the server/frontend and package the unpacked extension as a downloadable
+ZIP. Record actual checks and remaining qualifications in the linked platform tickets.
+Real Chrome and Edge qualification for the current behavior is recorded in
+[PLAT-516](../bugs/pulse_platform/browser/plat-516.md); this documentation update
+does not claim a new runtime or deployment verification.
+
+References: [agent-browser CDP](https://agent-browser.dev/cdp-mode),
+[Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger),
+[worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle).
+
+### Extension development and deployment
+
+Run from an owned repository worktree:
+
+```sh
+python3 scripts/package-chrome-extension.py
+npm ci --prefix packages/playwright
+RUN_CHROME_EXTENSION_E2E=1 go -C agent_go test ./pkg/browser \
+  -run '^TestChromeExtensionToolRealE2E$' -count=1 -v
+go -C agent_go test -race ./pkg/browserrelay
+```
+
+Install Playwright's full Chromium browser if needed, or set
+`CHROME_EXTENSION_E2E_CHROME` to a Chrome-for-Testing executable. The live test
+uses its own temporary profile; it does not control the user's existing Chrome.
+
+The packager embeds the extension ZIP in the Go server, which serves it at
+`/api/downloads/chrome-extension.zip`. Repackage after every extension source edit.
+The test runs the actual guarded workspace shell, the installed agent-browser,
+the relay and the unpacked extension, including screenshot artifact transfer.
+
+The CDP listener defaults to a random loopback port on the agent API host.
+Native workspace services on the same machine need no extra configuration.
+For split services, set `AGENT_BROWSER_EXTENSION_RELAY_BIND` to an explicitly
+chosen private address/port (for example `0.0.0.0:9334`) and
+`AGENT_BROWSER_EXTENSION_RELAY_HOST` to the hostname/IP reachable from the
+workspace service. Restrict that port to the private service network. Each CDP
+connection still requires its opaque capability. Only the extension's outbound
+WebSocket `/api/browser/extension/connect` traverses the public gateway.
+
+To check the app controls visually, run the frontend dev server from this
+worktree, then run `node scripts/test-chrome-extension-ui.mjs` with
+`CHROME_EXTENSION_UI_URL` set to that server's URL. The fixture is served only
+by the development server; it is not a production build entry point. Screenshots
+are saved beneath `/tmp/agentworks-chrome-extension-ui` by default.
 
 ## Start browser and manual sign-in
 
@@ -270,20 +506,25 @@ our own implementation, not a claim about Grok's latest implementation.
 ## Current automation reference
 
 All normal automation uses the managed `agent_browser` tool and matching
-`agent-browser` skill. Chrome can run headlessly in the workspace or, on local
-installations where permitted, attach to a visible Chrome through CDP.
+`agent-browser` skill. Chrome can run headlessly in the workspace, attach through
+a configured direct-CDP endpoint where permitted, or use the selected Code
+extension relay with ordinary tool commands and no model-supplied `--cdp`.
 
 ## Modes
 
 | Mode | Behavior | Typical use |
 |---|---|---|
 | `none` | Legacy ordinary workflow/project configuration migrates to `auto`. Internal missing-manifest and explicit product capability restrictions remain separate. | Compatibility only; no ordinary UI option. |
-| `auto` | Use a reachable configured CDP browser; otherwise use headless. | Default. |
+| `auto` | Use a reachable configured CDP browser; otherwise use headless. Code normalizes this legacy value to `headless`. | Workflow/Crew default; no Code UI option. |
 | `headless` | Use the workflow/project’s managed Chromium. | Background and scheduled runs. |
 | `cdp` | Attach to the configured Chrome debugging port. | Existing logins, visual QA, and sites that reject headless browsers. |
 
 The workflow manifest stores the mode under
 `capabilities.browser_mode`. Browser steps attach the `agent-browser` skill.
+The Code extension is a separately stored private account/workspace selection
+that overrides ordinary execution while selected; it is not a manifest mode.
+A disconnected selected extension fails until explicit reconnection or a browser
+choice change, rather than falling back through `auto`.
 
 ## Starting a CDP browser
 
@@ -353,6 +594,10 @@ the returned real tab ID (`t1`, `t2`, and so on) inline for every page action.
 endpoint and argument form for the active session.
 
 ## Shared CDP tab lifecycle
+
+This section describes configured direct CDP. The Code extension instead exposes
+only authorized targets, has one controlling root chat per binding and keeps tabs
+in the background unless a call sets `active=true`.
 
 One visible Chrome is shared safely by verifying and acting under a per-port
 lock. A workflow must not assume that the tab selected during its previous tool
@@ -434,6 +679,8 @@ Browser session tracking lives in `agent_go/pkg/browser`. MCP subprocess
 connection pooling in `mcpagent` is independent of browser state.
 
 ### `file://` URLs are not path-restricted (deliberate, not an oversight)
+
+This applies to configured direct CDP. The extension rejects `file://` URLs.
 
 In CDP mode the browser is the user's **own** Chrome — a host process this app
 neither owns nor sandboxes — so `agent_browser` can read any file on the
@@ -590,7 +837,8 @@ There are two CDP download paths:
   tab locking and can race other workflows.
 - On a local installation, a site rejecting managed headless browsing may
   require `cdp`; record that precondition in its learnings. A server with external
-  CDP disabled cannot use that workaround.
+  CDP disabled cannot use that direct-connection workaround. A Code project may
+  separately pair the user's browser through the extension, subject to its policy.
 
 ## Workflow authoring
 
@@ -955,6 +1203,13 @@ can access.
 
 ### Implementation files
 
+- [Extension worker](../../extensions/agentworks-chrome/background.js): shared target authorization, debugger transport, groups and foreground permission.
+- [Extension popup](../../extensions/agentworks-chrome/popup.html): connection and explicit sharing controls.
+- [Extension management API](../../agent_go/cmd/server/browser_extension.go): pairing, stable codes and authenticated selection.
+- [Private relay](../../agent_go/pkg/browserrelay/relay.go) and [diagnostics](../../agent_go/pkg/browserrelay/diagnostics.go): capability transport, serialized controller ownership and per-target logs.
+- [Extension executor](../../agent_go/pkg/browser/extension_executor.go): managed tool routing and guarded CLI execution.
+- [Browser workspace panel](../../frontend/src/components/workflow/BrowserWorkspacePanel.tsx) and [connection UI](../../frontend/src/components/workflow/ChromeExtensionConnection.tsx): explicit methods and selected extension experience.
+- [Chat notifications](../../frontend/src/hooks/useChromeExtensionChatNotifications.ts): status observation through the global durable queue.
 - [WorkflowLiveBrowser.tsx](../../frontend/src/components/workflow/WorkflowLiveBrowser.tsx): session discovery, viewport, tab strip, input, and connection lifecycle.
 - [WorkflowCapabilitiesPanel.tsx](../../frontend/src/components/workflow/WorkflowCapabilitiesPanel.tsx): embeds the viewer above browser settings.
 - [BrowserTeachingPanel.tsx](../../frontend/src/components/workflow/BrowserTeachingPanel.tsx): demonstration controls, draft review, test and publication.

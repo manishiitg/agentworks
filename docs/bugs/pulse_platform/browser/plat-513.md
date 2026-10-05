@@ -66,4 +66,4 @@ limited to Code projects; Workflows and Crews are deferred.
 Deployment and Chrome/Edge store publication remain outside this change.
 Workflows and Crews remain deferred by the owner.
 
-[Design](../../../design/chrome_extension_cdp_bridge.md).
+[Design](../../../core/browser.md#personal-chrome-extension).
