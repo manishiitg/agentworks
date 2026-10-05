@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | open: design proposal, no decision yet (owner asked on 2026-10-05 whether the "LCS stuff" had been removed and made simple; it had not) |
+| State | fixed on main (2026-10-05, owner chose main before the live test); not deployed; owner testing locally |
 | Priority | P2 |
 | Date | 2026-10-05 |
 | Owner | chat-reliability |
@@ -37,6 +37,19 @@
 - Conversations already saved may contain duplicates (PLAT-518 added none retroactively).
 - It changes how history is restored; needs the owner's decision and a staged rollout (local first).
 
-## Decision needed
+## Decision (owner, 2026-10-05)
 
-Owner: replace the sync with the event store (this ticket), or keep the sync and only patch bugs.
+What the platform saved is the chat's history. What Claude/Codex save in their own transcripts is for debugging (and chat debugging) only, never merged back.
+
+## Done
+
+- Found: since 2026-09-21 the platform already saves each reply itself, in order (`structured_completion_persistence.go`); the merge only ran as a "repair" on every chat open, resume, builder restore and after retained turns. In the PLAT-518 case both replies were in the platform's own events (8671, 8672).
+- Removed the four triggers (`polling.go` `sync_native_transcript`, `chat_history_routes.go` resume, `workflow_builder_session_routes.go` restore and its Slack refresh limit, `server.go` retained-turn fallback and the startup recovery journal), the merge/LCS/stale-tail code, the PLAT-518 patch, and their tests (~1,900 lines).
+- Kept: messages typed straight into the CLI terminal (native terminal observer) and the read-only proof that an uncertain send never arrived (`canRetryUncertainChatSubmission`).
+- A retained-turn completion with no final reply is now logged (`[CHAT_HISTORY] Retained turn completion carried no final reply to save`), not repaired.
+
+## Left
+
+- Owner's local test: two quick messages into a running Codex turn; reopen the chat; resume; restart the server; one message each, replies in order, no duplicate.
+- Frontend still sends `sync_native_transcript=1`; the server ignores it. Remove after the test.
+- Check one Cursor and one Claude chat (send, reopen, nothing missing); watch for the "no final reply to save" log line.

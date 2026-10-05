@@ -275,20 +275,6 @@ func effectiveBuilderConversationOwner(requestUserID, existingUserID string) str
 }
 
 func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, presetQueryID, workspacePath string) (*workflowBuilderSessionResponse, error) {
-	return api.restoreLatestBuilderConversationLimited(ctx, presetQueryID, workspacePath, 0)
-}
-
-// slackBuilderRefreshLimit is how many of the most recently updated saved conversations a bot
-// lookup refreshes from their CLI transcripts. The lookup only needs the newest one's session id;
-// refreshing all 38 of a busy workflow took 70 s and delayed the Slack reply by ~90 s (Confida,
-// 2026-09-30).
-const slackBuilderRefreshLimit = 6
-
-// restoreLatestBuilderConversationLimited is restoreLatestBuilderConversation that refreshes only the
-// refreshLimit most recently updated conversations from their native transcripts (0 = all). The
-// saved snapshot of an older conversation cannot be newer than a recent one's live transcript
-// unless it is also among the most recent, so the newest is still found.
-func (api *StreamingAPI) restoreLatestBuilderConversationLimited(ctx context.Context, presetQueryID, workspacePath string, refreshLimit int) (*workflowBuilderSessionResponse, error) {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
 	if workspacePath == "" {
 		return nil, nil
@@ -340,25 +326,6 @@ func (api *StreamingAPI) restoreLatestBuilderConversationLimited(ctx context.Con
 		return nil, nil
 	}
 
-	// PLAT-178: conversation_history is only rewritten when a full turn
-	// completes. A resumed session can then continue through /api/live-input,
-	// leaving its snapshot behind while the native CLI transcript keeps
-	// growing. Refresh *every* candidate before choosing the newest one: doing
-	// it only after sorting can select an older saved snapshot and never even
-	// inspect the conversation the user actually used last.
-	if refreshLimit > 0 && len(candidates) > refreshLimit {
-		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].updatedAt.After(candidates[j].updatedAt) })
-		candidates = candidates[:refreshLimit]
-	}
-	for i := range candidates {
-		candidates[i].log = api.refreshLatestBuilderConversationFromNativeTranscript(
-			ctx,
-			candidates[i].path,
-			candidates[i].rawContent,
-			candidates[i].log,
-		)
-		candidates[i].updatedAt = parseBuilderConversationUpdatedAt(candidates[i].log.UpdatedAt)
-	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if !candidates[i].updatedAt.Equal(candidates[j].updatedAt) {
 			return candidates[i].updatedAt.After(candidates[j].updatedAt)

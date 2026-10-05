@@ -79,6 +79,8 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"strconv"
+
 	eventbridge "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/event_bridge"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -87,7 +89,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	"strconv"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/retainedturn"
@@ -596,12 +597,6 @@ type StreamingAPI struct {
 	// text, rendered as the same answer twice in a row.
 	retainedMainTurnCompletionEmitted map[string]time.Time
 	retainedMainTurnsMu               sync.Mutex
-	// nativeTranscriptSyncInFlight coalesces the post-completion durable sync
-	// for live coding-CLI turns. Guarded separately so transcript I/O never
-	// blocks the terminal/event observer.
-	nativeTranscriptSyncInFlight map[string]bool
-	nativeTranscriptSyncPending  map[string]bool
-	nativeTranscriptSyncMu       sync.Mutex
 
 	// Pending completions queue — background agent IDs that finished while session was busy
 	pendingCompletions map[string][]string
@@ -2239,7 +2234,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		retainedMainTurnExecutionIDs:        make(map[string]string),
 		retainedMainTurnPendingExecutionIDs: make(map[string][]string),
 		retainedMainTurnWatchCancels:        make(map[string]context.CancelFunc),
-		nativeTranscriptSyncInFlight:        make(map[string]bool),
 		pendingCompletions:                  make(map[string][]string),
 		completionRetryScheduled:            make(map[string]bool),
 		pendingStartNotifications:           make(map[string][]string),
@@ -2290,8 +2284,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// transcript has the result and the real runtime; this lets the event store
 	// ask for them (PLAT-141).
 	api.installToolResultRecovery()
-	stopNativeTranscriptRecovery := api.resumePendingNativeTranscriptRecovery()
-	defer stopNativeTranscriptRecovery()
 
 	// BG-001: Wire the onDropped callback so a full notification channel re-queues
 	// the completion instead of silently losing it permanently.
@@ -3168,7 +3160,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// with capture/poll commands and make shutdown hang.
 	fmt.Println("⏹️ Canceling active agent work...")
 	cancelStart := time.Now()
-	stopNativeTranscriptRecovery()
 	api.cancelActiveWorkForShutdown()
 	stopGmailInbound()
 	fmt.Printf("✅ Active agent work canceled (%s)\n", time.Since(cancelStart).Round(time.Millisecond))
@@ -9521,14 +9512,13 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 	}
 	// A live retained CLI turn bypasses handleQuery's normal final-save block.
-	// Persist an exact structured completion directly whenever it carries the
-	// final reply. Native transcript reconciliation is only the emergency path
-	// for missing structured output or a failed canonical append.
-	// A follow-up answered by the previous response carries no text of its own;
-	// that response is already persisted, so there is nothing to reconcile.
+	// Persist its structured completion directly. The platform's saved history is
+	// the chat's only source: the CLI's own transcript is never merged back in
+	// (PLAT-525). A follow-up answered by the previous response carries no text of
+	// its own; that response is already persisted.
 	if !completionMetadataFlag(event, mcpagent.AnsweredByPreviousResponseMetadataKey) &&
 		!api.persistRetainedStructuredCompletion(sessionID, event) {
-		api.scheduleWorkflowBuilderNativeTranscriptSync(sessionID)
+		log.Printf("[CHAT_HISTORY] Retained turn completion carried no final reply to save session=%s event=%s", sessionID, event.ID)
 	}
 	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s",
 		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID)

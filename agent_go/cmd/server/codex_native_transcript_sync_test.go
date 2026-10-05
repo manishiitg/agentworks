@@ -1,8 +1,6 @@
 package server
 
 import (
-	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,65 +88,6 @@ func TestResolveCodexNativeTranscriptPathHonoursCodexHomeAndFindsAcrossDates(t *
 	}
 	if got, _ := resolveCodexNativeTranscriptPath("missing"); got != "" {
 		t.Fatalf("expected no path for an unknown thread, got %q", got)
-	}
-}
-
-// The real bug: a Codex builder chat persisted through 10:44, then continued
-// for an hour via retained live input. Resume showed the 10:44 snapshot.
-func TestRefreshLatestBuilderConversationFromCodexRollout(t *testing.T) {
-	codexHome := t.TempDir()
-	t.Setenv("CODEX_HOME", codexHome)
-	const nativeSessionID = "01a05dba-758d-72b0-8248-d100125d5593"
-	writeCodexRolloutFixture(t, filepath.Join(codexHome, "sessions"), "2026-09-01", nativeSessionID, codexRolloutFixture())
-
-	conv := builderConversationLog{
-		SessionID: "b445627b-deae-407c-a05e-02fcd7343d7c",
-		PhaseID:   "workflow-builder",
-		UpdatedAt: "2026-09-04T10:44:30+05:30",
-		ConversationHistory: []builderConversationMessage{
-			{Role: "human", Parts: []builderConversationPart{{Text: "something is wrong in our reports"}}},
-			{Role: "ai", Parts: []builderConversationPart{{Text: "The daily actions table is empty because the ingest step failed."}}},
-		},
-	}
-	record := map[string]interface{}{
-		"session_id": conv.SessionID,
-		"phase_id":   conv.PhaseID,
-		"updated_at": conv.UpdatedAt,
-		"conversation_history": []map[string]interface{}{
-			{"Role": "human", "Parts": []map[string]interface{}{{"Text": "something is wrong in our reports"}}},
-			{"Role": "ai", "Parts": []map[string]interface{}{{"Text": "The daily actions table is empty because the ingest step failed."}}},
-		},
-		"runtime": map[string]interface{}{
-			"provider":            "codex-cli",
-			"external_session_id": nativeSessionID,
-			"agent_session_handle": map[string]interface{}{
-				"provider": map[string]interface{}{
-					"provider":          "codex-cli",
-					"native_session_id": nativeSessionID,
-					"working_dir":       "/tmp/ws",
-				},
-			},
-		},
-	}
-	rawContent, err := json.Marshal(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	api := &StreamingAPI{}
-	setupNativeRecoveryCanonicalFixture(t, "Workflow/social-media/builder/conversation/2026-09-01/session-b445627b-conversation.json", string(rawContent))
-	refreshed := api.refreshLatestBuilderConversationFromNativeTranscript(context.Background(), "Workflow/social-media/builder/conversation/2026-09-01/session-b445627b-conversation.json", string(rawContent), conv)
-
-	if len(refreshed.ConversationHistory) != 4 {
-		t.Fatalf("expected 4 messages after catch-up, got %d: %+v", len(refreshed.ConversationHistory), refreshed.ConversationHistory)
-	}
-	last := refreshed.ConversationHistory[3]
-	if last.Role != "ai" || last.Parts[0].Text != "Yes - Weekly Strategy Discovery runs every Monday." {
-		t.Fatalf("expected the rollout's newest assistant reply last, got %+v", last)
-	}
-	wantUpdatedAt, _ := time.Parse(time.RFC3339Nano, "2026-09-04T06:48:58.974Z")
-	if got := parseBuilderConversationUpdatedAt(refreshed.UpdatedAt); !got.Equal(wantUpdatedAt) {
-		t.Fatalf("updated_at = %v, want %v", got, wantUpdatedAt)
 	}
 }
 

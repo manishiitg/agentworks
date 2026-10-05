@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Chat history is what the platform saved; CLI transcripts are for debugging only
+
+- The saved conversation is built only from what the platform recorded (user rows and structured completions, in arrival order).
+  Claude/Codex/Cursor/... transcripts are never merged back into it; they stay for debugging and chat debugging.
+- Removed the native transcript catch-up (LCS merge) on chat open, resume, builder restore, after retained turns and at
+  server start. It duplicated a live-input message in the Upwork chat (PLAT-518) and caused PLAT-341/178/140 before.
+- Kept: text typed straight into the CLI terminal (native terminal observer) and the read-only proof that an uncertain send
+  never arrived. A retained turn whose completion has no final reply is logged, not repaired.
+- Risk accepted: a reply the platform failed to save stays missing from the restored chat. Ticket: [PLAT-525](bugs/pulse_platform/chat-reliability/plat-525.md).
+
 ### 2026-10-05 — One browser account token serves separately authorized Code and Crew projects
 
 Use one persistent token per account/deployment, with separately registered and
