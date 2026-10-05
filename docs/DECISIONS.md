@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Local global MCP connections use account-wide tokens; servers use OAuth — PLAT-496
+
+On a verified single-user loopback instance, shared Connect offers access-token creation and revocation instead of browser OAuth. Local tokens include every permission available to the local account without a permission picker; the server derives scopes and preserves live account/folder grants. The local-full-access request is rejected on multi-user servers and for a different identity. Hosted setup and Vault’s distinct MCP gateway keep their existing OAuth flow. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base follows Vault’s shared chat and Models layout — PLAT-496
 
 Use the same `ChatArea` default composer/rendering configuration, chat tab, landing card, split rail and workspace Models panel as Vault. Remove the KB-only model strip and product chat variant. Retain the access-only profile and app confirmation for grants; the disabled raw terminal stays unavailable. New chat uses the shared profile-conversation rotation API. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

@@ -525,3 +525,42 @@ func TestAccessTokenRuntimeLeaseAndCancellation(t *testing.T) {
 		t.Fatal("runtime not stopped against new work")
 	}
 }
+
+func TestLocalFullAccessTokenIssuance(t *testing.T) {
+	api := tokenTestSetup(t)
+	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
+	t.Setenv("AGENTWORKS_KNOWLEDGEBASE_ROOT", filepath.Join(t.TempDir(), "knowledgebase"))
+	request := func(claims *UserClaims) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/auth/access-tokens", strings.NewReader(`{"name":"Local agent","local_full_access":true,"expires_in_days":30}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+		w := httptest.NewRecorder()
+		api.handleAccessTokens(w, r)
+		return w
+	}
+	claims := &UserClaims{UserID: GetDefaultUserID(), Username: "user"}
+	w := request(claims)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("local full token: %d %s", w.Code, w.Body.String())
+	}
+	var issued struct {
+		AccessToken accesstokens.Token `json:"access_token"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &issued); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range mcpOAuthScopesFor(claims, mcpOAuthScopes) {
+		if !issued.AccessToken.Allows(scope) {
+			t.Errorf("missing available scope %s", scope)
+		}
+	}
+	if !issued.AccessToken.AllWorkflows || !issued.AccessToken.AllCrews || issued.AccessToken.KnowledgebaseFolders != nil || issued.AccessToken.KnowledgebaseIdentityID != "" {
+		t.Fatal("full token must follow the local account's live access")
+	}
+	if w := request(&UserClaims{UserID: "another-user"}); w.Code != http.StatusForbidden {
+		t.Fatalf("foreign local identity admitted: %d", w.Code)
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if w := request(claims); w.Code != http.StatusForbidden {
+		t.Fatalf("multi-user full local token admitted: %d", w.Code)
+	}
+}

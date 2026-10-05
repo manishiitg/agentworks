@@ -2845,6 +2845,9 @@ export interface PersonalAccessToken {
   knowledgebase_identity_id?: string
 }
 export interface CreateAccessTokenInput {
+  local_full_access?: boolean
+  crew_ids?: string[]
+  all_crews?: boolean
   name: string
   scopes: string[]
   workflow_ids: string[]

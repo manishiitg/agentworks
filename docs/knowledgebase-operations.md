@@ -59,6 +59,13 @@ The MCP endpoint is `/api/external/v1/mcp`. Authenticate with a Bearer token, us
 `get_api_spec` to discover tools and schemas, then `call_tool` with the operation
 name and its arguments. The existing local bridge uses the same catalog.
 
+On a local single-user instance, open the global **Connect an AI agent (MCP)**
+page and create an access token. It includes all access available to the local
+account, without a scope picker; live folder grants still apply. Copy the token
+into your HTTP MCP client's `Authorization: Bearer <ACCESS_TOKEN>` header.
+Choose an expiry and revoke it from the same page when finished. Multi-user and
+hosted server setup uses the existing OAuth connection approval flow.
+
 The MVP has five tools, all requiring `action`:
 
 | Tool | Actions |

@@ -162,6 +162,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 	case "POST":
 		var req struct {
 			Name                    string               `json:"name"`
+			LocalFullAccess         bool                 `json:"local_full_access"`
 			Scopes                  []string             `json:"scopes"`
 			WorkflowIDs             []string             `json:"workflow_ids"`
 			AllWorkflows            bool                 `json:"all_workflows"`
@@ -180,6 +181,18 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		if d.Decode(new(any)) != io.EOF {
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
+		}
+		if req.LocalFullAccess {
+			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {
+				externalError(w, 403, "forbidden", "Full local tokens are available only to the local single-user account.")
+				return
+			}
+			// Derive permissions from the current account and enabled products;
+			// a client cannot choose a different identity or broaden folder grants.
+			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
+			req.AllWorkflows, req.AllCrews = true, true
+			req.WorkflowIDs, req.CrewIDs = nil, nil
+			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
 		}
 		if req.ExpiresInDays < 1 || req.ExpiresInDays > 90 {
 			externalError(w, 400, "invalid_arguments", "Choose an expiry between 1 and 90 days.")

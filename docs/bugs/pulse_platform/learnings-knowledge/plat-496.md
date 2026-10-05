@@ -81,3 +81,16 @@ Validation: TypeScript project build and 22 focused frontend tests passed,
 including conversation rotation, standard composer configuration and Models
 placement. The running local app shows the shared composer and provider/account/
 model/reasoning settings in the workspace Models view.
+
+## Local MCP authentication
+
+Shared global Connect detects a verified single-user loopback instance and offers
+access tokens, with name, expiry, copy and revocation. There is no permission
+picker: local_full_access makes the server derive all scopes available to the
+local account, with unrestricted connection caps but live folder/account grants.
+The request is forbidden for multi-user servers or a foreign local identity.
+Hosted and multi-user setup retains OAuth. Vault’s separate gateway retains its
+OAuth path; this change is for the global MCP endpoint used by KB and other
+platform products. Tokens remain in component memory only and are never placed
+in generated example URLs or config. Backend issuance/admission/revocation and
+16 focused frontend tests plus TypeScript validation pass.
