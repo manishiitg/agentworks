@@ -8,6 +8,7 @@ import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
+import { PROJECT_INTEGRATION_SECTIONS } from '../../components/integrations/integrationSections'
 import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectMcpPanel } from '../../components/integrations/ProjectMcpPanel'
@@ -22,13 +23,7 @@ import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../compo
 
 export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
-  { value: 'apps', label: 'Connections' },
-  { value: 'slack', label: 'Slack' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'gmail', label: 'Google apps' },
-  { value: 'cli', label: 'Connect' },
-]
+const INTEGRATION_TABS = PROJECT_INTEGRATION_SECTIONS
 
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
@@ -142,7 +137,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Server}
-        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={activeTab === 'apps' ? undefined : visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
+        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
         helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
         actions={(
           <WorkspaceViewActions

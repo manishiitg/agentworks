@@ -11,6 +11,7 @@ import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from './WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../integrations/IntegrationSectionPicker'
+import { PROJECT_INTEGRATION_SECTIONS } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
@@ -42,14 +43,8 @@ export type WorkflowCapabilitySection = CapabilityViewId
 
 type McpTab = IntegrationTabId
 
-const MCP_TABS: Array<{ value: McpTab; label: string }> = [
-  { value: 'apps', label: 'Connections' },
-  { value: 'slack', label: 'Slack' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'gmail', label: 'Google apps' },
-  { value: 'cli', label: 'Connect' },
-]
-const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'secrets' || option.value === 'gmail')
+const MCP_TABS = PROJECT_INTEGRATION_SECTIONS
+const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'gmail')
 
 type IdentityTab = IdentityTabId
 
@@ -296,7 +291,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
       {section !== 'browser' && (
         <WorkspaceViewHeader
           icon={SectionIcon}
-          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Integrations" current={activeMcpTab === 'apps' ? undefined : mcpTabs.find(option => option.value === activeMcpTab)?.label} onBack={() => setIntegrationMenu(true)} /> : copy.title}
+          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Integrations" current={mcpTabs.find(option => option.value === activeMcpTab)?.label} onBack={() => setIntegrationMenu(true)} /> : copy.title}
           helpTopic={section === 'mcp'
             ? `Integrations · ${mcpTabs.find(option => option.value === activeMcpTab)?.label ?? 'MCPs'}`
             : section === 'identity'
