@@ -16,9 +16,22 @@ export PATH="$prefix/node/bin:$prefix/bin:$service_home/.local/bin:$PATH"
 rm -rf "$prefix"/lib/node_modules/@anthropic-ai/.claude-code-* \
   "$prefix"/lib/node_modules/@earendil-works/.pi-coding-agent-* \
   "$prefix"/lib/node_modules/@openai/.codex-*
-HOME="$service_home" npm install -g --prefix "$prefix" --include=optional \
-  --allow-scripts=@anthropic-ai/claude-code,esbuild,protobufjs,@google/genai \
-  @anthropic-ai/claude-code@latest @openai/codex@latest @earendil-works/pi-coding-agent@latest
+install_node_clis() {
+  HOME="$service_home" npm install -g --prefix "$prefix" --include=optional \
+    --allow-scripts=@anthropic-ai/claude-code,esbuild,protobufjs,@google/genai \
+    @anthropic-ai/claude-code@latest @openai/codex@latest @earendil-works/pi-coding-agent@latest
+}
+install_node_clis
+# A new release can be tagged latest before its platform binary package is downloadable (Codex 0.160.1 on 2026-10-05
+# failed an RTS deploy for a few minutes). Wait and reinstall before the launch check below fails the deploy.
+for attempt in 1 2 3 4; do
+  timeout 45 "$prefix/bin/codex" --version >/dev/null 2>&1 && break
+  [[ "$attempt" == 4 ]] && break
+  echo "codex does not launch yet (attempt $attempt of 4); waiting for its platform package, then reinstalling" >&2
+  sleep 60
+  rm -rf "$prefix"/lib/node_modules/@openai/codex
+  install_node_clis
+done
 curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | HOME="$service_home" bash
 test -x "$service_home/.local/bin/cursor-agent"
 if [[ "$prefix/bin" != "$service_home/.local/bin" ]]; then
