@@ -29,6 +29,11 @@ import (
 // a server host over ssh, against http://127.0.0.1:<port>), or from marker
 // tokens the CLI could only have printed by reading a fixture file.
 //
+// The Full CLI shape drives the CLI's OWN shell, which is off by default
+// (PLAT-491). Start the server under test with AGENTWORKS_CLI_NATIVE_SHELL=on,
+// or the CLI will refuse the script; this contract checks the confinement of the
+// shell when that escape hatch is on.
+//
 // Two shapes, chosen by provider: Pi is bridge-only (the platform's folder
 // guard is the only boundary; edits go through diff_patch_workspace_file), every
 // other CLI runs Full CLI with its own tools inside the sandbox.

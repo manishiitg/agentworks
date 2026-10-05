@@ -47,3 +47,29 @@ Writes into other users' trees; reading with the Supabase key; running a contain
 
 `workspace/security/landlock_runner_linux.go`: `ScrubPlatformSecretEnv` runs at the launcher's final exec, the one place every confined CLI passes through (not the six adapters). Deploy self-test row `cli-launcher-env-scrub` (full level) plants canary values under the platform names, runs `env` through the launcher and requires them gone and an ordinary variable kept. Container e2e: passes with the new launcher; with the OLD launcher (origin/main before the change, `E2E_OLD_IS_ENV_SCRUB_BASELINE=1`) the row FAILS and names the leaked variables. Left: deploy (RTS, Excellence, Confida; owner's go each), a live check from a real Crew's built-in shell that `env` no longer shows the names, the Docker socket (option 2), and the native-shell switch (option 3, asked of ai-work-2c by the owner). The macOS local app (Seatbelt) does not go through this launcher.
 
+## Done: native shell off in Full mode (2026-10-05, option 3; on main, not deployed)
+
+Owner decision (see DECISIONS 2026-10-05): the CLI's built-in shell is off in Full mode on every CLI; native file read/edit, skills and
+subagents stay; the bridge shell is the only shell. One switch, off by default: `AGENTWORKS_CLI_NATIVE_SHELL=on` restores it
+(`nativeshell.Enabled()` in the provider). The prompt says so (`native-shell-off` section) so a model does not conclude it has no shell.
+
+| CLI | Provider commit | Mechanism | Real CLI result |
+|---|---|---|---|
+| Codex 0.160.0 | 1073ab3 | `shell_tool` and `unified_exec` disabled | no shell tool offered; native edit worked; `on` restored shell |
+| Claude Code 2.1.289 | 68ca08f | Bash/PowerShell/Monitor/BashOutput/KillShell dropped from `--tools`; `--disallowedTools` when tools=default | no `Bash` call possible incl. subagent; edit worked; `on` restored |
+| Muse 1.4.2 | 01d351e | shell tools out of the allowlist baked into the hook | `bash` refused with reason naming execute_shell_command; edit worked; `on` restored |
+| Agy 1.2.16 | 24f86bc | PreToolUse hook denies `run_command`/`send_command_input` | denied with reason; `write_to_file` worked; `on` restored |
+| Cursor 2026.10.01 | f740613 | preToolUse deny + `beforeShellExecution` deny; `Shell(*)` dropped from allow | **NOT verified live: the CLI is not logged in on this Mac** |
+| Pi | n/a | already bridge-only | n/a |
+
+Existing live tests that drive the built-in shell now set the switch on. `cli-sandbox-contract` needs the server started with the switch on
+(noted in the command).
+
+## Left (native shell)
+
+- Cursor live check: `cursor-agent login`, then `go test ./pkg/adapters/cursorcli/ -run TestCursorCLIRealFullModeNativeShellOff -args -coding-cli-p0-live`.
+- The bridge shell in the SAME chat was not driven live on any CLI (stubs only); a real Crew chat on an isolated server (`id -un` refused, native
+  edit works, `execute_shell_command` works) was not run, nor the three contracts (they need the switch on).
+- Codex structured and Claude print paths: argument construction only, not live. Claude: a skill declaring `allowed-tools: Bash` not tested.
+- No deploy: Excellence and RTS need their own live check and the owner's go per server.
+

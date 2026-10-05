@@ -6,6 +6,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/nativeshell"
 )
 
 // The system prompt is assembled from independent sections, each with its own
@@ -224,6 +225,14 @@ When a real user decision needs a choice between options, call the available req
 		},
 	},
 	{
+		// Full mode keeps the CLI's own file tools but not its built-in shell
+		// (PLAT-491). Say so exactly: a prompt that contradicted the tool list once
+		// made Codex conclude it had no shell at all.
+		Name:    "native-shell-off",
+		Applies: func(c promptContext) bool { return c.NativeCodingTools && !nativeshell.Enabled() },
+		Build:   func(promptContext) string { return nativeShellOffGuidance },
+	},
+	{
 		// Full CLI has its own subagents for parallel work. There is no separate
 		// background-agent tool: reviews are done by the agent itself.
 		Name:    "native-subagents",
@@ -231,6 +240,9 @@ When a real user decision needs a choice between options, call the available req
 		Build:   func(promptContext) string { return nativeSubagentsGuidance },
 	},
 }
+
+const nativeShellOffGuidance = `## Shell
+Your own built-in shell tool is turned off in this chat. Your file read and edit tools, skills and subagents still work. Run every shell command (scripts, git, tests, installs, platform API calls) with ` + "`execute_shell_command`" + `: it runs as your user with your files and credentials. Do not conclude you have no shell; use that tool.`
 
 const nativeSubagentsGuidance = `## Subagents
 Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results. There is no separate background-agent tool.
