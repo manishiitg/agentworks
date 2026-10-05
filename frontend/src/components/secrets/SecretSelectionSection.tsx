@@ -32,6 +32,8 @@ interface SecretSelectionSectionProps {
   workspaceNoun?: string
   workspaceSecretHeading?: string
   showGlobalSecrets?: boolean
+  /** Lock a project list to one source when a parent shows both sections. */
+  projectSource?: 'project' | 'vault'
   workspaceSecretsAlwaysEnabled?: boolean
   allowGlobalPromotion?: boolean
   persistExplicitGlobalSelection?: boolean
@@ -60,6 +62,8 @@ export function SecretSelectionSection({
   workflowPath = '',
   fillAvailableHeight,
   showGlobalSecrets = true,
+  projectSource,
+  workspaceSecretHeading,
   workspaceSecretsAlwaysEnabled = false,
   allowGlobalPromotion = true,
   mode = 'project',
@@ -71,7 +75,8 @@ export function SecretSelectionSection({
   const [shareName, setShareName] = useState('')
   const [shareGroupIds, setShareGroupIds] = useState<string[]>([])
   const [shareNotice, setShareNotice] = useState('')
-  const [source, setSource] = useState<'project' | 'vault'>('project')
+  const [localSource, setSource] = useState<'project' | 'vault'>('project')
+  const source = projectSource ?? localSource
   const loadGeneration = useRef(0)
   const viewGeneration = useRef(0)
   useEffect(() => {
@@ -86,13 +91,13 @@ export function SecretSelectionSection({
     setShareGroups([])
     setSharing(null)
     setShareNotice('')
-    if (mode === 'project' && workflowPath && canWrite && allowGlobalPromotion) {
+    if (mode === 'project' && source === 'project' && workflowPath && canWrite && allowGlobalPromotion) {
       void secretsApi.getVaultShareGroups().then(({ groups }) => {
         if (!cancelled) setShareGroups(groups)
       }).catch(() => { /* The server exposes sharing only to Vault administrators. */ })
     }
     return () => { cancelled = true }
-  }, [workflowPath, mode, canWrite, allowGlobalPromotion])
+  }, [workflowPath, mode, source, canWrite, allowGlobalPromotion])
   const [project, setProject] = useState<Row[]>([])
   const [vault, setVault] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -114,7 +119,7 @@ export function SecretSelectionSection({
     setError('')
     try {
       const [p, v] = await Promise.allSettled([
-        mode === 'project' && workflowPath
+        mode === 'project' && projectSource !== 'vault' && workflowPath
           ? secretsApi.listWorkflowSecrets(workflowPath)
           : Promise.resolve([]),
         showGlobalSecrets || mode !== 'project'
@@ -134,7 +139,7 @@ export function SecretSelectionSection({
     } finally {
       if (request === loadGeneration.current) setLoading(false)
     }
-  }, [workflowPath, mode, showGlobalSecrets])
+  }, [workflowPath, mode, showGlobalSecrets, projectSource])
   useEffect(() => {
     setRevealed({})
     setCopied('')
@@ -498,14 +503,14 @@ export function SecretSelectionSection({
           ? 'Group secrets'
           : mode === 'vault'
             ? 'Vault secrets'
-            : 'Project integrations secrets'
+            : workspaceSecretHeading || 'Project integrations secrets'
       }
       className={
         fillAvailableHeight ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-3'
       }
     >
       <div className="flex items-center justify-between gap-2">
-        {mode === 'project' && showGlobalSecrets ? (
+        {mode === 'project' && showGlobalSecrets && !projectSource ? (
           <div role="tablist" aria-label="Secret source" className="flex gap-1">
             {(['project', 'vault'] as const).map((s) => (
               <Button
@@ -523,7 +528,7 @@ export function SecretSelectionSection({
         ) : (
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <KeyRound className="h-4 w-4 text-primary" />
-            Secrets
+            {workspaceSecretHeading || 'Secrets'}
             {mode === 'group' && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
                 {selected.length} assigned

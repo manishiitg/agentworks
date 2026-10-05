@@ -20,6 +20,7 @@ export interface McpAction {
 }
 export interface McpConnectionRow {
   id: string; name: string; source?: string; status: string; statusDot?: string
+  sectionId?: string
   toolCount?: number; tools?: McpToolRow[]; loadTools?: () => Promise<McpToolRow[]>
   toolsLabel?: (open: boolean) => string; toolsNotice?: ReactNode; settings?: ReactNode
   actions?: McpAction[]; controls?: ReactNode
@@ -31,12 +32,14 @@ export interface McpCatalogRow {
   batch?: { id: string; name: string; connect: (ids: string[]) => void | Promise<unknown> }
 }
 export interface McpPanelNotice { message: string; retry?: () => void; tone?: 'error' | 'info' }
+export interface McpConnectionSection { id: string; label: string; loading?: boolean }
 
 /** The sole MCP browser UI. Adapters provide scoped data and authorized callbacks, never layouts. */
-export function McpConnectionsPanel({ servers, catalog = [], view, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, showTools = true }: {
+export function McpConnectionsPanel({ servers, catalog = [], view, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, showTools = true, connectionSections }: {
   servers: McpConnectionRow[]; catalog?: McpCatalogRow[]; view?: 'connected' | 'available'
   loading?: boolean; notices?: McpPanelNotice[]; refresh?: () => void
   addCustom?: McpAction; help?: ReactNode; children?: ReactNode; searchTestId?: string; headerActions?: ReactNode; showTools?: boolean
+  connectionSections?: McpConnectionSection[]
 }) {
   const [tab, setTab] = useState<'connected' | 'available'>('connected')
   const activeView = view ?? tab
@@ -67,10 +70,20 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
     {notices.map((notice, i) => <div key={`${i}:${notice.message}`} role={notice.tone === 'info' ? undefined : 'alert'} className={notice.tone === 'info' ? 'text-muted-foreground' : 'text-destructive'}>
       {notice.message}{notice.retry && <Button variant="ghost" size="xs" onClick={notice.retry}>Retry</Button>}
     </div>)}
-    {loading && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
+    {loading && !(activeView === 'connected' && connectionSections) && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
     {activeView === 'connected' ? <section aria-label="Connected servers" className="space-y-3">
-      {!loading && connections.length === 0 && <p className="py-4 text-muted-foreground">No connected MCPs{query ? ' match your search' : ' yet'}.</p>}
-      {connections.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} />)}
+      {connectionSections ? connectionSections.map((section, index) => {
+        const rows = connections.filter(server => server.sectionId === section.id)
+        return <section key={section.id} aria-label={section.label} className={`space-y-2 ${index ? 'border-t border-border pt-4' : ''}`}>
+          <h4 className="flex items-center gap-2 font-medium">{section.label}<span className="text-muted-foreground">{rows.length}</span></h4>
+          {section.loading && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
+          {!section.loading && !rows.length && <p className="py-2 text-muted-foreground">{query ? 'No MCPs match your search.' : 'No MCPs available.'}</p>}
+          {rows.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} />)}
+        </section>
+      }) : <>
+        {!loading && connections.length === 0 && <p className="py-4 text-muted-foreground">No connected MCPs{query ? ' match your search' : ' yet'}.</p>}
+        {connections.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} />)}
+      </>}
     </section> : <>
       <section aria-label="Available servers" className="space-y-4">
         {!loading && available.length === 0 && <p className="py-4 text-muted-foreground">No servers available{query ? ' match your search' : ' to add'}.</p>}

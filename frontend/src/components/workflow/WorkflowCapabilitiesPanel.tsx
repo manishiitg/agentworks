@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LoaderCircle, Save } from 'lucide-react'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
-import { SecretSelectionSection } from '../secrets/SecretSelectionSection'
+import { ProjectSecretsPanel } from '../integrations/ProjectSecretsPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
@@ -353,8 +353,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow}
                       selectedServers={capabilities.selected_servers}
                       onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }} />}
-                  secrets={<SecretSelectionSection showGlobalSecrets={false}
-                  workflowPath={workspacePath || ''} selectedSecrets={capabilities.selected_secrets}
+                  secrets={<ProjectSecretsPanel placeNoun={relayMode ? 'Relay' : 'Workflow'}
+                  workspacePath={workspacePath || ''} selectedSecrets={capabilities.selected_secrets}
                   selectedGlobalSecrets={capabilities.selected_global_secret_names ?? []}
                   onSecretChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next,true);setCapabilities(next) }}
                   onGlobalSecretChange={async names => { const next = { ...latest.current.capabilities, selected_global_secret_names:names ?? [] }; await persist(next,true);setCapabilities(next) }} />}

@@ -42,6 +42,12 @@ Plugins, one header row contains Connected, Available, Secrets, Skills and
 Vault. `ProjectPluginsPanel` accepts the controlled header tab and renders
 content without another tab row. Crew, Code, workflows and Relay reuse it.
 
+Connected lists project MCPs first and authorized Vault MCPs below, with one
+shared search and refresh. Vault MCPs remain available automatically. Secrets
+shows project secrets followed by permitted Vault secrets, using the same
+selection component without another source-tab row. Project and Vault secret
+selections remain independent, including when their names are identical.
+
 ## Chat navigation
 
 Ctrl+K and Global Monitor use `openGlobalTab` / `openGlobalActivitySession`.
