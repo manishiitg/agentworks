@@ -2684,3 +2684,7 @@ After a platform fix ships:
 
 The first four are ordered ahead of cost and UI completeness because they can
 change what a workflow does while still allowing it to report success.
+
+## The external MCP returns stored webhook secrets in workflow manifests — PLAT-533
+
+[PLAT-533](pulse_platform/mcp/plat-533.md), P3, fixed on main, not deployed: `list_workflows` and `get_workflow` now drop each webhook's `encrypted_secret` from the manifest they return.

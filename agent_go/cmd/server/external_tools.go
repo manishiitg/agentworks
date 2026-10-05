@@ -419,7 +419,11 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		sort.Slice(matches, func(i, j int) bool { return matches[i].Manifest.ID < matches[j].Manifest.ID })
 		start := min(externalInt(args, "offset", 0), len(matches))
 		end := min(start+externalInt(args, "limit", 100), len(matches))
-		externalJSON(w, map[string]any{"workflows": matches[start:end], "total": len(matches), "next_offset": end, "has_more": end < len(matches)})
+		page := make([]DiscoveredWorkflow, 0, end-start)
+		for _, item := range matches[start:end] {
+			page = append(page, externalWorkflowView(item))
+		}
+		externalJSON(w, map[string]any{"workflows": page, "total": len(matches), "next_offset": end, "has_more": end < len(matches)})
 		return
 	}
 	var selected *DiscoveredWorkflow
@@ -476,7 +480,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if tool.Name == "get_workflow" {
-		externalJSON(w, selected)
+		externalJSON(w, externalWorkflowView(*selected))
 		return
 	}
 	if tool.Name == "list_step_code" {
@@ -647,4 +651,24 @@ func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request
 		artifacts[p] = value
 	}
 	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": wf.Revision([]byte(revisions.String())), "plan": artifacts["planning/plan.json"], "artifacts": artifacts})
+}
+
+// externalWorkflowView is a workflow as an external client may see it: the manifest without the stored webhook
+// secrets. They are encrypted, but the ciphertext is only ever needed by the server itself. The input is not modified.
+func externalWorkflowView(item DiscoveredWorkflow) DiscoveredWorkflow {
+	if item.Manifest == nil {
+		return item
+	}
+	manifest := *item.Manifest
+	manifest.Schedules = make([]WorkflowSchedule, len(item.Manifest.Schedules))
+	copy(manifest.Schedules, item.Manifest.Schedules)
+	for i := range manifest.Schedules {
+		if webhook := manifest.Schedules[i].Webhook; webhook != nil {
+			clean := *webhook
+			clean.EncryptedSecret = ""
+			manifest.Schedules[i].Webhook = &clean
+		}
+	}
+	item.Manifest = &manifest
+	return item
 }
