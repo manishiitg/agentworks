@@ -5574,17 +5574,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[TOOLS] No tool selection specified - will use ALL tools from selected servers")
 		}
 
-		// Multi-agent chat / generic agent always runs in code-execution mode
-		// regardless of provider. Tool-search and simple-agent paths have been
-		// retired. Provider-specific CLI handling (CLI prompt template, native
-		// context, api-bridge tool mapping) is decided separately via
-		// common.IsCLIProvider further down the request lifecycle.
-		useCodeExecutionMode = true
-		if req.BrowserMode != "" && req.BrowserMode != "none" {
-			log.Printf("[CODE_EXECUTION] Code execution mode enabled with browser_mode=%s", req.BrowserMode)
-		} else {
-			log.Printf("[CODE_EXECUTION] Code execution mode enabled (always on)")
-		}
+		// App chat uses code-execution mode. External Builder uses direct
+		// managed tools because its permission boundary excludes the shell.
+		// Provider-specific CLI handling (prompt template, native context and
+		// MCP bridge mapping) is decided separately via common.IsCLIProvider.
+		useCodeExecutionMode, _ = externalBuilderTransport(GetUserFromContext(r.Context()))
+		log.Printf("[CODE_EXECUTION] code_execution=%v browser_mode=%s", useCodeExecutionMode, req.BrowserMode)
 
 		var resolvedPrimaryOptions map[string]interface{}
 		if req.LLMConfig != nil {
@@ -5793,7 +5788,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
 		defer toolGate.logSurface(sessionID)
-		platformBridgeTools := []string{}
+		_, platformBridgeTools := externalBuilderTransport(GetUserFromContext(r.Context()))
 		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
 			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
 			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
@@ -7171,13 +7166,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if req.ExecutionOptions != nil {
 					phaseEnabledGroupNames = req.ExecutionOptions.EnabledGroupNames
 				}
-				// All workshop agents now run in code-execution mode regardless of
-				// provider — there is no longer a tool-search / simple-agent path.
+				// Match the runtime transport: external Builder uses managed direct
+				// tools; app workshop agents use code-execution mode.
 				// Provider-specific CLI handling (prompt template, api-bridge tool
 				// mapping, native context) is decided separately via
 				// common.IsCLIProvider.
-				phaseIsCodeExec := true
-				log.Printf("[WORKFLOW_PHASE] Mode detection: finalProvider=%q, isCodeExec=%v (always true)", finalProvider, phaseIsCodeExec)
+				phaseIsCodeExec := useCodeExecutionMode
+				log.Printf("[WORKFLOW_PHASE] Mode detection: finalProvider=%q, isCodeExec=%v", finalProvider, phaseIsCodeExec)
 				phaseTemplateVars := map[string]string{
 					"Objective":                   phaseObjective,
 					"WorkspacePath":               phaseWorkspacePath,

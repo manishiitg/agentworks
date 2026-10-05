@@ -16,7 +16,7 @@ import (
 func workflowCreationArgs(folder string) map[string]any {
 	return map[string]any{
 		"folder_name":   folder,
-		"workflow_json": map[string]any{"schema_version": 1, "id": "wf_" + folder, "label": "KB reader", "created_by": "outsider", "access": map[string]any{"owners": []any{"outsider"}}},
+		"workflow_json": map[string]any{"schema_version": 1, "version": "1.0.0", "code_layout_version": 0, "id": "wf_" + folder, "label": "KB reader", "created_by": "outsider", "access": map[string]any{"owners": []any{"outsider"}}},
 		"plan_json": map[string]any{"steps": []any{map[string]any{
 			"type": "message_sequence", "id": "answer", "title": "Answer", "description": "Read attached KB", "next_step_id": "end",
 			"items": []any{map[string]any{"id": "read", "type": "user_message", "message": "Read the attached knowledge."}},
@@ -48,6 +48,12 @@ func TestExternalWorkflowCreationThroughMCP(t *testing.T) {
 	manifest, found, err := ReadWorkflowManifest(ctx, "Workflow/kb-reader")
 	if err != nil || !found || manifest.CreatedBy != "owner" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner || len(manifest.Access.Owners) != 1 {
 		t.Fatalf("ownership not assigned to caller: %+v %v", manifest, err)
+	}
+	if manifest.Version != WorkflowContractCurrentVersion || manifest.CodeLayoutVersion != 1 {
+		t.Fatalf("fresh workflow has legacy contract/layout: %+v", manifest)
+	}
+	if err := requireCurrentWorkflowContractForManualRun(ctx, "Workflow/kb-reader"); err != nil {
+		t.Fatalf("fresh workflow cannot execute: %v", err)
 	}
 	for _, path := range []string{"planning/plan.json", "soul/soul.md", "db/.gitkeep", "db/reports/.gitkeep"} {
 		if _, found, err := readFileFromWorkspace(ctx, "Workflow/kb-reader/"+path); err != nil || !found {

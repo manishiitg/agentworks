@@ -58,12 +58,12 @@ func workflowCreatorToolSchema() map[string]interface{} {
 			},
 			"workflow_json": map[string]interface{}{
 				"type":                 "object",
-				"description":          "The full workflow.json manifest object. Required fields: schema_version (int, 1), id (string, e.g. 'wf_<folder_name>'), label (string, free-form human-readable name — can contain spaces, capitalization, anything). Should include objective, success_criteria, and a capabilities object with selected_servers/skills/etc picked smartly from the current chat context. If this workflow supports an org goal, name that goal from pulse/goals.html in the objective/success_criteria and design the workflow to produce measurable evidence for it. Set capabilities.selected_global_secret_names to [] unless specific global secrets are required.",
+				"description":          "The full workflow.json manifest object. New workflows always use the current platform contract and code layout; supplied legacy version/layout markers are replaced. Required fields: schema_version (int, 1), id (string, e.g. 'wf_<folder_name>'), label (string, free-form human-readable name — can contain spaces, capitalization, anything). Should include objective, success_criteria, and a capabilities object with selected_servers/skills/etc picked smartly from the current chat context. If this workflow supports an org goal, name that goal from pulse/goals.html in the objective/success_criteria and design the workflow to produce measurable evidence for it. Set capabilities.selected_global_secret_names to [] unless specific global secrets are required.",
 				"additionalProperties": true,
 			},
 			"plan_json": map[string]interface{}{
 				"type":                 "object",
-				"description":          "The full plan.json object. Required field: steps (array, at least 1 step). Start with one large message_sequence per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent regular fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a regular step is scripted, a message_sequence is conversational), so after creation explicitly hand off every deterministic (regular) step to Workshop for an authored/tested learnings/<step-id>/main.py before the first production run.",
+				"description":          "The full plan.json object. Required field: steps (array, at least 1 step). Start with one large message_sequence per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent regular fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a regular step is scripted, a message_sequence is conversational), so after creation explicitly hand off every deterministic (regular) step to Workshop for an authored/tested code/<step-id>/main.py before the first production run.",
 				"additionalProperties": true,
 			},
 		},
@@ -116,6 +116,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		return "", err
 	}
 	defaultWorkflowCreatorGlobalSecretsToNone(workflowMap)
+	defaultWorkflowCreatorContract(workflowMap)
 
 	// 4. Validate plan.json required fields
 	if err := validatePlanJSONStructure(planMap); err != nil {
@@ -211,7 +212,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		"objective":     workflowMap["objective"],
 		"step_count":    stepSummary.count,
 		"steps":         stepSummary.items,
-		"next_action":   fmt.Sprintf("Open Workflow/%s/ in Workshop before the first production run. Declare deterministic API/SDK/CLI/fetch/parse/persist steps scripted, then author and test each learnings/<step-id>/main.py; keep judgment, message-sequence, and browser work agentic.", folderName),
+		"next_action":   fmt.Sprintf("Open Workflow/%s/ in Workshop before the first production run. Declare deterministic API/SDK/CLI/fetch/parse/persist steps scripted, then author and test each code/<step-id>/main.py; keep judgment, message-sequence, and browser work agentic.", folderName),
 		"message":       fmt.Sprintf("Workflow Workflow/%s/ created. The user can activate it from the workflow picker; scripted-step setup must be completed in Workshop before the first production run.", folderName),
 	}
 
@@ -220,6 +221,14 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		return fmt.Sprintf("%v", result), nil
 	}
 	return string(resultJSON), nil
+}
+
+// Newly authored plans use the current layout and contract, just like UI creation.
+// This is only called by creation; existing workflows still require migrations.
+func defaultWorkflowCreatorContract(workflowMap map[string]interface{}) {
+	defaults := NewWorkflowManifest("")
+	workflowMap["version"] = defaults.Version
+	workflowMap["code_layout_version"] = defaults.CodeLayoutVersion
 }
 
 func defaultWorkflowCreatorGlobalSecretsToNone(workflowMap map[string]interface{}) {
