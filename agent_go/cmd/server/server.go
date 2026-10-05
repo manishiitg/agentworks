@@ -36,6 +36,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
@@ -115,6 +116,7 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,
+	"knowledgebase":        true,
 	"llm_config_tools":     true,
 	"secret_tools":         true,
 	"notification_tools":   true,
@@ -2146,6 +2148,14 @@ func runServer(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to register CapLayer profile: %v", err)
 		}
 	}
+	if productEnabled(knowledgebaseproduct.ProfileID) {
+		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
+			log.Fatalf("Failed to register Brain profile: %v", err)
+		}
+		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor, knowledgebaseBackupExecutor); err != nil {
+			log.Fatalf("Failed to register Brain runtime: %v", err)
+		}
+	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
 			log.Fatalf("Failed to register Work skills: %v", err)
@@ -2436,6 +2446,16 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
+	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup"} {
+		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
+	}
+	apiRouter.HandleFunc("/knowledgebase/project", api.handleKnowledgebaseProject).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/knowledgebase/git", api.handleKnowledgebaseGit).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
+	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
+	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")
+	})
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation", api.handleResolveAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/new", api.handleRotateAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/switch", api.handleSwitchAgentProfileConversation).Methods("POST", "OPTIONS")
@@ -4574,7 +4594,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Create custom tools for workflow agents (workspace tools + human tools).
 		// Workflow agents can be Simple or ReAct agents, tools are registered based on mode.
-		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID) // Workflow mode: session-aware
+		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, req.SelectedFolder) // Workflow mode: session-aware
 		api.guardPulseResultExecutor(allExecutors, sessionID)
 
 		// NOTE: Workspace executor replacement with session + secrets happens after secrets are merged (see below).
@@ -5562,17 +5582,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[TOOLS] No tool selection specified - will use ALL tools from selected servers")
 		}
 
-		// Multi-agent chat / generic agent always runs in code-execution mode
-		// regardless of provider. Tool-search and simple-agent paths have been
-		// retired. Provider-specific CLI handling (CLI prompt template, native
-		// context, api-bridge tool mapping) is decided separately via
-		// common.IsCLIProvider further down the request lifecycle.
-		useCodeExecutionMode = true
-		if req.BrowserMode != "" && req.BrowserMode != "none" {
-			log.Printf("[CODE_EXECUTION] Code execution mode enabled with browser_mode=%s", req.BrowserMode)
-		} else {
-			log.Printf("[CODE_EXECUTION] Code execution mode enabled (always on)")
-		}
+		// App chat uses code-execution mode. External Builder uses direct
+		// managed tools because its permission boundary excludes the shell.
+		// Provider-specific CLI handling (prompt template, native context and
+		// MCP bridge mapping) is decided separately via common.IsCLIProvider.
+		useCodeExecutionMode, _ = externalBuilderTransport(GetUserFromContext(r.Context()))
+		log.Printf("[CODE_EXECUTION] code_execution=%v browser_mode=%s", useCodeExecutionMode, req.BrowserMode)
 
 		var resolvedPrimaryOptions map[string]interface{}
 		if req.LLMConfig != nil {
@@ -5781,7 +5796,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
 		defer toolGate.logSurface(sessionID)
-		platformBridgeTools := []string{}
+		_, platformBridgeTools := externalBuilderTransport(GetUserFromContext(r.Context()))
 		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
 			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
 			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
@@ -5789,9 +5804,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 		}
 		if resolvedProfile != nil {
-			// Profile-declared native tools still pass normal registration and
-			// admission checks. This does not enable a general shell bridge.
-			platformBridgeTools = append(platformBridgeTools, resolvedProfile.Definition.Runtime.BridgeTools...)
+			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
+				if toolGate.Admit(name) {
+					platformBridgeTools = append(platformBridgeTools, name)
+				}
+			}
 		}
 		if toolGate.Admit("read_image") {
 			platformBridgeTools = append(platformBridgeTools, "read_image")
@@ -5922,6 +5939,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Apply the external Builder boundary last, including after a Code
 		// profile has considered any personal server overrides.
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
+		// A fixed access builder never mounts personal, attached or ambient MCP
+		// servers, even if an old conversation saved a broader selection.
+		if resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID {
+			selectedServers = []string{mcpclient.NoServers}
+			agentConfig.RuntimeOverrides = nil
+		}
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
 		} else {
@@ -6514,7 +6537,28 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Chat mode stays minimal (workflowMode=false). Without
 			// this, notify_user was never registered as a custom tool, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
-			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID) // session-aware
+			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
+			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
+				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
+				// Replace content-only browse/access schemas for this root Builder.
+				for _, tool := range projectTools {
+					replaced := false
+					for i, old := range allTools {
+						if old.Function != nil && old.Function.Name == tool.Function.Name {
+							allTools[i] = tool
+							replaced = true
+							break
+						}
+					}
+					if !replaced {
+						allTools = append(allTools, tool)
+					}
+				}
+				for name, fn := range projectExecs {
+					allExecutors[name] = fn
+					toolCategories[name] = projectCategories[name]
+				}
+			}
 			api.guardPulseResultExecutor(allExecutors, sessionID)
 
 			// Register each custom tool with the agent
@@ -7130,13 +7174,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if req.ExecutionOptions != nil {
 					phaseEnabledGroupNames = req.ExecutionOptions.EnabledGroupNames
 				}
-				// All workshop agents now run in code-execution mode regardless of
-				// provider — there is no longer a tool-search / simple-agent path.
+				// Match the runtime transport: external Builder uses managed direct
+				// tools; app workshop agents use code-execution mode.
 				// Provider-specific CLI handling (prompt template, api-bridge tool
 				// mapping, native context) is decided separately via
 				// common.IsCLIProvider.
-				phaseIsCodeExec := true
-				log.Printf("[WORKFLOW_PHASE] Mode detection: finalProvider=%q, isCodeExec=%v (always true)", finalProvider, phaseIsCodeExec)
+				phaseIsCodeExec := useCodeExecutionMode
+				log.Printf("[WORKFLOW_PHASE] Mode detection: finalProvider=%q, isCodeExec=%v", finalProvider, phaseIsCodeExec)
 				phaseTemplateVars := map[string]string{
 					"Objective":                   phaseObjective,
 					"WorkspacePath":               phaseWorkspacePath,
@@ -11567,11 +11611,14 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		EnabledGroupNames: enabledGroupNames,
 	}
 
+	if productEnabled("knowledgebase") && req.PhaseID == "workflow-builder" {
+		cfg.KnowledgebaseProjectTool = knowledgeProjectBuilderExecute
+	}
 	// Build base tools with session-aware workspace executors from the start.
 	// This ensures MCP_API_URL in shell commands includes the session path prefix
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
 	// session-scoped route and get the correct executor.
-	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID)
+	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
 	api.guardPulseResultExecutor(allExecutors, sessionID)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 

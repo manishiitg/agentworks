@@ -132,6 +132,44 @@ Decided by the owner so Crews never need a later manual move. The server reserve
 
 ## Decisions
 
+### 2026-10-05 — KB backup has its own encrypted credential — PLAT-496
+
+Backup setup asks for the repository URL, username and optional PAT. Prefer HTTPS for PAT authentication; preserve existing SSH backups. KB owns its encrypted PAT in private control storage, using the existing host secrets key and AES-256-GCM, with no Vault dependency. The app uses the shared secret input in the existing setup confirmation; MCP administrators can configure, rotate or remove a PAT directly. Credentials reach Git only through URL-scoped child-environment authorization headers, with redirects and credential caching disabled. Access changes remain immediate through authorized external MCP. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base reuses Files Git; pull and branches update live knowledge — PLAT-496
+
+Use the existing Files Source Control, branch picker, staging/commit actions, stashes, diff/history/blame and Git line decorations through a scoped data source. Reuse the same server Git read/action handlers. KB adds a repository boundary, current root access checks and an atomic validated Git-to-live import. Root readers can view repository history; unrestricted root Editors/Owners can act. Scoped/managed connections retain selected-version receipt backups. Pull is fast-forward only and checkout refuses dirty content; stash and discard explicitly affect live knowledge. Keep the remote pinned, bind receipts to their branch and invalidate prepared receipts after repository history changes. Retry uncertain Git pushes with the original request ID. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base reuses Files and supports direct external access management — PLAT-496
+
+Replace the custom Library/reader with the shared Files pane, explorer tree, tabs, breadcrumbs and viewer through a read-only KB data source. Remove the type/tag filter row; Folder access uses the shared Ask AI action. Show unconfigured backup once above ChatArea with an admin Configure backup action in the same chat. Setup saves a private SSH destination without committing/pushing or redirecting an existing backup. Environment settings retain precedence. Unrestricted writable external MCP connections apply grants/revocations directly after current Owner checks; service accounts and backup setup require an admin. App chat retains frozen proposals and confirmation; scoped and managed execution connections remain content-only. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Local MCP tokens remain valid until removed — PLAT-496
+
+Remove local token name and expiry inputs. The fixed name is `agentworks-local`. Full single-user tokens have no automatic expiry, survive restarts and are individually revocable. Hosted OAuth and ordinary scoped token expiry remain unchanged. Non-expiring local tokens are refused after enabling multi-user mode. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Local global MCP connections use account-wide tokens; servers use OAuth — PLAT-496
+
+On a verified single-user loopback instance, shared Connect offers access-token creation and revocation instead of browser OAuth. Local tokens include every permission available to the local account without a permission picker; the server derives scopes and preserves live account/folder grants. The local-full-access request is rejected on multi-user servers and for a different identity. Hosted setup and Vault’s distinct MCP gateway keep their existing OAuth flow. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base follows Vault’s shared chat and Models layout — PLAT-496
+
+Use the same `ChatArea` default composer/rendering configuration, chat tab, landing card, split rail and workspace Models panel as Vault. Remove the KB-only model strip and product chat variant. Retain the access-only profile and app confirmation for grants; the disabled raw terminal stays unavailable. New chat uses the shared profile-conversation rotation API. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base uses global MCP connection management — PLAT-496
+
+Owner decision: remove the dedicated KB Connect tab and panel. The app has Library and Access. Existing global MCP/OAuth connection management owns the connection to `/api/external/v1/mcp`; explicit KB scopes and live folder grants remain enforced. Code: `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base MVP omits Activity tracking — PLAT-496
+
+Owner decision: remove Activity from frontend and backend for now. The product has Library, Access and Connect; there is no activity endpoint, tool, or event writer. Mutation journals, request deduplication and backup receipts remain correctness records. Existing development activity files are left untouched but unused. Code: `pkg/knowledgebase`, `knowledgebase_routes.go`, `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
+### 2026-10-05 — Knowledge Base uses folder grants, confirmed access changes and explicit migration — PLAT-496
+
+Knowledge Base content has its own inherited folder ACL; Vault governs connections and secrets and is not a substitute for content authorization. Installation administrators retain implicit Owner authority for administration, but a bound output audience needs actual folder grants, including admins. Managed workflow/Crew calls intersect those grants with current bindings; missing session policy fails closed. Content tools and guidance appear only in bound projects, while explicit external scopes preserve local agent use. Existing mixed legacy tokens retain their independent legacy behavior; requesting a Knowledge Base scope does not grant workflow/Crew authority.
+
+Access chat creates fixed server proposals; the person confirms in the app before any access mutation executes. All names and tool results are untrusted data. Migration is a deliberate source-owner external MCP operation with source builder authority at every stage, never an ordinary agent action. Cutover refuses current legacy consumers until their owners rebind them, leaves local files as an inaccessible archive, and records the opt-in `shared-kb-v1` contract only for that project. Merge performs no production migration. Code: `knowledgebase_runtime.go`, `knowledgebase_confirmation.go`, `knowledgebase_migration.go`, `pkg/knowledgebase/bindings.go`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Local Google apps UI offers account access without incoming-mail setup
 
 Owner decision: hide automatic Incoming email and its Cloud setup prompts
@@ -2969,3 +3007,13 @@ The main platform MCP catalog exposes Vault MCP setup/policies, groups/membershi
 Vault's `product.yaml` owns one tool declaration for the builder, native bridge and main platform MCP. Shared schemas/executors cover MCP connection and regex management, groups/members, secret name/grant management, guarded governance SQL, and administrative MCP inventory/execution. The main MCP catalog admits the Vault product's declarations instead of duplicating them in AgentWorks' Run mode. Contract tests compare the actual registered builder schemas with external discovery.
 
 Local uses its active administrator; SSO requires an active Vault administrator and external clients additionally require `vault:manage`. Administrative resource lookup uses the same service-only setup execution path as the Vault builder, independently of group grants. The separate `vault:mcp` endpoint and other product runtime calls remain group/regex scoped. Secret values and other users' private connections are excluded. Native provider shell/file tools remain the provider runtime's responsibility, not external Vault management tools.
+
+
+### 2026-10-05 — KB project selection through MCP, Builder and UI
+
+Owner decision: selecting a shared KB folder for a workflow must work through global MCP, workflow Builder, and UI, following Vault's project resource selection pattern. Reuse the existing five KB tools, with inspect/bind/unbind project actions on manage_knowledgebase_access. UI selection and root Builder actions apply directly after the same project ownership, authoring-token bounds, manifest version, folder authority and output-audience checks. Selecting a folder never grants access implicitly. Root Builder setup authority follows Vault's authenticated tool-context pattern and is cleared for children. Steps receive scoped content tools and retain their own read/write/none policy rather than the parent's policy. Existing KB access chat confirmation remains for ACL changes. No production migration runs on merge.
+
+
+## 2026-10-05 — Brain review: caller identity and Git network boundary
+
+Brain content tools derive authority from authenticated request/run claims and reject missing or conflicting identities, even if a tool executor is reused across sessions. Registration identity is only a consistency check. The shared binder retains session ownership and child-policy checks. HTTPS Git resolves and validates all addresses immediately before transport and pins the chosen public address in libcurl; redirects and proxies are disabled. Private HTTPS Git requires an explicit deployment opt-in. App/MCP setup is HTTPS only; SSH remains an operator-selected deployment destination. Brain-owned PAT storage remains the requested MVP choice, with admin-only configuration, encryption using the host key, explicit PAT replacement/removal, and documented recovery after host-key rotation. KB OAuth scopes remain explicit opt-in. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

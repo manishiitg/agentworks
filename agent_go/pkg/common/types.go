@@ -817,6 +817,9 @@ func ClearSessionShellConfig(sessionID string) {
 // authorization snapshot. Existing subprocesses retain their launch-time policy.
 var SessionWorkflowCapabilityResolver func(workflowPath string, kbRead bool) (reads, writes, readOnly []string, env map[string]string)
 
+// SessionKnowledgebaseBlockedPaths resolves legacy archives denied after explicit cutover.
+var SessionKnowledgebaseBlockedPaths func(workspace string) []string
+
 func GetSessionShellConfig(sessionID string) *SessionShellConfig {
 	sessionShellConfigsMu.RLock()
 	original := sessionShellConfigs[sessionID]
@@ -857,6 +860,13 @@ func GetSessionShellConfig(sessionID string) *SessionShellConfig {
 		for key, value := range env {
 			cfg.Env[key] = value
 		}
+	}
+	if SessionKnowledgebaseBlockedPaths != nil {
+		workspace := cfg.WorkflowPath
+		if workspace == "" {
+			workspace = cfg.WorkingDir
+		}
+		cfg.BlockedPaths = DeduplicateStrings(append(cfg.BlockedPaths, SessionKnowledgebaseBlockedPaths(workspace)...))
 	}
 	return cfg
 }

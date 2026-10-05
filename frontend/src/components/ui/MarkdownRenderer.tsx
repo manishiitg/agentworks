@@ -20,6 +20,8 @@ const loadMermaid = () => {
 }
 
 interface MarkdownRendererProps {
+  /** Block remote media and workspace navigation for shared untrusted content. */
+  untrustedContent?: boolean
   content: string
   className?: string
   maxHeight?: string
@@ -585,6 +587,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   maxHeight = "none",
   showScrollbar = false,
   disablePathLinking = false,
+  untrustedContent = false,
   compactImages = false,
   basePath,
   onLinkClick,
@@ -1240,7 +1243,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           strong: ({ children }) => <strong className="font-semibold break-words overflow-wrap-anywhere text-gray-900 dark:text-gray-100">{children}</strong>,
           em: ({ children }) => <em className="italic break-words overflow-wrap-anywhere">{children}</em>,
           a: ({ href, children }) => {
-            const workspaceTarget = resolveWorkspaceTargetForView(href)
+            const workspaceTarget = untrustedContent ? null : resolveWorkspaceTargetForView(href)
             const externalHref = resolveSafeExternalHref(href)
 
             if (workspaceTarget) {
@@ -1289,6 +1292,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             )
           },
           img: ({ src, alt }) => {
+            if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
             const workspacePrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
             const workspaceFilepath = resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
             const resolvedSrc = workspaceFilepath

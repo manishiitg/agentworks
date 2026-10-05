@@ -93,6 +93,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		copy := *bound
 		// A delegated or different product binding must not inherit setup authority.
 		ctx = context.WithValue(ctx, vaultBuilderKey{}, nil)
+		ctx = context.WithValue(ctx, knowledgeProjectBuilderKey{}, nil)
 		if operationID := virtualtools.FeedbackOperationFromContext(requestCtx); operationID != "" {
 			ctx = virtualtools.WithFeedbackOperation(ctx, operationID)
 		}
@@ -138,6 +139,10 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 				return nil, fmt.Errorf("Vault builder requires an administrator-owned session")
 			}
 			ctx = context.WithValue(ctx, vaultBuilderKey{}, vaultBuilderAuthority{copy.UserID, toolSession})
+		}
+		if knowledgeProjectBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) &&
+			(callerSession == "" || callerSession == toolSession) {
+			ctx = context.WithValue(ctx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{copy.UserID, req.SelectedFolder, toolSession})
 		}
 		return ctx, nil
 	}

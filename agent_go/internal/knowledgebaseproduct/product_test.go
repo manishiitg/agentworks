@@ -1,0 +1,50 @@
+package knowledgebaseproduct
+
+import (
+	"context"
+	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+)
+
+func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
+	m, err := Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := BuiltinAgentProfile()
+	if p.Product != ProfileID || p.Scope != agentprofiles.ProfileScopeProject || p.Runtime.AgentTools.Mode != "mcp_only" || p.Runtime.Workspace.Root != "Chats/Knowledgebase" {
+		t.Fatalf("invalid product runtime: %+v", p.Runtime)
+	}
+	if len(p.ToolPolicy.Enabled) != 2 || p.ToolPolicy.Enabled[0] != "manage_knowledgebase_access" || len(p.Runtime.BridgeTools) != 2 {
+		t.Fatalf("builder tools: %+v", p.ToolPolicy)
+	}
+	if len(m.Chat["mcp"].ExternalTools) != 5 {
+		t.Fatal("MVP must expose five action-based tools", m.Chat["mcp"].ExternalTools)
+	}
+	if m.UI.FilesPanel || m.UI.WorkflowPanel || m.UI.Secrets {
+		t.Fatal("access builder exposes general workspace capabilities")
+	}
+}
+
+func TestAccessFactoryRetainsTrustedRuntimeIdentity(t *testing.T) {
+	r := agentprofiles.NewRegistry()
+	if err := RegisterAgentProfileRuntime(r, func(_ context.Context, runtime agentprofiles.ToolRuntimeContext, args map[string]any) (string, error) {
+		if runtime.UserID != "priya" || runtime.Product != ProfileID {
+			t.Fatalf("lost trusted runtime: %+v", runtime)
+		}
+		return "ok", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tool, err := r.BuildTool(agentprofiles.ToolBinding{ID: "knowledgebase.manage-access"}, agentprofiles.ToolRuntimeContext{UserID: "priya", Product: ProfileID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tool.Name != "manage_knowledgebase_access" {
+		t.Fatal(tool.Name)
+	}
+	if _, err = tool.Execute(context.Background(), map[string]any{"identity_id": "someone-else", "action": "list"}); err != nil {
+		t.Fatal(err)
+	}
+}

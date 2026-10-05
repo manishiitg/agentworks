@@ -97,15 +97,27 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(claims, tool) {
-			allowed = append(allowed, tool)
+			allowed = append(allowed, knowledgebaseToolForClaims(claims, tool))
 		}
 	}
 	instructions := externalMCPReadOnlyInstructions
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
 		// execute_step's presence proves this connection runs.
-		if tool.Name == "execute_step" || isExternalVaultTool(tool.Name) {
+		if tool.Name == "execute_step" || tool.Name == "update_knowledgebase" || isExternalVaultTool(tool.Name) {
 			instructions = externalMCPInstructions
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if isExternalKnowledgebaseTool(tool.Name) {
+			instructions += " Brain has five tools with action parameters: browse_knowledgebase (folders/entries), read_knowledgebase (read/search), update_knowledgebase (create/update/delete/create_folder), backup_knowledgebase (status/commit/push), and manage_knowledgebase_access (inspect; writable unrestricted external connections may also list, grant/revoke, and manage service accounts and configure backup using remote_url, username and optional pat subject to live Owner/admin authority). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt with a different request ID. External MCP access changes apply directly after permission checks; grants/revokes require a current expected_acl_version and stable request_id. App access-chat changes still require app confirmation."
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if tool.Name == "update_knowledgebase" {
+			instructions += " This connection also authorizes Brain saves and explicit Git backups. These operations affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
 			break
 		}
 	}
@@ -121,6 +133,9 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
+		if tool.Name == "create_workflow" {
+			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for builder_chat and authorized KB project bindings. Creation does not run it."
+		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions
 		}

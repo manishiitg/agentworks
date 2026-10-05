@@ -13,9 +13,9 @@ func TestRuntimeFrontendConfigJSDefaultsToAgentWorksWorkAndCode(t *testing.T) {
 	t.Setenv("AGENTWORKS_FAVICON_URL", "")
 
 	got := runtimeFrontendConfigJS(45678, "http://localhost:45679")
-	want := "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:45678\",\n  workspaceApiBaseUrl: \"http://localhost:45679\",\n  cdpEnabled: true,\n  enabledProductSurfaces: [\"agentworks\", \"relays\", \"work\", \"code\"],\n  defaultProductSurface: \"agentworks\"\n};\n"
+	want := "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:45678\",\n  workspaceApiBaseUrl: \"http://localhost:45679\",\n  cdpEnabled: true,\n  enabledProductSurfaces: [\"agentworks\", \"relays\", \"work\", \"code\", \"knowledgebase\"],\n  defaultProductSurface: \"agentworks\"\n};\n"
 	if got != want {
-		t.Fatalf("a plain AgentWorks deployment must expose AgentWorks, Relays, Crew, and Code\ngot:  %q\nwant: %q", got, want)
+		t.Fatalf("a plain AgentWorks deployment must expose AgentWorks, Relays, Crew, Code, and Brain\ngot:  %q\nwant: %q", got, want)
 	}
 }
 

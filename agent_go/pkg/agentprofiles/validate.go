@@ -149,6 +149,13 @@ func Validate(profile Profile) error {
 }
 
 func validateRuntime(runtime RuntimePolicy) error {
+	seenBridge := map[string]bool{}
+	for _, name := range runtime.BridgeTools {
+		if strings.TrimSpace(name) != name || name == "" || seenBridge[name] {
+			return fmt.Errorf("invalid or duplicate runtime.bridge_tools name %q", name)
+		}
+		seenBridge[name] = true
+	}
 	transport := strings.ToLower(strings.TrimSpace(runtime.Transport))
 	provider := strings.TrimSpace(runtime.Provider)
 	modelID := strings.TrimSpace(runtime.ModelID)

@@ -15,8 +15,8 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
-  it('defaults to AgentWorks, Relays, and Crew when no deployment allowlist is configured', () => {
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work'])
+  it('defaults to AgentWorks, Relays, Crew, and Brain when no deployment allowlist is configured', () => {
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(hasGatewaySSO()).toBe(false)
@@ -26,7 +26,7 @@ describe('product surface deployment configuration', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
     })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'mcp-gateway'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'])
   })
 
   it('removes CapLayer from an explicit allowlist when its endpoint is withdrawn', () => {
@@ -132,6 +132,10 @@ describe('gatewayBaseUrl', () => {
 })
 
 describe('intersectAllowedProductSurfaces', () => {
+  it('preserves Brain reader entitlement without granting other products', () => {
+    expect(intersectAllowedProductSurfaces(['agentworks', 'work', 'knowledgebase'], ['knowledgebase'])).toEqual(['knowledgebase'])
+    expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
+  })
   it('passes the deployment list through unchanged when the user is unrestricted', () => {
     expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], null)).toEqual(['dominion', 'agentworks'])
     expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], undefined)).toEqual(['dominion', 'agentworks'])

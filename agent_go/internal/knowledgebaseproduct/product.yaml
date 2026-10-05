@@ -1,0 +1,76 @@
+schema_version: 2
+dependencies: {}
+prompt:
+  file: prompts/access-builder.md
+profile:
+  id: knowledgebase
+  name: Brain
+  version: 1
+  scope: project
+  tools:
+    - id: knowledgebase.manage-access
+    - id: knowledgebase.git
+  tool_policy:
+    mode: allowlist
+    enabled: [manage_knowledgebase_access, backup_knowledgebase]
+  runtime:
+    transport: structured
+    bridge_tools: [manage_knowledgebase_access, backup_knowledgebase]
+    api_transport: {mode: disabled}
+    agent_tools: {mode: mcp_only}
+    workspace: {mode: fixed, root: Chats/Knowledgebase}
+    conversation: {mode: singleton}
+    sandbox:
+      mode: strict
+      network: allowed
+      read_only: []
+      chat_history: none
+    # These shared adapters disable native tools and personal MCP config.
+    provider: codex-cli
+    model_id: gpt-6-astra
+    provider_options:
+      - id: codex-cli
+        label: Codex
+        provider: codex-cli
+        model_id: gpt-6-astra
+        reasoning_efforts: [low, medium, high, xhigh, max, ultra]
+        options: {reasoning_effort: medium}
+        default: true
+      - id: pi-cli
+        label: Pi CLI
+        provider: pi-cli
+        model_id: google/gemini-3.8-flash
+        reasoning_efforts: [low, medium, high, xhigh]
+        options: {reasoning_effort: high}
+    capabilities:
+      workflow_execution: disabled
+      raw_terminal: disabled
+      browser: disabled
+      secrets: disabled
+      mcp_selection: disabled
+      skill_selection: disabled
+      workflow_references: disabled
+      voice: disabled
+      live_input: disabled
+      warm_session: disabled
+  built_in: true
+branding: {icon: book-open, favicon: ""}
+ui:
+  surface: knowledgebase
+  files_panel: false
+  workflow_panel: false
+  secrets: false
+  streaming: structured
+workflows: {enabled: [], selected_skills: [], browser_mode: ""}
+chat:
+  builder:
+    prompt: {file: prompts/access-builder.md}
+    tools: [manage_knowledgebase_access, backup_knowledgebase]
+  mcp:
+    prompt: {file: prompts/mcp.md}
+    external_tools:
+      - browse_knowledgebase
+      - read_knowledgebase
+      - update_knowledgebase
+      - backup_knowledgebase
+      - manage_knowledgebase_access

@@ -12,7 +12,7 @@ export interface GitDecoration {
   staged?: boolean
 }
 
-interface WorkspaceGitState {
+export interface WorkspaceGitState {
   workspacePath: string | null
   repos: GitRepo[]
   /** Full workspace path of a changed file -> its status. */
@@ -43,51 +43,55 @@ export function repoForPath(workspacePath: string, repos: GitRepo[], fullPath: s
   let best: { repo: GitRepo; file: string } | null = null
   for (const repo of repos) {
     const prefix = [base, trim(repo.root)].filter(Boolean).join('/')
-    if (path.startsWith(`${prefix}/`) && (!best || repo.root.length > best.repo.root.length)) {
-      best = { repo, file: path.slice(prefix.length + 1) }
+    if ((!prefix || path.startsWith(`${prefix}/`)) && (!best || repo.root.length > best.repo.root.length)) {
+      best = { repo, file: prefix ? path.slice(prefix.length + 1) : path }
     }
   }
   return best
 }
 
-let refreshSequence = 0
-
-export const useWorkspaceGitStore = create<WorkspaceGitState>((set, get) => ({
-  workspacePath: null,
-  repos: [],
-  fileStatus: new Map(),
-  changedDirs: new Map(),
-  panel: null,
-  refresh: async (workspacePath) => {
-    const sequence = ++refreshSequence
-    try {
-      const repos = await workspaceGitApi.status(workspacePath)
-      if (sequence !== refreshSequence) return
-      const fileStatus = new Map<string, GitDecoration>()
-      const changedDirs = new Map<string, GitDecoration['status']>()
-      for (const repo of repos) {
-        for (const file of repo.files) {
-          const full = gitFullPath(workspacePath, repo.root, file.path)
-          fileStatus.set(full, { status: file.status, staged: file.staged })
-          const parts = full.split('/')
-          for (let i = 1; i < parts.length; i++) {
-            const dir = parts.slice(0, i).join('/')
-            const current = changedDirs.get(dir)
-            if (!current || DIR_PRIORITY[file.status] > DIR_PRIORITY[current]) changedDirs.set(dir, file.status)
+export function createWorkspaceGitStore(api = workspaceGitApi) {
+  let refreshSequence = 0
+  return create<WorkspaceGitState>((set) => ({
+    workspacePath: null,
+    repos: [],
+    fileStatus: new Map(),
+    changedDirs: new Map(),
+    panel: null,
+    refresh: async (workspacePath) => {
+      const sequence = ++refreshSequence
+      try {
+        const repos = await api.status(workspacePath)
+        if (sequence !== refreshSequence) return
+        const fileStatus = new Map<string, GitDecoration>()
+        const changedDirs = new Map<string, GitDecoration['status']>()
+        for (const repo of repos) {
+          for (const file of repo.files) {
+            const full = gitFullPath(workspacePath, repo.root, file.path)
+            fileStatus.set(full, { status: file.status, staged: file.staged })
+            const parts = full.split('/')
+            for (let i = 1; i < parts.length; i++) {
+              const dir = parts.slice(0, i).join('/')
+              const current = changedDirs.get(dir)
+              if (!current || DIR_PRIORITY[file.status] > DIR_PRIORITY[current]) changedDirs.set(dir, file.status)
+            }
           }
         }
+        set({ workspacePath, repos, fileStatus, changedDirs })
+      } catch {
+        // Git view is optional: a failed status just shows no decorations.
+        if (sequence === refreshSequence) {
+          set({ workspacePath, repos: [], fileStatus: new Map(), changedDirs: new Map(), panel: null })
+        }
       }
-      set({ workspacePath, repos, fileStatus, changedDirs })
-    } catch {
-      // Git view is optional: a failed status just shows no decorations.
-      if (sequence === refreshSequence && get().workspacePath !== workspacePath) {
-        set({ workspacePath, repos: [], fileStatus: new Map(), changedDirs: new Map() })
-      }
-    }
-  },
-  openPanel: (panel) => set({ panel }),
-  clear: () => {
-    refreshSequence++
-    set({ workspacePath: null, repos: [], fileStatus: new Map(), changedDirs: new Map(), panel: null })
-  },
-}))
+    },
+    openPanel: (panel) => set({ panel }),
+    clear: () => {
+      refreshSequence++
+      set({ workspacePath: null, repos: [], fileStatus: new Map(), changedDirs: new Map(), panel: null })
+    },
+  }))
+
+}
+
+export const useWorkspaceGitStore = createWorkspaceGitStore()

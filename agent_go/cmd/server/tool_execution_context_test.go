@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,6 +200,7 @@ func TestToolExecutionContextAdmitsTheWhatsAppOwnerPrincipal(t *testing.T) {
 // rather than relying on an interactive-chat test to stand in for it.
 func TestToolExecutionContextTopologyMatrix(t *testing.T) {
 	t.Run("interactive owner and conflicting reader/direct tool invocation", TestToolExecutionContextUsesAuthenticatedQueryForAllTransports)
+	t.Run("Brain executor reused across authenticated sessions", TestKnowledgebaseToolExecutionRejectsForeignIdentity)
 	t.Run("cron manual API and internal triggers/workflow owner/action surfaces", func(t *testing.T) {
 		t.Setenv("MULTI_USER_MODE", "false")
 		t.Setenv("DEFAULT_USER_ID", "legacy-owner")
@@ -321,5 +323,58 @@ func TestExternalBuilderToolBindingRejectsUnboundOperation(t *testing.T) {
 		if _, err := bind(context.Background(), "read_file"); err == nil {
 			t.Fatal("missing operation executed tool", child)
 		}
+	}
+}
+
+// Exercise the real KB executor without the shared context wrapper as well as
+// through it: a mixed-up tool table must never invent its registration identity.
+func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
+	service, owner, workspace, folderID := knowledgeIntegrationFixture(t)
+	project, err := knowledgeProjectLoad(t.Context(), "admin", workspace, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.AccessOnly = true
+	knowledgeDispatchTest(t, service, owner, "manage_knowledgebase_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": project.Version, "request_id": "identity-bind"})
+	owner.AccessOnly = false
+	_, err = service.CallTool(t.Context(), owner, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "identity.md", "type": "note", "title": "Identity", "content": "identity-bound-marker", "request_id": "identity-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const session = "kb-identity-owner"
+	common.SetSessionWorkflowPath(session, workspace)
+	defer common.ClearSessionShellConfig(session)
+	_, tools, _ := createKnowledgebaseTools("admin", session, workspace)
+	read := tools["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	args := map[string]any{"action": "read", "binding_alias": "kbtest", "path": "Imported/identity.md"}
+	caller := executor.WithSessionID(t.Context(), session)
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"missing claims", caller},
+		{"user key only", context.WithValue(caller, common.UserIDKey, "admin")},
+		{"foreign authenticated caller", knowledgeTestCaller(caller, "priya")},
+		{"conflicting user key", context.WithValue(knowledgeTestCaller(caller, "admin"), common.UserIDKey, "outsider")},
+		{"missing caller session", knowledgeTestCaller(t.Context(), "admin")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if out, err := read(tc.ctx, args); err == nil || out != "" {
+				t.Fatalf("reused executor admitted caller: %s %v", out, err)
+			}
+		})
+	}
+	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
+	api.eventStore.SetSessionOwner(session, "admin")
+	bound := api.bindToolExecutionContext(knowledgeTestCaller(t.Context(), "admin"), session, QueryRequest{}, false)
+	ctx, err := bound(caller, "read_knowledgebase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := read(ctx, args); err != nil || !strings.Contains(out, "identity-bound-marker") {
+		t.Fatalf("owner read failed: %s %v", out, err)
+	}
+	if _, err := bound(executor.WithSessionID(t.Context(), "foreign-chat"), "read_knowledgebase"); err == nil {
+		t.Fatal("foreign session admitted")
 	}
 }

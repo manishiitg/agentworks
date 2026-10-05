@@ -62,6 +62,10 @@
 
 [PLAT-507](pulse_platform/security-sandbox/plat-507.md), P2, open, design only. Owner direction 2026-10-05; changes the "private logins stay private" rule, so four questions are recorded for the owner first.
 
+## Knowledge Base migration and access review fixes — PLAT-496
+
+[PLAT-496](pulse_platform/learnings-knowledge/plat-496.md), P1, fixed in [PR #268](https://github.com/manishiitg/agentworks/pull/268), merge/deploy pending. Restricts migration to owner connections, refuses consumer cutover, retains app confirmation for chat proposals while allowing authorized external MCP access changes directly, reuses shared Files, adds initial backup setup, gates bound tools, and closes OAuth/session/identity/confinement gaps.
+
 ## Any account could list all workflows' schedules and pause every schedule — PLAT-505
 
 [PLAT-505](pulse_platform/scheduler-runs/plat-505.md), P1, fixed on main, not deployed or checked live as a non-admin. The schedules list is now filtered to what the account may open; the global pause is administrators only.

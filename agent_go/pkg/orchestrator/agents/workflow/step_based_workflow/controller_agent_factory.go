@@ -899,6 +899,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db", "workflow_db:apply_workflow_db_migration")
 	}
 
+	// Explicit custom tool selection cannot broaden the step's KB capability.
+	narrowed := enabledTools[:0]
+	for _, entry := range enabledTools {
+		if !strings.HasPrefix(entry, "knowledgebase:") {
+			narrowed = append(narrowed, entry)
+		}
+	}
+	enabledTools = narrowed
+	if access := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()); access != KBAccessNone {
+		enabledTools = append(enabledTools, "knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:backup_knowledgebase", "knowledgebase:manage_knowledgebase_access")
+		if access == KBAccessWrite || access == KBAccessReadWrite {
+			enabledTools = append(enabledTools, "knowledgebase:update_knowledgebase")
+		}
+	}
 	hasBrowserCategory := false
 	for _, entry := range enabledTools {
 		if strings.HasPrefix(entry, "workspace_browser") {
@@ -931,6 +945,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareWorkspaceToolsOnly() ([]llmtyp
 		hcpo.WorkspaceTools,
 		hcpo.WorkspaceToolExecutors,
 		[]string{
+			"knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:update_knowledgebase",
 			"workspace_advanced:execute_shell_command",
 			"workspace_advanced:diff_patch_workspace_file",
 			"workflow_db:query_workflow_db",
@@ -1461,6 +1476,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
+		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 		workspaceEnv = appendScriptedDelegationEnv(ctx, workspaceEnv)
 		if directDBAccess && hcpo.usesCodeTree() {
 			common.SetSessionWorkingDir(config.MCPSessionID, hcpo.scriptedWorkingDir(stepID, stepExecutionPath))
@@ -1864,6 +1880,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
+		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 		registerStepSessionShellEnv(config.MCPSessionID, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, workspaceEnv)
 		injectStepEnvIntoShellExecutor(executorsToUse, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, config.MCPSessionID, workspaceEnv)
 		hcpo.GetLogger().Info(fmt.Sprintf("📂 Injecting step shell env into execute_shell_command for todo task %s: STEP_OUTPUT_DIR=%s MCP_SESSION_ID=%s", stepID, stepOutputAbsPath, config.MCPSessionID))

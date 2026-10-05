@@ -387,6 +387,10 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 				}
 				manifest.Schedules = runtimeManifest.Schedules
 				manifest.Triggers = runtimeManifest.Triggers
+				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
+				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
+				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 				manifest.Capabilities = runtimeManifest.Capabilities
 				if runtimeUpdatedAt := parseRFC3339OrZero(runtimeManifest.UpdatedAt); !runtimeUpdatedAt.IsZero() {
 					manifestActivatedAt = runtimeUpdatedAt
@@ -634,6 +638,10 @@ func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, pr
 		manifest.Capabilities = runtimeManifest.Capabilities
 		manifest.Schedules = runtimeManifest.Schedules
 		manifest.Triggers = runtimeManifest.Triggers
+		manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
+		manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+		manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
+		manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 		manifest.WorkflowContextPaths = runtimeManifest.WorkflowContextPaths
 		binding.ManifestPath = runtimePath
 	}

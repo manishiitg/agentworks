@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	pathpkg "path"
 	"regexp"
 	"strings"
+	"sync"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -30,26 +32,7 @@ func (api *StreamingAPI) registerWorkflowCreatorTool(underlyingAgent definitionT
 		return fmt.Errorf("underlying agent is nil")
 	}
 
-	params := map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"folder_name": map[string]interface{}{
-				"type":        "string",
-				"description": "Shell-safe folder name under Workflow/ — kebab-case (lowercase letters, digits, hyphens only). No spaces, no underscores, no uppercase, no special characters. Examples: 'customer-onboarding', 'sales-report', 'api-health-check'. This is ONLY the on-disk folder name so shell commands like `ls Workflow/<folder_name>/` work without quoting. The human-readable display name goes in workflow_json.label and can be any string.",
-			},
-			"workflow_json": map[string]interface{}{
-				"type":                 "object",
-				"description":          "The full workflow.json manifest object. Required fields: schema_version (int, 1), id (string, e.g. 'wf_<folder_name>'), label (string, free-form human-readable name — can contain spaces, capitalization, anything). Should include objective, success_criteria, and a capabilities object with selected_servers/skills/etc picked smartly from the current chat context. If this workflow supports an org goal, name that goal from pulse/goals.html in the objective/success_criteria and design the workflow to produce measurable evidence for it. Set capabilities.selected_global_secret_names to [] unless specific global secrets are required.",
-				"additionalProperties": true,
-			},
-			"plan_json": map[string]interface{}{
-				"type":                 "object",
-				"description":          "The full plan.json object. Required field: steps (array, at least 1 step). Start with one large message_sequence per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent regular fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a regular step is scripted, a message_sequence is conversational), so after creation explicitly hand off every deterministic (regular) step to Workshop for an authored/tested learnings/<step-id>/main.py before the first production run.",
-				"additionalProperties": true,
-			},
-		},
-		"required": []string{"folder_name", "workflow_json", "plan_json"},
-	}
+	params := workflowCreatorToolSchema()
 
 	description := "Create a new workflow at Workflow/<folder_name>/ with the given workflow.json and planning/plan.json. Use one large message_sequence per shared-context span, with proof/provenance, evidence-based double-checking, repair, and final validation inside it; create another large sequence only when its context should be isolated. Put deterministic API/SDK/CLI/data-fetch/parse/persist work in coherent scripted-fetcher candidates with authoritative validated outputs. Never use one regular step per endpoint, routine action, or proof check. This tool writes structure only; after creation tell the user to open Workshop so deterministic steps are declared scripted and main.py is authored/tested before production. The tool validates the complete plan graph before writing anything and refuses dangling targets or overwrite."
 
@@ -63,6 +46,34 @@ func (api *StreamingAPI) registerWorkflowCreatorTool(underlyingAgent definitionT
 		"workflow_creator",
 	)
 }
+
+// workflowCreatorToolSchema is shared by chat and the global MCP catalog.
+func workflowCreatorToolSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"folder_name": map[string]interface{}{
+				"type":        "string",
+				"description": "Shell-safe folder name under Workflow/ — kebab-case (lowercase letters, digits, hyphens only). No spaces, no underscores, no uppercase, no special characters. Examples: 'customer-onboarding', 'sales-report', 'api-health-check'. This is ONLY the on-disk folder name so shell commands like `ls Workflow/<folder_name>/` work without quoting. The human-readable display name goes in workflow_json.label and can be any string.",
+			},
+			"workflow_json": map[string]interface{}{
+				"type":                 "object",
+				"description":          "The full workflow.json manifest object. New workflows always use the current platform contract and code layout; supplied legacy version/layout markers are replaced. Required fields: schema_version (int, 1), id (string, e.g. 'wf_<folder_name>'), label (string, free-form human-readable name — can contain spaces, capitalization, anything). Should include objective, success_criteria, and a capabilities object with selected_servers/skills/etc picked smartly from the current chat context. If this workflow supports an org goal, name that goal from pulse/goals.html in the objective/success_criteria and design the workflow to produce measurable evidence for it. Set capabilities.selected_global_secret_names to [] unless specific global secrets are required.",
+				"additionalProperties": true,
+			},
+			"plan_json": map[string]interface{}{
+				"type":                 "object",
+				"description":          "The full plan.json object. Required field: steps (array, at least 1 step). Start with one large message_sequence per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent regular fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a regular step is scripted, a message_sequence is conversational), so after creation explicitly hand off every deterministic (regular) step to Workshop for an authored/tested code/<step-id>/main.py before the first production run.",
+				"additionalProperties": true,
+			},
+		},
+		"required": []string{"folder_name", "workflow_json", "plan_json"},
+	}
+
+}
+
+var workflowCreationMutex sync.Mutex
+var errWorkflowCreationConflict = errors.New("workflow already exists")
 
 // handleWorkflowCreatorTool validates the arguments, creates the workflow folder, and writes
 // workflow.json and planning/plan.json through the workspace API.
@@ -105,6 +116,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		return "", err
 	}
 	defaultWorkflowCreatorGlobalSecretsToNone(workflowMap)
+	defaultWorkflowCreatorContract(workflowMap)
 
 	// 4. Validate plan.json required fields
 	if err := validatePlanJSONStructure(planMap); err != nil {
@@ -116,11 +128,26 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	workflowJSONPath := pathpkg.Join(workflowFolder, "workflow.json")
 	planJSONPath := pathpkg.Join(workflowFolder, "planning", "plan.json")
 
+	// Serialize chat and external creations so competing calls cannot overwrite.
+	workflowCreationMutex.Lock()
+	defer workflowCreationMutex.Unlock()
+
 	// 6. Refuse to overwrite existing workflows
 	if _, exists, err := readFileFromWorkspace(ctx, workflowJSONPath); err != nil {
 		return "", fmt.Errorf("failed to check workflow existence: %w", err)
 	} else if exists {
-		return "", fmt.Errorf("workflow folder Workflow/%s already exists — pick a different folder_name or update the existing workflow via the workflow canvas", folderName)
+		return "", fmt.Errorf("%w: Workflow/%s — pick a different folder_name or update the existing workflow via Builder", errWorkflowCreationConflict, folderName)
+	}
+
+	// IDs also identify workflows for MCP, bindings and executions.
+	discovered, err := DiscoverWorkflowManifests(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check workflow IDs: %w", err)
+	}
+	for _, existing := range discovered {
+		if existing.Manifest != nil && existing.Manifest.ID == workflowMap["id"] {
+			return "", fmt.Errorf("%w: choose a different workflow_json.id", errWorkflowCreationConflict)
+		}
 	}
 
 	// 7. Marshal and write workflow.json
@@ -177,6 +204,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	stepSummary := summarizePlanSteps(planMap)
 
 	result := map[string]interface{}{
+		"workflow_id":   workflowMap["id"],
 		"folder_path":   fmt.Sprintf("Workflow/%s", folderName),
 		"workflow_json": fmt.Sprintf("Workflow/%s/workflow.json", folderName),
 		"plan_json":     fmt.Sprintf("Workflow/%s/planning/plan.json", folderName),
@@ -184,7 +212,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		"objective":     workflowMap["objective"],
 		"step_count":    stepSummary.count,
 		"steps":         stepSummary.items,
-		"next_action":   fmt.Sprintf("Open Workflow/%s/ in Workshop before the first production run. Declare deterministic API/SDK/CLI/fetch/parse/persist steps scripted, then author and test each learnings/<step-id>/main.py; keep judgment, message-sequence, and browser work agentic.", folderName),
+		"next_action":   fmt.Sprintf("Open Workflow/%s/ in Workshop before the first production run. Declare deterministic API/SDK/CLI/fetch/parse/persist steps scripted, then author and test each code/<step-id>/main.py; keep judgment, message-sequence, and browser work agentic.", folderName),
 		"message":       fmt.Sprintf("Workflow Workflow/%s/ created. The user can activate it from the workflow picker; scripted-step setup must be completed in Workshop before the first production run.", folderName),
 	}
 
@@ -193,6 +221,14 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		return fmt.Sprintf("%v", result), nil
 	}
 	return string(resultJSON), nil
+}
+
+// Newly authored plans use the current layout and contract, just like UI creation.
+// This is only called by creation; existing workflows still require migrations.
+func defaultWorkflowCreatorContract(workflowMap map[string]interface{}) {
+	defaults := NewWorkflowManifest("")
+	workflowMap["version"] = defaults.Version
+	workflowMap["code_layout_version"] = defaults.CodeLayoutVersion
 }
 
 func defaultWorkflowCreatorGlobalSecretsToNone(workflowMap map[string]interface{}) {

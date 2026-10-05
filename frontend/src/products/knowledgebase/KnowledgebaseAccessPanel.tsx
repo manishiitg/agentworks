@@ -1,0 +1,14 @@
+import type { KnowledgeAccess } from '../../services/knowledgebaseApi'
+import { ShieldCheck, CornerUpLeft } from 'lucide-react'
+
+export function KnowledgebaseAccessPanel({ access, onAsk, onFolder }: { access: KnowledgeAccess; onAsk: () => void; onFolder: (path: string) => void }) {
+  const names = new Map((access.identities || []).map(identity => [identity.id, identity.name]))
+  const canManage = access.effective_role === 'owner'
+  return <section className="mx-auto max-w-4xl space-y-5 p-4 sm:p-7">
+    <div className="flex items-start gap-3"><ShieldCheck className="mt-1 h-5 w-5 text-primary" /><div><h1 className="text-xl font-semibold">Folder access</h1><p className="mt-1 break-all text-sm text-muted-foreground">{access.folder_path || 'Organization root'}</p></div></div>
+    <div className="rounded-xl border border-border bg-muted/20 p-4"><p className="text-sm">Your effective role: <strong className="capitalize">{access.effective_role || 'No folder access'}</strong></p><p className="mt-2 text-xs leading-5 text-muted-foreground">Reader can read. Editor can save content and back it up through MCP. Owner can also manage folder access. Grants apply to nested folders.</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">People and service accounts</h2><button type="button" onClick={onAsk} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">{canManage ? 'Manage access in chat' : 'Inspect access in chat'}</button></div>
+    {!access.grants?.length ? <p className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">{canManage ? 'No direct or inherited grants for this folder.' : 'Full grant details are available to folder Owners.'}</p> : <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full text-left text-sm"><thead className="bg-muted/40 text-xs text-muted-foreground"><tr><th className="p-3 font-medium">Identity</th><th className="p-3 font-medium">Role</th><th className="p-3 font-medium">Granted at</th></tr></thead><tbody>{access.grants.map(grant => <tr key={`${grant.folder_path}:${grant.identity_id}`} className="border-t border-border"><td className="p-3"><span>{names.get(grant.identity_id) || grant.identity_id}</span></td><td className="p-3 capitalize">{grant.role}</td><td className="p-3"><button type="button" onClick={() => onFolder(grant.folder_path)} className="break-all text-primary hover:underline">{grant.folder_path || 'Organization root'}</button>{grant.inherited && <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><CornerUpLeft className="h-3 w-3" />Inherited</span>}</td></tr>)}</tbody></table></div>}
+    <p className="text-xs leading-5 text-muted-foreground">Inherited access can be changed at the folder where it was granted. Ask the access chat to grant, change, or revoke access with the folder and person’s name.</p>
+  </section>
+}

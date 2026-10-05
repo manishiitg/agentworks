@@ -23,6 +23,7 @@ type workflowChatPolicy struct {
 	Capabilities     map[string]bool
 	AuthorityKey     string
 	ProductProfileID string
+	KnowledgeKey     string
 }
 
 // readOnlyForRequest decides whether a turn runs with read-only treatment.
@@ -63,7 +64,11 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	if readOnly || strings.TrimSpace(req.AgentMode) == "workflow" {
 		normalized = "run"
 	}
-	return workflowChatPolicy{Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
+	workspace := req.SelectedFolder
+	if workspace == "" && active != nil {
+		workspace = active.WorkspacePath
+	}
+	return workflowChatPolicy{KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
 }
 
 func (p workflowChatPolicy) allows(capability string) bool { return p.Capabilities[capability] }
@@ -82,6 +87,7 @@ func (p workflowChatPolicy) sessionKey() string {
 		roleOrigin = "scheduled"
 	}
 	identity := p.Mode + "|" + roleOrigin + "|" + strings.Join(names, ",")
+	if p.KnowledgeKey != "" {identity += "|knowledge:"+p.KnowledgeKey}
 	if p.ProductProfileID != "" {
 		identity += "|profile:" + p.ProductProfileID
 	}

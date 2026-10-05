@@ -1,8 +1,8 @@
-// The products an admin can grant in Users & access. AgentWorks has five
-// main products (Goals, Relays, Work/Crew, Code, Vault); the others (Video Studio, Dominion,
+// The products an admin can grant in Users & access. AgentWorks has six
+// main products (Goals, Relays, Work/Crew, Code, Vault, Brain); the others (Video Studio, Dominion,
 // SparkQuill) are dedicated deployments with their own users and are never
 // offered on a shared one. Only what this deployment actually opens is listed.
-const MAIN_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway']
+const MAIN_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'knowledgebase']
 
 export function selectableProducts(serverProducts: string[], enabledSurfaces: string[]): string[] {
   const enabled = new Set(enabledSurfaces)

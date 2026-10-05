@@ -1,17 +1,17 @@
 ---
 name: agentworks
-description: Read and run AgentWorks workflows and Crews through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
+description: Use AgentWorks workflows, Crews and shared Brain through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
 ---
 
 # AgentWorks
 
 This skill is an entry pointer, not a manual. All substantive guidance lives on the server and is fetched per task — nothing here can go stale.
 
-This connection reads and runs, like the Slack and WhatsApp run-mode channels: tools read, and run-mode tools execute in pinned Run-mode sessions. Nothing creates, edits, or authors.
+Use only the tools and actions exposed by this connection. Workflow runs use pinned Run-mode sessions; Builder, Crew edits and Brain updates require the corresponding permissions.
 
 ## Connect
 
-It is a standard remote MCP server (streamable HTTP, OAuth sign-in), usable from any MCP client. Add it to the client you are running in, not another one: a Codex agent running `claude mcp add` configures Claude Code, not itself.
+It is a standard MCP server (Streamable HTTP), usable from any MCP client. Add it to the client you are running in, not another one: a Codex agent running `claude mcp add` configures Claude Code, not itself.
 
 ```sh
 # Claude Code
@@ -25,7 +25,9 @@ cursor-agent mcp login agentworks
 muse mcp login agentworks
 ```
 
-Other clients: add the same URL as a remote (streamable HTTP) MCP server. Approve the MCP connection in your browser. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. Admins and Code reviewers may also approve `code:review`: read-only, audited review of every Code workspace. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
+For a local single-user instance, open the global Connect page and create the `agentworks-local` token. It includes your account's available access and remains valid until removed. Configure `Authorization: Bearer <ACCESS_TOKEN>` in your client's HTTP MCP headers; use the endpoint shown in Connect. Keep the token out of skill files, URLs, source control and chat messages. Hosted/multi-user servers use browser OAuth approval instead.
+
+Other clients: add the same URL as a remote (streamable HTTP) MCP server. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. Admins and Code reviewers may also approve `code:review`: read-only, audited review of every Code workspace. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
 
 ## First step
 
@@ -34,6 +36,17 @@ Use `get_api_spec` to inspect the available tools, then call `get_agent_context`
 ## Guidance per task
 
 List topics with `list_guidance_topics` and load only relevant ones via `get_guidance_topic`. Inspect workflow knowledge with `list_workflow_knowledge` / `read_workflow_knowledge` (learnings, knowledgebase notes, workspace skills, skill wiring). Use `get_file_link` for preview/download URLs.
+
+## Shared Brain
+
+Discover the schemas through `get_api_spec`, then invoke actions through `call_tool`:
+- `browse_knowledgebase`: `folders` / `entries` for accessible skills, facts, notes and sources.
+- `read_knowledgebase`: `read` / `search`; read the current version before changing content.
+- `update_knowledgebase`: `create` / `update` / `delete` / `create_folder`. Use diff patches for large files, `expected_version` for updates/deletes and stable `request_id` values. Saves become readable immediately.
+- `backup_knowledgebase`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
+- `manage_knowledgebase_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
+
+Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `manage_knowledgebase_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Brain.
 
 ## Run
 
@@ -51,9 +64,26 @@ Crews are persistent AgentWorks agents. Discover them with `list_crews` (IDs, ne
 
 Code review (`code:review`; admins and Code reviewers only, re-checked on every call): `list_code_workspaces` lists every user's Code workspaces (owner, ID, sharing); `get_code_costs` gives each Code's cost and tokens by person and model for a `from`/`to` range; `list_code_files` / `read_code_file` and `list_code_chats` / `read_code_chat` read a workspace's files and chats; `get_code_audit` reads the review log. Everything is read-only and every call, lists included, is recorded in the audit log with the token that made it.
 
+## Workflow creation and Builder
+
+When `create_workflow` appears in `get_api_spec`, invoke it through `call_tool` with `folder_name` (kebab-case), `workflow_json` (`schema_version`, unique `id`, `label`) and `plan_json` (a valid non-empty steps graph). It reuses the app creator and returns `workflow_id`; the new workflow belongs to the authenticated user. Account creation rights and unrestricted `builder:chat` permission are required. The local `agentworks-local` Owner token qualifies when Builder is enabled. Existing folders and IDs are never overwritten.
+
+Creation writes structure only. Use `builder_chat` with the returned ID to author/test scripted-step code before running; poll `builder_status`, answer questions with `builder_reply_input`, and reuse `submission_id` for uncertain Builder delivery. Add KB folders through `manage_knowledgebase_access` actions `inspect_project` / `bind_project` using that ID and current folder/audience permissions. Creation cannot preconfigure host-folder grants or KB/project attachments.
+
 ## Answer from reading
 
-If the task needs a change, say so instead of attempting one — authoring is not exposed.
+Use only authoring operations shown in this connection’s catalog. If the needed operation is absent, describe or suggest the change.
+
+Administrators may configure an initial Git backup with `manage_knowledgebase_access`
+`action=configure_backup`, the user's exact HTTPS `remote_url`, `username`, optional `pat` and `branch`
+(default `main`), and stable `request_id`. Never invent a destination or ask for
+credentials in app chat: use its secure confirmation field for the optional PAT.
+Setup is private and durable; it cannot redirect an existing backup or perform
+commit/push. KB encrypts the PAT in its own private storage, with no Vault
+dependency. Omit `pat` to retain it or send an empty string to remove it. SSH URLs
+require deployment configuration and use host SSH credentials; app/MCP setup is HTTPS only.
+
+For explicitly requested repository-wide Git work, use `backup_knowledgebase(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
 
 ## Vault management
 

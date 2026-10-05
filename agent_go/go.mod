@@ -28,6 +28,7 @@ require (
 	github.com/slack-go/slack v0.17.3
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
+	github.com/yuin/goldmark v1.7.8
 	go.mau.fi/whatsmeow v0.0.0-20260828224850-0fadda796019
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0

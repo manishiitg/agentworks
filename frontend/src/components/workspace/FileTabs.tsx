@@ -1,15 +1,18 @@
 import { ChevronRight, X } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { closeOpenTab, openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import type { FileViewerSource } from './fileWorkspaceSource'
 import { FileTypeIcon } from './fileTypeIcon'
 
 /** VS Code-style tabs for recently opened files in the shared viewer. */
-export function FileTabs() {
-  const openTabs = useWorkspaceStore(state => state.openTabs)
-  const activePath = useWorkspaceStore(state => state.selectedFile?.path ?? '')
+export function FileTabs({ source }: { source?: FileViewerSource }) {
+  const workspaceTabs = useWorkspaceStore(state => state.openTabs)
+  const openTabs = source?.openTabs ?? workspaceTabs
+  const workspacePath = useWorkspaceStore(state => state.selectedFile?.path ?? '')
+  const activePath = source ? source.selectedFile?.path ?? '' : workspacePath
   if (openTabs.length === 0) return null
 
-  const close = (path: string) => closeOpenTab(path, activePath)
+  const close = (path: string) => source ? source.closeFile(path) : closeOpenTab(path, activePath)
 
   return (
     <div role="tablist" aria-label="Open files" className="flex shrink-0 overflow-x-auto border-b border-border bg-muted/30 [scrollbar-width:thin]">
@@ -21,7 +24,7 @@ export function FileTabs() {
             role="tab"
             aria-selected={active}
             title={tab.path}
-            onClick={() => { if (!active) void openWorkspaceFile(tab.path) }}
+            onClick={() => { if (!active) void (source ? source.openFile(tab.path) : openWorkspaceFile(tab.path)) }}
             onAuxClick={event => { if (event.button === 1) { event.preventDefault(); close(tab.path) } }}
             className={`group/tab flex h-8 max-w-[14rem] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border pl-3 pr-1.5 text-[13px] ${
               active
@@ -56,11 +59,12 @@ function displayStart(parts: string[]): number {
 }
 
 /** Clickable path above the file; a folder reveals itself in the tree. */
-export function FileBreadcrumbs({ path }: { path: string }) {
+export function FileBreadcrumbs({ path, onReveal }: { path: string; onReveal?: (path: string) => void }) {
   const parts = path.split('/').filter(Boolean)
   const start = Math.min(displayStart(parts), parts.length - 1)
   const reveal = (index: number) => {
     const folder = parts.slice(0, index + 1).join('/')
+    if (onReveal) { onReveal(folder); return }
     const store = useWorkspaceStore.getState()
     store.expandFoldersForFile(`${folder}/_`)
     void store.scrollToFile(folder)

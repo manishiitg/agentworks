@@ -174,10 +174,15 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"perform_ui_action":                 false,
 		"manage_vault_access":               false,
 		"manage_my_vaults":                  false,
+		"browse_knowledgebase":              false,
+		"read_knowledgebase":                false,
+		"update_knowledgebase":              false,
+		"backup_knowledgebase":              false,
+		"manage_knowledgebase_access":       false,
 	}
 	for _, name := range manifest.Profile.ToolPolicy.Enabled {
 		if _, expected := wantEnabled[name]; !expected {
-			t.Fatalf("unexpected tool in allowlist: %q -- work chat is plain coding tools only", name)
+			t.Fatalf("unexpected tool in coding and Knowledge Base allowlist: %q", name)
 		}
 		wantEnabled[name] = true
 	}

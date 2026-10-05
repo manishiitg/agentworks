@@ -428,3 +428,36 @@ func TestRapidPollGuardAllowsChangedStateAndResetsAfterIdleWindow(t *testing.T) 
 		t.Fatalf("post-idle decision = %+v, want fresh budget", got)
 	}
 }
+
+func TestWorkshopRegistersKnowledgeProjectSetupOnlyOnRootBuilder(t *testing.T) {
+	for _, mode := range []string{"workshop", "run"} {
+		t.Run(mode, func(t *testing.T) {
+			draft := newWorkshopDefinitionDraft()
+			base := &orchestrator.BaseOrchestrator{}
+			base.SetWorkspacePath(t.TempDir())
+			called := false
+			config := &WorkshopConfig{WorkspacePath: base.GetWorkspacePath(), KnowledgebaseProjectTool: func(context.Context, string, map[string]interface{}) (string, error) {
+				called = true
+				return "selected", nil
+			}}
+			session := &WorkshopChatSession{controller: &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}, StepRegistry: NewWorkshopStepRegistry(), config: config, workshopModeOverride: mode}
+			RegisterWorkshopChatTools(draft, session, workshopToolTestLogger{})
+			def, found := draft.tools["manage_knowledgebase_access"]
+			if found != (mode == "workshop") {
+				t.Fatalf("%s setup registration = %v", mode, found)
+			}
+			if found {
+				schema, _ := json.Marshal(def.InputSchema)
+				if !strings.Contains(string(schema), "bind_project") || strings.Contains(string(schema), `"const":"grant"`) {
+					t.Fatal("Builder schema has incorrect access actions")
+				}
+				if _, err := def.Execute(t.Context(), map[string]interface{}{"action": "inspect_project"}); err != nil || !called {
+					t.Fatal("Builder callback missing", err)
+				}
+			}
+			if len(config.CustomTools) != 0 || len(config.CustomToolExecutors) != 0 {
+				t.Fatal("setup leaked into step tool pool")
+			}
+		})
+	}
+}

@@ -11,6 +11,7 @@ func TestMCPBridgeCategoryRouting(t *testing.T) {
 		"workflow",
 		"auto_improvement",
 		"knowledgebase_tools",
+		"knowledgebase",
 	}
 	for _, name := range custom {
 		if !isMCPBridgeCustomToolCategory(name) {

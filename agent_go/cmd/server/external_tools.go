@@ -14,7 +14,9 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -207,7 +209,42 @@ func externalTools() ([]externalTool, error) {
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
+		creatorSchema := workflowCreatorToolSchema()
+		// Normalize Go slices to JSON values for the schema compiler.
+		creatorJSON, err := json.Marshal(creatorSchema)
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
+		var creatorInput map[string]any
+		if err := json.Unmarshal(creatorJSON, &creatorInput); err != nil {
+			externalCatalogErr = err
+			return
+		}
+		creatorInput["additionalProperties"] = false
+		defined = append(defined, externalTool{Name: "create_workflow", Description: externalWorkflowCreatorDescription, InputSchema: creatorInput, mutates: true})
 		externalRelayDefinitions(add)
+		// Dispatch validates against the full external surface; discovery narrows
+		// it per connection and live action/Owner/admin checks still authorize it.
+		// A content-only schema here would reject advertised setup/access/Git
+		// actions before they reach those permission checks.
+		for _, def := range knowledgebase.ExternalConnectionToolDefinitions(true, true, true) {
+			// The compiler accepts JSON values, rather than Go-specific slices.
+			encoded, err := json.Marshal(def.InputSchema)
+			if err != nil {
+				externalCatalogErr = err
+				return
+			}
+			var schema map[string]any
+			if err = json.Unmarshal(encoded, &schema); err != nil {
+				externalCatalogErr = err
+				return
+			}
+			if schema["required"] == nil {
+				delete(schema, "required")
+			}
+			defined = append(defined, externalTool{Name: def.Name, Description: def.Description, InputSchema: schema, mutates: def.Mutates})
+		}
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native
@@ -230,6 +267,12 @@ func externalTools() ([]externalTool, error) {
 		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
 		admitted = append(admitted, relayTools...)
+		kbTools, err := knowledgebaseproduct.ExternalTools()
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
+		admitted = append(admitted, kbTools...)
 		admitted = append(admitted, caplayerproduct.ExternalTools()...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
@@ -311,7 +354,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(GetUserFromContext(r.Context()), tool) {
-			allowed = append(allowed, tool)
+			allowed = append(allowed, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool))
 		}
 	}
 	externalJSON(w, map[string]any{"tools": allowed})
@@ -359,6 +402,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation.")
 		return
 	}
+	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
+		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
+		return
+	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
@@ -371,8 +418,16 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if isExternalKnowledgebaseTool(tool.Name) {
+		api.externalKnowledgebaseCall(w, r, tool.Name, call.Arguments)
+		return
+	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "create_workflow" {
+		api.externalCreateWorkflow(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "create_relay" {

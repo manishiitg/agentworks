@@ -173,9 +173,14 @@ chat_policy:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file]
+    external_tools: [create_workflow, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
+      - browse_knowledgebase
+      - read_knowledgebase
+      - update_knowledgebase
+      - backup_knowledgebase
+      - manage_knowledgebase_access
       - add_step
       - manage_group
       - add_mcp_server
@@ -284,6 +289,11 @@ chat:
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
+      - browse_knowledgebase
+      - read_knowledgebase
+      - update_knowledgebase
+      - backup_knowledgebase
+      - manage_knowledgebase_access
       - agent_browser
       - execute_step
       - get_contract_upgrades

@@ -1,10 +1,12 @@
+import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Link, Loader2, MoreHorizontal } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
+import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
-import { repoForPath, useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
+import { repoForPath } from '../stores/useWorkspaceGitStore'
 import { useGitLineChanges } from '../hooks/useGitLineChanges'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
 import { CsvRenderer } from './ui/CsvRenderer'
@@ -13,7 +15,8 @@ import { ConversationRenderer, isConversationJSON } from './ui/ConversationRende
 import { DiffRenderer } from './ui/DiffRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from './ui/RenderedContentSearch'
 import LazyModalFallback from './ui/LazyModalFallback'
-import { useWorkspaceStore, useChatStore } from '../stores'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { useChatStore } from '../stores/useChatStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
@@ -173,8 +176,12 @@ function PaneActionsMenu({ actions }: { actions: PaneAction[] }) {
  * is inside the viewer so Ctrl+E / Ctrl+S / Esc typed in the chat next to it
  * are left alone.
  */
-export function FileContentViewerBody({ headerAction }: { headerAction?: React.ReactNode }) {
+export function FileContentViewerBody({ headerAction, source }: { headerAction?: React.ReactNode; source?: FileViewerSource }) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const workspaceState = useWorkspaceStore(useShallow(state => ({
+    selectedFile: state.selectedFile, fileContent: state.fileContent, loadingFileContent: state.loadingFileContent,
+    showFileContent: state.showFileContent, setShowFileContent: state.setShowFileContent, binaryFileData: state.binaryFileData,
+  })))
   const {
     selectedFile,
     fileContent,
@@ -182,14 +189,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     showFileContent,
     setShowFileContent,
     binaryFileData,
-  } = useWorkspaceStore(useShallow(state => ({
-    selectedFile: state.selectedFile,
-    fileContent: state.fileContent,
-    loadingFileContent: state.loadingFileContent,
-    showFileContent: state.showFileContent,
-    setShowFileContent: state.setShowFileContent,
-    binaryFileData: state.binaryFileData,
-  })))
+  } = source ? { ...source, binaryFileData: null } : workspaceState
 
   const videoObjectUrl = useMediaObjectUrl(
     selectedFile?.path ? mimeForExtension(selectedFile.path, VIDEO_MIME_TYPES) : null,
@@ -349,25 +349,26 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
   const tallSurfaceClass = 'h-full min-h-0'
 
-  const gitWorkspacePath = useWorkspaceGitStore(state => state.workspacePath)
-  const gitRepos = useWorkspaceGitStore(state => state.repos)
-  const gitFile = selectedFile?.path && gitWorkspacePath ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
+  const git = useFileGit()
+  const gitWorkspacePath = useFileGitStore(state => state.workspacePath)
+  const gitRepos = useFileGitStore(state => state.repos)
+  const gitFile = (!source || source.git) && selectedFile?.path && gitWorkspacePath !== null ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
   const gitFileChanged = !!gitFile && gitFile.repo.files.some(entry => entry.path === gitFile.file)
 
-  const gitLineChanges = useGitLineChanges(selectedFile?.path, fileContent)
+  const gitLineChanges = useGitLineChanges(source && !source.git ? undefined : selectedFile?.path, fileContent)
 
   const paneActions: PaneAction[] = [
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
-    { key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink },
+    ...(!source ? [{ key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink }] : []),
     ...(gitFile ? [
-      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
-      { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },
-      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
+      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
+      { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },
+      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
     ] : []),
     ...(isMarkdownFile ? [
       { key: 'pdf', label: isExportingPdf ? 'Exporting…' : 'Export as PDF', icon: isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <PdfIcon />, onSelect: () => { void handleExportPdf() }, disabled: isExportingPdf },
-      { key: 'gist', label: 'Push to GitHub Gist', icon: <Github className="w-4 h-4" />, onSelect: () => setShowPushToGistDialog(true) },
+      ...(!source ? [{ key: 'gist', label: 'Push to GitHub Gist', icon: <Github className="w-4 h-4" />, onSelect: () => setShowPushToGistDialog(true) }] : []),
     ] : []),
   ]
 
@@ -379,7 +380,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         data-ui-file-path={selectedFile?.path || undefined}
         data-ui-file-ready={showFileContent && !loadingFileContent ? 'true' : 'false'}
       >
-        <FileTabs />
+        <FileTabs source={source} />
         <WorkspaceViewHeader
           icon={FileText}
           showWalkthrough={false}
@@ -397,7 +398,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
               <span className="truncate">{selectedFile.path.split('/').pop() || selectedFile.path}</span>
             </span>
           ) : 'File'}
-          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} /> : undefined}
+          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} /> : undefined}
           actions={<>
             <div className="flex items-center gap-0.5">
               <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
@@ -412,6 +413,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
           </>}
         />
 
+        {source?.contentHeader}
         {isRenderedMarkdownSearchAvailable && (
           <RenderedContentSearchBar search={renderedContentSearch} />
         )}
@@ -427,7 +429,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
             </div>
           ) : (
             <>
-              {fileContent.startsWith('data:image/') ? (
+              {!source && fileContent.startsWith('data:image/') ? (
                 <div className="flex flex-col items-center justify-center h-full p-4">
                   {failedImagePath === selectedFile?.path ? (
                     <div className="rounded-md border border-border bg-muted p-8 text-center">
@@ -585,7 +587,9 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
                             content={fileContent}
                             className="max-w-none"
                             showScrollbar={true}
-                            basePath={selectedFile?.path}
+                            basePath={source ? undefined : selectedFile?.path}
+                            untrustedContent={!!source}
+                            disablePathLinking={!!source}
                           />
                         </div>
                       </div>

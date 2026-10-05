@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
 
 func openAccessTokens() (*accesstokens.Store, error) {
@@ -67,22 +68,39 @@ func openAccessTokens() (*accesstokens.Store, error) {
 // permissions. Unlike legacy browser sessions, directory failures fail closed.
 func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 	c := &UserClaims{UserID: t.UserID, Username: t.Username, Email: t.Email, Provider: t.Provider, AccessToken: &t}
+	if t.NonExpiring && IsMultiUserMode() {
+		return nil, accesstokens.ErrInvalid
+	}
 	if !IsMultiUserMode() {
 		if c.UserID != GetDefaultUserID() {
 			return nil, accesstokens.ErrInvalid
 		}
-		return c, nil
+	} else {
+		dir, err := readUserDirectoryFile()
+		if err != nil {
+			return nil, err
+		}
+		rec := dir.byID(t.UserID)
+		if rec == nil || rec.Disabled {
+			return nil, accesstokens.ErrInvalid
+		}
+		c.Username = rec.Username
+		c.Email = rec.Email
 	}
-	dir, err := readUserDirectoryFile()
-	if err != nil {
-		return nil, err
+	if t.KnowledgebaseIdentityID != "" {
+		if !knowledgebaseProductAllowed(c) {
+			return nil, accesstokens.ErrInvalid
+		}
+		service, err := knowledgebaseService()
+		if err != nil {
+			return nil, err
+		}
+		// A disabled service identity invalidates all its connections
+		// immediately, even if the issuing administrator is still enabled.
+		if !service.IdentityActive(context.Background(), t.KnowledgebaseIdentityID) {
+			return nil, accesstokens.ErrInvalid
+		}
 	}
-	rec := dir.byID(t.UserID)
-	if rec == nil || rec.Disabled {
-		return nil, accesstokens.ErrInvalid
-	}
-	c.Username = rec.Username
-	c.Email = rec.Email
 	return c, nil
 }
 
@@ -146,13 +164,16 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		externalJSON(w, map[string]any{"tokens": tokens})
 	case "POST":
 		var req struct {
-			Name          string   `json:"name"`
-			Scopes        []string `json:"scopes"`
-			WorkflowIDs   []string `json:"workflow_ids"`
-			AllWorkflows  bool     `json:"all_workflows"`
-			CrewIDs       []string `json:"crew_ids"`
-			AllCrews      bool     `json:"all_crews"`
-			ExpiresInDays int      `json:"expires_in_days"`
+			Name                    string               `json:"name"`
+			LocalFullAccess         bool                 `json:"local_full_access"`
+			Scopes                  []string             `json:"scopes"`
+			WorkflowIDs             []string             `json:"workflow_ids"`
+			AllWorkflows            bool                 `json:"all_workflows"`
+			CrewIDs                 []string             `json:"crew_ids"`
+			AllCrews                bool                 `json:"all_crews"`
+			KnowledgebaseFolders    *[]knowledgebase.Cap `json:"knowledgebase_folders"`
+			KnowledgebaseIdentityID string               `json:"knowledgebase_identity_id"`
+			ExpiresInDays           int                  `json:"expires_in_days"`
 		}
 		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
 		d.DisallowUnknownFields()
@@ -164,7 +185,20 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
 		}
-		if req.ExpiresInDays < 1 || req.ExpiresInDays > 90 {
+		if req.LocalFullAccess {
+			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {
+				externalError(w, 403, "forbidden", "Full local tokens are available only to the local single-user account.")
+				return
+			}
+			// Derive permissions from the current account and enabled products;
+			// a client cannot choose a different identity or broaden folder grants.
+			req.Name = "agentworks-local"
+			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
+			req.AllWorkflows, req.AllCrews = true, true
+			req.WorkflowIDs, req.CrewIDs = nil, nil
+			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
+		}
+		if !req.LocalFullAccess && (req.ExpiresInDays < 1 || req.ExpiresInDays > 90) {
 			externalError(w, 400, "invalid_arguments", "Choose an expiry between 1 and 90 days.")
 			return
 		}
@@ -172,10 +206,46 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			req.Name = "Access token"
 		}
 		now := time.Now()
-		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+		if req.LocalFullAccess {
+			t.NonExpiring = true
+			t.ExpiresAt = accesstokens.PermanentExpiry()
+		}
 		if err := accesstokens.Validate(t, now); err != nil {
 			externalError(w, 400, "invalid_arguments", err.Error())
 			return
+		}
+		if t.KnowledgebaseAccess() {
+			if !knowledgebaseProductAllowed(c) {
+				externalError(w, 403, "forbidden", "Brain is not available for this account.")
+				return
+			}
+			if t.KnowledgebaseIdentityID != "" && !currentUserIsAdmin(r) {
+				externalError(w, 403, "forbidden", "Only an administrator can issue service account connections.")
+				return
+			}
+			service, err := knowledgebaseService()
+			if err != nil {
+				externalError(w, 503, "knowledgebase_unavailable", "Could not check knowledge base access.")
+				return
+			}
+			if err := knowledgebaseSyncIdentities(r.Context(), service); err != nil {
+				externalError(w, 503, "knowledgebase_unavailable", "Could not check current knowledge base identities.")
+				return
+			}
+			principal := knowledgebasePrincipal(r, c)
+			identityID := c.UserID
+			if t.KnowledgebaseIdentityID != "" {
+				identityID = t.KnowledgebaseIdentityID
+				if err := service.ValidateServiceTokenIdentity(r.Context(), principal, identityID); err != nil {
+					externalError(w, 403, "forbidden", "The selected service account is unavailable.")
+					return
+				}
+			}
+			if err := service.ValidateCaps(r.Context(), principal, identityID, t.KnowledgebaseFolders); err != nil {
+				externalError(w, 403, "forbidden", "Selected folder scopes exceed the identity's current knowledge base access.")
+				return
+			}
 		}
 		if t.Allows("vault:manage") && !vaultAdminActive(c.UserID) {
 			externalError(w, 403, "forbidden", "vault:manage requires an active Vault administrator.")
@@ -233,10 +303,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 503, "token_creation_failed", "Could not create token; at most 100 active tokens are allowed.")
 			return
 		}
-		// Issuing replaces the user's live token: cancel its runs like an
-		// explicit revocation so replaced credentials stop work immediately.
+		// Legacy connections replace only other legacy connections. Knowledge
+		// base tokens coexist and are revoked explicitly by their owner.
 		for _, old := range previous {
-			if old.RevokedAt == nil && old.ExpiresAt.After(now) {
+			if !t.KnowledgebaseAccess() && !old.KnowledgebaseAccess() && old.RevokedAt == nil && old.ExpiresAt.After(now) {
 				api.cancelAccessTokenSessions(old.ID)
 			}
 		}
@@ -270,6 +340,20 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
 	}
+	if knowledgebase.IsMCPTool(tool.Name) {
+		if !knowledgebaseProductAllowed(c) {
+			return false
+		}
+		if c.AccessToken == nil {
+			return true
+		}
+		// Backup/access include read actions. Dispatch checks each action;
+		// only the all-write update tool is hidden from read-only connections.
+		if tool.Name == "update_knowledgebase" {
+			return c.AccessToken.Allows("knowledgebase:read") && c.AccessToken.Allows("knowledgebase:write")
+		}
+		return c.AccessToken.Allows("knowledgebase:read")
+	}
 	if isExternalVaultTool(tool.Name) {
 		return vaultAdminActive(c.UserID) && (c.AccessToken == nil || c.AccessToken.Allows("vault:manage"))
 	}
@@ -277,6 +361,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	// also needs code:review; both are re-checked on every call.
 	if isExternalCodeReviewTool(tool.Name) {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
+	}
+	if tool.Name == "create_workflow" {
+		return externalWorkflowCreationAllowed(c)
 	}
 	if strings.HasPrefix(tool.Name, "builder_") {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())

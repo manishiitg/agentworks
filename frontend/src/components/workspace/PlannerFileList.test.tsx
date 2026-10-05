@@ -165,3 +165,24 @@ describe('PlannerFileList git marks', () => {
     }
   })
 })
+
+
+describe('PlannerFileList highlights', () => {
+  it('highlights only an explicit matching path, including trees without original paths', async () => {
+    const files = [file('Scratch', 'folder', [file('Scratch/hello.md')]), file('Testlab', 'folder')]
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    const render = async (highlightedFile?: string) => {
+      await act(async () => root.render(<TooltipProvider><PlannerFileList files={files} loading={false} error={null}
+        onFolderClick={() => {}} onFileClick={() => {}} onFileDelete={() => {}} onFolderDelete={() => {}} onRetry={() => {}}
+        expandedFolders={new Set(['Scratch'])} chatFileContext={[]} addFileToContext={() => {}} hideAddToChat highlightedFile={highlightedFile} /> </TooltipProvider>))
+    }
+    try {
+      await render()
+      expect(host.querySelectorAll('[data-highlighted="true"]')).toHaveLength(0)
+      await render('Scratch/hello.md')
+      expect(host.querySelectorAll('[data-highlighted="true"]')).toHaveLength(1)
+      expect(host.querySelector('[data-highlighted="true"]')?.getAttribute('data-filepath')).toBe('Scratch/hello.md')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+})

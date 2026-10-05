@@ -86,6 +86,11 @@ type featureDefinition struct {
 // shared by product profiles. Existing tools and UI components are referenced;
 // the bundle layer does not fork their implementations.
 var featureCatalog = map[string]featureDefinition{
+	"knowledgebase": {
+		Tools: []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"},
+		// Bound project guidance is supplied dynamically by the runtime.
+		PromptExtension: "",
+	},
 	"live-chat": {
 		Capabilities: map[string]CapabilityRequirement{
 			"live_input": CapabilityPreferred, "warm_session": CapabilityPreferred,

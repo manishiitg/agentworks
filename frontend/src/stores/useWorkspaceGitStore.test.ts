@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn() } }))
 import { workspaceGitApi } from '../services/workspaceGit'
-import { gitFullPath, repoForPath, useWorkspaceGitStore } from './useWorkspaceGitStore'
+import { gitFullPath, repoForPath, useWorkspaceGitStore, createWorkspaceGitStore } from './useWorkspaceGitStore'
 
 const repo = (root: string, files: Array<{ path: string; status: 'modified' | 'untracked' }>) => ({
   root, branch: 'main', ahead: 0, behind: 0, files,
@@ -36,6 +36,17 @@ describe('workspace git store', () => {
     expect(repoForPath('Chats/Code/projects/p1', [repo('app', [])], 'Chats/Code/projects/p1/other/a.ts')).toBeNull()
   })
 
+  it('keeps scoped root Git state separate from the ordinary workspace', async () => {
+    const scoped = createWorkspaceGitStore({ ...workspaceGitApi, status: async () => [repo('', [{path:'Payments/guide.md',status:'modified'}])] })
+    useWorkspaceGitStore.setState({workspacePath:'Code/project',repos:[repo('app',[])]})
+    await scoped.getState().refresh('')
+    expect(repoForPath('', scoped.getState().repos, 'Payments/guide.md')?.file).toBe('Payments/guide.md')
+    expect(scoped.getState().fileStatus.get('Payments/guide.md')?.status).toBe('modified')
+    expect(useWorkspaceGitStore.getState().workspacePath).toBe('Code/project')
+    expect(useWorkspaceGitStore.getState().repos[0].root).toBe('app')
+    scoped.getState().openPanel({kind:'history',repo:'',file:'Payments/guide.md'})
+    expect(useWorkspaceGitStore.getState().panel).toBeNull()
+  })
   it('keeps the newest status when refreshes overlap', async () => {
     let resolveFirst: (value: ReturnType<typeof repo>[]) => void = () => undefined
     vi.mocked(workspaceGitApi.status)

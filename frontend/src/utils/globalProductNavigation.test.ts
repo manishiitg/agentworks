@@ -68,6 +68,15 @@ afterEach(() => {
 })
 
 describe('global AgentWorks and Crew navigation', () => {
+  it('routes Brain access chats to their own product surface', async () => {
+    const tab = { ...workTab, tabId: 'knowledge-chat', metadata: { mode: 'multi-agent', agentProfileId: 'knowledgebase' } } as ChatTab
+    useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
+    expect(openGlobalTab(tab.tabId)).toBe(true)
+    expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
+    await openGlobalActivitySession(session({ workspace_path: '_users/priya/Chats/Knowledgebase' }))
+    expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
+    expect(openCanonicalActivitySession).not.toHaveBeenCalled()
+  })
   it('recognizes public and physical Crew sessions without admitting other products', () => {
     expect(isWorkProductSession(session({ session_id: 'work:project:project-1' }))).toBe(true)
     expect(isWorkProductSession(session({ workspace_path: '_users/user-1/Chats/Work/projects/demo' }))).toBe(true)

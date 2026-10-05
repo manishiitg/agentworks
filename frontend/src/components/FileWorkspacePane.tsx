@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import type { ReadOnlyFileWorkspaceSource } from './workspace/fileWorkspaceSource'
+import { ReadOnlyFileTree } from './workspace/ReadOnlyFileTree'
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
-import { useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
+import { FileGitContext, useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { ActivityRail, GitBar, GitChangesList, GitFilePanel } from './workspace/GitPanels'
 import { EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT } from '../utils/workspacePathUtils'
 
@@ -22,6 +24,7 @@ function readTreeWidth(): number {
 }
 
 type FileWorkspacePaneProps = {
+  source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
   hiddenRootFolders?: string[]
@@ -41,7 +44,8 @@ type FileWorkspacePaneProps = {
  * the file viewer occupy that product's right-side Files pane rather than
  * opening a competing full-screen overlay.
  */
-export function FileWorkspacePane({
+function FileWorkspacePaneBody({
+  source,
   workspacePath,
   title,
   hiddenRootFolders,
@@ -53,40 +57,46 @@ export function FileWorkspacePane({
   headerAction,
   onAsk,
 }: FileWorkspacePaneProps) {
-  const showFileContent = useWorkspaceStore(state => state.showFileContent)
-  const files = useWorkspaceStore(state => state.files)
-  const selectedPath = useWorkspaceStore(state => state.selectedFile?.path ?? null)
-  const gitPanel = useWorkspaceGitStore(state => state.panel)
-  const hasRepos = useWorkspaceGitStore(state => state.repos.length > 0)
+  const git = useFileGit()
+  const gitEnabled = !source || !!source.git
+  const gitPath = workspacePath ?? (source?.git ? "" : undefined)
+  const workspaceShowFileContent = useWorkspaceStore(state => state.showFileContent)
+  const workspaceFiles = useWorkspaceStore(state => state.files)
+  const workspaceSelectedPath = useWorkspaceStore(state => state.selectedFile?.path ?? null)
+  const showFileContent = source?.showFileContent ?? workspaceShowFileContent
+  const files = source?.files ?? workspaceFiles
+  const selectedPath = source ? source.selectedFile?.path ?? null : workspaceSelectedPath
+  const gitPanel = useFileGitStore(state => state.panel)
+  const hasRepos = useFileGitStore(state => state.repos.length > 0)
   const [changesOpen, setChangesOpen] = useState(false)
 
   // Git status for the folder this pane shows: on mount, whenever the tree
   // reloads (debounced), and when the window regains focus.
   useEffect(() => {
-    if (!workspacePath) return
-    const git = useWorkspaceGitStore.getState()
-    if (git.workspacePath !== workspacePath) git.clear()
-    void git.refresh(workspacePath)
-    const onFocus = () => { void useWorkspaceGitStore.getState().refresh(workspacePath) }
+    if (!gitEnabled || gitPath === undefined) return
+    const state = git.store.getState()
+    if (state.workspacePath !== gitPath) state.clear()
+    void state.refresh(gitPath)
+    const onFocus = () => { void git.store.getState().refresh(gitPath!) }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [workspacePath])
+  }, [gitPath, gitEnabled, git.store])
   useEffect(() => {
-    if (!workspacePath) return
-    const timer = window.setTimeout(() => { void useWorkspaceGitStore.getState().refresh(workspacePath) }, 1200)
+    if (!gitEnabled || gitPath === undefined) return
+    const timer = window.setTimeout(() => { void git.store.getState().refresh(gitPath!) }, 1200)
     return () => window.clearTimeout(timer)
-  }, [files, workspacePath])
+  }, [files, gitPath, gitEnabled, git.store])
   // Tabs belong to one workspace: switching projects must not carry the last one's files along.
-  useEffect(() => { if (workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath) }, [workspacePath])
+  useEffect(() => { if (!source && workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath) }, [gitPath, gitEnabled, git.store])
   // Follow the open file in the tree (VS Code's auto-reveal): expand its folders and scroll to it.
   useEffect(() => {
-    if (showFileContent && selectedPath) void useWorkspaceStore.getState().scrollToFile(selectedPath)
-  }, [showFileContent, selectedPath])
+    if (!source && showFileContent && selectedPath) void useWorkspaceStore.getState().scrollToFile(selectedPath)
+  }, [showFileContent, selectedPath, !!source])
   // Opening a file from the tree replaces any diff or history panel.
-  useEffect(() => { useWorkspaceGitStore.getState().openPanel(null) }, [selectedPath])
+  useEffect(() => { if (gitEnabled) git.store.getState().openPanel(null) }, [selectedPath, !!source])
   useEffect(() => { if (!hasRepos) setChangesOpen(false) }, [hasRepos])
 
-  const rightOpen = showFileContent || (!!gitPanel && !!workspacePath)
+  const rightOpen = showFileContent || (gitEnabled && !!gitPanel && gitPath !== undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [treeWidth, setTreeWidth] = useState(readTreeWidth)
@@ -133,14 +143,14 @@ export function FileWorkspacePane({
         hidden={rightOpen && !split}
       >
         <div className="flex h-full min-h-0 flex-row">
-          {workspacePath && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
+          {gitEnabled && gitPath !== undefined && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {workspacePath && !changesOpen && <GitBar />}
-            {workspacePath && changesOpen && hasRepos && (
-              <div className="min-h-0 flex-1"><GitChangesList workspacePath={workspacePath} onAsk={onAsk} /></div>
+            {gitEnabled && gitPath !== undefined && !changesOpen && <GitBar />}
+            {gitEnabled && gitPath !== undefined && changesOpen && hasRepos && (
+              <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
-            <div className="min-h-0 flex-1" hidden={changesOpen && hasRepos}>
-              <Workspace
+            <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
+              {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} /> : <Workspace
                 scopedWorkspacePath={workspacePath}
                 hiddenRootFolders={hiddenRootFolders}
                 hideAddToChat={hideAddToChat}
@@ -149,7 +159,7 @@ export function FileWorkspacePane({
                 hideManagedEntriesByDefault={hideManagedEntriesByDefault}
                 title={title}
                 headerAction={split ? undefined : headerAction}
-              />
+              />}
             </div>
           </div>
         </div>
@@ -168,15 +178,20 @@ export function FileWorkspacePane({
           className="relative z-10 -ml-1 w-2 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary focus-visible:after:bg-primary"
         />
       )}
-      {gitPanel && workspacePath ? (
+      {gitEnabled && gitPanel && gitPath !== undefined ? (
         <div className="min-h-0 min-w-0 flex-1">
-          <GitFilePanel workspacePath={workspacePath} panel={gitPanel} onClose={() => useWorkspaceGitStore.getState().openPanel(null)} onAsk={onAsk} />
+          <GitFilePanel workspacePath={gitPath!} panel={gitPanel} onClose={() => git.store.getState().openPanel(null)} onAsk={onAsk} />
         </div>
       ) : showFileContent && (
         <div className="min-h-0 min-w-0 flex-1">
-          <FileContentViewerBody headerAction={headerAction} />
+          <FileContentViewerBody headerAction={headerAction} source={source} />
         </div>
       )}
     </div>
   )
+}
+
+export function FileWorkspacePane(props: FileWorkspacePaneProps) {
+  const existing = useFileGit()
+  return <FileGitContext.Provider value={props.source?.git ?? existing}><FileWorkspacePaneBody {...props} /></FileGitContext.Provider>
 }

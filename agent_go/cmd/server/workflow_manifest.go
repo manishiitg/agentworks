@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
@@ -114,10 +116,14 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
-	KnowledgebaseSources []workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
-	CodeLayoutVersion    int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
-	SchemaVersion        int                                 `json:"schema_version"`
-	ID                   string                              `json:"id"`
+	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
+	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`
+	KnowledgebaseMode            string                              `json:"knowledgebase_mode,omitempty"`
+	KnowledgebaseMigration       json.RawMessage                     `json:"knowledgebase_migration,omitempty"`
+	KnowledgebaseSources         []workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
+	CodeLayoutVersion            int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
+	SchemaVersion                int                                 `json:"schema_version"`
+	ID                           string                              `json:"id"`
 	// Kind distinguishes a Relay from a general workflow while reusing the
 	// same manifest, schedules, access rules, runner, and run history.
 	Kind                   string                                `json:"kind,omitempty"`
@@ -979,6 +985,25 @@ func effectiveScheduleConcurrencyMode(schedule WorkflowSchedule) string {
 
 // ValidateManifest checks that a WorkflowManifest has required fields and valid values.
 func ValidateManifest(m *WorkflowManifest) error {
+	if m == nil {
+		return fmt.Errorf("manifest is required")
+	}
+	reserved := []string{}
+	for _, source := range m.KnowledgebaseSources {
+		reserved = append(reserved, source.Alias)
+	}
+	for _, attachment := range m.CrewAttachments {
+		reserved = append(reserved, attachment.Alias)
+	}
+	if err := knowledgebase.ValidateBindings(m.SharedKnowledgebase, reserved); err != nil {
+		return err
+	}
+	if m.KnowledgebaseMode != "" && m.KnowledgebaseMode != "shared" {
+		return fmt.Errorf("unknown knowledgebase_mode")
+	}
+	if m.KnowledgebaseMode == "shared" && len(m.SharedKnowledgebase) == 0 {
+		return fmt.Errorf("shared knowledge requires a binding")
+	}
 	if m != nil {
 		if err := workflowtypes.ValidateKnowledgebaseSources(m.KnowledgebaseSources, m.ID); err != nil {
 			return err
@@ -1728,6 +1753,14 @@ func manifestChangelogChange(path string, beforeOK, afterOK bool) step_based_wor
 
 // WriteWorkflowManifest validates and writes workflow.json to a workspace.
 func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *WorkflowManifest) error {
+	lockPath := filepath.Join(step_based_workflow.GetPromptDocsRoot(), filepath.FromSlash(manifestPath(workspacePath)))
+	if _, statErr := os.Stat(lockPath); statErr == nil {
+		unlock, lockErr := knowledgeManifestLock(lockPath)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer unlock()
+	}
 	previous, previousExists, readErr := readFileFromWorkspace(ctx, manifestPath(workspacePath))
 	if readErr != nil {
 		return fmt.Errorf("read existing workflow.json before update: %w", readErr)
@@ -1740,6 +1773,10 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 			return fmt.Errorf("parse existing workflow.json before update: %w", err)
 		}
 		m.CodeLayoutVersion = prior.CodeLayoutVersion
+		m.SharedKnowledgebase = prior.SharedKnowledgebase
+		m.KnowledgebaseMode = prior.KnowledgebaseMode
+		m.KnowledgebaseMigration = prior.KnowledgebaseMigration
+		m.KnowledgebaseContractHistory = prior.KnowledgebaseContractHistory
 	}
 	workflowtypes.NormalizePresetLLMConfig(m.Capabilities.LLMConfig)
 	// Ensure nil slices become empty arrays in JSON

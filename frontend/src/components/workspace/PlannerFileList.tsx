@@ -8,7 +8,8 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { copyToClipboard } from '../../utils/textUtils'
 import { FileTypeIcon } from './fileTypeIcon'
-import { useWorkspaceGitStore, type GitDecoration } from '../../stores/useWorkspaceGitStore'
+import { useFileGitStore } from './FileGitContext'
+import { type GitDecoration } from '../../stores/useWorkspaceGitStore'
 import {
   flattenVisiblePlannerFiles,
   WORKSPACE_SCROLL_TO_FILE_EVENT,
@@ -16,6 +17,9 @@ import {
 } from '../../utils/plannerFileTree'
 
 interface PlannerFileListProps {
+  readOnly?: boolean
+  gitDecorations?: boolean
+  selectedPath?: string | null
   files: PlannerFile[]
   loading: boolean
   error: string | null
@@ -63,6 +67,9 @@ const FILE_ROW_HEIGHT = 28
 const FILE_ROW_OVERSCAN = 8
 
 export default function PlannerFileList({
+  readOnly = false,
+  gitDecorations = !readOnly,
+  selectedPath,
   files,
   loading,
   error,
@@ -95,13 +102,14 @@ export default function PlannerFileList({
   scrollContainerRef,
 }: PlannerFileListProps) {
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
-  const openFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
+  const workspaceOpenFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
+  const openFilePath = readOnly ? selectedPath : workspaceOpenFilePath
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
   // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
-  const gitFileStatus = useWorkspaceGitStore(state => state.fileStatus)
-  const gitChangedDirs = useWorkspaceGitStore(state => state.changedDirs)
+  const gitFileStatus = useFileGitStore(state => state.fileStatus)
+  const gitChangedDirs = useFileGitStore(state => state.changedDirs)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0, listTop: 0 })
   const visibleRows = useMemo(
@@ -200,7 +208,7 @@ export default function PlannerFileList({
     const fileName = file.filepath.split('/').pop() || file.filepath
     // Check both filepath (adjusted for display) and originalFilepath (original path)
     // This ensures workspace tool events can highlight files even when paths are adjusted in workflow mode
-    const isHighlighted = highlightedFile === file.filepath || highlightedFile === file.originalFilepath
+    const isHighlighted = !!highlightedFile && (highlightedFile === file.filepath || highlightedFile === file.originalFilepath)
     const isInContext = chatFileContext.some(ctx => ctx.path === file.filepath)
     const actionMenuPath = file.originalFilepath || file.filepath
     const isActionMenuOpen = openActionsPath === actionMenuPath
@@ -210,8 +218,8 @@ export default function PlannerFileList({
     const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
     const isFocused = focusedPath === file.filepath
     const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
-    const gitMark = file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
-    const gitFolderStatus = file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
+    const gitMark = !gitDecorations || file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
+    const gitFolderStatus = gitDecorations && file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
     const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : gitFolderStatus ? GIT_MARKS[gitFolderStatus] : undefined
     const hasActionMenu = file.type === 'folder'
       ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)

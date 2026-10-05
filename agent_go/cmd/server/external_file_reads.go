@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -67,6 +68,10 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	defer root.Close()
 	if err := externalNoSymlinks(root, p); err != nil {
 		return wf.Result{}, err
+	}
+	shared := externalRootUsesSharedKnowledge(root)
+	if shared && (p == "knowledgebase" || strings.HasPrefix(p, "knowledgebase/")) {
+		return wf.Result{}, &externalUpstreamError{403, "local knowledge archive is unavailable; use shared Brain MCP"}
 	}
 	switch req.Operation {
 	case "read":
@@ -192,6 +197,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		return wf.Result{}, err
 	}
+	shared := externalRootUsesSharedKnowledge(root)
 	all := make([]wf.Entry, 0)
 	visited := 0
 	var scannedBytes int64
@@ -208,7 +214,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		if walkErr != nil {
 			return walkErr
 		}
-		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) {
+		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -281,4 +287,15 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		result.NextOffset = end
 	}
 	return result, nil
+}
+
+func externalRootUsesSharedKnowledge(root *os.Root) bool {
+	data, err := root.ReadFile("workflow.json")
+	if err != nil {
+		return true
+	}
+	var m struct {
+		Mode string `json:"knowledgebase_mode"`
+	}
+	return json.Unmarshal(data, &m) != nil || strings.TrimSpace(string(data)) == "null" || m.Mode != ""
 }

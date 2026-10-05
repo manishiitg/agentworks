@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -540,19 +541,37 @@ func (api *StreamingAPI) runQueuedExternalBuilder(ctx context.Context, turn queu
 	return outcome, err
 }
 
-// v1 permits managed workflow editing, not arbitrary shell, native CLI tools,
-// account administration or external MCP connections. Unknown tools fail closed.
+// Managed authoring has no shell. Keep one tool list for both permission checks
+// and the direct coding-agent bridge so registered tools stay callable.
+var externalBuilderManagedTools = []string{
+	"read_file", "write_file", "list_files", "search_files",
+	"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
+}
+
+var externalBuilderKnowledgeTools = []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"}
+
 func externalBuilderToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.ExternalBuilderOperationID == "" {
 		return false
 	}
-	switch name {
-	case "read_file", "write_file", "list_files", "search_files",
-		"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link":
-		return false
-	default:
-		return true
+	if slices.Contains(externalBuilderKnowledgeTools, name) {
+		return claims.AccessToken == nil || !claims.AccessToken.Allows("knowledgebase:read")
 	}
+	return !slices.Contains(externalBuilderManagedTools, name)
+}
+
+// API models receive managed tools directly. Coding CLIs receive the same
+// tools through their direct MCP bridge, without needing an HTTP shell call.
+func externalBuilderTransport(claims *UserClaims) (codeExecution bool, directBridge []string) {
+	if claims == nil || claims.ExternalBuilderOperationID == "" {
+		return true, nil
+	}
+	for _, name := range append(slices.Clone(externalBuilderManagedTools), externalBuilderKnowledgeTools...) {
+		if !externalBuilderToolDenied(claims, name) {
+			directBridge = append(directBridge, name)
+		}
+	}
+	return false, directBridge
 }
 
 func externalBuilderQuery(op externalBuilderOperation) QueryRequest {

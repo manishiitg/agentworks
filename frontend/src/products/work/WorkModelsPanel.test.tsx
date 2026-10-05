@@ -12,12 +12,13 @@ const state = vi.hoisted(() => ({
   providerManifestLoaded: true,
   loadProviderManifest: vi.fn(),
   options: [] as AgentProfileProviderOption[],
-  chatTabs: { project: { metadata: { agentProfileEngine: 'muse-cli', agentProfileReasoningEffort: 'medium' } } },
+  configurationProps: {} as { product?: string; llmConfig?: PresetLLMConfig },
+  chatTabs: { project: { metadata: { agentProfileEngine: 'muse-cli', agentProfileReasoningEffort: 'medium', agentProfileConnectionID: undefined as string | undefined } } },
 }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('./projectProduct', () => ({ useProjectProduct: () => state.product }))
-vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: () => null }))
+vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return null } }))
 vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../services/llm-config-api', () => ({
@@ -53,12 +54,12 @@ function museFixture() {
   } as ProviderManifestEntry]
 }
 
-async function render(config?: PresetLLMConfig) {
+async function render(config?: PresetLLMConfig, profileId?: string) {
   const host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)
   const onRuntimeChange = vi.fn()
   await act(async () => root?.render(<WorkModelsPanel tabId="project" workspacePath="/project" hideHeader
-    projectLLMConfig={config} onRuntimeChange={onRuntimeChange} />))
+    projectLLMConfig={config} profileId={profileId} onRuntimeChange={onRuntimeChange} />))
   const expand = host.querySelector<HTMLButtonElement>('button[aria-expanded]')!
   await act(async () => expand.click())
   return { host, onRuntimeChange }
@@ -74,6 +75,19 @@ describe('project reasoning settings', () => {
     await act(async () => root?.render(<WorkModelsPanel tabId="project" workspacePath="Chats/CapLayer"
       profileId="caplayer" profileVersion={0} accountProduct="mcp-gateway" onRuntimeChange={vi.fn()} />))
     expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ workspacePath: 'Chats/CapLayer', product: 'mcp-gateway' })
+  })
+  it.each(['caplayer', 'knowledgebase'])('uses the explicit %s profile for accounts and preserves the selected account', async profileId => {
+    museFixture(); state.product.profileId = 'work'
+    state.chatTabs.project.metadata.agentProfileConnectionID = 'personal-muse'
+    try {
+      const { host, onRuntimeChange } = await render(undefined, profileId)
+      expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ workspacePath: '/project', product: profileId })
+      expect(state.configurationProps.product).toBe(profileId)
+      expect(state.configurationProps.llmConfig?.connection_id).toBe('personal-muse')
+      const high = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Reasoning effort"] button')).find(button => button.textContent === 'High')!
+      await act(async () => high.click())
+      expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'personal-muse', reasoningEffort: 'high' }))
+    } finally { state.chatTabs.project.metadata.agentProfileConnectionID = undefined }
   })
   it.each(['work', 'code'])('allows Muse effort changes in %s with the same saved account and model', async profileId => {
     museFixture(); state.product.profileId = profileId

@@ -2,16 +2,21 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+const authMode = vi.hoisted(() => ({ isMultiUserModeChecked: true, isMultiUserMode: false }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select(authMode) }))
 vi.mock('../../services/api', () => ({
+  authApi: { listAccessTokens: vi.fn().mockResolvedValue({ tokens: [] }) },
   default: { get: vi.fn(), delete: vi.fn() },
   externalSkillApi: { downloadSkillZIP: vi.fn(), fetchSkillMD: vi.fn(), downloadCoworkPlugin: vi.fn() },
   getApiBaseUrl: vi.fn().mockReturnValue('https://agentworks.example.com'),
 }))
-import api, { externalSkillApi, getApiBaseUrl } from '../../services/api'
+import api, { authApi, externalSkillApi, getApiBaseUrl } from '../../services/api'
 import { CliMcpSetupPanel } from './CliMcpSetupPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
+  authMode.isMultiUserMode = false
+  vi.mocked(authApi.listAccessTokens).mockResolvedValue({ tokens: [] })
   vi.mocked(api.get).mockResolvedValue({ data: { connections: [] } })
   vi.mocked(getApiBaseUrl).mockReturnValue('https://agentworks.example.com')
 })
@@ -62,6 +67,16 @@ describe('MCP setup', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('keeps OAuth on a multi-user server even when reached through loopback', async () => {
+    authMode.isMultiUserMode = true
+    vi.mocked(getApiBaseUrl).mockReturnValue('http://127.0.0.1:18743')
+    const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
+    try {
+      expect(host.textContent).toContain('Approve the OAuth connection')
+      expect(host.textContent).not.toContain('Create access token')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('lists and revokes browser connections without exposing credentials', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { connections: [{ id: 'family-1', client_name: 'AgentWorks CLI', scopes: ['workflows:read'], expires_at: '2099-01-01' }] } })
     vi.mocked(api.delete).mockResolvedValue({})
@@ -96,13 +111,14 @@ describe('MCP setup', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it('offers local HTTP MCP on a loopback install and warns hosted apps', async () => {
+  it('offers scoped tokens for a loopback single-user install', async () => {
     vi.mocked(getApiBaseUrl).mockReturnValue('http://127.0.0.1:18743')
     const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
     try {
-      expect(host.textContent).toContain("claude mcp add --transport http agentworks 'http://127.0.0.1:18743/api/external/v1/mcp'")
-      await act(async () => button(host, 'Hosted AI app').click())
-      expect(host.textContent).toContain('Hosted apps need a public server URL')
+      expect(host.textContent).toContain('Create access token')
+      expect(host.querySelector('pre')?.textContent).toContain('http://127.0.0.1:18743/api/external/v1/mcp')
+      expect(host.querySelector('pre')?.textContent).toContain('Authorization')
+      expect(host.textContent).not.toContain('Approve the OAuth connection')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })

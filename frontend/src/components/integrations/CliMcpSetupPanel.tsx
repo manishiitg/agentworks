@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Check, Copy, Download, Globe, Plug, Terminal } from 'lucide-react'
 import { SettingsCard } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { LocalMcpTokenPanel } from './LocalMcpTokenPanel'
 import api, { externalSkillApi, getApiBaseUrl } from '../../services/api'
 
 type Destination = 'local-assistant' | 'hosted-assistant'
@@ -40,6 +42,7 @@ function JsonBlock({ json, label, hint }: { json: string; label: string; hint: s
 
 /** One connection path at a time. Browser approval keeps credentials out of setup instructions. */
 export function CliMcpSetupPanel({ target = 'agentworks', endpoint }: { target?: 'agentworks' | 'vault'; endpoint?: string } = {}) {
+  const localAccount = useAuthStore(state => state.isMultiUserModeChecked && !state.isMultiUserMode)
   const serviceName = target === 'vault' ? 'Vault' : 'AgentWorks'
   const connectionPath = `/api/oauth/${target === 'vault' ? 'vault' : 'mcp'}/connections`
   const [destination, setDestination] = useState<Destination>('local-assistant')
@@ -56,9 +59,12 @@ export function CliMcpSetupPanel({ target = 'agentworks', endpoint }: { target?:
   const mcpUrl = endpoint ?? `${origin}/api/external/v1/mcp`
   const mcpJson = JSON.stringify({ mcpServers: { [target]: { url: mcpUrl } } }, null, 2)
   const museJson = JSON.stringify({ schema_version: 1, mcpServers: { [target]: { url: mcpUrl } } }, null, 2)
-  const isLoopbackOrigin = (() => { try { return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(new URL(mcpUrl).hostname) } catch { return false } })()
+  const isLoopbackOrigin = (() => { try { return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(new URL(mcpUrl).hostname.replace(/^\[|\]$/g, '')) } catch { return false } })()
+
+  const useLocalToken = target === 'agentworks' && localAccount && isLoopbackOrigin
 
   useEffect(() => {
+    if (useLocalToken) return
     let cancelled = false
     api.get<{ connections: OAuthConnection[] }>(connectionPath)
       .then(({ data }) => {
@@ -72,7 +78,7 @@ export function CliMcpSetupPanel({ target = 'agentworks', endpoint }: { target?:
       })
       .catch(() => { /* Setup instructions remain available. */ })
     return () => { cancelled = true }
-  }, [connectionPath])
+  }, [connectionPath, useLocalToken])
 
   const revoke = async (id: string) => {
     setError(null)
@@ -123,6 +129,8 @@ export function CliMcpSetupPanel({ target = 'agentworks', endpoint }: { target?:
     { id: 'local-assistant', icon: Terminal, title: 'AI agent on this computer', description: 'Claude Code, Codex, Cursor, Muse, or another local MCP client.' },
     { id: 'hosted-assistant', icon: Globe, title: 'Hosted AI app', description: 'ChatGPT or Claude Cowork.' },
   ] as const
+
+  if (useLocalToken) return <LocalMcpTokenPanel endpoint={mcpUrl} />
 
   return <div className="space-y-5">
     <div className="space-y-3">
