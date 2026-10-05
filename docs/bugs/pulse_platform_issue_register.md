@@ -198,6 +198,10 @@ usable node_modules if the install fails.
 
 [PLAT-526](pulse_platform/frontend-chat/plat-526.md), fixed on main: the mic no longer trusts a stale loading snapshot.
 
+## Chat scroll flickers after switching workflows — PLAT-527
+
+[PLAT-527](pulse_platform/frontend-chat/plat-527.md), open: cause not found, three suspects, needs a reproduction.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
