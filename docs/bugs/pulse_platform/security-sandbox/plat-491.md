@@ -59,7 +59,7 @@ subagents stay; the bridge shell is the only shell. One switch, off by default: 
 | Claude Code 2.1.289 | 68ca08f | Bash/PowerShell/Monitor/BashOutput/KillShell dropped from `--tools`; `--disallowedTools` when tools=default | no `Bash` call possible incl. subagent; edit worked; `on` restored |
 | Muse 1.4.2 | 01d351e | shell tools out of the allowlist baked into the hook | `bash` refused with reason naming execute_shell_command; edit worked; `on` restored |
 | Agy 1.2.16 | 24f86bc | PreToolUse hook denies `run_command`/`send_command_input` | denied with reason; `write_to_file` worked; `on` restored |
-| Cursor 2026.10.01 | f740613 | preToolUse deny + `beforeShellExecution` deny; `Shell(*)` dropped from allow | **NOT verified live: the CLI is not logged in on this Mac** |
+| Cursor 2026.10.01 | f740613 | preToolUse deny + `beforeShellExecution` deny; `Shell(*)` dropped from allow | live 2026-10-05 with the RTS key (`CURSOR_API_KEY`, process only): interactive and structured, switch off: shell refused, native Write worked; interactive on: shell ran. Structured on: the shell is "Rejected" by Cursor itself, as it was BEFORE this change (checked on the previous commit): `--print` never ran the built-in shell in Full mode |
 | Pi | n/a | already bridge-only | n/a |
 
 Existing live tests that drive the built-in shell now set the switch on. `cli-sandbox-contract` needs the server started with the switch on
@@ -67,7 +67,6 @@ Existing live tests that drive the built-in shell now set the switch on. `cli-sa
 
 ## Left (native shell)
 
-- Cursor live check: `cursor-agent login`, then `go test ./pkg/adapters/cursorcli/ -run TestCursorCLIRealFullModeNativeShellOff -args -coding-cli-p0-live`.
 - The bridge shell in the SAME chat was not driven live on any CLI (stubs only); a real Crew chat on an isolated server (`id -un` refused, native
   edit works, `execute_shell_command` works) was not run, nor the three contracts (they need the switch on).
 - Codex structured and Claude print paths: argument construction only, not live. Claude: a skill declaring `allowed-tools: Bash` not tested.
