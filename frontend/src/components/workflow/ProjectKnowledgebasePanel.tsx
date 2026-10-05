@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, RefreshCw } from 'lucide-react'
+import { Brain, RefreshCw } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/checkbox'
-import { knowledgebaseApi, knowledgebaseError, type KnowledgeFolder, type KnowledgeProject, type KnowledgeBinding } from '../../services/knowledgebaseApi'
+import { knowledgebaseApi, knowledgebaseError, type BrainAccessMode, type KnowledgeFolder, type KnowledgeProject, type KnowledgeBinding } from '../../services/knowledgebaseApi'
 import { AskAIButton } from './AskAIButton'
 import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
 
@@ -49,6 +49,17 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false }: {
     return () => { generation.current++; window.removeEventListener('focus', changed); window.removeEventListener(WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT, changed) }
   }, [refresh, workspacePath])
   const bindings = project?.shared_knowledgebase || []
+  const mode: BrainAccessMode = project?.brain_access ?? (bindings.length ? 'folders' : 'off')
+  const changeMode = async (next: BrainAccessMode) => {
+    if (!project?.can_manage || disabled || loading || busy || next === mode) return
+    const version = generation.current
+    setBusy(true); setError('')
+    try {
+      await knowledgebaseApi.setProjectAccess({ workspace_path: workspacePath, mode: next, expected_manifest_version: project.manifest_version, request_id: crypto.randomUUID() })
+      if (version === generation.current) window.dispatchEvent(new CustomEvent(WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT, { detail: { workspacePath } }))
+    } catch (cause) { if (version === generation.current) setError(knowledgebaseError(cause)) }
+    finally { setBusy(false) }
+  }
   const save = async (folder: KnowledgeFolder | undefined, binding: KnowledgeBinding | undefined, access?: 'read' | 'write') => {
     if (!project?.can_manage || disabled || loading || busy) return
     const version = generation.current
@@ -71,25 +82,40 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false }: {
   if (!available) return null
   const blocked = disabled || !project?.can_manage || busy || loading
   const missing = bindings.filter(binding => !folders.some(folder => folder.folder_id === binding.folder_id))
-  return <section aria-label="Brain folders" className="space-y-3 rounded-lg border border-border p-4 text-xs">
+  const options: Array<{ value: BrainAccessMode; label: string; hint: string }> = [
+    { value: 'off', label: 'Off', hint: 'Agents here cannot use Brain.' },
+    { value: 'read', label: 'Read', hint: 'Read all of Brain that you and everyone who sees this output can read. Never writes.' },
+    { value: 'folders', label: 'Read & write', hint: 'Only the folders you choose below, each read-only or read-write.' },
+  ]
+  const noun = 'project'
+  return <section aria-label="Brain" className="space-y-3 rounded-lg border border-border p-4 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="h-4 w-4 text-primary"/>Brain folders</h3>
-      <div className="flex items-center gap-1"><AskAIButton workspacePath={disabled ? null : workspacePath} label="Ask AI to add" message="Attach a shared Brain folder to this workflow. Use browse_knowledgebase action=folders to find folders, inspect_project for the current manifest version, then bind_project with read access unless I request read-write. Confirm that the workflow audience already has access. Configure relevant steps with knowledgebase_access=read or read-write; writes need a knowledgebase_contribution. Do not change folder grants implicitly."/><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Brain folders" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
+      <h3 className="flex items-center gap-2 text-sm font-semibold"><Brain className="h-4 w-4 text-primary"/>Brain</h3>
+      <div className="flex items-center gap-1"><AskAIButton workspacePath={disabled ? null : workspacePath} label="Ask AI to set up" message={`Set up Brain for this ${noun}. Ask whether it should be off, read-only (the whole Brain), or read & write on named folders. Use inspect_project for the current manifest version, then set_project_access for the mode; for read & write, find folders with browse_knowledgebase action=folders and bind_project each with read access unless I request read-write. Confirm that everyone who sees this ${noun}'s output can already read the folders. Configure relevant steps with knowledgebase_access=read or read-write; writes need a knowledgebase_contribution. Do not change folder grants implicitly.`}/><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Brain" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
     </div>
-    <p className="text-muted-foreground">Select folders for this workflow. Selection uses existing access; it does not grant permission. Steps use their own read/write settings through MCP.</p>
+    <p className="text-muted-foreground">Shared knowledge for this {noun}'s agents. This does not grant permission: your folder roles and those of everyone who sees the output still apply.</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {loading ? <p role="status" className="text-muted-foreground">Loading your access…</p> : <>
-      {!project?.can_manage && <p className="text-muted-foreground">Only a workflow owner can change these selections.</p>}
-      {folders.length === 0 && <p className="text-muted-foreground">No Brain folders available.</p>}
-      {folders.map(folder => {
-        const binding = bindings.find(item => item.folder_id === folder.folder_id)
-        return <div key={folder.folder_id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
-          <Checkbox aria-label={`Use ${folder.path}`} checked={!!binding} disabled={blocked} onCheckedChange={() => void save(folder, binding)}/>
-          <span className="min-w-0 flex-1 break-all">{folder.path}</span>
-          {binding && <><code className="text-muted-foreground">{binding.alias}</code><select aria-label={`Access for ${folder.path}`} value={binding.access} disabled={blocked} className="rounded border border-border bg-background px-2 py-1" onChange={event => void save(folder, binding, event.target.value as 'read' | 'write')}><option value="read">Read only</option><option value="write" disabled={folder.effective_role === 'reader'}>Read-write</option></select></>}
-        </div>
-      })}
-      {missing.map(binding => <div key={binding.alias} className="flex items-center justify-between gap-2"><span>{binding.alias} · No longer available</span><Button variant="ghost" size="xs" disabled={blocked} onClick={() => void save(undefined, binding)}>Remove selection</Button></div>)}
+      {!project?.can_manage && <p className="text-muted-foreground">Only an owner of this {noun} can change Brain access.</p>}
+      <div role="radiogroup" aria-label="Brain access" className="grid gap-2 sm:grid-cols-3">
+        {options.map(option => <label key={option.value} className={`flex cursor-pointer flex-col gap-1 rounded-md border px-3 py-2 ${mode === option.value ? 'border-primary bg-primary/5' : 'border-border'} ${blocked ? 'cursor-not-allowed opacity-70' : ''}`}>
+          <span className="flex items-center gap-2 font-medium"><input type="radio" name={`brain-access-${workspacePath}`} value={option.value} checked={mode === option.value} disabled={blocked} onChange={() => void changeMode(option.value)}/>{option.label}</span>
+          <span className="text-muted-foreground">{option.hint}</span>
+        </label>)}
+      </div>
+      {mode === 'folders' && <>
+        <p className="text-muted-foreground">Choose folders. Steps use their own read/write settings through the Brain tools.</p>
+        {folders.length === 0 && <p className="text-muted-foreground">No Brain folders available.</p>}
+        {folders.map(folder => {
+          const binding = bindings.find(item => item.folder_id === folder.folder_id)
+          return <div key={folder.folder_id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+            <Checkbox aria-label={`Use ${folder.path}`} checked={!!binding} disabled={blocked} onCheckedChange={() => void save(folder, binding)}/>
+            <span className="min-w-0 flex-1 break-all">{folder.path}</span>
+            {binding && <><code className="text-muted-foreground">{binding.alias}</code><select aria-label={`Access for ${folder.path}`} value={binding.access} disabled={blocked} className="rounded border border-border bg-background px-2 py-1" onChange={event => void save(folder, binding, event.target.value as 'read' | 'write')}><option value="read">Read only</option><option value="write" disabled={folder.effective_role === 'reader'}>Read-write</option></select></>}
+          </div>
+        })}
+        {missing.map(binding => <div key={binding.alias} className="flex items-center justify-between gap-2"><span>{binding.alias} · No longer available</span><Button variant="ghost" size="xs" disabled={blocked} onClick={() => void save(undefined, binding)}>Remove selection</Button></div>)}
+      </>}
     </>}
   </section>
 }

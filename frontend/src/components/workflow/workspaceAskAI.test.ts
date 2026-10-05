@@ -28,7 +28,7 @@ describe("integration tab Ask AI messages", () => {
 });
 
 describe("identity tab Ask AI messages", () => {
-  const tabs: IdentityTabId[] = ["general", "secrets", "folders", "llm", "upgrades"];
+  const tabs: IdentityTabId[] = ["general", "secrets", "llm", "upgrades"];
 
   it("marks every tab message with its tab label", () => {
     for (const tab of tabs) {
@@ -36,7 +36,6 @@ describe("identity tab Ask AI messages", () => {
     }
     expect(getIdentityTabAskAIMessage("general")).toContain("Identity · General");
     expect(getIdentityTabAskAIMessage("secrets")).toContain("Identity · Secrets");
-    expect(getIdentityTabAskAIMessage("folders")).toContain("Identity · Connected work");
     expect(getIdentityTabAskAIMessage("llm")).toContain("Identity · Models");
     expect(getIdentityTabAskAIMessage("upgrades")).toContain("Identity · Upgrades");
   });

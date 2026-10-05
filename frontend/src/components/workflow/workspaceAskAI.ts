@@ -40,9 +40,13 @@ const WORKSPACE_ASK_AI_INSTRUCTIONS: Partial<Record<WorkspaceViewId, string>> = 
 // The Integrations view holds five tabs, so its header Ask AI follows the
 // active tab instead of the view. Same marker-block shape as views: a
 // user-visible plain-words summary plus hidden builder instructions.
-export type IntegrationTabId = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type IntegrationTabId = 'apps' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; summary: string; instructions?: string }> = {
+  folders: {
+    label: 'Integrations · Folders & workflows',
+    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, set up Brain under Tools & secrets instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
+  },
   secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
   apps: {
     label: 'Integrations · MCPs',
@@ -102,7 +106,7 @@ export function getIntegrationTabAskAIMessage(tab: IntegrationTabId, incomingGma
 
 // The Identity view holds five tabs, so its header Ask AI follows the
 // active tab instead of the view.
-export type IdentityTabId = 'general' | 'secrets' | 'folders' | 'llm' | 'upgrades'
+export type IdentityTabId = 'general' | 'secrets' | 'llm' | 'upgrades'
 
 const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summary: string; instructions?: string }> = {
   general: {
@@ -113,10 +117,6 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summar
   secrets: {
     label: 'Identity · Secrets',
     summary: "Help me configure a secret for this workflow. Ask which credential is needed and where it should come from without asking me to reveal it in chat.",
-  },
-  folders: {
-    label: 'Identity · Connected work',
-    summary: "Help me attach things to this workflow: folders, shared knowledge bases, or other workflows as read-only context. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
   },
   llm: {
     label: 'Identity · Models',

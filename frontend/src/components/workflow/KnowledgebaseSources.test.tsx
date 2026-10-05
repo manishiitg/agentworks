@@ -79,7 +79,7 @@ it("shows several sources and detaches only the selected attachment", async () =
     />,
   );
   expect(
-    host.querySelectorAll('ul[aria-label="Attached knowledge bases"] > li'),
+    host.querySelectorAll('ul[aria-label="Legacy knowledge sources"] > li'),
   ).toHaveLength(2);
   expect(host.textContent).toContain("Source unavailable");
   await act(async () => {
@@ -227,7 +227,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");
   expect(panels[1].textContent).not.toContain("Detach");
-  expect(panels[1].textContent).toContain("Setup → Connected work");
+  expect(panels[1].textContent).toContain("Integrations → Tools & secrets → Brain");
   expect(panels[1].querySelectorAll('[role="group"] button')).toHaveLength(2);
   expect(panels[0].querySelector("select")).toBeNull();
   await act(async () => {
@@ -242,7 +242,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
     knowledgebase_sources: [],
   });
   expect(panels[0].textContent).toContain(
-    "No shared knowledge bases attached.",
+    "No legacy knowledge sources attached.",
   );
   expect(panels[1].querySelectorAll('[role="group"] button')).toHaveLength(1);
   expect(select).toHaveBeenCalledWith("");

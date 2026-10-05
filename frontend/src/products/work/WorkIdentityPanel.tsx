@@ -26,11 +26,10 @@ import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
 
-export type WorkIdentityTab = 'general' | 'folders' | 'models'
+export type WorkIdentityTab = 'general' | 'models'
 
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
-  { value: 'folders', label: 'Connected work' },
   { value: 'models', label: 'Models' },
 ]
 
@@ -39,7 +38,6 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
     general: hasIdentity
       ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
       : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
-    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed.`,
     models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
   }
 }
@@ -327,7 +325,41 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
+/** Folders on this server and other work this Crew or Code project can use (Integrations, "Folders & workflows"). */
+export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onAsk, askMessage }: {
+  workspacePath: string
+  workflowContextPaths: string[]
+  onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
+  onAsk: (message: string) => Promise<void>
+  askMessage: string
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+            <div className="min-w-0 flex-1 basis-48">
+              <p className="text-sm font-semibold text-foreground">Need to attach something?</p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                Ask the agent to attach folders or link other work for context — no manual setup needed.
+              </p>
+            </div>
+            <AskAIButton
+              workspacePath={workspacePath}
+              onAsk={onAsk}
+              label="Ask AI to add"
+              message={askMessage}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <WorkFoldersBody
+            workspacePath={workspacePath}
+            workflowContextPaths={workflowContextPaths}
+            onWorkflowContextPathsChange={onWorkflowContextPathsChange}
+          />
+    </div>
+  )
+}
+
+export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
   /** The project's id. */
   projectId?: string
@@ -339,7 +371,6 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
   tabId: string
   selectedSecrets: string[]
   selectedGlobalSecrets: string[]
-  workflowContextPaths: string[]
   projectLLMConfig?: PresetLLMConfig
   enabledPanels?: Set<string>
   onAsk: (message: string) => Promise<void>
@@ -349,7 +380,6 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
   onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>
   onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>
-  onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
   onDeleteRequest: () => void
 }) {
@@ -394,28 +424,6 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'folders' && <div className="space-y-4">
-          <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-            <div className="min-w-0 flex-1 basis-48">
-              <p className="text-sm font-semibold text-foreground">Need to attach something?</p>
-              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                Ask the agent to attach folders or link other work for context — no manual setup needed.
-              </p>
-            </div>
-            <AskAIButton
-              workspacePath={workspacePath}
-              onAsk={onAsk}
-              label="Ask AI to add"
-              message={askMessages.folders}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
-          <WorkFoldersBody
-            workspacePath={workspacePath}
-            workflowContextPaths={workflowContextPaths}
-            onWorkflowContextPathsChange={onWorkflowContextPathsChange}
-          />
-        </div>}
         {activeTab === 'models' && <div className="space-y-4">
           <WorkModelsPanel
             tabId={tabId}

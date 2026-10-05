@@ -365,7 +365,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           tabId={tabId}
           selectedSecrets={selectedSecrets}
           selectedGlobalSecrets={selectedGlobalSecrets}
-          workflowContextPaths={workflowContextPaths}
           projectLLMConfig={projectLLMConfig}
           enabledPanels={enabledPanels}
           onAsk={async message => { await ask(message) }}
@@ -374,7 +373,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onNativeAgentToolsChange={shared ? undefined : onNativeAgentToolsChange}
           onSelectedSecretsChange={updateSecretSelection}
           onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}
-          onWorkflowContextPathsChange={onWorkflowContextPathsChange}
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
@@ -403,6 +401,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onAsk={async message => { await ask(message) }}
           onSelectedServersChange={onSelectedServersChange}
           onSelectedSkillsChange={onSelectedSkillsChange}
+          workflowContextPaths={workflowContextPaths}
+          onWorkflowContextPathsChange={onWorkflowContextPathsChange}
         />}
         {view === 'memory' && <WorkMemoryPanel
           workspacePath={workspacePath}

@@ -228,7 +228,7 @@ export function KnowledgebaseSources({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <BookOpen aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">Shared knowledge bases</h3>
+              <h3 className="text-sm font-semibold">Legacy knowledge sources</h3>
               {!loading && sourcesLoaded && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                   {sources.length} attached
@@ -247,13 +247,13 @@ export function KnowledgebaseSources({
           )}
           {!loading && !error && sources.length === 0 && (
             <p className="rounded border border-dashed p-3 text-muted-foreground">
-              No shared knowledge bases attached.
+              No legacy knowledge sources attached.
             </p>
           )}
           {sources.length > 0 && (
             <ul
               className="grid gap-2 lg:grid-cols-2"
-              aria-label="Attached knowledge bases"
+              aria-label="Legacy knowledge sources"
             >
               {sources.map((source) => (
                 <li
@@ -373,7 +373,7 @@ export function KnowledgebaseSources({
               : "Viewing this workflow’s local knowledge."}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Manage shared knowledge bases in Setup → Connected work.
+            Shared knowledge is set up in Integrations → Tools &amp; secrets → Brain; legacy sources stay in Integrations → Folders &amp; workflows.
           </p>
           {sources.find((s) => s.alias === selected)?.available === false && (
             <p role="status" className="text-amber-700 dark:text-amber-300">

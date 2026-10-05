@@ -28,5 +28,6 @@ export function isWorkIntegrationTabEnabled(tab: WorkIntegrationTab, enabledPane
   if (tab === 'apps') return enabledPanels.has('mcp') || enabledPanels.has('secrets') || enabledPanels.has('skills')
   if (tab === 'skills') return enabledPanels.has('skills')
   if (tab === 'cli') return true
+  if (tab === 'folders') return enabledPanels.has('folders')
   return enabledPanels.has('bots')
 }

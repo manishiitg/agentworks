@@ -253,9 +253,13 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: `Choose saved credentials this ${surface === 'crew' ? 'Crew project' : 'workflow'} may use.`,
     howTo: 'Select only the secrets needed for its work. Secret values remain hidden; do not paste them into chat.',
   }),
-  'Identity · Connected work': surface => ({
-    purpose: `Folders, knowledge bases, workflows and Crews this ${surface === 'crew' ? 'Crew member' : 'workflow'} can use, and whether it can change them.`,
-    howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files.',
+  'Integrations · Folders & workflows': surface => ({
+    purpose: `Folders on this server, other workflows and Crews this ${surface === 'crew' ? 'Crew member' : 'workflow'} can use, and whether it can change them.`,
+    howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files. Shared knowledge is set up under Tools & secrets, in Brain.',
+  }),
+  'Integrations · Brain': surface => ({
+    purpose: `Shared knowledge for this ${surface === 'crew' ? 'Crew member' : 'workflow'}: off, read-only on the whole Brain, or read & write on named folders.`,
+    howTo: 'Pick Off, Read or Read & write. Read & write needs folders; each folder is read-only or read-write. Your folder roles still decide what is allowed.',
   }),
   'Identity · Models': surface => ({
     purpose: `Choose the coding agent and model used by this ${surface === 'crew' ? 'Crew member' : 'workflow'}.`,

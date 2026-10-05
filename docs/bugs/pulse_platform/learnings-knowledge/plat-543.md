@@ -1,6 +1,6 @@
 # PLAT-543: Brain access setting for projects (Off, Read, Folders)
 
-**State:** backend on main, not deployed; UI not built. P2.
+**State:** backend and UI on main. P2.
 
 **Decision (owner, 2026-10-05):** a workflow, Crew or Code project should be able to simply have Brain turned on or off, from the Builder chat and the app, like Vault; folders stay the way to write.
 
@@ -11,4 +11,6 @@
 - New action `set_project_access` on `manage_knowledgebase_access` (mode, expected manifest version, request ID), through the same version check and request journal as a binding change, for the Builder, an owner's MCP connection and the UI route. It cannot be used from a step, a schedule or an unattended run. A project migrated to Brain cannot be set to off or read.
 - One test (`TestBrainProjectAccessModes`) pins: off refuses, read reads and cannot write, read cannot reach a folder an output reader cannot read.
 
-**Left:** the Brain tab under Integrations (workflow and Crew), moving the whole "Connected work" tab into Integrations, labels (Off / Read / Read & write; "Legacy knowledge sources"), Code projects (excluded by the backend today), the agent prompt text that explains the modes, and an end-to-end check on RTS (a project on Read reads and cannot write; Off sees nothing; a bound-folder write still works; a scheduled run).
+**Done (UI):** a Brain tab beside Vault under Integrations → Tools & secrets for workflows and Crews (Off / Read / Read & write, folders only for Read & write; `ProjectKnowledgebasePanel`). The "Connected work" tab is gone: its content (other workflows' knowledge, external folders, legacy knowledge sources, attached-folder grants) is now Integrations → "Folders & workflows" for workflows, Crews and Code. Legacy sources are labelled "Legacy knowledge sources". Brain has its own mark and a findable Ctrl+K entry.
+
+**Left:** Code projects (the backend refuses them, so the Brain tab is hidden for Code); the agent prompt text that explains the modes; an end-to-end check on RTS (a project on Read reads and cannot write; Off sees nothing; a bound-folder write still works; a scheduled run).

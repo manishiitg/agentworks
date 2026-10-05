@@ -65,7 +65,7 @@ describe('Work Setup consolidation', () => {
     expect(identity).toContain("ariaLabel: 'Identity'")
     expect(identity).toContain("{ value: 'general', label: 'General' }")
     expect(identity).not.toContain("{ value: 'secrets'")
-    expect(identity).toContain("{ value: 'folders', label: 'Connected work' }")
+    expect(identity).not.toContain("label: 'Connected work'")
     expect(identity).toContain("{ value: 'models', label: 'Models' }")
     expect(identity).toContain('onUpdateIdentity={onUpdateIdentity}')
     expect(identity).toContain('onDeleteRequest={onDeleteRequest}')
