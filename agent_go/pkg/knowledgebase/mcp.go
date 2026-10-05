@@ -21,12 +21,12 @@ var mcpSurface = []mcpTool{
 	{"read_knowledgebase", "Read an entry (whole, lines, or heading section) with action=read, or literal-search accessible content with action=search. Reads return a current version.", []mcpAction{{"read", "read_knowledgebase"}, {"search", "search_knowledgebase"}}},
 	{"update_knowledgebase", "Save live knowledge: create, update, delete, or create_folder. Migration actions preview/import/cutover/rollback explicitly migrate an owned workflow or Crew after preview. Use expected_version and stable request IDs; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}, {"migration_preview", "kb_migration_preview"}, {"migration_import", "kb_migration_import"}, {"migration_cutover", "kb_migration_cutover"}, {"migration_rollback", "kb_migration_rollback"}}},
 	{"backup_knowledgebase", "Inspect Git backup with action=status, prepare selected current versions/deletions with action=commit, then explicitly publish the owned receipt with action=push. Commit/push require distinct stable request IDs.", []mcpAction{{"status", "get_knowledgebase_backup_status"}, {"commit", "commit_knowledgebase"}, {"push", "push_knowledgebase"}}},
-	{"manage_knowledgebase_access", "Inspect folder access. Only the access builder can manage grants, service accounts, or bind/unbind an owned workflow/Crew to a shared folder. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}}},
+	{"manage_knowledgebase_access", "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. The access builder also binds/unbinds owned workflow/Crew projects. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}}},
 }
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
 // builder receives only manage_knowledgebase_access from this definition.
-func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true, true) }
+func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true, true, false) }
 
 func IsMCPTool(name string) bool {
 	for _, tool := range mcpSurface {
@@ -40,14 +40,21 @@ func IsMCPTool(name string) bool {
 // ConnectionToolDefinitions limits discovery to the actions a content
 // connection can call. Access mutations remain exclusive to the access builder.
 func ConnectionToolDefinitions(canWrite bool) []ToolDefinition {
-	return mcpDefinitions(canWrite, false, false)
+	return mcpDefinitions(canWrite, false, false, false)
 }
 
 func MigrationConnectionToolDefinitions(canWrite bool) []ToolDefinition {
-	return mcpDefinitions(canWrite, false, true)
+	return mcpDefinitions(canWrite, false, true, false)
 }
 
-func mcpDefinitions(canWrite, accessBuilder, migration bool) []ToolDefinition {
+// ExternalConnectionToolDefinitions exposes direct access management to writable,
+// unrestricted external connections. Folder Owner/admin checks remain authoritative.
+// Managed workflow/Crew tools retain their content-only definitions.
+func ExternalConnectionToolDefinitions(canWrite, canManage, migration bool) []ToolDefinition {
+	return mcpDefinitions(canWrite, false, migration, canManage)
+}
+
+func mcpDefinitions(canWrite, accessBuilder, migration, externalAccess bool) []ToolDefinition {
 	operations := map[string]ToolDefinition{}
 	for _, op := range operationDefinitions() {
 		operations[op.Name] = op
@@ -68,10 +75,14 @@ func mcpDefinitions(canWrite, accessBuilder, migration bool) []ToolDefinition {
 			if !migration && strings.HasPrefix(action.name, "migration_") {
 				continue
 			}
-			if tool.name == "manage_knowledgebase_access" && !accessBuilder && action.name != "inspect" || !canWrite && ToolActionMutates(tool.name, action.name) {
+			if tool.name == "manage_knowledgebase_access" && !accessBuilder && action.name != "inspect" && (!externalAccess || !canWrite || strings.HasSuffix(action.name, "_project")) || !canWrite && ToolActionMutates(tool.name, action.name) {
 				continue
 			}
-			variant := asMap(operations[action.operation].InputSchema)
+			schemaOperation := action.operation
+			if action.name == "configure_backup" {
+				schemaOperation = "kb_configure_backup"
+			}
+			variant := asMap(operations[schemaOperation].InputSchema)
 			fields := variant["properties"].(map[string]any)
 			fields["binding_alias"] = map[string]any{"type": "string", "description": "Select a configured workflow/Crew shared-folder alias; required when a default scope is ambiguous."}
 			if action.operation == "create_knowledgebase" || action.operation == "create_knowledgebase_folder" {
@@ -105,7 +116,7 @@ func mcpDefinitions(canWrite, accessBuilder, migration bool) []ToolDefinition {
 		}
 		props["action"] = map[string]any{"type": "string", "enum": actions, "description": "Choose one of the actions available to this connection."}
 		description := tool.description
-		if tool.name == "manage_knowledgebase_access" && !accessBuilder {
+		if tool.name == "manage_knowledgebase_access" && !accessBuilder && !externalAccess {
 			description = "Inspect effective folder access with action=inspect. Permission changes and service-account management belong to the app's access builder."
 		}
 		if tool.name == "backup_knowledgebase" && !canWrite {

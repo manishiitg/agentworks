@@ -23,12 +23,13 @@ import { KnowledgebaseModelSettings } from './KnowledgebaseModelSettings'
 import { AgentWorksChatTabItem } from '../../components/chat/AgentWorksChatTabItem'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
 import { TooltipProvider } from '../../components/ui/tooltip'
+import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { activateTab } from '../../utils/activateTab'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
-const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }] as const
+const views = [{ id: 'library', label: 'Files', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }] as const
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
 function KnowledgebaseChatTab({ tabId, chatOpen, openChat }: { tabId: string | null; chatOpen: boolean; openChat: () => void }) {
@@ -114,11 +115,23 @@ export function KnowledgebaseSurface() {
     document.addEventListener('visibilitychange', refresh)
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
   }, [])
+  useEffect(() => {
+    if (revision === 0) return
+    const controller = new AbortController()
+    void knowledgebaseApi.bootstrap(controller.signal).then(state => { if (!controller.signal.aborted) setBootstrap(state) }).catch(() => {})
+    return () => controller.abort()
+  }, [revision])
   const changeRatio = useCallback((next: number) => { const bounded = clampWorkSplitRatio(next, containerRef.current?.getBoundingClientRect().width || window.innerWidth); setRatio(bounded); try { localStorage.setItem('knowledgebase:split', String(bounded)) } catch { /* Preference only. */ } }, [])
   function startResize(event: PointerEvent<HTMLButtonElement>) {
     const bounds = containerRef.current?.getBoundingClientRect()
     if (!bounds) return
     drag.start(event, { onMove: clientX => changeRatio((clientX - bounds.left) / bounds.width), onEnd: () => {} })
+  }
+  async function askChat(message: string) {
+    if (!tabId || !chatRef.current) return
+    setCollapsed(null); setMobilePane('chat')
+    activateTab(tabId)
+    await chatRef.current.submitQuery(message)
   }
   function askAccess() {
     setCollapsed(null); setMobilePane('chat')
@@ -146,13 +159,15 @@ export function KnowledgebaseSurface() {
             <TooltipProvider delayDuration={150}><WorkspaceToolbarFrame aria-label="Knowledge Base views"><div className="inline-flex items-center gap-0.5 px-0.5">{views.map(({ id, label, icon }) => <WorkspaceToolbarButton key={id} active={view === id} icon={icon} label={label} onClick={() => { setView(id); setMobilePane('workspace'); if (collapsed === 'workspace') setCollapsed(null) }} />)}</div></WorkspaceToolbarFrame></TooltipProvider>
             <WorkspaceViewIconButton label="Refresh Knowledge Base" icon={RefreshCw} onClick={() => setRevision(value => value + 1)} />
           </nav>}
-          chat={<div className="min-h-0 flex-1">{tabId ? <ChatArea ref={chatRef} tabId={tabId} compact showProductSteerAction
+          chat={<div className="flex min-h-0 flex-1 flex-col">
+            {bootstrap.backup_configured === false && <div role="status" data-testid="knowledgebase-backup-banner" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/60 px-4 py-2 text-sm text-muted-foreground"><span><strong className="font-medium">Backup not configured.</strong> Content changes are saved and available immediately.{!bootstrap.is_admin && ' Ask an administrator to configure backup.'}</span>{bootstrap.is_admin && tabId && <TooltipProvider><AskAIButton workspacePath={null} onAsk={askChat} label="Configure backup" message="Help me configure Knowledge Base Git backup. Ask for my dedicated private repository's SSH URL and branch, then use manage_knowledgebase_access action=configure_backup. Do not create a commit or push content." /></TooltipProvider>}</div>}
+            <div className="min-h-0 flex-1">{tabId ? <ChatArea ref={chatRef} tabId={tabId} compact showProductSteerAction
             composerPlaceholder="Grant, change, or revoke folder access…" knowledgebaseFolderPath={folder}
             onNewChat={() => { newConversation.current = true; setAttempt(value => value + 1) }}
             landingContent={<ProductChatLandingCard icon={ShieldCheck} title="Manage Knowledge Base access"
               description="Ask the assistant to inspect folder permissions or manage access. Content is written through your agents’ MCP connections."
               examples={['Who can read this folder?', 'Give Priya read access to Payments', 'Change a folder grant', 'Revoke access to a service']} />}
-          /> : <p className="p-5 text-xs text-muted-foreground">Connecting access chat…</p>}</div>}
+          /> : <p className="p-5 text-xs text-muted-foreground">Connecting access chat…</p>}</div></div>}
           divider={<WorkspaceSplitRail ratio={ratio} onPointerDown={startResize} onStep={delta => changeRatio(ratio + delta)} className="md:row-start-2" onCollapseChat={() => setCollapsed('chat')} onCollapseWorkspace={() => setCollapsed('workspace')} />}
           workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} revision={revision} modelSettings={<KnowledgebaseModelSettings tabId={tabId} />} />}
         /></div>}

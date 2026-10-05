@@ -1,17 +1,17 @@
 ---
 name: agentworks
-description: Read and run AgentWorks workflows and Crews through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
+description: Use AgentWorks workflows, Crews and shared Knowledge Base through MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Load when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
 ---
 
 # AgentWorks
 
 This skill is an entry pointer, not a manual. All substantive guidance lives on the server and is fetched per task — nothing here can go stale.
 
-This connection reads and runs, like the Slack and WhatsApp run-mode channels: tools read, and run-mode tools execute in pinned Run-mode sessions. Nothing creates, edits, or authors.
+Use only the tools and actions exposed by this connection. Workflow runs use pinned Run-mode sessions; Builder, Crew edits and Knowledge Base updates require the corresponding permissions.
 
 ## Connect
 
-It is a standard remote MCP server (streamable HTTP, OAuth sign-in), usable from any MCP client. Add it to the client you are running in, not another one: a Codex agent running `claude mcp add` configures Claude Code, not itself.
+It is a standard MCP server (Streamable HTTP), usable from any MCP client. Add it to the client you are running in, not another one: a Codex agent running `claude mcp add` configures Claude Code, not itself.
 
 ```sh
 # Claude Code
@@ -25,7 +25,9 @@ cursor-agent mcp login agentworks
 muse mcp login agentworks
 ```
 
-Other clients: add the same URL as a remote (streamable HTTP) MCP server. Approve the MCP connection in your browser. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. Admins and Code reviewers may also approve `code:review`: read-only, audited review of every Code workspace. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
+For a local single-user instance, open the global Connect page and create the `agentworks-local` token. It includes your account's available access and remains valid until removed. Configure `Authorization: Bearer <ACCESS_TOKEN>` in your client's HTTP MCP headers; use the endpoint shown in Connect. Keep the token out of skill files, URLs, source control and chat messages. Hosted/multi-user servers use browser OAuth approval instead.
+
+Other clients: add the same URL as a remote (streamable HTTP) MCP server. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. Admins and Code reviewers may also approve `code:review`: read-only, audited review of every Code workspace. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
 
 ## First step
 
@@ -34,6 +36,17 @@ Use `get_api_spec` to inspect the available tools, then call `get_agent_context`
 ## Guidance per task
 
 List topics with `list_guidance_topics` and load only relevant ones via `get_guidance_topic`. Inspect workflow knowledge with `list_workflow_knowledge` / `read_workflow_knowledge` (learnings, knowledgebase notes, workspace skills, skill wiring). Use `get_file_link` for preview/download URLs.
+
+## Shared Knowledge Base
+
+Discover the schemas through `get_api_spec`, then invoke actions through `call_tool`:
+- `browse_knowledgebase`: `folders` / `entries` for accessible skills, facts, notes and sources.
+- `read_knowledgebase`: `read` / `search`; read the current version before changing content.
+- `update_knowledgebase`: `create` / `update` / `delete` / `create_folder`. Use diff patches for large files, `expected_version` for updates/deletes and stable `request_id` values. Saves become readable immediately.
+- `backup_knowledgebase`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
+- `manage_knowledgebase_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
+
+Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Project binding actions remain in the app's access builder. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Knowledge Base.
 
 ## Run
 
@@ -54,3 +67,9 @@ Code review (`code:review`; admins and Code reviewers only, re-checked on every 
 ## Answer from reading
 
 If the task needs a change, say so instead of attempting one — authoring is not exposed.
+
+Administrators may configure an initial Git backup with `manage_knowledgebase_access`
+`action=configure_backup`, the user's exact SSH `remote_url`, optional `branch`
+(default `main`), and stable `request_id`. Never invent a destination or ask for
+credentials. Setup is private and durable; it cannot redirect an existing backup
+or perform commit/push. The server must already have SSH repository access.

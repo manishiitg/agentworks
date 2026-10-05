@@ -188,9 +188,9 @@ The MVP exposes five public MCP names, each with an explicit `action`. They shar
 | `read_knowledgebase` | `read` — whole entry, heading, or lines; `search` — literal content search. | Reader |
 | `update_knowledgebase` | `create`, `update` (diff, replacement, and/or metadata), `delete`, `create_folder`. | Editor on the affected folder |
 | `backup_knowledgebase` | `status`, `commit` selected versions/deletions, `push` an owned receipt. | Reader for status; Editor on every selected path for commit/push |
-| `manage_knowledgebase_access` | `inspect` for connected agents; `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account` only in the app's access builder. | Reader for inspection; Owner/admin for access changes; admin for service accounts |
+| `manage_knowledgebase_access` | `inspect` for content connections; unrestricted writable external connections and the app access builder also support `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account`, `configure_backup`. | Reader for inspection; Owner/admin for access changes; admin for service accounts and backup setup |
 
-Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; content connections expose access inspection only. Dispatch rechecks the action's write scope and live folder grants independently of discovery.
+Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; managed workflow/Crew and folder-capped content connections expose access inspection only. Unrestricted external writers may manage access within their current Owner grants. Dispatch rechecks the action's write scope and live folder grants independently of discovery.
 
 All operations are scoped to the authenticated organization. Content operations resolve an entry by ID or organization-relative path. Types use the same tools; no separate tool families are needed for skills, notes, facts, or sources.
 
@@ -622,7 +622,7 @@ frontend/src/
 ├── products/knowledgebase/
 │   ├── KnowledgebaseSurface.tsx
 │   ├── KnowledgebaseWorkspacePane.tsx
-│   ├── KnowledgebaseLibraryPanel.tsx
+│   ├── KnowledgebaseWorkspacePane.tsx
 │   ├── KnowledgebaseReader.tsx
 │   ├── KnowledgebaseAccessPanel.tsx
 └── services/knowledgebaseApi.ts
@@ -656,7 +656,7 @@ Layout:
 ```text
 Shared product navigation and workspace toolbar
 ┌────────────────────────┬──────────────────────────────────┐
-│ Access-management chat │ Library / Access / Models    │
+│ Access-management chat │ Files / Access / Models    │
 │ Existing ChatArea      │ Folder tree + Markdown reader    │
 │ and conversation tabs  │ or the selected management view │
 └────────────────────────┴──────────────────────────────────┘
@@ -664,7 +664,7 @@ Shared product navigation and workspace toolbar
 
 Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, shared toolbar buttons, split controls, mobile/tablet/laptop layout behavior, `ProductChatLandingCard`, and the server-owned profile conversation APIs. Bind the selected folder as a validated context hint for chat; it never supplies an authorization identity.
 
-- **Library:** nested folders, search/type/tag filters, read-only content, attribution, and per-entry backup status. No editor or generic writable file panel.
+- **Files:** reuse the platform FileWorkspacePane, explorer, open file tabs, breadcrumbs, in-file search and viewer through a read-only KB data source. All folders/entries/content load through ACL-checked KB APIs; no general workspace file path is exposed. Filename filtering replaces the custom type/tag controls. Folder access uses the shared Ask AI action in the Files header. Attribution remains visible; editing and Git publication remain MCP-only.
 - **Access:** inspect effective access; Owners/admins can use chat to grant, change, or revoke folder grants. Show inherited grants as inherited rather than implying a child can cancel them.
 - **Models:** a workspace toolbar view using the existing shared model settings, as in Vault. Use the shared compact ChatArea, chat tab and landing card; no custom composer or model strip.
 
@@ -753,8 +753,8 @@ Deployment does not automatically migrate existing local knowledge.
 ## Access confirmation and agent exposure
 
 Access chat proposes changes; the app requires the authenticated person's
-confirmation of a fixed server-side proposal before any access mutation executes.
-This includes grants, revocations, service-account changes and project bindings.
+confirmation of a fixed server-side proposal before a chat-proposed access mutation executes.
+This includes grants, revocations, service-account changes, project bindings and backup setup. Unrestricted writable external MCP connections apply folder grants/revocations directly after current Owner checks, ACL version checks and request deduplication. Administrative service-account actions and backup setup still require a current administrator; scoped tokens and managed execution principals cannot acquire access-management authority.
 Approval rechecks current authority and version conflicts. Entry text and all
 names returned by tools are untrusted. The app remains a reader and access
 manager; content editing stays MCP-only.
@@ -767,7 +767,7 @@ for source-owner migration authority and consumer cutover prerequisites.
 
 ## MVP simplification: no Activity tracking
 
-Activity is deferred. The frontend has Library, Access and Models views;
+Activity is deferred. The frontend has Files, Access and Models views;
 there is no Activity API, activity tool, or backend activity-event recording.
 Private mutation journals, deduplication outcomes, deletion records, migration
 checkpoints and backup receipts remain required for correctness and recovery.
@@ -780,3 +780,19 @@ There is no dedicated Knowledge Base Connect view or MCP server. Use the
 platform's global MCP connection settings and `/api/external/v1/mcp` endpoint.
 Explicit Knowledge Base scopes and current folder grants still apply; removing
 the duplicate Connect panel does not grant access to existing connections.
+
+## Backup setup from the app
+
+Show `Backup not configured` once above the access ChatArea. Administrators get
+`Configure backup`, which sends a setup request to the existing builder chat.
+The `manage_knowledgebase_access` action `configure_backup` accepts `remote_url`
+(SSH, without embedded credentials), optional `branch` (default `main`), and a
+stable `request_id`. The app displays the exact destination in its frozen
+confirmation; authorized external admin connections may apply setup directly.
+Setup persists `private/backup-destination.json` with the existing journal and
+request outcome. Deployment environment configuration takes precedence. Setup
+cannot change an existing destination or bypass reconciliation of old staging
+state. It does not test Git transport, initialize a repository, commit, or push;
+server SSH access must already be provisioned. Normal explicit commit/push uses
+the saved destination, including after restart. Bootstrap refresh clears the
+banner after setup; content reads and live saves continue independently.

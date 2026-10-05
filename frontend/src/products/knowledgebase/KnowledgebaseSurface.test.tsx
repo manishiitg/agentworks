@@ -3,13 +3,15 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
+  backupConfigured: false, isAdmin: true, submit: vi.fn(),
   chatProps: {} as Record<string, any>,
   state: { chatTabs: {} as Record<string, any>, tabEvents: {}, createChatTab: vi.fn(), setTabConfig: vi.fn(), setTabMetadata: vi.fn() },
   resolve: vi.fn(), startNew: vi.fn(), activate: vi.fn(), hydrate: vi.fn(),
 }))
+vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
 vi.mock('../../services/api', () => ({ agentApi: { resolveAgentProfileConversation: mocks.resolve, startNewAgentProfileConversation: mocks.startNew } }))
-vi.mock('../../services/knowledgebaseApi', () => ({ knowledgebaseApi: { bootstrap: async () => ({ chat_workspace: 'Chats/Knowledgebase' }), proposals: async () => ({ proposals: [] }) }, knowledgebaseError: (error: Error) => error.message }))
-vi.mock('../../components/ChatArea', () => ({ default: React.forwardRef((_props: any, _ref) => { mocks.chatProps = _props; return <div data-testid="shared-chat">{_props.landingContent}</div> }) }))
+vi.mock('../../services/knowledgebaseApi', () => ({ knowledgebaseApi: { bootstrap: async () => ({ chat_workspace: 'Chats/Knowledgebase', backup_configured: mocks.backupConfigured, is_admin: mocks.isAdmin }), proposals: async () => ({ proposals: [] }) }, knowledgebaseError: (error: Error) => error.message }))
+vi.mock('../../components/ChatArea', () => ({ default: React.forwardRef((_props: any, ref) => { React.useImperativeHandle(ref, () => ({ submitQuery: mocks.submit })); mocks.chatProps = _props; return <div data-testid="shared-chat">{_props.landingContent}</div> }) }))
 vi.mock('../../components/ModePresetBar', () => ({ ModePresetBar: () => null }))
 vi.mock('../../components/topbar/LlmModalHost', () => ({ default: () => null }))
 vi.mock('../../components/chat/AgentWorksChatTabItem', () => ({ AgentWorksChatTabItem: ({ tab }: any) => <button>{tab.name}</button> }))
@@ -27,6 +29,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); document.body.innerHTML = ''; vi.clearAllMocks() })
 beforeEach(() => {
+  mocks.backupConfigured = false; mocks.isAdmin = true; mocks.submit.mockResolvedValue(undefined)
   mocks.state.chatTabs = {}
   mocks.resolve.mockResolvedValue({ conversation_id: 'old', conversation_key: 'main', session_id: 'old' })
   mocks.startNew.mockResolvedValue({ conversation_id: 'new', conversation_key: 'main', session_id: 'new' })
@@ -41,6 +44,8 @@ async function mount() {
 describe('Knowledge Base shared platform chat', () => {
   it('uses Vault’s standard ChatArea configuration and places Models in the workspace', async () => {
     const host = await mount()
+    expect(host.querySelectorAll('[data-testid="knowledgebase-backup-banner"]')).toHaveLength(1)
+    expect(host.querySelector('[aria-label="Access management chat"]')?.textContent).toContain('Backup not configured')
     expect(mocks.chatProps.compact).toBe(true)
     expect(mocks.chatProps.showProductSteerAction).toBe(true)
     expect(mocks.chatProps.inputVariant).toBeUndefined()
@@ -53,6 +58,25 @@ describe('Knowledge Base shared platform chat', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Models"]')!.click() })
     expect(host.querySelector('[data-testid="workspace"]')?.textContent).toBe('Shared model settings')
     expect(host.querySelector('[data-testid="shared-chat"]')?.textContent).not.toContain('Shared model settings')
+  })
+  it('routes Configure backup to the existing chat and clears the banner after configuration', async () => {
+    const host = await mount()
+    const button = [...host.querySelectorAll('button')].find(button => button.textContent === 'Configure backup')!
+    await act(async () => { button.click() })
+    await new Promise(resolve => setTimeout(resolve, 650))
+    await act(async () => { button.click() })
+    expect(mocks.submit).toHaveBeenCalledWith(expect.stringContaining('action=configure_backup'))
+    expect(mocks.activate).toHaveBeenLastCalledWith('tab-old')
+    mocks.backupConfigured = true
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Refresh Knowledge Base"]')!.click() })
+    expect(host.querySelector('[data-testid="knowledgebase-backup-banner"]')).toBeNull()
+    expect(mocks.resolve).toHaveBeenCalledTimes(1)
+  })
+  it('explains admin setup to a reader without offering a setup action', async () => {
+    mocks.isAdmin = false
+    const host = await mount()
+    expect(host.textContent).toContain('Ask an administrator')
+    expect(host.textContent).not.toContain('Configure backup')
   })
   it('rotates profile conversations through the shared API and preserves the old chat as view-only', async () => {
     await mount()

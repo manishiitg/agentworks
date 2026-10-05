@@ -131,7 +131,20 @@ func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args m
 	}
 	action, _ := args["action"].(string)
 	if tool == "manage_knowledgebase_access" && action != "inspect" {
-		return false
+		if claims.ExecutionPrincipal != nil || !knowledgeInteractiveAccess(claims) && claims.AccessToken == nil {
+			return false
+		}
+		// Content-scoped connections and service execution cannot acquire access
+		// administration by supplying an action that discovery omitted.
+		if claims.AccessToken != nil && (!claims.AccessToken.Allows("knowledgebase:write") || claims.AccessToken.KnowledgebaseFolders != nil) {
+			return false
+		}
+		switch action {
+		case "list", "grant", "revoke", "create_service_account", "disable_service_account", "configure_backup":
+			return true
+		default:
+			return false
+		}
 	}
 	return claims.AccessToken == nil || !knowledgebase.ToolActionMutates(tool, action) || claims.AccessToken.Allows("knowledgebase:write")
 }
@@ -142,10 +155,9 @@ func knowledgebaseToolForClaims(claims *UserClaims, tool externalTool) externalT
 		return tool
 	}
 	canWrite := claims != nil && (claims.AccessToken == nil || claims.AccessToken.Allows("knowledgebase:write"))
-	defs := knowledgebase.ConnectionToolDefinitions(canWrite)
-	if claims != nil && claims.AccessToken != nil && (claims.AccessToken.BuilderAccess() || claims.AccessToken.Allows("crews:write")) {
-		defs = knowledgebase.MigrationConnectionToolDefinitions(canWrite)
-	}
+	canManage := knowledgebaseConnectionAllowsAction(claims, "manage_knowledgebase_access", map[string]any{"action": "grant"})
+	canMigrate := claims != nil && claims.AccessToken != nil && (claims.AccessToken.BuilderAccess() || claims.AccessToken.Allows("crews:write"))
+	defs := knowledgebase.ExternalConnectionToolDefinitions(canWrite, canManage, canMigrate)
 	for _, def := range defs {
 		if def.Name == tool.Name {
 			tool.InputSchema, tool.Description, tool.mutates = def.InputSchema, def.Description, def.Mutates

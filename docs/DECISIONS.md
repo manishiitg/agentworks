@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Knowledge Base reuses Files and supports direct external access management — PLAT-496
+
+Replace the custom Library/reader with the shared Files pane, explorer tree, tabs, breadcrumbs and viewer through a read-only KB data source. Remove the type/tag filter row; Folder access uses the shared Ask AI action. Show unconfigured backup once above ChatArea with an admin Configure backup action in the same chat. Setup saves a private SSH destination without committing/pushing or redirecting an existing backup. Environment settings retain precedence. Unrestricted writable external MCP connections apply grants/revocations directly after current Owner checks; service accounts and backup setup require an admin. App chat retains frozen proposals and confirmation; scoped and managed execution connections remain content-only. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Local MCP tokens remain valid until removed — PLAT-496
 
 Remove local token name and expiry inputs. The fixed name is `agentworks-local`. Full single-user tokens have no automatic expiry, survive restarts and are individually revocable. Hosted OAuth and ordinary scoped token expiry remain unchanged. Non-expiring local tokens are refused after enabling multi-user mode. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

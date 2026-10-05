@@ -1,7 +1,7 @@
 # Knowledge Base MVP operations
 
 Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
-shows content and access settings. Its chat manages folder access.
+shows content and access settings. Its chat manages folder access and initial backup configuration. The reader reuses the platform Files view.
 Content saves and explicit Git backups happen through MCP, including in Crews,
 Code and workflows. An authorized reader sees a successful save immediately.
 
@@ -18,7 +18,7 @@ Server configuration:
 | --- | --- |
 | `AGENTWORKS_KNOWLEDGEBASE_ORG` | Trusted installation organization ID; defaults to `installation`. |
 | `AGENTWORKS_KNOWLEDGEBASE_ROOT` | Optional absolute persistent data directory outside every workspace file root. |
-| `AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE` | Optional private Git remote; unset means live content works with Git backup unconfigured. |
+| `AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE` | Optional private Git remote; overrides any app-saved destination; when unset, use app-saved setup or leave backup unconfigured. |
 | `AGENTWORKS_KNOWLEDGEBASE_BACKUP_BRANCH` | Publication branch; defaults to `main`. |
 
 Without an explicit data root, data lives below the platform's persistent
@@ -31,13 +31,22 @@ the deployment's secret management. Restrict direct repository access to backup
 administrators: Git cannot enforce the application's folder ACLs. Avoid credentials
 embedded in remote URLs. The product never returns credentials to connected agents.
 
+Administrators can also use the `Configure backup` action above the chat.
+Supply the exact dedicated private repository SSH URL and branch. The existing
+builder proposes `manage_knowledgebase_access` / `configure_backup` for app
+confirmation. An unrestricted external admin connection can apply it directly.
+Setup persists private configuration across restarts; it does not verify remote
+reachability or publish content. Server SSH access must already be provisioned.
+The setup action cannot redirect an existing destination. Environment variables
+remain authoritative when configured.
+
 ## Connections
 
 Manage connections through the platform's global MCP connection settings.
 Knowledge Base uses the same `/api/external/v1/mcp` endpoint; there is no separate
 KB Connect tab or server. `knowledgebase:read` admits the
 reader tools; `knowledgebase:write` additionally admits save and backup tools.
-Write connections carry both scopes.
+Write connections carry both scopes. Unrestricted external writers may use access list/grant/revoke directly within current Owner grants; administrative service-account actions and backup setup require a current administrator. Folder-capped tokens and managed workflow/Crew execution remain content-only. App chat continues to require confirmation of its frozen access/configuration proposals.
 Optional folder caps further restrict the identity's current grants. Omitting caps
 uses its current grants; an empty cap list grants nothing. Only administrators can
 mint a Knowledge Base token for a managed service account. Disabling a service

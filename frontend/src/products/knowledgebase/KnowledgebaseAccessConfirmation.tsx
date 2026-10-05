@@ -1,11 +1,13 @@
 import type { KnowledgeAccessProposal } from '../../services/knowledgebaseApi'
 
 const labels: Record<string, string> = {
+  configure_backup: 'Configure Git backup',
   grant: 'Grant folder access', revoke: 'Remove folder grant',
   create_service_account: 'Create service account', disable_service_account: 'Disable service account',
   bind_project: 'Connect project to shared folder', unbind_project: 'Disconnect project from shared folder',
 }
 const fields: Array<[string, string]> = [
+  ['remote_url', 'Repository'], ['branch', 'Branch'],
   ['folder_path', 'Folder'], ['folder_id', 'Folder ID'], ['identity_id', 'Identity ID'],
   ['role', 'Role'], ['name', 'Name'], ['workspace_path', 'Project'], ['alias', 'Alias'],
   ['access', 'Access'], ['replace_legacy_alias', 'Replace existing legacy alias'],

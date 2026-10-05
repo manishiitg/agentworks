@@ -39,8 +39,8 @@ describe('Files design kit', () => {
       expect(workspace).toContain(`aria-label="${label}"`)
     }
     // The agent action sits with the title, the toolbar icons on the folder row.
-    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('<OpenEditors />'))
-    expect(header.indexOf('<OpenEditors />')).toBeLessThan(header.indexOf('{toolbar}'))
+    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('<OpenEditors'))
+    expect(header.indexOf('<OpenEditors')).toBeLessThan(header.indexOf('{toolbar}'))
     expect(header).toContain('Open Editors')
   })
 

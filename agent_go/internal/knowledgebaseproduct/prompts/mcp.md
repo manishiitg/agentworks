@@ -4,7 +4,7 @@ Use five tools, each with an explicit action:
 - read_knowledgebase: read (whole, line range, or heading section), or search.
 - update_knowledgebase: create, update (diff/content/metadata), delete, or create_folder.
 - backup_knowledgebase: status, commit selected versions/deletions, or push the returned receipt.
-- manage_knowledgebase_access: inspect only; permission changes belong to the app's access builder.
+- manage_knowledgebase_access: inspect for content connections. Writable unrestricted external connections may list/grant/revoke subject to live folder Owner checks; service-account changes and configure_backup (SSH remote_url, optional branch, stable request_id) require an administrator. Setup does not commit/push or change an existing destination. External changes apply directly using expected_acl_version and stable request_id. App access chat still requires confirmation.
 
 Read a current version and use expected_version for update/delete. Mutations need
 a stable request_id; use different IDs for different actions, including commit and

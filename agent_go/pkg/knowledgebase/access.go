@@ -380,6 +380,9 @@ func (s *Service) access(p Principal, args map[string]any) (any, error) {
 	return out, nil
 }
 func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
+	if stringArg(a, "action") == "configure_backup" {
+		return s.configureBackup(ctx, p, a)
+	}
 	action := stringArg(a, "action")
 	if action == "list" {
 		v, e := s.accessDiscovery(p, a)

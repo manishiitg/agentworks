@@ -102,3 +102,31 @@ ten years later, persistence and removal; server checks reject permanent local
 tokens after switching to multi-user mode.
 
 Local token name is fixed to `agentworks-local` in the UI and server issuance; the name input is removed.
+
+## Owner refinements: direct MCP access, shared Files and backup setup
+
+Unrestricted writable external connections now list/grant/revoke access directly,
+with live Owner checks, expected ACL version, stable request ID, and token
+revocation checks. Service accounts and backup setup require an administrator.
+Managed workflow/Crew and capped content connections remain content-only. App
+chat still uses frozen proposals and confirmation.
+
+KB uses the shared Files pane, tree, open tabs, breadcrumbs, content viewer and
+in-file search through a read-only KB data source. The custom library/reader and
+tag/type filters are removed. Folder access uses the shared Ask AI action in the
+Files header; all content remains protected by KB APIs. External images and
+workspace navigation in shared Markdown are blocked.
+
+Unconfigured backup appears once above ChatArea. Configure backup opens the same
+builder and saves an initial SSH remote and branch through the existing access
+tool, without adding an MCP tool. Configuration is private, durable and respects
+deployment overrides; it cannot redirect existing backup history. Setup does not
+contact the remote or commit/push. Local and generated MCP skills include KB
+instructions, access authority and local token/hosted OAuth guidance.
+
+Validation: full KB domain race suite and focused server KB/access/backup/skill
+race checks passed. TypeScript, Vite production bundling and 27 focused frontend
+tests passed, including the existing Files tree/Git regressions, read-only KB
+loading, revoked content/tab removal, Ask AI routing, and banner refresh without
+conversation rotation. The local browser opened a real KB entry in the shared
+Files viewer. No production migration or Git publication performed.

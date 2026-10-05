@@ -144,10 +144,14 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
 func (s *Service) ensureRepo(ctx context.Context) error {
-	if s.cfg.BackupRemote == "" {
+	destination, err := s.backupDestination()
+	if err != nil {
+		return err
+	}
+	if destination.Remote == "" {
 		return kbErr("BACKUP_NOT_CONFIGURED", "An administrator must configure a Git backup repository.")
 	}
-	if _, err := s.git(ctx, nil, nil, "check-ref-format", "refs/heads/"+s.cfg.BackupBranch); err != nil {
+	if _, err := s.git(ctx, nil, nil, "check-ref-format", "refs/heads/"+destination.Branch); err != nil {
 		return kbErr("BACKUP_NOT_CONFIGURED", "The configured backup branch is invalid.")
 	}
 	if _, err := os.Stat(filepath.Join(s.repo(), "HEAD")); os.IsNotExist(err) {
@@ -157,7 +161,7 @@ func (s *Service) ensureRepo(ctx context.Context) error {
 			return retryErr("BACKUP_UNAVAILABLE", "Git backup initialization failed.", 3)
 		}
 		os.Chmod(s.repo(), 0700)
-		if _, err = s.git(ctx, nil, nil, "remote", "add", "origin", s.cfg.BackupRemote); err != nil {
+		if _, err = s.git(ctx, nil, nil, "remote", "add", "origin", destination.Remote); err != nil {
 			return err
 		}
 	}
@@ -169,11 +173,11 @@ func (s *Service) ensureRepo(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if fetchURL != s.cfg.BackupRemote || pushURL != s.cfg.BackupRemote {
+	if fetchURL != destination.Remote || pushURL != destination.Remote {
 		return kbErr("BACKUP_REMOTE_CHANGED", "The staging repository destination differs from its configured backup.")
 	}
 	cfgPath := filepath.Join(s.private, "backup-configuration.json")
-	expected := map[string]string{"remote": s.cfg.BackupRemote, "branch": s.cfg.BackupBranch}
+	expected := map[string]string{"remote": destination.Remote, "branch": destination.Branch}
 	if b, e := os.ReadFile(cfgPath); e == nil {
 		var actual map[string]string
 		if json.Unmarshal(b, &actual) != nil || actual["remote"] != expected["remote"] || actual["branch"] != expected["branch"] {
@@ -187,7 +191,11 @@ func (s *Service) ensureRepo(ctx context.Context) error {
 	return nil
 }
 func (s *Service) remoteTip(ctx context.Context) (string, error) {
-	out, err := s.git(ctx, nil, nil, "ls-remote", "--heads", "origin", "refs/heads/"+s.cfg.BackupBranch)
+	destination, err := s.backupDestination()
+	if err != nil {
+		return "", err
+	}
+	out, err := s.git(ctx, nil, nil, "ls-remote", "--heads", "origin", "refs/heads/"+destination.Branch)
 	if err != nil {
 		return "", err
 	}
@@ -198,10 +206,10 @@ func (s *Service) remoteTip(ctx context.Context) (string, error) {
 	if len(parts) != 2 || len(parts[0]) < 40 {
 		return "", retryErr("BACKUP_UNAVAILABLE", "The remote branch could not be inspected.", 3)
 	}
-	if _, err = s.git(ctx, nil, nil, "fetch", "--no-tags", "origin", "+refs/heads/"+s.cfg.BackupBranch+":refs/remotes/origin/"+s.cfg.BackupBranch); err != nil {
+	if _, err = s.git(ctx, nil, nil, "fetch", "--no-tags", "origin", "+refs/heads/"+destination.Branch+":refs/remotes/origin/"+destination.Branch); err != nil {
 		return "", err
 	}
-	tip, err := s.git(ctx, nil, nil, "rev-parse", "refs/remotes/origin/"+s.cfg.BackupBranch)
+	tip, err := s.git(ctx, nil, nil, "rev-parse", "refs/remotes/origin/"+destination.Branch)
 	return tip, err
 }
 func (s *Service) treeFingerprint(ctx context.Context, tip, p string) (string, bool, error) {
@@ -676,6 +684,10 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 	return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result})})
 }
 func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Receipt, tip, reqPath, hash string) (any, error) {
+	destination, err := s.backupDestination()
+	if err != nil {
+		return nil, err
+	}
 	unlock, err := s.lock(ctx, false)
 	if err != nil {
 		return nil, err
@@ -741,7 +753,7 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 			return nil, e
 		}
 	}
-	_, pushErr := s.git(ctx, nil, nil, "push", "--porcelain", "--no-follow-tags", "--recurse-submodules=no", "--force-with-lease=refs/heads/"+s.cfg.BackupBranch+":"+r.Base, "origin", r.Commit+":refs/heads/"+s.cfg.BackupBranch)
+	_, pushErr := s.git(ctx, nil, nil, "push", "--porcelain", "--no-follow-tags", "--recurse-submodules=no", "--force-with-lease=refs/heads/"+destination.Branch+":"+r.Base, "origin", r.Commit+":refs/heads/"+destination.Branch)
 	// Observe delivery independently after transport failure. Timeout or process death leaves the durable unknown state.
 	observed, observeErr := s.remoteTip(ctx)
 	unlock, err = s.lock(context.Background(), false)
@@ -804,11 +816,15 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 }
 
 func (s *Service) deletionReusable(d Deletion) bool {
+	destination, err := s.backupDestination()
+	if err != nil {
+		return false
+	}
 	st := s.backupState()
 	// A live-only installation has no remote deletion to confirm. Never use
 	// this exception after backup initialization or while receipts exist:
 	// removing the remote must not release paths with unpublished snapshots.
-	if s.cfg.BackupRemote == "" && !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {
+	if destination.Remote == "" && !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {
 		// An unreadable/corrupt state is not evidence of a live-only store.
 		b, err := os.ReadFile(filepath.Join(s.private, "backup-state.json"))
 		if err != nil && !os.IsNotExist(err) || err == nil && json.Unmarshal(b, &st) != nil {
@@ -836,13 +852,17 @@ func (s *Service) deletionReusable(d Deletion) bool {
 	return true
 }
 func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
+	destination, err := s.backupDestination()
+	if err != nil {
+		return nil, err
+	}
 	r, rs, err := s.listingScope(p, a)
 	if err != nil {
 		return nil, err
 	}
 	st := s.backupState()
 	if st.ExternalChange {
-		return map[string]any{"configured": s.cfg.BackupRemote != "", "external_change": true, "state": "reconciliation_required", "entries": []any{}, "deletions": []any{}, "receipts": []any{}, "last_backup_error": "The remote branch requires administrator reconciliation."}, nil
+		return map[string]any{"configured": destination.Remote != "", "external_change": true, "state": "reconciliation_required", "entries": []any{}, "deletions": []any{}, "receipts": []any{}, "last_backup_error": "The remote branch requires administrator reconciliation."}, nil
 	}
 	receipts, err := s.receipts()
 	if err != nil {
@@ -904,7 +924,7 @@ func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
 				return nil, inspectErr
 			}
 			state := "pending"
-			if s.cfg.BackupRemote == "" && !st.Initialized && s.deletionReusable(d) {
+			if destination.Remote == "" && !st.Initialized && s.deletionReusable(d) {
 				state = "not_required"
 			} else if st.Initialized && !exists && s.deletionReusable(d) {
 				state = "backed_up"
@@ -929,7 +949,7 @@ func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
 	sort.Slice(entries, func(i, j int) bool {
 		return stringArg(asMap(entries[i]), "path") < stringArg(asMap(entries[j]), "path")
 	})
-	return map[string]any{"configured": s.cfg.BackupRemote != "", "entries": entries, "deletions": deletions, "receipts": visibleReceipts, "last_backup_error": st.LastError, "last_successful_backup_at": st.LastSuccessfulAt}, nil
+	return map[string]any{"configured": destination.Remote != "", "entries": entries, "deletions": deletions, "receipts": visibleReceipts, "last_backup_error": st.LastError, "last_successful_backup_at": st.LastSuccessfulAt}, nil
 }
 
 // Fixed options isolate host hooks and automatic repository writes. Authentication

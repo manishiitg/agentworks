@@ -16,6 +16,8 @@ import {
 } from '../../utils/plannerFileTree'
 
 interface PlannerFileListProps {
+  readOnly?: boolean
+  selectedPath?: string | null
   files: PlannerFile[]
   loading: boolean
   error: string | null
@@ -63,6 +65,8 @@ const FILE_ROW_HEIGHT = 28
 const FILE_ROW_OVERSCAN = 8
 
 export default function PlannerFileList({
+  readOnly = false,
+  selectedPath,
   files,
   loading,
   error,
@@ -95,7 +99,8 @@ export default function PlannerFileList({
   scrollContainerRef,
 }: PlannerFileListProps) {
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
-  const openFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
+  const workspaceOpenFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
+  const openFilePath = readOnly ? selectedPath : workspaceOpenFilePath
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
   // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
@@ -210,8 +215,8 @@ export default function PlannerFileList({
     const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
     const isFocused = focusedPath === file.filepath
     const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
-    const gitMark = file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
-    const gitFolderStatus = file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
+    const gitMark = readOnly || file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
+    const gitFolderStatus = !readOnly && file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
     const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : gitFolderStatus ? GIT_MARKS[gitFolderStatus] : undefined
     const hasActionMenu = file.type === 'folder'
       ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)

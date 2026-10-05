@@ -1,6 +1,6 @@
 ## Knowledge Base migration and access review fixes — PLAT-496
 
-[PLAT-496](pulse_platform/learnings-knowledge/plat-496.md), P1, fixed in [PR #268](https://github.com/manishiitg/agentworks/pull/268), merge/deploy pending. Restricts migration to owner connections, refuses consumer cutover, requires app confirmation for access changes, gates bound tools, and closes OAuth/session/identity/confinement gaps.
+[PLAT-496](pulse_platform/learnings-knowledge/plat-496.md), P1, fixed in [PR #268](https://github.com/manishiitg/agentworks/pull/268), merge/deploy pending. Restricts migration to owner connections, refuses consumer cutover, retains app confirmation for chat proposals while allowing authorized external MCP access changes directly, reuses shared Files, adds initial backup setup, gates bound tools, and closes OAuth/session/identity/confinement gaps.
 
 ## Automatic incoming Gmail stays out of the local UI — PLAT-500
 

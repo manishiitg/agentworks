@@ -6,6 +6,10 @@ func integrationDefinitions() []ToolDefinition {
 		return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
 	}
 	defs := []ToolDefinition{{Name: "kb_inspect_project", InputSchema: obj([]any{"workspace_path"}, map[string]any{"workspace_path": str()})}}
+	defs = append(defs, ToolDefinition{Name: "kb_configure_backup", InputSchema: obj([]any{"remote_url", "request_id"}, map[string]any{
+		"remote_url": str(), "branch": str(),
+		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+	}), Mutates: true})
 	for _, name := range []string{"kb_migration_preview", "kb_migration_import", "kb_migration_cutover", "kb_migration_rollback"} {
 		props := map[string]any{"workspace_path": str(), "request_id": str()}
 		props["request_id"] = map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}

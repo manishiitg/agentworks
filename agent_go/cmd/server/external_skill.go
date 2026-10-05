@@ -23,7 +23,7 @@ import (
 // hostedSkillDescription is the SKILL.md frontmatter description: what the
 // skill does and when to use it. Keep it under 1024 chars with no XML
 // brackets (frontmatter constraints shared by the upload scanners).
-const hostedSkillDescription = "Read and run AgentWorks workflows and Crews over MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Use when the task touches an AgentWorks workflow or when agentworks tools are available."
+const hostedSkillDescription = "Use AgentWorks workflows, Crews and shared Knowledge Base over MCP (list workflows, read files, plans, runs, guidance, and knowledge; execute steps, workflows, and schedules; ask Crews and call their functions). Use when the task touches an AgentWorks workflow or when agentworks tools are available."
 
 // buildHostedSkillMarkdown renders the hosted SKILL.md. It must stay
 // self-contained: ChatGPT delivers tools only (no MCP prompts, resources, or
@@ -48,6 +48,14 @@ Call `+"`get_api_spec`"+` with no arguments to list every available tool. Call `
 ## Guidance per task
 
 List topics with `+"`list_guidance_topics`"+` and load only relevant ones via `+"`get_guidance_topic`"+`. Inspect workflow knowledge with `+"`list_workflow_knowledge`"+` / `+"`read_workflow_knowledge`"+` (learnings, knowledgebase notes, workspace skills, skill wiring). Use `+"`get_file_link`"+` for preview/download URLs.
+
+## Shared Knowledge Base
+
+Use get_api_spec to discover schemas and call_tool to invoke browse_knowledgebase (folders/entries), read_knowledgebase (read/search), update_knowledgebase (create/update/delete/create_folder), backup_knowledgebase (status/commit/push), and manage_knowledgebase_access. Updates/deletes require the current expected_version and a stable request_id. Diff patches support large files; saves are readable immediately. Git is explicit backup: commit selected versions only when requested, then push the receipt with a different request ID.
+
+Writable unrestricted external connections can inspect/list access, grant/revoke folder access and manage service accounts. Folder Owner authority is required for grants; service-account administration requires an administrator. Inspect first, then use expected_acl_version and stable request_id for grant/revoke. Changes apply directly after live permission checks. App access chat keeps its confirmation flow. Read-only, folder-scoped and managed workflow/Crew connections cannot administer access; project bindings stay in the app's access builder. Never infer access changes or a Git push from a request to edit content. Administrators can configure initial Git backup with manage_knowledgebase_access action=configure_backup, the user's exact SSH remote_url, optional branch (default main), and stable request_id. Setup saves private configuration without committing/pushing or redirecting existing backups; server SSH access must already be provisioned.
+
+Local single-user MCP uses the fixed agentworks-local Bearer token from Connect, valid until removed. Hosted/multi-user servers use OAuth approval. Never include credentials in skill text, URLs or messages.
 
 ## Run
 

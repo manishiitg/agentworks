@@ -253,7 +253,17 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 			knowledgebaseHTTPError(w, err)
 			return
 		}
-		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "backup_configured": cfg.BackupRemote != ""})
+		service, err := knowledgebaseService()
+		if err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+		backupConfigured, err := service.BackupConfigured()
+		if err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "backup_configured": backupConfigured})
 		return
 	case "folders":
 		tool = "list_knowledgebase_folders"
@@ -327,7 +337,13 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 		knowledgebaseHTTPError(w, err)
 		return
 	}
-	result, err := knowledgebaseDispatch(context.WithValue(r.Context(), knowledgebaseMigrationAuthorityKey{}, true), service, knowledgebasePrincipal(r, claims), claims.UserID, tool, args)
+	principal := knowledgebasePrincipal(r, claims)
+	// Only this authenticated external boundary enables direct access actions.
+	// App chat continues to use proposals; managed sessions remain content-only.
+	if action, _ := args["action"].(string); tool == "manage_knowledgebase_access" && action != "inspect" {
+		principal.AccessOnly = true
+	}
+	result, err := knowledgebaseDispatch(context.WithValue(r.Context(), knowledgebaseMigrationAuthorityKey{}, true), service, principal, claims.UserID, tool, args)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return
