@@ -19,6 +19,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — The CLI's built-in shell is off in Full mode; shell work goes through the bridge shell — PLAT-491
+
+- **Decided (owner).** In Full mode (Crew, Code and workflow chats) a coding CLI no longer has its own built-in shell. It keeps its
+  native file read/edit, skills, subagents and every other native tool. Anything that needs a shell uses `execute_shell_command`, which
+  runs as the user's slot. `mcp_only` for these chats was rejected. The switch is one setting, **off by default**:
+  `AGENTWORKS_CLI_NATIVE_SHELL=on` turns the built-in shell back on (`nativeshell.Enabled()` in the provider, read once per launch).
+- **Why.** A live probe on Excellence found the built-in shell runs as the app account (a member of every slot group), can print
+  platform secrets from its environment and can use the app's rootless Docker, none of which holds for the bridge shell. Landlock was
+  the only boundary. The bridge shell covers every shell job, so the built-in shell added exposure and little else.
+- **What it changes.** Reverses "native tools on" (2026-10-03, PLAT-402/PLAT-390, and Full mode in PLAT-396/PLAT-473) **for the shell
+  only**: file tools and the rest of Full mode stay. The existing platform-call redirect hooks stay for when the escape hatch is on.
+  The switch is a deliberate exception to "confinement has no switches" (2026-10-03): it can only loosen a default, it is not a
+  per-user setting, and it exists so a CLI update that breaks the denial can be worked around without a code change.
+- **Not covered here.** Scrubbing platform secrets from the CLI environment and the app Docker socket are separate fixes in the
+  ticket. Ticket: [PLAT-491](bugs/pulse_platform/security-sandbox/plat-491.md).
+
 ### 2026-10-05 — Agent steps keep today's permission map
 
 Owner decision: an agent step may write only its own execution folder, may read its declared upstream files, and has no
@@ -78,6 +94,8 @@ slotcheck <server>`) that fails the deploy loudly when a real slotted `pwd` does
 slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: [PLAT-478](bugs/pulse_platform/security-sandbox/plat-478.md).
 
 ### 2026-10-04 — Muse in Full CLI refuses every native tool that is not on a list — PLAT-473
+
+> **Superseded in part (2026-10-05):** the shell tools are no longer on Muse's list unless `AGENTWORKS_CLI_NATIVE_SHELL=on` (PLAT-491).
 
 - **Decided (owner).** Muse's own goals, memory and peer-session tools are not available in AgentWorks chats, and any native
   tool not on the list (including ones a later Muse update adds) is refused until it is added on purpose. Muse's own `cron_create`
@@ -434,6 +452,8 @@ Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
 
 ### 2026-10-03 — Native agent tools are always on for every product — PLAT-402
 
+> **Superseded in part (2026-10-05):** Full mode no longer includes the CLI's built-in shell (PLAT-491). Every other native tool stays on.
+
 - **Decided (owner).** Workflow, Relay, Crew and Code all use native agent tools; there is no per-product switch, and a stored `native_agent_tools: false`
   is ignored. One rule is simpler to explain and to test than a hidden setting that only some products had, and workflows keep the same sandbox and protected-file rules.
 
@@ -458,6 +478,8 @@ Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
   `deploy/common/runtime_profile.json`. [PLAT-401](bugs/pulse_platform/browser/plat-401.md).
 
 ### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
+
+> **Superseded in part (2026-10-05):** unchanged for editing; the built-in shell is now off in Full mode and the bridge shell is the only shell (PLAT-491).
 
 - **Decided (owner).** With native tools on, `diff_patch_workspace_file` is not offered; the CLI edits with
   its own tools inside the sandbox. `mcp_only` chats, Pi and workflow step agents keep it; the bridge shell
@@ -591,6 +613,8 @@ project browser has no per-user socket folder and agent-browser's default (`$XDG
 [PLAT-404](bugs/pulse_platform/security-sandbox/plat-404.md).
 
 ### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
+
+> **Superseded in part (2026-10-05):** "on = full" now means the CLI's own tools **except its built-in shell** (PLAT-491); shell work uses the bridge shell.
 
 Owner decision. The reads-only hybrid mode is gone; on means the CLI's own
 tools inside Landlock/Seatbelt, or mcp_only when it cannot be confined. Pi
