@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Browser lifecycle changes stay in the browser UI
+
+Stop automatic connection, first-share, disconnection and reconnection messages
+in Code, Crew and workflow chats. Drop pending browser notices from older clients
+before queue delivery; keep browser status indicators and per-call tool routing.
+Why: browser connection changes should not send a message or start an agent turn.
+This supersedes the browser chat-notification policy below.
+Ticket: [PLAT-549](bugs/pulse_platform/browser/plat-549.md).
+
 ### 2026-10-05 — Workflow browser bridge calls retain authenticated run identity
 
 Bind workshop and full-run browser executors before step tool assembly, and

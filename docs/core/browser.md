@@ -300,19 +300,17 @@ disconnecting clears its cache; --clear affects only the selected tab.
 Status returns screenshot_write_paths from the trusted folder guard. Output
 must remain inside those paths; global /tmp/tool_output_folder paths stay denied.
 
-#### Chat notices and connection lifecycle
+#### Connection status and lifecycle
 
-The active interactive Code, Crew or workflow chat observes status every 2.5 seconds even with
-its Browser pane closed. Connection, first-share and disconnection notices use
-the existing global durable chat queue, preserve drafts and wait behind running
-turns. Per-connection receipts prevent repeats; failed status requests do not
-mean disconnection. Notices tell the agent to verify status, discard old refs
-and use ordinary agent_browser commands through the backend-owned connection.
+Code, Crew and workflow Browser toolbars observe status every 2.5 seconds even
+with their Browser pane closed. Connecting, sharing a first tab, disconnecting
+or reconnecting updates the browser UI without sending an automatic chat message
+or starting an agent turn. Pending browser notices saved by older clients are
+discarded before automatic queue delivery. Browser tools continue to resolve
+the selected account-private connection on each invocation.
 Code has explicit browser choices; missing or legacy Automatic settings select
 Workspace browser. Crew retains its ordinary Automatic/managed/direct-CDP
 settings alongside the new extension choice. Workflows offer that same choice.
-Workflow notices resolve the tab's preset ID to its workspace, revalidate after
-responses, and do not send to execution diagnostics, scheduled or bot observer tabs.
 Reusing a code in another browser replaces that project's prior browser on successful
 connection; each new binding receives a fresh private relay capability.
 Sharing another tab is explicit. Removing a shared tab detaches its debugger;
@@ -1293,7 +1291,7 @@ can access.
 - [Private relay](../../agent_go/pkg/browserrelay/relay.go) and [diagnostics](../../agent_go/pkg/browserrelay/diagnostics.go): capability transport, serialized controller ownership and per-target logs.
 - [Extension executor](../../agent_go/pkg/browser/extension_executor.go): managed tool routing and guarded CLI execution.
 - [Browser workspace panel](../../frontend/src/components/workflow/BrowserWorkspacePanel.tsx) and [connection UI](../../frontend/src/components/workflow/ChromeExtensionConnection.tsx): explicit methods and selected extension experience.
-- [Chat notifications](../../frontend/src/hooks/useChromeExtensionChatNotifications.ts): status observation through the global durable queue.
+- [Browser toolbar status](../../frontend/src/hooks/useBrowserToolbarConnection.ts): read-only connection health without chat messages.
 - [WorkflowLiveBrowser.tsx](../../frontend/src/components/workflow/WorkflowLiveBrowser.tsx): session discovery, viewport, tab strip, input, and connection lifecycle.
 - [WorkflowCapabilitiesPanel.tsx](../../frontend/src/components/workflow/WorkflowCapabilitiesPanel.tsx): embeds the viewer above browser settings.
 - [BrowserTeachingPanel.tsx](../../frontend/src/components/workflow/BrowserTeachingPanel.tsx): demonstration controls, draft review, test and publication.

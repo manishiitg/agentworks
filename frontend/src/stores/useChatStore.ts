@@ -364,8 +364,6 @@ export interface PastedAttachment {
 export interface ChatTabConfig {
   /** Auto-notification IDs already placed in this conversation’s durable message queue. */
   mcpOAuthNotificationIDs?: string[]
-  /** Last successful Code browser observation; survives pane remounts and reloads. */
-  browserExtensionState?: { workspace: string; connectionId: string; connected: boolean; selected: boolean; tabs: number }
   conversationAcknowledged?: boolean
   composerRevision?: number  // Store-owned revision survives composer remounts
   inputText: string  // Chat input text

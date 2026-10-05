@@ -1,5 +1,4 @@
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
-import { useChromeExtensionChatNotifications } from '../hooks/useChromeExtensionChatNotifications'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
 import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
@@ -421,7 +420,12 @@ function prepareQueuedChatMessages(queuedMessages: string[]) {
     // Separate human messages from auto-notifications
     const humanMessages = queuedMessages.filter(m => !m.startsWith(AUTO_NOTIFICATION_PREFIX))
     const autoMessages = queuedMessages.filter(m => m.startsWith(AUTO_NOTIFICATION_PREFIX))
-    const freshAutoMessages = autoMessages.filter(m => !isStaleQueuedAutoNotification(m))
+    // Drop browser notices persisted by older clients before dispatching the queue.
+    const freshAutoMessages = autoMessages.filter(m =>
+      !m.startsWith(`${AUTO_NOTIFICATION_PREFIX} Your browser extension is connected to this `) &&
+      !m.startsWith(`${AUTO_NOTIFICATION_PREFIX} Your browser extension has disconnected from this `) &&
+      !m.startsWith(`${AUTO_NOTIFICATION_PREFIX} A browser tab is now shared with this `) &&
+      !isStaleQueuedAutoNotification(m))
 
     // Human messages: combine all as-is
     // Auto-notifications: if multiple, condense to first line of each to avoid overwhelming the agent
@@ -530,7 +534,6 @@ let globalHasRestored = false
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
   const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath} = props
   useMcpOAuthChatNotifications(tabId)
-  useChromeExtensionChatNotifications(tabId)
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
   // every new product gets the durable transcript and normalized error UI by

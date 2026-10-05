@@ -1,3 +1,7 @@
+## Browser connection changes send unwanted automatic chat messages — PLAT-549
+
+[PLAT-549](pulse_platform/browser/plat-549.md), P3, fixed on main, not deployed. Remove browser lifecycle chat polling/messages in Code, Crew and workflows; discard legacy pending browser notices while keeping browser status and tool routing.
+
 ## Workflow step browser bridge loses the selected extension — PLAT-546
 
 [PLAT-546](pulse_platform/browser/plat-546.md), P2, fixed on main, not deployed. Authenticate workshop/full-run browser executors and register dedicated step sessions under the root run; preserve step file grants and refuse fallback from an offline selected extension. HTTP bridge and isolated real Chrome checks pass.
