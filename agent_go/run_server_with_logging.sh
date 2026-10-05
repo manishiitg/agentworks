@@ -243,6 +243,33 @@ FRONTEND_HOST="${FRONTEND_HOST:-}"
 FRONTEND_BIND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_URL_HOST="${FRONTEND_URL_HOST:-127.0.0.1}"
 
+# ensure_frontend_deps runs `npm install` only when package.json or package-lock.json changed since the
+# last successful install here (a stamp inside node_modules). An install that fails while a usable
+# node_modules already exists warns and carries on instead of stopping the launcher: a half-finished
+# install by another process used to block every start even though the existing packages worked.
+# Returns 1 only when the install failed and there is nothing usable to start with.
+ensure_frontend_deps() {
+    local dir="$1" log="$2" want have stamp
+    stamp="$dir/node_modules/.agentworks-deps-stamp"
+    want="$(cat "$dir/package.json" "$dir/package-lock.json" 2>/dev/null | shasum | awk '{print $1}')"
+    have="$(cat "$stamp" 2>/dev/null || true)"
+    if [ -n "$want" ] && [ "$want" = "$have" ] && [ -x "$dir/node_modules/.bin/vite" ]; then
+        echo "📦 Frontend dependencies are up to date (skipping npm install)."
+        return 0
+    fi
+    echo "📦 Ensuring frontend dependencies (npm install)..."
+    if ( cd "$dir" || exit 1; npm install ) >> "$log" 2>&1; then
+        [ -n "$want" ] && printf '%s' "$want" > "$stamp" 2>/dev/null || true
+        return 0
+    fi
+    if [ -x "$dir/node_modules/.bin/vite" ]; then
+        echo "⚠️  npm install failed (see $log); continuing with the existing node_modules."
+        echo "   If the frontend does not start: cd $dir && rm -rf node_modules && npm ci"
+        return 0
+    fi
+    return 1
+}
+
 port_in_use() {
     lsof -nP -iTCP:"$1" -sTCP:LISTEN > /dev/null 2>&1
 }
@@ -680,11 +707,7 @@ EOF
     # dependency metadata internally consistent while a referenced chunk is
     # missing after a pull; forced optimization rebuilds that cache before the
     # browser can request an obsolete chunk.
-    echo "📦 Ensuring frontend dependencies (npm install)..."
-    (
-        cd "$FRONTEND_DIR" || exit 1
-        npm install
-    ) >> "$FRONTEND_LOG_PATH" 2>&1 || {
+    ensure_frontend_deps "$FRONTEND_DIR" "$FRONTEND_LOG_PATH" || {
         echo "❌ Error: frontend dependency install failed. See $FRONTEND_LOG_PATH"
         exit 1
     }
@@ -1951,11 +1974,7 @@ start_frontend_dev() {
 
     # Match the frontend-only path: a newly created worktree may not have all
     # lockfile dependencies even when another worktree is already bootstrapped.
-    echo "📦 Ensuring frontend dependencies (npm install)..."
-    (
-        cd "$FRONTEND_DIR" || exit 1
-        npm install
-    ) >> "$FRONTEND_LOG_PATH" 2>&1 || {
+    ensure_frontend_deps "$FRONTEND_DIR" "$FRONTEND_LOG_PATH" || {
         echo "❌ Error: frontend dependency install failed. Check logs: $FRONTEND_LOG_PATH"
         tail -30 "$FRONTEND_LOG_PATH"
         return 1

@@ -65,6 +65,11 @@ wires the backend to it. Left: restart, then clean up selections with no value a
 [PLAT-490](pulse_platform/step-execution/plat-490.md), fixed on main: a selected secret with no value no longer refuses a run;
 the workflow shows a banner naming it.
 
+## Launcher npm install blocked every start — PLAT-494
+
+[PLAT-494](pulse_platform/frontend-chat/plat-494.md), fixed on main: the launcher installs only when the lockfile changed and carries on with a
+usable node_modules if the install fails.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
