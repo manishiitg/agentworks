@@ -1,3 +1,5 @@
+import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
+import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { BookOpen, BrainCircuit, RefreshCw, ShieldCheck } from 'lucide-react'
 import ChatArea, { type ChatAreaRef } from '../../components/ChatArea'
@@ -30,6 +32,7 @@ const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
 const views = [{ id: 'library', label: 'Files', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }] as const
+const normalizeBrainView = normalizeViewFrom(views.map(view => view.id))
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
 function KnowledgebaseChatTab({ tabId, chatOpen, openChat }: { tabId: string | null; chatOpen: boolean; openChat: () => void }) {
@@ -58,7 +61,7 @@ export function KnowledgebaseSurface() {
   const [tabId, setTabId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [view, setView] = useState<KnowledgebaseView>('library')
+  const [view, setView] = useWorkspaceViewPreference<KnowledgebaseView>('knowledgebase', 'main', 'library', normalizeBrainView)
   const [folder, setFolder] = useState('')
   const [revision, setRevision] = useState(0)
   const [ratio, setRatio] = useState(readRatio)

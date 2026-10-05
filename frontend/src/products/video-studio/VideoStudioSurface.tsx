@@ -1,3 +1,5 @@
+import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
+import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
@@ -67,6 +69,7 @@ import {
 } from './videoStudioData'
 
 type WorkspacePanel = 'production' | 'files' | 'workflow'
+const normalizeVideoPanel = normalizeViewFrom<WorkspacePanel>(['production', 'files', 'workflow'])
 function VideoStudioHeader({ children, project, projectTabId, onProjectChange }: { children?: ReactNode; project?: VideoProject | null; projectTabId?: string | null; onProjectChange?: (project: VideoProject) => void }) {
   const user = useAuthStore((state) => state.user)
   const [showProjectSecrets, setShowProjectSecrets] = useState(false)
@@ -718,7 +721,7 @@ function DeletePresentationDialog({ presentation, deleting, error, onClose, onCo
 function ProjectWorkspace({ project, onBack }: { project: VideoProject; onBack: () => void }) {
   const [liveProject, setLiveProject] = useState(project)
   const [tabId, setTabId] = useState<string | null>(null)
-  const [panel, setPanel] = useState<WorkspacePanel>('production')
+  const [panel, setPanel] = useWorkspaceViewPreference<WorkspacePanel>('video-studio', project.id, 'production', normalizeVideoPanel)
   const [videos, setVideos] = useState<VideoPresentation[]>([])
   const [characters, setCharacters] = useState<CharacterPresentation[]>([])
   const [references, setReferences] = useState<ReferencePresentation[]>([])

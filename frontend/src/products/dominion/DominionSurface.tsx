@@ -1,3 +1,5 @@
+import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
+import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { useEffect, useState } from 'react'
 import { MessageCircle, Plus, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -165,6 +167,8 @@ function formatDateTime(value: string): string {
   return parsed.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+const normalizeDominionTab = normalizeViewFrom(['daily-action', 'equity', 'stocks'] as const)
+
 export function SectionHeader({ icon: Icon, title, count }: { icon: typeof TrendingUp; title: string; count?: number }) {
   return (
     <div className="mb-4 flex items-center gap-3">
@@ -204,7 +208,7 @@ export function DominionSurface() {
   // Daily Action leads: it answers "what did this workflow actually do" before
   // the reference views (equity history, full watchlist) — same insight-first
   // ordering as the platform's own report-authoring guidance.
-  const [activeTab, setActiveTab] = useState<'daily-action' | 'equity' | 'stocks'>('daily-action')
+  const [activeTab, setActiveTab] = useWorkspaceViewPreference('dominion', 'main', 'daily-action', normalizeDominionTab)
 
   const handleAddSymbol = async (symbol: string, tier: WatchlistTier) => {
     const next = [...effectiveWatchlist, { symbol, tier }]

@@ -1,3 +1,4 @@
+import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
@@ -156,7 +157,7 @@ import {
 } from '../../utils/workflowTabHydration'
 import { isVisibleActivitySession } from '../../utils/activitySessions'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import { isPreviewView, isWorkspacePaneView } from './workspaceViews'
+import { isWorkspacePaneView } from './workspaceViews'
 import { MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeChatEvent } from './workflowContractUpgradeEvents'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
@@ -640,6 +641,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const setShowWorkspacePane = useWorkflowStore(state => state.setShowWorkspacePane)
   const setFocusedPane = useWorkflowStore(state => state.setFocusedPane)
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
+  const restoredPresetId = useWorkflowStore(state => state._currentPresetId)
   const setWorkflowWorkspaceView = useWorkflowStore(state => state.setWorkflowWorkspaceView)
   const lastCanvasView = useWorkflowStore(state => state.lastCanvasView)
   const minimizeWorkflow = useRunningWorkflowsStore(state => state.minimizeWorkflow)
@@ -863,6 +865,12 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
     return null
   }, [activePresetId, activeWorkflowWorkspacePath])
+
+  useEffect(() => {
+    if (selectedModeCategory === 'workflow' && activePresetId && workspacePath) {
+      useWorkflowStore.getState().switchToPreset(activePresetId)
+    }
+  }, [activePresetId, isRelaySurface, selectedModeCategory, workspacePath])
 
   const initializedRelayViewPresetRef = useRef<string | null>(null)
   useEffect(() => {
@@ -1270,28 +1278,20 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
   }, [])
 
-  // The global workspace toggle now maps to the workflow's right-side Files
-  // pane instead of the old app-level far-right file column.
-  //
-  // The report preview is exempt: un-minimizing the workspace while Report is
-  // open leaves it alone instead of auto-switching to Files — click Files to
-  // get there. (The exemption was originally added because the
-  // pane host remounted the whole pane per view kind, so the forced switch and
-  // its immediate reversal flashed the report; WorkspaceViewHost keeps the pane
-  // mounted across switches now, but the leave-the-preview-alone behavior is
-  // kept as-is.)
-  useEffect(() => {
-    if (selectedModeCategory !== 'workflow') return
-    const onPreviewView = isPreviewView(workflowWorkspaceView)
-    if (!workspaceMinimized && !onPreviewView && (workflowWorkspaceView !== 'files' || !showWorkspacePane)) {
-      setShowWorkspacePane(true)
-      setWorkflowWorkspaceView('files')
-      return
-    }
-    if (workspaceMinimized && workflowWorkspaceView === 'files') {
-      setWorkflowWorkspaceView(lastCanvasView)
-    }
-  }, [selectedModeCategory, workspaceMinimized, workflowWorkspaceView, showWorkspacePane, lastCanvasView, setShowWorkspacePane, setWorkflowWorkspaceView])
+  // Layout flags may hydrate before the workflow's view; the restored view wins
+  // on startup. Only a later, explicit workspace toggle switches to Files.
+  useWorkflowFilesViewSync({
+    enabled: selectedModeCategory === 'workflow',
+    activePresetId,
+    restoredPresetId,
+    workspaceMinimized,
+    workflowWorkspaceView,
+    lastCanvasView,
+    showWorkspacePane,
+    setWorkspaceMinimized,
+    setShowWorkspacePane,
+    setWorkflowWorkspaceView,
+  })
 
   // Auto-minimize the file workspace sidebar when entering Report so the report
   // has room. Do not reopen it on exit: workflow switches can unmount/remount

@@ -1,5 +1,6 @@
+import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Eye, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -88,21 +89,20 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
 
-function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
-  if (typeof window === 'undefined' || !projectId) return null
-  try {
-    const saved = window.localStorage.getItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`)
-    if (saved === 'history') return 'schedules'
-    if (saved && saved in WORK_UI_PRESENTATION_VIEWS) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]
-    return saved && WORKSPACE_VIEW_IDS.has(saved as WorkWorkspaceView) ? saved as WorkWorkspaceView : null
-  } catch {
-    return null
-  }
+function normalizeWorkWorkspaceView(saved: unknown): WorkWorkspaceView | null {
+  if (saved === 'history') return 'schedules'
+  if (typeof saved !== 'string') return null
+  if (Object.hasOwn(WORK_UI_PRESENTATION_VIEWS, saved)) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]
+  return WORKSPACE_VIEW_IDS.has(saved as WorkWorkspaceView) ? saved as WorkWorkspaceView : null
 }
 
-function writeWorkWorkspaceView(projectId: string | undefined, view: WorkWorkspaceView) {
-  if (typeof window === 'undefined' || !projectId) return
-  try { window.localStorage.setItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`, view) } catch { /* UI preference only. */ }
+function readWorkWorkspaceView(projectId: string | undefined, product: 'work' | 'code'): WorkWorkspaceView | null {
+  return readWorkspaceViewPreference(product, projectId, normalizeWorkWorkspaceView, () =>
+    normalizeWorkWorkspaceView(window.localStorage.getItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`)))
+}
+
+function writeWorkWorkspaceView(projectId: string | undefined, product: 'work' | 'code', view: WorkWorkspaceView) {
+  writeWorkspaceViewPreference(product, projectId, view)
 }
 
 function readWorkSplitRatio(projectId?: string): number {
@@ -256,6 +256,7 @@ function useWorkSessions(product: ProjectProductConfig) {
       window.localStorage.removeItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`)
     } catch { /* UI preferences only. */ }
 
+    writeWorkspaceViewPreference(product.profileId, projectId, null)
     const remaining = sessions.filter(item => item.id !== projectId)
     updateSessions(remaining)
     if (selectedProjectIdFor(product) === projectId) {
@@ -754,7 +755,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id) ?? product.defaultView)
+  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -775,8 +776,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView) => {
     setWorkspaceView(view)
-    writeWorkWorkspaceView(selected?.id, view)
-  }, [selected?.id])
+    writeWorkWorkspaceView(selected?.id, product.profileId, view)
+  }, [selected?.id, product.profileId])
 
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
@@ -905,13 +906,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [product])
 
   useLayoutEffect(() => {
-    const savedView = readWorkWorkspaceView(selected?.id)
+    const savedView = readWorkWorkspaceView(selected?.id, product.profileId)
     setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? product.defaultView)
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
-  }, [product.defaultView, selected?.id, selected?.shared, selected?.workspacePath])
+  }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
 
   const landingProjectId = selected?.id
   const landingWorkspacePath = selected?.workspacePath
@@ -919,10 +920,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const dashboardAllowed = isWorkWorkspaceViewEnabled('dashboard', enabledWorkspacePanels)
   useEffect(() => {
     // Code is files-first: it never lands on the dashboard on its own.
-    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId)) return
+    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId, product.profileId)) return
     let cancelled = false
     void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
-      if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId)) return
+      if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId, product.profileId)) return
       setWorkspaceView(view)
     })
     return () => { cancelled = true }
@@ -948,10 +949,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
-      if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView(product.defaultView)
+      if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
 
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
@@ -983,7 +984,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (templateId) {
         setPanelOpen(true)
         setWorkspaceView('files')
-        writeWorkWorkspaceView(created.id, 'files')
+        writeWorkWorkspaceView(created.id, product.profileId, 'files')
       }
       setCreateOpen(false)
     } catch (cause) {
@@ -991,7 +992,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     } finally {
       setCreating(false)
     }
-  }, [create, creating, product.itemNoun])
+  }, [create, creating, product.itemNoun, product.profileId])
 
   const openCreateProject = useCallback(() => {
     setCreateError(null)

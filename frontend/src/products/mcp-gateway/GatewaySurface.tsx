@@ -1,3 +1,5 @@
+import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
+import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Loader2, ShieldCheck, ScrollText, PlugZap, BarChart3 } from 'lucide-react'
 import { gatewayBaseUrl } from '../productSurfaceConfig'
@@ -89,6 +91,8 @@ function GatewayChatTab({ tabId, chatOpen, openChat }: { tabId: string | null; c
     onTabClick={() => { openChat(); activateTab(tab.tabId) }} onCloseTab={() => {}} /> : null
 }
 
+const normalizeVaultPanel = normalizeViewFrom(gatewayPanels.map(panel => panel.id))
+
 function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone: boolean }) {
   const { tabId, error, openNew } = useCapLayerChat()
   // Draft edits stay inside ChatArea instead of rerendering every admin panel.
@@ -98,14 +102,14 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     const events = sessionId ? state.tabEvents[sessionId] : undefined
     return chatBusy ? undefined : events?.at(-1)?.id
   })
-  const [panel, setPanel] = useState<GatewayPanel>(() => {
+  const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'access', normalizeVaultPanel)
+  useEffect(() => {
     try {
-      const requested = sessionStorage.getItem('vault.requested-panel')
+      const requested = normalizeVaultPanel(sessionStorage.getItem('vault.requested-panel'))
       sessionStorage.removeItem('vault.requested-panel')
-      if (gatewayPanels.some(item => item.id === requested)) return requested as GatewayPanel
-    } catch { /* Optional destination preference. */ }
-    return 'access'
-  })
+      if (requested) setPanel(requested)
+    } catch { /* Optional navigation request. */ }
+  }, [setPanel])
   useEffect(() => {
     const open = (event: Event) => {
       const requested = (event as CustomEvent).detail
@@ -113,7 +117,7 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     }
     window.addEventListener('vault-open-panel', open)
     return () => window.removeEventListener('vault-open-panel', open)
-  }, [])
+  }, [setPanel])
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [previewDevice, setPreviewDevice] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(WORKSPACE))
@@ -194,6 +198,8 @@ function GatewayFullWidthPage({ base, page, onBack }: { base: string; page: Vaul
 }
 
 /** Same header, global pages, chat runtime and split shell as Crew and Code. */
+const normalizeVaultPage = normalizeViewFrom(['workspace', 'audit', 'connect'] as const)
+
 export function GatewaySurface({ standalone = false }: { standalone?: boolean } = {}) {
   const base = gatewayBaseUrl() ?? (standalone ? window.location.origin : null)
   const user = useAuthStore(state => state.user)
@@ -201,13 +207,18 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
   const showProviders = useLLMStore(state => state.showLLMModal)
   const showSchedules = useAppStore(state => state.showSchedulesOverview)
   const adminPage = useAppStore(state => state.adminPage)
-  const [page, setPage] = useState<VaultPage | null>(() => {
+  const [savedPage, selectPage] = useWorkspaceViewPreference('mcp-gateway', `${base ?? 'main'}:page`, 'workspace', normalizeVaultPage)
+  const page = savedPage === 'workspace' ? null : savedPage
+  const setPage = useCallback((next: VaultPage | null) => selectPage(next ?? 'workspace'), [selectPage])
+  useEffect(() => {
     try {
       const requested = sessionStorage.getItem('vault.requested-panel')
-      if (requested === 'audit' || requested === 'connect') { sessionStorage.removeItem('vault.requested-panel'); return requested }
-    } catch { /* Optional destination preference. */ }
-    return null
-  })
+      if (requested === 'audit' || requested === 'connect') {
+        sessionStorage.removeItem('vault.requested-panel')
+        setPage(requested)
+      } else if (requested) setPage(null)
+    } catch { /* Optional navigation request. */ }
+  }, [setPage])
   const openPage = (next: VaultPage) => {
     useLLMStore.getState().setShowLLMModal(false)
     useAppStore.getState().setAdminPage(null)
@@ -221,7 +232,7 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
     }
     window.addEventListener('vault-open-panel', open)
     return () => window.removeEventListener('vault-open-panel', open)
-  }, [])
+  }, [setPage])
   useEffect(() => {
     const onAuthRequired = () => { void checkAuth() }
     window.addEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)

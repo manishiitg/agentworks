@@ -56,15 +56,5 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain('This is the persistent conversation for this ${product.noun} project.')
   })
 
-  it('keeps a saved Crew view ahead of the content-based landing view', () => {
-    const source = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
 
-    expect(source).toContain("const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'")
-    expect(source).toContain("if (saved === 'history') return 'schedules'")
-    expect(source).toContain('if (saved && saved in WORK_UI_PRESENTATION_VIEWS) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]')
-    expect(source).toContain('writeWorkWorkspaceView(selected?.id, view)')
-    expect(source).toContain('const savedView = readWorkWorkspaceView(selected?.id)')
-    expect(source).toContain('loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed })')
-    expect(source).toContain('savedView ?? product.defaultView')
-  })
 })

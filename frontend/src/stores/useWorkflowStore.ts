@@ -1,3 +1,5 @@
+import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../utils/workspaceViewPreference'
+import { useProductSurfaceStore } from './useProductSurfaceStore'
 import { create } from 'zustand'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from '../components/workflow/reportRefreshEvent'
 import type { WorkflowPhase, ExecutionOptions, VariablesManifest } from '../services/api-types'
@@ -145,13 +147,19 @@ function loadWorkflowUIStateByPreset(): Record<string, PersistedWorkflowUIState>
   }
 }
 
+function workflowViewProduct(): 'agentworks' | 'relays' {
+  return useProductSurfaceStore.getState().productSurface === 'relays' ? 'relays' : 'agentworks'
+}
+
+function readWorkflowWorkspaceView(presetId: string): WorkflowWorkspaceView {
+  return readWorkspaceViewPreference(workflowViewProduct(), presetId, normalizeWorkflowWorkspaceView, () => {
+    const saved = loadWorkflowUIStateByPreset()[presetId]
+    return saved?.workflowWorkspaceView ?? saved?.lastCanvasView ?? loadLegacyWorkspaceViewByPreset()[presetId] ?? null
+  })
+}
+
 export function hasSavedWorkflowWorkspaceView(presetId: string): boolean {
-  const saved = loadWorkflowUIStateByPreset()[presetId]
-  return Boolean(
-    saved?.workflowWorkspaceView ||
-    saved?.lastCanvasView ||
-    loadLegacyWorkspaceViewByPreset()[presetId],
-  )
+  return readWorkflowWorkspaceView(presetId) !== null
 }
 
 function persistWorkflowUIStateForPreset(
@@ -168,6 +176,10 @@ function persistWorkflowUIStateForPreset(
         patch.workflowWorkspaceView === undefined
           ? current[presetId]?.workflowWorkspaceView
           : normalizeWorkflowWorkspaceView(patch.workflowWorkspaceView),
+    }
+    if (patch.workflowWorkspaceView !== undefined || patch.lastCanvasView !== undefined) {
+      const view = normalizeWorkflowWorkspaceView(next.workflowWorkspaceView) ?? next.lastCanvasView ?? null
+      writeWorkspaceViewPreference(workflowViewProduct(), presetId, view)
     }
     current[presetId] = next
     setWorkflowStorageItem(WORKFLOW_UI_STATE_BY_PRESET_KEY, JSON.stringify(current))
@@ -270,6 +282,7 @@ interface WorkflowStore {
 
   // Track current preset ID to detect page reload vs preset switch
   _currentPresetId: string | null
+  _currentViewProduct: 'agentworks' | 'relays' | null
   // Per-preset state map — saves/restores state when switching between workflows
   _presetStates: Record<string, PresetWorkflowState>
 
@@ -439,6 +452,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
       // Track current preset ID to detect page reload vs preset switch
       _currentPresetId: null as string | null,
+      _currentViewProduct: null,
       _presetStates: {} as Record<string, PresetWorkflowState>,
 
       // Selected group IDs (persists across page refreshes via localStorage)
@@ -1402,6 +1416,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
           // Ignore parse errors
         }
 
+        const viewProduct = workflowViewProduct()
         const isSamePreset = storedPresetId === presetId
         const persistedUIState = loadWorkflowUIStateByPreset()[presetId] ?? {}
 
@@ -1412,6 +1427,11 @@ export const useWorkflowStore = create<WorkflowStore>()(
           // If already on this preset, skip — avoids resetting state when
           // WorkflowModeHandler re-applies the same preset on mount/effect
           if (oldPresetId === presetId) {
+            if (currentState._currentViewProduct !== viewProduct) {
+              const view = readWorkflowWorkspaceView(presetId) ?? (viewProduct === 'relays' ? 'flow' : 'report')
+              set({ workflowWorkspaceView: view, _currentViewProduct: viewProduct,
+                ...(isCanvasView(view) ? { lastCanvasView: view } : {}) })
+            }
             return
           }
 
@@ -1442,13 +1462,13 @@ export const useWorkflowStore = create<WorkflowStore>()(
               showChatArea: true,
               showWorkspacePane: true,
               workflowWorkspaceView:
-                persistedUIState.workflowWorkspaceView ??
-                (loadLegacyWorkspaceViewByPreset()[presetId] ?? 'report'),
+                readWorkflowWorkspaceView(presetId) ?? 'report',
               focusedPane: 'preview',
               ...(persistedUIState.lastCanvasView ? { lastCanvasView: persistedUIState.lastCanvasView } : {}),
               workshopMode: restoredWorkshopMode,
               workflowMode: 'plan',
-              _currentPresetId: presetId
+              _currentPresetId: presetId,
+              _currentViewProduct: viewProduct
             } as Partial<WorkflowStore>)
             return
           }
@@ -1462,10 +1482,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
           // it's empty, so fall back to the per-preset workspaceView map persisted
           // in localStorage.
           const persistedWorkspaceView =
-            restored.workflowWorkspaceView !== null
-              ? restored.workflowWorkspaceView
-              : (persistedUIState.workflowWorkspaceView ??
-                (loadLegacyWorkspaceViewByPreset()[presetId] ?? 'report'))
+            readWorkflowWorkspaceView(presetId) ?? restored.workflowWorkspaceView ?? 'report'
           // New adaptive layout: workflows always open with BOTH the chat rail
           // and the preview canvas visible (focus-follows-click sizes them).
           // Force them on so a stale persisted showChatArea:false from the
@@ -1501,7 +1518,8 @@ export const useWorkflowStore = create<WorkflowStore>()(
             currentRunningGroupId: restored.currentRunningGroupId,
             workshopMode: restoredWorkshopMode,
             workflowMode: 'plan',
-            _currentPresetId: presetId
+            _currentPresetId: presetId,
+            _currentViewProduct: viewProduct
           } as Partial<WorkflowStore>)
 
           // Only clear localStorage when there's no saved state (first time visiting this preset)

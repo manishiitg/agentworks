@@ -1,3 +1,7 @@
+## Product workspace toolbar views reset after page refresh — PLAT-551
+
+[PLAT-551](pulse_platform/frontend-chat/plat-551.md), P2, fixed on main, not deployed. Shared server/product/project view preferences across all nine products; delay Goals Files synchronization until its saved view restores. Regression checks and an isolated full-page browser reload passed.
+
 ## Extension workflow cannot read required browser documentation — PLAT-550
 
 [PLAT-550](pulse_platform/browser/plat-550.md), P2, fixed on main, not deployed. Serve installed CLI skills through the managed extension adapter without a relay/tab; retain workspace grants, clarify attached read_skill guidance and extension limitations. Isolated real Chrome workflow qualification passes.
@@ -529,7 +533,6 @@ view list, so the page's connect call was refused (`invalid_state`) and the agen
 [PLAT-435](pulse_platform/security-sandbox/plat-435.md), fixed on main for agent_go (package `pkg/workspaceref`, guard
 test), not deployed. The `workspace/` module and a multi-user e2e fixture are left; PLAT-440 tracks unsanitized ids.
 
-
 ## Relays use external API triggers without timed schedules — PLAT-433
 
 [PLAT-433](pulse_platform/scheduler-runs/plat-433.md), fixed on main; deployment
@@ -769,7 +772,6 @@ private home, and an old resume banner cannot block a newly ready pane.
 from the target owner's browser; agents cannot grant it. Public mailbox domains
 are rejected and existing lists require review after deployment.
 
-
 ## Hybrid native-tools mode removed — PLAT-390
 
 [PLAT-390](pulse_platform/coding-agent-bridge/plat-390.md), P1, on `main`, not
@@ -808,7 +810,6 @@ live suffix IDs also need native-mode pricing resolution.
 Landlock grants are split around blocked paths, so native tools cannot read or
 write planning/ or the raw database; tested under the real launcher.
 
-
 ## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384
 
 [PLAT-384](pulse_platform/cost-telemetry/plat-384.md), P2, RTS indexes backed up,
@@ -821,7 +822,6 @@ The original source of the index damage remains unconfirmed.
 workflow `folder_access` had no assigned-roots check and absolute grants reached
 server CLI and shell sandboxes; now root-checked on update and kept only on a
 person's own Mac.
-
 
 ## Browser toolbar and manual copy/paste — PLAT-382
 
@@ -1499,7 +1499,6 @@ records implementation commits, test evidence and remaining live acceptance limi
 - [PLAT-316](pulse_platform/frontend-chat/plat-316.md) — Animate the Pulse heartbeat when human decisions are pending.
 - [PLAT-262](pulse_platform/security-sandbox/plat-262.md) — fresh workflow picker permissions and server-side authorization of attached chat context.
 
-
 ## Manual workflow runs could manage MCP servers — PLAT-307
 
 [PLAT-307](pulse_platform/security-sandbox/plat-307.md) fixes a manual Run-button execution
@@ -1657,7 +1656,6 @@ provider pin that failed standalone compilation while local `go.work` masked it.
 [PLAT-293](pulse_platform/frontend-chat/plat-293.md) now has a local `window.report.sendChatMessage` implementation: a host message review panel, the existing Ask in chat queue, an explicit new-chat choice, queued/cancelled receipts, and per-view duplicate protection. Report authors can save an existing approval before offering the scoped action message. This is a chat capability, not an atomic approval-consumer dispatcher. The iframe's existing same-origin access remains separate isolation work. Tests/build and simulated browser interaction passed; not pushed/deployed.
 
 2026-09-05 local PLAT-259 follow-up: the plan canvas gives major routes separate wider columns and adds click-to-trace with faded unrelated nodes/edges, keyboard clearing, and Fit plan to view. Verified against Build in Public locally; see [PLAT-259](pulse_platform/step-execution/plat-259.md). Not deployed; live ticket counts unchanged.
-
 
 ## Route-specific Daily Actions and Pulse summaries — PLAT-259
 

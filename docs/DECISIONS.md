@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Product workspace toolbar choices survive page refresh
+
+Use one view-preference helper across all products, scoped by server connection,
+product and project/workflow. Restore saved views before layout reconciliation;
+loading defaults do not overwrite a choice. Why: selecting a toolbar destination
+should survive refresh and stay independent of another product's view.
+Ticket: [PLAT-551](bugs/pulse_platform/frontend-chat/plat-551.md).
+
 ### 2026-10-05 — Extension browser documentation reads stay on the server
 
 Allow managed `skills list` and `skills get <name> [--full]` with a selected
@@ -656,7 +664,6 @@ Returned JSON goes directly to the agent; published versions freeze tool source
 with their existing workspace snapshot. No wildcard selection or host executor.
 Ticket: [PLAT-423](bugs/pulse_platform/coding-agent-bridge/plat-423.md).
 
-
 ### 2026-10-04 — A platform session never loads a person's own CLI config or MCP servers (Codex on a Mac) — PLAT-418
 
 - **Decided.** Whatever the home is, a coding CLI in a platform session runs with a config of its own: on a
@@ -1132,7 +1139,6 @@ The private sandbox home is group-accessible (rwx + setgid, healed on each start
   for every command; omitting them causes a blank-browser relaunch in 0.38.2.
   The app already preserves these flags; the isolated runtime test now does too.
 
-
 ### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found" — PLAT-403
 
 A sandboxed terminal sets colour aliases, a plain `command_not_found_handle` (Ubuntu's Python handler crashes in the sandbox), hides tmux's status
@@ -1164,7 +1170,6 @@ bar, keeps 50000 lines of history and sources the person's own `~/.bashrc` once 
 - Next: macOS Seatbelt (Claude first) so a Mac is confined like a server.
 - Tests: `TestDecideCLIConfinement`, `TestRestrictCodingAgentToolsToMCPOnly`,
   `TestInteractiveShellUnconfinedIsLocalOnly`.
-
 
 ### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder — PLAT-403
 
@@ -1319,7 +1324,6 @@ Ticket: [PLAT-403](bugs/pulse_platform/frontend-chat/plat-403.md).
 - **Guide.** [Browser](core/browser.md) is the consolidated reference, updated with
   implemented behavior, runtime requirements and exact remaining limitations.
 
-
 ### 2026-10-03 — Google service permission cards and resumed Claude quota notices
 
 - Google account setup uses the existing Google Workspace brand marks, service
@@ -1470,7 +1474,6 @@ notices. Reversed by the entry above. Ticket: [PLAT-405](bugs/pulse_platform/sch
 - **The 401 on Crew in the same session** came from a frontend started before the local checkout was updated: it still called the workspace
   service directly (`/api/documents...` on port 18744), which now needs the server's token. Current code goes through the agent's `/api/wp`.
   Restarting the local frontend/desktop app after an update clears it.
-
 
 ### 2026-10-03 — Providers page uses the main header's Back and Antigravity's icon
 
@@ -1999,7 +2002,6 @@ exited after the release went live left it behind and pinned the release (14 GB 
 - **Open.** Excellence keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
   Crew templates and any playbook-backed feature in a first Crew test.
 
-
 ### 2026-10-01 — Header activity stays active through stale idle polls during a new turn
 - The latest foreground user/start event keeps the chat header active until
   its completion, even when tab flags or a session-status poll still describe
@@ -2202,7 +2204,6 @@ exited after the release went live left it behind and pinned the release (14 GB 
   of that name.
 - **Open.** Muse still prints "local session messaging unavailable: registry root: Permission denied" in
   slot sessions (it tries to `chmod 0700` platform-owned folders). Harmless, not traced.
-
 
 ### 2026-10-01 — Code is always private; owner-authorized function calls do not share files
 - User decision: remove human Code sharing. Normal files, links, chats, Git, bots,
@@ -2498,7 +2499,6 @@ exited after the release went live left it behind and pinned the release (14 GB 
   certification or a production deployment gate; both-mode Linux qualification
   remains required. Evidence and reproduction: [local report](design/local_linked_runtime_qualification.md).
 
-
 ### 2026-09-30 — Linked runtimes tell the agent to name `project` when searching
 - The `project/` link is a symlink, and search tools do not walk into a symlink they
   find: plain `rg` from the runtime folder, and Claude Code's Grep and Glob with no path,
@@ -2763,7 +2763,6 @@ exited after the release went live left it behind and pinned the release (14 GB 
 - Code: `agent_go/pkg/costledger`, `agent_go/pkg/costobserver`,
   `agent_go/cmd/server/cost_overview.go`, `frontend/src/components/providers`.
 
-
 ### 2026-09-30 — Code agents are told to keep to their own project on the shared server
 - A Code project's agent can install and run things on a server that other people's projects
   share. One project's chat installed a browser IDE, exposed it to the internet through a
@@ -2983,8 +2982,6 @@ exited after the release went live left it behind and pinned the release (14 GB 
 
 
 
-
-
 ### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
 - After the answered 14:26:04 IST submission, the 14:26:25 retry reused its
   submission ID. Returning the original successful receipt without another
@@ -3096,11 +3093,9 @@ Vault's `product.yaml` owns one tool declaration for the builder, native bridge 
 
 Local uses its active administrator; SSO requires an active Vault administrator and external clients additionally require `vault:manage`. Administrative resource lookup uses the same service-only setup execution path as the Vault builder, independently of group grants. The separate `vault:mcp` endpoint and other product runtime calls remain group/regex scoped. Secret values and other users' private connections are excluded. Native provider shell/file tools remain the provider runtime's responsibility, not external Vault management tools.
 
-
 ### 2026-10-05 — KB project selection through MCP, Builder and UI
 
 Owner decision: selecting a shared KB folder for a workflow must work through global MCP, workflow Builder, and UI, following Vault's project resource selection pattern. Reuse the existing five KB tools, with inspect/bind/unbind project actions on manage_knowledgebase_access. UI selection and root Builder actions apply directly after the same project ownership, authoring-token bounds, manifest version, folder authority and output-audience checks. Selecting a folder never grants access implicitly. Root Builder setup authority follows Vault's authenticated tool-context pattern and is cleared for children. Steps receive scoped content tools and retain their own read/write/none policy rather than the parent's policy. Existing KB access chat confirmation remains for ACL changes. No production migration runs on merge.
-
 
 ## 2026-10-05 — Brain review: caller identity and Git network boundary
 

@@ -1,3 +1,4 @@
+import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../../utils/workspaceViewPreference'
 import { create } from 'zustand'
 import type { Activity, DrawerTab, TreeNode, WsFile } from './types'
 import { resolveSetState, type SetStateAction } from './storeUtils'
@@ -42,9 +43,19 @@ interface WorkspaceState {
   setActivities: (v: SetStateAction<Activity[]>) => void
 }
 
+function normalizeDrawerTab(value: unknown): DrawerTab | null {
+  if (typeof value !== 'string') return null
+  return ['assets', 'progress', 'files', 'allfiles', 'uploaded', 'browser'].includes(value) || value.startsWith('pin:')
+    ? value as DrawerTab : null
+}
+
 export const useSparkQuillWorkspaceStore = create<WorkspaceState>()((set) => ({
-  drawerTab: 'progress',
-  setDrawerTab: (v) => set((s) => ({ drawerTab: resolveSetState(v, s.drawerTab) })),
+  drawerTab: readWorkspaceViewPreference('sparkquill', 'main', normalizeDrawerTab) ?? 'progress',
+  setDrawerTab: (v) => set((s) => {
+    const drawerTab = resolveSetState(v, s.drawerTab)
+    writeWorkspaceViewPreference('sparkquill', 'main', drawerTab)
+    return { drawerTab }
+  }),
   treeNodes: [],
   setTreeNodes: (v) => set((s) => ({ treeNodes: resolveSetState(v, s.treeNodes) })),
   wsFiles: [],
