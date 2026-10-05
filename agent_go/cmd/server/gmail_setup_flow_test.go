@@ -66,8 +66,8 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 						t.Error("missing Cloud authorization")
 					}
 					switch {
-					case r.URL.Host == "cloudresourcemanager.googleapis.com":
-						data = map[string]string{"name": "projects/123456", "projectId": "rts-project", "state": "ACTIVE"}
+					case strings.HasSuffix(r.URL.Path, "/services/serviceusage.googleapis.com"):
+						data = map[string]string{"name": "projects/123456/services/serviceusage.googleapis.com", "parent": "projects/123456", "state": "ENABLED"}
 					case strings.HasSuffix(r.URL.Path, ":batchEnable") || strings.HasSuffix(r.URL.Path, ":generateServiceIdentity"):
 						data = map[string]any{"done": true}
 					case strings.Contains(r.URL.Path, "/subscriptions/"):
@@ -189,12 +189,17 @@ func TestGmailSetupReviewRequiresHumanGoogleConsentUsesExistingCallbackAndPKCE(t
 	if review.Code != 200 || !strings.Contains(review.Body.String(), job.Plan.Subscription) || strings.Contains(review.Body.String(), "SETUP-SECRET") {
 		t.Fatalf("review: %d %s", review.Code, review.Body.String())
 	}
+	if review.Header().Get("Referrer-Policy") != "same-origin" || !strings.Contains(review.Header().Get("Content-Security-Policy"), "form-action 'self' https://accounts.google.com;") {
+		t.Fatal("review headers block its browser POST or Google redirect")
+	}
 	post := httptest.NewRequest("POST", job.ReviewURL, nil)
-	post.Header.Set("Origin", "https://attacker.example")
-	denied := httptest.NewRecorder()
-	api.gmailSetupReview(denied, post)
-	if denied.Code != 403 {
-		t.Fatal("accepted cross-origin review submission")
+	for _, origin := range []string{"https://attacker.example", "null"} {
+		post.Header.Set("Origin", origin)
+		denied := httptest.NewRecorder()
+		api.gmailSetupReview(denied, post)
+		if denied.Code != 403 {
+			t.Fatal("accepted cross-origin or opaque review submission")
+		}
 	}
 	post.Header.Set("Origin", "https://video.realtrainingsys.com")
 	consent := httptest.NewRecorder()

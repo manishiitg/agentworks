@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Gmail setup supports browser consent and Google provisioning contracts
+
+The human review retains a same-origin form Origin and permits its Google
+consent redirect, while rejecting null/foreign submissions and suppressing
+cross-origin Referer. Provisioning resolves project numbers through Service
+Usage before mutation, accepts Google's dotted operation IDs, and waits for
+new push account visibility. Why: the live review failed and the audit found
+later blockers hidden by synchronous API fakes. Ticket:
+[PLAT-499](bugs/pulse_platform/integrations/plat-499.md).
+
 ### 2026-10-05 — Gmail setup browser routes reach backend consent checks without an app token
 
 The deployment gateway admits only the exact GET/POST review route and GET

@@ -1,6 +1,6 @@
 # PLAT-497: RTS gateway blocks the incoming Gmail setup review link
 
-State: fixed on main; gateway deployment and live consent still required.
+State: deployed on RTS; review forwarding verified. Later setup blockers and live Cloud verification are tracked in [PLAT-499](plat-499.md).
 Priority: P1. Follow-up of [PLAT-483](plat-483.md).
 
 ## Live observation
@@ -34,9 +34,13 @@ an invalid diagnostic plan confirms the backend returns 410 while the public
 RTS URL returns 401; the gateway is the blocker. No Google consent or resources were
 changed by these diagnostic checks.
 
+Live follow-up: on 2026-10-05 at 06:56:28 UTC the review GET returns 200;
+the POST two seconds later reaches the backend origin guard and returns 403.
+This verifies the gateway repair. The review policy and later provisioning
+blockers are tracked separately in [PLAT-499](plat-499.md).
+
 ## Remaining
 
-Deploy the updated gateway on RTS, then verify a fresh browser review link,
-Google consent and receiving activation. A backend restart invalidates pending
-plans; ask Builder to prepare a new link after deployment. Do not classify
-successful plan preparation as verified Cloud provisioning or real delivery.
+No gateway work remains for this issue on RTS. Deploy PLAT-499 and prepare a
+fresh plan after restart before continuing human consent. Actual Cloud setup,
+mailbox watch readiness and real delivery remain verification work for PLAT-483.

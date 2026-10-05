@@ -137,7 +137,7 @@ type operation struct {
 
 func (c Cloud) await(ctx context.Context, host string, op operation) error {
 	for !op.Done {
-		if !regexp.MustCompile(`^operations/[A-Za-z0-9/_-]+$`).MatchString(op.Name) {
+		if !regexp.MustCompile(`^operations/[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$`).MatchString(op.Name) {
 			return fmt.Errorf("Google returned an invalid setup operation")
 		}
 		select {
@@ -195,15 +195,37 @@ func (c Cloud) grant(ctx context.Context, resource, role, member string) error {
 	return c.request(ctx, "POST", resource+":setIamPolicy", map[string]any{"policy": policy}, nil)
 }
 
+// Service Usage already has to be available to enable APIs. Its canonical
+// service name resolves a project ID to its number without requiring the
+// unrelated Cloud Resource Manager API to have been enabled beforehand.
 func (c Cloud) project(ctx context.Context, id string) (string, error) {
-	var p struct{ Name, ProjectID, State string }
-	if e := c.request(ctx, "GET", "https://cloudresourcemanager.googleapis.com/v3/projects/"+id, nil, &p); e != nil {
+	var service struct{ Name, Parent, State string }
+	if e := c.request(ctx, "GET", "https://serviceusage.googleapis.com/v1/projects/"+id+"/services/serviceusage.googleapis.com", nil, &service); e != nil {
 		return "", e
 	}
-	if p.ProjectID != id || p.State != "ACTIVE" || !regexp.MustCompile(`^projects/[0-9]+$`).MatchString(p.Name) {
-		return "", fmt.Errorf("Google Cloud project is not active or its identity could not be verified")
+	match := regexp.MustCompile(`^projects/([0-9]+)/services/serviceusage\.googleapis\.com$`).FindStringSubmatch(service.Name)
+	if len(match) != 2 || service.Parent != "projects/"+match[1] || service.State != "ENABLED" {
+		return "", fmt.Errorf("Google Cloud project identity could not be verified; Service Usage must be enabled before setup")
 	}
-	return strings.TrimPrefix(p.Name, "projects/"), nil
+	return match[1], nil
+}
+
+// New service accounts are eventually consistent. Wait only on not-found;
+// permission and policy failures must still stop setup immediately.
+func (c Cloud) awaitServiceAccount(ctx context.Context, resource string) error {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	for delay := time.Second; ; delay = min(delay*2, 8*time.Second) {
+		err := c.request(ctx, "GET", resource, nil, &map[string]any{})
+		if !missing(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("new Google push identity is not visible yet; resources remain available, ask Builder to retry setup")
+		case <-time.After(delay):
+		}
+	}
 }
 
 func (c Cloud) subscription(ctx context.Context, p Plan, create bool) error {
@@ -273,6 +295,10 @@ func (c Cloud) Provision(ctx context.Context, p Plan, progress func(string)) err
 	sa := "https://iam.googleapis.com/v1/projects/" + p.DeliveryProjectID + "/serviceAccounts/" + p.PushEmail
 	if err = c.request(ctx, "GET", sa, nil, &map[string]any{}); missing(err) {
 		err = c.request(ctx, "POST", "https://iam.googleapis.com/v1/projects/"+p.DeliveryProjectID+"/serviceAccounts", map[string]any{"accountId": strings.Split(p.PushEmail, "@")[0], "serviceAccount": map[string]string{"displayName": "AgentWorks Gmail push"}}, nil)
+		if err == nil {
+			progress("Waiting for the new push identity to become available")
+			err = c.awaitServiceAccount(ctx, sa)
+		}
 	}
 	if err != nil {
 		return err

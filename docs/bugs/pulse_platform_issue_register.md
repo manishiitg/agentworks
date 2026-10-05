@@ -1,6 +1,10 @@
+## Gmail setup browser review and provisioning blockers — PLAT-499
+
+[PLAT-499](pulse_platform/integrations/plat-499.md), P1, fixed on main, deployment pending. Fixes null review Origin, blocked Google redirect, dotted Google operation IDs, Resource Manager prerequisite and delayed push-account visibility. Real Cloud consent and delivery still require RTS verification.
+
 ## RTS gateway rejects incoming Gmail setup review links — PLAT-497
 
-[PLAT-497](pulse_platform/integrations/plat-497.md), P1, fixed on main, needs gateway deployment. Live RTS returns authentication_required before the plan handler; exact GET/POST review and GET setup callbacks now reach backend capability/Google-consent checks without browser JWTs. Gmail settings remain authenticated.
+[PLAT-497](pulse_platform/integrations/plat-497.md), P1, deployed on RTS; review forwarding verified live. Later review/provisioning blockers are tracked in PLAT-499; exact GET/POST review and GET setup callbacks now reach backend capability/Google-consent checks without browser JWTs. Gmail settings remain authenticated.
 
 ## The desktop app (DMG) ran with no Vault — PLAT-493
 
@@ -28,7 +32,7 @@
 
 ## Builder-guided administrator setup for incoming Gmail — PLAT-483
 
-[PLAT-483](pulse_platform/integrations/plat-483.md), P2, deployed to RTS for testing; review navigation blocked until PLAT-497 is deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Right-panel headers and Gmail cards share this setup guidance. Requires app admin plus Google project permissions. Live plan preparation observed on RTS; Cloud provisioning and real delivery remain unverified.
+[PLAT-483](pulse_platform/integrations/plat-483.md), P2, deployed to RTS for testing; gateway forwarding verified; PLAT-499 review/provisioning fixes await deployment. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Right-panel headers and Gmail cards share this setup guidance. Requires app admin plus Google project permissions. Live plan preparation observed on RTS; Cloud provisioning and real delivery remain unverified.
 
 ## Existing Code MCP skill discovery contract test fails — PLAT-484
 
