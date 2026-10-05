@@ -100,7 +100,12 @@ paths are display metadata and must not be execution identities.
 
 ## Conversation destinations
 
-The selected Crew trigger has one of the existing run destinations.
+The caller type is checked before the stored run destination. A workflow's
+internal caller binding always executes in the trigger's own continuing
+conversation. Even a legacy internal trigger saved with
+`run_destination: "crew_chat"` runs separately from the Crew's main chat.
+
+The following destination choice applies to external webhooks and schedules.
 
 ### Main Crew chat (`crew_chat`)
 
@@ -120,9 +125,24 @@ destinations retain context; they retain different histories. Avoiding visible
 interruption is a secondary consideration. The primary choice is which history
 the work requires.
 
-The step should normally respect the selected trigger's configured
-destination. A workflow needing both histories should use two clearly named
-triggers instead of silently overriding one trigger's behavior.
+For workflow calls, the conversation key is
+`<crew-project-id>:trigger:<trigger-id>`, resolved in the target user's
+conversation registry. The first invocation creates that chat; subsequent
+invocations reuse it. A new run ID identifies each invocation without creating
+a fresh chat. The isolated chat inherits the Crew's workspace and capability
+policy; isolation separates conversation history, not the project files.
+
+For example, the local Trading workflow's `crew-news-monitor` step calls News
+Monitor through `news monitor trigger` (kind `internal`, caller type
+`workflow`). Its stored destination is the legacy `crew_chat` value, but the
+registry confirms a separate trigger chat. The October 5 and September 28,
+2026 runs reused that chat. The workflow waits for the Crew's response and
+writes it to the step's `context_output` (`news_response.md` in this example).
+
+Crew-to-Crew calls have a separate owner rule: a same-owner call uses the
+receiving Crew's main chat; a cross-owner call uses a continuing chat dedicated
+to that trigger and calling person. This exception does not apply to a
+workflow caller.
 
 ## Runtime contract
 

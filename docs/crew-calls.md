@@ -5,12 +5,13 @@ own.
 
 | You want to… | Use | Runs in |
 |---|---|---|
-| Have another Crew, a workflow, or an MCP/CLI tool use a Crew | **Functions** (`ask` or a typed function) | The caller's own continuing conversation with that Crew |
+| Have a workflow or an MCP/CLI tool use a Crew | **Functions** (`ask` or a typed function) | The caller's own continuing conversation with that Crew |
+| Have another Crew use a Crew | **Functions** (`ask` or a typed function) | Same owner: receiving Crew's main chat. Different owner: a separate continuing chat for the calling person |
 | Run something on a timer | **Schedule** | The Crew's main chat, or the schedule's own conversation |
 | Let an outside system (GitHub, CI) start work | **Webhook** | The Crew's main chat, or the webhook's own conversation |
 
-The Crew's **main chat is for people**. Calls from other Crews, workflows and
-tools never land there.
+Workflow and MCP/CLI callers have separate chats. A Crew calling another Crew
+owned by the same person uses the receiving Crew's main chat.
 
 ## Functions
 
@@ -85,12 +86,17 @@ declared inputs. Both feed the same workflow variables.
 
 ## One continuing conversation per caller
 
-Each caller gets **one continuing conversation** with each Crew it calls. The
-caller is another Crew, a workflow, or an AgentWorks user connecting through
-MCP or the CLI. Follow-up calls land in the same conversation, so the Crew
-remembers earlier calls from that caller. Calling a Crew with `ask_crew`
-repeatedly is effectively a chat with it. Different callers never share a
-conversation, and none of them sees the main chat.
+Workflow and MCP/CLI callers get **a continuing conversation** with the Crew.
+For a workflow caller, it is keyed by the Crew project and internal trigger ID.
+Follow-up calls through the same trigger land in the same conversation, so the
+Crew remembers earlier calls. Calling a Crew with `ask_crew` repeatedly is
+effectively a chat with it.
+
+Crew-to-Crew calls use the owners to choose the destination: calls between
+Crews owned by the same person continue in the receiving Crew's main chat.
+A cross-owner call has its own continuing chat keyed by the trigger and calling
+person. A separate chat retains the target Crew's workspace and capabilities;
+it separates history rather than copying the project into a new workspace.
 
 The conversation is set up automatically on the first call. The Crew's
 **Automation → Functions** tab lists these under **Callers**; **Disconnect**
