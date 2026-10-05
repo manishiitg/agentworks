@@ -14,7 +14,7 @@
 1. (Decided above: owners only manage; members use.)
 2. Does a platform administrator see and control every personal vault (audit, takedown)? (Suggest yes, read and revoke, not use.)
 3. (Decided above.)
-4. Limits: vaults per person, secrets and connections per vault.
+4. Limits: a person can own at most 5 vaults (owner decision 2026-10-05). Still open: secrets and connections per vault.
 
 **Sketch:** one Vault workspace per person (`w-<user>`) on the existing gateway, the owner as its admin; the same tools (`manage_vault_access`, secret access) scoped to the caller's own vault; promote for MCP sign-ins and secrets (server-side re-seal, the agent never sees a value, confirm step, audit log, no group access until granted); UI for My vaults. Secrets and OAuth client secrets are still never entered in chat.
 
