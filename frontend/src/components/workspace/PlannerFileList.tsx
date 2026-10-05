@@ -205,7 +205,7 @@ export default function PlannerFileList({
     const fileName = file.filepath.split('/').pop() || file.filepath
     // Check both filepath (adjusted for display) and originalFilepath (original path)
     // This ensures workspace tool events can highlight files even when paths are adjusted in workflow mode
-    const isHighlighted = highlightedFile === file.filepath || highlightedFile === file.originalFilepath
+    const isHighlighted = !!highlightedFile && (highlightedFile === file.filepath || highlightedFile === file.originalFilepath)
     const isInContext = chatFileContext.some(ctx => ctx.path === file.filepath)
     const actionMenuPath = file.originalFilepath || file.filepath
     const isActionMenuOpen = openActionsPath === actionMenuPath

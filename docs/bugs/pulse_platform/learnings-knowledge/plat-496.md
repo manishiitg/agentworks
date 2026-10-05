@@ -130,3 +130,8 @@ tests passed, including the existing Files tree/Git regressions, read-only KB
 loading, revoked content/tab removal, Ask AI routing, and banner refresh without
 conversation rotation. The local browser opened a real KB entry in the shared
 Files viewer. No production migration or Git publication performed.
+
+Files highlight regression: absent `highlightedFile` and `originalFilepath`
+previously compared equal, highlighting every KB row in blue. Require a nonempty
+highlight target before matching either path. Shared tree regression verifies
+no unsolicited highlights and exactly one explicit target.
