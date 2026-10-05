@@ -182,3 +182,52 @@ export function terminalSessionUsageLines(status: TerminalSessionUsageInput | nu
   if (details.length > 0) lines.push(details.join(' · '))
   return lines
 }
+
+/** Live context fill and the worst plan window, for the chat's working footer (PLAT-554). */
+export interface LiveUsageSummary {
+  /** "ctx 42%" or, without a known window, "ctx 235k". Empty when unknown. */
+  contextText: string
+  /** 0-100 when the window is known. */
+  contextPercent?: number
+  /** Detail for the hover: "235k of 1M tokens in context". */
+  contextTitle: string
+  /** The most-used plan window at or above HIGH_USAGE_PERCENT, if any. */
+  warning?: TerminalUsageLine
+}
+
+function positiveNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+export function liveUsageSummary(
+  statusMeta: Record<string, unknown> | null | undefined,
+  options: { now?: number; locale?: string } = {},
+): LiveUsageSummary {
+  const summary: LiveUsageSummary = { contextText: '', contextTitle: '' }
+  if (!statusMeta) return summary
+  const used = positiveNumber(statusMeta.context_used_tokens)
+  const window = positiveNumber(statusMeta.context_window_tokens)
+  if (used > 0 && window > 0) {
+    const pct = Math.min(100, (used / window) * 100)
+    summary.contextPercent = pct
+    summary.contextText = `ctx ${Math.round(pct)}%`
+    summary.contextTitle = `${formatTokenCount(used)} of ${formatTokenCount(window)} tokens in context`
+  } else if (used > 0) {
+    summary.contextText = `ctx ${formatTokenCount(used)}`
+    summary.contextTitle = `${formatTokenCount(used)} tokens in context`
+  } else {
+    const extras = Array.isArray(statusMeta.status_extras) ? statusMeta.status_extras : []
+    const ctx = extras.find((value): value is string => typeof value === 'string' && /^ctx\b/i.test(value.trim()))
+    const pct = ctx ? /(\d+(?:\.\d+)?)\s*%/.exec(ctx) : null
+    if (pct) {
+      summary.contextPercent = Math.min(100, Number(pct[1]))
+      summary.contextText = `ctx ${Math.round(Number(pct[1]))}%`
+      summary.contextTitle = 'Context window used'
+    }
+  }
+  const high = terminalUsageLines(statusMeta, options).filter(line => line.high)
+  if (high.length > 0) {
+    summary.warning = high.reduce((worst, line) => ((line.usedPercent ?? 0) > (worst.usedPercent ?? 0) ? line : worst))
+  }
+  return summary
+}

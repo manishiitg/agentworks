@@ -771,6 +771,76 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "ContextCompactionEvent": {
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": "string"
+        },
+        "is_end_event": {
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "hierarchy_level": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "compaction_id": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "tokens_before": {
+          "type": "integer"
+        },
+        "tokens_after": {
+          "type": "integer"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "ended_at": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ConversationEndEvent": {
       "properties": {
         "timestamp": {
@@ -1159,6 +1229,9 @@
         "coding_agent_question": {
           "$ref": "#/$defs/CodingAgentQuestionEvent"
         },
+        "context_compaction": {
+          "$ref": "#/$defs/ContextCompactionEvent"
+        },
         "synthetic_turn_ready": {
           "$ref": "#/$defs/SyntheticTurnReadyEvent"
         },
@@ -1228,6 +1301,7 @@
         "coding_agent_background_task",
         "coding_agent_question",
         "context_cancelled",
+        "context_compaction",
         "conversation_end",
         "conversation_error",
         "conversation_start",

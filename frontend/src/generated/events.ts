@@ -15,6 +15,7 @@ export interface UnifiedEventsComplete {
   coding_agent_background_task?: CodingAgentBackgroundTaskEvent;
   coding_agent_question?: CodingAgentQuestionEvent;
   context_cancelled?: ContextCancelledEvent;
+  context_compaction?: ContextCompactionEvent;
   conversation_end?: ConversationEndEvent;
   conversation_error?: ConversationErrorEvent;
   conversation_start?: ConversationStartEvent;
@@ -259,6 +260,31 @@ export interface ContextCancelledEvent {
   timestamp?: string;
   trace_id?: string;
   turn?: number;
+}
+export interface ContextCompactionEvent {
+  compaction_id?: string;
+  component?: string;
+  correlation_id?: string;
+  duration_ms?: number;
+  ended_at?: string;
+  event_id?: string;
+  hierarchy_level?: number;
+  is_end_event?: boolean;
+  metadata?: {
+    [k: string]: unknown;
+  };
+  outcome?: string;
+  parent_id?: string;
+  phase?: string;
+  provider?: string;
+  session_id?: string;
+  span_id?: string;
+  started_at?: string;
+  timestamp?: string;
+  tokens_after?: number;
+  tokens_before?: number;
+  trace_id?: string;
+  trigger?: string;
 }
 export interface ConversationEndEvent {
   component?: string;

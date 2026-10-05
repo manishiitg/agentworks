@@ -98,3 +98,20 @@ describe('terminalSessionUsageLines', () => {
     expect(formatTokenCount(12_600_000)).toBe('13M')
   })
 })
+
+describe('liveUsageSummary', () => {
+  it('shows context fill and warns on a plan window at 90% or more', async () => {
+    const { liveUsageSummary } = await import('./terminalUsage')
+    const summary = liveUsageSummary({
+      context_used_tokens: 129_200,
+      context_window_tokens: 258_400,
+      rate_limit_windows: [
+        { name: 'five_hour', used_percent: 40, resets_at: at(27, 15, 30) },
+        { name: 'seven_day', used_percent: 93, resets_at: at(27, 15, 30) },
+      ],
+    }, { now: NOW, locale: 'en-US' })
+    expect(summary.contextText).toBe('ctx 50%')
+    expect(summary.warning?.text.replace(/\s/g, ' ')).toBe('7d 93% · resets 3:30 PM')
+    expect(liveUsageSummary({ context_used_tokens: 235_000 }).contextText).toBe('ctx 235k')
+  })
+})

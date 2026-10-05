@@ -2769,3 +2769,11 @@ change what a workflow does while still allowing it to report success.
 ## Brain refused every OAuth MCP connection as "expired or revoked" — PLAT-547
 
 [PLAT-547](pulse_platform/learnings-knowledge/plat-547.md), P1, fixed on main, not deployed: Brain verified connections only in the local token store, so OAuth MCP connections (`oauth-` IDs) always failed; both checks now use the shared verifier.
+
+## Context compaction shown in the chat for every coding CLI — PLAT-553
+
+[PLAT-553](pulse_platform/chat-reliability/plat-553.md), P2, fixed on main, not deployed: Codex, Claude, Pi, Muse and Agy compaction records become a `context_compaction` event and one chat row ("Compacting context…" → "Compacted context (1m 39s) · 384k → 92k tokens"); Cursor records none.
+
+## Live context fill and plan-limit warning in the chat footer — PLAT-554
+
+[PLAT-554](pulse_platform/chat-reliability/plat-554.md), P2, fixed on main, not deployed: Codex and Claude stream throttled context/plan usage during a turn; the chat's working footer shows a context meter and a plan window at 90%+ with its reset time.

@@ -137,6 +137,7 @@ export interface EventDataUnion {
   background_agent_terminated?: BackgroundAgentTerminatedEvent;
   coding_agent_background_task?: CodingAgentBackgroundTaskEvent;
   coding_agent_question?: CodingAgentQuestionEvent;
+  context_compaction?: ContextCompactionEvent;
   synthetic_turn_ready?: SyntheticTurnReadyEvent;
   auto_notification_steered?: AutoNotificationSteeredEvent;
   presentation_updated?: PresentationUpdatedEvent;
@@ -994,6 +995,31 @@ export interface CodingAgentQuestionAnswer {
   id?: string;
   selected_labels?: string[];
   other_text?: string;
+}
+export interface ContextCompactionEvent {
+  timestamp?: string;
+  trace_id?: string;
+  span_id?: string;
+  event_id?: string;
+  parent_id?: string;
+  is_end_event?: boolean;
+  correlation_id?: string;
+  hierarchy_level?: number;
+  session_id?: string;
+  component?: string;
+  metadata?: {
+    [k: string]: unknown;
+  };
+  provider?: string;
+  phase?: string;
+  compaction_id?: string;
+  trigger?: string;
+  outcome?: string;
+  tokens_before?: number;
+  tokens_after?: number;
+  started_at?: string;
+  ended_at?: string;
+  duration_ms?: number;
 }
 export interface SyntheticTurnReadyEvent {
   timestamp?: string;

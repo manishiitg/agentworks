@@ -3192,15 +3192,40 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 		}
 	}
 
+	tmuxSession = strings.TrimSpace(tmuxSession)
+	// A structured (non-tmux) transport carries no pane identity. Scope its
+	// telemetry to the terminal that owns the event instead, so a workflow
+	// step's live context meter never lands on a sibling step's terminal.
+	// Resolved before taking s.mu: metadataForEvent read-locks it.
+	eventMetadata := s.metadataForEvent(event)
+	ownerScope := ""
+	if tmuxSession == "" {
+		ownerScope = terminalOwnerID(sessionID, event, eventMetadata)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	tmuxSession = strings.TrimSpace(tmuxSession)
+	if ownerScope != "" {
+		found := false
+		for terminalID := range s.bySession[sessionID] {
+			if snapshot, exists := s.byID[terminalID]; exists && snapshot.OwnerID == ownerScope {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ownerScope = ""
+		}
+	}
 	updated := false
 	for terminalID := range s.bySession[sessionID] {
 		snapshot, exists := s.byID[terminalID]
 		if !exists {
+			continue
+		}
+		if ownerScope != "" && snapshot.OwnerID != ownerScope {
 			continue
 		}
 		// When the event identifies its tmux session, scope the update to the
@@ -3228,7 +3253,7 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 	if updated || tmuxSession == "" {
 		return
 	}
-	statusMetadata := mergeMetadata(s.metadataForEvent(event), statusMeta)
+	statusMetadata := mergeMetadata(eventMetadata, statusMeta)
 	statusMetadata["kind"] = firstNonEmpty(stringValue(statusMetadata, "kind"), "terminal")
 	statusMetadata["tmux_session"] = tmuxSession
 	statusMetadata["step_transport"] = firstNonEmpty(stringValue(statusMetadata, "step_transport"), "tmux")

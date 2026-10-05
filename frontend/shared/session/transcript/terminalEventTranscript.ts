@@ -1,3 +1,4 @@
+import { collapseContextCompactions } from './contextCompaction'
 import { normalizeTranscriptChunkEvents } from '../transcriptChunkUpdates'
 import { getOwnedTerminalOwnerKeys, getTerminalOwnerPayload } from './eventOwnership'
 import { parseProductInteraction } from '../interactions'
@@ -1066,7 +1067,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // Filter wrapper noise before lifecycle deduplication. Otherwise a generic
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
-  const transcriptEvents = normalizeTranscriptChunkEvents(events).filter(isTranscriptEvent)
+  const transcriptEvents = collapseContextCompactions(normalizeTranscriptChunkEvents(events)).filter(isTranscriptEvent)
   const visibleEvents = dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
   )))

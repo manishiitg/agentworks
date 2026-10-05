@@ -39,6 +39,7 @@ import {
 } from './tools'
 
 import {
+  ContextCompactionEventDisplay,
   StatusLineEventDisplay,
   UserMessageEventDisplay
 } from './system'
@@ -473,6 +474,9 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
         </div>
       </CompactWrapper>
     )
+  }
+  if (event.type === 'context_compaction') {
+    return <ContextCompactionEventDisplay event={event} />
   }
   if (event.type === 'status_line') {
     const agentEvent = event.data as { data?: Record<string, unknown> } | undefined

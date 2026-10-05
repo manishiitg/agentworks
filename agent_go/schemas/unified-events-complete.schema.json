@@ -646,6 +646,76 @@
       },
       "type": "object"
     },
+    "ContextCompactionEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "compaction_id": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer"
+        },
+        "ended_at": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "hierarchy_level": {
+          "type": "integer"
+        },
+        "is_end_event": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "tokens_after": {
+          "type": "integer"
+        },
+        "tokens_before": {
+          "type": "integer"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ConversationEndEvent": {
       "additionalProperties": false,
       "properties": {
@@ -3035,6 +3105,9 @@
     },
     "context_cancelled": {
       "$ref": "#/$defs/ContextCancelledEvent"
+    },
+    "context_compaction": {
+      "$ref": "#/$defs/ContextCompactionEvent"
     },
     "conversation_end": {
       "$ref": "#/$defs/ConversationEndEvent"

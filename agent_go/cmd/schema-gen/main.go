@@ -121,6 +121,7 @@ type EventDataUnion struct {
 	BackgroundAgentTerminated *orchestrator_events.BackgroundAgentTerminatedEvent `json:"background_agent_terminated,omitempty"`
 	CodingAgentBackgroundTask *events.CodingAgentBackgroundTaskEvent              `json:"coding_agent_background_task,omitempty"`
 	CodingAgentQuestion       *events.CodingAgentQuestionEvent                    `json:"coding_agent_question,omitempty"`
+	ContextCompaction         *events.ContextCompactionEvent                      `json:"context_compaction,omitempty"`
 	SyntheticTurnReady        *orchestrator_events.SyntheticTurnReadyEvent        `json:"synthetic_turn_ready,omitempty"`
 	AutoNotificationSteered   *orchestrator_events.AutoNotificationSteeredEvent   `json:"auto_notification_steered,omitempty"`
 
@@ -224,6 +225,7 @@ var EventRegistry = map[events.EventType]string{
 	orchestrator_events.BackgroundAgentTerminated: "background_agent_terminated",
 	events.CodingAgentBackgroundTask:              "coding_agent_background_task",
 	events.CodingAgentQuestion:                    "coding_agent_question",
+	events.ContextCompaction:                      "context_compaction",
 	orchestrator_events.SyntheticTurnReady:        "synthetic_turn_ready",
 	orchestrator_events.AutoNotificationSteered:   "auto_notification_steered",
 
@@ -465,6 +467,7 @@ type UnifiedEvent struct {
 	BackgroundAgentTerminatedEvent orchestrator_events.BackgroundAgentTerminatedEvent `json:"background_agent_terminated"`
 	CodingAgentBackgroundTaskEvent events.CodingAgentBackgroundTaskEvent              `json:"coding_agent_background_task"`
 	CodingAgentQuestionEvent       events.CodingAgentQuestionEvent                    `json:"coding_agent_question"`
+	ContextCompactionEvent         events.ContextCompactionEvent                      `json:"context_compaction"`
 	SyntheticTurnReadyEvent        orchestrator_events.SyntheticTurnReadyEvent        `json:"synthetic_turn_ready"`
 	AutoNotificationSteeredEvent   orchestrator_events.AutoNotificationSteeredEvent   `json:"auto_notification_steered"`
 	PresentationUpdatedEvent       orchestrator_events.PresentationUpdatedEvent       `json:"presentation_updated"`
