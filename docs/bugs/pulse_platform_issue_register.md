@@ -1,3 +1,7 @@
+## People create their own vaults and share secrets and MCPs; promote existing ones into Vault — PLAT-507
+
+[PLAT-507](pulse_platform/security-sandbox/plat-507.md), P2, open, design only. Owner direction 2026-10-05; changes the "private logins stay private" rule, so four questions are recorded for the owner first.
+
 ## Any account could list all workflows' schedules and pause every schedule — PLAT-505
 
 [PLAT-505](pulse_platform/scheduler-runs/plat-505.md), P1, fixed on main, not deployed or checked live as a non-admin. The schedules list is now filtered to what the account may open; the global pause is administrators only.
