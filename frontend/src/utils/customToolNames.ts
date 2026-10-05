@@ -2,14 +2,13 @@
 // These should match the LLM-visible backend categories. Internal-only
 // workspace_basic executors are intentionally omitted here.
 
-// workspace_advanced: advanced tools (shell, PDF, text generation, web search, diff patch)
+// workspace_advanced: advanced tools (shell, PDF, text generation, diff patch)
 // Maps to backend "workspace_advanced" category
 export const WORKSPACE_ADVANCED_TOOLS = [
   'execute_shell_command',
   'read_image',
   'read_pdf',
   'generate_text_llm',
-  'search_web_llm',
   'diff_patch_workspace_file',
 ] as const;
 

@@ -147,3 +147,11 @@ func workspaceRelativeDir(absPath, docsRoot string) string {
 	}
 	return filepath.ToSlash(rel)
 }
+
+func truncateMCPTestResult(result string, maxRunes int) string {
+	runes := []rune(strings.TrimSpace(result))
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return string(runes[:maxRunes]) + "…"
+}

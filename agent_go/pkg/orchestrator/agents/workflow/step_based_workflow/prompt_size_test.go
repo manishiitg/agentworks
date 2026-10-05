@@ -255,7 +255,7 @@ func TestPhaseChatWorkshopSelectsWorkspaceToolGuidanceByTransport(t *testing.T) 
 		if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(prompt, "provided schemas directly") {
 			t.Fatal("every transport must discover procedures through skills and retain native schema routing")
 		}
-		for _, duplicate := range []string{"generate_text_llm(user_message, tier)", "search_web_llm(query, provider)", "- **Schedule management**:"} {
+		for _, duplicate := range []string{"generate_text_llm(user_message, tier)", "- **Schedule management**:"} {
 			if strings.Contains(prompt, duplicate) {
 				t.Fatalf("inline tutorial/catalog remains: %s", duplicate)
 			}

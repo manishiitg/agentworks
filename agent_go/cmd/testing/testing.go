@@ -79,7 +79,6 @@ func initTestingCommands() {
 	TestingCmd.AddCommand(readImageTestCmd)
 	TestingCmd.AddCommand(readImageProvidersTestCmd)
 	TestingCmd.AddCommand(imageGenProvidersTestCmd)
-	TestingCmd.AddCommand(searchWebLLMProvidersTestCmd)
 	TestingCmd.AddCommand(readSecureAccessTestCmd)
 	TestingCmd.AddCommand(workspaceDiffJSONTestCmd)
 	TestingCmd.AddCommand(shellSecurityTestCmd)

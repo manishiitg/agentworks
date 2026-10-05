@@ -16,7 +16,7 @@ import (
 // message-sequence sub-agent holding eight tools did exactly that and got
 // `tools_unavailable`; with no way left to ask which providers were published,
 // it then guessed provider names ("vertex", "minimax-coding-plan", …),
-// producing 19 further search_web_llm failures.
+// producing 19 further tool failures.
 //
 // Selecting by capability makes that class unrepresentable rather than fixing
 // the one instance: a doc cannot be attached to a session that lacks the tools

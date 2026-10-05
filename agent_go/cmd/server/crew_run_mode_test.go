@@ -164,7 +164,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		}
 	}
 	for _, allowed := range []string{
-		"execute_shell_command", "read_image", "generate_text_llm", "search_web_llm",
+		"execute_shell_command", "read_image", "generate_text_llm",
 		"get_file_link", "list_secrets", "list_accessible_workflows",
 		"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",

@@ -1,6 +1,6 @@
 ## Workspace provider tools
 
-Only two provider-backed workspace tools are active:
+One provider-backed workspace tool is active:
 
 - **`generate_text_llm(user_message, tier)`** runs one text-model call using
   only the current workflow's `capabilities.llm_config`. `high`, `medium`, and
@@ -8,18 +8,8 @@ Only two provider-backed workspace tools are active:
   a global tier configuration and fails closed when there is no current
   workflow. Coding-CLI tiers always run as fresh structured one-shot calls;
   they never use tmux, interactive persistence, or resume.
-- **`search_web_llm(query, provider)`** runs a live hosted-MCP web search.
-  `provider` is `parallel`, `exa`, or `firecrawl`; it does not accept a
-  `model_id` and never routes through a native coding-agent search tool.
 
-## Choose the right active tool
-
-Use **`search_web_llm`** when the workflow needs fresh external evidence — for
-example current releases, a source to cite, or facts that are not already in
-the workflow's durable inputs. Save or cite the returned URLs/evidence in the
-step output when they support a consequential conclusion. Do not use it merely
-to replace ordinary reasoning about information already available in the
-workflow.
+## When to use it
 
 Use **`generate_text_llm`** for one bounded, additional model operation, such
 as summarising supplied material, extracting a structured draft, classifying a
@@ -36,11 +26,10 @@ In a scripted/code-execution step, these names are **not shell commands** and
 must never be replaced with a direct provider request. First read
 `references/mcp-bridge.md`, inspect the session's `<available_tools>`, and use
 `get_api_spec` for the exact current schema. Then call the granted custom tool
-through the authenticated MCP bridge at `$MCP_CUSTOM/generate_text_llm` or
-`$MCP_CUSTOM/search_web_llm`, following the bridge's response-envelope rules.
+through the authenticated MCP bridge at `$MCP_CUSTOM/generate_text_llm`, following the bridge's response-envelope rules.
 
 Use `execute_shell_command` only to run the bridge-calling script. Do not
-invent an endpoint, call a provider SDK directly, pass a `model_id` to search,
+invent an endpoint, call a provider SDK directly,
 or put provider/MCP credentials in source code, shell text, or output. The
 bridge authentication is injected for the step; provider credentials remain
 workspace-managed through `set_provider_auth`.

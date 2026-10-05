@@ -22,6 +22,8 @@ import (
 // Both metadata and tokens use the platform's existing sealed credential store.
 type vaultOAuthConnection struct {
 	ID, OAuthServer, OAuthCredentialID, UpstreamURL, Label, Status string
+	// VaultID is the person-owned vault the connection belongs to (PLAT-507); empty for a platform connection.
+	VaultID string
 }
 
 var vaultConnectionID = regexp.MustCompile(`^c-[a-f0-9]{8,32}$`)
@@ -32,6 +34,16 @@ func vaultCredentialConfigPath(id string) string {
 }
 
 func vaultServiceRequest(ctx context.Context, actor, method, path string, payload []byte) ([]byte, error) {
+	return vaultServiceRequestAs(ctx, actor, false, method, path, payload)
+}
+
+// vaultPersonRequest is a call on behalf of a person the platform already authenticated: the vault routes act only for
+// that person and check the vault's owners (PLAT-507).
+func vaultPersonRequest(ctx context.Context, person, method, path string, payload []byte) ([]byte, error) {
+	return vaultServiceRequestAs(ctx, person, true, method, path, payload)
+}
+
+func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool, method, path string, payload []byte) ([]byte, error) {
 	target, secret, err := capLayerServiceConfig()
 	if err != nil {
 		return nil, errors.New("Vault service is not configured")
@@ -45,6 +57,9 @@ func vaultServiceRequest(ctx context.Context, actor, method, path string, payloa
 	req.Header.Set("Content-Type", "application/json")
 	if actor != "" {
 		req.Header.Set("X-CapLayer-Actor", actor)
+	}
+	if platformUser {
+		req.Header.Set("X-Vault-Platform-User", "1")
 	}
 	client := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
@@ -125,8 +140,8 @@ func advanceVaultOAuthGeneration(id string) uint64 {
 	return n
 }
 func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, sessionID, id, name, redirect, clientID, clientSecret string) (*OAuthStartResponse, *OAuthDiscoveryResponse, error) {
-	if !vaultAdminActive(userID) {
-		return nil, nil, errors.New("Vault management requires an administrator account")
+	if !api.vaultActorCanManage(ctx, userID, id) {
+		return nil, nil, errors.New("Vault management requires an administrator account or ownership of this vault")
 	}
 	if _, err := api.vaultOAuthTemplate(ctx, id, name, ""); err != nil {
 		return nil, nil, err
@@ -191,7 +206,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 		Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
 		BeforeExchange: func(flow *OAuthFlowState) error {
 			latest, _ := vaultOAuthGenerations.Load(id)
-			if latest != generation || !vaultAdminActive(userID) {
+			if latest != generation || !api.vaultActorCanManage(context.Background(), userID, id) {
 				return errors.New("sign-in was cancelled or administrator access changed")
 			}
 			if _, err := api.vaultOAuthTemplate(context.Background(), id, name, cfg.URL); err != nil {
@@ -204,8 +219,8 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			return oauth.WriteTokenFile(vaultCredentialConfigPath(id), data)
 		},
 		AfterExchange: func(flow *OAuthFlowState) error {
-			if !vaultAdminActive(userID) {
-				return errors.New("administrator access changed")
+			if !api.vaultActorCanManage(context.Background(), userID, id) {
+				return errors.New("administrator or vault ownership changed")
 			}
 			// Sync runs outside the credential mutex: upstream discovery calls
 			// the broker, which uses that same mutex to serialize refresh.

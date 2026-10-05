@@ -6592,6 +6592,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register Vault access tool: %v", err), true)
 					return
 				}
+				if err := api.registerMyVaultsTool(llmAgent, currentUserID); err != nil {
+					sendError(fmt.Sprintf("Failed to register vault tool: %v", err), true)
+					return
+				}
 			}
 			// A Code chat's agent connects the person's own MCP servers.
 			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {

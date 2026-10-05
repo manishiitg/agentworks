@@ -111,7 +111,7 @@ func TestSystemPromptMatchesTheProductItDescribes(t *testing.T) {
 			t.Fatalf("the system prompt no longer requires skill-led direct chat: missing %q", contract)
 		}
 	}
-	for _, tool := range []string{"read_image", "search_web_llm", "hand-drawn illustration", "Instagram/Reel brief"} {
+	for _, tool := range []string{"read_image", "native web search tool", "hand-drawn illustration", "Instagram/Reel brief"} {
 		if !strings.Contains(text, tool) {
 			t.Fatalf("the system prompt lost Video Studio's cinematic research contract: missing %q", tool)
 		}

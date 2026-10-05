@@ -907,6 +907,9 @@
     "ParallelSearch": {
       "url": "https://search.parallel.ai/mcp"
     },
+    "Firecrawl": {
+      "url": "https://mcp.firecrawl.dev/v2/mcp"
+    },
     "Wolfram": {
       "url": "https://agenttools.wolfram.com/mcp"
     },

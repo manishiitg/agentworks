@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/manishiitg/mcpagent/executor"
@@ -21,9 +22,13 @@ import (
 //
 // Only an active Vault administrator, only for a connection that person signed in themselves, and only after the caller
 // confirmed: once it is in Vault, everyone in a group that is later granted it acts as the account that signed in.
-func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, name string, confirm bool) (string, error) {
-	if !vaultAdminActive(person) {
-		return "", errors.New("Vault management requires an administrator account")
+func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, name, vaultID string, confirm bool) (string, error) {
+	if vaultID == "" {
+		if !vaultAdminActive(person) {
+			return "", errors.New("Vault management requires an administrator account; to promote into your own vault give its vault_id (manage_my_vaults)")
+		}
+	} else if !personVaultActive(person) || !vaultOwnerOf(ctx, person, vaultID) {
+		return "", errors.New("you can promote only into a vault you own")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -62,30 +67,22 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 		return "", fmt.Errorf("connection %q is not signed in here yet; sign in first, then promote it", name)
 	}
 	if !confirm {
+		if vaultID != "" {
+			return fmt.Sprintf("Promoting %q copies its existing sign-in into your vault %s (no new sign-in). Everyone you add to that vault will use it as the account that signed in, and only you and the vault's other owners can change or remove it. The personal connection stays as it is. Call promote again with confirm=true to go ahead.", name, vaultID), nil
+		}
 		return fmt.Sprintf("Promoting %q copies its existing sign-in into Vault as a new shared connection (no new sign-in). Anyone in a group you later grant it to will use it as the account that signed in. No group is given access by this step, and the personal connection stays as it is. Call promote_place_connection again with confirm=true to go ahead.", name), nil
 	}
 
 	provider := strings.TrimSpace(server.Catalog)
-	created := ""
-	var createErr error
-	if provider != "" {
-		created, createErr = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"provider": provider, "label": server.Label}))
-	}
-	if provider == "" || createErr != nil {
-		created, createErr = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"name": server.Name, "url": server.URL}))
+	id, createErr := "", error(nil)
+	if vaultID == "" {
+		id, createErr = createPlatformVaultConnection(ctx, person, provider, server)
+	} else {
+		id, createErr = createOwnVaultConnection(ctx, person, vaultID, provider, server)
 	}
 	if createErr != nil {
 		return "", fmt.Errorf("create the Vault connection: %w", createErr)
 	}
-	var made struct {
-		Connector struct {
-			ID string `json:"id"`
-		} `json:"connector"`
-	}
-	if json.Unmarshal([]byte(created), &made) != nil || !vaultConnectionID.MatchString(made.Connector.ID) {
-		return "", errors.New("Vault created a connection but returned no usable connection ID")
-	}
-	id := made.Connector.ID
 	connection, err := vaultConnection(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("new Vault connection %s: %w", id, err)
@@ -136,6 +133,9 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 	if _, err := vaultServiceRequest(ctx, person, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil); err != nil {
 		return fmt.Sprintf("Created Vault connection %s with the existing sign-in, but tool discovery failed (%v). Run sync_connection with connection_id %s. No group has access yet.", id, err, id), nil
 	}
+	if vaultID != "" {
+		return fmt.Sprintf("Promoted %q into your vault %s as connection %s with its existing sign-in; tools were discovered. Everyone you add to the vault can use it. The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, vaultID, id), nil
+	}
 	return fmt.Sprintf("Promoted %q to Vault connection %s with its existing sign-in; tools were discovered. No group has access yet: inspect the connection, then grant a group (save_permissions). The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, id), nil
 }
 
@@ -163,4 +163,49 @@ func (api *StreamingAPI) promotableConnection(ctx context.Context, person, name 
 func vaultPromoteJSON(value any) json.RawMessage {
 	data, _ := json.Marshal(value)
 	return data
+}
+
+// createPlatformVaultConnection creates the connection in the platform Vault, as connect_server does.
+func createPlatformVaultConnection(ctx context.Context, person, provider string, server placeMCPServer) (string, error) {
+	var created string
+	var err error
+	if provider != "" {
+		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"provider": provider, "label": server.Label}))
+	}
+	if provider == "" || err != nil {
+		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"name": server.Name, "url": server.URL}))
+	}
+	if err != nil {
+		return "", err
+	}
+	var made struct {
+		Connector struct {
+			ID string `json:"id"`
+		} `json:"connector"`
+	}
+	if json.Unmarshal([]byte(created), &made) != nil || !vaultConnectionID.MatchString(made.Connector.ID) {
+		return "", errors.New("Vault created a connection but returned no usable connection ID")
+	}
+	return made.Connector.ID, nil
+}
+
+// createOwnVaultConnection creates the connection inside a vault the person owns (the Vault service checks ownership).
+func createOwnVaultConnection(ctx context.Context, person, vaultID, provider string, server placeMCPServer) (string, error) {
+	path := "/api/vaults/" + url.PathEscape(vaultID) + "/connectors"
+	var data []byte
+	var err error
+	if provider != "" {
+		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": provider, "Label": server.Label}))
+	}
+	if provider == "" || err != nil {
+		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": server.Name, "Label": server.Name, "URL": server.URL}))
+	}
+	if err != nil {
+		return "", err
+	}
+	var made struct{ ID string }
+	if json.Unmarshal(data, &made) != nil || !vaultConnectionID.MatchString(made.ID) {
+		return "", errors.New("the vault created a connection but returned no usable connection ID")
+	}
+	return made.ID, nil
 }

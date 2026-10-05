@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerVaultAccessChatTool(reg definitionToolRegistrar
 				in, _ := args["arguments"].(map[string]interface{})
 				confirm, _ := in["confirm"].(bool)
 				name, _ := in["name"].(string)
-				return api.promoteConnectionToVault(ctx, userID, name, confirm)
+				return api.promoteConnectionToVault(ctx, userID, name, "", confirm)
 			}
 			payload, err := json.Marshal(args["arguments"])
 			if err != nil {

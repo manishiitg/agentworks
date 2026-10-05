@@ -17,6 +17,10 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+## 2026-10-05: `search_web_llm` is removed; coding agents use their own web search
+
+Every agent is a coding CLI with its own native web search. The tool only wrapped anonymous free-tier hosted MCP search (Parallel, Exa, Firecrawl) that hit rate limits, so it is gone from the tool lists, guidance and the Video Studio prompt. Old workflows' `enabled_custom_tools` entries for it are harmless. Ticket: [PLAT-508](bugs/pulse_platform/step-execution/plat-508.md).
+
 ## 2026-10-05: the global schedule pause is administrators only; the schedules list shows only what the account may open
 
 The pause stops every schedule on the platform, so only an administrator may use it; everyone else's schedules list is filtered like the workflows list. A local (single-user) run keeps both. Ticket: PLAT-505.
