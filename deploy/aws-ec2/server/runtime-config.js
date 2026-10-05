@@ -6,7 +6,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: false,
   defaultProductSurface: "video-studio",
   gatewayUrl: "https://video.realtrainingsys.com",
-  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway"],
+  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"],
   // REAL Training Systems branding (brand/: name and colors from
   // realtrainingsys.com, which has a text wordmark and no logo file). The
   // brand color is their teal #305b6e lightened so it reads on dark screens.

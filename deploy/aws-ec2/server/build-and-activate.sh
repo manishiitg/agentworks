@@ -43,12 +43,12 @@ fi
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
 # building or touching the server if either checked-in allowlist drifts.
-grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway"]' "$SCRIPT_DIR/server/runtime-config.js" || {
-  echo "RTS deployment must expose AgentWorks, Video Studio, Work, Code, and Vault" >&2
+grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"]' "$SCRIPT_DIR/server/runtime-config.js" || {
+  echo "RTS deployment must expose AgentWorks, Video Studio, Work, Code, Vault, and Brain" >&2
   exit 1
 }
-grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
-  echo "RTS deployment must load the video-studio, work, code and Vault product backends" >&2
+grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway,knowledgebase' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
+  echo "RTS deployment must load the video-studio, work, code, Vault and Brain product backends" >&2
   exit 1
 }
 grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {

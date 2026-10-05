@@ -15,6 +15,6 @@ window.__APP_RUNTIME_CONFIG__ = {
   // Code for everyone; Crew and Relays are offered by this list but each account only sees the products its own
   // list allows (users.json `products`; administrators see all three), so they stay a few people's.
   gatewayUrl: "https://agents.excellencetechnologies.in",
-  enabledProductSurfaces: ["code", "work", "relays", "mcp-gateway"],
+  enabledProductSurfaces: ["code", "work", "relays", "mcp-gateway", "knowledgebase"],
   defaultProductSurface: "code"
 };
