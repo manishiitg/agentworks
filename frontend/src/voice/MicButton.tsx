@@ -77,7 +77,14 @@ export const MicButton = forwardRef(function MicButton({
   autoSubmitOnStop,
 }: MicButtonProps, ref: React.ForwardedRef<MicButtonHandle>) {
   const initialStatus = useCapabilitiesStore(state => state.capabilities?.voice)
-  const [setup, setSetup] = useState<SetupPhase>(() => phaseFor(initialStatus))
+  // The capabilities snapshot is fetched once at app start. If the engine was still loading then,
+  // it says "loading" for the rest of the session, and every remount (each workflow or Crew switch)
+  // put the loading bar back up until the first poll. An in-flight snapshot is only a hint: start
+  // unknown and ask the server below.
+  const [setup, setSetup] = useState<SetupPhase>(() => {
+    const phase = phaseFor(initialStatus)
+    return phase === 'downloading' ? 'unknown' : phase
+  })
   const [engine, setEngine] = useState<VoiceEngineStatus | undefined>(initialStatus)
   const [setupError, setSetupError] = useState<string | null>(null)
 
@@ -118,11 +125,21 @@ export const MicButton = forwardRef(function MicButton({
       const status = (await res.json()) as VoiceEngineStatus
       setEngine(status)
       setSetup(phaseFor(status))
+      // Keep the shared snapshot current so the next mount starts from the truth.
+      useCapabilitiesStore.setState(state => state.capabilities ? { capabilities: { ...state.capabilities, voice: status } } : {})
       return status
     } catch {
       return undefined
     }
   }, [authHeaders])
+
+  // A snapshot that said "in flight" at app start: check once instead of showing the bar.
+  const staleInFlight = useRef(phaseFor(initialStatus) === 'downloading')
+  useEffect(() => {
+    if (!staleInFlight.current) return
+    staleInFlight.current = false
+    void refreshStatus()
+  }, [refreshStatus])
 
   // Poll only while a download or load is in flight — the progress bar is
   // the only reason to hit the server repeatedly.
