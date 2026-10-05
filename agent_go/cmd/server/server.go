@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -2052,6 +2053,17 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Printf("✅ Gmail service initialized (disabled — set config/gmail-config.json)")
 	}
 
+	chromeStateRoot, chromeStateErr := workflowCLIStateRoot()
+	if chromeStateErr != nil {
+		log.Fatalf("Cannot resolve Chrome selection state: %v", chromeStateErr)
+	}
+	chromeRelay, chromeStateErr := browserrelay.NewPersistent(filepath.Join(chromeStateRoot, "chrome-extension"))
+	if chromeStateErr != nil {
+		log.Fatalf("Cannot load Chrome selection state: %v", chromeStateErr)
+	}
+	browserrelay.Default = chromeRelay
+	defer chromeRelay.Close()
+
 	cliSecurityRoot, err := clisecurity.DefaultRoot()
 	if err != nil {
 		log.Fatalf("Failed to resolve AgentWorks CLI security config directory: %v", err)
@@ -2691,6 +2703,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Browser session tracking API
 	apiRouter.HandleFunc("/browser/sessions", api.handleGetBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/workspace", api.handleWorkspaceBrowser).Methods("GET", "POST")
+	apiRouter.HandleFunc("/browser/extension", api.handleBrowserExtension).Methods("GET", "POST")
+	apiRouter.HandleFunc("/browser/extension/connect", api.handleBrowserExtensionConnect).Methods("GET")
+	apiRouter.HandleFunc("/downloads/chrome-extension.zip", api.handleBrowserExtensionDownload).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/teaching", api.handleBrowserTeaching).Methods("POST")
 	apiRouter.HandleFunc("/browser/live/sessions", api.handleLiveBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/stream", api.handleLiveBrowserStream).Methods("GET")

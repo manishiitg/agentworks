@@ -1,4 +1,5 @@
 import { cloneElement, isValidElement, useState, type ReactNode } from 'react'
+import { ChromeExtensionConnection } from './ChromeExtensionConnection'
 import { Button } from '../ui/Button'
 import { Settings2, X } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
@@ -51,6 +52,7 @@ export function BrowserWorkspacePanel({
   profileId,
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [extensionSelected, setExtensionSelected] = useState(false)
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
   const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
     ? cloneElement(assistantControl, {
@@ -69,10 +71,11 @@ export function BrowserWorkspacePanel({
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
-      <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} showGuide={false} toolbar={<>
+      <ChromeExtensionConnection workspacePath={workspacePath} profileId={profileId} readOnly={readOnly} onSelectionChange={setExtensionSelected} />
+      {extensionSelected ? <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground"><p>Your agent uses the tabs shared from your Chrome extension.<br />Watch and control those tabs in Chrome.</p></div> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
-      </>} />
+      </>} />}
       {settingsOpen && (
         <div
           role="dialog"

@@ -66,6 +66,9 @@ func CheckBrowserSessionLimit(command string, extraEnv map[string]string) string
 		return "" // No session flag — can't track
 	}
 	browserSession := sessionMatch[1]
+	if strings.HasPrefix(browserSession, "ext-") && strings.Contains(command, "--cdp ") {
+		return "" // Paired user Chrome is governed by its relay lease, not headless limits.
+	}
 
 	// Detect the subcommand
 	subCommand := detectSubCommand(command, browserSession)
@@ -83,8 +86,15 @@ func CheckBrowserSessionLimit(command string, extraEnv map[string]string) string
 	isOpenCommand := subCommand == "open" || subCommand == "goto" || subCommand == "navigate"
 	isCloseCommand := subCommand == "close" || subCommand == "quit" || subCommand == "exit"
 
-	log.Printf("[BROWSER_SHELL_TRACKER] cmd=%q browser=%q chat=%q sub=%q open=%v close=%v (active: %d global)",
-		truncate(command, 100), browserSession, truncateID(chatSessionID), subCommand, isOpenCommand, isCloseCommand, len(bt.sessions))
+	// Browser commands may contain credentials, page contents or a private relay
+	// capability. Log identity only, like the shell execution handler.
+	commandLength, commandFingerprint := shellCommandLogIdentity(command)
+	loggedSubcommand := subCommand
+	if strings.ContainsAny(loggedSubcommand, ":/\\") {
+		loggedSubcommand = "unknown"
+	}
+	log.Printf("[BROWSER_SHELL_TRACKER] command_length=%d command_sha256=%s browser=%q chat=%q sub=%q open=%v close=%v (active: %d global)",
+		commandLength, commandFingerprint, browserSession, truncateID(chatSessionID), loggedSubcommand, isOpenCommand, isCloseCommand, len(bt.sessions))
 
 	if isCloseCommand {
 		if _, exists := bt.sessions[browserSession]; exists {

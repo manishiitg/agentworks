@@ -47,6 +47,37 @@ empty `AGENT_BROWSER_SHARED_PROFILE` retains the existing ephemeral override.
 `mcpagent` transports tools; `multi-llm-provider-go` does not choose browser scope.
 Neither dependency requires a source change for this feature.
 
+## Personal Chrome extension
+
+A writable Browser panel offers **Connect Chrome** for the current account and
+workspace, including hosted installations. Download the bundled extension ZIP,
+load the unzipped folder through Chrome's **Load unpacked**, paste the five-minute
+connection into its popup, and explicitly **Share current tab**. The existing
+`agent_browser` tool then uses agent-browser through the paired CDP relay,
+without an operator debugging port or a model-supplied `--cdp` endpoint.
+
+Personal Chrome access is private to the paired account, even in a shared
+workflow/project. The first agent action claims the connection for that root
+chat/run; its delegates inherit access. Another conversation must reconnect to
+claim it. Only shared tabs and agent-created tabs are exposed. Native workspace
+services on the agent API host work by default; split-service deployments need
+a private relay bind and advertised host as described in
+[installation](../../extensions/README.md). The ordinary deployment flag that
+disables operator-host CDP does not disable this separately paired connection.
+
+Stop in Chrome, connection expiry or server/browser restart leaves a disconnected
+selection, so agent actions fail until the user re-pairs. **Use workspace browser**
+explicitly restores ordinary browser routing. Selection is stored in private
+server state without credentials or target IDs. Connections last at most eight
+hours, and Chrome/laptop must stay awake. Page contents and screenshots travel to
+the platform/model; Chrome retains its own login cookies. Screenshot files use
+the existing workspace artifact broker. Local upload/download transfer, teaching,
+recording, protected Chrome pages and complete CDP parity are unavailable.
+
+See [PLAT-510](../bugs/pulse_platform/browser/plat-510.md) and the
+[design](../design/chrome_extension_cdp_bridge.md). This is an unpacked-extension
+release; Chrome Web Store publication and deployment remain separate actions.
+
 ## Start browser and manual sign-in
 
 **Browser → Start browser → Take control → open site → sign in → Return control**
