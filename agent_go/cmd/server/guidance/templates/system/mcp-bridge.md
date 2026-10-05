@@ -15,6 +15,8 @@ Through the bridge, MCP tools are reachable via authenticated HTTP, not
 as direct LLM tool calls. Discover currently authorized tools with `search_tools`, then use
 `get_api_spec(tool_name="<returned-name>")` for the schema and route. If a
 keyword search misses, enumerate a group or server instead of guessing names.
+Search returns an MCP tool as `<connection>__<tool>`; the route `get_api_spec`
+returns carries the server's own tool name, so call that route as given.
 
 Provider-native file and shell availability is determined by this session's
 runtime contract. With Native agent tools on, the CLI's own tools run in a

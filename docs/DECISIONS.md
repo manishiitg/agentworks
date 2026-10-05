@@ -20,8 +20,11 @@ Design references for the linked runtime decisions:
 ### 2026-10-06 — Every MCP tool is exposed with its connection as a prefix
 - In the platform's own agent loop every MCP tool is named `<alias>__<tool>` (a short, stable connection alias); platform
   tools keep their names, so a connector can never clash with or hide a platform tool, and two connections of the same server
-  stay distinct. Saved `server:tool` selections and the `$MCP_MCP/<server>/<tool>` bridge URL are unchanged. Replaces the
-  "prefix only on a clash" direction. Until it ships, the stopgap keeps the platform tool and hides the clashing MCP tool.
+  stay distinct. The alias is the connection's own name (never the internal `u<id>__` key), with a 4-character connection-id
+  suffix only when two connections would share it. Saved `server:tool` selections and the `$MCP_MCP/<server>/<tool>` bridge
+  URL are unchanged: the tool index still lists each server's real tool names under its route, `get_api_spec` takes the
+  prefixed name or a real name (with `server_name` when a platform tool shares it), and specs show the real route.
+  Replaces the "prefix only on a clash" direction; the stopgap (platform tool wins, `[TOOL_SHADOW]`) stays as a safety net.
   A read-only scan of local, Confida, Excellence and RTS found nothing saved that depends on bare MCP tool names.
   Ticket: [PLAT-519](bugs/pulse_platform/mcp/plat-519.md).
 
