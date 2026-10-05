@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -147,12 +146,8 @@ func knowledgebasePrincipal(r *http.Request, claims *UserClaims) knowledgebase.P
 		if claims.AccessToken == nil {
 			return ctx.Err()
 		}
-		store, err := openAccessTokens()
-		if err != nil {
-			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Connection authority is unavailable."}
-		}
-		defer store.Close()
-		if _, err = store.Active(ctx, claims.AccessToken.ID, time.Now()); err != nil {
+		// Local tokens and OAuth MCP connections ("oauth-" IDs) are verified in their own stores.
+		if live, err := activeExternalGrantClaims(ctx, claims.AccessToken.ID); err != nil || live == nil || live.UserID != claims.UserID {
 			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "This connection is expired or revoked."}
 		}
 		return nil

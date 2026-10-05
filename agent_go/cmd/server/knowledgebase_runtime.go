@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -26,17 +25,13 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 	}
 	userID = claims.UserID
 	if claims.AccessToken != nil {
-		store, err := openAccessTokens()
-		if err != nil {
-			return "", fmt.Errorf("token authority unavailable")
-		}
-		fresh, err := store.Active(ctx, claims.AccessToken.ID, time.Now())
-		_ = store.Close()
-		if err != nil {
+		// Local tokens and OAuth MCP connections ("oauth-" IDs) are verified in their own stores.
+		live, err := activeExternalGrantClaims(ctx, claims.AccessToken.ID)
+		if err != nil || live == nil || live.AccessToken == nil || live.UserID != claims.UserID {
 			return "", fmt.Errorf("connection is expired or revoked")
 		}
 		copy := *claims
-		copy.AccessToken = &fresh
+		copy.AccessToken = live.AccessToken
 		claims = &copy
 		if accessOnly || !externalTokenAllows(claims, externalTool{Name: tool}) || !knowledgebaseConnectionAllowsAction(claims, tool, args) {
 			return "", fmt.Errorf("connection does not allow this operation")

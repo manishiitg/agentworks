@@ -2744,3 +2744,7 @@ change what a workflow does while still allowing it to report success.
 ## Old release copies were never pruned and filled the RTS disk — PLAT-545
 
 [PLAT-545](pulse_platform/performance/plat-545.md), P1, fixed in the deploy scripts on main, not yet run: the pruner aborted on another account's `/proc/<pid>/root` since the slot accounts, so every deploy kept every release (RTS 99% full, a deploy failed). It now skips unreadable paths, keeps the two newest releases, and every deployer makes room first when space is short.
+
+## Brain refused every OAuth MCP connection as "expired or revoked" — PLAT-547
+
+[PLAT-547](pulse_platform/learnings-knowledge/plat-547.md), P1, fixed on main, not deployed: Brain verified connections only in the local token store, so OAuth MCP connections (`oauth-` IDs) always failed; both checks now use the shared verifier.
