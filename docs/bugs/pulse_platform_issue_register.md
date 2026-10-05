@@ -1,3 +1,7 @@
+## Webhook/scheduled run folders are owner-only, slot steps cannot write outputs — PLAT-502
+
+[PLAT-502](pulse_platform/security-sandbox/plat-502.md), P1, open (diagnosed, not fixed). New hook/scheduled run folders have been `0700` (group no access) since 10-01/10-02, so a code step running as a slot gets "Permission denied" writing into its run folder. Seen on RTS (`rtsprreviweer`), same modes on Confida.
+
 ## Empty schedule state file makes "Failed to load automation schedules" — PLAT-501
 
 [PLAT-501](pulse_platform/scheduler-runs/plat-501.md), P2, fixed on main, not deployed. An existing zero-byte `product-schedules.json` was read as a failed read, so the whole Automations list returned 500 for that user (Excellence, 2026-10-05). The reader now treats it as an empty file.
