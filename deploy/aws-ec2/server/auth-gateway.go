@@ -827,8 +827,19 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.serveHTTP(recorder, r)
 }
 
+// These browser navigations cannot carry the app JWT. The backend enforces
+// expiring plans, current admin authority and one-use Google consent + PKCE.
+// Do not admit adjacent management routes, other methods or other OAuth flows.
+func isGmailSetupBrowserRequest(r *http.Request) bool {
+	if r.URL.Path == "/api/gmail-inbound/setup/start" {
+		return r.Method == http.MethodGet || r.Method == http.MethodPost
+	}
+	return r.Method == http.MethodGet && strings.HasPrefix(r.URL.Query().Get("state"), "gmail-setup-") &&
+		(r.URL.Path == "/api/oauth/callback" || r.URL.Path == "/api/human-feedback/gmail/auth/callback")
+}
+
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if isWebhookRequest(r) {
+	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)
 		return

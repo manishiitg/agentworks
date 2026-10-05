@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Gmail setup browser routes reach backend consent checks without an app token
+
+The deployment gateway admits only the exact GET/POST review route and GET
+Google callbacks carrying Gmail setup state. It removes spoofed user headers;
+the backend still validates expiring plans, current admin authority and
+single-use Google consent with PKCE before provisioning. Why: browser review
+links cannot carry the app bearer token, and RTS rejected them before those
+checks. Management and sender approval stay authenticated. Ticket:
+[PLAT-497](bugs/pulse_platform/integrations/plat-497.md).
+
 ### 2026-10-05 - The DMG runs Vault by default - PLAT-493
 
 The desktop app bundles `vault-server` (the mcp-gateway) and starts it in platform mode before the agent, with a private state dir and token under the app's user data, and points the agent at it. Why: owner decision that Vault is on by default locally; a DMG without it ran every shared secret and MCP unrestricted. Opt out with `AGENTWORKS_LOCAL_VAULT=0`. If the binary is missing or the gateway does not become healthy, the app starts without Vault (never with an unreachable Vault URL, which fails closed). Code: `desktop/lib/vault.js`, `desktop/main.js`. Ticket: PLAT-493.

@@ -1,6 +1,6 @@
 # PLAT-483: Builder-guided administrator setup for automatic incoming Gmail
 
-State: fixed on main; not deployed. No real Cloud resources or mailbox watches were changed during implementation.
+State: deployed to RTS for testing; review navigation is blocked by [PLAT-497](plat-497.md) until its gateway fix is deployed. Cloud provisioning and real email delivery are not yet verified. No real Cloud resources or mailbox watches were changed during implementation.
 Priority: P2.
 
 ## Problem
@@ -25,4 +25,4 @@ Right-panel Ask AI follow-up: 28 existing integration-prompt, Incoming email and
 
 ## Remaining
 
-Deploy the updated release when requested. On RTS, an app administrator must complete the reviewed Google Cloud consent with the existing OAuth project's permissions. Verify the public event/callback paths, connect the mailbox with read consent, wait for watch readiness and test a real email. Live Google provisioning/delivery has not been exercised by this task. No deployment or actual account/trigger/Cloud change was requested here.
+Deploy the PLAT-497 gateway fix before proceeding on RTS. On RTS, an app administrator must complete the reviewed Google Cloud consent with the existing OAuth project's permissions. Verify the public event/callback paths, connect the mailbox with read consent, wait for watch readiness and test a real email. Live Google provisioning/delivery has not been exercised by this task. Other deployments require the updated release when requested.

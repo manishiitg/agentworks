@@ -1,3 +1,7 @@
+## RTS gateway rejects incoming Gmail setup review links — PLAT-497
+
+[PLAT-497](pulse_platform/integrations/plat-497.md), P1, fixed on main, needs gateway deployment. Live RTS returns authentication_required before the plan handler; exact GET/POST review and GET setup callbacks now reach backend capability/Google-consent checks without browser JWTs. Gmail settings remain authenticated.
+
 ## The desktop app (DMG) ran with no Vault — PLAT-493
 
 [PLAT-493](pulse_platform/security-sandbox/plat-493.md), P2, fixed on main (not released). The packaged macOS app bundled no Vault gateway, so a DMG install ran with every shared secret and MCP usable by everyone. It now bundles `vault-server` and runs it in platform mode by default, like the dev launcher and the servers. Also fixed: the packaged app omitted `desktop/lib` entirely.
@@ -24,7 +28,7 @@
 
 ## Builder-guided administrator setup for incoming Gmail — PLAT-483
 
-[PLAT-483](pulse_platform/integrations/plat-483.md), P2, fixed on main, not deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Right-panel headers and Gmail cards share this setup guidance. Requires app admin plus Google project permissions. No live Cloud/account changes or deployment performed.
+[PLAT-483](pulse_platform/integrations/plat-483.md), P2, deployed to RTS for testing; review navigation blocked until PLAT-497 is deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Right-panel headers and Gmail cards share this setup guidance. Requires app admin plus Google project permissions. Live plan preparation observed on RTS; Cloud provisioning and real delivery remain unverified.
 
 ## Existing Code MCP skill discovery contract test fails — PLAT-484
 
