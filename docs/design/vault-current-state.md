@@ -737,3 +737,9 @@ The UI uses the Integrations heading and one Connected / Available / Secrets / S
 ## Workflow monitor placement — 2026-10-05
 
 The global active-work monitor sits beside the workflow/Relay toolbar controls. It keeps the same global session inventory and navigation behavior, with its dropdown opening below the toolbar. The navigation rail retains the monitor on other products and full-width global pages, where no workflow toolbar is visible. Only one visible monitor is mounted for the current workflow view. The dropdown renders in a fixed overlay attached to the document body, above workspace resize dividers, with viewport-aware placement and outside-click/Escape dismissal.
+
+## Scheduled and Pulse chat permissions — 2026-10-05
+
+Scheduled execution and Pulse use one shared unattended capability set. Neither can manage users, install/edit MCP connections, inspect MCP connection status, manage bots, or control the live workspace UI. Both can submit workflow suggestions. Writable workflow identities retain plan/report authoring, secret management, knowledge maintenance, and improvement proposals; read-only identities retain only suggestions. This narrows the AgentWorks management tool catalog; authorized MCP execution still follows the executing user's private/Vault access and gateway rules.
+
+The Pulse flag preserves stage provenance and cost attribution. With matching capability sets, transitioning from Scheduled to Pulse no longer changes the native session's authority fingerprint or forces a conversation restore. Actual permission, mode, or definition/configuration changes retain their existing refresh behavior. Existing broader scheduled sessions refresh once after this policy is loaded so they cannot retain the old management tool catalog.

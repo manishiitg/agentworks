@@ -22,9 +22,9 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 		{name: "legacy Builder", want: true},
 		{name: "legacy Run request by writable user", req: QueryRequest{ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}, want: true},
 		{name: "manual workflow execution", req: QueryRequest{AgentMode: "workflow"}, list: true},
-		{name: "cron shares builder mode", req: QueryRequest{TriggeredBy: "cron"}, want: true},
-		{name: "retained schedule", session: "schedule-digest_123", want: true},
-		{name: "restored origin", active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},
+		{name: "cron shares builder mode", req: QueryRequest{TriggeredBy: "cron"}},
+		{name: "retained schedule", session: "schedule-digest_123"},
+		{name: "restored origin", active: &ActiveSessionInfo{TriggeredBy: "cron"}},
 		{name: "read only Builder", readOnly: true, list: true},
 		{name: "Slack channel turn (Run)", req: QueryRequest{BotPlatform: "slack"}, readOnly: true, list: true},
 		{name: "Pulse maintenance", req: QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}},
@@ -54,7 +54,7 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 			if tc.want {
 				// Exercise the real handler without making a network request.
 				result, err := reg.tools["install_mcp_server"].exec(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "policy-test-user"}), map[string]interface{}{})
-				if err != nil || !strings.Contains(result, "name is required") {
+				if err == nil || !strings.Contains(err.Error(), "name is required") || result != "" {
 					t.Fatalf("missing required name: %q %v", result, err)
 				}
 			}

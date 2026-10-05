@@ -74,7 +74,14 @@ func (p workflowChatPolicy) sessionKey() string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	identity := p.Mode + "|" + p.Origin + "|" + strings.Join(names, ",")
+	// Scheduled execution and Pulse are stages of the same unattended chat.
+	// Keep provenance for routing/costs, but only reconnect if their actual
+	// capabilities differ. Interactive and child origins remain distinct.
+	roleOrigin := p.Origin
+	if roleOrigin == "pulse" {
+		roleOrigin = "scheduled"
+	}
+	identity := p.Mode + "|" + roleOrigin + "|" + strings.Join(names, ",")
 	if p.ProductProfileID != "" {
 		identity += "|profile:" + p.ProductProfileID
 	}

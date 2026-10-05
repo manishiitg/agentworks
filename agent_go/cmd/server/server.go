@@ -930,8 +930,8 @@ type QueryRequest struct {
 	KeepNativeSessionAlive bool `json:"keep_native_session_alive,omitempty"`
 	// PulseLifecycleTurn marks a scheduler-sent Pulse turn (Gate, review
 	// dispatch, Finalize). The main conversation keeps the Builder model on
-	// every turn, reviews included; the flag only tags the turn for Pulse
-	// scope and cost.
+	// every turn, reviews included. Pulse shares scheduled execution's
+	// unattended capabilities; the flag identifies its stage and cost scope.
 	PulseLifecycleTurn bool `json:"pulse_lifecycle_turn,omitempty"`
 	// UserInteractiveContinuation promotes an observed schedule/bot conversation
 	// into an interactive chat without changing its session or native resume ID.

@@ -91,6 +91,32 @@ func TestWorkflowUIScheduleReclassificationRevokesOldLease(t *testing.T) {
 	}
 }
 
+func TestUnattendedTurnsRegisterSuggestionsWithoutManagementTools(t *testing.T) {
+	for _, pulse := range []bool{false, true} {
+		for _, readOnly := range []bool{false, true} {
+			api := &StreamingAPI{}
+			reg := &recordingRegistrar{}
+			req := QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: pulse}
+			policy := resolveWorkflowChatPolicy("schedule-digest_123", req, nil, readOnly)
+			if err := api.registerUserAccessTools(reg, "test-user", "Workflow/test", policy); err != nil {
+				t.Fatal(err)
+			}
+			if err := api.registerMCPToolsForChat(reg, policy, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := api.registerWorkflowUIForCaller(reg, "workflow-builder", "schedule-digest_123", "Workflow/test", req, readOnly); err != nil {
+				t.Fatal(err)
+			}
+			if _, present := reg.tools["submit_workflow_suggestion"]; !present {
+				t.Fatalf("pulse=%v readOnly=%v missing suggestion tool", pulse, readOnly)
+			}
+			if len(reg.tools) != 1 {
+				t.Fatalf("pulse=%v readOnly=%v unexpected management/UI tools: %v", pulse, readOnly, reg.tools)
+			}
+		}
+	}
+}
+
 func TestWorkspacePresentationDoesNotGrantConnectionWriteAccess(t *testing.T) {
 	for _, readOnly := range []bool{false, true} {
 		reg := &recordingRegistrar{}

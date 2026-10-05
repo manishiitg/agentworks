@@ -33,6 +33,35 @@ func TestChatPolicyRoleRequiresReconnect(t *testing.T) {
 	}
 }
 
+func TestScheduledPulseTransitionKeepsNativeConversation(t *testing.T) {
+	api := &StreamingAPI{}
+	for _, readOnly := range []bool{false, true} {
+		scheduled := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{TriggeredBy: "cron"}, nil, readOnly)
+		pulse := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, readOnly)
+		if scheduled.Origin != "scheduled" || pulse.Origin != "pulse" {
+			t.Fatal("stage provenance must remain distinct")
+		}
+		if chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
+			t.Fatal("same-permission scheduled -> Pulse transition restarted native conversation")
+		}
+		saved := &ChatHistoryAgentRuntime{ExternalSessionID: "native-1", ChatPolicyRoleKey: scheduled.sessionKey()}
+		if chatPolicyRoleRequiresReconnect(true, "", pulse.sessionKey(), false, saved) {
+			t.Fatal("restored scheduled runtime cannot continue into Pulse")
+		}
+		if chatPolicyRequiresReconnect(true, api.chatPolicySessionKey(scheduled), api.chatPolicySessionKey(pulse), true, nil) {
+			t.Fatal("same-definition scheduled -> Pulse transition still reconnects Muse")
+		}
+		interactive := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{UserInteractiveContinuation: true}, nil, readOnly)
+		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), interactive.sessionKey(), true, nil) {
+			t.Fatal("interactive promotion must still refresh authority")
+		}
+		pulse.Capabilities["mcp_management"] = true
+		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
+			t.Fatal("a real Pulse capability change must still reconnect")
+		}
+	}
+}
+
 func TestCodingProviderReloadsInstructionsOnResume(t *testing.T) {
 	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli", "pi-cli"} {
 		if !codingProviderReloadsInstructionsOnResume(provider) {

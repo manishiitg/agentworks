@@ -160,9 +160,10 @@ chat_policy:
   origins:
     external_builder: [plan_authoring]
     interactive: *builder_capabilities
-    scheduled: *builder_capabilities
-    # Pulse coordinates approved improvements through its existing typed roles.
-    pulse: [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals]
+    # Unattended execution and post-run Pulse share the same authority.
+    # Neither stage admits connection/user/bot management or live workspace UI.
+    scheduled: &scheduled_capabilities [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals, workflow_suggestions]
+    pulse: *scheduled_capabilities
     child: [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals]
     bot: *builder_capabilities
     notification: *builder_capabilities
