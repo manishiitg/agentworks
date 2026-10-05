@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on main (2026-10-05, owner chose main before the live test); not deployed; owner testing locally |
+| State | fixed on main (`a3529fd9e`), confirmed locally by the owner 2026-10-05 ("seems to work"); not deployed |
 | Priority | P2 |
 | Date | 2026-10-05 |
 | Owner | chat-reliability |
@@ -50,6 +50,6 @@ What the platform saved is the chat's history. What Claude/Codex save in their o
 
 ## Left
 
-- Owner's local test: two quick messages into a running Codex turn; reopen the chat; resume; restart the server; one message each, replies in order, no duplicate.
+- Done 2026-10-05: owner tested locally after restart; works.
 - Frontend still sends `sync_native_transcript=1`; the server ignores it. Remove after the test.
 - Check one Cursor and one Claude chat (send, reopen, nothing missing); watch for the "no final reply to save" log line.
