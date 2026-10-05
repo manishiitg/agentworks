@@ -393,6 +393,7 @@ func crewReaderDeniedTools() []string {
 		"edit_mcp_server",
 		"remove_mcp_server",
 		"trigger_mcp_discovery",
+		"manage_vault_access",
 		// Crew selections (servers, secrets, skills).
 		"update_project_mcp_server_selection",
 		"update_project_global_secret_selection",

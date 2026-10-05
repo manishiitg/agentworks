@@ -102,6 +102,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		if err := api.registerMCPToolsForChat(definitionAgent, policy, nil); err != nil {
 			return err
 		}
+		if policy.allows("mcp_management") {
+			if err := api.registerVaultAccessChatTool(definitionAgent, userID); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Register phase-appropriate tools

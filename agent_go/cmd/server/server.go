@@ -6585,6 +6585,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)
 				return
 			}
+			// Whoever may manage Vault can connect and share its MCPs from any chat (Code, Crew, workflows); the
+			// tool is only registered for an active administrator and rechecked on every call (PLAT-503).
+			if resolvedProfile == nil || resolvedProfile.Definition.ID != caplayerproduct.ProfileID {
+				if err := api.registerVaultAccessChatTool(llmAgent, currentUserID); err != nil {
+					sendError(fmt.Sprintf("Failed to register Vault access tool: %v", err), true)
+					return
+				}
+			}
 			// A Code chat's agent connects the person's own MCP servers.
 			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)

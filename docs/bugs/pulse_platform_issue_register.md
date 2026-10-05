@@ -1,6 +1,6 @@
 ## Agents cannot attach or share a Vault MCP connection from chat — PLAT-503
 
-[PLAT-503](pulse_platform/security-sandbox/plat-503.md), P2, open, not built. Owner wants agents to do it (2026-10-05); today only the Integrations UI can.
+[PLAT-503](pulse_platform/security-sandbox/plat-503.md), P2, built on main, not deployed or verified live. Anyone who may manage Vault can connect and share its MCPs from any Code, Crew or workflow chat (`manage_vault_access`, rechecked per call).
 
 ## Webhook/scheduled run folders are owner-only, slot steps cannot write outputs — PLAT-502
 
