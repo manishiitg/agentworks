@@ -78,11 +78,11 @@ export function BrowserWorkspacePanel({
         {value:'headless', title:'Workspace browser', description:`A separate browser for this ${scopeNoun}. Watch and control it here.`, icon:Monitor},
         ...(extensionAvailable ? [{value:'extension', title:'My Chrome or Edge', description:'Use your signed-in tabs with the AgentWorks extension.', icon:PlugZap}] : []),
         ...(isBrowserCDPEnabled() ? [{value:'cdp', title:'Chrome · direct connection', description:'Connect to Chrome running on this machine.', icon:Settings2}] : []),
-      ] as const).map(option => <button type="button" key={option.value} disabled={connection.busy} onClick={() => { void changeChoice(option.value as BrowserChoice).then(() => setSettingsOpen(true)) }} className="flex w-full items-start gap-3 rounded-xl border border-border bg-muted/20 p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+      ] as const).map(option => <Button type="button" variant="ghost" key={option.value} disabled={connection.busy} onClick={() => { void changeChoice(option.value as BrowserChoice).then(() => setSettingsOpen(true)) }} className="flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-xl border border-border bg-muted/20 p-4 text-left font-normal transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
         <option.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.description}</span></span>
         <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      </button>)}
+      </Button>)}
     </div>
   </div> : undefined
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />

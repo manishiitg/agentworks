@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | open: found 2026-10-05 while testing PLAT-528; not caused by it |
+| State | fixed on main (2026-10-05); not deployed |
 | Priority | P3 |
 | Date | 2026-10-05 |
 | Owner | frontend-chat |
@@ -13,6 +13,10 @@
 
 `npx vitest run src/components/workflow/formsKitAdoption.test.ts` on a clean `origin/main` worktree: 1 failed, 8 passed; `AssertionError: expected 1 to be +0`. The rest of `src/components` and `src/products` (1691 tests) passes.
 
+## Cause and fix
+
+The test pins "settings screens use the shared `Button`, no raw `<button>`". Commit `b8de134c1` (PLAT-516, Code browser setup) added a raw `<button>` for the "Choose a browser" cards in `BrowserWorkspacePanel.tsx`. Fixed in the code, not the test: the cards use the shared `Button` (ghost variant) with `h-auto justify-start whitespace-normal font-normal` so the three-line card layout is unchanged. Type-check clean; `src/components/workflow` 604/604.
+
 ## Left
 
-Find which settings-form change made the test (or the form) drift and fix whichever is stale; check CI is red on main for the same reason (PLAT-489 style stale test fixes).
+Owner: check the "Choose a browser" cards look the same in the Browser pane (layout, hover, disabled while busy).

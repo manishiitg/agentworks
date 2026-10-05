@@ -212,7 +212,7 @@ usable node_modules if the install fails.
 
 ## formsKitAdoption test fails on main — PLAT-529
 
-[PLAT-529](pulse_platform/frontend-chat/plat-529.md), open: pre-existing, found while testing PLAT-528.
+[PLAT-529](pulse_platform/frontend-chat/plat-529.md), fixed on main: the raw `<button>` added by PLAT-516 now uses the shared Button.
 
 ## Switching to Crew shows 'Opening workspace…' every time — PLAT-531
 
