@@ -258,6 +258,10 @@ usable node_modules if the install fails.
 
 [PLAT-540](pulse_platform/frontend-chat/plat-540.md), fixed on main, not deployed: Browser stays visible beside Activity before Ops, with matching help and walkthrough guidance.
 
+## An auto-notification restarted the CLI session ("Conversation restored" again and again) — PLAT-548
+
+[PLAT-548](pulse_platform/chat-reliability/plat-548.md), fixed on main, not deployed: a notification shares the interactive role.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

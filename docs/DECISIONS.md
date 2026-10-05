@@ -17,6 +17,12 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — An auto-notification is the same chat role as a typed message
+- A coding CLI's session is replaced only on a role change (mode, origin, capabilities). An auto-notification now counts as
+  `interactive` for that role, like Pulse counts as scheduled, so notifications no longer restart the CLI and repeat the
+  "Conversation restored" summary. Its origin is still recorded as `notification`; different capabilities still restart.
+  Ticket: [PLAT-548](bugs/pulse_platform/chat-reliability/plat-548.md).
+
 ### 2026-10-05 — Browser lifecycle changes stay in the browser UI
 
 Stop automatic connection, first-share, disconnection and reconnection messages
