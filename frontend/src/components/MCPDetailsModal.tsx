@@ -23,7 +23,7 @@ export default function MCPDetailsModal({ onClose, onOpenConfigEditor, selectedS
   const groups = Object.entries(inventory.getServerGroups()).filter(([name]) => !name.startsWith('vault_'))
   const toggle = (name: string) => onSelectedServersChange(selectedServers.includes(name) ? selectedServers.filter(item => item !== name && item !== 'NO_SERVERS') : [...selectedServers.filter(item => item !== 'NO_SERVERS'), name])
   const personal: McpConnectionRow[] = groups.filter(([, entries]) => entries[0].connection === 'connected').map(([name, entries]) => ({
-    id: `private:${name}`, name, source: 'This place', status: 'Connected', statusDot: 'bg-green-500', toolCount: entries[0].function_names?.length,
+    id: `private:${name}`, name, source: 'Your connection', status: 'Connected', statusDot: 'bg-green-500', toolCount: entries[0].function_names?.length,
     selection: { label: `Use ${name}`, checked: selectedServers.includes(name), change: () => toggle(name) },
     controls: <OAuthStatusBadge scope="private" serverName={name} connection={entries[0].connection} onAuthChange={() => { void inventory.refreshTools?.() }} />,
     loadTools: async () => {

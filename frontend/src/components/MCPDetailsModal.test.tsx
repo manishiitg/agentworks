@@ -10,7 +10,7 @@ vi.mock('./ui/MarkdownRenderer', () => ({ MarkdownRenderer: () => null }))
 vi.mock('../stores', () => ({ useMCPStore: () => ({ toolList: [], getServerGroups: () => ({}) }) }))
 import MCPDetailsModal from './MCPDetailsModal'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-it('offers group-filtered Vault access in ordinary chats and preserves private selections', async () => {
+it('lists permitted Vault MCPs as available automatically, with nothing to tick, and keeps the chat selection', async () => {
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   const save = vi.fn()
   function Harness() {
@@ -21,7 +21,9 @@ it('offers group-filtered Vault access in ordinary chats and preserves private s
     await act(async () => root.render(<Harness />))
     expect(host.textContent).toContain('private to you')
     expect(get).toHaveBeenCalledWith('/api/me/mcp/vault')
-    await act(async () => (host.querySelector('input[aria-label="Use Company MCP from Vault"]') as HTMLInputElement).click())
-    expect(save).toHaveBeenCalledWith(['my_private', 'vault_shared'])
+    expect(host.textContent).toContain('Company MCP')
+    expect(host.textContent).toContain('Available automatically')
+    expect(host.querySelector('input[aria-label="Use Company MCP from Vault"]')).toBeNull()
+    expect(save).not.toHaveBeenCalled()
   } finally { act(() => root.unmount()); host.remove() }
 })

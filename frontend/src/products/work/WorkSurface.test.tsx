@@ -6,6 +6,13 @@ import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { crewTemplates, type CrewTemplateId } from './crewTemplates'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+// RunsOnPicker loads the provider manifest in an effect. This runner has no working
+// localStorage, so the real store's late write became an unhandled rejection after the
+// test ended. A store with the manifest already loaded starts no request at all.
+const llmState = vi.hoisted(() => ({ providerManifest: [], providerManifestLoaded: true, loadProviderManifest: vi.fn(), setShowLLMModal: vi.fn() }))
+vi.mock('../../stores/useLLMStore', () => ({
+  useLLMStore: Object.assign((selector: (state: typeof llmState) => unknown) => selector(llmState), { getState: () => llmState }),
+}))
 
 describe('CreateWorkProjectDialog', () => {
   let container: HTMLDivElement | null = null

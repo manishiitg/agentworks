@@ -51,6 +51,11 @@ runs the whole frontend suite (`npm test`, vitest). On a clean `main` it has 11 
   `frontend-ci.yml`, that runs on pushes and PRs that touch `frontend/`. The Go checks stay in
   `coding-cli-p0.yml`.
 
+- Two more fixes after `frontend-ci.yml` ran for the first time: `MCPDetailsModal.test` still expected a "Use … from
+  Vault" checkbox (Vault MCPs are available automatically now) and `WorkSurface.test` let a late provider-manifest
+  write fail as an unhandled rejection after teardown (the store is mocked as already loaded, like
+  `RunsOnPicker.test`). The ordinary-chat modal labels personal connections "Your connection".
+
 ## Left
 
 - Confirm `frontend-ci.yml` is green on `main`, and that the next `v*` tag builds the DMG.
