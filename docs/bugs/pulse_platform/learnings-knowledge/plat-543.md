@@ -11,7 +11,7 @@
 - New action `set_project_access` on `manage_knowledgebase_access` (mode, expected manifest version, request ID), through the same version check and request journal as a binding change, for the Builder, an owner's MCP connection and the UI route. It cannot be used from a step, a schedule or an unattended run. A project migrated to Brain cannot be set to off or read.
 - One test (`TestBrainProjectAccessModes`) pins: off refuses, read reads and cannot write, read cannot reach a folder an output reader cannot read.
 
-**Done (UI):** a Brain tab beside Vault under Integrations → Tools & secrets for workflows and Crews (Off / Read / Read & write, folders only for Read & write; `ProjectKnowledgebasePanel`). The "Connected work" tab is gone: its content (other workflows' knowledge, external folders, legacy knowledge sources, attached-folder grants) is now Integrations → "Folders & workflows" for workflows, Crews and Code. Legacy sources are labelled "Legacy knowledge sources". Brain has its own mark and a findable Ctrl+K entry.
+**Done (UI):** a Brain section of its own in the Integrations list (separate from Tools & secrets) for workflows and Crews (Off / Read / Read & write, folders only for Read & write; `ProjectKnowledgebasePanel`). The "Connected work" tab is gone: its content (other workflows' knowledge, external folders, legacy knowledge sources, attached-folder grants) is now Integrations → "Folders & workflows" for workflows, Crews and Code. Legacy sources are labelled "Legacy knowledge sources". Brain has its own mark and a findable Ctrl+K entry.
 
 **Left:** Code projects (the backend refuses them, so the Brain tab is hidden for Code); the agent prompt text that explains the modes; a bound-folder write and a scheduled run on RTS.
 

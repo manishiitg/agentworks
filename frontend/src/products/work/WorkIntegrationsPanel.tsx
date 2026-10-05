@@ -23,13 +23,14 @@ import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
 
-export type WorkIntegrationTab = 'apps' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TABS = PROJECT_INTEGRATION_SECTIONS
 
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
+    brain: `Help me set up Brain for this ${noun} project: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.`,
     folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, set up Brain under Tools & secrets instead.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
@@ -44,7 +45,7 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
 // the shared MCP browser, scoped to this Code's private and permitted Vault connections;
 // the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
 // Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'brain'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
   view?: 'connected' | 'available'
@@ -114,7 +115,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(false)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
-  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !(product.profileId === 'code' && option.value === 'brain')).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || option.value === 'brain' || enabledPanels.has('mcp')))
+  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
   const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
@@ -147,9 +148,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={activeTab === 'apps' && activePluginTab === 'brain'
-              ? `Help me set up Brain for this ${product.noun}: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.`
-              : activeTab === 'apps' && activePluginTab === 'vault'
+            message={activeTab === 'apps' && activePluginTab === 'vault'
               ? `Help me choose from my Vault groups' permitted connections and secrets for this ${product.noun} project. Check my current access and selection; never show secret values.`
               : integrationTabAskAIMessage(product.noun, incomingGmail)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
             onAsk={onAsk}
@@ -191,9 +190,9 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           selectionScopeLabel="project"
           emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
         />) : undefined}
-          brain={product.profileId === 'code' ? undefined : <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
           vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}
+        {activeTab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {activeTab === 'folders' && <WorkFoldersSection
           workspacePath={workspacePath}
           workflowContextPaths={workflowContextPaths}

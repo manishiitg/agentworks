@@ -40,9 +40,13 @@ const WORKSPACE_ASK_AI_INSTRUCTIONS: Partial<Record<WorkspaceViewId, string>> = 
 // The Integrations view holds five tabs, so its header Ask AI follows the
 // active tab instead of the view. Same marker-block shape as views: a
 // user-visible plain-words summary plus hidden builder instructions.
-export type IntegrationTabId = 'apps' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type IntegrationTabId = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
 const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; summary: string; instructions?: string }> = {
+  brain: {
+    label: 'Integrations · Brain',
+    summary: "Help me set up Brain for this workflow: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.",
+  },
   folders: {
     label: 'Integrations · Folders & workflows',
     summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, set up Brain under Tools & secrets instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",

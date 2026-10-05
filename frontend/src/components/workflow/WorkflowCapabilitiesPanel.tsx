@@ -301,9 +301,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             <WorkspaceViewActions
               workspacePath={workspacePath}
               message={section === 'mcp'
-                ? activeMcpTab === 'apps' && pluginTab === 'brain'
-                  ? 'Help me set up Brain for this workflow: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.'
-                  : activeMcpTab === 'apps' && pluginTab === 'vault'
+                ? activeMcpTab === 'apps' && pluginTab === 'vault'
                   ? 'Help me choose from my Vault groups’ permitted connections and secrets for this project. Check current user/group access; Vault MCPs are available automatically; never show secret values.'
                   : relayMode && activeMcpTab === 'apps'
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
@@ -394,8 +392,10 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                     />}
                   vault={<ProjectVaultPanel disabled={!canWriteWorkflow} selectedSecrets={capabilities.selected_global_secret_names ?? []}
                     onSelectedSecretsChange={async selected_global_secret_names => { const next = { ...latest.current.capabilities, selected_global_secret_names }; await persist(next, true); setCapabilities(next) }} />}
-                  brain={relayMode ? undefined : <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />}
                 />}
+                {!relayMode && activeMcpTab === 'brain' && workspacePath && (
+                  <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />
+                )}
                 {!relayMode && activeMcpTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />
                 )}
