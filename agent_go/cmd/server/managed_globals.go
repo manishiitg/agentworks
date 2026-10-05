@@ -60,6 +60,15 @@ func (api *StreamingAPI) saveManagedGlobalSecret(ctx context.Context, userID, na
 	if !canManageGlobalSecrets(userID) {
 		return errGlobalAdmin
 	}
+	if isVaultSecretName(name) {
+		return errors.New("Names starting with VLT_ are reserved for vault secrets")
+	}
+	return api.storeManagedGlobalSecret(ctx, name, value, createOnly)
+}
+
+// storeManagedGlobalSecret encrypts and stores one value in the managed global store, with no role check: the platform
+// administrator's save and a vault owner's save (under the vault's reserved name) both call it after their own checks.
+func (api *StreamingAPI) storeManagedGlobalSecret(ctx context.Context, name, value string, createOnly bool) error {
 	if len(name) > 128 || !globalSecretNamePattern.MatchString(name) || value == "" {
 		return errors.New("A valid secret name and non-empty value are required")
 	}
@@ -81,6 +90,20 @@ func (api *StreamingAPI) saveManagedGlobalSecret(ctx context.Context, userID, na
 		return errors.New("Could not persist global secret")
 	}
 	managedGlobals[name] = value
+	return nil
+}
+
+// removeManagedGlobalSecretValue deletes a stored value with no role check (a vault owner removing a vault secret).
+func (api *StreamingAPI) removeManagedGlobalSecretValue(ctx context.Context, name string) error {
+	managedGlobalsMu.Lock()
+	defer managedGlobalsMu.Unlock()
+	if _, exists := managedGlobals[name]; !exists {
+		return errGlobalNotFound
+	}
+	if err := api.chatStore.DeleteUserSecret(ctx, managedGlobalSecretsUserID, name); err != nil {
+		return errors.New("Could not delete global secret")
+	}
+	delete(managedGlobals, name)
 	return nil
 }
 

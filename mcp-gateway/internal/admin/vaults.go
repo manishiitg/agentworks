@@ -130,8 +130,8 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 	route("/api/vaults/{id}/owners", setPerson(true))
 	route("/api/vaults/{id}/owners/{uid}", setPerson(true))
 
-	// A vault connection is created through the same checks as a platform one (URL, private-network, uniqueness,
-	// discovery), then bound to the vault; credentials never pass through the body of this call.
+	// A vault connection is created from the catalog only (a server that needs a sign-in cannot be created from a bare
+	// URL), through the same checks as a platform one, and is the vault's from the moment it exists.
 	route("/api/vaults/{id}/connectors", func(w http.ResponseWriter, r *http.Request, actor string) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -142,31 +142,55 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 			writeErr(w, 403, errors.New("only an owner of this vault can do that"))
 			return
 		}
-		var in struct{ Provider, Label, Slug, URL string }
+		var in struct{ Provider, Label, Slug string }
 		if !decode(w, r, &in) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		defer cancel()
-		var c store.Connector
-		var err error
-		if in.URL != "" {
-			c, err = a.AddConnectorCustom(ctx, in.Provider, in.Label, in.Slug, in.URL)
-		} else {
-			c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Slug)
-		}
+		c, err := a.addConnectorFromCatalogFor(ctx, vault, in.Provider, in.Label, in.Slug)
 		if err != nil {
 			writeErr(w, 400, err)
 			return
 		}
 		if err := a.Store.VaultAttachConnector(actor, vault, c.ID); err != nil {
-			// Never leave a connection nobody owns: undo the creation if it cannot be bound.
+			// Never leave a connection nobody can manage: undo the creation if it cannot be bound.
 			_ = a.DeleteConnector(c.ID)
 			writeErr(w, 400, err)
 			return
 		}
-		c.VaultID = vault
 		writeJSON(w, 201, c)
+	})
+	// Secrets: the Vault service records only the name and who may use it; the value stays in the host's encrypted store.
+	route("/api/vaults/{id}/secrets", func(w http.ResponseWriter, r *http.Request, actor string) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct{ Name string }
+		if !decode(w, r, &in) {
+			return
+		}
+		if !secretNamePattern.MatchString(in.Name) {
+			writeErr(w, 400, errors.New("invalid secret name"))
+			return
+		}
+		if err := a.Store.VaultAddSecret(actor, r.PathValue("id"), in.Name); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 201, map[string]string{"name": in.Name})
+	})
+	route("/api/vaults/{id}/secrets/{name}", func(w http.ResponseWriter, r *http.Request, actor string) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := a.Store.VaultRemoveSecret(actor, r.PathValue("id"), r.PathValue("name")); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	route("/api/vaults/{id}/connectors/{cid}", func(w http.ResponseWriter, r *http.Request, actor string) {
 		if r.Method != http.MethodDelete {

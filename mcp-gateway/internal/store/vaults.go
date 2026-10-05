@@ -33,6 +33,7 @@ type VaultSummary struct {
 	Role         string   `json:"role"` // "owner" or "member"
 	Members      []string `json:"members"`
 	ConnectorIDs []string `json:"connector_ids"`
+	SecretNames  []string `json:"secret_names"`
 }
 
 // CreateVault makes a vault owned by ownerID, who is also its first member. A person owns at most MaxVaultsPerOwner.
@@ -86,7 +87,7 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 		if owner {
 			role = "owner"
 		}
-		view := VaultSummary{Group: g, Role: role, Members: []string{}, ConnectorIDs: []string{}}
+		view := VaultSummary{Group: g, Role: role, Members: []string{}, ConnectorIDs: []string{}, SecretNames: []string{}}
 		for member := range s.members[g.ID] {
 			view.Members = append(view.Members, member)
 		}
@@ -95,8 +96,14 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 				view.ConnectorIDs = append(view.ConnectorIDs, c.ID)
 			}
 		}
+		for name, secret := range s.secretResources {
+			if secret.VaultID == g.ID {
+				view.SecretNames = append(view.SecretNames, name)
+			}
+		}
 		sort.Strings(view.Members)
 		sort.Strings(view.ConnectorIDs)
+		sort.Strings(view.SecretNames)
 		out = append(out, view)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Group.Name < out[j].Group.Name })
@@ -198,9 +205,9 @@ func (s *MemoryStore) VaultSetOwner(actor, vaultID, userID string, add bool) err
 	return nil
 }
 
-// VaultAttachConnector puts a just-created connection into a vault the actor owns and lets the vault's members use all
-// its tools. It refuses a connection that already belongs to a vault or to the platform's own, so an owner cannot take
-// over an existing connection: the vault routes call it only right after creating the connection themselves.
+// VaultAttachConnector lets the vault's members use all tools of a connection that was created inside the vault (it
+// carries the vault's ID from the start, so it was never granted to everyone). A connection that is not already the
+// vault's is refused: an owner cannot take over an existing connection.
 func (s *MemoryStore) VaultAttachConnector(actor, vaultID, connectorID string) error {
 	s.mu.Lock()
 	defer s.persistUnlock()
@@ -212,11 +219,9 @@ func (s *MemoryStore) VaultAttachConnector(actor, vaultID, connectorID string) e
 	if !ok || c.WorkspaceID != g.WorkspaceID {
 		return errors.New("unknown connector")
 	}
-	if c.VaultID != "" {
-		return errors.New("connection already belongs to a vault")
+	if c.VaultID != vaultID {
+		return errors.New("connection does not belong to this vault")
 	}
-	c.VaultID = vaultID
-	s.connectors[connectorID] = c
 	if s.groupServers[vaultID] == nil {
 		s.groupServers[vaultID] = map[string]bool{}
 	}
@@ -248,9 +253,52 @@ func (s *MemoryStore) DeleteVault(actor, vaultID string) error {
 			return errors.New("remove this vault's connections first")
 		}
 	}
+	for _, secret := range s.secretResources {
+		if secret.VaultID == vaultID {
+			return errors.New("remove this vault's secrets first")
+		}
+	}
 	delete(s.groups, vaultID)
 	delete(s.members, vaultID)
 	delete(s.groupGrants, vaultID)
 	delete(s.groupServers, vaultID)
+	return nil
+}
+
+// VaultAddSecret records a secret's name as belonging to a vault the actor owns and lets the vault's members use it, and
+// nobody else: it is never granted to the Platform group. The name must be new (the host namespaces vault secret names
+// by vault so they cannot collide); the value never reaches the Vault service.
+func (s *MemoryStore) VaultAddSecret(actor, vaultID, name string) error {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	g, err := s.ownedVaultLocked(actor, vaultID)
+	if err != nil {
+		return err
+	}
+	if existing, ok := s.secretResources[name]; ok && existing.VaultID != vaultID {
+		return errors.New("a secret with that name already exists")
+	}
+	s.secretResources[name] = SecretResource{Name: name, WorkspaceID: g.WorkspaceID, Managed: true, VaultID: vaultID}
+	if s.secretGrants[vaultID] == nil {
+		s.secretGrants[vaultID] = map[string]bool{}
+	}
+	s.secretGrants[vaultID][name] = true
+	return nil
+}
+
+// VaultRemoveSecret removes a vault secret's name and every grant of it. Only an owner may.
+func (s *MemoryStore) VaultRemoveSecret(actor, vaultID, name string) error {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	if _, err := s.ownedVaultLocked(actor, vaultID); err != nil {
+		return err
+	}
+	if existing, ok := s.secretResources[name]; !ok || existing.VaultID != vaultID {
+		return errors.New("unknown secret")
+	}
+	delete(s.secretResources, name)
+	for _, grants := range s.secretGrants {
+		delete(grants, name)
+	}
 	return nil
 }

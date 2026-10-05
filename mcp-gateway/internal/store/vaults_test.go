@@ -10,6 +10,7 @@ import (
 // members, owners or connections, a vault keeps at least one owner, and deleting needs it empty.
 func TestVaultOwnershipRules(t *testing.T) {
 	s := NewMemoryStore()
+	s.AddWorkspace(Workspace{ID: "w1", Name: "w1"})
 	s.AddUser(User{ID: "alice", WorkspaceID: "w1", Email: "alice@example.com"})
 	s.AddUser(User{ID: "bob", WorkspaceID: "w1", Email: "bob@example.com"})
 	s.AddUser(User{ID: "carol", WorkspaceID: "w1", Email: "carol@example.com"})
@@ -45,15 +46,43 @@ func TestVaultOwnershipRules(t *testing.T) {
 		t.Fatal("ownership did not move")
 	}
 
-	s.AddConnector(Connector{ID: "c1", WorkspaceID: "w1", Provider: "notion", Status: StatusActive})
+	s.AddConnector(Connector{ID: "c1", WorkspaceID: "w1", Provider: "notion", Status: StatusActive, VaultID: "v-1"})
 	if err := s.VaultAttachConnector("alice", "v-1", "c1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.VaultAttachConnector("alice", "v-2", "c1"); err == nil {
-		t.Fatal("a connection already in a vault must not be taken over")
+		t.Fatal("a connection that belongs to another vault must not be taken over")
+	}
+	s.AddConnector(Connector{ID: "c2", WorkspaceID: "w1", Provider: "linear", Status: StatusActive})
+	if err := s.VaultAttachConnector("alice", "v-1", "c2"); err == nil {
+		t.Fatal("a platform connection must not be taken over")
 	}
 	if err := s.DeleteVault("alice", "v-1"); err == nil {
 		t.Fatal("a vault with connections must not be deleted")
+	}
+	// A vault's connection and secret are never granted to the whole company, not even by the startup backfill.
+	if err := s.EnsurePlatformGroup("w1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.VaultAddSecret("alice", "v-1", "VLT_X__KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsurePlatformGroup("w1"); err != nil {
+		t.Fatal(err)
+	}
+	pid := PlatformGroupID("w1")
+	// A vault connection that was granted to everyone before it was bound to its vault is repaired at start.
+	s.mu.Lock()
+	s.groupServers[pid]["c1"] = true
+	s.mu.Unlock()
+	if err := s.EnsurePlatformGroup("w1"); err != nil {
+		t.Fatal(err)
+	}
+	if s.groupServers[pid]["c1"] || s.secretGrants[pid]["VLT_X__KEY"] {
+		t.Fatal("a vault's connection or secret must not reach the Platform group")
+	}
+	if !s.groupServers["v-1"]["c1"] || !s.secretGrants["v-1"]["VLT_X__KEY"] {
+		t.Fatal("the vault's own members must have them")
 	}
 	if got := s.VaultsFor("w1", "carol"); len(got) != 0 {
 		t.Fatalf("a stranger sees no vaults, got %d", len(got))

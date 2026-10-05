@@ -58,10 +58,11 @@ const manageMyVaultsDescription = "Create vaults and share MCP connections throu
 	"You can own at most 5. Only an owner (a vault can have several) adds, removes or updates its connections and decides who may use it; members use it and cannot re-share. " +
 	"Operations: list (your vaults, with members' emails and connection IDs); create {name, description}; inspect {vault_id}; " +
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
-	"connect {vault_id, provider, label} for a catalog server or {vault_id, name, url} for a custom https MCP URL (returns the sign-in link for you to open); " +
+	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {vault_id, connection_id} to sign a connection in again; promote {vault_id, name, confirm} to move a sign-in connection that already works in this Crew, Code or workflow (exact name from list_mcp_servers) into your vault with its existing sign-in, no second sign-in (call once without confirm for the explanation, then with confirm=true); " +
-	"sync {vault_id, connection_id}; remove_connection {vault_id, connection_id}; delete {vault_id} (only when it holds no connections). " +
-	"Members get a connection's tools as soon as it is in the vault. Passwords, API keys and OAuth client secrets are never taken in chat."
+	"promote_secret {vault_id, name, confirm} copies a secret of this Crew, Code or workflow into your vault server-side (you never see the value; confirm as for promote); remove_secret {vault_id, name}; " +
+	"sync {vault_id, connection_id}; remove_connection {vault_id, connection_id}; delete {vault_id} (only when it holds no connections or secrets). " +
+	"Members get a connection's tools as soon as it is in the vault. Secret values are never taken in chat: an owner types one into the vault screen, or promotes an existing one."
 
 func manageMyVaultsParameters() map[string]interface{} {
 	str := func(desc string) map[string]interface{} {
@@ -71,14 +72,13 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "sync", "remove_connection", "delete"}},
+			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "remove_secret", "sync", "remove_connection", "delete"}},
 			"vault_id":      str("The vault's ID from list."),
-			"name":          str("create: the vault's name. connect: a custom server's name. promote: the exact connection name from list_mcp_servers."),
+			"name":          str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
 			"description":   str("create: what the vault is for."),
 			"email":         str("A person's email, for the member and owner operations."),
 			"provider":      str("connect: the catalog server's name."),
 			"label":         str("connect: an account label, e.g. Notion · Engineering."),
-			"url":           str("connect: the https MCP URL of a custom server."),
 			"connection_id": str("The connection's ID (c-...) from inspect."),
 			"confirm":       map[string]interface{}{"type": "boolean", "description": "promote: true after the explanation has been shown."},
 		},
@@ -184,9 +184,6 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			return "", err
 		}
 		in := map[string]string{"Provider": argString(args, "provider"), "Label": argString(args, "label")}
-		if raw := argString(args, "url"); raw != "" {
-			in = map[string]string{"Provider": argString(args, "name"), "Label": argString(args, "name"), "URL": raw}
-		}
 		data, err := call(http.MethodPost, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors", in)
 		if err != nil {
 			return "", err
@@ -209,6 +206,19 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			return "", err
 		}
 		return api.promoteConnectionToVault(ctx, person, argString(args, "name"), vaultID, args["confirm"] == true)
+	case "promote_secret":
+		if err := needVault(); err != nil {
+			return "", err
+		}
+		return api.promoteSecretToVault(ctx, person, vaultID, argString(args, "name"), args["confirm"] == true)
+	case "remove_secret":
+		if err := needVault(); err != nil {
+			return "", err
+		}
+		if err := api.removeVaultSecret(ctx, person, vaultID, argString(args, "name")); err != nil {
+			return "", err
+		}
+		return "Removed the secret from the vault; its value is deleted.", nil
 	case "sync":
 		if err := needVault(); err != nil {
 			return "", err
@@ -328,6 +338,15 @@ func withMemberEmails(data []byte) string {
 				}
 				sort.Strings(emails)
 				value["members"] = emails
+			}
+			if names, ok := value["secret_names"].([]any); ok {
+				short := make([]string, 0, len(names))
+				for _, name := range names {
+					if full, ok := name.(string); ok {
+						short = append(short, vaultSecretShortName(full))
+					}
+				}
+				value["secret_names"] = short
 			}
 			if group, ok := value["group"].(map[string]any); ok {
 				if owners, ok := group["Owners"].([]any); ok {
