@@ -38,7 +38,12 @@ Google connection.
 
 ## Builder-guided administrator setup
 
-An app administrator can ask any Gmail-enabled Crew, Code or workflow Builder:
+Local UI does not offer automatic Incoming email or Cloud receiving setup.
+Google account connections and read/send permissions remain available. This
+visibility follows the connected backend's local mode, even behind a tunnel;
+it does not remove backend receiving support or saved resources.
+
+On a server deployment, an app administrator can ask any Gmail-enabled Crew, Code or workflow Builder:
 **“Set up automatic incoming Gmail for this server.”** The Builder inspects
 `get_gmail_trigger.setup.provisioning` and calls
 `setup_gmail_inbound(action="prepare", client_name="REGISTERED_CLIENT", project_id="OWNING_PROJECT")`.

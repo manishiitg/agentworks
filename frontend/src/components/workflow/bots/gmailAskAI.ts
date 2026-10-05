@@ -1,4 +1,15 @@
 import { buildAskAIMessage } from '../../../utils/askAIMessage'
+import { useCapabilitiesStore } from '../../../stores/useCapabilitiesStore'
+
+// Follow the connected backend, including a local backend behind a tunnel.
+// Wait for capabilities before advertising server-only UI.
+export function isGmailInboundUIEnabled(): boolean {
+  return useCapabilitiesStore.getState().capabilities?.local_mode === false
+}
+
+export function useGmailInboundUIEnabled(): boolean {
+  return useCapabilitiesStore(state => state.capabilities?.local_mode === false)
+}
 
 // Shared by the panel header, account card and Incoming email action.
 export const GMAIL_INBOUND_SETUP_INSTRUCTIONS = [
@@ -8,14 +19,14 @@ export const GMAIL_INBOUND_SETUP_INSTRUCTIONS = [
   'After infrastructure is ready, use manage_gmail_trigger to connect a mailbox with observed read consent and configure the requested chat instructions or workflow routes and filters. Preserve existing rules unless I request changes. Additional senders require the owner confirmation in the Incoming email pane; chat or tools cannot approve them. Return the receiving address and mailbox readiness, and distinguish those from a successful real email delivery test. Incoming configuration remains Builder-managed and read-only in the panel.',
 ].join(' ')
 
-export function getGoogleAppsSetupInstructions(incoming = true): string {
+export function getGoogleAppsSetupInstructions(incoming = isGmailInboundUIEnabled()): string {
   return [
     'Inspect list_gmail_connections and current service grants. Ask which Google apps or email access I need before making changes. Use the company Google app when configured, or guide me to choose/upload a named OAuth JSON locally. Compare Allowed in AgentWorks with actual Google permissions; do not recommend reconnecting when the needed grant already exists. Keep access scoped to this target and preserve existing grants. Never request secrets in chat. Configure default recipients and test outgoing delivery only when I request sending.',
-    incoming ? GMAIL_INBOUND_SETUP_INSTRUCTIONS : 'This Relay connects Google apps but has no incoming Gmail trigger; do not offer incoming-email infrastructure or routing setup here.',
+    incoming ? GMAIL_INBOUND_SETUP_INSTRUCTIONS : 'Help with Google account connections, current service permissions and Gmail reading or sending. Automatic incoming-email setup is not offered in this view; do not guide infrastructure or trigger setup from this panel.',
   ].join(' ')
 }
 
-export function getGoogleAppsAskAIMessage(noun: string, incoming = true): string {
+export function getGoogleAppsAskAIMessage(noun: string, incoming = isGmailInboundUIEnabled()): string {
   return buildAskAIMessage({
     view: 'Integrations · Gmail',
     summary: incoming

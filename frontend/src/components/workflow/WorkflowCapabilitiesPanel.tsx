@@ -34,6 +34,7 @@ import { getIdentityTabAskAIMessage, getIntegrationTabAskAIMessage, getWorkspace
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
+import { useGmailInboundUIEnabled } from './bots/gmailAskAI'
 
 // Which sections exist is decided by the registry in workspaceViews.ts; this
 // panel only carries the per-section copy.
@@ -108,6 +109,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
 export default function WorkflowCapabilitiesPanel({ section, workspacePath, presetQueryId, relayMode = false }: WorkflowCapabilitiesPanelProps) {
   const chatSessionId = useChatStore(state => presetQueryId ? selectWorkspacePaneWorkflowTab(state.chatTabs, presetQueryId, state.activeTabId)?.sessionId ?? undefined : undefined)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
+  const incomingGmail = useGmailInboundUIEnabled()
   const [capabilities, setCapabilities] = useState<WorkflowCapabilities>(EMPTY_CAPABILITIES)
   // What the manifest last held, so the footer can tell "edited" from "saved".
   const [loaded, setLoaded] = useState<WorkflowCapabilities>(EMPTY_CAPABILITIES)
@@ -310,7 +312,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
                   : relayMode && activeMcpTab === 'gmail'
                     ? 'Help me connect Google apps to this Relay, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
-                  : getIntegrationTabAskAIMessage(activeMcpTab === 'apps' && (pluginTab === 'secrets' || pluginTab === 'skills') ? pluginTab : activeMcpTab)
+                  : getIntegrationTabAskAIMessage(activeMcpTab === 'apps' && (pluginTab === 'secrets' || pluginTab === 'skills') ? pluginTab : activeMcpTab, incomingGmail)
                 : section === 'identity'
                   ? relayMode
                     ? activeIdentityTab === 'llm'

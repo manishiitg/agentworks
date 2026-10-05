@@ -1,3 +1,7 @@
+## Automatic incoming Gmail stays out of the local UI — PLAT-500
+
+[PLAT-500](pulse_platform/integrations/plat-500.md), P2, fixed on main. Connected backend local_mode hides Incoming email and receiving setup prompts in workflows, Crew and Code; ordinary Google connections and permissions remain available. Backend receiving capability is preserved.
+
 ## Gmail setup browser review and provisioning blockers — PLAT-499
 
 [PLAT-499](pulse_platform/integrations/plat-499.md), P1, fixed on main, deployment pending. Fixes null review Origin, blocked Google redirect, dotted Google operation IDs, Resource Manager prerequisite and delayed push-account visibility. Real Cloud consent and delivery still require RTS verification.

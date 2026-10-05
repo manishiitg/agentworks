@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Local Google apps UI offers account access without incoming-mail setup
+
+Owner decision: hide automatic Incoming email and its Cloud setup prompts
+locally across workflows, Crew and Code. Use the connected backend's local
+mode, including tunnels, and retain account connections/read/send permissions.
+Why: Cloud provisioning and tunnel setup complicate local use. This is a UI
+boundary; existing backend capability and saved receiving resources remain.
+Ticket: [PLAT-500](bugs/pulse_platform/integrations/plat-500.md).
+
 ### 2026-10-05 — Gmail setup supports browser consent and Google provisioning contracts
 
 The human review retains a same-origin form Origin and permits its Google

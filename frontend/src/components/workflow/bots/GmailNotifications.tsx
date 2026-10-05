@@ -15,7 +15,7 @@ import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import { GoogleAccountConnect } from '../../../products/work/GoogleAccountConnect'
 import { GmailInboundPanel } from './GmailInboundPanel'
-import { getGoogleAppsAskAIMessage } from './gmailAskAI'
+import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from './gmailAskAI'
 
 function gmailBackendLabel(backend: string | undefined): { name: string; install: string } {
   if (backend === 'gog') return { name: 'gog', install: 'gogcli' }
@@ -81,6 +81,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   platformConnect?: ReactNode
   onAsk?: (message: string) => void | Promise<void>
 }) {
+  const incomingGmail = useGmailInboundUIEnabled()
   const {
     gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
@@ -121,7 +122,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 workspacePath={workspacePath}
                 onAsk={onAsk}
                 label={scopeNoun === 'project' ? 'Ask Crew to set up Gmail' : 'Ask Builder to set up Gmail'}
-                message={getGoogleAppsAskAIMessage(scopeNoun, scopeNoun !== 'relay')}
+                message={getGoogleAppsAskAIMessage(scopeNoun, incomingGmail && scopeNoun !== 'relay')}
               />
             }
           >
