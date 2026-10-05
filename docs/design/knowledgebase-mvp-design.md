@@ -1,6 +1,6 @@
 # Knowledge Base MVP Design
 
-Status: Proposed implementation design based on the agreed product scope.
+Status: Implemented MVP in PR #268; merge, deployment and production migration remain pending.
 
 Date: 2026-10-04
 
@@ -755,3 +755,18 @@ The implemented binding, audience enforcement, explicit MCP importer, cutover,
 and rollback contract is documented in
 [knowledgebase-integration-migration.md](knowledgebase-integration-migration.md).
 Deployment does not automatically migrate existing local knowledge.
+
+## Access confirmation and agent exposure
+
+Access chat proposes changes; the app requires the authenticated person's
+confirmation of a fixed server-side proposal before any access mutation executes.
+This includes grants, revocations, service-account changes and project bindings.
+Approval rechecks current authority and version conflicts. Entry text and all
+names returned by tools are untrusted. The app remains a reader and access
+manager; content editing stays MCP-only.
+
+Workflow/Crew content tools and guidance are present only for configured shared
+bindings. External OAuth/PAT connections explicitly request Knowledge Base
+scopes; ordinary agents cannot invoke migration. See the integration design's
+[review hardening](knowledgebase-integration-migration.md#review-hardening-plat-496)
+for source-owner migration authority and consumer cutover prerequisites.

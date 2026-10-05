@@ -215,6 +215,9 @@ func cliHomeName(provider string) string {
 // without this any chat could read or change other chats and those secrets.
 func cliSeatbeltProtectedRoots() []string {
 	roots := []string{fsutil.WorkspaceDocsRoot()}
+	if config, err := knowledgebaseConfig(); err == nil {
+		roots = append(roots, config.Root)
+	}
 	if state, err := workflowCLIStateRoot(); err == nil && strings.TrimSpace(state) != "" {
 		roots = append(roots, state)
 		if filepath.Base(state) == "state" {

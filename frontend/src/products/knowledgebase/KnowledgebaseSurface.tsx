@@ -10,7 +10,7 @@ import { WorkspaceSplitDivider, WorkspaceSplitCollapseControls } from '../../com
 import { WorkspaceViewIconButton } from '../../components/workflow/WorkspaceViewIconButton'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { agentApi } from '../../services/api'
-import { knowledgebaseApi, knowledgebaseError, type KnowledgeBootstrap } from '../../services/knowledgebaseApi'
+import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccessProposal, type KnowledgeBootstrap } from '../../services/knowledgebaseApi'
 import { useChatStore, waitForChatStoreHydration } from '../../stores/useChatStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -18,6 +18,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { clampWorkSplitRatio } from '../work/workSurfaceLayoutResolver'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { KnowledgebaseWorkspacePane, type KnowledgebaseView } from './KnowledgebaseWorkspacePane'
+import { KnowledgebaseAccessConfirmation } from './KnowledgebaseAccessConfirmation'
 import { KnowledgebaseModelControl } from './KnowledgebaseModelControl'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
@@ -27,6 +28,21 @@ const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'acces
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
 export function KnowledgebaseSurface() {
+  const [proposals, setProposals] = useState<KnowledgeAccessProposal[]>([])
+  const [approvalError, setApprovalError] = useState('')
+  const [approving, setApproving] = useState(false)
+  useEffect(() => {
+    let active = true
+    const refresh = () => { knowledgebaseApi.proposals().then(data => { if (active) setProposals(data.proposals) }).catch(() => {}) }
+    refresh(); const timer = window.setInterval(refresh, 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
+  async function confirmAccess(id: string, approve: boolean) {
+    setApproving(true); setApprovalError('')
+    try { await knowledgebaseApi.confirmAccess(id, approve); setProposals(items => items.filter(item => item.id !== id)); setRevision(value => value + 1) }
+    catch (error) { setApprovalError(knowledgebaseError(error)) }
+    finally { setApproving(false) }
+  }
   const [bootstrap, setBootstrap] = useState<KnowledgeBootstrap | null>(null)
   const [tabId, setTabId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -97,8 +113,9 @@ export function KnowledgebaseSurface() {
         {showSchedules && !showProviders && <SchedulesPage />}
         {adminPage && !showProviders && <AdminPages />}
       </Suspense>
-      <div className={showProviders || showSchedules || adminPage ? 'hidden' : 'h-full'}>
-        {error ? <div className="grid h-full place-items-center p-6"><div className="max-w-md text-center"><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-md border border-border px-4 py-2 text-sm">Retry</button></div></div> : !bootstrap ? <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening Knowledge Base…</div> : <ProductWorkspaceShell
+      <div className={showProviders || showSchedules || adminPage ? 'hidden' : 'flex h-full min-h-0 flex-col'}>
+        <KnowledgebaseAccessConfirmation proposals={proposals} error={approvalError} busy={approving} onConfirm={confirmAccess} />
+        {error ? <div className="grid h-full place-items-center p-6"><div className="max-w-md text-center"><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-md border border-border px-4 py-2 text-sm">Retry</button></div></div> : !bootstrap ? <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening Knowledge Base…</div> : <div className="min-h-0 flex-1"><ProductWorkspaceShell
           splitRef={containerRef} chatOpen={collapsed !== 'chat'} panelOpen={collapsed !== 'workspace'} splitRatio={ratio} mobilePane={mobilePane}
           onOpenChat={() => setCollapsed(null)} onOpenWorkspace={() => setCollapsed(null)}
           chatProps={{ 'aria-label': 'Access management chat' }} workspaceProps={{ 'aria-label': 'Knowledge Base workspace' }}
@@ -119,7 +136,7 @@ export function KnowledgebaseSurface() {
           </>}
           divider={<WorkspaceSplitDivider ratio={ratio} onPointerDown={startResize} onStep={delta => changeRatio(ratio + delta)} className="md:row-start-2"><WorkspaceSplitCollapseControls onCollapseChat={() => setCollapsed('chat')} onCollapseWorkspace={() => setCollapsed('workspace')} /></WorkspaceSplitDivider>}
           workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} revision={revision} isAdmin={bootstrap.is_admin} />}
-        />}
+        /></div>}
       </div>
     </div>
   </div>

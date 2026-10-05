@@ -207,7 +207,7 @@ func externalTools() ([]externalTool, error) {
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalRelayDefinitions(add)
-		for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
+		for _, def := range knowledgebase.MigrationConnectionToolDefinitions(true) {
 			// The compiler accepts JSON values, rather than Go-specific slices.
 			encoded, err := json.Marshal(def.InputSchema)
 			if err != nil {

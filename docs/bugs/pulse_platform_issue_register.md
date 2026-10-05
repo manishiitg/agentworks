@@ -1,3 +1,7 @@
+## Knowledge Base migration and access review fixes — PLAT-496
+
+[PLAT-496](pulse_platform/learnings-knowledge/plat-496.md), P1, fixed in [PR #268](https://github.com/manishiitg/agentworks/pull/268), merge/deploy pending. Restricts migration to owner connections, refuses consumer cutover, requires app confirmation for access changes, gates bound tools, and closes OAuth/session/identity/confinement gaps.
+
 ## Automatic incoming Gmail stays out of the local UI — PLAT-500
 
 [PLAT-500](pulse_platform/integrations/plat-500.md), P2, fixed on main. Connected backend local_mode hides Incoming email and receiving setup prompts in workflows, Crew and Code; ordinary Google connections and permissions remain available. Backend receiving capability is preserved.

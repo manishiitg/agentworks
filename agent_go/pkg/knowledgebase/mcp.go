@@ -26,7 +26,7 @@ var mcpSurface = []mcpTool{
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
 // builder receives only manage_knowledgebase_access from this definition.
-func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true) }
+func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true, true) }
 
 func IsMCPTool(name string) bool {
 	for _, tool := range mcpSurface {
@@ -40,10 +40,14 @@ func IsMCPTool(name string) bool {
 // ConnectionToolDefinitions limits discovery to the actions a content
 // connection can call. Access mutations remain exclusive to the access builder.
 func ConnectionToolDefinitions(canWrite bool) []ToolDefinition {
-	return mcpDefinitions(canWrite, false)
+	return mcpDefinitions(canWrite, false, false)
 }
 
-func mcpDefinitions(canWrite, accessBuilder bool) []ToolDefinition {
+func MigrationConnectionToolDefinitions(canWrite bool) []ToolDefinition {
+	return mcpDefinitions(canWrite, false, true)
+}
+
+func mcpDefinitions(canWrite, accessBuilder, migration bool) []ToolDefinition {
 	operations := map[string]ToolDefinition{}
 	for _, op := range operationDefinitions() {
 		operations[op.Name] = op
@@ -53,11 +57,17 @@ func mcpDefinitions(canWrite, accessBuilder bool) []ToolDefinition {
 	}
 	defs := []ToolDefinition{}
 	for _, tool := range mcpSurface {
+		if !migration && tool.name == "update_knowledgebase" {
+			tool.description = "Save live knowledge: create, update, delete, or create_folder. Use expected_version and stable request IDs; saves are immediately shared."
+		}
 		props := map[string]any{}
 		variants := []any{}
 		actions := []any{}
 		mutates := false
 		for _, action := range tool.actions {
+			if !migration && strings.HasPrefix(action.name, "migration_") {
+				continue
+			}
 			if tool.name == "manage_knowledgebase_access" && !accessBuilder && action.name != "inspect" || !canWrite && ToolActionMutates(tool.name, action.name) {
 				continue
 			}

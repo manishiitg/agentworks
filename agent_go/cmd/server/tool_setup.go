@@ -357,7 +357,11 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 	// They are added conditionally based on preset.EnableBrowserAccess in workflow initialization.
 	// See the workflow initialization section where browser tools are added if enabled.
 
-	kbTools, kbExecutors, kbCategories := createKnowledgebaseTools(userID)
+	kbWorkspace := ""
+	if len(sessionInfo) > 2 {
+		kbWorkspace = sessionInfo[2]
+	}
+	kbTools, kbExecutors, kbCategories := createKnowledgebaseTools(userID, sessionID, kbWorkspace)
 	allTools = append(allTools, kbTools...)
 	for name, execute := range kbExecutors {
 		allExecutors[name] = execute

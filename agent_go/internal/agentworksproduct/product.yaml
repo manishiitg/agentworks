@@ -433,3 +433,4 @@ instruction_sections:
   - cli-tool-environment
   - clarification
   - native-subagents
+  - native-shell-off

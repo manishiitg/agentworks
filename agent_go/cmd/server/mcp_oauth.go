@@ -27,7 +27,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -146,6 +146,8 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
 		switch scope {
+		case "knowledgebase:read", "knowledgebase:write":
+			return !knowledgebaseProductAllowed(user)
 		case "code:review":
 			return !canReview
 		case "builder:chat":
@@ -173,6 +175,9 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 		seen[scope] = true
 	}
 	if (seen["builder:chat"] || seen["relays:write"]) && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
+		return nil, false
+	}
+	if seen["knowledgebase:write"] && !seen["knowledgebase:read"] {
 		return nil, false
 	}
 	return scopes, true

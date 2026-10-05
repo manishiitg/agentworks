@@ -88,6 +88,19 @@ func TestKnowledgebaseAccessFactoryThroughMCPBridge(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(result.Content), "outsider") {
 		t.Fatalf("missing result: %+v", result)
 	}
+	var proposal struct {
+		ID string `json:"proposal_id"`
+	}
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &proposal); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"id": proposal.ID, "approve": true})
+	req := httptest.NewRequest(http.MethodPost, "/api/knowledgebase/access-proposals", strings.NewReader(string(body))).WithContext(ctx)
+	approved := httptest.NewRecorder()
+	(&StreamingAPI{}).handleKnowledgebaseAccessProposals(approved, req)
+	if approved.Code != http.StatusOK {
+		t.Fatal(approved.Code, approved.Body.String())
+	}
 	_, err = service.Call(t.Context(), knowledgebasePrincipal((&http.Request{}).WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider", Username: "outsider"})), &UserClaims{UserID: "outsider", Username: "outsider"}), "read_knowledgebase", map[string]any{"path": "Payments/Checkout/retries.md"})
 	if err != nil {
 		t.Fatal("bridge grant did not reach live permissions:", err)

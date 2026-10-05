@@ -287,14 +287,10 @@ func knowledgeMigration(ctx context.Context, service *knowledgebase.Service, p k
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 		token := claims.AccessToken
 		allowed := token.Allows("files:read") && token.AllowsWorkflow(project.ID) && (token.Allows("workflows:read") || token.Allows("runs:execute"))
-		if action == "migration_cutover" || action == "migration_rollback" {
-			allowed = allowed && token.BuilderAccess()
-		}
+		allowed = allowed && token.BuilderAccess()
 		if project.Kind != "workflow" {
 			allowed = token.Allows("crews:read") && token.AllowsCrew(project.ID)
-			if action == "migration_cutover" || action == "migration_rollback" {
-				allowed = allowed && token.Allows("crews:write")
-			}
+			allowed = allowed && token.Allows("crews:write")
 		}
 		if !allowed {
 			return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "This connection does not authorize migration of the source project."}
@@ -461,6 +457,19 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 		original[key] = project.Raw[key]
 	}
 	receipt := &knowledgeMigrationReceipt{RequiredOwners: project.Owners, RequiredReaders: project.Audience, ID: id, Owner: p.IdentityID, Workspace: project.Workspace, ProjectID: project.ID, PreviewHash: knowledgeHash(args), ManifestVersion: project.Version, Original: original, Binding: binding, Destination: destination, SourceHash: sourceHash, Files: files, Skipped: skipped, Folders: map[string]string{}, State: "PREVIEWED"}
+	receipt.Consumers, err = knowledgeMigrationConsumers(project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := knowledgeSaveMigration(receipt); err != nil {
+		return nil, err
+	}
+	return receipt, nil
+}
+
+// Re-scan at cutover: a preview is not authority to disable other projects.
+func knowledgeMigrationConsumers(projectID string) ([]string, error) {
+	var consumers []string
 	registry, discoverErr := workflowkb.Discover(stepworkflow.GetPromptDocsRoot())
 	if discoverErr != nil && !os.IsNotExist(discoverErr) {
 		return nil, discoverErr
@@ -472,17 +481,14 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 				return nil, err
 			}
 			for _, source := range consumer.Sources {
-				if source.WorkflowID == project.ID {
-					receipt.Consumers = append(receipt.Consumers, workspace+":"+source.Alias)
+				if source.WorkflowID == projectID {
+					consumers = append(consumers, workspace+":"+source.Alias)
 				}
 			}
 		}
 	}
-	sort.Strings(receipt.Consumers)
-	if err := knowledgeSaveMigration(receipt); err != nil {
-		return nil, err
-	}
-	return receipt, nil
+	sort.Strings(consumers)
+	return consumers, nil
 }
 
 func knowledgeVerifyImported(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, file knowledgeImportFile) error {
@@ -520,6 +526,13 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 			return nil, fmt.Errorf("active project changed; inspect its migration state")
 		}
 		return r, nil
+	}
+	consumers, err := knowledgeMigrationConsumers(project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(consumers) != 0 {
+		return nil, fmt.Errorf("rebind legacy consumers before cutover: %v", consumers)
 	}
 	if r.State != "IMPORTED" && r.State != "CUTOVER_PENDING" {
 		return nil, fmt.Errorf("import must finish before cutover")
@@ -571,6 +584,13 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 		if err := p.Recheck(ctx); err != nil {
 			return nil, err
 		}
+	}
+	consumers, err = knowledgeMigrationConsumers(project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(consumers) != 0 {
+		return nil, fmt.Errorf("rebind legacy consumers before cutover: %v", consumers)
 	}
 	if err := knowledgeProjectSave(project, r.ManifestVersion); err != nil {
 		return nil, err

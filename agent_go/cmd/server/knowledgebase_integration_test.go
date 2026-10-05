@@ -47,7 +47,7 @@ func knowledgeIntegrationFixture(t *testing.T) (*knowledgebase.Service, knowledg
 }
 func knowledgeDispatchTest(t *testing.T, s *knowledgebase.Service, p knowledgebase.Principal, tool string, args map[string]any) any {
 	t.Helper()
-	v, err := knowledgebaseDispatch(t.Context(), s, p, p.IdentityID, tool, args)
+	v, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, p, p.IdentityID, tool, args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestKnowledgebaseMigrationRejectsChangedSourceAndSymlink(t *testing.T) {
 		t.Fatalf("symlink imported %#v", r)
 	}
 	args := map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}
-	if _, err := knowledgebaseDispatch(t.Context(), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
 		t.Fatal("skipped file not acknowledged")
 	}
 	if _, err := knowledgeReadSource(root, "secret.md"); err == nil {
@@ -158,7 +158,7 @@ func TestKnowledgebaseMigrationRejectsChangedSourceAndSymlink(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "notes", "guide.md"), []byte("changed"), 0600)
 	args["allow_skipped_files"] = true
 	args["request_id"] = "changed_import"
-	if _, err := knowledgebaseDispatch(t.Context(), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
 		t.Fatal("changed source imported")
 	}
 }
@@ -226,7 +226,7 @@ func TestKnowledgebaseMigrationConflictsAndResumesCheckpoint(t *testing.T) {
 	if _, err := s.CallTool(t.Context(), a, "update_knowledgebase", map[string]any{"action": "update", "entry_id": file.EntryID, "expected_version": file.Version, "content": "new user edit", "request_id": "later-edit"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := knowledgebaseDispatch(t.Context(), s, a, "admin", "update_knowledgebase", map[string]any{"action": "migration_cutover", "workspace_path": workspace, "migration_id": r.ID, "request_id": "cutover"}); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "update_knowledgebase", map[string]any{"action": "migration_cutover", "workspace_path": workspace, "migration_id": r.ID, "request_id": "cutover"}); err == nil {
 		t.Fatal("cutover ignored destination edit")
 	}
 }
@@ -248,7 +248,7 @@ func TestKnowledgebaseReplaceLegacyAliasAndNativePolicy(t *testing.T) {
 	}
 	a.AccessOnly = true
 	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "payments", "access": "read", "expected_manifest_version": project.Version, "request_id": "replace"}
-	if _, err := knowledgebaseDispatch(t.Context(), s, a, "admin", "manage_knowledgebase_access", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "manage_knowledgebase_access", args); err == nil {
 		t.Fatal("ambiguous alias accepted")
 	}
 	args["replace_legacy_alias"] = true

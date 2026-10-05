@@ -105,6 +105,9 @@ func knowledgebaseSyncIdentities(ctx context.Context, service *knowledgebase.Ser
 	if err != nil {
 		return fmt.Errorf("platform identities unavailable")
 	}
+	if IsMultiUserMode() && (directory == nil || len(directory.Users) == 0) {
+		return fmt.Errorf("platform identities unavailable: refusing an empty directory snapshot")
+	}
 	var identities []knowledgebase.Identity
 	if !IsMultiUserMode() {
 		id := GetDefaultUserID()
@@ -326,7 +329,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 		knowledgebaseHTTPError(w, err)
 		return
 	}
-	result, err := knowledgebaseDispatch(r.Context(), service, knowledgebasePrincipal(r, claims), claims.UserID, tool, args)
+	result, err := knowledgebaseDispatch(context.WithValue(r.Context(), knowledgebaseMigrationAuthorityKey{}, true), service, knowledgebasePrincipal(r, claims), claims.UserID, tool, args)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return

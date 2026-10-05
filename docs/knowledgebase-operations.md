@@ -132,3 +132,17 @@ bindings and explicit `update_knowledgebase` migration actions. Follow the
 Deployment itself performs no migration or grant changes. Pause project writers,
 schedules and triggers before cutover; import and rollback preserve source files,
 and rollback also preserves imported entries and later content edits.
+
+## Review and migration prerequisites
+
+Access changes requested in chat are pending until approved in the app. Review
+the exact folder, identity and role; cancel incorrect proposals. Stale versions
+require a fresh inspection and proposal. Proposals expire after 15 minutes.
+
+Migration needs an explicit external owner connection with Knowledge Base write
+scope and source-project builder authority for every action. It is unavailable
+in workflow/Crew agent execution, Run mode, schedules and steps. Import first,
+then rebind every consumer through its owner and confirmed access proposal,
+then cut over. Pause writers, schedules, executions and affected configuration
+changes; cutover re-scans and refuses remaining legacy consumers. No installation
+is migrated by merging this PR. OAuth Knowledge Base scopes are opt-in.

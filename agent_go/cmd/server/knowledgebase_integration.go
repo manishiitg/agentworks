@@ -21,6 +21,9 @@ import (
 
 var knowledgebaseIntegrationMu sync.Mutex
 
+// Only the authenticated external MCP transport can authorize owner migrations.
+type knowledgebaseMigrationAuthorityKey struct{}
+
 type knowledgeProject struct {
 	Workspace, Path, ID, Kind, Version string
 	Raw                                map[string]json.RawMessage
@@ -140,6 +143,9 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	}
 	cfg := common.GetSessionShellConfig(session)
 	if cfg == nil {
+		if session != "" {
+			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Session knowledge policy is unavailable."}
+		}
 		return nil
 	}
 	workspace := cfg.WorkflowPath
@@ -148,7 +154,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	}
 	kind, _ := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown || isCodeProjectPath(workspace) {
-		return nil
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A bound workflow or Crew session is required."}
 	}
 	project, err := knowledgeProjectLoad(ctx, userID, workspace, false)
 	if err != nil {
@@ -235,6 +241,9 @@ func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, 
 		return knowledgebaseBindProject(ctx, service, p, args)
 	}
 	if tool == "update_knowledgebase" && strings.HasPrefix(action, "migration_") {
+		if authorized, _ := ctx.Value(knowledgebaseMigrationAuthorityKey{}).(bool); !authorized {
+			return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "Migration requires an explicitly authorized external owner connection."}
+		}
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
 			return nil, err
 		}

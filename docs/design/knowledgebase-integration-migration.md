@@ -110,15 +110,18 @@ five tool names. Every action requires the exact `workspace_path` and a stable
    path references in Python/shell/JavaScript/TypeScript under code/planning.
    The static script check is a guard, not a complete script converter; owners
    must verify their actual execution paths before approval.
-5. `migration_cutover`: supply `migration_id`. It verifies the original manifest
+5. Rebind every legacy consumer alias **before cutover**, with its own owner,
+   audience checks and confirmed access-builder proposal. The imported entries
+   are already live, so consumers can switch while the source remains legacy.
+   The cutover re-scans all current consumer manifests and refuses while any
+   legacy reference remains, including consumers added after preview. Pause
+   configuration changes in affected projects during this maintenance window.
+6. `migration_cutover`: supply `migration_id`. It verifies the original manifest
    version, source inventory, imported entry versions/content, folder grants,
-   and audience. It checkpoints intent and atomically saves the binding and
-   shared mode. The opt-in `shared-kb-v1` entry lives in
-   `knowledgebase_contract_history`; it does not force a global workflow
-   contract upgrade on projects that remain on legacy storage.
-6. Explicitly rebind approved consumer aliases with their own owner and audience
-   checks. Old aliases fail closed after their source cuts over; they never
-   fall back to a stale local snapshot. Import does not grant consumer access.
+   audience and current consumers. It checkpoints intent and atomically saves
+   the binding and shared mode. The opt-in `shared-kb-v1` entry lives in
+   `knowledgebase_contract_history`; legacy projects are not upgraded globally.
+   Legacy aliases to a shared source fail closed; no stale snapshot fallback.
 7. Verify an interactive and scheduled pilot, read-only scope, revocation, and
    immediate visibility. Git backup is a separate selected-version commit/push.
 
@@ -131,8 +134,10 @@ converted to metadata. No arbitrary host source path is accepted.
 
 Scoped external tokens additionally need source-project authority: workflows
 require `files:read`, a matching workflow cap, and `workflows:read` or
-`runs:execute`; cutover/rollback also require builder access. Crews require
-`crews:read` and a matching Crew cap, plus `crews:write` for cutover/rollback.
+`runs:execute`, and builder access for **every** migration action. Crews require
+`crews:read`, a matching Crew cap, and `crews:write` for every migration action.
+Migration is available only through the authenticated external owner connection;
+ordinary agent schemas omit it and managed executions reject it server-side.
 Knowledge Base scopes and caps still apply. Project binding mutations remain
 exclusive to the app's access builder.
 
@@ -157,3 +162,26 @@ with an owner-approved pilot and coordinate its consumers before cutover. This
 PR includes fixture-based workflow/Crew, ACL/audience, live-read, retry,
 interrupted-import, conflict, symlink, legacy-source, and rollback tests. It does
 not execute paid model runs or migrate a production workspace during development.
+
+## Review hardening (PLAT-496)
+
+Ordinary workflow/Crew tools are registered only for a project with shared
+bindings. Its guidance is supplied dynamically; Work/Code profiles do not carry
+an ambient Knowledge Base prompt. Each executor is pinned to its server session.
+Missing session shell policy fails closed rather than falling back to the
+identity's installation-wide grants. External connections remain explicitly
+scoped through `knowledgebase:read`/`knowledgebase:write`; OAuth supports both,
+requires read alongside write, and excludes both from default scopes.
+
+All access-builder mutations produce private, fixed-argument proposals lasting
+15 minutes. The app displays the exact folder, identity, role and project scope.
+Only the authenticated person can approve or cancel their proposal through the
+app API. Approval is absent from MCP schemas and refuses token, bot and execution
+principals. Approval rechecks active identity, Owner authority, ACL/manifest CAS
+and audience grants. Names and returned text are untrusted data, including in
+the access builder. Proposals do not confer authority or change content.
+
+Both native CLI confinement policies protect the configured Knowledge Base
+root, including roots outside the platform state directory. Multiuser identity
+sync refuses unavailable or empty directories without disabling the last known
+identities. The request fails closed while directory authority is unavailable.

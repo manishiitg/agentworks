@@ -10,6 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -75,7 +76,15 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		def := manifest.Chat[mode]
-		if err := compareProductSurface(names, def.Tools); err != nil {
+		// This fixture has no shared bindings. KB admission in product.yaml is
+		// conditional; bound registration is covered by the KB integration tests.
+		expectedTools := []string{}
+		for _, name := range def.Tools {
+			if !knowledgebase.IsMCPTool(name) {
+				expectedTools = append(expectedTools, name)
+			}
+		}
+		if err := compareProductSurface(names, expectedTools); err != nil {
 			t.Fatal(err)
 		}
 		skillNames := []string{}

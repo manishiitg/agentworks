@@ -2445,6 +2445,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "activity", "backup"} {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
+	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation", api.handleResolveAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/new", api.handleRotateAgentProfileConversation).Methods("POST", "OPTIONS")
@@ -4579,7 +4580,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Create custom tools for workflow agents (workspace tools + human tools).
 		// Workflow agents can be Simple or ReAct agents, tools are registered based on mode.
-		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID) // Workflow mode: session-aware
+		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, req.SelectedFolder) // Workflow mode: session-aware
 		api.guardPulseResultExecutor(allExecutors, sessionID)
 
 		// NOTE: Workspace executor replacement with session + secrets happens after secrets are merged (see below).
@@ -6510,7 +6511,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Chat mode stays minimal (workflowMode=false). Without
 			// this, notify_user was never registered as a custom tool, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
-			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID) // session-aware
+			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
 			api.guardPulseResultExecutor(allExecutors, sessionID)
 
 			// Register each custom tool with the agent
@@ -11556,7 +11557,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// This ensures MCP_API_URL in shell commands includes the session path prefix
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
 	// session-scoped route and get the correct executor.
-	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID)
+	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
 	api.guardPulseResultExecutor(allExecutors, sessionID)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 
