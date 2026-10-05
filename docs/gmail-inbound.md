@@ -38,7 +38,12 @@ Google connection.
 
 ## Builder-guided administrator setup
 
-An app administrator can ask any Gmail-enabled Crew, Code or workflow Builder:
+Local UI does not offer automatic Incoming email or Cloud receiving setup.
+Google account connections and read/send permissions remain available. This
+visibility follows the connected backend's local mode, even behind a tunnel;
+it does not remove backend receiving support or saved resources.
+
+On a server deployment, an app administrator can ask any Gmail-enabled Crew, Code or workflow Builder:
 **“Set up automatic incoming Gmail for this server.”** The Builder inspects
 `get_gmail_trigger.setup.provisioning` and calls
 `setup_gmail_inbound(action="prepare", client_name="REGISTERED_CLIENT", project_id="OWNING_PROJECT")`.
@@ -58,9 +63,9 @@ The flow reuses the selected OAuth app's existing Gmail callback (or the company
 app's `/api/oauth/callback`), so it adds no redirect URI. Google or organization
 consent policy can still block the Cloud scope and must be resolved by the operator.
 
-The server verifies the Cloud project's number against the registered OAuth
-client before changing resources, enables Gmail/Pub/Sub/IAM APIs, creates or
-reuses the topic and push service account, merges only the Gmail publisher and
+The server resolves the Cloud project's number through Service Usage and checks
+it against the registered OAuth client before changing resources, enables
+Gmail/Pub/Sub/IAM APIs, creates or reuses the topic and push service account, merges only the Gmail publisher and
 Pub/Sub token-creator grants with existing IAM policies, and creates/verifies a
 wrapped authenticated push subscription. It refuses a conflicting existing
 subscription instead of overwriting it. Existing topic mappings and receiving
@@ -68,7 +73,14 @@ identities are preserved. Additional OAuth projects can publish to topics in
 their own project while subscriptions stay in the existing push identity's
 project; the consenting operator needs access to both projects in that case.
 
-The administrator needs project read access, API enablement, topic/subscription
+Service Usage must be available in the OAuth and delivery projects (Google
+enables it by default). Setup does not require a pre-enabled Cloud Resource
+Manager API. API enablement waits for Google's asynchronous operations, and a
+new push service account is allowed up to 90 seconds to become visible before
+setup proceeds. If Google propagation takes longer, ask Builder to retry;
+created resources are reused.
+
+The administrator needs Service Usage read access, API enablement, topic/subscription
 administration and topic IAM permissions, service account creation/IAM, and
 `iam.serviceAccounts.actAs` for the push account. Grant these outside the app
 according to organization policy; setup never grants the operator project roles.

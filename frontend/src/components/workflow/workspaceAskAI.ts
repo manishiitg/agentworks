@@ -1,6 +1,6 @@
 import { buildAskAIMessage } from '../../utils/askAIMessage'
 import { getWorkspaceView, type WorkspaceViewId } from './workspaceViews'
-import { getGoogleAppsSetupInstructions } from './bots/gmailAskAI'
+import { getGoogleAppsSetupInstructions, isGmailInboundUIEnabled } from './bots/gmailAskAI'
 
 // Every right-side workspace view has one useful first message for Builder.
 // Keeping this exhaustive means a newly registered view cannot silently ship
@@ -64,7 +64,6 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   gmail: {
     label: 'Integrations · Gmail',
     summary: "Help me connect Google apps and set up sending or automatic incoming Gmail for this workflow.",
-    instructions: getGoogleAppsSetupInstructions(),
   },
   cli: {
     label: 'Integrations · Connect',
@@ -91,13 +90,13 @@ export function getWorkspaceAskAIMessage(view: WorkspaceViewId): string {
   })
 }
 
-export function getIntegrationTabAskAIMessage(tab: IntegrationTabId): string {
+export function getIntegrationTabAskAIMessage(tab: IntegrationTabId, incomingGmail = isGmailInboundUIEnabled()): string {
   const entry = INTEGRATION_TAB_ASK_AI_MESSAGE[tab]
   const instructions = `First read the workflow help guide with read_skill(skills=[{"name":"builder-reference","path":"references/workflow-guide.md"}]), then help me with the ${entry.label} tab. Use the current workflow evidence, explain what matters, and ask what I want to do before changing anything.`
   return buildAskAIMessage({
     view: entry.label,
-    summary: entry.summary,
-    instructions: entry.instructions ? `${instructions} ${entry.instructions}` : instructions,
+    summary: tab === 'gmail' && !incomingGmail ? "Help me connect Google apps and choose the access this workflow needs." : entry.summary,
+    instructions: tab === 'gmail' ? `${instructions} ${getGoogleAppsSetupInstructions(incomingGmail)}` : entry.instructions ? `${instructions} ${entry.instructions}` : instructions,
   })
 }
 

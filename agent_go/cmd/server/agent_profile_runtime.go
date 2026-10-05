@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -463,6 +464,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	// from the request body.
 	promptContext.Product = nil
 	identityKey := ""
+	// A Crew that moved keeps its session id, but the folder guard left by its last turn still names the old folder, so
+	// the prompt-variable read of its product.json below was refused ("ACCESS DENIED ... Writable folders: _users/...",
+	// Excellence 2026-10-05, first chat after a Crew move). The turn's real guard is set later in this request; until then
+	// the session may only READ the folder this turn was verified to run in.
+	if isProjectProfileID(profile.ID) && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(workspacePath) != "" {
+		common.SetSessionFolderGuard(sessionID, []string{strings.TrimSuffix(workspacePath, "/") + "/"}, nil)
+	}
 	if productVars, err := api.agentProfiles.PromptVariables(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,
 	}); err != nil {

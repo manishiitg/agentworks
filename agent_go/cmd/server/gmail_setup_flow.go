@@ -226,8 +226,10 @@ func (api *StreamingAPI) initGmailSetup(router *mux.Router) {
 
 func (api *StreamingAPI) gmailSetupReview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	// Keep the same-origin POST origin while suppressing the review URL on Google navigation.
+	w.Header().Set("Referrer-Policy", "same-origin")
+	// Browsers also check form-action on the POST's redirect to Google consent.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'")
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid setup review", 400)

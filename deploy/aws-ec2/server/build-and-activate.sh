@@ -269,6 +269,9 @@ fi
 # Outside MCP connections may edit Builder plans/code and write Relays (owner 2026-10-05); per-person limits unchanged (PLAT-487).
 awk '!/^AGENTWORKS_MCP_BUILDER_ENABLED=/' "$env_file.next" > "$env_file.next2" && mv "$env_file.next2" "$env_file.next"
 echo 'AGENTWORKS_MCP_BUILDER_ENABLED=true' >> "$env_file.next"
+# New Crews are created at the shared Crew/ root, from the UI too (owner 2026-10-05, PLAT-442).
+awk '!/^AGENTWORKS_CREW_SHARED_ROOT=/' "$env_file.next" > "$env_file.next2" && mv "$env_file.next2" "$env_file.next"
+echo 'AGENTWORKS_CREW_SHARED_ROOT=on' >> "$env_file.next"
 chmod 600 "$env_file.next"
 mv "$env_file.next" "$env_file"
 

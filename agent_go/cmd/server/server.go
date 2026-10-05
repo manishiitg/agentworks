@@ -2439,6 +2439,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/reserve", api.handleReserveAgentProfileProject).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
 	// Admin inspection of Code (read-only, audited; admin checked in-handler).

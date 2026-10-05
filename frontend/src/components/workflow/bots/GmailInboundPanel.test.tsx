@@ -10,6 +10,9 @@ vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToC
 import { agentApi } from '../../../services/api'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import { GmailInboundPanel } from './GmailInboundPanel'
+import { useCapabilitiesStore } from '../../../stores/useCapabilitiesStore'
+import { getGoogleAppsAskAIMessage } from './gmailAskAI'
+import { getIntegrationTabAskAIMessage } from '../workspaceAskAI'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const enabled: GmailInboundState = { configured: true, watch_ready: true, route: { id: 'route', address: 'owner+agent-route@example.com', connection_id: 'gmail', enabled: true, reply: true }, deliveries: [] }
@@ -19,8 +22,8 @@ describe('Gmail incoming email settings', () => {
   let host: HTMLDivElement
   let root: Root
   const render = async (path = 'Workflow/test', onAsk?: (message: string) => void) => { await act(async () => root.render(<TooltipProvider><GmailInboundPanel workspacePath={path} connections={connections} onAsk={onAsk} /></TooltipProvider>)) }
-  beforeEach(() => { vi.resetAllMocks(); vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(enabled); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-  afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
+  beforeEach(() => { useCapabilitiesStore.setState({ capabilities: { providers: [], streaming: true, sse: true, agent_modes: [], tracing: { enabled: false, provider: 'noop' }, workspace: {}, servers: [], local_mode: false } }); vi.resetAllMocks(); vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(enabled); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+  afterEach(async () => { await act(async () => root.unmount()); host.remove(); useCapabilitiesStore.setState({ capabilities: null }); vi.restoreAllMocks() })
 
   const ask = async () => {
     const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask AI')!
@@ -29,6 +32,22 @@ describe('Gmail incoming email settings', () => {
     clock.mockReturnValue(1700)
     await act(async () => button.click())
   }
+
+  it('hides incoming UI and setup prompts locally without fetching the route, then restores server UI', async () => {
+    useCapabilitiesStore.setState({ capabilities: { ...useCapabilitiesStore.getState().capabilities!, local_mode: true } })
+    await render()
+    expect(host.textContent).toBe('')
+    expect(agentApi.getGmailInboundRoute).not.toHaveBeenCalled()
+    for (const message of [getGoogleAppsAskAIMessage('Code'), getIntegrationTabAskAIMessage('gmail')]) {
+      expect(message).toContain('connect Google apps')
+      expect(message).not.toContain('setup_gmail_inbound')
+      expect(message).not.toContain('automatic incoming Gmail')
+    }
+    await act(async () => useCapabilitiesStore.setState({ capabilities: { ...useCapabilitiesStore.getState().capabilities!, local_mode: false } }))
+    expect(host.textContent).toContain('Incoming email')
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+    expect(getIntegrationTabAskAIMessage('gmail')).toContain('setup_gmail_inbound')
+  })
 
   it('offers setup help when the deployment is disabled and sends it to this workflow Builder', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })

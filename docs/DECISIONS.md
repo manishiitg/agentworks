@@ -17,7 +17,30 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+## 2026-10-05: new Crews are always created at `Crew/<folder>`
+
+Decided by the owner so Crews never need a later manual move. The server reserves the path and registers the owner before the UI writes the files, and `AGENTWORKS_CREW_SHARED_ROOT=on` is set on every server. Ticket: PLAT-442.
+
 ## Decisions
+
+### 2026-10-05 — Local Google apps UI offers account access without incoming-mail setup
+
+Owner decision: hide automatic Incoming email and its Cloud setup prompts
+locally across workflows, Crew and Code. Use the connected backend's local
+mode, including tunnels, and retain account connections/read/send permissions.
+Why: Cloud provisioning and tunnel setup complicate local use. This is a UI
+boundary; existing backend capability and saved receiving resources remain.
+Ticket: [PLAT-500](bugs/pulse_platform/integrations/plat-500.md).
+
+### 2026-10-05 — Gmail setup supports browser consent and Google provisioning contracts
+
+The human review retains a same-origin form Origin and permits its Google
+consent redirect, while rejecting null/foreign submissions and suppressing
+cross-origin Referer. Provisioning resolves project numbers through Service
+Usage before mutation, accepts Google's dotted operation IDs, and waits for
+new push account visibility. Why: the live review failed and the audit found
+later blockers hidden by synchronous API fakes. Ticket:
+[PLAT-499](bugs/pulse_platform/integrations/plat-499.md).
 
 ### 2026-10-05 — Gmail setup browser routes reach backend consent checks without an app token
 

@@ -1272,6 +1272,12 @@ export const agentApi = {
     return response.data
   },
 
+  /** Where a new project is created: the shared root when the server has that switch on (it registers the owner), else shared=false. */
+  reserveProject: async (profileId: string, title: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/reserve`, { title })
+    return response.data
+  },
+
   listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,

@@ -272,6 +272,12 @@ func readFileFromWorkspaceQuery(ctx context.Context, filePath, rawQuery string) 
 			if b, hasBinary := dataMap["is_binary"].(bool); hasBinary && !b {
 				return "", true, nil
 			}
+			// The workspace service omits "content" for an empty file and "is_binary" when false, so a zero-byte
+			// file arrives as a bare filepath/encoding record: it exists and is empty (an empty per-user schedule
+			// state file made the whole Automations list fail with a 500).
+			if _, hasPath := dataMap["filepath"]; hasPath {
+				return "", true, nil
+			}
 		}
 		// Debug logging to see actual response structure
 		dataBytes, _ := json.Marshal(apiResp.Data)

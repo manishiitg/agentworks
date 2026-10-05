@@ -10,14 +10,17 @@ import (
 )
 
 type fakeCloud struct {
-	requests      []*http.Request
-	bodies        []map[string]any
-	projectNumber string
-	subscription  map[string]any
-	policy        map[string]any
-	savedPolicies []map[string]any
-	newResources  bool
-	failPath      string
+	requests              []*http.Request
+	bodies                []map[string]any
+	projectNumber         string
+	subscription          map[string]any
+	policy                map[string]any
+	savedPolicies         []map[string]any
+	newResources          bool
+	asyncOperations       bool
+	serviceAccountCreated bool
+	serviceAccountReads   int
+	failPath              string
 }
 
 func (f *fakeCloud) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -37,16 +40,22 @@ func (f *fakeCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch {
 	case strings.Contains(p, f.failPath) && f.failPath != "":
 		status, data = 403, map[string]string{"error": "access_token=SECRET should never be returned"}
-	case r.URL.Host == "cloudresourcemanager.googleapis.com":
+	case strings.HasSuffix(p, "/services/serviceusage.googleapis.com"):
 		number := f.projectNumber
 		if number == "" {
 			number = "123456"
 		}
-		if strings.HasSuffix(p, "delivery-project") {
+		if strings.Contains(p, "/delivery-project/") {
 			number = "999999"
 		}
-		data = map[string]string{"name": "projects/" + number, "projectId": strings.TrimPrefix(p, "/v3/projects/"), "state": "ACTIVE"}
+		data = map[string]string{"name": "projects/" + number + "/services/serviceusage.googleapis.com", "parent": "projects/" + number, "state": "ENABLED"}
 	case strings.HasSuffix(p, ":batchEnable") || strings.HasSuffix(p, ":generateServiceIdentity"):
+		if f.asyncOperations {
+			data = map[string]any{"name": "operations/acf.2e2fcfce-8327-4984-9040-a67777082687"}
+		} else {
+			data = map[string]any{"done": true}
+		}
+	case strings.HasPrefix(p, "/v1/operations/") || strings.HasPrefix(p, "/v1beta1/operations/"):
 		data = map[string]any{"done": true}
 	case strings.Contains(p, "/subscriptions/"):
 		if r.Method == "PUT" {
@@ -58,6 +67,10 @@ func (f *fakeCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 			data = f.subscription
 		}
 	case strings.HasSuffix(p, ":getIamPolicy"):
+		if f.newResources && strings.Contains(p, "/serviceAccounts/") && f.serviceAccountReads < 3 {
+			status = 404
+			break
+		}
 		if f.policy != nil {
 			data = f.policy
 		} else {
@@ -65,7 +78,14 @@ func (f *fakeCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	case strings.HasSuffix(p, ":setIamPolicy"):
 		f.savedPolicies = append(f.savedPolicies, body["policy"].(map[string]any))
-	case f.newResources && r.Method == "GET" && (strings.Contains(p, "/serviceAccounts/") || strings.Contains(p, "/topics/")):
+	case f.newResources && r.Method == "POST" && strings.HasSuffix(p, "/serviceAccounts"):
+		f.serviceAccountCreated = true
+	case f.newResources && r.Method == "GET" && strings.Contains(p, "/serviceAccounts/"):
+		f.serviceAccountReads++
+		if !f.serviceAccountCreated || f.serviceAccountReads < 3 {
+			status = 404
+		}
+	case f.newResources && r.Method == "GET" && strings.Contains(p, "/topics/"):
 		status = 404
 	}
 	raw, _ := json.Marshal(data)
@@ -85,7 +105,7 @@ func cloud(f *fakeCloud) Cloud { return Cloud{Client: &http.Client{Transport: f}
 
 func TestProvisionCreatesAndVerifiesOnlyReviewedResources(t *testing.T) {
 	p := plan(t)
-	f := &fakeCloud{newResources: true}
+	f := &fakeCloud{newResources: true, asyncOperations: true}
 	stages := []string{}
 	if err := cloud(f).Provision(context.Background(), p, func(s string) { stages = append(stages, s) }); err != nil {
 		t.Fatal(err)
@@ -109,10 +129,20 @@ func TestProvisionCreatesAndVerifiesOnlyReviewedResources(t *testing.T) {
 	if push["pushEndpoint"] != p.Endpoint || push["noWrapper"] != nil || push["oidcToken"].(map[string]any)["audience"] != p.Endpoint {
 		t.Fatalf("incorrect push authentication: %v", push)
 	}
+	polls := 0
 	for i, r := range f.requests {
+		if strings.Contains(r.URL.Path, "/operations/acf.") {
+			polls++
+		}
+		if r.URL.Host == "cloudresourcemanager.googleapis.com" {
+			t.Fatal("required unenabled Resource Manager API")
+		}
 		if r.URL.Host == "iam.googleapis.com" && strings.HasSuffix(r.URL.Path, ":getIamPolicy") && (len(f.bodies[i]) != 0 || r.URL.Query().Get("options.requestedPolicyVersion") != "3") {
 			t.Fatalf("IAM get-policy wire format: %s %v", r.URL, f.bodies[i])
 		}
+	}
+	if polls != 2 {
+		t.Fatalf("did not wait for Google asynchronous operations: %d", polls)
 	}
 }
 

@@ -18,7 +18,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
-import { getGoogleAppsAskAIMessage } from '../../components/workflow/bots/gmailAskAI'
+import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
 
 export type WorkIntegrationTab = 'apps' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -30,14 +30,14 @@ const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
   { value: 'cli', label: 'Connect' },
 ]
 
-function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, string> {
+function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
-    gmail: getGoogleAppsAskAIMessage(`${noun} project`),
+    gmail: getGoogleAppsAskAIMessage(`${noun} project`, incomingGmail),
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
@@ -102,6 +102,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
 }) {
   // The Connect tab points at this installation's API origin. Hosted apps need
   // a public origin; local agents can connect directly to a loopback MCP URL.
+  const incomingGmail = useGmailInboundUIEnabled()
   const product = useProjectProduct()
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const visibleTabs = INTEGRATION_TABS.filter(option =>
@@ -148,7 +149,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             workspacePath={workspacePath}
             message={activeTab === 'apps' && activePluginTab === 'vault'
               ? `Help me choose from my Vault groups' permitted connections and secrets for this ${product.noun} project. Check my current access and selection; never show secret values.`
-              : integrationTabAskAIMessage(product.noun)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
+              : integrationTabAskAIMessage(product.noun, incomingGmail)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}

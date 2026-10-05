@@ -5,7 +5,7 @@ import { Button } from '../../ui/Button'
 import { FormSection } from '../../ui/FormSection'
 import { AskAIButton } from '../AskAIButton'
 import { buildAskAIMessage } from '../../../utils/askAIMessage'
-import { GMAIL_INBOUND_SETUP_INSTRUCTIONS } from './gmailAskAI'
+import { GMAIL_INBOUND_SETUP_INSTRUCTIONS, useGmailInboundUIEnabled } from './gmailAskAI'
 
 const setupMessage = buildAskAIMessage({
   view: 'Incoming email',
@@ -65,7 +65,18 @@ function errorMessage(error: unknown, fallback = 'Could not load incoming email 
 
 // Configuration belongs to Builder tools. Both Email and Triggers show this
 // same persisted route without granting mutation authority to the pane.
-export function GmailInboundPanel({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk }: { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+type GmailInboundPanelProps = { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }
+
+export function GmailInboundPanel(props: GmailInboundPanelProps) {
+  const enabled = useGmailInboundUIEnabled()
+  const onCounts = props.onCounts
+  useEffect(() => {
+    if (!enabled) onCounts?.({ active: 0, paused: 0 })
+  }, [enabled, onCounts])
+  return enabled ? <GmailInboundPanelContent {...props} /> : null
+}
+
+function GmailInboundPanelContent({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk }: GmailInboundPanelProps) {
   const [state, setState] = useState<GmailInboundState | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
