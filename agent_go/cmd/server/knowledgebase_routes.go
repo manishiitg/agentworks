@@ -121,8 +121,17 @@ func knowledgebaseSyncIdentities(ctx context.Context, service *knowledgebase.Ser
 	return service.SyncPlatformIdentities(ctx, identities)
 }
 
+// knowledgebaseMCPAllowed is who may connect to Brain through the MCP: every active account on a server that runs
+// the product. What a connection can read or write is still decided by folder roles, so this grants no content.
+func knowledgebaseMCPAllowed(claims *UserClaims) bool {
+	return claims != nil && strings.TrimSpace(claims.UserID) != "" && productEnabled("knowledgebase") && !directoryUserIsDisabled(claims)
+}
+
+// knowledgebaseProductAllowed is the Brain product for the app and for agents running as the person: the
+// `knowledgebase` product on the account (administrators have every product). A connection (MCP or local token) is
+// bounded by its own scopes instead, so it needs only knowledgebaseMCPAllowed.
 func knowledgebaseProductAllowed(claims *UserClaims) bool {
-	return claims != nil && strings.TrimSpace(claims.UserID) != "" && productEnabled("knowledgebase") && !directoryUserIsDisabled(claims) && userAllowedProduct(claims, "knowledgebase")
+	return knowledgebaseMCPAllowed(claims) && (claims.AccessToken != nil || userAllowedProduct(claims, "knowledgebase"))
 }
 
 func knowledgebasePrincipal(r *http.Request, claims *UserClaims) knowledgebase.Principal {

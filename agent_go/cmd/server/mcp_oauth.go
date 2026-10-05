@@ -147,7 +147,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
 		switch scope {
 		case "knowledgebase:read", "knowledgebase:write":
-			return !knowledgebaseProductAllowed(user)
+			return !knowledgebaseMCPAllowed(user)
 		case "vault:manage":
 			return user == nil || !vaultAdminActive(user.UserID)
 		case "code:review":

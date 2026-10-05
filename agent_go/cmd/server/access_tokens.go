@@ -88,7 +88,7 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 		c.Email = rec.Email
 	}
 	if t.KnowledgebaseIdentityID != "" {
-		if !knowledgebaseProductAllowed(c) {
+		if !knowledgebaseMCPAllowed(c) {
 			return nil, accesstokens.ErrInvalid
 		}
 		service, err := knowledgebaseService()
@@ -216,7 +216,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if t.KnowledgebaseAccess() {
-			if !knowledgebaseProductAllowed(c) {
+			if !knowledgebaseMCPAllowed(c) {
 				externalError(w, 403, "forbidden", "Brain is not available for this account.")
 				return
 			}
@@ -341,7 +341,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return false
 	}
 	if knowledgebase.IsMCPTool(tool.Name) {
-		if !knowledgebaseProductAllowed(c) {
+		if !knowledgebaseMCPAllowed(c) {
 			return false
 		}
 		if c.AccessToken == nil {

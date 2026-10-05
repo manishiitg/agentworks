@@ -207,3 +207,24 @@ func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testin
 func knowledgeTestCaller(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, UserContextKey, principalClaims(userID))
 }
+
+// Pins the owner decision: everyone may use Brain through the MCP, but only accounts holding the product (and
+// administrators) get it in the app. A disabled account gets neither.
+func TestBrainMCPIsOpenToEveryoneButAppNeedsTheProduct(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin","products":[]},{"id":"matt","username":"matt","role":"viewer","products":["agentworks"]},{"id":"gone","username":"gone","role":"viewer","products":["agentworks"],"disabled":true}]}`)
+	t.Setenv("AGENT_PRODUCTS", "")
+	session := &UserClaims{UserID: "matt", Username: "matt"}
+	connection := &UserClaims{UserID: "matt", Username: "matt", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read"}}}
+	if knowledgebaseProductAllowed(session) {
+		t.Fatal("an account without the product must not get Brain in the app")
+	}
+	if !knowledgebaseMCPAllowed(session) || !knowledgebaseProductAllowed(connection) {
+		t.Fatal("every active account may connect through the MCP")
+	}
+	if !knowledgebaseProductAllowed(&UserClaims{UserID: "admin", Username: "admin"}) {
+		t.Fatal("administrators have the product")
+	}
+	if knowledgebaseMCPAllowed(&UserClaims{UserID: "gone", Username: "gone"}) {
+		t.Fatal("a disabled account has no access")
+	}
+}
