@@ -31,3 +31,12 @@ Found while checking the release for PLAT-493 (Vault in the DMG): the agent buil
 - Publish a fixed release (needs the owner's go; it publishes every commit since v1.25.133 incl. Vault in the app). Then confirm the new `app.asar` has `lib/`.
 - `desktop/main.js` and `package.json` still point at the old repository URL (works through GitHub's redirect).
 - Consider a CI check that fails when `main.js` requires a local path that `build.files` does not package.
+
+## Release attempt (2026-10-05)
+
+- v1.25.134 was started: version commit `2f9f86156` and tag pushed, then the `Desktop DMG` release job FAILED at "Test Frontend Performance Contracts": one test,
+  `chatScrollRequest.test.ts` "keeps the reading position in the chat already on screen when scrolled up". Cause: `89e1040fa` (10:57) keys the reading position by
+  `tab:session` (`transcriptReadingKey`); the test still set the state under the bare tab id. `Frontend CI` on main had been red for the same reason. Test updated to the new key;
+  the whole suite is green (488 files, 2821 tests).
+- No release was published for v1.25.134 (the failed job published nothing).
+

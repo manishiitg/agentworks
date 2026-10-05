@@ -9,7 +9,7 @@ vi.mock('./workflowNavigation', () => ({ selectWorkflowPreset: () => true }))
 vi.mock('./activateTab', () => ({ activateTab: mocks.activate }))
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll, requestChatScrollToBottom } from './chatScrollRequest'
 import { sendWorkspacePaneMessageToChat } from './workspacePaneChat'
-import { transcriptReadingState } from '../components/useTranscriptScroll'
+import { transcriptReadingKey, transcriptReadingState } from '../components/useTranscriptScroll'
 
 let events = 0
 const count = () => { events++ }
@@ -85,12 +85,12 @@ describe('requestChatScrollToBottom', () => {
 
 describe('pane message scroll intent', () => {
   it('keeps the reading position in the chat already on screen when scrolled up', async () => {
-    transcriptReadingState('here').following = false
+    transcriptReadingState(transcriptReadingKey('here')).following = false
     await sendWorkspacePaneMessageToChat({ workspacePath: 'Workflow/one', message: 'Apply it' })
     vi.advanceTimersByTime(2000)
     expect(events).toBe(0)
     expect(mocks.chat.setAutoScroll).not.toHaveBeenCalled()
-    transcriptReadingState('here').following = true
+    transcriptReadingState(transcriptReadingKey('here')).following = true
   })
 
   it('lands at the bottom once when the chat on screen is at the bottom', async () => {
@@ -101,11 +101,11 @@ describe('pane message scroll intent', () => {
 
   it('lands at the bottom when the message goes to another chat', async () => {
     mocks.chat.activeTabId = 'elsewhere'
-    transcriptReadingState('here').following = false
+    transcriptReadingState(transcriptReadingKey('here')).following = false
     await sendWorkspacePaneMessageToChat({ workspacePath: 'Workflow/one', message: 'Apply it' })
     vi.advanceTimersByTime(2000)
     expect(events).toBe(1)
     expect(mocks.chat.setAutoScroll).toHaveBeenCalledWith(true)
-    transcriptReadingState('here').following = true
+    transcriptReadingState(transcriptReadingKey('here')).following = true
   })
 })
