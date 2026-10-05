@@ -1,6 +1,6 @@
 # PLAT-514: webhook step cannot write the workflow database: "mutate_workflow_db caller does not own this tool session"
 
-**State:** open, diagnosed to the lookup path, not fixed. P1 (blocks the `rtsprreviweer` PR review on RTS).
+**State:** fixed in mcpagent d07fe58 (not yet verified by a live run). P1. P1 (blocks the `rtsprreviweer` PR review on RTS).
 
 **Found:** 2026-10-05 11:27 UTC, RTS, the 4th webhook run of `rtsprreviweer` (PLAT-502 had just made the run folder writable, so the step now gets as far as the database). `pr-eligibility-gate` wrote `route_selection.json`, then `mutate_workflow_db` (the INSERT into `pr_gate_decisions`) failed with `mutate_workflow_db caller does not own this tool session` (`agentworks_db.DBError`, session `session-group-default-1791199672093001445`, HTTP session `schedule-webhook--d04df8c1_…`).
 
@@ -14,3 +14,11 @@
 - A Crew function call delivery is `variables` = the three inputs plus `payload` = `{function, args, from, call_id}`; the gate reads only the top level of `payload`. GitHub, MCP/bearer and function calls all reach a step through the same delivery file.
 - The Builder skill `webhook-triggers` now has "How a step reads its trigger input (all entry paths)": the shape per path, the read order (`variables`, then `payload.args`/flat keys, then the provider event, then `VAR_*`), never turning an unreadable delivery into `skip` without recording the reason, testing each path, and treating `caller does not own this tool session` as a platform fault. The owner will point the Builder at it to fix the gate.
 - Still open here: the `[TOOL_OWNERSHIP]` diagnostic needs one more run; whether to copy the delivery into the run's own folder.
+
+## 2026-10-05 12:27 UTC: cause proven by the diagnostic, fixed
+
+Run 748 logged `[TOOL_OWNERSHIP] rejected mutate_workflow_db: caller="session-group-default-…" tool_session="code:project:3b40f2c4-…" authority="code:project:3b40f2c4-…" caller_parent="schedule-webhook--d04df8c1_…"`. The step's bridge session is correctly registered under the webhook run, but the executor it was handed was bound to the SDE Private Crew's session: the first suspected cause (global table, last writer wins) was right. A webhook run's tools are registered by its workflow session (a sibling of the step's bridge session), not by the HTTP run id, so `registryScopeForSession` found no tool on the parent and fell to the global table, which the Crew chat (running at the same second because it started the review) had just written.
+
+Fix (mcpagent d07fe58): `mcpclient.MCPSessionsForHTTPSession` lists a run's live sessions; when the parent has no registry for the tool, `siblingScopeForTool` uses the run's other session if exactly one registered it (none or several keeps the legacy lookup). One regression test in `agent/codeexec/registry_test.go`. Not changed: the global table itself.
+
+**Left:** re-trigger the PR review from SDE Private while the Crew is active (the failing shape); expect no `[TOOL_OWNERSHIP]` line and a decision in `pr_gate_decisions`. The gate's own handling of the delivery (empty owner/repo) is separate and is the Builder's change (see the `webhook-triggers` skill).
