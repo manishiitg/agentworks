@@ -48,7 +48,10 @@ func (s *Service) decryptBackupPAT(d backupDestination) (string, error) {
 	return string(value), nil
 }
 
-type backupGitCredential struct{ remote, username, pat string }
+type backupGitCredential struct {
+	remote, username, pat    string
+	deployment, allowPrivate bool
+}
 type backupGitCredentialKey struct{}
 
 func (s *Service) withBackupCredentials(ctx context.Context) (context.Context, error) {
@@ -56,28 +59,41 @@ func (s *Service) withBackupCredentials(ctx context.Context) (context.Context, e
 	if err != nil {
 		return ctx, err
 	}
-	if d.EncryptedPAT == "" {
-		return ctx, nil
+	pat := ""
+	if d.EncryptedPAT != "" {
+		pat, err = s.decryptBackupPAT(d)
+		if err != nil {
+			return ctx, err
+		}
 	}
-	pat, err := s.decryptBackupPAT(d)
-	if err != nil {
-		return ctx, err
-	}
-	return context.WithValue(ctx, backupGitCredentialKey{}, backupGitCredential{d.Remote, d.Username, pat}), nil
+	return context.WithValue(ctx, backupGitCredentialKey{}, backupGitCredential{remote: d.Remote, username: d.Username, pat: pat, deployment: s.cfg.BackupRemote != "", allowPrivate: s.cfg.AllowPrivateBackup}), nil
 }
 
 // Secret material is passed only in the child environment. URL-scoped headers,
 // disabled redirects and an empty credential helper prevent credential leakage
 // to other remotes or host credential caches. Nothing is written to .git/config.
-func backupGitAuth(ctx context.Context, args []string) ([]string, []string) {
+func backupGitAuth(ctx context.Context, args []string) ([]string, []string, error) {
 	env := gitEnvironment()
 	if len(args) == 0 || (args[0] != "fetch" && args[0] != "push" && args[0] != "ls-remote") {
-		return nil, env
+		return nil, env, nil
 	}
 	flags := []string{"-c", "http.followRedirects=false", "-c", "credential.helper="}
-	if cred, ok := ctx.Value(backupGitCredentialKey{}).(backupGitCredential); ok {
+	cred, ok := ctx.Value(backupGitCredentialKey{}).(backupGitCredential)
+	if !ok || cred.remote == "" {
+		return nil, nil, kbErr("BACKUP_NOT_CONFIGURED", "A configured backup destination is required.")
+	}
+	resolve, err := backupNetworkResolve(ctx, cred, netBackupLookup)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resolve != "" {
+		// Clear inherited/repository pins and proxies before setting the checked
+		// address. libcurl keeps TLS validation and SNI on the original hostname.
+		flags = append(flags, "-c", "http.proxy=", "-c", "http.curloptResolve=", "-c", "http.curloptResolve="+resolve)
+	}
+	if cred.pat != "" {
 		header := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(cred.username+":"+cred.pat))
 		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http."+cred.remote+".extraHeader", "GIT_CONFIG_VALUE_0="+header)
 	}
-	return flags, env
+	return flags, env, nil
 }

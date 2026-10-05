@@ -36,7 +36,7 @@ func TestKnowledgebaseBackupButtonFlowUsesFrozenAdminSetup(t *testing.T) {
 	if bootstrap() {
 		t.Fatal("backup configured before setup")
 	}
-	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "git@github.com:org/knowledge.git", "branch": "main", "request_id": "setup"}
+	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge.git", "branch": "main", "request_id": "setup"}
 	result, err := knowledgebaseAccessExecutor(ctx, agentprofiles.ToolRuntimeContext{Product: "knowledgebase", UserID: "admin"}, args)
 	if err != nil {
 		t.Fatal(err)

@@ -86,10 +86,10 @@ func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	session := "migration-runtime"
 	common.SetSessionWorkflowPath(session, workspace)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	if _, err := knowledgebaseExecute(ctx, "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID, "binding_alias": "local"}); err != nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID, "binding_alias": "local"}); err != nil {
 		t.Fatal("workflow reader", err)
 	}
-	if _, err := knowledgebaseExecute(ctx, "priya", false, "read_knowledgebase", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
 		t.Fatal("workflow escaped binding")
 	}
 	r = run("migration_rollback", "rollback")
@@ -131,7 +131,7 @@ func TestKnowledgebaseBindProjectRetryAndAudience(t *testing.T) {
 	session := "audience-runtime"
 	common.SetSessionWorkflowPath(session, workspace)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	if _, err := knowledgebaseExecute(ctx, "admin", false, "browse_knowledgebase", map[string]any{"action": "entries", "binding_alias": "local"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "browse_knowledgebase", map[string]any{"action": "entries", "binding_alias": "local"}); err == nil {
 		t.Fatal("ungranted audience admitted")
 	}
 }
@@ -186,18 +186,18 @@ func TestKnowledgebaseCrewAndWorkflowShareFolder(t *testing.T) {
 	session := "crew-kb-runtime"
 	common.SetSessionWorkingDir(session, crew)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	saved, err := knowledgebaseExecute(ctx, "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "shared.md", "type": "note", "title": "Shared", "content": "Crew contribution", "request_id": "crew-write"})
+	saved, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "shared.md", "type": "note", "title": "Shared", "content": "Crew contribution", "request_id": "crew-write"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	entry := knowledgeMap(json.RawMessage(saved))
 	common.SetSessionWorkflowPath("workflow-kb-runtime", workspace)
 	workflowCtx := context.WithValue(t.Context(), common.ChatSessionIDKey, "workflow-kb-runtime")
-	if _, err := knowledgebaseExecute(workflowCtx, "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": entry["entry_id"], "binding_alias": "payments"}); err != nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(workflowCtx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": entry["entry_id"], "binding_alias": "payments"}); err != nil {
 		t.Fatal("workflow failed to read unpushed Crew write", err)
 	}
 	common.SetSessionCrewReader(session, true)
-	if _, err := knowledgebaseExecute(ctx, "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "denied.md", "type": "note", "title": "Denied", "content": "x", "request_id": "crew-readonly"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "denied.md", "type": "note", "title": "Denied", "content": "x", "request_id": "crew-readonly"}); err == nil {
 		t.Fatal("Crew reader wrote")
 	}
 	// A viewer's trusted session resolves the owner's physical workspace.

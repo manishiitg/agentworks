@@ -13,7 +13,7 @@ func integrationDefinitions() []ToolDefinition {
 	defs := []ToolDefinition{{Name: "kb_inspect_project", InputSchema: obj([]any{"workspace_path"}, map[string]any{"workspace_path": str()})}}
 	defs = append(defs, ToolDefinition{Name: "kb_git", InputSchema: gitSchema, Mutates: true})
 	defs = append(defs, ToolDefinition{Name: "kb_configure_backup", InputSchema: obj([]any{"remote_url", "username", "request_id"}, map[string]any{
-		"remote_url": str(), "branch": str(), "username": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
+		"remote_url": map[string]any{"type": "string", "description": "Public HTTPS Git repository URL without embedded credentials. SSH requires deployment configuration."}, "branch": str(), "username": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
 		"pat":        map[string]any{"type": "string", "maxLength": 4096, "description": "Optional PAT for an HTTPS private repository. Stored encrypted by KB and never returned. Omit to retain it on reconfiguration; supply an empty string to remove it. In app chat enter it only in the secure setup field."},
 		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
 	}), Mutates: true})

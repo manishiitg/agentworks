@@ -136,7 +136,10 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	if err != nil {
 		return "", err
 	}
-	authFlags, env := backupGitAuth(ctx, args)
+	authFlags, env, err := backupGitAuth(ctx, args)
+	if err != nil {
+		return "", err
+	}
 	args = append(append(s.gitArgs(), authFlags...), args...)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=Brain", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Brain", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
@@ -1013,7 +1016,7 @@ func gitEnvironment() []string {
 		}
 		out = append(out, v)
 	}
-	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1")
+	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
 }
 
 func (s *Service) isAncestor(ctx context.Context, ancestor, tip string) (bool, error) {

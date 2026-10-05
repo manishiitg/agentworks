@@ -12,6 +12,8 @@ type Config struct {
 	OrganizationID string
 	BackupRemote   string
 	BackupBranch   string
+	// Operator-only opt-in for Git hosts on a private network. Never a tool argument.
+	AllowPrivateBackup bool
 	// Host-derived AES key; never persisted in KB configuration or Git.
 	BackupEncryptionKey string `json:"-"`
 }

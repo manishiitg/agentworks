@@ -17,12 +17,13 @@ import (
 
 func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, tool string, args map[string]any) (string, error) {
 	claims := GetUserFromContext(ctx)
-	if claims == nil {
-		claims = principalClaims(userID)
-	}
-	if strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseProductAllowed(claims) {
+	if claims == nil || strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseProductAllowed(claims) {
 		return "", fmt.Errorf("Brain is unavailable to this principal")
 	}
+	if caller, _ := ctx.Value(common.UserIDKey).(string); caller != "" && caller != claims.UserID {
+		return "", fmt.Errorf("Brain caller identity conflicts with authenticated claims")
+	}
+	userID = claims.UserID
 	if claims.AccessToken != nil {
 		store, err := openAccessTokens()
 		if err != nil {
@@ -130,16 +131,22 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 		}
 		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: def.Name, Description: def.Description, Parameters: params}})
 		executors[def.Name] = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			// Registration identity is only a consistency check. A reused tool
+			// table must never supply the authority for an unauthenticated caller.
+			claims := GetUserFromContext(ctx)
+			if claims == nil || claims.UserID != userID {
+				return "", fmt.Errorf("Brain tool requires its authenticated caller")
+			}
 			// A step must retain its own policy, rather than the parent's write policy.
 			session, _ := ctx.Value(common.ChatSessionIDKey).(string)
 			if session == "" {
 				session = executor.SessionIDFromContext(ctx)
 			}
 			if session == "" {
-				session = sessionIDs[0]
+				return "", fmt.Errorf("Brain tool requires an authenticated tool session")
 			}
 			ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
-			return knowledgebaseExecute(ctx, userID, false, def.Name, args)
+			return knowledgebaseExecute(ctx, claims.UserID, false, def.Name, args)
 		}
 		categories[def.Name] = "knowledgebase"
 	}

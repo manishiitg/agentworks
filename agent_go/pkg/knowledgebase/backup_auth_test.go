@@ -88,6 +88,7 @@ func TestBackupPATEncryptionRotationAndRemoval(t *testing.T) {
 
 func TestBackupHTTPSUsesPATForReceiptAndFilesGitWithoutPersistingIt(t *testing.T) {
 	s, admin, _ := fixture(t, false)
+	s.cfg.AllowPrivateBackup = true // Operator opt-in for this local TLS fixture.
 	s.cfg.BackupEncryptionKey = strings.Repeat("k", 32)
 	root := t.TempDir()
 	remote := filepath.Join(root, "backup.git")
@@ -158,4 +159,25 @@ func TestBackupHTTPSUsesPATForReceiptAndFilesGitWithoutPersistingIt(t *testing.T
 		}
 		return err
 	})
+	// Removing the operator override blocks both transport paths before Git can
+	// send the saved PAT, even though the destination was previously configured.
+	s.cfg.AllowPrivateBackup = false
+	before := authenticated.Load()
+	if _, err := s.git(t.Context(), nil, nil, "ls-remote", "origin"); err == nil {
+		t.Fatal("receipt transport reached a private destination")
+	} else if domain, ok := err.(*Error); !ok || domain.Code != "INVALID_ARGUMENT" {
+		t.Fatal("transport did not fail at the network boundary", err)
+	}
+	ctx, err := s.withBackupCredentials(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitWorkspaceBytes(ctx, root, "ls-remote", "origin"); err == nil {
+		t.Fatal("Files transport reached a private destination")
+	} else if domain, ok := err.(*Error); !ok || domain.Code != "INVALID_ARGUMENT" {
+		t.Fatal("Files transport did not fail at the network boundary", err)
+	}
+	if authenticated.Load() != before {
+		t.Fatal("PAT reached the private server after removing the override")
+	}
 }

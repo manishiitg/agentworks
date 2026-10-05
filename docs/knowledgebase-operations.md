@@ -21,6 +21,7 @@ Server configuration:
 | `AGENTWORKS_KNOWLEDGEBASE_ORG` | Trusted installation organization ID; defaults to `installation`. |
 | `AGENTWORKS_KNOWLEDGEBASE_ROOT` | Optional absolute persistent data directory outside every workspace file root. |
 | `AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE` | Optional private Git remote; overrides any app-saved destination; when unset, use app-saved setup or leave backup unconfigured. |
+| `AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE` | Operator-only opt-in (`true`) for a private HTTPS Git host; default false. Never configurable by MCP or app arguments. |
 | `AGENTWORKS_KNOWLEDGEBASE_BACKUP_BRANCH` | Publication branch; defaults to `main`. |
 
 Without an explicit data root, data lives below the platform's persistent
@@ -38,7 +39,7 @@ Supply the repository HTTPS URL and username; an optional PAT for a private repo
 builder proposes `manage_knowledgebase_access` / `configure_backup` for app
 confirmation. An unrestricted external admin connection can apply it directly.
 Setup persists private configuration across restarts; it does not verify remote
-reachability or publish content. An HTTPS PAT is encrypted in KB-owned private configuration; existing SSH URLs use host SSH credentials.
+reachability or publish content. An HTTPS PAT is encrypted in KB-owned private configuration; operator-configured SSH URLs use host SSH credentials.
 The setup action cannot redirect an existing destination. Environment variables
 remain authoritative when configured.
 
@@ -107,7 +108,9 @@ An administrator using an unrestricted writable connection can call
 
 Supply an existing repository URL and username. The PAT is optional: public repositories can be read without one, while private reads and authenticated writes need a suitable credential. A public repository may still need a PAT to push. Setup stores configuration without creating the repository, checking remote access, committing or pushing. Use `backup_knowledgebase` for status, commit and push. External MCP setup applies directly; app chat uses its existing confirmation card with a secure PAT field, never asks for the PAT in messages.
 
-KB owns the secret: the PAT is AES-256-GCM encrypted in private control storage, bound to the organization, remote and username. Git receives it only in a URL-scoped Authorization header via its child environment, with redirects and credential caching disabled. No PAT or header is stored in Git, tool responses or request journals. This has no Vault dependency. Reconfigure the same destination with a new request ID to rotate a PAT; omit `pat` to retain it, or send `pat: ""` to remove it. The repository destination remains pinned. Existing SSH backups continue using host SSH credentials and cannot accept a PAT.
+KB owns the secret: the PAT is AES-256-GCM encrypted in private control storage, bound to the organization, remote and username. Git receives it only in a URL-scoped Authorization header via its child environment, with redirects and credential caching disabled. No PAT or header is stored in Git, tool responses or request journals. This has no Vault dependency. Reconfigure the same destination with a new request ID to rotate a PAT; omit `pat` to retain it, or send `pat: ""` to remove it. The repository destination remains pinned. SSH backups use host SSH credentials only when their destination is set by deployment configuration; app/MCP setup accepts HTTPS only.
+
+App/MCP backup setup accepts HTTPS only and rejects private/special-use IP literals and localhost. Every HTTPS fetch/push resolves the host, rejects any private or special-use result, and pins the validated address in Git/libcurl for that connection. Redirects and HTTP proxies are disabled. Operators can explicitly opt into private HTTPS Git with `AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE=true`; SSH must be selected through `AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE`, never agent setup.
 
 The encryption key derives from the platform's `AUTH_SECRET`. Preserve that secret through restarts/restores; changing it requires re-entering the PAT. Back up KB private configuration securely, separate from its Markdown Git backup. Deployment environment destinations remain operator-managed.
 
@@ -258,3 +261,5 @@ After creation, inspect the project with `manage_knowledgebase_access(action=ins
 Fresh MCP/chat-created workflows receive the same current contract and `code_layout_version=1` defaults as UI creation, even if the client supplied legacy markers. This only applies to new workflows; existing workflows still go through the checked migration flow. Authored scripted code belongs in `code/<step-id>/main.py`.
 
 External Builder invokes its admitted managed tools directly for API models and projects them as direct MCP bridge tools for coding CLIs. It does not depend on an HTTP shell tool to read KB bindings or edit plans. KB tools still require explicit connection scope and enforce the binding and audience on every call; a Reader binding has no update tool.
+
+Brain tool execution requires authenticated claims and an actual caller session. The registration user is checked only for consistency; missing claims never fall back to the local account or the captured tool user. The shared context binder continues to reject foreign sessions and recheck ownership, token revocation and child policies.

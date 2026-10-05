@@ -77,7 +77,7 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	return knowledgebase.Config{Root: root, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey())}, nil
+	return knowledgebase.Config{Root: root, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true"}, nil
 }
 
 func knowledgebaseService() (*knowledgebase.Service, error) {

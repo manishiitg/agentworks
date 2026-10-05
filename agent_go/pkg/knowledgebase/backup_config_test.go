@@ -11,7 +11,7 @@ func TestBackupSetupIsAdminOnlyDurableAndDoesNotPublish(t *testing.T) {
 	grant(t, s, admin, owner.IdentityID, "", "Owner", "owner")
 	admin.AccessOnly = true
 	owner.AccessOnly = true
-	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "git@github.com:org/knowledge-backup.git", "branch": "main", "request_id": "setup"}
+	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge-backup.git", "branch": "main", "request_id": "setup"}
 	mcpError(t, s, owner, "manage_knowledgebase_access", args, "FORBIDDEN")
 	content := admin
 	content.AccessOnly = false
@@ -50,7 +50,7 @@ func TestBackupSetupIsAdminOnlyDurableAndDoesNotPublish(t *testing.T) {
 	if configured, err := s.BackupConfigured(); err != nil || !configured {
 		t.Fatal("live service did not observe setup", err)
 	}
-	changed := merge(args, map[string]any{"remote_url": "git@github.com:org/other.git"})
+	changed := merge(args, map[string]any{"remote_url": "https://github.com/org/other.git"})
 	mcpError(t, s, admin, "manage_knowledgebase_access", changed, "REQUEST_ID_REUSE")
 	changed["request_id"] = "redirect"
 	mcpError(t, s, admin, "manage_knowledgebase_access", changed, "BACKUP_REMOTE_CHANGED")
@@ -69,7 +69,7 @@ func TestBackupSetupRejectsUnsafeDestinationsAndKeepsDeploymentConfiguration(t *
 	}
 	configured, admin2, _ := fixture(t, true)
 	admin2.AccessOnly = true
-	mcpError(t, configured, admin2, "manage_knowledgebase_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "git@github.com:org/repo.git", "request_id": "replace-env"}, "BACKUP_REMOTE_CHANGED")
+	mcpError(t, configured, admin2, "manage_knowledgebase_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/repo.git", "request_id": "replace-env"}, "BACKUP_REMOTE_CHANGED")
 	for _, remote := range []string{"git@github.com:org/repo.git", "ssh://git@git.example:2222/org/repo.git"} {
 		if !validBackupSSHRemote(remote) {
 			t.Fatal("valid SSH URL denied", remote)

@@ -125,7 +125,7 @@ func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, sessionID)
+	ctx := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, sessionID), "admin")
 	result, err := agent.Run(ctx, mcpagent.Turn{Input: "Read the marker from the attached KB."})
 	if err != nil || result.Text != marker || calls.Load() != 2 {
 		t.Fatalf("Builder read failed: %+v calls=%d error=%v", result, calls.Load(), err)

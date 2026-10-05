@@ -177,13 +177,13 @@ func TestKnowledgebaseConfigRejectsWorkspaceDataRoots(t *testing.T) {
 
 func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testing.T) {
 	_, service := knowledgebaseServerTest(t)
-	// Unattended calls have no browser claims and must use the trusted run
-	// identity, with exactly the same folder checks as interactive MCP calls.
+	// Unattended calls carry claims bound from the authenticated run identity,
+	// with exactly the same folder checks as interactive MCP calls.
 	args := map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}
-	if result, err := knowledgebaseExecute(t.Context(), "priya", false, "read_knowledgebase", args); err != nil || !strings.Contains(result, "Retry failed payments safely") {
+	if result, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "read_knowledgebase", args); err != nil || !strings.Contains(result, "Retry failed payments safely") {
 		t.Fatal("run identity could not read granted folder", result, err)
 	}
-	if _, err := knowledgebaseExecute(t.Context(), "outsider", false, "read_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "outsider"), "outsider", false, "read_knowledgebase", args); err == nil {
 		t.Fatal("ungranted run identity read shared knowledge")
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
@@ -198,7 +198,12 @@ func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testin
 	if _, err = service.Call(t.Context(), admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "request_id": "revoke-runtime", "expected_acl_version": access.(map[string]any)["acl_version"]}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := knowledgebaseExecute(t.Context(), "priya", false, "read_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "read_knowledgebase", args); err == nil {
 		t.Fatal("running agent retained revoked folder access")
 	}
+}
+
+// Production binds claims at tool ingress; fixtures must do the same.
+func knowledgeTestCaller(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, UserContextKey, principalClaims(userID))
 }

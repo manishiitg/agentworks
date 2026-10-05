@@ -424,7 +424,10 @@ func gitWorkspaceRun(ctx context.Context, dir string, args ...string) (string, e
 }
 func gitWorkspaceBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	flags := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.attributesFile=/dev/null", "-c", "core.excludesFile=/dev/null", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "gc.auto=0", "-c", "protocol.allow=never", "-c", "protocol.ssh.allow=always", "-c", "protocol.https.allow=always", "-c", "protocol.file.allow=always", "-c", "remote.origin.mirror=false", "--git-dir=" + filepath.Join(dir, ".git"), "--work-tree=" + dir}
-	authFlags, env := backupGitAuth(ctx, args)
+	authFlags, env, err := backupGitAuth(ctx, args)
+	if err != nil {
+		return nil, err
+	}
 	flags = append(flags, authFlags...)
 	cmd := exec.CommandContext(ctx, "git", append(flags, args...)...)
 	cmd.Dir = dir

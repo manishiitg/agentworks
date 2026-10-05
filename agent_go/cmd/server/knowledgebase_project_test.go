@@ -86,7 +86,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	}
 	entryID := knowledgeMap(entry)["entry_id"]
 	readArgs := map[string]any{"action": "read", "entry_id": entryID, "binding_alias": "kbtest"}
-	if out, err := read(context.WithValue(t.Context(), common.ChatSessionIDKey, parent), readArgs); err != nil || !strings.Contains(out, "kb-marker-71831") {
+	if out, err := read(knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, parent), "admin"), readArgs); err != nil || !strings.Contains(out, "kb-marker-71831") {
 		t.Fatalf("builder read: %s %v", out, err)
 	}
 	// Child policy must win over the parent's registration session.
@@ -95,7 +95,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 		common.SetSessionWorkflowPath(child, workspace)
 		common.SetSessionShellEnv(child, map[string]string{"SHARED_KB_STEP_ACCESS": access})
 		defer common.ClearSessionShellConfig(child)
-		ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, child)
+		ctx := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, child), "admin")
 		out, err := read(ctx, readArgs)
 		if (err == nil) != (access != "none") {
 			t.Fatalf("%s read: %s %v", access, out, err)
@@ -117,11 +117,11 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	if _, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", writeArgs); err != nil {
 		t.Fatal("builder attachment", err)
 	}
-	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-write")
+	ctx := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-write"), "admin")
 	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "step.md", "title": "Step", "type": "note", "content": "step-created", "binding_alias": "kbtest", "request_id": "write-step"}); err != nil {
 		t.Fatal("write step", err)
 	}
-	ctx = context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-read")
+	ctx = knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-read"), "admin")
 	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "readonly.md", "title": "Denied", "type": "note", "content": "denied", "binding_alias": "kbtest", "request_id": "read-step-rejected"}); err == nil {
 		t.Fatal("read step inherited parent write")
 	}

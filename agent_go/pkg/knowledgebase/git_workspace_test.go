@@ -192,7 +192,11 @@ func TestGitPushRecoversDeliveryIntentAndPreservesStagedSnapshot(t *testing.T) {
 	call(t, s, a, "update_knowledgebase", map[string]any{"path": "Payments/guide.md", "expected_version": current["version"], "content": "written during pending push\n", "request_id": "while-pending"})
 	// Simulate remote acceptance followed by process death before local recording.
 	dir := filepath.Join(s.private, intent.Directory)
-	if _, err = gitWorkspaceRun(t.Context(), dir, "push", "origin", intent.Head+":refs/heads/main"); err != nil {
+	transportCtx, err := s.withBackupCredentials(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = gitWorkspaceRun(transportCtx, dir, "push", "origin", intent.Head+":refs/heads/main"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = gitStep(t, s, a, map[string]any{"op": "checkout", "branch": "main", "request_id": "blocked"})

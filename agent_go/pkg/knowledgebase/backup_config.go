@@ -111,8 +111,11 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 	if branch == "" {
 		branch = "main"
 	}
-	if !validBackupRemote(remote) {
-		return nil, nil, badArg("Use an HTTPS or SSH repository URL without embedded credentials.")
+	if !validBackupRemote(remote) || validBackupSSHRemote(remote) {
+		return nil, nil, badArg("Use an HTTPS repository URL without embedded credentials. SSH backups require deployment configuration.")
+	}
+	if err := validateBackupLiteralHost(remote, s.cfg.AllowPrivateBackup); err != nil {
+		return nil, nil, err
 	}
 	if !backupUsername.MatchString(username) {
 		return nil, nil, badArg("A repository username is required.")
