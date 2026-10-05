@@ -1,6 +1,7 @@
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useLLMStore } from '../stores/useLLMStore'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Activity, AlertCircle, Bot, CalendarClock, ChevronDown, Clock, Loader2, MessageSquare, Pause, Play, Webhook } from 'lucide-react'
 import type { ActiveSessionInfo, RunningWorkflowInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
@@ -345,7 +346,8 @@ export const GlobalActivityMonitor: React.FC = () => {
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
@@ -395,14 +397,14 @@ export const GlobalActivityMonitor: React.FC = () => {
   }, [openActiveWorkInQuickSwitcher])
 
   useLayoutEffect(() => {
-    if (!sidebar || !open) return
+    if (!open) return
     const reposition = () => {
       const trigger = rootRef.current?.getBoundingClientRect()
       const panel = panelRef.current?.getBoundingClientRect()
       if (!trigger || !panel) return
       setPanelPosition({
-        left: Math.max(12, Math.min(trigger.right + 12, window.innerWidth - panel.width - 12)),
-        top: Math.max(12, Math.min(trigger.bottom - panel.height, window.innerHeight - panel.height - 12)),
+        left: Math.max(12, Math.min(sidebar ? trigger.right + 12 : trigger.right - panel.width, window.innerWidth - panel.width - 12)),
+        top: Math.max(12, Math.min(sidebar ? trigger.bottom - panel.height : trigger.bottom + 8, window.innerHeight - panel.height - 12)),
       })
     }
     reposition()
@@ -449,13 +451,14 @@ export const GlobalActivityMonitor: React.FC = () => {
         <ChevronDown className={`${sidebar ? 'hidden' : ''} w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
+      {/* Escape toolbar/sidebar stacking contexts so the split divider cannot cross the menu. */}
+      {open && createPortal(
         <div
           ref={panelRef}
           role="menu"
           aria-label="Active work"
-          style={sidebar ? panelPosition : undefined}
-          className={`${sidebar ? 'fixed' : 'absolute right-0 top-full mt-2'} z-50 flex max-h-[75vh] w-80 max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900`}
+          style={panelPosition}
+          className="fixed z-50 flex max-h-[75vh] w-80 max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
         >
           <div className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
             Active work · {count}
@@ -544,7 +547,8 @@ export const GlobalActivityMonitor: React.FC = () => {
           >
             Show all in Ctrl+K
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

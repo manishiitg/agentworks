@@ -733,3 +733,7 @@ All products add the executing user's live authorized Vault MCP inventory by def
 The product Vault tab displays shared connections as automatically available, without project checkboxes. Secrets retain explicit selection and authorization before injection. Builder guidance no longer instructs users to select Vault MCPs; legacy Code/Crew select/deselect actions reject that misleading operation. New permissions appear at the next agent construction; revocation is enforced immediately on retained calls. No data migration is needed for old selected-server references.
 
 The UI uses the Integrations heading and one Connected / Available / Secrets / Skills / Vault tab row. The integration section picker labels this section Connections. Local launches include Vault in their default product list and run the gateway with GOWORK=off so a parent go.work omitting the gateway module cannot prevent startup. Explicit product allowlists are preserved.
+
+## Workflow monitor placement — 2026-10-05
+
+The global active-work monitor sits beside the workflow/Relay toolbar controls. It keeps the same global session inventory and navigation behavior, with its dropdown opening below the toolbar. The navigation rail retains the monitor on other products and full-width global pages, where no workflow toolbar is visible. Only one visible monitor is mounted for the current workflow view. The dropdown renders in a fixed overlay attached to the document body, above workspace resize dividers, with viewport-aware placement and outside-click/Escape dismissal.

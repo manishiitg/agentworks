@@ -26,6 +26,8 @@ import { hasWorkflowOwnerAccess } from '../../../utils/workflowPermissions'
 import { usePendingDecisionState } from '../hooks/usePendingDecisionCount'
 import { useDefaultHumanActionsView } from '../hooks/useDefaultHumanActionsView'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
+import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
+import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { WorkspaceToolbarFrame } from '../../workspace/WorkspaceToolbarFrame'
 import { WorkspaceToolbarGroup } from '../../workspace/WorkspaceToolbarGroup'
@@ -342,6 +344,10 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   
   // Settings are no longer persisted to localStorage - removed save logic
 
+  const workflowMode = useModeStore(state => state.selectedModeCategory === 'workflow')
+  const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const providersOpen = useLLMStore(state => state.showLLMModal)
+
   // NOTE: loadRunFolders is NOT called here anymore.
   // useWorkspaceState in WorkflowCanvas handles initial load of:
   // - run_folders (via setRunFolders)
@@ -375,6 +381,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       {/* Right side - View controls */}
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
+          {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
           {/* Report stays visible beside the expanded tool groups. */}
           {workspacePath && !relayMode && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
 

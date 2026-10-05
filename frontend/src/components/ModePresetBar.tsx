@@ -631,7 +631,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
             <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
-            <GlobalActivityMonitor />
+            {(reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
 
             {productControl}
 

@@ -98,12 +98,18 @@ describe('global activity monitor dropdown', () => {
       await act(async () => root.render(<GlobalActivityMonitor />))
       const button = host.querySelector('button[data-testid="tour-active-work-switcher"]')
       expect(button?.textContent).toContain('2 running')
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).toBeNull()
 
       click(button)
-      const menu = host.querySelector('[role="menu"]')
+      const menu = document.body.querySelector('[role="menu"]')
       expect(menu?.textContent).toContain('ICICI Bank Parsing')
       expect(menu?.textContent).toContain('News Monitor')
+      expect(menu?.parentElement).toBe(document.body)
+      expect(host.contains(menu)).toBe(false)
+      act(() => {
+        menu!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      })
+      expect(document.body.querySelector('[role="menu"]')).toBe(menu)
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -119,13 +125,13 @@ describe('global activity monitor dropdown', () => {
       expect(trigger.getAttribute('title')).toBe('Active work · 2 running')
       expect(trigger.querySelector('svg')).not.toBeNull()
       click(trigger)
-      expect(host.querySelector('[role="menu"]')?.textContent).toContain('News Monitor')
-      click(host.querySelector('[role="menuitem"]'))
+      expect(document.body.querySelector('[role="menu"]')?.textContent).toContain('News Monitor')
+      click(document.body.querySelector('[role="menuitem"]'))
       expect(openGlobalActivitySession).toHaveBeenCalledWith(
         expect.objectContaining({ session_id: 'wf-session' }),
         expect.objectContaining({ source: 'global-activity-monitor' }),
       )
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('switches to the clicked row and closes the panel', async () => {
@@ -135,7 +141,7 @@ describe('global activity monitor dropdown', () => {
     try {
       await act(async () => root.render(<GlobalActivityMonitor />))
       click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
-      const rows = host.querySelectorAll('[role="menuitem"]')
+      const rows = document.body.querySelectorAll('[role="menuitem"]')
       expect(rows.length).toBe(2)
 
       click(rows[0])
@@ -144,7 +150,7 @@ describe('global activity monitor dropdown', () => {
         expect.objectContaining({ session_id: 'wf-session' }),
         expect.objectContaining({ source: 'global-activity-monitor' }),
       )
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).toBeNull()
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -172,18 +178,18 @@ describe('global activity monitor dropdown', () => {
     try {
       await act(async () => root.render(<GlobalActivityMonitor />))
       click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
-      expect(host.querySelector('[role="menu"]')).not.toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).not.toBeNull()
 
       act(() => {
         document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
       })
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).toBeNull()
 
       click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
       act(() => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       })
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(document.body.querySelector('[role="menu"]')).toBeNull()
     } finally {
       await act(async () => root.unmount())
       host.remove()
