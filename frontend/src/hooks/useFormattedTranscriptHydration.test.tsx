@@ -30,6 +30,8 @@ it('refreshes the same chat after every terminal visit, without fetching on term
     expect(hydrate).toHaveBeenCalledTimes(visit + 2)
   }
   expect(hydrate).toHaveBeenLastCalledWith('claude-chat', expect.objectContaining({ workspacePath: 'Code/demo' }))
+  // Re-entry must use the same per-tab projection as initial restore.
+  expect(hydrate.mock.calls.every(call => call[1].compact === undefined)).toBe(true)
 })
 
 it('refreshes the newly visible conversation and workspace without a once-per-session cache', async () => {

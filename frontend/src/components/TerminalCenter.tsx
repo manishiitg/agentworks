@@ -3945,7 +3945,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
       if (selectedTabIsExecution) {
         await hydrateExecutionConversation(currentSessionId, activeWorkflowPath || undefined)
       } else {
-        await hydrateTabEvents(currentSessionId, { workspacePath: activeWorkflowPath || undefined, compact: false })
+        await hydrateTabEvents(currentSessionId, { workspacePath: activeWorkflowPath || undefined })
       }
       setMainEventHydration({ sessionId: currentSessionId, loading: false, loaded: true })
     } catch (loadError) {

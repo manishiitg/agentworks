@@ -61,6 +61,13 @@ on tab switches. Older pages and their pagination cursors stay together, scoped
 to the conversation. The shared event buffer's cursor describes only its own
 bounded tail, never another reader's locally loaded older pages.
 
+Revisiting a formatted chat uses the same compact/full history projection as
+initial restore. A refresh replaces the overlapping durable tail, preserves
+already-loaded rows before that page, and retains their backward cursor. A
+smaller refresh page must not replace a complete transcript with a partial one.
+If the memory limit trims the retained prefix, paging resumes from the oldest
+row actually kept in the shared buffer.
+
 Schedule/trigger restores share concurrent requests, establish the live-event
 cursor before SSE, and preserve events received while history was loading.
 Opening an already-loaded run uses its cached transcript; background events

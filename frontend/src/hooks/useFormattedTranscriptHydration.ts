@@ -11,12 +11,13 @@ export function useFormattedTranscriptHydration(
 ) {
   useEffect(() => {
     if (!enabled || !formatted || !sessionId) return
+    // Match initial restore's per-tab projection. A full 100-event tool
+    // window must not replace the initial compact 40-message history.
     void hydrateTabEvents(sessionId, {
       workspacePath,
       fallbackToChatHistory: true,
       preferChatHistory: true,
       includeUiEvents: true,
-      compact: false,
     }).catch(error => {
       console.error('[SessionRestore] Formatted transcript hydration failed:', error)
     })

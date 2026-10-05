@@ -291,18 +291,41 @@ export async function hydrateTabEvents(
       canSteer: response.can_steer,
     }
   }
-  const eventsNow = chatStore.getTabEvents(sessionId)
+  const currentStore = useChatStore.getState()
+  const eventsNow = currentStore.getTabEvents(sessionId)
   const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id))
+  const previousPagination = currentStore.tabHistoryPagination?.[sessionId]
+  const previousHasMore = currentStore.tabHasMoreOlderEvents?.[sessionId]
+  const oldestSequence = response.oldest_sequence
+  // Refresh the authoritative tail without throwing away older durable rows
+  // already loaded in this browser. Navigation is not a fresh conversation.
+  const olderLoaded = oldestSequence
+    ? eventsNow.filter(event => typeof event.sequence === 'number' && event.sequence > 0 && event.sequence < oldestSequence)
+    : []
   // A provisional bubble survives only until its durable row is on the page.
-  const restored = keepUnechoedProvisionals(response.events, eventsNow)
+  const restored = [...olderLoaded, ...keepUnechoedProvisionals(response.events, eventsNow)]
   restored.push(...pendingQueuedProvisionals(response.pending_messages, restored, sessionId))
   chatStore.setTabEvents(sessionId, resolveLiveInputConfirmations(restored))
   if (concurrentEvents.length > 0) appendRestoredLiveTail(sessionId, concurrentEvents)
   const cursor = response.latest_sequence ?? response.last_processed_index
   if (cursor !== undefined) chatStore.setTabLastEventIndex(sessionId, cursor)
-  chatStore.setTabHasMoreOlderEvents(sessionId, response.has_more)
-  chatStore.setTabHistoryPagination(sessionId, response.has_more && response.oldest_sequence
-    ? { hasMore: true, nextOffset: response.oldest_sequence, ...(compact ? { compact: true } : {}) }
+  // Keep the cursor with the rows it describes. The working-set memory limit
+  // may still trim history; in that case expose paging from the retained edge.
+  const retainedSequences = olderLoaded.length
+    ? chatStore.getTabEvents(sessionId).map(event => event.sequence).filter((sequence): sequence is number => typeof sequence === 'number' && sequence > 0)
+    : []
+  const retainedOldest = retainedSequences.length ? Math.min(...retainedSequences) : oldestSequence
+  const loadedOldest = olderLoaded.length ? Math.min(...olderLoaded.map(event => event.sequence!)) : oldestSequence
+  const trimmed = Boolean(loadedOldest && retainedOldest && retainedOldest > loadedOldest)
+  const hasMore = olderLoaded.length
+    ? trimmed || (previousHasMore ?? response.has_more)
+    : response.has_more
+  const nextOffset = olderLoaded.length && !trimmed && previousPagination?.hasMore
+    ? previousPagination.nextOffset
+    : retainedOldest
+  chatStore.setTabHasMoreOlderEvents(sessionId, hasMore)
+  chatStore.setTabHistoryPagination(sessionId, hasMore && nextOffset
+    ? { hasMore: true, nextOffset, ...(compact ? { compact: true } : {}) }
     : null)
 
   return {
