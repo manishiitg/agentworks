@@ -128,7 +128,7 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 
 var mcpBridgeVirtualToolCategories = map[string]bool{}
 
-// coreProducts are never switched off by AGENT_PRODUCTS.
+// coreProducts are never switched off by AGENT_PRODUCTS (except on a SparkQuill or Dominion deployment).
 var coreProducts = []string{"mcp-gateway", "knowledgebase"}
 
 // productEnabled reports whether a product's profiles and skills should be
@@ -136,15 +136,26 @@ var coreProducts = []string{"mcp-gateway", "knowledgebase"}
 // behavior of loading every product. Dedicated deployments can set a
 // comma-separated allowlist (for example, "video-studio") so unrelated
 // product startup failures cannot take down their agent API.
-func productEnabled(product string) bool {
-	// Vault and Brain are core: on in every installation, local included. What a person may do in them is decided by
-	// their account (product access and role) and by folder grants, never by this list.
-	for _, core := range coreProducts {
-		if strings.EqualFold(strings.TrimSpace(product), core) {
+func allowlistHasProduct(configured, product string) bool {
+	for _, candidate := range strings.Split(configured, ",") {
+		if strings.EqualFold(strings.TrimSpace(candidate), product) {
 			return true
 		}
 	}
+	return false
+}
+
+func productEnabled(product string) bool {
+	// Vault and Brain are core: on in every installation, local included. What a person may do in them is decided by
+	// their account (product access and role) and by folder grants, never by this list.
 	configured := strings.TrimSpace(os.Getenv("AGENT_PRODUCTS"))
+	if !allowlistHasProduct(configured, "sparkquill") && !allowlistHasProduct(configured, "dominion") { // Their own products keep their allowlists.
+		for _, core := range coreProducts {
+			if strings.EqualFold(strings.TrimSpace(product), core) {
+				return true
+			}
+		}
+	}
 	if configured == "" {
 		return true
 	}

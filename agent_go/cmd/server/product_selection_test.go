@@ -19,6 +19,12 @@ func TestProductEnabled(t *testing.T) {
 	if !productEnabled("mcp-gateway") || !productEnabled("knowledgebase") {
 		t.Fatal("Vault and Brain must be enabled whatever AGENT_PRODUCTS lists")
 	}
+	for _, own := range []string{"sparkquill", "dominion,work"} {
+		t.Setenv("AGENT_PRODUCTS", own)
+		if productEnabled("mcp-gateway") || productEnabled("knowledgebase") {
+			t.Fatalf("%s is its own product and keeps its allowlist", own)
+		}
+	}
 }
 
 func TestIsSingleProductServerDeployment(t *testing.T) {

@@ -11,4 +11,6 @@
 - RTS, Confida and the Excellence product list `knowledgebase` in their service and frontend lists (RTS deploy guards updated).
 - One test pins the MCP/app split; the product-enabled test and two older tests were updated to the core rule.
 
-**Left:** deploy RTS and verify live (consent screen for a non-admin, the tab for an account with the product, an agent run with a bound folder); dedicated deployments (SparkQuill, Dominion) now run Brain and Vault in the backend but keep their pinned UI surfaces; decide whether to add them.
+**Exempt (owner, 2026-10-05):** SparkQuill and Dominion are their own products: a deployment whose `AGENT_PRODUCTS` lists `sparkquill` or `dominion` keeps its allowlist and does not get Vault or Brain.
+
+**Left:** deploy RTS and verify live (consent screen for a non-admin, the tab for an account with the product, an agent run with a bound folder).
