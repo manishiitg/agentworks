@@ -7,11 +7,13 @@ in [the design document](../docs/design/chrome_extension_cdp_bridge.md) and
 ## Install and connect
 
 Requires Chrome 125 or newer for flattened debugger sessions.
+The same unpacked package also passed the complete local end-to-end check in
+desktop Microsoft Edge 154.0.4258.53.
 
 1. Build/restart the platform with this change. In a writable workflow or project,
    open Browser and choose **Connect Chrome**.
 2. Download the extension ZIP from that panel and unzip it.
-3. In Chrome, open `chrome://extensions`, enable **Developer mode**, choose
+3. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose
    **Load unpacked**, and select the unzipped folder. Pin the extension if useful.
 4. Copy the connection from AgentWorks into the extension popup and choose
    **Connect**. The connection is single-use and expires in five minutes.
@@ -35,6 +37,10 @@ Downloads remain on your laptop. Upload transfer, teaching, recording, HAR,
 internal Chrome pages and complete CDP compatibility are not supported in this
 release. The extension is loaded unpacked; Chrome Web Store publication is not
 part of the implementation.
+
+Loading unpacked does not require Google login or Chrome Web Store approval.
+Keep the extracted folder available while using the extension. Company-managed
+browser policies can restrict developer-mode installations.
 
 ## Develop and verify
 
