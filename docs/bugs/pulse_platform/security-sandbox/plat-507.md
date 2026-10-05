@@ -4,6 +4,8 @@
 
 **Today:** one platform Vault (the service threads a workspace id through everything, 493 places, but the server only ever uses `w1`), managed by administrators. `docs/design/vault-mcp-ownership.md` states the opposite principle for private logins: they stay private, sharing a Crew/Code/workflow does not share the person's external account, and nothing copies private credentials into shared stores. A promote is therefore a deliberate change to that rule, not an extension of it. The agent tool `manage_vault_access` can create a new Vault connection (new sign-in) but cannot move an existing login or secret in.
 
+**Definition (owner, 2026-10-05):** a vault is a bundle of MCP connections and secrets that any user can create and share with other users. It maps onto the existing Vault group (members plus grants to connections and secrets), owned by a person instead of only by the platform administrator.
+
 **Decided (owner, 2026-10-05):** the platform Vault stays administered by the platform owner. In addition, any person can create their own vaults and share secrets and MCPs from them. So there are two kinds: the platform Vault (owner-administered, company-wide) and personal vaults (the creator administers and shares). Promote into the platform Vault stays administrator-only; promote into a person's own vault is theirs to do.
 
 **Still open (answers change the design):**
