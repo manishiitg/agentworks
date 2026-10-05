@@ -172,6 +172,8 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"list_ui_capabilities":              false,
 		"get_ui_state":                      false,
 		"perform_ui_action":                 false,
+		"manage_vault_access":               false,
+		"manage_my_vaults":                  false,
 	}
 	for _, name := range manifest.Profile.ToolPolicy.Enabled {
 		if _, expected := wantEnabled[name]; !expected {
