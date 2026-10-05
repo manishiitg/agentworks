@@ -648,6 +648,11 @@ write access and exclusive control for every transfer; never use the shared
 server OS clipboard. Browser controls use the selected neutral header/tab/address
 layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/plat-382.md).
 
+### 2026-10-05 — Vault is on by default locally
+
+Owner decision: a local run has Vault like the servers do, so grants and secret checks behave the same everywhere.
+Opt out with `AGENTWORKS_LOCAL_VAULT=0`. Ticket: [PLAT-489](bugs/pulse_platform/security-sandbox/plat-489.md).
+
 ### 2026-10-05 — Scheduled runs say nothing about unanswered decisions
 
 Owner decision: unanswered decisions have nothing to do with schedules. The

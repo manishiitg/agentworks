@@ -43,6 +43,11 @@ contract tests are fixed; the suite is green. The DMG build now runs on release 
 [PLAT-486](pulse_platform/chat-reliability/plat-486.md), fixed on main: the model-only "AgentWorks note: platform
 bridge mounted" text is stripped from Muse messages read back into the chat. Left: Codex/Cursor wrappers unconfirmed.
 
+## Vault on by default in local runs — PLAT-489
+
+[PLAT-489](pulse_platform/security-sandbox/plat-489.md), fixed on main: the local launcher starts Vault in platform mode and
+wires the backend to it. Left: restart, then clean up selections with no value and check grants.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

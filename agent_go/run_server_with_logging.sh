@@ -1020,6 +1020,30 @@ else
 fi
 export AGENT_PORT
 export MCP_AGENT_SERVER_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
+
+# Vault is on by default for local runs, set up like the server deploy: the
+# gateway runs in platform mode with a private service token, and the backend
+# is pointed at it. Without CAPLAYER_SERVICE_URL the backend runs with no Vault
+# (every shared secret and MCP usable by everyone). Opt out: AGENTWORKS_LOCAL_VAULT=0.
+if [ "$WITH_GATEWAY" = true ] && [ "${AGENTWORKS_LOCAL_VAULT:-1}" != "0" ] && [ -z "${CAPLAYER_SERVICE_URL:-}" ]; then
+    VAULT_STATE_DIR="${GATEWAY_DIR}/var/platform"
+    mkdir -p "$VAULT_STATE_DIR" && chmod 700 "$VAULT_STATE_DIR"
+    VAULT_TOKEN_FILE="${VAULT_STATE_DIR}/service-token"
+    if [ ! -s "$VAULT_TOKEN_FILE" ]; then
+        (umask 077 && openssl rand -hex 32 > "$VAULT_TOKEN_FILE")
+    fi
+    chmod 600 "$VAULT_TOKEN_FILE"
+    export GATEWAY_AUTH_MODE=platform
+    export GATEWAY_BIND=127.0.0.1
+    export GATEWAY_PRODUCT_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
+    export GATEWAY_STATE_DIR="$VAULT_STATE_DIR"
+    export GATEWAY_HUMAN_TOKEN_FILE="$VAULT_TOKEN_FILE"
+    export GATEWAY_UPSTREAM_URL=none
+    export GATEWAY_GRANT_TOOLS=""
+    export GATEWAY_DEMO=""
+    export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
+    export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
+fi
 # Chat-driven OAuth actions do not have an incoming HTTP request from which to
 # infer their callback origin. For local runs the selected agent-server URL is
 # the correct callback base. Preserve an explicit PUBLIC_URL for hosted setups.
@@ -2248,6 +2272,8 @@ if [ "$WITH_GATEWAY" = true ]; then
         fi
         echo "⚠️  Continuing without the MCP Gateway (pass --with-gateway to require it)."
         WITH_GATEWAY=false
+        # A Vault URL that is set but unreachable fails closed, so drop it.
+        unset CAPLAYER_SERVICE_URL CAPLAYER_SERVICE_TOKEN_FILE
         write_frontend_runtime_config
     fi
 fi
