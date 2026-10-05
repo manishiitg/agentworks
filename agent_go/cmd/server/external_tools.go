@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -229,6 +230,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
 		admitted = append(admitted, relayTools...)
+		admitted = append(admitted, caplayerproduct.ExternalTools()...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
 			if seen[name] {

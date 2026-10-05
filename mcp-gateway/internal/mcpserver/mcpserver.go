@@ -811,7 +811,9 @@ type connectorKey struct{}
 type builderKey struct{}
 
 // BuilderProductHandler is service-only. Its callback must validate the host's
-// live administrator assertion. No normal or external transport sets this key.
+// live administrator assertion. Normal product and external runtime transports
+// never set this key; the host's explicitly authorized Vault management adapter
+// may use this service-only setup transport, like the Vault builder.
 func (g *Gateway) BuilderProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
 	return g.productHandler("/api/admin/runtime/builder/mcp", identity)
 }

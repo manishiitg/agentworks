@@ -215,17 +215,17 @@ func TestCapLayerProfileUsesSharedNativeToolsAndGovernanceBridge(t *testing.T) {
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if len(profile.Tools) != 4 || profile.Tools[0].ID != "caplayer.access" {
+	if len(profile.Tools) != 7 || profile.Tools[0].ID != "caplayer.access" {
 		t.Fatal("unexpected governance tool surface")
 	}
-	if len(profile.Runtime.BridgeTools) != 6 || profile.Runtime.BridgeTools[0] != "manage_vault_access" {
+	if len(profile.Runtime.BridgeTools) != 7 || profile.Runtime.BridgeTools[0] != "manage_vault_access" {
 		t.Fatal("tool is not directly reachable without shell")
 	}
 	if profile.Runtime.Workspace.Root != "Chats/CapLayer" || profile.Runtime.Conversation.Mode != "singleton" {
 		t.Fatal("not a durable isolated product chat")
 	}
 	for _, name := range profile.ToolPolicy.Enabled {
-		if name != "manage_vault_access" && name != "query_workflow_db" && name != "mutate_workflow_db" && name != "manage_vault_secret_access" && name != "list_mcp_servers" && name != "call_mcp_tool" {
+		if !isExternalVaultTool(name) {
 			t.Fatalf("unexpected tool %s", name)
 		}
 	}
@@ -285,7 +285,7 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 			t.Fatalf("CapLayer admitted %s", name)
 		}
 	}
-	if !gate.Admit("manage_vault_access") || !gate.Admit("list_mcp_servers") || !gate.Admit("call_mcp_tool") {
+	if !gate.Admit("manage_vault_access") || !gate.Admit("list_vault_mcp_servers") || !gate.Admit("call_vault_mcp_tool") {
 		t.Fatal("governance tool disappeared")
 	}
 	registrar := &gateRecordingRegistrar{gate: gate}
@@ -295,7 +295,7 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(registrar.admitted) != 2 || registrar.admitted[0] != "call_mcp_tool" || registrar.admitted[1] != "list_mcp_servers" {
+	if len(registrar.admitted) != 0 {
 		t.Fatalf("Vault builder MCP registration = %v", registrar.admitted)
 	}
 	for _, tc := range []struct {

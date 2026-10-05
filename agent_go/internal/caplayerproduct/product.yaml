@@ -1,0 +1,51 @@
+schema_version: 2
+dependencies: {}
+prompt: {file: system-prompt.md}
+
+# One management surface for the Vault builder and the platform CLI/MCP.
+# Schemas and execution live in the shared server tool registry.
+chat:
+  builder:
+    prompt: {file: system-prompt.md}
+    skills: [vault-access]
+    tools: &vault_tools
+      - manage_vault_access
+      - manage_vault_groups
+      - manage_vault_secret_access
+      - query_vault_db
+      - mutate_vault_db
+      - list_vault_mcp_servers
+      - call_vault_mcp_tool
+    external_tools: *vault_tools
+profile:
+  id: caplayer
+  name: Vault
+  version: 11
+  scope: project
+  skills: [vault-access]
+  tools:
+    - {id: caplayer.access}
+    - {id: caplayer.groups}
+    - {id: caplayer.secrets}
+    - {id: caplayer.database.query}
+    - {id: caplayer.database.mutate}
+    - {id: caplayer.mcp.list}
+    - {id: caplayer.mcp.call}
+  tool_policy:
+    mode: allowlist
+    enabled: *vault_tools
+  runtime:
+    agent_tools: {mode: full}
+    bridge_tools: *vault_tools
+    workspace: {mode: fixed, root: Chats/CapLayer}
+    conversation: {mode: singleton}
+    capabilities:
+      live_input: preferred
+      warm_session: preferred
+      raw_terminal: preferred
+      voice: preferred
+      new_conversation: preferred
+      workflow_execution: disabled
+      secrets: disabled
+ui:
+  surface: mcp-gateway

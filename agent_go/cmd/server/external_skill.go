@@ -67,7 +67,7 @@ Pass a fresh `+"`submission_id`"+` for each new Crew ask or function call, and r
 
 ## Vault management
 
-When manage_vault_access appears in get_api_spec, this administrator connection can manage Vault. Inspect the environment and exact tool schemas before connecting MCPs or saving live permissions. Regex conditions require a human-readable description. Use manage_vault_groups for groups and active platform members, and manage_vault_secret_access to list secret names or grant/revoke a group. No workflow_id is needed. Secret values are never returned. Upstream tools use the separate Vault MCP connection; this management grant does not bypass user/group runtime access.
+When manage_vault_access appears in get_api_spec, this administrator connection can manage Vault. Inspect the environment and exact tool schemas before connecting MCPs or saving live permissions. Regex conditions require a human-readable description. Use manage_vault_groups for groups and active platform members, and manage_vault_secret_access to list secret names or grant/revoke a group. No workflow_id is needed. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped.
 
 ## Builder
 

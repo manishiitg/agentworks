@@ -7,44 +7,32 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 )
 
 func isExternalVaultTool(name string) bool {
-	switch name {
-	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access":
-		return true
+	for _, admitted := range caplayerproduct.ExternalTools() {
+		if admitted == name {
+			return true
+		}
 	}
 	return false
 }
 
-// Reuse the Vault chat's connection/policy schema. Management does not acquire
-// the Vault builder's authority to execute upstream tools.
 func externalVaultDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	params := caplayerproduct.AccessToolParameters()
-	properties := params["properties"].(map[string]interface{})
-	operation := properties["operation"].(map[string]interface{})
-	enum := []any{}
-	for _, name := range operation["enum"].([]string) {
-		enum = append(enum, name)
+	for _, spec := range vaultManagementDefinitions() {
+		// Normalize schema arrays for the external JSON Schema validator.
+		data, _ := json.Marshal(spec.Parameters)
+		var schema map[string]any
+		_ = json.Unmarshal(data, &schema)
+		required := []string{}
+		for _, name := range schema["required"].([]any) {
+			required = append(required, name.(string))
+		}
+		write := spec.Name != "query_vault_db" && spec.Name != "list_vault_mcp_servers"
+		add(spec.Name, spec.Description, write, false, schema["properties"].(map[string]any), required...)
 	}
-	operation["enum"] = enum
-	add("manage_vault_access", strings.TrimSuffix(caplayerproduct.AccessToolDescription, "Read vault-access first.")+" Inspect the environment and exact tool schemas before changing permissions. Requires vault:manage and a current Vault administrator. No workflow_id.", true, false, params["properties"].(map[string]interface{}), "operation", "arguments")
-	add("manage_vault_groups", "List/create/edit Vault groups and list/add/remove platform members. Resolve IDs using manage_vault_access list_users. Changes apply immediately. Does not create accounts or provision product slots. Requires vault:manage and a current Vault administrator; no workflow_id.", true, false, map[string]any{
-		"operation":   map[string]any{"type": "string", "enum": []any{"list", "create", "update", "list_members", "add_member", "remove_member"}},
-		"group_id":    externalString("Existing group ID, or a new unique ID for create."),
-		"name":        map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
-		"description": map[string]any{"type": "string", "maxLength": 2000},
-		"user_id":     externalString("Exact platform user ID returned by list_users."),
-	}, "operation")
-	add("manage_vault_secret_access", "List Vault secret names (optionally assigned to group_id), or set group access with operation=set, group_id, name and allowed. Values are never returned or accepted. Add/rotate values in Vault's secure Secrets panel. Requires vault:manage and a current Vault administrator; no workflow_id.", true, false, map[string]any{
-		"operation": map[string]any{"type": "string", "enum": []any{"list", "set"}},
-		"group_id":  externalString("Existing Vault group ID."),
-		"name":      externalString("Exact existing secret name."),
-		"allowed":   map[string]any{"type": "boolean"},
-	}, "operation")
 }
 
 var externalVaultID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$`)
@@ -54,6 +42,43 @@ func (api *StreamingAPI) externalVaultCall(w http.ResponseWriter, r *http.Reques
 	// Recheck discovery's authorization: cached tools cannot retain a revoked role.
 	if !externalTokenAllows(claims, externalTool{Name: name}) {
 		externalError(w, 403, "forbidden", "Vault management requires vault:manage and an active Vault administrator.")
+		return
+	}
+	api.vaultManagementCall(w, r, name, args)
+}
+
+// Both transports supply an authenticated identity; arguments never select it.
+func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || !vaultBuilderAdministrator(claims.UserID) {
+		externalError(w, 403, "forbidden", "Vault administrator required.")
+		return
+	}
+	if name == "query_vault_db" || name == "mutate_vault_db" {
+		operation := "query"
+		if name == "mutate_vault_db" {
+			operation = "mutate"
+		}
+		payload, err := json.Marshal(args)
+		if err != nil {
+			externalError(w, 400, "invalid_arguments", err.Error())
+			return
+		}
+		result, err := capLayerAgentRequest(r.Context(), claims.UserID, "/api/admin/database/"+operation, payload)
+		if err != nil {
+			externalError(w, 502, "vault_operation_failed", err.Error())
+			return
+		}
+		externalJSON(w, json.RawMessage(result))
+		return
+	}
+	if name == "list_vault_mcp_servers" || name == "call_vault_mcp_tool" {
+		result, err := vaultManagementMCP(r.Context(), claims.UserID, name, args)
+		if err != nil {
+			externalError(w, 502, "vault_operation_failed", err.Error())
+			return
+		}
+		externalJSON(w, json.RawMessage(result))
 		return
 	}
 	fail := func(message string) { externalError(w, 400, "invalid_arguments", message) }

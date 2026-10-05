@@ -36,7 +36,7 @@ func TestCapLayerSQLToolsUseCurrentAdminAndFixedGateway(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", "service-secret-at-least-32-characters")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	reg := agentprofiles.NewRegistry()
-	if err := registerCapLayerDatabaseTools(reg); err != nil {
+	if err := registerVaultManagementTools(reg); err != nil {
 		t.Fatal(err)
 	}
 	for _, operation := range []string{"query", "mutate"} {
@@ -45,7 +45,7 @@ func TestCapLayerSQLToolsUseCurrentAdminAndFixedGateway(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tool.Name != operation+"_workflow_db" {
+			if tool.Name != operation+"_vault_db" {
 				t.Fatal(tool.Name)
 			}
 			_, err = tool.Execute(context.Background(), map[string]any{"sql": "SELECT name FROM groups"})

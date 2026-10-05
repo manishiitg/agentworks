@@ -1,0 +1,140 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+)
+
+// Tool contracts are shared verbatim by the builder and platform MCP catalog.
+func vaultManagementDefinitions() []agentprofiles.ToolSpec {
+	object := func(props map[string]any, required ...string) map[string]any {
+		if required == nil {
+			required = []string{}
+		}
+		return map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}
+	}
+	specs := []agentprofiles.ToolSpec{
+		{Name: "manage_vault_access", Category: "vault", Description: caplayerproduct.AccessToolDescription, Parameters: caplayerproduct.AccessToolParameters()},
+		{Name: "manage_vault_groups", Category: "vault", Description: "List/create/edit Vault groups and list/add/remove active platform members. Resolve IDs using manage_vault_access list_users. Changes apply immediately. Does not create accounts or provision product slots.", Parameters: object(map[string]any{
+			"operation":   map[string]any{"type": "string", "enum": []string{"list", "create", "update", "list_members", "add_member", "remove_member"}},
+			"group_id":    externalString("Existing group ID, or a new unique ID for create."),
+			"name":        map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
+			"description": map[string]any{"type": "string", "maxLength": 2000},
+			"user_id":     externalString("Exact active platform user ID returned by list_users."),
+		}, "operation")},
+		{Name: "manage_vault_secret_access", Category: "vault", Description: "List Vault secret names (optionally assigned to group_id), or set group access with operation=set, group_id, name and allowed. Values are never returned or accepted. Add/rotate values in Vault's secure Secrets panel.", Parameters: object(map[string]any{
+			"operation": map[string]any{"type": "string", "enum": []string{"list", "set"}},
+			"group_id":  externalString("Existing Vault group ID."), "name": externalString("Exact existing secret name."), "allowed": map[string]any{"type": "boolean"},
+		}, "operation")},
+	}
+	for _, definition := range virtualtools.WorkflowDBSQLToolDefinitions() {
+		data, err := json.Marshal(definition.Function.Parameters)
+		if err != nil {
+			panic(err)
+		}
+		var params map[string]any
+		data = []byte(strings.ReplaceAll(strings.ReplaceAll(string(data), "query_workflow_db", "query_vault_db"), "mutate_workflow_db", "mutate_vault_db"))
+		if err := json.Unmarshal(data, &params); err != nil {
+			panic(err)
+		}
+		params["additionalProperties"] = false
+		params["required"] = []string{}
+		name := strings.Replace(definition.Function.Name, "workflow", "vault", 1)
+		description := "Query the Vault governance database; use action=describe first. Only read-only SQL is accepted."
+		if name == "mutate_vault_db" {
+			description = "Apply an atomic parameterized SQL mutation to the Vault governance database. Mutable tables: groups, group_members, user_tool_grants, group_tool_grants. Prefer manage_vault_groups for active directory-bound membership changes and manage_vault_access for MCP removals and validated regex rules. Users, credentials, connectors, approvals and policy history are read-only."
+		}
+		specs = append(specs, agentprofiles.ToolSpec{Name: name, Category: "vault", Description: description + " The gateway owns SQLite and enforces table/row restrictions. Never supply a database path or edit physical files. Secret values are excluded.", Parameters: params})
+	}
+	specs = append(specs,
+		agentprofiles.ToolSpec{Name: "list_vault_mcp_servers", Category: "vault", Description: "List all active Vault connections, approved tool schemas, groups and secret names for administrator setup. This setup inventory is independent of group grants. Private connections belonging to other people are excluded; secret values are never exposed.", Parameters: object(map[string]any{})},
+		agentprofiles.ToolSpec{Name: "call_vault_mcp_tool", Category: "vault", Description: "Execute an active approved Vault MCP tool as the administrator for setup, independently of group/regex grants. Discover its exact server, tool and input schema using list_vault_mcp_servers first. Use searches/fetches to resolve canonical IDs before configuring permissions. Upstream writes require the user's explicit request. Every call rechecks administrator access and is audited as that user. Ordinary product and Vault runtime calls remain group scoped.", Parameters: object(map[string]any{
+			"server": externalString("Exact vault_<connection ID> from list_vault_mcp_servers."), "tool": externalString("Exact discovered public tool name."), "arguments": map[string]any{"type": "object"},
+		}, "server", "tool", "arguments")},
+	)
+	return specs
+}
+
+// Register the same executors used by platform MCP, under manifest-owned bindings.
+func registerVaultManagementTools(registry *agentprofiles.Registry, apis ...*StreamingAPI) error {
+	api := &StreamingAPI{}
+	if len(apis) > 0 {
+		api = apis[0]
+	}
+	profile := caplayerproduct.Manifest().Profile
+	definitions := vaultManagementDefinitions()
+	names := caplayerproduct.ExternalTools()
+	if len(names) != len(definitions) {
+		return fmt.Errorf("Vault product.yaml and implementations differ")
+	}
+	for i, definition := range definitions {
+		if definition.Name != names[i] {
+			return fmt.Errorf("Vault product.yaml tool %q has no matching implementation", names[i])
+		}
+	}
+	for i, binding := range profile.Tools {
+		spec := definitions[i]
+		if binding.ID == "caplayer.access" {
+			continue
+		} // Registered by the shared product runtime.
+		if err := registry.RegisterToolFactory(binding.ID, func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
+			out := spec
+			out.Execute = func(ctx context.Context, args map[string]any) (string, error) {
+				if canonicalChatHistoryWorkspacePath(runtime.UserID, runtime.WorkspacePath) != caplayerproduct.WorkspaceRoot {
+					return "", fmt.Errorf("Vault management requires its own chat project")
+				}
+				// The same compiled schema guards direct builder calls and external calls.
+				catalog, err := externalTools()
+				if err != nil {
+					return "", err
+				}
+				var tool *externalTool
+				for i := range catalog {
+					if catalog[i].Name == out.Name {
+						tool = &catalog[i]
+						break
+					}
+				}
+				if tool == nil {
+					return "", fmt.Errorf("Vault tool missing from catalog: %s", out.Name)
+				}
+				if err := tool.validator.Validate(args); err != nil {
+					return "", fmt.Errorf("invalid Vault arguments: %w", err)
+				}
+				if claims := GetUserFromContext(ctx); claims != nil {
+					if claims.UserID != runtime.UserID {
+						return "", fmt.Errorf("Vault tool identity changed")
+					}
+				} else {
+					ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: runtime.UserID})
+				}
+				if out.Name == "list_vault_mcp_servers" || out.Name == "call_vault_mcp_tool" {
+					if _, present, err := api.vaultBuilderAuthority(ctx, runtime.UserID); err != nil || !present {
+						return "", fmt.Errorf("Vault setup requires an administrator-owned builder session")
+					}
+				}
+				request, err := http.NewRequestWithContext(ctx, http.MethodPost, "/internal/vault/tool", nil)
+				if err != nil {
+					return "", err
+				}
+				response := &accessToolResponse{header: make(http.Header)}
+				api.vaultManagementCall(response, request, out.Name, args)
+				if response.status >= 300 {
+					return "", fmt.Errorf("Vault operation failed: %s", response.String())
+				}
+				return response.String(), nil
+			}
+			return out, nil
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
