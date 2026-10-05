@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 - The DMG runs Vault by default - PLAT-493
+
+The desktop app bundles `vault-server` (the mcp-gateway) and starts it in platform mode before the agent, with a private state dir and token under the app's user data, and points the agent at it. Why: owner decision that Vault is on by default locally; a DMG without it ran every shared secret and MCP unrestricted. Opt out with `AGENTWORKS_LOCAL_VAULT=0`. If the binary is missing or the gateway does not become healthy, the app starts without Vault (never with an unreachable Vault URL, which fails closed). Code: `desktop/lib/vault.js`, `desktop/main.js`. Ticket: PLAT-493.
+
 ### 2026-10-05 — A confined coding CLI never inherits the platform's own secrets
 
 The Landlock launcher every confined CLI starts through now removes the platform's own secrets from the environment before it executes the CLI (`ScrubPlatformSecretEnv`: `SUPABASE_*`, `GLOBAL_SECRET_*`, `VAULT_*`, `AUTH_SECRET`, `ACCESS_PASSWORD`, `GOG_KEYRING_PASSWORD`, `ADMIN_USERS`, `AUTH_ALLOWED_EMAILS`, `CAPLAYER_SERVICE_TOKEN_FILE`, `SSH_AUTH_SOCK`, plus names in `AGENTWORKS_CLI_ENV_DENY`). A CLI's own login, the per-chat secrets (`SECRET_*`) and the bridge token are not touched. Why: a Crew's built-in shell ran as the app account and could print the service-role key and keyring password from its environment (PLAT-491). The deploy self-test (`cli-launcher-env-scrub`, full level) proves it on every deploy and is proven able to fail against a launcher without the scrub. Not covered: the app's Docker socket (`DOCKER_HOST`) and the native shell itself (separate decisions). Code: `workspace/security/landlock_runner_linux.go`. Ticket: PLAT-491.

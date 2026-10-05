@@ -1,3 +1,7 @@
+## The desktop app (DMG) ran with no Vault — PLAT-493
+
+[PLAT-493](pulse_platform/security-sandbox/plat-493.md), P2, fixed on main (not released). The packaged macOS app bundled no Vault gateway, so a DMG install ran with every shared secret and MCP usable by everyone. It now bundles `vault-server` and runs it in platform mode by default, like the dev launcher and the servers. Also fixed: the packaged app omitted `desktop/lib` entirely.
+
 ## Messages queued after a provider switch never ran — PLAT-492
 
 [PLAT-492](pulse_platform/chat-reliability/plat-492.md), P0, fixed on main (deploy pending). The turn queue only started a waiting message when it was kicked at an idle moment; after a provider change (which queues the message, PLAT-425) a missed kick left it waiting forever. A per-session watcher now re-checks until the session is idle; live check `mcp-agent test provider-switch-e2e`.

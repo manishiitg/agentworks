@@ -40,6 +40,10 @@
         "to": "workspace-server"
       },
       {
+        "from": "resources/vault-server",
+        "to": "vault-server"
+      },
+      {
         "from": "resources/lib",
         "to": "lib"
       },
@@ -56,6 +60,8 @@
       "main.js",
       "preload.js",
       "walkthroughState.js",
+      "lib/*.js",
+      "!lib/*.test.js",
       "settings.html",
       "auth-prompt.html"
     ]

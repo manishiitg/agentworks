@@ -25,6 +25,7 @@ const USER_DATA_PATH = CONFIGURED_USER_DATA_PATH
 app.setName('AgentWorks');
 app.setPath('userData', USER_DATA_PATH);
 
+const { startVault, pickPorts } = require('./lib/vault');
 const { createWalkthroughState } = require('./walkthroughState');
 // Initialize lazily, after legacy profile migration has completed.
 let walkthroughState;
@@ -86,6 +87,9 @@ const AGENT_PROMPT_LOG_MAX_SESSIONS = parseNonNegativeIntegerEnv(
 
 let workspaceProcess = null;
 let agentProcess = null;
+let vaultProcess = null;
+let dynamicVaultPort = null;
+let plannedAgentPort = 45678;
 let mainWindow = null;
 let settingsWindow = null;
 let tray = null;
@@ -530,7 +534,8 @@ function restartServers() {
     const userDataPath = app.getPath('userData');
     startAgentPromptLogPruning(userDataPath);
     spawnWorkspace(userDataPath)
-      .then(() => spawnAgent(userDataPath))
+      .then(() => spawnVault(userDataPath))
+      .then((vaultEnv) => spawnAgent(userDataPath, vaultEnv))
       .then(() => {
         const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
         const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
@@ -1039,7 +1044,27 @@ function spawnWorkspace(userDataPath) {
   });
 }
 
-function spawnAgent(userDataPath) {
+// Vault runs by default, like the local dev launcher and the servers. It is
+// started before the agent on a port picked up front, because each needs the
+// other's port. Returns the env to merge into the agent's, or {} when Vault is
+// off or failed (the agent then runs with no Vault, never a dangling URL).
+async function spawnVault(userDataPath) {
+  const logsDir = path.join(userDataPath, 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  const docsDir = process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs');
+  const { agentPort, vaultPort } = await pickPorts(45678);
+  plannedAgentPort = agentPort;
+  const started = await startVault({
+    bin: getBinaryPath('vault-server'), userDataPath, docsDir, agentPort, vaultPort,
+    log: createBoundedLogWriter(path.join(logsDir, 'vault.log')), echoToConsole: true,
+  });
+  if (!started) return {};
+  vaultProcess = started.child;
+  dynamicVaultPort = vaultPort;
+  return started.env;
+}
+
+function spawnAgent(userDataPath, vaultEnv = {}) {
   return new Promise((resolve, reject) => {
     const bin = getBinaryPath('agent-server');
     if (!fs.existsSync(bin)) {
@@ -1158,7 +1183,13 @@ function spawnAgent(userDataPath) {
       NATIVE_WORKSPACE: 'true',
       WORKSPACE_API_TOKEN: workspaceApiToken
     };
-
+    if (process.env.AGENTWORKS_LOCAL_VAULT !== '0') {
+      // Vault is ours to wire: take our values, or none (never an inherited,
+      // possibly unreachable URL, which the backend treats as fail-closed).
+      delete env.CAPLAYER_SERVICE_URL;
+      delete env.CAPLAYER_SERVICE_TOKEN_FILE;
+      Object.assign(env, vaultEnv);
+    }
 
     // Debug: persist the final system prompt + user message + tool calls for
     // every LLM call to <cwd>/logs/agent_prompts/{session_id}/. Off by default
@@ -1172,7 +1203,7 @@ function spawnAgent(userDataPath) {
     }
 
     spawnServer({
-      name: 'agent', bin, args, preferredPort: 45678, cwd,
+      name: 'agent', bin, args, preferredPort: plannedAgentPort, cwd,
       env: (port) => ({
         ...env,
         // OAuth tools run without an incoming browser request, so they need a
@@ -1199,6 +1230,7 @@ function waitForHealth(agentUrl, workspaceUrl) {
     checks: [
       { name: 'agent (port ' + dynamicAgentPort + ')', url: agentUrl },
       { name: 'workspace (port ' + dynamicWorkspacePort + ')', url: workspaceUrl },
+      ...(vaultProcess ? [{ name: 'vault (port ' + dynamicVaultPort + ')', url: `http://127.0.0.1:${dynamicVaultPort}/healthz` }] : []),
     ],
     timeoutMs: HEALTH_TIMEOUT_MS,
     pollMs: HEALTH_POLL_MS,
@@ -1542,6 +1574,12 @@ function killChildren() {
     } catch (_) {}
     agentProcess = null;
   }
+  if (vaultProcess) {
+    try {
+      vaultProcess.kill('SIGTERM');
+    } catch (_) {}
+    vaultProcess = null;
+  }
   if (agentPromptLogPruneInterval) {
     clearInterval(agentPromptLogPruneInterval);
     agentPromptLogPruneInterval = null;
@@ -1714,7 +1752,7 @@ app.whenReady().then(async () => {
     startAgentPromptLogPruning(userDataPath);
     console.log('[main] Spawning local servers...');
     await spawnWorkspace(userDataPath);
-    await spawnAgent(userDataPath);
+    await spawnAgent(userDataPath, await spawnVault(userDataPath));
   } catch (err) {
     showErrorAndExit(err.message || String(err));
     return;

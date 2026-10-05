@@ -37,6 +37,10 @@ echo "Building workspace-server..."
 cd "$PROJECT_ROOT/workspace"
 go build -o "$SCRIPT_DIR/resources/workspace-server" .
 
+echo "Building vault-server..."
+cd "$PROJECT_ROOT/mcp-gateway"
+GOWORK=off go build -o "$SCRIPT_DIR/resources/vault-server" ./cmd/server
+
 echo "Installing Electron dependencies..."
 cd "$SCRIPT_DIR"
 npm install
