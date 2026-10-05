@@ -2692,3 +2692,11 @@ change what a workflow does while still allowing it to report success.
 ## The external MCP returns stored webhook secrets in workflow manifests — PLAT-533
 
 [PLAT-533](pulse_platform/mcp/plat-533.md), P3, fixed on main, not deployed: `list_workflows` and `get_workflow` now drop each webhook's `encrypted_secret` from the manifest they return.
+
+## A workflow function call reports `queued` for its whole run — PLAT-535
+
+[PLAT-535](pulse_platform/mcp/plat-535.md), P3, open: `get_workflow_function_call` stays `queued` while the run executes; only Crew calls move to `running` (on a progress report).
+
+## A finished function call returns every step's full output — PLAT-536
+
+[PLAT-536](pulse_platform/mcp/plat-536.md), P3, open: the poll result was 400 KB (all step output files); it should list files and sizes and let the client read what it needs.
