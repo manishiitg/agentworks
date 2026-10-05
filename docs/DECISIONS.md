@@ -47,7 +47,7 @@ Ticket: [PLAT-530](bugs/pulse_platform/browser/plat-530.md).
 - A project schedule has exactly one timing form: a cron line, every N hours, or `run_at` (one moment). A one-time schedule
   runs once and never again; a failed attempt retries with the usual backoff, 3 times at most. It is for "check the deploy in
   3 hours": the agent's `create_project_schedule` takes `in_minutes` or `run_at`. Crew and Code only; workflows keep their
-  calendar items. If the server was down at the moment, it runs on the next tick. Ticket: [PLAT-533](bugs/pulse_platform/scheduler-runs/plat-533.md).
+  calendar items. If the server was down at the moment, it runs on the next tick. Ticket: [PLAT-534](bugs/pulse_platform/scheduler-runs/plat-534.md).
 
 ### 2026-10-05 — Chat history is what the platform saved; CLI transcripts are for debugging only
 

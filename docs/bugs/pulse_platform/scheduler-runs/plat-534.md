@@ -1,6 +1,6 @@
 [← Pulse platform issue index](../../pulse_platform_issue_register.md)
 
-# PLAT-533 — One-time schedules for Crew and Code ("check the deploy in 3 hours")
+# PLAT-534 — One-time schedules for Crew and Code ("check the deploy in 3 hours")
 
 | Coordination | Value |
 |---|---|

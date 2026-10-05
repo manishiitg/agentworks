@@ -222,9 +222,9 @@ usable node_modules if the install fails.
 
 [PLAT-532](pulse_platform/browser/plat-532.md), fixed on main, not deployed: extension 0.4.0 remembers enabled project connections, resumes after transient loss/restarts and respects offline Disconnect; browser restart clears tab grants.
 
-## One-time schedules for Crew and Code — PLAT-533
+## One-time schedules for Crew and Code — PLAT-534
 
-[PLAT-533](pulse_platform/scheduler-runs/plat-533.md), built on main; not deployed; needs a live check.
+[PLAT-534](pulse_platform/scheduler-runs/plat-534.md), built on main; not deployed; needs a live check.
 
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
