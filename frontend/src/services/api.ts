@@ -1272,6 +1272,17 @@ export const agentApi = {
     return response.data
   },
 
+  /** The signed-in person's vaults: one operation endpoint shared with the agent tool (PLAT-507). */
+  myVaultsOp: async (args: Record<string, unknown>): Promise<string> => {
+    const response = await api.post('/api/my-vaults/op', args)
+    return response.data?.result ?? ''
+  },
+
+  /** Types a secret's value into a vault the person owns; the value goes nowhere else. */
+  setMyVaultSecret: async (vaultId: string, name: string, value: string, replace: boolean): Promise<void> => {
+    await api.post(`/api/my-vaults/${encodeURIComponent(vaultId)}/secrets`, { name, value, replace })
+  },
+
   /** Where a new project is created: the shared root when the server has that switch on (it registers the owner), else shared=false. */
   reserveProject: async (profileId: string, title: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/reserve`, { title })
