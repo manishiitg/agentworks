@@ -8883,11 +8883,11 @@ const (
 var inspectRetainedMainTurnTmuxState = inspectCodingTmuxPaneState
 
 var (
-	// retainedMainTurnDurableQuietWindow is how long the tmux output stream
-	// must stay silent before the observer consults the provider's durable
+	// retainedMainTurnDurableQuietWindow is the initial observation delay
+	// before the observer consults the provider's durable
 	// turn sidecar. Pane heuristics cannot see idle for every provider (Muse
 	// has no PaneReadyForInput signal), but the provider's own retained-turn
-	// reader already encodes its completion contract, so a quiet pane plus a
+	// reader already encodes its completion contract, so an idle pane plus a
 	// durable final response settles the turn on runner outcome instead of
 	// pixels. Vars (not consts) so tests can shrink them.
 	retainedMainTurnDurableQuietWindow = 15 * time.Second
@@ -9014,6 +9014,7 @@ func (api *StreamingAPI) observeRetainedMainTurnStreamMode(
 		<-timer.C
 	}
 	defer timer.Stop()
+	timerArmed := false
 	resetTimer := func(delay time.Duration) {
 		if !timer.Stop() {
 			select {
@@ -9022,6 +9023,7 @@ func (api *StreamingAPI) observeRetainedMainTurnStreamMode(
 			}
 		}
 		timer.Reset(delay)
+		timerArmed = true
 	}
 
 	var readySince time.Time
@@ -9044,8 +9046,14 @@ func (api *StreamingAPI) observeRetainedMainTurnStreamMode(
 		case <-output:
 			readySince = time.Time{}
 			lastOutputAt = time.Now()
-			resetTimer(retainedMainTurnStreamQuietWindow)
+			// Cosmetic TUI repaint output can continue after the answer ends.
+			// Never postpone an already scheduled lifecycle check: resetting it
+			// on every byte starves both durable completion and the backstop.
+			if !timerArmed {
+				resetTimer(retainedMainTurnStreamQuietWindow)
+			}
 		case <-timer.C:
+			timerArmed = false
 			captureCtx, cancel := context.WithTimeout(ctx, retainedMainTurnCaptureTimeout)
 			pane, captureErr := stream.capturePane(captureCtx)
 			cancel()
@@ -9060,13 +9068,13 @@ func (api *StreamingAPI) observeRetainedMainTurnStreamMode(
 				readySince = time.Time{}
 				now := time.Now()
 				// The pane heuristics cannot see idle for every provider.
-				// Once the stream has gone quiet, a durable final response
+				// After the initial observation delay, a durable final response
 				// from the provider's own turn contract settles the turn on
 				// runner outcome instead of pixels — but only for readers
 				// that assert completion, so an ungated reader (Pi) can never
 				// settle a turn that is merely awaiting a slow user.
 				if retainedTurnDurableSettleAllowed(provider) &&
-					now.Sub(lastOutputAt) >= retainedMainTurnDurableQuietWindow &&
+					now.Sub(observeStartedAt) >= retainedMainTurnDurableQuietWindow &&
 					now.Sub(lastDurableCheck) >= retainedMainTurnDurableRecheckWindow {
 					lastDurableCheck = now
 					if finalResult := api.retainedTurnFinalResponse(provider, sessionID, turnStartedAt); strings.TrimSpace(finalResult) != "" {

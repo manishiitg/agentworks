@@ -10,8 +10,8 @@ import (
 	"time"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/liveattach"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
@@ -262,6 +262,73 @@ func TestPLAT178StuckRetainedTurnFailsAfterBackstopAndReleasesLane(t *testing.T)
 		if got := trackedStatus(api, id); got != trackedExecutionStatusFailed {
 			t.Fatalf("%s status = %q, want failed", id, got)
 		}
+	}
+}
+
+// TUI repaint bytes are not proof of active model work. They must neither
+// starve the provider's completion check nor disable the existing backstop.
+func TestRetainedCompletionChecksSurviveContinuousPaneOutput(t *testing.T) {
+	for _, completed := range []bool{true, false} {
+		name := "completed-sidecar"
+		if !completed {
+			name = "stuck-backstop"
+		}
+		t.Run(name, func(t *testing.T) {
+			plat178Thresholds(t, time.Hour, 600*time.Millisecond, time.Hour, paneAlive)
+			sessionID, tmuxSession := "repaint-"+name, "mlp-muse-repaint-"+name
+			api, _, _ := newPlat178API(t, sessionID, tmuxSession)
+			if completed {
+				api.internalRetainedTurnFinalResponseReader = func(llmproviders.Provider, string, time.Time) string {
+					return "Provider-confirmed final response."
+				}
+			}
+			trackRunning(api, sessionID, "repaint-execution")
+			stop, done := make(chan struct{}), make(chan struct{})
+			go func() {
+				defer close(done)
+				tick := time.NewTicker(25 * time.Millisecond)
+				defer tick.Stop()
+				for {
+					select {
+					case <-stop:
+						return
+					case <-tick.C:
+						api.liveAttach.mu.Lock()
+						stream := api.liveAttach.sessions[tmuxSession]
+						api.liveAttach.mu.Unlock()
+						if stream != nil {
+							stream.broadcast([]byte("\x1b[?25h"))
+						}
+					}
+				}
+			}()
+			t.Cleanup(func() {
+				close(stop)
+				<-done
+				api.retainedMainTurnsMu.Lock()
+				cancel := api.retainedMainTurnWatchCancels[sessionID]
+				api.retainedMainTurnsMu.Unlock()
+				if cancel != nil {
+					cancel()
+				}
+				api.liveAttach.mu.Lock()
+				stream := api.liveAttach.sessions[tmuxSession]
+				api.liveAttach.mu.Unlock()
+				if stream != nil {
+					stream.stop()
+					<-stream.done
+				}
+			})
+			api.markRetainedMainCodingTurnRunning(sessionID, "repaint-execution")
+			waitNotBusy(t, api, sessionID, 5*time.Second)
+			want := trackedExecutionStatusCompleted
+			if !completed {
+				want = trackedExecutionStatusFailed
+			}
+			if got := trackedStatus(api, "repaint-execution"); got != want {
+				t.Fatalf("execution status = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
