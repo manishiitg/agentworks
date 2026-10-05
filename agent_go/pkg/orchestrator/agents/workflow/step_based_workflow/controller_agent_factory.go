@@ -899,6 +899,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db", "workflow_db:apply_workflow_db_migration")
 	}
 
+	// Explicit custom tool selection cannot broaden the step's KB capability.
+	narrowed := enabledTools[:0]
+	for _, entry := range enabledTools {
+		if !strings.HasPrefix(entry, "knowledgebase:") {
+			narrowed = append(narrowed, entry)
+		}
+	}
+	enabledTools = narrowed
+	if access := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()); access != KBAccessNone {
+		enabledTools = append(enabledTools, "knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:backup_knowledgebase", "knowledgebase:manage_knowledgebase_access")
+		if access == KBAccessWrite || access == KBAccessReadWrite {
+			enabledTools = append(enabledTools, "knowledgebase:update_knowledgebase")
+		}
+	}
 	hasBrowserCategory := false
 	for _, entry := range enabledTools {
 		if strings.HasPrefix(entry, "workspace_browser") {
@@ -931,6 +945,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareWorkspaceToolsOnly() ([]llmtyp
 		hcpo.WorkspaceTools,
 		hcpo.WorkspaceToolExecutors,
 		[]string{
+			"knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:update_knowledgebase",
 			"workspace_advanced:execute_shell_command",
 			"workspace_advanced:diff_patch_workspace_file",
 			"workflow_db:query_workflow_db",

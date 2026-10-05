@@ -161,3 +161,6 @@ confirmation card; proposal storage encrypts supplied PATs and responses redact
 them. Credentials do not enter Git config or content. No Vault dependency.
 Validation includes real HTTPS Git authentication for receipt push and Files
 pull, encryption/restart/rotation/removal checks, and masked app proposal flows.
+
+
+2026-10-05: Added workflow KB resource selection across global MCP, root Builder and Attached folders UI, using Vault's selection and root authority patterns. Project binding actions remain within manage_knowledgebase_access (five MCP tool names). Every external project action requires appropriate Builder/Crew authoring bounds as well as unrestricted KB write authority; project ownership, current folder access, output audience and manifest CAS apply to every surface. Added default scoped step content tools and preserved the actual child session for authorization. UI uses existing Checkbox/Button/Ask AI controls, reports conflicts/audience errors, and performs no implicit grants. Verified actual MCP binding, Builder and child isolation, UI selections, step read/write/none and denied writes, with race-enabled backend checks.

@@ -547,6 +547,8 @@ func externalBuilderToolDenied(claims *UserClaims, name string) bool {
 		return false
 	}
 	switch name {
+	case "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access":
+		return claims.AccessToken == nil || !claims.AccessToken.Allows("knowledgebase:read")
 	case "read_file", "write_file", "list_files", "search_files",
 		"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link":
 		return false

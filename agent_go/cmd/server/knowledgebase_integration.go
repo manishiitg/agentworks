@@ -136,6 +136,39 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 	return p, nil
 }
 
+// Project authoring scopes are independent of KB content scopes. An owned
+// project outside the token's workflow/Crew allowlist remains unavailable.
+func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProject) error {
+	if claims := GetUserFromContext(ctx); claims != nil {
+		product := "work"
+		if project.Kind == string(common.SessionWorkspaceWorkflow) {
+			product = "agentworks"
+			var kind string
+			_ = json.Unmarshal(project.Raw["kind"], &kind)
+			if kind == "relay" {
+				product = "relays"
+			}
+			if !userAllowedWorkflowID(claims, project.ID) {
+				return &knowledgebase.Error{Code: "FORBIDDEN", Message: "This account cannot access the source workflow."}
+			}
+		}
+		if !userAllowedProduct(claims, product) {
+			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "The source project product is unavailable to this account."}
+		}
+	}
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
+		token := claims.AccessToken
+		allowed := token.BuilderAccess() && token.AllowsWorkflow(project.ID)
+		if project.Kind != string(common.SessionWorkspaceWorkflow) {
+			allowed = token.Allows("crews:read") && token.Allows("crews:write") && token.AllowsCrew(project.ID)
+		}
+		if !allowed {
+			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "This connection does not authorize this project."}
+		}
+	}
+	return nil
+}
+
 func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *knowledgebase.Principal, args map[string]any) error {
 	session, _ := ctx.Value(common.ChatSessionIDKey).(string)
 	if session == "" {
@@ -232,12 +265,20 @@ func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, 
 			return nil, err
 		}
 		if !p.AccessOnly {
-			return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "Only the access builder can configure project bindings."}
+			return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "An authorized project setup connection is required."}
 		}
 		if action == "inspect_project" {
 			project, err := knowledgeProjectLoad(ctx, p.IdentityID, args["workspace_path"].(string), true)
 			if err != nil {
 				return nil, err
+			}
+			if err := knowledgeProjectConnectionCheck(ctx, project); err != nil {
+				return nil, err
+			}
+			if p.Recheck != nil {
+				if err := p.Recheck(ctx); err != nil {
+					return nil, err
+				}
 			}
 			return map[string]any{"manifest_version": project.Version, "shared_knowledgebase": project.Bindings, "audience": project.Audience, "knowledgebase_mode": project.Shared}, nil
 		}
@@ -311,13 +352,22 @@ func knowledgebaseBindProject(ctx context.Context, service *knowledgebase.Servic
 	if err != nil {
 		return nil, err
 	}
-	if intent.Hash != "" && project.Version == intent.After {
-		return intent.Result, nil
+	if err := knowledgeProjectConnectionCheck(ctx, project); err != nil {
+		return nil, err
 	}
 	if p.Recheck != nil {
 		if err := p.Recheck(ctx); err != nil {
 			return nil, err
 		}
+	}
+	if intent.Hash != "" && project.Version == intent.After {
+		if args["action"] == "bind_project" {
+			binding := knowledgebase.Binding{Alias: args["alias"].(string), FolderID: args["folder_id"].(string), Access: args["access"].(string)}
+			if _, err := service.ResolveBinding(ctx, p, binding, project.Audience); err != nil {
+				return nil, err
+			}
+		}
+		return intent.Result, nil
 	}
 	if args["expected_manifest_version"] != project.Version {
 		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "The project configuration changed; inspect and retry."}

@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
@@ -1463,6 +1464,17 @@ func (iwm *InteractiveWorkshopManager) registerMarkChangelogArtifactReviewedTool
 // registries cannot drift from one another.
 func registerWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent DefinitionRegistrar, workspacePath string, logger loggerv2.Logger) {
 	registerInteractiveWorkshopTools(iwm, mcpAgent, logger)
+	if !iwm.isRunModeRestricted() && iwm.workshopConfig != nil && iwm.workshopConfig.KnowledgebaseProjectTool != nil {
+		for _, def := range knowledgebase.ProjectToolDefinitions() {
+			def := def
+			params := def.InputSchema
+			if err := mcpAgent.RegisterCustomTool(def.Name, def.Description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
+				return iwm.workshopConfig.KnowledgebaseProjectTool(ctx, def.Name, args)
+			}, "knowledgebase"); err != nil {
+				logger.Warn(fmt.Sprintf("Failed to register knowledge project tool: %v", err))
+			}
+		}
+	}
 	if iwm.isRunModeRestricted() {
 		// PLAT-262: skip changelog artifact-review marker registration for read-only access
 	} else if err := iwm.registerMarkChangelogArtifactReviewedTool(mcpAgent, workspacePath, logger); err != nil {

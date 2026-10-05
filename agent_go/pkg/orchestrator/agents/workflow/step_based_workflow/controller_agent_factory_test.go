@@ -1436,3 +1436,33 @@ func TestStepExecutionScopeUsesOwningAgentSubtree(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedKnowledgebaseStepToolsFollowAccess(t *testing.T) {
+	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.WorkspaceToolExecutors = map[string]interface{}{}
+	base.ToolCategories = map[string]string{}
+	for _, name := range []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"} {
+		base.WorkspaceTools = append(base.WorkspaceTools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}})
+		base.WorkspaceToolExecutors[name] = func(context.Context, map[string]interface{}) (string, error) { return "", nil }
+		base.ToolCategories[name] = "knowledgebase"
+	}
+	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, useKnowledgebase: true}
+	for _, access := range []string{KBAccessRead, KBAccessReadWrite, KBAccessWrite, KBAccessNone} {
+		config := &AgentConfigs{KnowledgebaseAccess: access, EnabledCustomTools: []string{"workspace_advanced:execute_shell_command", "knowledgebase:*"}}
+		_, executors := hcpo.prepareCustomTools(config)
+		if (executors["read_knowledgebase"] != nil) != (access != KBAccessNone) {
+			t.Fatalf("%s missing/extra read tool", access)
+		}
+		if (executors["update_knowledgebase"] != nil) != (access == KBAccessWrite || access == KBAccessReadWrite) {
+			t.Fatalf("%s missing/extra write tool", access)
+		}
+	}
+	hcpo.platformStoresDisabled.Store(true)
+	_, executors := hcpo.prepareCustomTools(&AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite})
+	if len(executors) != 0 {
+		t.Fatal("disabled workflow admitted KB tools")
+	}
+}

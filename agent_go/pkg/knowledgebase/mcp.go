@@ -21,7 +21,7 @@ var mcpSurface = []mcpTool{
 	{"read_knowledgebase", "Read an entry (whole, lines, or heading section) with action=read, or literal-search accessible content with action=search. Reads return a current version.", []mcpAction{{"read", "read_knowledgebase"}, {"search", "search_knowledgebase"}}},
 	{"update_knowledgebase", "Save live knowledge: create, update, delete, or create_folder. Migration actions preview/import/cutover/rollback explicitly migrate an owned workflow or Crew after preview. Use expected_version and stable request IDs; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}, {"migration_preview", "kb_migration_preview"}, {"migration_import", "kb_migration_import"}, {"migration_cutover", "kb_migration_cutover"}, {"migration_rollback", "kb_migration_rollback"}}},
 	{"backup_knowledgebase", "Inspect Git backup with action=status, prepare selected current versions/deletions with action=commit, then explicitly publish the owned receipt with action=push. Commit/push require distinct stable request IDs. Repository-wide Files Git operations use action=git with op (status, diff, log, branches, stage, commit, pull, push, checkout, stash); pull and checkout update live knowledge. Require root access and an unrestricted connection.", []mcpAction{{"status", "get_knowledgebase_backup_status"}, {"commit", "commit_knowledgebase"}, {"push", "push_knowledgebase"}, {"git", "kb_git"}}},
-	{"manage_knowledgebase_access", "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. The access builder also binds/unbinds owned workflow/Crew projects. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}}},
+	{"manage_knowledgebase_access", "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. Authorized builders and external authoring connections can inspect/bind/unbind owned workflow/Crew projects. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}}},
 }
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
@@ -54,6 +54,38 @@ func ExternalConnectionToolDefinitions(canWrite, canManage, migration bool) []To
 	return mcpDefinitions(canWrite, false, migration, canManage)
 }
 
+// ProjectToolDefinitions reuses the global schemas for the workflow Builder.
+// It can select folders, but cannot grant permissions or manage credentials.
+func ProjectToolDefinitions() []ToolDefinition {
+	out := []ToolDefinition{}
+	for _, def := range ToolDefinitions() {
+		if def.Name == "browse_knowledgebase" {
+			out = append(out, def)
+			continue
+		}
+		if def.Name != "manage_knowledgebase_access" {
+			continue
+		}
+		schema := asMap(def.InputSchema)
+		variants := []any{}
+		actions := []any{}
+		for _, raw := range schema["oneOf"].([]any) {
+			variant := asMap(raw)
+			action := variant["properties"].(map[string]any)["action"].(map[string]any)["const"].(string)
+			if action == "inspect" || strings.HasSuffix(action, "_project") {
+				variants = append(variants, variant)
+				actions = append(actions, action)
+			}
+		}
+		schema["oneOf"] = variants
+		schema["properties"].(map[string]any)["action"] = map[string]any{"type": "string", "enum": actions}
+		def.InputSchema = schema
+		def.Description = "Inspect/bind/unbind shared KB folders for the current owned workflow. Inspect its manifest_version first; bind with folder_id, unique alias, read/write access, expected_manifest_version and request_id. Selection never grants permissions. Use browse_knowledgebase action=folders to discover folders. Steps use read_knowledgebase/update_knowledgebase with binding_alias and knowledgebase_access."
+		out = append(out, def)
+	}
+	return out
+}
+
 func mcpDefinitions(canWrite, accessBuilder, migration, externalAccess bool) []ToolDefinition {
 	operations := map[string]ToolDefinition{}
 	for _, op := range operationDefinitions() {
@@ -78,7 +110,7 @@ func mcpDefinitions(canWrite, accessBuilder, migration, externalAccess bool) []T
 			if !migration && strings.HasPrefix(action.name, "migration_") {
 				continue
 			}
-			if tool.name == "manage_knowledgebase_access" && !accessBuilder && action.name != "inspect" && (!externalAccess || !canWrite || strings.HasSuffix(action.name, "_project")) || !canWrite && ToolActionMutates(tool.name, action.name) {
+			if tool.name == "manage_knowledgebase_access" && !accessBuilder && action.name != "inspect" && (!externalAccess || !canWrite || (strings.HasSuffix(action.name, "_project") && !migration)) || !canWrite && ToolActionMutates(tool.name, action.name) {
 				continue
 			}
 			schemaOperation := action.operation

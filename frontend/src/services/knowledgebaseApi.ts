@@ -16,7 +16,7 @@ export interface KnowledgeEntry {
   updated_by: string
   backup_status?: string
 }
-export interface KnowledgeFolder { path: string; name: string; effective_role?: KnowledgeRole | '' }
+export interface KnowledgeFolder { folder_id?: string; breadcrumb_only?: boolean; path: string; name: string; effective_role?: KnowledgeRole | '' }
 export interface KnowledgeIdentity { id: string; name: string; type: string; disabled?: boolean }
 export interface KnowledgeGrant { identity_id: string; role: KnowledgeRole; folder_path: string; inherited: boolean }
 export interface KnowledgeAccess { folder_path: string; effective_role: KnowledgeRole | ''; grants: KnowledgeGrant[]; identities: KnowledgeIdentity[]; acl_version: string }
@@ -40,7 +40,13 @@ export function normalizeKnowledgeSearch(data: Page & { results?: Array<{ entry:
 
 export interface KnowledgeAccessProposal { id: string; arguments: Record<string, unknown>; expires_at: string }
 
+export interface KnowledgeBinding { alias: string; folder_id: string; access: 'read' | 'write' }
+export interface KnowledgeProject { manifest_version: string; shared_knowledgebase: KnowledgeBinding[] | null; can_manage: boolean }
+
 export const knowledgebaseApi = {
+  project: async (workspace_path: string, signal?: AbortSignal): Promise<KnowledgeProject> => (await api.get('/api/knowledgebase/project', { params: { workspace_path }, signal })).data,
+  bindProject: async (args: { action: 'bind_project' | 'unbind_project'; workspace_path: string; alias: string; folder_id?: string; access?: 'read' | 'write'; expected_manifest_version: string; request_id: string }): Promise<KnowledgeProject> => (await api.post('/api/knowledgebase/project', args)).data,
+  projectFolders: async (cursor = '', signal?: AbortSignal): Promise<{ items: KnowledgeFolder[]; next_cursor?: string }> => (await api.get('/api/knowledgebase/folders', { params: { folder_path: '', depth: 1024, limit: 100, cursor }, signal })).data,
  proposals: async (): Promise<{ proposals: KnowledgeAccessProposal[] }> => (await api.get("/api/knowledgebase/access-proposals")).data,
  confirmAccess: async (id: string, approve: boolean, pat?: string): Promise<unknown> => (await api.post("/api/knowledgebase/access-proposals", { id, approve, ...(pat ? { pat } : {}) })).data,
   bootstrap: async (signal?: AbortSignal): Promise<KnowledgeBootstrap> => (await api.get('/api/knowledgebase/bootstrap', { signal })).data,

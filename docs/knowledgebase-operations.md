@@ -227,3 +227,20 @@ Pull fast-forwards and updates live knowledge. Commit or stash unpublished edits
 The remote repository must contain only regular Markdown using KB-valid paths. Links, submodules, binary/control files, case collisions or trees above 5,000 files / 50 MiB are rejected atomically. Each Markdown file is limited to 10 MiB; private Git generations are limited to 512 MiB. Unresolved conflicts leave the previous live state intact. Pull supports fast-forward only; reconcile diverged histories outside the MVP flow.
 
 Push uses a remote lease and persists a delivery intent before transport. If its outcome is unknown, retry the original Git push request ID as the same user; other repository actions and receipt publication remain blocked until it is reconciled. Complete Files commits/pushes before using the scoped selected-version receipt flow. Include the private Git generation pointer/directories and pending delivery intent in a full disaster-recovery backup.
+
+## Attach to a workflow through MCP, Builder or UI
+
+In Workflow → Attached folders, the Knowledge Base folders panel follows the Vault project selection pattern: it lists caller-authorized folders, permits owners to select them, and offers Read only / Read-write. Selection never grants permission. The full workflow audience must already have Reader access; the execution identity needs Editor access for a write binding. The existing Ask AI button sends setup to the workflow Builder.
+
+The root Builder can discover folders with `browse_knowledgebase action=folders`, then use `manage_knowledgebase_access action=inspect_project` for its exact workspace and `bind_project` / `unbind_project` with the returned manifest version. These actions also work directly through the global MCP. External tokens need KB read/write plus existing authoring scopes for the exact workflow/Crew. KB-only writers and folder-capped tokens cannot change project bindings. No sixth MCP tool or dedicated connection is added.
+
+For a read smoke test, create a Markdown note containing a fresh marker, bind its folder under an alias such as `kbtest`, and ask the Builder to retrieve it through `read_knowledgebase`. Configure an agent step with `knowledgebase_access=read` (ordinary workflows have KB enabled by default), and ask it to retrieve the same marker using `binding_alias=kbtest`. Check its tool trace. For writes, use a write binding and `knowledgebase_access=read-write` plus a concrete `knowledgebase_contribution`. Content is shared immediately without a Git push. Read-only and disabled steps cannot write; steps cannot change bindings or grants. Folder grants and the output audience are rechecked on tool calls.
+
+MCP sequence (use real values returned by discovery):
+
+```json
+{"action":"inspect_project","workspace_path":"Workflow/payments"}
+{"action":"bind_project","workspace_path":"Workflow/payments","folder_id":"folder_ID","alias":"kbtest","access":"read","expected_manifest_version":"VERSION_FROM_INSPECT","request_id":"bind-kbtest-1"}
+```
+
+Manifest version conflicts require inspecting again before a new request. Exact retries are idempotent but still check project ownership and token revocation. Shared content calls resolve against the invoking step's session, so a parent's write binding does not override a step's read-only policy.

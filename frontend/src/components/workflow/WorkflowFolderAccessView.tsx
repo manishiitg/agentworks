@@ -7,6 +7,7 @@ import { workflowManifestApi } from '../../services/api'
 import type { WorkflowFolderAccessRequest, WorkflowFolderGrant } from '../../services/api-types'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { KnowledgebaseSources } from './KnowledgebaseSources'
+import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { aliasFromPath } from '../../utils/folderAlias'
 import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
@@ -220,6 +221,7 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
+            {workspacePath && <ProjectKnowledgebasePanel key={`shared-${workspacePath}`} workspacePath={workspacePath} disabled={!canWriteWorkflow} />}
             {workspacePath && <KnowledgebaseSources key={workspacePath} workspacePath={workspacePath} variant="folders" />}
             <WorkflowReferenceAccess selectedPaths={workflowContextPaths} onChange={persistWorkflowReferences} excludeWorkspacePath={workspacePath} disabled={!canWriteWorkflow || saving} hideAdd />
             {canPickFolders && (<>

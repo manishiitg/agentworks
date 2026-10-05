@@ -2457,6 +2457,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup"} {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
+	apiRouter.HandleFunc("/knowledgebase/project", api.handleKnowledgebaseProject).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/git", api.handleKnowledgebaseGit).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
@@ -6532,6 +6533,27 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// this, notify_user was never registered as a custom tool, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
 			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
+			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
+				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
+				// Replace content-only browse/access schemas for this root Builder.
+				for _, tool := range projectTools {
+					replaced := false
+					for i, old := range allTools {
+						if old.Function != nil && old.Function.Name == tool.Function.Name {
+							allTools[i] = tool
+							replaced = true
+							break
+						}
+					}
+					if !replaced {
+						allTools = append(allTools, tool)
+					}
+				}
+				for name, fn := range projectExecs {
+					allExecutors[name] = fn
+					toolCategories[name] = projectCategories[name]
+				}
+			}
 			api.guardPulseResultExecutor(allExecutors, sessionID)
 
 			// Register each custom tool with the agent
@@ -11585,6 +11607,9 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		EnabledGroupNames: enabledGroupNames,
 	}
 
+	if productEnabled("knowledgebase") && req.PhaseID == "workflow-builder" {
+		cfg.KnowledgebaseProjectTool = knowledgeProjectBuilderExecute
+	}
 	// Build base tools with session-aware workspace executors from the start.
 	// This ensures MCP_API_URL in shell commands includes the session path prefix
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the

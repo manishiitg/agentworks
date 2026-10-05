@@ -11,6 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -108,10 +109,10 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 		workspace = sessionIDs[1]
 	}
 	project, err := knowledgeProjectLoad(context.Background(), userID, workspace, false)
-	if err != nil || len(project.Bindings) == 0 {
+	if err != nil || len(project.Bindings) == 0 && !containsID(project.Owners, userID) {
 		return tools, executors, categories
 	}
-	canWrite := false
+	canWrite := len(project.Bindings) == 0 && containsID(project.Owners, userID)
 	for _, binding := range project.Bindings {
 		if binding.Access == "write" {
 			canWrite = true
@@ -129,7 +130,15 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 		}
 		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: def.Name, Description: def.Description, Parameters: params}})
 		executors[def.Name] = func(ctx context.Context, args map[string]interface{}) (string, error) {
-			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sessionIDs[0])
+			// A step must retain its own policy, rather than the parent's write policy.
+			session, _ := ctx.Value(common.ChatSessionIDKey).(string)
+			if session == "" {
+				session = executor.SessionIDFromContext(ctx)
+			}
+			if session == "" {
+				session = sessionIDs[0]
+			}
+			ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
 			return knowledgebaseExecute(ctx, userID, false, def.Name, args)
 		}
 		categories[def.Name] = "knowledgebase"
@@ -152,6 +161,9 @@ func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args m
 			return false
 		}
 		switch action {
+		case "inspect_project", "bind_project", "unbind_project":
+			return claims.AccessToken == nil || claims.AccessToken.BuilderAccess() ||
+				claims.AccessToken.Allows("crews:read") && claims.AccessToken.Allows("crews:write")
 		case "list", "grant", "revoke", "create_service_account", "disable_service_account", "configure_backup":
 			return true
 		default:
@@ -168,7 +180,8 @@ func knowledgebaseToolForClaims(claims *UserClaims, tool externalTool) externalT
 	}
 	canWrite := claims != nil && (claims.AccessToken == nil || claims.AccessToken.Allows("knowledgebase:write"))
 	canManage := knowledgebaseConnectionAllowsAction(claims, "manage_knowledgebase_access", map[string]any{"action": "grant"})
-	canMigrate := claims != nil && claims.AccessToken != nil && (claims.AccessToken.BuilderAccess() || claims.AccessToken.Allows("crews:write"))
+	canMigrate := claims != nil && claims.AccessToken != nil && (claims.AccessToken.BuilderAccess() ||
+		claims.AccessToken.Allows("crews:read") && claims.AccessToken.Allows("crews:write"))
 	defs := knowledgebase.ExternalConnectionToolDefinitions(canWrite, canManage, canMigrate)
 	for _, def := range defs {
 		if def.Name == tool.Name {

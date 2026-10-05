@@ -21,7 +21,7 @@ unique across shared bindings, legacy `knowledgebase_sources`, and Crew workspac
 attachments. Up to 20 bindings are supported. Access is `read` or `write`.
 Bindings do not mount a host directory or export a `WORKFLOW_KB_<ALIAS>` path.
 
-The access builder's existing `manage_knowledgebase_access` tool has three
+The global MCP and root workflow Builder reuse `manage_knowledgebase_access` with three
 additional actions:
 
 - `inspect_project(workspace_path)` returns current bindings, output audience,
@@ -40,6 +40,10 @@ result when the resulting manifest matches. A later unrelated manifest change
 causes a conflict. Ordinary workflow and Crew manifest rewrites preserve these
 server-managed fields. Retained native sessions include knowledge configuration
 in their policy key and relaunch when their scope changes.
+
+The Attached folders UI follows Vault's project selection pattern: caller-authorized folder metadata, selected bindings, and a read/read-write selector. It uses `/api/knowledgebase/project` for the same version-checked domain actions. A direct selection does not create an ACL grant. The Ask AI button uses the existing workflow chat.
+
+The root Builder receives setup authority through the authenticated tool execution context, using the same isolation pattern as Vault's Builder authority. It is cleared for child sessions and unavailable to unattended runs. Steps receive browse/read and, when their knowledgebase access permits writing, update tools. Their actual session policy takes precedence over the parent's registration session.
 
 ## Runtime authorization
 
@@ -138,8 +142,7 @@ require `files:read`, a matching workflow cap, and `workflows:read` or
 `crews:read`, a matching Crew cap, and `crews:write` for every migration action.
 Migration is available only through the authenticated external owner connection;
 ordinary agent schemas omit it and managed executions reject it server-side.
-Knowledge Base scopes and caps still apply. Project binding mutations remain
-exclusive to the app's access builder.
+Knowledge Base scopes and caps still apply. Project bindings are available through the global MCP, root workflow Builder, and Attached folders UI. All three require current project ownership, KB authority, and audience grants. External connections additionally require authoring authority for that exact workflow/Crew; folder-capped content connections cannot configure bindings. Delegated agents and steps receive content tools only.
 
 Private receipts record source hashes, destination entry IDs/versions,
 configuration versions, and migration state. Interrupted imports resume using

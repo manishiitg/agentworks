@@ -132,17 +132,21 @@ func knowledgebaseIntegrationTestRoot(t *testing.T) string {
 func TestKnowledgebaseExternalAccessDiscovery(t *testing.T) {
 	tokenTestSetup(t)
 	for _, tc := range []struct {
-		name   string
-		scopes []string
-		caps   *[]knowledgebase.Cap
-		want   bool
+		name    string
+		scopes  []string
+		caps    *[]knowledgebase.Cap
+		want    bool
+		project bool
 	}{
-		{"reader", []string{"knowledgebase:read"}, nil, false},
-		{"writer", []string{"knowledgebase:read", "knowledgebase:write"}, nil, true},
-		{"capped writer", []string{"knowledgebase:read", "knowledgebase:write"}, &[]knowledgebase.Cap{{FolderPath: "Payments", Role: "editor"}}, false},
+		{"reader", []string{"knowledgebase:read"}, nil, false, false},
+		{"writer", []string{"knowledgebase:read", "knowledgebase:write"}, nil, true, false},
+		{"builder writer", []string{"knowledgebase:read", "knowledgebase:write", "builder:chat", "workflows:read", "files:read", "runs:execute"}, nil, true, true},
+		{"crew writer", []string{"knowledgebase:read", "knowledgebase:write", "crews:read", "crews:write"}, nil, true, true},
+		{"crew write without read", []string{"knowledgebase:read", "knowledgebase:write", "crews:write"}, nil, true, false},
+		{"capped writer", []string{"knowledgebase:read", "knowledgebase:write"}, &[]knowledgebase.Cap{{FolderPath: "Payments", Role: "editor"}}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			claims := &UserClaims{UserID: GetDefaultUserID(), AccessToken: &accesstokens.Token{Scopes: tc.scopes, KnowledgebaseFolders: tc.caps}}
+			claims := &UserClaims{UserID: GetDefaultUserID(), AccessToken: &accesstokens.Token{Scopes: tc.scopes, KnowledgebaseFolders: tc.caps, AllWorkflows: true, AllCrews: true}}
 			tool := knowledgebaseToolForClaims(claims, externalTool{Name: "manage_knowledgebase_access"})
 			raw, _ := json.Marshal(tool.InputSchema)
 			var schema struct {
@@ -166,8 +170,10 @@ func TestKnowledgebaseExternalAccessDiscovery(t *testing.T) {
 			if contains("grant") != tc.want || contains("revoke") != tc.want {
 				t.Fatalf("wrong discovery actions: %s", raw)
 			}
-			if contains("bind_project") {
-				t.Fatal("project bindings exposed through external access surface")
+			for _, action := range []string{"inspect_project", "bind_project", "unbind_project"} {
+				if contains(action) != tc.project {
+					t.Fatalf("wrong project discovery: %s", raw)
+				}
 			}
 		})
 	}

@@ -568,6 +568,8 @@ func (s *WorkshopChatSession) SetWorkshopModeOverride(mode string) {
 // exact same tool/LLM/browser/image-gen setup as normal workflow execution.
 // Built by server.go using the same preset-loading logic as the normal workflow path.
 type WorkshopConfig struct {
+	// Root Builder only. Never copied into the step tool pool.
+	KnowledgebaseProjectTool func(context.Context, string, map[string]interface{}) (string, error)
 	// UserID and SourcePlatform are server-resolved launch identity, never tool
 	// arguments. Detached workshop children retain it for accounting (PLAT-377).
 	UserID                 string
