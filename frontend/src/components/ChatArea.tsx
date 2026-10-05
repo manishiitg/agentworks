@@ -9,7 +9,7 @@ import { isForegroundSessionEvent } from '../../shared/session/foreground'
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
 import { normalizeEventViewMode } from '../stores/useChatStore'
 import { intermediateUpdateFromTranscriptChunk, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
-import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt } from '../utils/liveInputReceipt'
+import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt, withPendingProvider } from '../utils/liveInputReceipt'
 import { useRenderLogger, useMemoLogger } from '../utils/renderLogger'
 import { acquireBuilderSubmission, isConfirmedUndeliveredSubmission, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isTurnRunningConflict } from '../services/turnRunningRetry'
@@ -3173,10 +3173,22 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         acceptReceipt()
         if (response.delivery_status) {
           const receiptEventID = optimisticUserEventID
+          // A queued send that chose another provider than the running turn waits, then runs on the new one.
+          let pendingProvider = ''
+          const sentEngine = currentTab.metadata?.agentProfileEngine
+          const profileId = currentTab.metadata?.agentProfileId
+          if (response.delivery_status === 'queued_for_turn' && sentEngine && profileId) {
+            const runningProvider = useChatStore.getState().activeSessionsCache.find(session => session.session_id === sid)?.runtime?.provider
+            const options = await loadAgentProfileProviderOptions(profileId, currentTab.metadata?.agentProfileVersion)
+            const sentProvider = options.find(option => option.id === sentEngine)?.provider || sentEngine
+            if (runningProvider && sentProvider !== runningProvider) pendingProvider = sentProvider
+          }
           useChatStore.setState(state => ({ tabEvents: { ...state.tabEvents,
-            [tabSessionId]: (state.tabEvents[tabSessionId] || []).map(event => event.id === receiptEventID
-              ? withLiveInputReceipt(event, response.delivery_status!, response.provider, response.message_id, response.queue_position)
-              : event),
+            [tabSessionId]: (state.tabEvents[tabSessionId] || []).map(event => {
+              if (event.id !== receiptEventID) return event
+              const receipt = withLiveInputReceipt(event, response.delivery_status!, response.provider, response.message_id, response.queue_position)
+              return pendingProvider ? withPendingProvider(receipt, pendingProvider) : receipt
+            }),
           } }))
         }
         chatStore.setTabStreaming(currentTab.tabId, true)

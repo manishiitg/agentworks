@@ -14,6 +14,7 @@ import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
 import { readyCodingProviders } from '../../utils/providerCatalogFilter'
+import { ProviderChangeNotice } from '../../components/chat/ProviderChangeNotice'
 import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
@@ -356,6 +357,7 @@ export function WorkModelsPanel({
         )}
         </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Applies on the next message. Chat history is kept.</p>}
+        <ProviderChangeNotice turnRunning={Boolean(tab?.isStreaming)} runningProvider={activeRuntime?.provider} selectedProvider={selectedOption?.provider} />
         {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">

@@ -1,3 +1,5 @@
+import { providerShortLabel } from '../../../utils/chatHistoryRuntimeLabel'
+
 export type DeliveryTickState = 'queued' | 'fast' | 'confirmed' | 'unflushed' | 'failed' | null
 
 export function deliveryTickState(metadata: Record<string, unknown> | undefined): DeliveryTickState {
@@ -19,8 +21,10 @@ export function deliveryTickTitle(metadata: Record<string, unknown> | undefined,
   const latencyMs = typeof metadata?.latency_ms === 'number' ? metadata.latency_ms : null
   const latency = latencyMs === null ? '' : latencyMs >= 1000 ? ` in ${(latencyMs / 1000).toFixed(1)}s` : ` in ${Math.round(latencyMs)}ms`
   const position = typeof metadata?.queue_position === 'number' ? ` · position ${metadata.queue_position}` : ''
+  const pending = typeof metadata?.pending_provider === 'string' ? metadata.pending_provider : ''
+  const pendingProviderSuffix = pending ? `, then runs on ${providerShortLabel(pending)}` : ''
   switch (state) {
-    case 'queued': return `Queued behind the active conversation turn${position}`
+    case 'queued': return `Queued behind the active conversation turn${position}${pendingProviderSuffix}`
     case 'confirmed': return `Confirmed in${provider} CLI record${latency}`
     case 'unflushed': return `Held in${provider} CLI queue, awaiting record`
     case 'failed': return `Delivery to${provider} CLI unconfirmed`

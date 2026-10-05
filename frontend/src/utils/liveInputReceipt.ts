@@ -18,6 +18,16 @@ export function withLiveInputReceipt(event: PollingEvent, status: string, provid
   } } } as PollingEvent['data'] }
 }
 
+// withPendingProvider marks a queued send that carries a different provider than
+// the running turn: the row then reads "Waiting for the current turn, then runs
+// on <provider>" until it leaves the queue.
+export function withPendingProvider(event: PollingEvent, provider: string): PollingEvent {
+  const outer = event.data as unknown as Record<string, unknown>
+  const inner = (outer.data ?? {}) as Record<string, unknown>
+  const existing = (inner.metadata ?? {}) as Record<string, unknown>
+  return { ...event, data: { ...outer, data: { ...inner, metadata: { ...existing, pending_provider: provider } } } as PollingEvent['data'] }
+}
+
 export type LiveInputConfirmationOutcome = 'confirmed' | 'accepted_but_unflushed' | 'failed'
 
 export interface LiveInputConfirmationUpdate {

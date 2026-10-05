@@ -31,6 +31,13 @@ The log now names the occupant (`session X occupied by <input_lane|stored_agent_
 Live check: `mcp-agent test provider-switch-e2e` (long Muse turn, a steer into it, Builder LLM switched to Codex, two more messages): without the fix C and D stay queued (failed twice, 5 min timeout);
 with it both run (`PASS`, answered when the running turn ended).
 
+## Done: UI notice (fixed on main, not deployed)
+
+Owner ask: users assume a provider change applies at once. Frontend only, derived on the client (no backend change):
+- Models panel (`WorkModelsPanel`, used by Work, Crew, Code, Gateway): while a turn is running and the picked provider differs from the running one, "Applies from your next message. The current turn finishes on <old provider>." (`components/chat/ProviderChangeNotice.tsx`).
+- Chat area: a message queued behind a turn with a different provider than the running one gets `pending_provider`; the queued clock's hover reads "Queued behind the active conversation turn, then runs on <provider>" and "then runs on <provider>" shows next to the clock. A normal queued message is unchanged.
+- Not seen in a real browser (render test only).
+
 ## Left
 
 - Deploy; then repeat the owner's sequence on the local app. Stale entries from before the fix drop on the next server restart (older than 30 min) or run, newest chat state permitting.

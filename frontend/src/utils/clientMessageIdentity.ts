@@ -35,7 +35,7 @@ export function isDurableClientUserMessage(event: PollingEvent): boolean {
 // The durable row is authoritative for content and position. Keep only the
 // browser-side receipt facts it cannot know (queue position, a verdict that
 // already landed), so ticks survive the replacement.
-const RECEIPT_KEYS = ['confirmation', 'confirmed_at', 'proof_source', 'latency_ms', 'queue_position'] as const
+const RECEIPT_KEYS = ['confirmation', 'confirmed_at', 'proof_source', 'latency_ms', 'queue_position', 'pending_provider'] as const
 
 export function carryProvisionalReceipt(durable: PollingEvent, provisional: PollingEvent): PollingEvent {
   const provisionalMetadata = userMessageMetadata(provisional)

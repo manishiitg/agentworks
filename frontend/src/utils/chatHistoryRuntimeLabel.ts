@@ -10,10 +10,8 @@ export function chatHistoryRuntimeLabel(session: ChatHistorySession): string | u
   return provider
 }
 
-export function chatHistoryRuntimeShortLabel(session: ChatHistorySession): string | undefined {
-  const provider = session.runtime?.provider?.trim()
-  if (!provider) return undefined
-
+export function providerShortLabel(providerId: string): string {
+  const provider = providerId.trim()
   const knownLabels: Record<string, string> = {
     'claude-code': 'Claude',
     'codex-cli': 'Codex',
@@ -24,4 +22,9 @@ export function chatHistoryRuntimeShortLabel(session: ChatHistorySession): strin
     'agy-cli': 'AGY (Alpha)',
   }
   return knownLabels[provider.toLowerCase()] || provider.replace(/[-_](cli|code)$/i, '')
+}
+
+export function chatHistoryRuntimeShortLabel(session: ChatHistorySession): string | undefined {
+  const provider = session.runtime?.provider?.trim()
+  return provider ? providerShortLabel(provider) : undefined
 }

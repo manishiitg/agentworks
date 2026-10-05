@@ -31,6 +31,7 @@ import { parseProductInteraction, type ProductInteraction } from '../../shared/s
 import { ConversationContinuityNotice, isConversationContinuityNotice } from './ConversationContinuityNotice'
 import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
 import { deliveryTickState } from './events/system/deliveryTickState'
+import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
 import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
@@ -289,10 +290,10 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
       <div className={`ml-auto mt-2 max-w-[84%] text-right ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>
         {showReceipt && (
-          <div className="mt-0.5 flex items-center justify-end gap-2 text-[10px] leading-4 text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} />
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
-            <DeliveryTick metadata={metadata} />
+            <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
           </div>
         )}
       </div>
@@ -310,10 +311,10 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         >
           {expanded ? 'Show less' : 'Show full message'}
         </button>
-        <div className="ml-auto flex items-center gap-2 text-[10px] leading-4 text-muted-foreground">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} />
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
-          <DeliveryTick metadata={metadata} />
+          <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
         </div>
       </div>
     </article>
