@@ -89,6 +89,10 @@ existing Chrome profile, locally or from a hosted platform. Keep the existing
 its login cookies are not exported. Page text, screenshots and action results
 do travel to the platform and model.
 
+In workflows, the Browser icon stays visible in the main toolbar beside Activity,
+before Ops. It opens the existing Browser pane, including connection choices,
+settings and live status. Selecting Browser highlights that icon.
+
 ### Install and connect
 
 1. Build/restart the platform with this change. In an owned Code/Crew project or a workflow you can edit,

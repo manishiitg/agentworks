@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Keep workflow Browser visible in the main toolbar
+
+Move Browser from collapsed Ops into the always-visible Views group, after
+Activity and before Ops. Keep its existing pane, settings and selection behavior.
+Update panel help and the walkthrough to match. Why: users should reach their
+browser connection directly, as they can in Code and Crew.
+Ticket: [PLAT-540](bugs/pulse_platform/frontend-chat/plat-540.md).
+
 ### 2026-10-05 — Remember extension connections and resume after transient loss
 
 Persist explicitly enabled project pairings in trusted browser-local extension

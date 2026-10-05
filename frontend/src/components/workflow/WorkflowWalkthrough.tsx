@@ -107,12 +107,12 @@ const AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="workflow-views"]',
     title: 'Views',
-    body: 'Open Pulse, the actions waiting on you, and recent activity from this group.',
+    body: 'Open Pulse, the actions waiting on you, recent activity, and Browser from this group.',
   },
   {
     selector: '[data-tour="workflow-operations"]',
     title: 'Operations',
-    body: 'Find the plan, browser, files, costs, execution logs, backup, publishing, and notifications here.',
+    body: 'Find the plan, files, costs, execution logs, backup, publishing, and notifications here.',
   },
   {
     selector: '[data-tour="workflow-setup"]',

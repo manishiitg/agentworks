@@ -39,7 +39,7 @@ describe('workflow responsive pane contract', () => {
     const chatArea = readFileSync('src/components/ChatArea.tsx', 'utf8')
     const store = readFileSync('src/stores/useWorkflowStore.ts', 'utf8')
 
-    expect(toolbar).toContain("OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'browser', 'workshop'")
+    expect(toolbar).toContain("OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'workshop'")
     expect(toolbar).toContain("view.toolbarGroup === 'capabilities'")
     expect(views.indexOf("id: 'workshop'")).toBeGreaterThan(views.indexOf("id: 'browser'"))
     expect(views).toContain("id: 'workshop', kind: 'inspector', label: 'Automation'")

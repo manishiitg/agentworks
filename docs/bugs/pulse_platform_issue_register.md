@@ -238,6 +238,10 @@ usable node_modules if the install fails.
 
 [PLAT-539](pulse_platform/chat-reliability/plat-539.md), fixed on main, not deployed: the sidecar completion path now emits nothing when the turn is no longer tracked.
 
+## Workflow Browser directly in the main toolbar — PLAT-540
+
+[PLAT-540](pulse_platform/frontend-chat/plat-540.md), fixed on main, not deployed: Browser stays visible beside Activity before Ops, with matching help and walkthrough guidance.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

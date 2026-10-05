@@ -91,7 +91,7 @@ describe('Panel walkthroughs', () => {
     expect(getWorkspacePanelGuide('Files', 'crew').group).toBe('Ops')
     expect(getWorkspacePanelGuide('Identity', 'crew').group).toBe('Setup')
     expect(getWorkspacePanelGuide('Plan').group).toBe('Ops')
-    expect(getWorkspacePanelGuide('Browser').group).toBe('Ops')
+    expect(getWorkspacePanelGuide('Browser').group).toBe('Main toolbar')
     expect(getWorkspacePanelGuide('Knowledge').group).toBe('Ops')
     expect(getWorkspacePanelGuide('Workflow playbooks').group).toBe('Setup')
 

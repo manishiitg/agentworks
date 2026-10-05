@@ -346,8 +346,8 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
 
 const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly string[]>> = {
   agentworks: {
-    'Main toolbar': ['Automation', 'Automation Schedules', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
-    Ops: ['Automation Learnings', 'Backup', 'Browser', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
+    'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
+    Ops: ['Automation Learnings', 'Backup', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
     Setup: ['Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },
   code: {
