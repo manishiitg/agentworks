@@ -1,6 +1,6 @@
 # PLAT-514: webhook step cannot write the workflow database: "mutate_workflow_db caller does not own this tool session"
 
-**State:** second fix on main (builder), not yet verified by a live run; the first fix (mcpagent d07fe58) was not enough. P1. P1 (blocks the `rtsprreviweer` PR review on RTS).
+**State:** fixed and verified live on RTS for the Crew/Code entry path (run 756, 2026-10-05 14:14 UTC). GitHub-webhook and MCP entry paths not yet tested. P1. P1 (blocks the `rtsprreviweer` PR review on RTS).
 
 **Found:** 2026-10-05 11:27 UTC, RTS, the 4th webhook run of `rtsprreviweer` (PLAT-502 had just made the run folder writable, so the step now gets as far as the database). `pr-eligibility-gate` wrote `route_selection.json`, then `mutate_workflow_db` (the INSERT into `pr_gate_decisions`) failed with `mutate_workflow_db caller does not own this tool session` (`agentworks_db.DBError`, session `session-group-default-1791199672093001445`, HTTP session `schedule-webhook--d04df8c1_…`).
 
@@ -44,3 +44,9 @@ After the run-tool registration and the trigger-variable fixes, run 753 resolved
 ## 2026-10-05 13:56 UTC: run 754, the same sandbox error again: the folder is a WRITE grant
 
 The read-only fix (b1d91d9) did not change run 754: `learnings/_global` was still refused. For a message_sequence item whose learnings access is read-write, `setupMessageSequenceFolderGuard` (`controller_message_sequence.go`) grants `learnings/_global` as WRITABLE, and the sandbox correctly keeps refusing a missing writable folder. The read-only change stays (the platform also lists optional folders as read-only, and a missing one grants nothing), but it was not the failing path. Fix: create the global learnings folder (idempotent, through the workspace API, group-writable under the slot umask) when the write grant is built. Run 754 had passed the gate (owner/repo/PR 180, `eligible`) and the branch step, with no `[TOOL_OWNERSHIP]` rejection.
+
+## 2026-10-05 14:14 UTC: verified live (Crew path)
+
+Run 756, started from SDE Private on release 32eb951 (workspace service restarted 14:05:23): gate resolved the request (Real-Training-Systems/course_designer PR 181, `eligible`), branch and review steps completed, the review step posted an APPROVE as `qa-test-rts` on the PR's head SHA (CI had no failing, pending or missing required checks) and wrote `PR ok`. No `[TOOL_OWNERSHIP]` rejection since 13:20 and no sandbox refusal since 13:44, both before the fixes. The causes, in the order they surfaced: owner-only run folders (PLAT-502), the Crew's tool copy handed to a webhook step (run-tool registration, mcpagent d07fe58 and server.go), `WORKFLOW_TRIGGER_*`/`WORKFLOW_KB_*`/`WORKFLOW_DB_ACCESS`/`RUN_FOLDER` dropped by the workspace shell env allowlist, the gate (the Builder's rewrite), and the sandbox refusing a missing `learnings/_global` (created when granted; a missing read-only folder is skipped). A suspected stale `/usr/local/libexec/agentworks/slotctl` (2026-10-01) was NOT the cause: the policy is built in the workspace service.
+
+**Left:** test the GitHub-webhook path and the MCP path (the gate was rewritten for all three; only the Crew path has run); the old `slotctl` copy on RTS is still from 10-01 and is worth refreshing at the next root step.
