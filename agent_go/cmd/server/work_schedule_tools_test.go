@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestRegisterWorkScheduleToolsReadsPairedUsersProjectManifest(t *testing.T) {
 	workspace, docs := newFakeWorkspaceServer(t)
@@ -50,5 +53,30 @@ func TestRegisterScheduleToolsForACode(t *testing.T) {
 	}
 	if err := api.registerWorkScheduleTools(&recordingRegistrar{}, "code", "editor", publicPath, false); err == nil {
 		t.Fatal("another person's Code manifest authorized schedule tools")
+	}
+}
+
+func TestOneTimeRunAtFromToolArguments(t *testing.T) {
+	now := time.Date(2026, 10, 5, 18, 0, 0, 0, time.UTC)
+	got, err := oneTimeRunAt(map[string]interface{}{"in_minutes": float64(180)}, now)
+	if err != nil || got != "2026-10-05T21:00:00Z" {
+		t.Fatalf("in_minutes 180 = %q, %v", got, err)
+	}
+	// An offset is honoured and normalised to UTC: 23:30 +05:30 on the next day is 18:00 UTC then.
+	if got, err := oneTimeRunAt(map[string]interface{}{"run_at": "2026-10-06T23:30:00+05:30"}, now); err != nil || got != "2026-10-06T18:00:00Z" {
+		t.Fatalf("run_at with an offset = %q, %v", got, err)
+	}
+	for _, bad := range []map[string]interface{}{
+		{"run_at": "2026-10-05T17:00:00Z"},                           // past
+		{"run_at": "tomorrow"},                                       // not RFC3339
+		{"in_minutes": float64(0)},                                   // too small
+		{"in_minutes": float64(5), "run_at": "2026-12-01T00:00:00Z"}, // both
+	} {
+		if _, err := oneTimeRunAt(bad, now); err == nil {
+			t.Fatalf("should be refused: %v", bad)
+		}
+	}
+	if got, err := oneTimeRunAt(map[string]interface{}{}, now); err != nil || got != "" {
+		t.Fatalf("no one-time argument must mean recurring, got %q, %v", got, err)
 	}
 }

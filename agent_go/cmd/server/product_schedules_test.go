@@ -186,6 +186,23 @@ func TestProductScheduleJobResponseShape(t *testing.T) {
 	if resp.LastStatus != "success" {
 		t.Fatalf("last status = %q", resp.LastStatus)
 	}
+
+	// A one-time schedule is shown as a calendar entry with its next run, and has none once it ran.
+	at := time.Now().Add(3 * time.Hour).UTC()
+	once := job
+	once.Schedule.CronExpression, once.Schedule.CadenceHours = "", 0
+	once.Schedule.RunAt, once.Schedule.Timezone = at.Format(time.RFC3339), "Asia/Kolkata"
+	once.State.LastRunAt = ""
+	resp = svc.jobResponse(once, "_users/u1/Chats")
+	local := at.In(time.FixedZone("IST", 5*3600+1800))
+	if resp.ScheduleType != "calendar" || len(resp.CalendarItems) != 1 || resp.CalendarItems[0].Date != local.Format("2006-01-02") ||
+		resp.CalendarItems[0].Time != local.Format("15:04") || resp.NextRunAt == nil || !resp.NextRunAt.Equal(at.Truncate(time.Second)) {
+		t.Fatalf("one-time response = %+v", resp)
+	}
+	once.State.LastRunAt = time.Now().UTC().Format(time.RFC3339)
+	if resp = svc.jobResponse(once, "_users/u1/Chats"); resp.NextRunAt != nil {
+		t.Fatalf("a one-time schedule that ran still shows a next run: %+v", resp)
+	}
 }
 
 func TestAgentProfileSchedulesRequireSingletonConversation(t *testing.T) {

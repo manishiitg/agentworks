@@ -1324,7 +1324,23 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 	if last := job.lastRun(); !last.IsZero() {
 		resp.LastRunAt = &last
 	}
-	if sched.Enabled {
+	if strings.TrimSpace(sched.RunAt) != "" {
+		// A one-time schedule is shown as a calendar entry: its date and time in the schedule's timezone.
+		resp.ScheduleType = "calendar"
+		resp.Description = strings.TrimSpace(resp.Description + " (one time)")
+		if at, err := sched.RunAtTime(); err == nil {
+			loc := time.Local
+			if zone, zoneErr := time.LoadLocation(strings.TrimSpace(sched.Timezone)); zoneErr == nil && strings.TrimSpace(sched.Timezone) != "" {
+				loc = zone
+			}
+			local := at.In(loc)
+			resp.CalendarItems = []CalendarScheduleItem{{Date: local.Format("2006-01-02"), Time: local.Format("15:04")}}
+			if sched.Enabled && job.lastRun().IsZero() {
+				next := at.UTC()
+				resp.NextRunAt = &next
+			}
+		}
+	} else if sched.Enabled {
 		d := productschedule.Decide(sched, productschedule.Inputs{Now: time.Now(), ActivatedAt: job.activatedAt(), LastRun: job.lastRun(), SinceInteractive: 365 * 24 * time.Hour})
 		if !d.ScheduledFor.IsZero() {
 			next := d.ScheduledFor.UTC()

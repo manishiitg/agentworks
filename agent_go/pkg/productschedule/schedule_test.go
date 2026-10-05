@@ -200,3 +200,35 @@ func (b *blockingRun) Send(context.Context, int, Turn) (string, error) {
 	return "ok", nil
 }
 func (b *blockingRun) Finish(context.Context, error) {}
+
+// A one-time schedule ("check the deploy in 3 hours") runs once at its moment and never again: not before
+// it, not after a success, and not after OneTimeMaxFailures failed attempts.
+func TestOneTimeScheduleRunsOnceAndOnlyOnce(t *testing.T) {
+	at := time.Date(2026, 10, 5, 21, 30, 0, 0, time.UTC)
+	s := Schedule{ID: "once", Name: "Check deploy", Enabled: true, RunAt: at.Format(time.RFC3339), Messages: []string{"check"}}
+	if err := Validate(s); err != nil {
+		t.Fatal(err)
+	}
+	if d := Decide(s, Inputs{Now: at.Add(-time.Minute)}); d.Run {
+		t.Fatalf("ran before its time: %+v", d)
+	}
+	if d := Decide(s, Inputs{Now: at.Add(time.Minute)}); !d.Run || !d.ScheduledFor.Equal(at) {
+		t.Fatalf("not due after its time: %+v", d)
+	}
+	if d := Decide(s, Inputs{Now: at.Add(time.Hour), LastRun: at.Add(time.Minute)}); d.Run {
+		t.Fatalf("ran again after a success: %+v", d)
+	}
+	if d := Decide(s, Inputs{Now: at.Add(24 * time.Hour), LastAttempt: at, ConsecutiveFailures: OneTimeMaxFailures}); d.Run {
+		t.Fatalf("kept retrying after %d failures: %+v", OneTimeMaxFailures, d)
+	}
+	// Exactly one timing form; a bad instant is refused.
+	both := s
+	both.CronExpression = "0 8 * * *"
+	badAt := s
+	badAt.RunAt = "tomorrow"
+	for _, bad := range []Schedule{both, badAt} {
+		if err := Validate(bad); err == nil {
+			t.Fatalf("should be refused: %+v", bad)
+		}
+	}
+}

@@ -36,6 +36,11 @@ type Schedule struct {
 	CronExpression string `json:"cron_expression,omitempty" yaml:"cron_expression,omitempty"`
 	Timezone       string `json:"timezone,omitempty" yaml:"timezone,omitempty"`
 
+	// RunAt makes the schedule one-time: an absolute RFC3339 instant, run once. It is the third form
+	// beside CronExpression and CadenceHours (exactly one of the three). A run that succeeded never
+	// repeats; a failed one retries with the usual backoff, up to OneTimeMaxFailures times.
+	RunAt string `json:"run_at,omitempty" yaml:"run_at,omitempty"`
+
 	// CadenceHours runs the job this many hours after its last run.
 	// PreferredHour (0-23, local) additionally holds a due run until the
 	// clock has reached that hour, so a daily cadence lands at about the same
@@ -71,8 +76,23 @@ func Validate(s Schedule) error {
 		return fmt.Errorf("schedule %q: name is required", s.ID)
 	}
 	hasCron := strings.TrimSpace(s.CronExpression) != ""
-	if !hasCron && s.CadenceHours <= 0 {
-		return fmt.Errorf("schedule %q: cron_expression or cadence_hours is required", s.ID)
+	hasRunAt := strings.TrimSpace(s.RunAt) != ""
+	forms := 0
+	for _, present := range []bool{hasCron, s.CadenceHours > 0, hasRunAt} {
+		if present {
+			forms++
+		}
+	}
+	if forms == 0 {
+		return fmt.Errorf("schedule %q: cron_expression, cadence_hours or run_at is required", s.ID)
+	}
+	if forms > 1 {
+		return fmt.Errorf("schedule %q: use only one of cron_expression, cadence_hours and run_at", s.ID)
+	}
+	if hasRunAt {
+		if _, err := s.RunAtTime(); err != nil {
+			return fmt.Errorf("schedule %q: %w", s.ID, err)
+		}
 	}
 	if hasCron {
 		if _, err := cronSchedule(s); err != nil {
@@ -134,6 +154,18 @@ type tzSchedule struct {
 }
 
 func (t *tzSchedule) Next(at time.Time) time.Time { return t.inner.Next(at.In(t.loc)) }
+
+// RunAtTime parses the one-time instant (RFC3339, any offset).
+func (s Schedule) RunAtTime() (time.Time, error) {
+	at, err := time.Parse(time.RFC3339, strings.TrimSpace(s.RunAt))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid run_at %q: use RFC3339, for example 2026-10-05T21:30:00+05:30", s.RunAt)
+	}
+	return at, nil
+}
+
+// OneTimeMaxFailures is how many failed attempts a one-time schedule makes before it gives up.
+const OneTimeMaxFailures = 3
 
 // Cadence returns the cadence form as a duration (zero for cron schedules).
 func (s Schedule) Cadence() time.Duration { return time.Duration(s.CadenceHours) * time.Hour }
@@ -206,7 +238,23 @@ func Decide(s Schedule, in Inputs) Decision {
 	}
 	var overdue time.Duration
 	var scheduledFor time.Time
-	if strings.TrimSpace(s.CronExpression) != "" {
+	if strings.TrimSpace(s.RunAt) != "" {
+		at, err := s.RunAtTime()
+		if err != nil {
+			return Decision{Reason: err.Error()}
+		}
+		if !in.LastRun.IsZero() {
+			return Decision{Reason: "one-time schedule already ran"}
+		}
+		if at.After(in.Now) {
+			return Decision{Reason: fmt.Sprintf("runs once at %s", at.Format(time.RFC3339))}
+		}
+		if in.ConsecutiveFailures >= OneTimeMaxFailures {
+			return Decision{Reason: fmt.Sprintf("one-time schedule gave up after %d failed attempts", in.ConsecutiveFailures)}
+		}
+		scheduledFor = at
+		overdue = in.Now.Sub(at)
+	} else if strings.TrimSpace(s.CronExpression) != "" {
 		cs, err := cronSchedule(s)
 		if err != nil {
 			return Decision{Reason: err.Error()}

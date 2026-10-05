@@ -76,6 +76,7 @@ type crewScheduleSpec struct {
 	CronExpression string   `json:"cron_expression,omitempty"`
 	Timezone       string   `json:"timezone,omitempty"`
 	CadenceHours   *int     `json:"cadence_hours,omitempty"`
+	RunAt          string   `json:"run_at,omitempty"` // one-time: RFC3339 instant; replaces cron/cadence
 	PreferredHour  *int     `json:"preferred_hour,omitempty"`
 	Enabled        *bool    `json:"enabled,omitempty"`
 	RunDestination string   `json:"run_destination,omitempty"`
@@ -96,14 +97,21 @@ func (spec crewScheduleSpec) applyTo(schedule *productschedule.Schedule) error {
 	} else if value := strings.TrimSpace(spec.Message); value != "" {
 		schedule.Messages = []string{value}
 	}
+	// A schedule has exactly one timing form; naming a new one replaces the old.
 	if value := strings.TrimSpace(spec.CronExpression); value != "" {
-		schedule.CronExpression = value
+		schedule.CronExpression, schedule.CadenceHours, schedule.RunAt = value, 0, ""
 	}
 	if value := strings.TrimSpace(spec.Timezone); value != "" {
 		schedule.Timezone = value
 	}
 	if spec.CadenceHours != nil {
 		schedule.CadenceHours = *spec.CadenceHours
+		if *spec.CadenceHours > 0 {
+			schedule.CronExpression, schedule.RunAt = "", ""
+		}
+	}
+	if value := strings.TrimSpace(spec.RunAt); value != "" {
+		schedule.RunAt, schedule.CronExpression, schedule.CadenceHours = value, "", 0
 	}
 	if spec.PreferredHour != nil {
 		hour := *spec.PreferredHour
@@ -136,7 +144,7 @@ func crewScheduleSpecFrom(schedule productschedule.Schedule, withID bool) crewSc
 	enabled := schedule.Enabled
 	out := crewScheduleSpec{
 		Name: schedule.Name, Description: schedule.Description, Messages: append([]string(nil), schedule.Messages...),
-		CronExpression: schedule.CronExpression, Timezone: schedule.Timezone, PreferredHour: schedule.PreferredHour,
+		CronExpression: schedule.CronExpression, RunAt: schedule.RunAt, Timezone: schedule.Timezone, PreferredHour: schedule.PreferredHour,
 		Enabled: &enabled, RunDestination: runDestination(schedule.Isolated),
 	}
 	if schedule.CadenceHours > 0 {

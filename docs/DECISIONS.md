@@ -43,6 +43,12 @@ steps should use the same browser path as Code/Crew, and connecting should make
 that browser usable without a second Share action. Relay rollout remains deferred.
 Ticket: [PLAT-530](bugs/pulse_platform/browser/plat-530.md).
 
+### 2026-10-05 — Crew and Code schedules can be one-time
+- A project schedule has exactly one timing form: a cron line, every N hours, or `run_at` (one moment). A one-time schedule
+  runs once and never again; a failed attempt retries with the usual backoff, 3 times at most. It is for "check the deploy in
+  3 hours": the agent's `create_project_schedule` takes `in_minutes` or `run_at`. Crew and Code only; workflows keep their
+  calendar items. If the server was down at the moment, it runs on the next tick. Ticket: [PLAT-533](bugs/pulse_platform/scheduler-runs/plat-533.md).
+
 ### 2026-10-05 — Chat history is what the platform saved; CLI transcripts are for debugging only
 
 - The saved conversation is built only from what the platform recorded (user rows and structured completions, in arrival order).

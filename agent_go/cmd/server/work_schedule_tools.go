@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
@@ -76,22 +77,34 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_schedule", "Create one recurring schedule for this project. Choose crew_chat to queue work in the main project conversation, or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
+		if err := register("create_project_schedule", "Create one schedule for this project: recurring (cron_expression) or one-time (in_minutes, or run_at for an exact moment). A one-time schedule runs once and never again, for example 'check the deploy in 3 hours'. Choose crew_chat to queue work in the main project conversation, or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
 				"message":         map[string]interface{}{"type": "string", "description": "The single instruction the agent should perform at each occurrence."},
-				"cron_expression": map[string]interface{}{"type": "string", "description": "Standard five-field cron expression."},
-				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata."},
+				"cron_expression": map[string]interface{}{"type": "string", "description": "Standard five-field cron expression, for a recurring schedule."},
+				"in_minutes":      map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "One-time: run once this many minutes from now (180 = 3 hours)."},
+				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
+				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}, "description": "Where runs execute. Defaults to crew_chat."},
 			},
-			"required": []string{"name", "message", "cron_expression", "timezone"},
+			"required": []string{"name", "message"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			name, _ := args["name"].(string)
 			message, _ := args["message"].(string)
 			cronExpression, _ := args["cron_expression"].(string)
 			timezone, _ := args["timezone"].(string)
+			runAt, err := oneTimeRunAt(args, time.Now())
+			if err != nil {
+				return "", err
+			}
+			if (strings.TrimSpace(cronExpression) != "") == (runAt != "") {
+				return "", fmt.Errorf("give exactly one of cron_expression (recurring) or in_minutes / run_at (one-time)")
+			}
+			if runAt == "" && strings.TrimSpace(timezone) == "" {
+				return "", fmt.Errorf("timezone is required with cron_expression")
+			}
 			enabled, hasEnabled := args["enabled"].(bool)
 			destination, _ := args["run_destination"].(string)
 			isolated, err := isolatedForRunDestination(destination)
@@ -102,7 +115,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				enabled = true
 			}
 			job, err := api.productSchedules.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
-				Name: strings.TrimSpace(name), Messages: []string{strings.TrimSpace(message)}, CronExpression: strings.TrimSpace(cronExpression), Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated,
+				Name: strings.TrimSpace(name), Messages: []string{strings.TrimSpace(message)}, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated,
 			})
 			if err != nil {
 				return "", err
@@ -117,12 +130,18 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object",
 			"properties": map[string]interface{}{
 				"id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
-				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"}, "enabled": map[string]interface{}{"type": "boolean"},
+				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"},
+				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
+				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}},
 			},
 			"required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id, _ := args["id"].(string)
+			runAt, runAtErr := oneTimeRunAt(args, time.Now())
+			if runAtErr != nil {
+				return "", runAtErr
+			}
 			var requestedIsolation *bool
 			if value, ok := args["run_destination"].(string); ok {
 				isolated, destinationErr := isolatedForRunDestination(value)
@@ -139,7 +158,10 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 					schedule.Messages = []string{strings.TrimSpace(value)}
 				}
 				if value, ok := args["cron_expression"].(string); ok && strings.TrimSpace(value) != "" {
-					schedule.CronExpression = strings.TrimSpace(value)
+					schedule.CronExpression, schedule.CadenceHours, schedule.RunAt = strings.TrimSpace(value), 0, ""
+				}
+				if runAt != "" {
+					schedule.RunAt, schedule.CronExpression, schedule.CadenceHours = runAt, "", 0
 				}
 				if value, ok := args["timezone"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.Timezone = strings.TrimSpace(value)
@@ -301,4 +323,42 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		})
 	}
 	return nil
+}
+
+// oneTimeMaxMinutes is the longest in_minutes a one-time schedule accepts (a year).
+const oneTimeMaxMinutes = 365 * 24 * 60
+
+// oneTimeRunAt turns the tool's in_minutes / run_at arguments into the RFC3339 instant stored on a
+// one-time schedule. It returns "" when neither is given. A moment in the past is refused: the
+// scheduler would run it at once, which is never what "check this later" means.
+func oneTimeRunAt(args map[string]interface{}, now time.Time) (string, error) {
+	runAt, _ := args["run_at"].(string)
+	runAt = strings.TrimSpace(runAt)
+	minutes, hasMinutes := 0, false
+	switch value := args["in_minutes"].(type) {
+	case float64:
+		minutes, hasMinutes = int(value), true
+	case int:
+		minutes, hasMinutes = value, true
+	}
+	if runAt != "" && hasMinutes {
+		return "", fmt.Errorf("give either in_minutes or run_at, not both")
+	}
+	if hasMinutes {
+		if minutes < 1 || minutes > oneTimeMaxMinutes {
+			return "", fmt.Errorf("in_minutes must be between 1 and %d", oneTimeMaxMinutes)
+		}
+		return now.Add(time.Duration(minutes) * time.Minute).UTC().Format(time.RFC3339), nil
+	}
+	if runAt == "" {
+		return "", nil
+	}
+	at, err := productschedule.Schedule{RunAt: runAt}.RunAtTime()
+	if err != nil {
+		return "", err
+	}
+	if !at.After(now) {
+		return "", fmt.Errorf("run_at %s is not in the future", runAt)
+	}
+	return at.UTC().Format(time.RFC3339), nil
 }
