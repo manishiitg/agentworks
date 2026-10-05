@@ -9,6 +9,25 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 )
 
+// Step tools execute through fresh HTTP bridge contexts, outside the builder's
+// LLMAgentWrapper. Bind the same authenticated owner/controller here too, before
+// looking up the account-private extension. Keep the child's ChatSessionID so
+// browser artifacts still use its narrow filesystem grants.
+func (api *StreamingAPI) bindWorkflowBrowserExecutors(requestCtx context.Context, sessionID string, req QueryRequest, readOnly bool, executors codingAgentToolExecutors) codingAgentToolExecutors {
+	resolve := api.bindToolExecutionContext(requestCtx, sessionID, req, readOnly)
+	bound := make(codingAgentToolExecutors, len(executors))
+	for name, execute := range executors {
+		bound[name] = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			ctx, err := resolve(ctx, name)
+			if err != nil {
+				return "", err
+			}
+			return execute(ctx, args)
+		}
+	}
+	return bound
+}
+
 // Persistent CLI turns reuse their registered tools. Read browser intent at
 // invocation time so saving workflow settings takes effect without a new chat.
 // An invalid or missing configuration remains disabled, even with the tool present.

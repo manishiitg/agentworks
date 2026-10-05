@@ -4729,6 +4729,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			browserTools := virtualtools.CreateWorkspaceBrowserTools()
 			browserRuntime := browser.NewBrowserRuntimeConfig(workflowBrowserMode, wfCdpPorts)
 			browserExecutors := virtualtools.CreateWorkspaceBrowserToolExecutorsWithRuntime(sessionID, browserRuntime)
+			browserExecutors = api.bindWorkflowBrowserExecutors(r.Context(), sessionID, req, currentUserIsReadOnly, browserExecutors)
 
 			allTools = append(allTools, browserTools...)
 			for name, executor := range browserExecutors {
@@ -11689,6 +11690,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 				browserCategory := virtualtools.GetWorkspaceBrowserToolCategory()
 				browserTools := virtualtools.CreateWorkspaceBrowserTools()
 				browserExecutors := workflowBrowserExecutors(sessionID, workspacePath, ReadWorkflowManifest)
+				browserExecutors = api.bindWorkflowBrowserExecutors(ctx, sessionID, req, false, browserExecutors)
 				allTools = append(allTools, browserTools...)
 				for name, executor := range browserExecutors {
 					allExecutors[name] = executor

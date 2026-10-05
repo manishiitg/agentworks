@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Workflow browser bridge calls retain authenticated run identity
+
+Bind workshop and full-run browser executors before step tool assembly, and
+register dedicated step tool sessions under the parent HTTP run. Fresh CLI/script
+HTTP requests use that authenticated account and controller while keeping their
+step-local file grants. Why: dropping the account identity made steps miss the
+selected private extension and silently use local CDP. A selected offline
+extension must continue to stop browser actions.
+Ticket: [PLAT-545](bugs/pulse_platform/browser/plat-545.md).
+
 ### 2026-10-05 — Plan refresh includes the displayed variables
 
 The Plan refresh control reloads variables alongside the plan and step config,

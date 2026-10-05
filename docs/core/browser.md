@@ -186,6 +186,13 @@ a live controller; reconnect to change it. Scheduled or background steps can use
 the connection only while the local browser is online; disconnect fails closed.
 The account's connection is never borrowed by another workflow owner or reader.
 
+Workshop and full-run browser executors bind authenticated account/run identity
+before step tool assembly. Dedicated execution, message-sequence and todo tool
+sessions register under that parent run, so fresh script/CLI HTTP calls resolve
+the same extension while keeping the child's file grants. Dropping account
+identity must never turn a selected extension into a local-CDP fallback.
+Tracking: [PLAT-545](../bugs/pulse_platform/browser/plat-545.md).
+
 Live bindings last at most eight hours and remain process-local. Server selection
 is recorded without credentials or target IDs. Extension 0.4.0 remembers explicitly
 enabled project pairings in browser-local storage, restricted to trusted extension

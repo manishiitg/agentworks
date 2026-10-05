@@ -1,3 +1,7 @@
+## Workflow step browser bridge loses the selected extension — PLAT-545
+
+[PLAT-545](pulse_platform/browser/plat-545.md), P2, fixed on main, not deployed. Authenticate workshop/full-run browser executors and register dedicated step sessions under the root run; preserve step file grants and refuse fallback from an offline selected extension. HTTP bridge and isolated real Chrome checks pass.
+
 ## Plan reload leaves variables, connections and open details stale — PLAT-544
 
 [PLAT-544](pulse_platform/frontend-chat/plat-544.md), P2, fixed on main, not deployed. Reload all displayed plan inputs, reconcile card/connection content, refresh open details and bypass cached data after step writes. Verified with the actual canvas button against an isolated local HTTP fixture.

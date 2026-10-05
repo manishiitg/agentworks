@@ -317,6 +317,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) bindWorkshopBrowserSession(toolSessio
 		common.SetSessionBrowserNamespace(toolSessionID, namespace)
 	}
 	common.SetSessionBrowserSessionID(toolSessionID, browserSessionID)
+	// Dedicated execution/message-sequence sessions need the same authenticated
+	// parent relationship as group sessions. The bridge checks this registry;
+	// a shared browser namespace alone is not authority to use the parent's tools.
+	if parent := strings.TrimSpace(hcpo.httpSessionID); parent != "" && parent != toolSessionID {
+		mcpagent.RegisterHTTPSession(parent, toolSessionID)
+	}
 }
 
 // switchWorkshopGroupSession ensures workshop step execution uses a stable MCP
