@@ -126,6 +126,10 @@ usable node_modules if the install fails.
 
 [PLAT-506](pulse_platform/step-execution/plat-506.md), fixed on main: the guard strips its own `force` before the strict tool validates.
 
+## Free search MCPs in the catalog — PLAT-509
+
+[PLAT-509](pulse_platform/integrations/plat-509.md), fixed on main: Firecrawl added next to Exa and Parallel (both already there); card text says free tier.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

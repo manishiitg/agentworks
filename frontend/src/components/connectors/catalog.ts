@@ -35,7 +35,7 @@ const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   HubSpot: 'CRM contacts, companies, deals, and tickets',
   Box: 'Search and read Box files and folders',
   Jam: 'Bug reports with video, console, and network logs',
-  ParallelSearch: 'Web search built for agents',
+  ParallelSearch: 'Web search built for agents (free tier, rate limited)',
   Wolfram: 'Computation and curated knowledge from Wolfram',
   Cortex: 'Service catalog, ownership, and scorecards',
   Notion: 'Search, update, and create pages across your workspace',
@@ -80,7 +80,8 @@ const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   AWSKnowledge: 'Search AWS documentation, APIs, and best practices',
   Svelte: 'Look up Svelte and SvelteKit docs and migrations',
   CloudflareDocs: 'Search Cloudflare product documentation',
-  Exa: 'Neural web search with full page contents',
+  Exa: 'Neural web search with full page contents (free tier, rate limited)',
+  Firecrawl: 'Search the web and read pages as clean text (free tier, rate limited)',
   Browserbase: 'Drive a headless browser to navigate and extract data',
   Clerk: 'Manage users, sessions, and authentication settings',
   LlamaCloud: 'Query documents indexed in LlamaCloud',
@@ -155,6 +156,7 @@ const CONNECTOR_GROUPS: Record<string, ConnectorGroup> = {
   Box: 'productivity',
   HubSpot: 'customers',
   ParallelSearch: 'search',
+  Firecrawl: 'search',
   Wolfram: 'search',
   Neon: 'data',
   PrismaPostgres: 'data',
@@ -191,7 +193,7 @@ const CONNECTOR_GROUPS: Record<string, ConnectorGroup> = {
   Lucid: 'productivity',
   // Hiring: job posts today, payroll (Gusto) tomorrow.
   Indeed: 'hiring',
-  // Search: look things up (Tavily and Firecrawl later).
+  // Search: look things up (Tavily later).
   Exa: 'search',
   // Data: structured data stores.
   Airtable: 'data',
