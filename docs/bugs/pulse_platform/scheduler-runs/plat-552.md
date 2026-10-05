@@ -30,6 +30,6 @@ The run context was cancelled correctly all the way down. The Codex adapter star
 
 ## Left
 
-- Agy and Muse exec adapters do not start their CLI in its own process group, so a cancel kills only the started process; check whether their binaries are launchers before changing their process setup.
+- Checked 2026-10-06: Agy and Muse need no change. `agy` is a native binary (the started process is the CLI). `muse` is a bash launcher that ends with `exec "$binary" "$@"`, so the real binary replaces the script in the same process and the default kill reaches it.
 - Owner check: run a workflow with a Codex step, stop it from the chat, confirm the browser activity stops within seconds.
 - Deploy needs the owner's go.
