@@ -2720,3 +2720,7 @@ change what a workflow does while still allowing it to report success.
 ## Move RTS knowledge to Brain, then retire per-workflow KB sharing — PLAT-538
 
 [PLAT-538](pulse_platform/learnings-knowledge/plat-538.md), P2, open: Brain is on main (PR 268), not deployed; migrate RTS knowledge in dependency order before the old `knowledgebase_sources` path is removed.
+
+## Vault and Brain are core products, on in every installation — PLAT-541
+
+[PLAT-541](pulse_platform/security-sandbox/plat-541.md), P2, on main, not deployed: `AGENT_PRODUCTS` no longer switches off Vault or Brain; accounts and roles decide access; every active account may use Brain through the MCP, the app tab needs the `knowledgebase` product.

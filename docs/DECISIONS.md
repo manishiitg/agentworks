@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Vault and Brain are core products
+
+Vault (`mcp-gateway`) and Brain (`knowledgebase`) are on in every installation,
+local included; `AGENT_PRODUCTS` cannot switch them off. Account roles and the
+per-account `knowledgebase` product decide who sees Brain in the app; any active
+account may use it through the MCP, and agents use it within the person's folder
+roles. Folder grants alone decide content: administrators are Owner everywhere,
+everyone else sees nothing until granted, and there is no all-members grant. Why:
+a product that deployments can drop leaves knowledge and credentials unreachable
+for the people who need them; access control belongs to roles, not to the
+install. [PLAT-541](bugs/pulse_platform/security-sandbox/plat-541.md).
+
 ### 2026-10-05 — Keep workflow Browser visible in the main toolbar
 
 Move Browser from collapsed Ops into the always-visible Views group, after

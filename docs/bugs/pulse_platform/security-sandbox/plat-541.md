@@ -1,0 +1,14 @@
+# PLAT-541: Vault and Brain are core products, on in every installation
+
+**State:** on main, not deployed. P2.
+
+**Decision (owner, 2026-10-05):** Vault (`mcp-gateway`) and Brain (`knowledgebase`) are always on, like Crew and Code, in every installation including local. Only accounts and roles change who can do what.
+
+**Done:**
+- `productEnabled` returns true for both whatever `AGENT_PRODUCTS` lists (`cmd/server/server.go`, `coreProducts`). The default frontend surfaces now include `mcp-gateway`.
+- Every active account may connect to Brain through the MCP and local tokens (`knowledgebaseMCPAllowed`); the app tab needs the `knowledgebase` product on the account (administrators have it). Agents running as a person may use Brain tools within their folder roles and a bound folder, without the app product (`knowledgebaseExecute`).
+- Content is never opened by this: administrators are Owner of every folder; everyone else sees nothing until a folder grant exists. There is no all-members grant (owner decision).
+- RTS, Confida and the Excellence product list `knowledgebase` in their service and frontend lists (RTS deploy guards updated).
+- One test pins the MCP/app split; the product-enabled test and two older tests were updated to the core rule.
+
+**Left:** deploy RTS and verify live (consent screen for a non-admin, the tab for an account with the product, an agent run with a bound folder); dedicated deployments (SparkQuill, Dominion) now run Brain and Vault in the backend but keep their pinned UI surfaces; decide whether to add them.
