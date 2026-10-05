@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -357,6 +358,12 @@ func (m *crewMover) moveOne(ctx context.Context, j *crewMoveJournal, cand *crewM
 			return fmt.Errorf("cannot record the move in the owner registry (the Crew is at %s but not yet registered; re-run to finish): %w", j.Dest, err)
 		}
 		forgetCrewLocationCaches()
+		// The Costs popup reads the Crew's current path; re-file the rows from before the move (a failure only warns).
+		if n, err := renameCostLedgerKeys(m.docsAbs, j.Source, j.Dest); err != nil {
+			log.Printf("[CREW_MOVE] %s: the cost history could not be re-filed (%v); run the cost key fix for it", j.Folder, err)
+		} else if n > 0 {
+			log.Printf("[CREW_MOVE] %s: re-filed %d cost row(s) under %s", j.Folder, n, j.Dest)
+		}
 		j.State = crewMoveRegistered
 		if err := j.save(opts.StateRoot, opts.now()); err != nil {
 			return err
