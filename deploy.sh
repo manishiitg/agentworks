@@ -110,6 +110,10 @@ deploy_rts() {
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
   cp "$RTS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
+  # Make room first (PLAT-545): a full disk broke the new gateway's database on 2026-10-05. Only runs when space is short,
+  # and never removes the live release, the newest one before it, or anything a running process still uses.
+  "${SSH[@]}" "python3 - /var/lib/video-studio/video-studio --apply --only-if-free-below-gb 15" < "$REPO_ROOT/deploy/common/prune-releases.py" \
+    || echo 'warning: could not make room on RTS before the deploy' >&2
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
   if [[ -n "$prebuilt_name" ]]; then

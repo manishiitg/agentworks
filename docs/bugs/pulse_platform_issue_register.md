@@ -2736,3 +2736,7 @@ change what a workflow does while still allowing it to report success.
 ## Brain access setting for projects (Off, Read, Folders) — PLAT-543
 
 [PLAT-543](pulse_platform/learnings-knowledge/plat-543.md), P2: backend on main, not deployed (`brain_access`, `set_project_access`); UI, Code projects and the live check are left.
+
+## Old release copies were never pruned and filled the RTS disk — PLAT-545
+
+[PLAT-545](pulse_platform/performance/plat-545.md), P1, fixed in the deploy scripts on main, not yet run: the pruner aborted on another account's `/proc/<pid>/root` since the slot accounts, so every deploy kept every release (RTS 99% full, a deploy failed). It now skips unreadable paths, keeps the two newest releases, and every deployer makes room first when space is short.

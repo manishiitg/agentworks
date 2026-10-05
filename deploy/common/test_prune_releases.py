@@ -29,6 +29,30 @@ class ReleaseCleanupTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.prune(app, apply=True, proc=proc, keep=['../data'])
 
+    def test_unreadable_process_path_does_not_abort_cleanup_and_newest_are_kept(self):
+        # RTS 2026-10-05: one unreadable /proc/<pid>/root of another account aborted every cleanup, so 27 releases
+        # (34 GB) piled up and the disk filled. The cleanup must go on, and keep the newest releases as a margin.
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp).resolve()
+            names = [f'abcdef{i}-2026100{i}120000' for i in range(1, 6)]
+            for name in names:
+                (app / 'releases' / name).mkdir(parents=True)
+            (app / 'current').symlink_to(app / 'releases' / names[4])
+            proc = app / 'proc'
+            (proc / '123').mkdir(parents=True)
+            (proc / '123' / 'cmdline').write_text('/proc/999/root/srv/run')
+            real = os.path.realpath
+
+            def realpath(path, *args, **kwargs):
+                if str(path).startswith('/proc/999/'):
+                    raise PermissionError(13, 'Permission denied', str(path))
+                return real(path, *args, **kwargs)
+
+            with patch.object(module.os.path, 'realpath', side_effect=realpath):
+                removed = module.prune(app, apply=True, proc=proc, keep_newest=2)
+            self.assertEqual(sorted(removed), sorted(names[:3]))
+            self.assertTrue((app / 'releases' / names[3]).exists() and (app / 'releases' / names[4]).exists())
+
     def test_health_requires_json_from_every_service(self):
         with patch.object(module, 'urlopen', side_effect=[BytesIO(b'{"status":"healthy"}'), BytesIO(b'{"status":"unhealthy"}')]) as request:
             with self.assertRaises(RuntimeError):

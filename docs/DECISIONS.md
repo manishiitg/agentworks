@@ -34,6 +34,14 @@ exclude completed recordings. Why: users need connection health at a glance,
 without mistaking a different browser or a replay for their selected connection.
 Ticket: [PLAT-542](bugs/pulse_platform/frontend-chat/plat-542.md).
 
+### 2026-10-05 — Deploys prune old releases by default and make room first
+
+Every deployer (RTS, the rootless-Linux products, Dominion) keeps the live release
+and the one before it, plus anything a running process still uses, and removes the
+rest; when the disk has under 15 GB free it does this before delivering the new
+release. Why: a silently failing cleanup let 27 releases fill RTS and break a deploy.
+[PLAT-545](bugs/pulse_platform/performance/plat-545.md).
+
 ### 2026-10-05 — A project's Brain access is Off, Read or Folders
 
 A workflow, Crew or Code project turns Brain on or off with one setting. Read is the

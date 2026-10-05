@@ -108,6 +108,9 @@ RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
 BUILD_DIR="$REMOTE_RELEASE"
 MIGRATION_STOPPED_AGENT=0
+# Make room first (PLAT-545): only when space is short, and never the live release, the newest one before it, or one in use.
+python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --only-if-free-below-gb 15 \
+  || echo 'warning: could not make room before the deploy' >&2
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
 cleanup_build() {
