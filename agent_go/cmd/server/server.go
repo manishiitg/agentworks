@@ -4841,6 +4841,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Track HTTP session ID on the orchestrator so MCP sessions can be closed on stop
 		workflowOrchestrator.SetHTTPSessionID(sessionID)
 
+		// A server-owned run (scheduled, webhook, Slack: "schedule-…") registered its tools only in the global table, so a
+		// scripted step calling a tool through its bridge session (a registered child of this run) got whichever session
+		// wrote that table last; a Crew chat running at the same moment handed it its own executor and the ownership check
+		// rejected the step (PLAT-514). Registering the run's tools under the run's session lets the step's lookup resolve
+		// to its parent run. Only run sessions: a chat's session keeps its own registry, and CleanupSession below would
+		// clear it.
+		runToolSession := strings.HasPrefix(sessionID, "schedule-")
+		if runToolSession {
+			codeexec.InitRegistryForSession(sessionID, runToolExecutors(allExecutors), nil)
+		}
+
 		if workflowBrowserMode != "" && workflowBrowserMode != "none" {
 			workflowOrchestrator.SetBrowserMode(workflowBrowserMode)
 			log.Printf("[WORKFLOW] Set browser mode on orchestrator: %s", workflowBrowserMode)
@@ -5287,6 +5298,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.updateSessionStatus(sessionID, "error")
 				// Clean up HTTP session → MCP session tracker on error completion
 				mcpagent.CloseHTTPSession(sessionID)
+				if runToolSession {
+					codeexec.CleanupSession(sessionID)
+				}
 				// Kill headless browser processes for this session
 				api.cleanupBrowserSessions(sessionID)
 			} else {
@@ -5300,6 +5314,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.updateSessionStatus(sessionID, "completed")
 				// Clean up HTTP session → MCP session tracker on successful completion
 				mcpagent.CloseHTTPSession(sessionID)
+				if runToolSession {
+					codeexec.CleanupSession(sessionID)
+				}
 				// Kill headless browser processes for this session
 				api.cleanupBrowserSessions(sessionID)
 			}

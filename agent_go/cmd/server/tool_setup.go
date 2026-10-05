@@ -933,3 +933,14 @@ func writeTargetArgs(args map[string]interface{}, params []string) (map[string]i
 	}
 	return merged, names
 }
+
+// runToolExecutors keeps the executor functions of a run's tool map (createCustomTools returns them as interface{}).
+func runToolExecutors(all map[string]interface{}) map[string]func(context.Context, map[string]interface{}) (string, error) {
+	out := make(map[string]func(context.Context, map[string]interface{}) (string, error), len(all))
+	for name, executor := range all {
+		if fn, ok := executor.(func(context.Context, map[string]interface{}) (string, error)); ok {
+			out[name] = fn
+		}
+	}
+	return out
+}

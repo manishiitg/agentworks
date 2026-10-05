@@ -1,6 +1,6 @@
 # PLAT-514: webhook step cannot write the workflow database: "mutate_workflow_db caller does not own this tool session"
 
-**State:** fixed in mcpagent d07fe58 (not yet verified by a live run). P1. P1 (blocks the `rtsprreviweer` PR review on RTS).
+**State:** second fix on main (builder), not yet verified by a live run; the first fix (mcpagent d07fe58) was not enough. P1. P1 (blocks the `rtsprreviweer` PR review on RTS).
 
 **Found:** 2026-10-05 11:27 UTC, RTS, the 4th webhook run of `rtsprreviweer` (PLAT-502 had just made the run folder writable, so the step now gets as far as the database). `pr-eligibility-gate` wrote `route_selection.json`, then `mutate_workflow_db` (the INSERT into `pr_gate_decisions`) failed with `mutate_workflow_db caller does not own this tool session` (`agentworks_db.DBError`, session `session-group-default-1791199672093001445`, HTTP session `schedule-webhook--d04df8c1_…`).
 
@@ -22,3 +22,11 @@ Run 748 logged `[TOOL_OWNERSHIP] rejected mutate_workflow_db: caller="session-gr
 Fix (mcpagent d07fe58): `mcpclient.MCPSessionsForHTTPSession` lists a run's live sessions; when the parent has no registry for the tool, `siblingScopeForTool` uses the run's other session if exactly one registered it (none or several keeps the legacy lookup). One regression test in `agent/codeexec/registry_test.go`. Not changed: the global table itself.
 
 **Left:** re-trigger the PR review from SDE Private while the Crew is active (the failing shape); expect no `[TOOL_OWNERSHIP]` line and a decision in `pr_gate_decisions`. The gate's own handling of the delivery (empty owner/repo) is separate and is the Builder's change (see the `webhook-triggers` skill).
+
+## 2026-10-05 13:20 UTC: the first fix did not work; the real gap
+
+Run 752 (after deploying d07fe58) was rejected the same way. The log of that minute shows session-scoped tool registrations only for the SDE Private Crew (`code:project:3b40f2c4…`); the webhook run registered no session-scoped tools at all, under any of its sessions, so the sibling lookup had nothing to find. A server-owned run's tools (`createCustomTools(true, user, session)`, which includes `mutate_workflow_db`) went only into the global table.
+
+Fix (builder, server.go workflow branch): for a run session (`schedule-…`: scheduled, webhook and Slack runs) register the run's own executors with `codeexec.InitRegistryForSession(sessionID, …)`, so the step's bridge session resolves to its parent run (the PLAT-355 path), and `codeexec.CleanupSession` when the run ends. Not for chat sessions: they keep their own registry and cleanup would clear it. Checked that all 39 run tools, including `mutate_workflow_db`, keep their executor type. mcpagent d07fe58 stays (harmless when the parent has the tool).
+
+**Left:** re-trigger from SDE Private; expect no `[TOOL_OWNERSHIP]` line.
