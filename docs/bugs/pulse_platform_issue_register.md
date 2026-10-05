@@ -271,6 +271,10 @@ usable node_modules if the install fails.
 
 [PLAT-548](pulse_platform/chat-reliability/plat-548.md), fixed on main, not deployed: a notification shares the interactive role.
 
+## Stopping a workflow did not stop its Codex step — PLAT-552
+
+[PLAT-552](pulse_platform/scheduler-runs/plat-552.md), fixed on main, not deployed: a cancel now kills the CLI's whole process group (the npm codex wrapper left the real Codex running).
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
