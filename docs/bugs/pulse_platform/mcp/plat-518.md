@@ -1,0 +1,11 @@
+# PLAT-518: an MCP tool named like a platform tool stops the chat from starting
+
+**State:** stopgap fixed in mcpagent b619356 (not deployed, not verified live); the real fix (server prefix on a clash) is open. P1.
+
+**Found:** 2026-10-05, Excellence, Code project `linkedscrapper`: "Failed to finalize agent definition: finalize immutable agent definition: register direct tool "delete_function": tool name "delete_function" is already registered by MCP server "ue03d5aec…__neon_46fb2cad6010"". A Neon MCP connection on that project exposes a tool named `delete_function`; the platform has its own `delete_function` (Crew/Code functions, `crew_functions.go`). mcpagent's `registerDirectTool` (`agent/agent.go`) rejected any direct tool whose name an MCP server already used, and that failed the whole agent, so the chat could not start at all. Any connected server with a tool named like one of ours does the same.
+
+**Stopgap (owner decision, option 3):** the platform tool is used and the MCP tool of that name is hidden, with a `[TOOL_SHADOW]` warning in the log (`canonicalToolRegistry.removeMCP`). The chat starts; that one MCP tool is not callable. One test pins it (`agent/tool_registry_uniqueness_test.go`).
+
+**Real fix (open, owner direction: MCPs must stay fully usable, not lose to our tools):** on a clash only, expose the MCP tool as `<server>__<tool>` (shown as `server.tool`; a dot is not allowed in Anthropic/OpenAI tool names), so both work and nobody else's tool names change. Not "prefix every MCP tool": that renames tools that saved plans, skills and allow lists already use. The name must translate back to the server's real tool name everywhere an MCP tool is called: the agent loop (`conversation.go`), the parallel runner (`parallel_tool_execution.go`), the CLI bridge (`executor/handlers.go`, which already calls by server plus tool), code execution (`codeexec/registry.go`) and the retry path (`error_handler.go`). Also covers two MCP servers exposing the same tool name. Check live with a real MCP server whose tool clashes (a Neon connection on a Code project) before replacing the stopgap.
+
+**Left:** deploy the stopgap to Excellence and confirm `linkedscrapper` starts; then build the prefix.
