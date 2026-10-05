@@ -22,3 +22,8 @@ Connecting Claude Code to Excellence (`/api/external/v1/mcp`, OAuth) asked for e
 ## Not done
 
 A client still cannot ask for a smaller set of scopes through Claude Code's `mcp add`; it requests all advertised ones. Whether Excellence should enable `AGENTWORKS_MCP_BUILDER_ENABLED` is the owner's decision (it lets an MCP client edit plans/code and Relays).
+
+## Update 2026-10-05: Builder MCP enabled on Excellence (owner decision)
+
+`AGENTWORKS_MCP_BUILDER_ENABLED=true` is now in `deploy/rootless-linux/products/agents/product.env` (EXTRA_ENV), Excellence only. RTS and Confida are unchanged (flag off). It stays a per-person capability: a connection is bounded to the workflows the person selected and may edit, `validateBuilderGrant` re-checks live workflow write access (owner or write, so a read-only user cannot edit a plan) and the account's product on every call, and `relays:write` is offered only to accounts with the Relays product (2 of 10 users on Excellence at the time).
+
