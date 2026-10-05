@@ -229,6 +229,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveDeterministicRoutingSelection(
 		}, nil
 	}
 
+	// Caller/schedule selections are run configuration, not disposable step
+	// artifacts. next_step_id navigation archives future step folders (including
+	// the preseed file), so resolve the configured choice directly before any
+	// file-based fallback. Value-path Relay decisions above remain authoritative.
+	if hcpo.executionOptions != nil {
+		if rawValue, supplied := hcpo.executionOptions.RouteSelections[strings.TrimSpace(routingStep.GetID())]; supplied {
+			selectedRouteID, err := resolveRouteSelectionValue(routingStep.GetRoutes(), strings.TrimSpace(rawValue))
+			if err != nil {
+				return nil, fmt.Errorf("invalid route_selections[%q]: %w", routingStep.GetID(), err)
+			}
+			return &deterministicRoutingSelection{
+				SelectedRouteID: selectedRouteID,
+				Reasoning:       fmt.Sprintf("Run configuration selected route %q.", selectedRouteID),
+				SourceKind:      "route_selections",
+				RawValue:        strings.TrimSpace(rawValue),
+			}, nil
+		}
+	}
+
 	for _, ownRouteFilePath := range hcpo.routingStepOwnRouteFileCandidates(routingStep, stepIndex, routingStepPath) {
 		if selection, found, err := hcpo.readDeterministicRoutingSource(ctx, routingStep, ownRouteFilePath, "routing step preseed"); err != nil {
 			return nil, err
