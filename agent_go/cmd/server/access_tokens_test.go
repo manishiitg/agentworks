@@ -532,7 +532,7 @@ func TestLocalFullAccessTokenIssuance(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
 	t.Setenv("AGENTWORKS_KNOWLEDGEBASE_ROOT", filepath.Join(t.TempDir(), "knowledgebase"))
 	request := func(claims *UserClaims) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodPost, "/api/auth/access-tokens", strings.NewReader(`{"name":"Local agent","local_full_access":true,"expires_in_days":30}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/auth/access-tokens", strings.NewReader(`{"name":"Local agent","local_full_access":true}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		api.handleAccessTokens(w, r)
@@ -549,6 +549,9 @@ func TestLocalFullAccessTokenIssuance(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &issued); err != nil {
 		t.Fatal(err)
 	}
+	if !issued.AccessToken.NonExpiring {
+		t.Fatal("local token must not expire")
+	}
 	for _, scope := range mcpOAuthScopesFor(claims, mcpOAuthScopes) {
 		if !issued.AccessToken.Allows(scope) {
 			t.Errorf("missing available scope %s", scope)
@@ -561,6 +564,9 @@ func TestLocalFullAccessTokenIssuance(t *testing.T) {
 		t.Fatalf("foreign local identity admitted: %d", w.Code)
 	}
 	t.Setenv("MULTI_USER_MODE", "true")
+	if _, err := accessTokenClaims(issued.AccessToken); err == nil {
+		t.Fatal("non-expiring local token admitted after enabling multi-user mode")
+	}
 	if w := request(claims); w.Code != http.StatusForbidden {
 		t.Fatalf("multi-user full local token admitted: %d", w.Code)
 	}

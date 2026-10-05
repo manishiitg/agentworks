@@ -6,7 +6,7 @@ vi.mock('../../services/api', () => ({ authApi: { listAccessTokens: vi.fn(), cre
 import { authApi } from '../../services/api'
 import { LocalMcpTokenPanel } from './LocalMcpTokenPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const token = { id: 'test-token', name: 'Local agent', scopes: ['knowledgebase:read', 'knowledgebase:write'], expires_at: '2099-01-01', revoked_at: null }
+const token = { id: 'test-token', name: 'Local agent', scopes: ['knowledgebase:read', 'knowledgebase:write'], non_expiring: true, expires_at: '9999-12-31T23:59:59Z', revoked_at: null }
 const cleanups: (() => void)[] = []
 beforeEach(() => { vi.mocked(authApi.listAccessTokens).mockResolvedValue({ tokens: [] }); vi.mocked(authApi.createAccessToken).mockResolvedValue({ token: 'test-only-secret', access_token: token as any }); vi.mocked(authApi.revokeAccessToken).mockResolvedValue(undefined) })
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.resetAllMocks(); document.body.innerHTML = '' })
@@ -21,9 +21,11 @@ describe('local MCP access tokens', () => {
   it('issues full local account access without a permission picker and revokes the token', async () => {
     const host = await mount()
     expect(host.querySelector('input[type=checkbox]')).toBeNull()
+    expect(host.querySelector('select')).toBeNull()
+    expect(host.textContent).not.toContain('30 days')
     vi.mocked(authApi.listAccessTokens).mockResolvedValue({ tokens: [token as any] })
     await act(async () => button(host, 'Create access token').click())
-    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ local_full_access: true, scopes: [], expires_in_days: 30 }))
+    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ local_full_access: true, scopes: [] }))
     expect(host.querySelector<HTMLInputElement>('[aria-label="New access token"]')?.value).toBe('test-only-secret')
     expect(host.querySelector('[aria-label="Local MCP client config"]')?.textContent).not.toContain('test-only-secret')
     await act(async () => button(host, 'Revoke').click())

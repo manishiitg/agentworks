@@ -68,6 +68,9 @@ func openAccessTokens() (*accesstokens.Store, error) {
 // permissions. Unlike legacy browser sessions, directory failures fail closed.
 func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 	c := &UserClaims{UserID: t.UserID, Username: t.Username, Email: t.Email, Provider: t.Provider, AccessToken: &t}
+	if t.NonExpiring && IsMultiUserMode() {
+		return nil, accesstokens.ErrInvalid
+	}
 	if !IsMultiUserMode() {
 		if c.UserID != GetDefaultUserID() {
 			return nil, accesstokens.ErrInvalid
@@ -194,7 +197,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			req.WorkflowIDs, req.CrewIDs = nil, nil
 			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
 		}
-		if req.ExpiresInDays < 1 || req.ExpiresInDays > 90 {
+		if !req.LocalFullAccess && (req.ExpiresInDays < 1 || req.ExpiresInDays > 90) {
 			externalError(w, 400, "invalid_arguments", "Choose an expiry between 1 and 90 days.")
 			return
 		}
@@ -203,6 +206,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		now := time.Now()
 		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+		if req.LocalFullAccess {
+			t.NonExpiring = true
+			t.ExpiresAt = accesstokens.PermanentExpiry()
+		}
 		if err := accesstokens.Validate(t, now); err != nil {
 			externalError(w, 400, "invalid_arguments", err.Error())
 			return

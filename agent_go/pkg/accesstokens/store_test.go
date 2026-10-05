@@ -370,3 +370,38 @@ func TestRelayAuthoringConsentDoesNotGrantAgentWorksBuilder(t *testing.T) {
 		t.Fatal("bounded Relay consent widened")
 	}
 }
+
+func TestNonExpiringLocalTokenPersistenceAndRemoval(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.sqlite")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	ctx := context.Background()
+	record, raw, err := store.Issue(ctx, Token{Name: "Local user", UserID: "owner", Scopes: []string{"knowledgebase:read"}, NonExpiring: true, ExpiresAt: PermanentExpiry()}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	store, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	future := now.AddDate(10, 0, 0)
+	restored, err := store.Authenticate(ctx, raw, future)
+	if err != nil || !restored.NonExpiring {
+		t.Fatalf("permanent token did not survive restart/time: %+v %v", restored, err)
+	}
+	if err := store.Revoke(ctx, record.ID, "owner", future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, raw, future); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("removed token accepted: %v", err)
+	}
+	legacy := Token{Name: "Legacy", UserID: "owner", Scopes: []string{"workflows:read"}, ExpiresAt: PermanentExpiry()}
+	if err := Validate(legacy, now); err == nil {
+		t.Fatal("ordinary tokens must still have bounded expiry")
+	}
+}

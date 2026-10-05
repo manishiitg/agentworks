@@ -52,8 +52,13 @@ type Token struct {
 	CreatedAt               time.Time            `json:"created_at"`
 	ExpiresAt               time.Time            `json:"expires_at"`
 	LastUsedAt              *time.Time           `json:"last_used_at"`
+	NonExpiring             bool                 `json:"non_expiring,omitempty"`
 	RevokedAt               *time.Time           `json:"revoked_at"`
 }
+
+// PermanentExpiry preserves the existing SQLite expiry column without a schema
+// migration. Only the single-user issuance route enables non-expiring tokens.
+func PermanentExpiry() time.Time { return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC) }
 
 func (t Token) Allows(scope string) bool { return slices.Contains(t.Scopes, scope) }
 
@@ -121,7 +126,11 @@ func Validate(t Token, now time.Time) error {
 	if strings.TrimSpace(t.Name) == "" || len(t.Name) > 80 || t.UserID == "" {
 		return errors.New("a token name (1–80 characters) and user are required")
 	}
-	if !t.ExpiresAt.After(now) || t.ExpiresAt.After(now.Add(90*24*time.Hour)) {
+	if t.NonExpiring {
+		if !t.ExpiresAt.Equal(PermanentExpiry()) {
+			return errors.New("invalid non-expiring token")
+		}
+	} else if !t.ExpiresAt.After(now) || t.ExpiresAt.After(now.Add(90*24*time.Hour)) {
 		return errors.New("expiry must be within 90 days")
 	}
 	if len(t.Scopes) == 0 || len(t.Scopes) > len(Scopes) {
@@ -383,6 +392,7 @@ func scan(row interface{ Scan(...any) error }) (Token, error) {
 	}
 	t.CreatedAt = time.Unix(created, 0).UTC()
 	t.ExpiresAt = time.Unix(expires, 0).UTC()
+	t.NonExpiring = t.ExpiresAt.Equal(PermanentExpiry())
 	if used.Valid {
 		v := time.Unix(used.Int64, 0).UTC()
 		t.LastUsedAt = &v
