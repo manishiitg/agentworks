@@ -1,6 +1,6 @@
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { BookOpen, Check, ChevronDown, Waypoints } from 'lucide-react'
+import { Check, ChevronDown, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { DominionMark } from '../products/dominion/DominionMark'
@@ -8,6 +8,7 @@ import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { CodeMark } from '../products/work/CodeMark'
+import { BrainMark } from '../products/knowledgebase/BrainMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -39,7 +40,7 @@ const products: Array<{
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
-  { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BookOpen },
+  { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
 ]
 
 export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {

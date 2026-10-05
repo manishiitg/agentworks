@@ -32,7 +32,7 @@ export function quickNavigationItems(
   const common = { lastAccessedAt: 0, hasLocalActivity: false as const }
   const items: QuickNavigationItem[] = products.map(surface => ({
     ...common, type: 'product', id: `product:${surface}`, label: PRODUCT_SURFACE_LABELS[surface],
-    subtitle: 'Product · open workspace', isActive: surface === current, surface,
+    subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current, surface,
   }))
   const menu = (action: NavigationAction, label: string, description: string) => {
     items.push({ ...common, type: 'menu', id: `menu:${action}`, label, subtitle: `Menu · ${description}`, isActive: false, action })
