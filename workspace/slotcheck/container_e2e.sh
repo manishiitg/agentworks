@@ -4,6 +4,8 @@
 #   docker run --rm --privileged -v "$PWD/workspace:/src/new:ro" -v "$PWD/deploy/common:/src/deploy:ro" [-v <old workspace>:/src/old:ro] \
 #     -v "$(go env GOMODCACHE):/go/pkg/mod" golang:1.26-bookworm bash /src/new/slotcheck/container_e2e.sh
 #
+# E2E_OLD_IS_ENV_SCRUB_BASELINE=1 (with /src/old = origin/main before the env scrub) skips the PLAT-478-era old-code assertions and keeps
+# step 2c: the env-scrub row must FAIL on the old launcher.
 # It builds a slot host the way provision-slots.sh does (service account vs, slot accounts slot01/slot02/slot50 with
 # their groups, root-owned slotctl and allow-list, the sudo rule, the slot table root:vs 0640, a docs tree with two
 # users, a workflow, an app-owned 0700 browser profile holding a cookie file) and then, as the service account:
@@ -45,7 +47,7 @@ cp -R /src/new /build/new
 if [[ -d /src/old ]]; then
   # The old launcher, and the self-test built on the old grant builder (origin/main's security package).
   cp -R /src/old /build/old
-  cp -R /build/new/slotcheck /build/old/slotcheck && rm -f /build/old/slotcheck/*_test.go
+  rm -rf /build/old/slotcheck && cp -R /build/new/slotcheck /build/old/slotcheck && rm -f /build/old/slotcheck/*_test.go
   mkdir -p /build/old/cmd/slotcheck && cp /build/new/cmd/slotcheck/*.go /build/old/cmd/slotcheck/
   cp /build/new/slots/config.go /build/old/slots/config.go
   mkdir -p "$APP/releases/r0/bin"
@@ -122,7 +124,7 @@ echo "==> 1. the launcher, as slot01, with the 0700 browser profile in its grant
 policy=/tmp/policy.json
 printf '{"read_paths":[],"write_paths":["%s"],"work_dir":"%s"}\n' "$PROFILE" "$DOCS" > "$policy" && chmod 0644 "$policy"
 cp "$policy" /tmp/policy-old.json && chmod 0644 /tmp/policy-old.json
-if [[ -x "$APP/releases/r0/bin/video-studio-landlock-runner" ]]; then
+if [[ -x "$APP/releases/r0/bin/video-studio-landlock-runner" && -z "${E2E_OLD_IS_ENV_SCRUB_BASELINE:-}" ]]; then
   out="$(sudo -u slot01 "$APP/releases/r0/bin/video-studio-landlock-runner" --config /tmp/policy-old.json -- /bin/sh -c 'pwd' 2>&1 || true)"
   echo "old launcher: $out"
   [[ "$out" == *"SANDBOX_UNAVAILABLE: inspect Landlock path: stat $PROFILE: permission denied"* ]] && echo "OK   old launcher refuses the command (the RTS failure)" || { echo "BAD  old launcher did not reproduce the RTS failure"; fails=$((fails + 1)); }
@@ -142,6 +144,13 @@ as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full | grep -E '^
 chmod 0644 "$APP/.env"
 expect 0 "full-level self-test still refuses the app .env by the sandbox, not by file mode" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full
 chmod 0600 "$APP/.env"
+
+if [[ -x "$APP/releases/r0/bin/video-studio-landlock-runner" ]]; then
+  echo "==> 2c. the env-scrub row must FAIL on the OLD launcher (a check that cannot fail proves nothing)"
+  out="$(as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full --runner "$APP/releases/r0/bin/video-studio-landlock-runner" 2>&1 || true)"
+  printf '%s\n' "$out" | grep 'cli-launcher-env-scrub' | head -2
+  [[ "$out" == *"FAIL  cli-launcher-env-scrub"* ]] && echo "OK   old launcher: the env-scrub row FAILS (it can detect a leak)" || { echo "BAD  the env-scrub row did not fail on the old launcher"; fails=$((fails + 1)); }
+fi
 
 echo "==> 3. self-test, releases/ 0700 (RTS layer 2)"
 chmod 0700 "$APP/releases"
@@ -188,7 +197,7 @@ echo "==> the new code created nothing under the browser profile roots"
 # a running service has them already. No browser's profile folder may appear.)
 [[ "$(ls "$PROFILE_ROOT-projects")" == "$(basename "$PROFILE")" && -z "$(ls -A "$PROFILE_ROOT-workflows" 2>/dev/null)" ]] && echo "OK   no profile folder created" || { ls -la "$PROFILE_ROOT-projects"; echo "BAD  the self-test created browser profile folders"; fails=$((fails + 1)); }
 
-if [[ -x "$APP/releases/r0/bin/slotcheck" ]]; then
+if [[ -x "$APP/releases/r0/bin/slotcheck" && -z "${E2E_OLD_IS_ENV_SCRUB_BASELINE:-}" ]]; then
   # Last: the old grant builder creates profile folders as it goes (scopeBrowser's MkdirAll), the new one does not.
   echo "==> 4. self-test on the OLD grant builder and launcher (RTS layer 3)"
   expect 1 "self-test fails on the old code" -- as_vs "$APP/releases/r0/bin/slotcheck" --docs "$DOCS" --app "$APP"

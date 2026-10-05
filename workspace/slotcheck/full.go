@@ -74,6 +74,7 @@ func fullChecks(ctx context.Context, opts Options, cfg slots.ExecConfig, docs, w
 	rows = append(rows, tmuxLiveCheck(ctx, opts, cfg, testSlot)...)
 	rows = append(rows, helperChecks(ctx, opts, cfg, docs, testSlot)...)
 	rows = append(rows, workflowChatChecks(ctx, opts, docs, workflow)...)
+	rows = append(rows, launcherEnvCheck(ctx, opts))
 	return rows
 }
 
@@ -171,4 +172,38 @@ func siblingWorkflow(workflow string) string {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// launcherEnvCheck proves the launcher every confined coding CLI starts through drops the platform's own secrets
+// from the environment (PLAT-491). It plants canary values under the names a deploy really carries (the names alone
+// matter: the values are made up), runs `env` through the launcher, and requires every canary to be gone and a
+// harmless variable to survive (so a launcher that dropped everything is not a pass).
+func launcherEnvCheck(ctx context.Context, opts Options) Row {
+	const name = "cli-launcher-env-scrub"
+	if opts.RunLauncherEnv == nil || opts.Runner == "" {
+		return Row{Skip, name, "app", "no launcher to run on this host", ""}
+	}
+	canaries := []string{
+		"SUPABASE_SERVICE_ROLE_KEY=slotcheck-canary", "SUPABASE_ANON_KEY=slotcheck-canary", "GOG_KEYRING_PASSWORD=slotcheck-canary",
+		"AUTH_SECRET=slotcheck-canary", "ACCESS_PASSWORD=slotcheck-canary", "ADMIN_USERS=slotcheck-canary",
+		"GLOBAL_SECRET_SLOTCHECK=slotcheck-canary", "SLOTCHECK_KEPT=kept",
+	}
+	out, err := opts.RunLauncherEnv(ctx, opts.Runner, canaries)
+	if err != nil {
+		return Row{Fail, name, "app", "the launcher did not run, so nothing was proven: " + shortErr(err), "fix the sandbox chain first (see the pwd checks above)"}
+	}
+	var leaked []string
+	for _, canary := range canaries[:len(canaries)-1] {
+		key := strings.SplitN(canary, "=", 2)[0]
+		if strings.Contains(out, key+"=") {
+			leaked = append(leaked, key)
+		}
+	}
+	switch {
+	case len(leaked) > 0:
+		return Row{Fail, name, "app", "a confined CLI would see platform secrets: " + strings.Join(leaked, ", "), "PLAT-491: the launcher must drop platform secrets before it starts the CLI; do not leave this release live"}
+	case !strings.Contains(out, "SLOTCHECK_KEPT=kept"):
+		return Row{Fail, name, "app", "the launcher dropped ordinary variables too, nothing was proven", "check ScrubPlatformSecretEnv"}
+	}
+	return Row{Pass, name, "app", "platform secrets are not in a confined CLI's environment", ""}
 }

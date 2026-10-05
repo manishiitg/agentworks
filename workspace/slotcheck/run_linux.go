@@ -5,6 +5,9 @@ package slotcheck
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -95,4 +98,32 @@ func TmuxControlAsSlot(ctx context.Context, slot, socket string, args ...string)
 	}
 	out, err := wrapped.CombinedOutput()
 	return string(out), err
+}
+
+// RunLauncherEnvProbe runs `env` through the Landlock launcher with the given canary entries added to this process's
+// environment, in a throwaway folder, and returns what the launched program saw.
+func RunLauncherEnvProbe(ctx context.Context, runner string, canaries []string) (string, error) {
+	dir, err := os.MkdirTemp("", "slotcheck-launcher-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	policy, err := json.Marshal(security.LandlockPolicy{WorkDir: dir, WritePaths: []string{dir}})
+	if err != nil {
+		return "", err
+	}
+	config := filepath.Join(dir, "policy.json")
+	if err := os.WriteFile(config, policy, 0o600); err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, runner, "--config", config, "--", "/usr/bin/env")
+	cmd.Env = append(os.Environ(), canaries...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%v: %s", err, firstLine(stderr.String()))
+	}
+	return stdout.String(), nil
 }

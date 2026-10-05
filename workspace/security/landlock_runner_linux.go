@@ -134,7 +134,7 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	if errno != 0 {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: enforce Landlock ruleset: %w", errno)
 	}
-	if err := syscall.Exec(argv[0], argv, os.Environ()); err != nil {
+	if err := syscall.Exec(argv[0], argv, ScrubPlatformSecretEnv(os.Environ())); err != nil {
 		return fmt.Errorf("execute sandboxed command: %w", err)
 	}
 	return nil
@@ -331,4 +331,56 @@ func existingCanonicalPaths(paths []string) []string {
 // (deploy/aws-ec2/server/chrome-headless-wrapper.sh).
 func browserTempDir() string {
 	return fmt.Sprintf("/tmp/aw-browser-%d", os.Getuid())
+}
+
+// platformSecretEnvNames and platformSecretEnvPrefixes are the platform's OWN secrets: what the app reads from its
+// environment (sign-in, Supabase, the keyring password, the admin and allow lists, the service tokens). A confined
+// coding CLI and everything it runs inherits the launcher's environment, so without this its built-in shell could
+// print them (PLAT-491: SUPABASE_SERVICE_ROLE_KEY and GOG_KEYRING_PASSWORD were readable from a Crew's native shell).
+// A CLI's OWN login (CLAUDE_CODE_OAUTH_TOKEN, CURSOR_API_KEY, provider keys) and the per-chat scope (SECRET_*, MCP_*)
+// are deliberately not here: the adapters set those for the launch.
+var platformSecretEnvNames = []string{
+	"AUTH_SECRET", "ACCESS_PASSWORD", "GOG_KEYRING_PASSWORD", "ADMIN_USERS", "AUTH_ALLOWED_EMAILS",
+	"CAPLAYER_SERVICE_TOKEN_FILE", "SSH_AUTH_SOCK",
+}
+
+var platformSecretEnvPrefixes = []string{"SUPABASE_", "GLOBAL_SECRET_", "VAULT_"}
+
+// platformSecretEnvExtraEnv adds host-specific names (comma separated) to the list above.
+const platformSecretEnvExtraEnv = "AGENTWORKS_CLI_ENV_DENY"
+
+// ScrubPlatformSecretEnv returns env without the platform's own secrets (see platformSecretEnvNames). Order and every
+// other entry are unchanged.
+func ScrubPlatformSecretEnv(env []string) []string {
+	extra := map[string]bool{}
+	for _, name := range strings.Split(os.Getenv(platformSecretEnvExtraEnv), ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			extra[name] = true
+		}
+	}
+	denied := func(key string) bool {
+		if extra[key] {
+			return true
+		}
+		for _, name := range platformSecretEnvNames {
+			if key == name {
+				return true
+			}
+		}
+		for _, prefix := range platformSecretEnvPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if denied(key) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }

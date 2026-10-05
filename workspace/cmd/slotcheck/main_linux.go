@@ -57,19 +57,20 @@ func main() {
 		gids = append(gids, groups...)
 	}
 	rows := slotcheck.Check(context.Background(), slotcheck.Options{
-		DocsRoot:      *docs,
-		AppDir:        *app,
-		Runner:        *runner,
-		SlotctlConfig: config,
-		SlotTable:     table,
-		TableOwnerUID: 0,
-		ServiceGIDs:   gids,
-		TestSlot:      *testSlot,
-		Run:           slotcheck.RunThroughShellTool,
-		RunCommand:    slotcheck.RunCommandThroughShellTool,
-		Level:         *level,
-		TmuxControl:   slotcheck.TmuxControlAsSlot,
-		Lookup:        slotcheck.LookupAccount,
+		DocsRoot:       *docs,
+		AppDir:         *app,
+		Runner:         *runner,
+		SlotctlConfig:  config,
+		SlotTable:      table,
+		TableOwnerUID:  0,
+		ServiceGIDs:    gids,
+		TestSlot:       *testSlot,
+		Run:            slotcheck.RunThroughShellTool,
+		RunCommand:     slotcheck.RunCommandThroughShellTool,
+		RunLauncherEnv: slotcheck.RunLauncherEnvProbe,
+		Level:          *level,
+		TmuxControl:    slotcheck.TmuxControlAsSlot,
+		Lookup:         slotcheck.LookupAccount,
 	})
 	fmt.Print(slotcheck.Format(rows))
 	if slotcheck.Failed(rows) {

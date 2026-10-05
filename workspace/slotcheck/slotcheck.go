@@ -81,6 +81,9 @@ type Options struct {
 	Run      func(context.Context, Probe) (stdout, stderr string, err error)
 	// RunCommand runs one shell command for a probe the way Run does. When nil the confinement (deny) checks are skipped.
 	RunCommand func(context.Context, Probe, string) (stdout, stderr string, err error)
+	// RunLauncherEnv starts the Landlock launcher the way a confined coding CLI is started, with canary platform secrets
+	// in its environment, and returns the environment the launched program sees. Nil skips the check.
+	RunLauncherEnv func(ctx context.Context, runner string, canaries []string) (string, error)
 	// Level is LevelBasic (default, what every deploy runs) or LevelFull (adds full.go's checks).
 	Level string
 	// TmuxControl runs tmux as a slot account (the live tmux check of the full level).
