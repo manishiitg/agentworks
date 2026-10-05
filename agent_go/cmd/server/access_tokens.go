@@ -362,6 +362,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalCodeReviewTool(tool.Name) {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
 	}
+	if tool.Name == "create_workflow" {
+		return externalWorkflowCreationAllowed(c)
+	}
 	if strings.HasPrefix(tool.Name, "builder_") {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}

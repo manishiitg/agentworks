@@ -209,6 +209,20 @@ func externalTools() ([]externalTool, error) {
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
+		creatorSchema := workflowCreatorToolSchema()
+		// Normalize Go slices to JSON values for the schema compiler.
+		creatorJSON, err := json.Marshal(creatorSchema)
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
+		var creatorInput map[string]any
+		if err := json.Unmarshal(creatorJSON, &creatorInput); err != nil {
+			externalCatalogErr = err
+			return
+		}
+		creatorInput["additionalProperties"] = false
+		defined = append(defined, externalTool{Name: "create_workflow", Description: externalWorkflowCreatorDescription, InputSchema: creatorInput, mutates: true})
 		externalRelayDefinitions(add)
 		// Dispatch validates against the full external surface; discovery narrows
 		// it per connection and live action/Owner/admin checks still authorize it.
@@ -410,6 +424,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "create_workflow" {
+		api.externalCreateWorkflow(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "create_relay" {

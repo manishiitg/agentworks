@@ -40,14 +40,14 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 			}
 			toolSeen[name] = true
 		}
-		// External Run tools and the four explicit Builder operations have separate admission lists.
+		// External Run tools and explicit Builder authoring operations have separate admission lists.
 		if mode == "run" {
 			if len(def.ExternalTools) == 0 {
 				return fmt.Errorf("chat run: external_tools are required")
 			}
 		}
 		if mode == "builder" {
-			expected := map[string]bool{"builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true}
+			expected := map[string]bool{"create_workflow": true, "builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true}
 			for _, name := range def.ExternalTools {
 				if !expected[name] {
 					return fmt.Errorf("invalid Builder external tool %q", name)

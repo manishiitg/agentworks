@@ -244,3 +244,11 @@ MCP sequence (use real values returned by discovery):
 ```
 
 Manifest version conflicts require inspecting again before a new request. Exact retries are idempotent but still check project ownership and token revocation. Shared content calls resolve against the invoking step's session, so a parent's write binding does not override a step's read-only policy.
+
+## Create a workflow from local or hosted MCP
+
+Global MCP admits `create_workflow` through AgentWorks `product.yaml`. It uses the existing app workflow creator and schema: `folder_name` (kebab-case), `workflow_json` (schema version, unique ID, label), and `plan_json` (non-empty valid graph). Discover it using `get_api_spec`, invoke it with `call_tool`, and use the returned `workflow_id` for Builder and KB bindings.
+
+The connection needs unrestricted `builder:chat` (and its companion read/run scopes), account creation rights, AgentWorks product access, and an enabled external Builder. The local Owner’s `agentworks-local` token includes these when enabled; hosted connections use their existing OAuth Builder consent. Ownership is stamped from the current authenticated user, and revoked grants are rechecked before creation. Scoped Builder/read/run connections cannot create.
+
+After creation, inspect the project with `manage_knowledgebase_access(action=inspect_project)` and bind an authorized folder with `action=bind_project`, current `expected_manifest_version`, and a stable `request_id`. These actions check live project Owner and folder/audience permissions. Creation cannot inject folder grants or KB/project bindings. Use Builder to author/test scripted-step code before running. Existing folders and workflow IDs are never overwritten.

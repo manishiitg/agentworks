@@ -46,7 +46,7 @@ Discover the schemas through `get_api_spec`, then invoke actions through `call_t
 - `backup_knowledgebase`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
 - `manage_knowledgebase_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
 
-Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Project binding actions remain in the app's access builder. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Knowledge Base.
+Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `manage_knowledgebase_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Knowledge Base.
 
 ## Run
 
@@ -64,9 +64,15 @@ Crews are persistent AgentWorks agents. Discover them with `list_crews` (IDs, ne
 
 Code review (`code:review`; admins and Code reviewers only, re-checked on every call): `list_code_workspaces` lists every user's Code workspaces (owner, ID, sharing); `get_code_costs` gives each Code's cost and tokens by person and model for a `from`/`to` range; `list_code_files` / `read_code_file` and `list_code_chats` / `read_code_chat` read a workspace's files and chats; `get_code_audit` reads the review log. Everything is read-only and every call, lists included, is recorded in the audit log with the token that made it.
 
+## Workflow creation and Builder
+
+When `create_workflow` appears in `get_api_spec`, invoke it through `call_tool` with `folder_name` (kebab-case), `workflow_json` (`schema_version`, unique `id`, `label`) and `plan_json` (a valid non-empty steps graph). It reuses the app creator and returns `workflow_id`; the new workflow belongs to the authenticated user. Account creation rights and unrestricted `builder:chat` permission are required. The local `agentworks-local` Owner token qualifies when Builder is enabled. Existing folders and IDs are never overwritten.
+
+Creation writes structure only. Use `builder_chat` with the returned ID to author/test scripted-step code before running; poll `builder_status`, answer questions with `builder_reply_input`, and reuse `submission_id` for uncertain Builder delivery. Add KB folders through `manage_knowledgebase_access` actions `inspect_project` / `bind_project` using that ID and current folder/audience permissions. Creation cannot preconfigure host-folder grants or KB/project attachments.
+
 ## Answer from reading
 
-If the task needs a change, say so instead of attempting one — authoring is not exposed.
+Use only authoring operations shown in this connection’s catalog. If the needed operation is absent, describe or suggest the change.
 
 Administrators may configure an initial Git backup with `manage_knowledgebase_access`
 `action=configure_backup`, the user's exact HTTPS `remote_url`, `username`, optional `pat` and `branch`

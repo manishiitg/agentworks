@@ -133,6 +133,9 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
+		if tool.Name == "create_workflow" {
+			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for builder_chat and authorized KB project bindings. Creation does not run it."
+		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions
 		}

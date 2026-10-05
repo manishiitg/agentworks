@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	pathpkg "path"
 	"regexp"
 	"strings"
+	"sync"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -30,7 +32,24 @@ func (api *StreamingAPI) registerWorkflowCreatorTool(underlyingAgent definitionT
 		return fmt.Errorf("underlying agent is nil")
 	}
 
-	params := map[string]interface{}{
+	params := workflowCreatorToolSchema()
+
+	description := "Create a new workflow at Workflow/<folder_name>/ with the given workflow.json and planning/plan.json. Use one large message_sequence per shared-context span, with proof/provenance, evidence-based double-checking, repair, and final validation inside it; create another large sequence only when its context should be isolated. Put deterministic API/SDK/CLI/data-fetch/parse/persist work in coherent scripted-fetcher candidates with authoritative validated outputs. Never use one regular step per endpoint, routine action, or proof check. This tool writes structure only; after creation tell the user to open Workshop so deterministic steps are declared scripted and main.py is authored/tested before production. The tool validates the complete plan graph before writing anything and refuses dangling targets or overwrite."
+
+	return underlyingAgent.RegisterCustomTool(
+		"create_workflow",
+		description,
+		params,
+		func(ctx context.Context, args map[string]interface{}) (string, error) {
+			return api.handleWorkflowCreatorTool(ctx, args)
+		},
+		"workflow_creator",
+	)
+}
+
+// workflowCreatorToolSchema is shared by chat and the global MCP catalog.
+func workflowCreatorToolSchema() map[string]interface{} {
+	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"folder_name": map[string]interface{}{
@@ -51,18 +70,10 @@ func (api *StreamingAPI) registerWorkflowCreatorTool(underlyingAgent definitionT
 		"required": []string{"folder_name", "workflow_json", "plan_json"},
 	}
 
-	description := "Create a new workflow at Workflow/<folder_name>/ with the given workflow.json and planning/plan.json. Use one large message_sequence per shared-context span, with proof/provenance, evidence-based double-checking, repair, and final validation inside it; create another large sequence only when its context should be isolated. Put deterministic API/SDK/CLI/data-fetch/parse/persist work in coherent scripted-fetcher candidates with authoritative validated outputs. Never use one regular step per endpoint, routine action, or proof check. This tool writes structure only; after creation tell the user to open Workshop so deterministic steps are declared scripted and main.py is authored/tested before production. The tool validates the complete plan graph before writing anything and refuses dangling targets or overwrite."
-
-	return underlyingAgent.RegisterCustomTool(
-		"create_workflow",
-		description,
-		params,
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return api.handleWorkflowCreatorTool(ctx, args)
-		},
-		"workflow_creator",
-	)
 }
+
+var workflowCreationMutex sync.Mutex
+var errWorkflowCreationConflict = errors.New("workflow already exists")
 
 // handleWorkflowCreatorTool validates the arguments, creates the workflow folder, and writes
 // workflow.json and planning/plan.json through the workspace API.
@@ -116,11 +127,26 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	workflowJSONPath := pathpkg.Join(workflowFolder, "workflow.json")
 	planJSONPath := pathpkg.Join(workflowFolder, "planning", "plan.json")
 
+	// Serialize chat and external creations so competing calls cannot overwrite.
+	workflowCreationMutex.Lock()
+	defer workflowCreationMutex.Unlock()
+
 	// 6. Refuse to overwrite existing workflows
 	if _, exists, err := readFileFromWorkspace(ctx, workflowJSONPath); err != nil {
 		return "", fmt.Errorf("failed to check workflow existence: %w", err)
 	} else if exists {
-		return "", fmt.Errorf("workflow folder Workflow/%s already exists — pick a different folder_name or update the existing workflow via the workflow canvas", folderName)
+		return "", fmt.Errorf("%w: Workflow/%s — pick a different folder_name or update the existing workflow via Builder", errWorkflowCreationConflict, folderName)
+	}
+
+	// IDs also identify workflows for MCP, bindings and executions.
+	discovered, err := DiscoverWorkflowManifests(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check workflow IDs: %w", err)
+	}
+	for _, existing := range discovered {
+		if existing.Manifest != nil && existing.Manifest.ID == workflowMap["id"] {
+			return "", fmt.Errorf("%w: choose a different workflow_json.id", errWorkflowCreationConflict)
+		}
 	}
 
 	// 7. Marshal and write workflow.json
@@ -177,6 +203,7 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	stepSummary := summarizePlanSteps(planMap)
 
 	result := map[string]interface{}{
+		"workflow_id":   workflowMap["id"],
 		"folder_path":   fmt.Sprintf("Workflow/%s", folderName),
 		"workflow_json": fmt.Sprintf("Workflow/%s/workflow.json", folderName),
 		"plan_json":     fmt.Sprintf("Workflow/%s/planning/plan.json", folderName),
