@@ -94,7 +94,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Live chat is enabled. Accept steering while a turn is running and keep each durable project conversation resumable.",
 	},
 	"coding": {
-		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command", "read_image", "search_web_llm"},
+		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command", "read_image"},
 		Skills:          []string{"code-reviewer"},
 		PromptExtension: "Coding tools are enabled. Inspect existing files before editing, keep changes scoped to the request, and validate in proportion to risk.",
 	},

@@ -17,8 +17,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
-	"github.com/manishiitg/mcpagent/mcpclient"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -87,16 +85,6 @@ func CreateReadImageProviderTestExecutor(workspaceURL, userID string) func(ctx c
 	executors := workspace.NewAdvancedExecutor(client)
 	baseExecutor := executors["read_image"]
 	return wrapReadImageWithLLM(baseExecutor, "")
-}
-
-// CreateSearchWebLLMProviderTestExecutor creates a search_web_llm executor for
-// provider matrix tests. It uses the same published-LLM routing and workspace
-// provider auth as the production workspace tool.
-func CreateSearchWebLLMProviderTestExecutor(workspaceURL string) func(ctx context.Context, args map[string]any) (string, error) {
-	if strings.TrimSpace(workspaceURL) == "" {
-		workspaceURL = getWorkspaceAPIURL()
-	}
-	return createSearchWebLLMExecutor(workspaceURL)
 }
 
 // CreateWorkspaceAdvancedToolExecutorsWithSession creates workspace advanced tool executors
@@ -262,7 +250,6 @@ func attachWorkspaceAdvancedLLMExecutors(executors map[string]func(ctx context.C
 	// current workflow's manifest; generate_text_llm must never choose models
 	// from a global workspace default.
 	executors["generate_text_llm"] = createGenerateTextLLMExecutor(workspaceURL, nil)
-	executors["search_web_llm"] = createSearchWebLLMExecutor(workspaceURL)
 }
 
 // SetGenerateTextWorkflowTierConfig binds generate_text_llm exclusively to
@@ -440,110 +427,6 @@ func GenerateTextOneShot(ctx context.Context, workflowTiers *WorkflowLLMTierConf
 		return strings.TrimSpace(resp.Choices[0].Content), nil
 	}
 	return "", nil
-}
-
-func createSearchWebLLMExecutor(workspaceURL string) func(ctx context.Context, args map[string]any) (string, error) {
-	return func(ctx context.Context, args map[string]any) (string, error) {
-		query := strings.TrimSpace(fmt.Sprintf("%v", args["query"]))
-		if query == "" {
-			return "", fmt.Errorf("query is required")
-		}
-
-		provider := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", args["provider"])))
-		if provider == "" || provider == "<nil>" {
-			return "", fmt.Errorf("provider is required")
-		}
-
-		modelID := strings.TrimSpace(fmt.Sprintf("%v", args["model_id"]))
-		if modelID == "<nil>" {
-			modelID = ""
-		}
-		if modelID != "" {
-			return "", fmt.Errorf("search_web_llm is MCP-backed and does not accept model_id")
-		}
-		request, ok := buildMCPWebSearchRequest(provider, query)
-		if !ok {
-			return "", fmt.Errorf("unsupported search_web_llm provider %q; supported providers are parallel, exa, and firecrawl", provider)
-		}
-		result, err := executeMCPWebSearch(ctx, request)
-		if err != nil {
-			return "", fmt.Errorf("search_web_llm failed: %w", err)
-		}
-		return result, nil
-	}
-}
-
-// mcpWebSearchRequest describes one of the public hosted MCP search surfaces
-// exposed through search_web_llm. They are deliberately routed here instead of
-// being added to the published LLM list: these services are MCP tools, not LLM
-// runtimes, and therefore have neither a model ID nor LLM-provider credentials.
-type mcpWebSearchRequest struct {
-	provider string
-	url      string
-	tool     string
-	args     map[string]interface{}
-}
-
-func buildMCPWebSearchRequest(provider, query string) (mcpWebSearchRequest, bool) {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "parallel", "parallel-search":
-		return mcpWebSearchRequest{
-			provider: "parallel",
-			url:      "https://search.parallel.ai/mcp",
-			tool:     "web_search",
-			args: map[string]interface{}{
-				"objective":      query,
-				"search_queries": []string{query},
-			},
-		}, true
-	case "exa", "exa-search":
-		return mcpWebSearchRequest{
-			provider: "exa",
-			url:      "https://mcp.exa.ai/mcp",
-			tool:     "web_search_exa",
-			args: map[string]interface{}{
-				"query":      query,
-				"numResults": 5,
-			},
-		}, true
-	case "firecrawl":
-		return mcpWebSearchRequest{
-			provider: "firecrawl",
-			url:      "https://mcp.firecrawl.dev/v2/mcp",
-			tool:     "firecrawl_search",
-			args: map[string]interface{}{
-				"query":      query,
-				"limit":      5,
-				"highlights": true,
-			},
-		}, true
-	default:
-		return mcpWebSearchRequest{}, false
-	}
-}
-
-func executeMCPWebSearch(ctx context.Context, request mcpWebSearchRequest) (string, error) {
-	client := mcpclient.New(mcpclient.MCPServerConfig{
-		Protocol:    mcpclient.ProtocolHTTP,
-		URL:         request.url,
-		Description: request.provider + " hosted web search",
-	}, loggerv2.NewNoop())
-	defer client.Close()
-
-	if err := client.Connect(ctx); err != nil {
-		return "", fmt.Errorf("connect %s MCP: %w", request.provider, err)
-	}
-	result, err := client.CallTool(ctx, request.tool, request.args)
-	if err != nil {
-		return "", fmt.Errorf("call %s MCP tool %q: %w", request.provider, request.tool, err)
-	}
-	if result == nil {
-		return "", fmt.Errorf("%s MCP tool %q returned no result", request.provider, request.tool)
-	}
-	if result.IsError {
-		return "", fmt.Errorf("%s MCP tool %q: %s", request.provider, request.tool, mcpclient.ToolResultAsString(result))
-	}
-	return strings.TrimSpace(mcpclient.ToolResultAsString(result)), nil
 }
 
 func loadWorkflowTierModel(cfg *WorkflowLLMTierConfig, tier string) (*TierModel, error) {

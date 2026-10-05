@@ -12,7 +12,7 @@ func TestWorkspaceAdvancedCategoryIncludesProviderMediaTools(t *testing.T) {
 	names := getToolNamesByCategory("workspace_advanced")
 
 	for _, name := range []string{
-		"search_web_llm",
+		"generate_text_llm",
 	} {
 		if !names[name] {
 			t.Fatalf("workspace_advanced category missing %q", name)

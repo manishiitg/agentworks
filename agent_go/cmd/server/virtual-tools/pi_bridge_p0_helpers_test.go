@@ -1,4 +1,4 @@
-//go:build search_web_llm_pi_bridge_p0_live || generate_text_llm_pi_bridge_p0_live
+//go:build generate_text_llm_pi_bridge_p0_live
 
 package virtualtools
 

@@ -61,7 +61,7 @@ func TestVideoStudioManifestDrivesProfileAndWorkflowCapabilities(t *testing.T) {
 	// set_workflow_secret is here because it was registered-but-invisible once.
 	for _, name := range []string{
 		"show_video", "show_reference", "agent_browser",
-		"read_image", "search_web_llm",
+		"read_image",
 		"list_secrets", "set_workflow_secret",
 	} {
 		if !enabled[name] {
