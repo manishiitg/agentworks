@@ -89,7 +89,7 @@ func (m *crewMover) makeBackup(todo []crewMoveCandidate) error {
 		}
 		// The backup mirrors the Crew's modes and groups as far as the account may (it is a restore source), but never
 		// fails the run for a group it cannot set: the content is what a restore needs.
-		copied, copyErr := copyCrewTree(src, dst, entries, copyOptions{})
+		copied, copyErr := copyCrewTree(src, dst, entries, copyOptions{SkipVanished: true})
 		_ = src.Close()
 		if copyErr != nil && !strings.Contains(copyErr.Error(), "cannot keep group") {
 			_ = dst.Close()

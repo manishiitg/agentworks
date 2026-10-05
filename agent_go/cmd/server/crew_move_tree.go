@@ -86,6 +86,12 @@ func walkCrewTree(root *os.Root) ([]crewTreeEntry, []crewTreeFinding, error) {
 				findings = append(findings, crewTreeFinding{Rel: child, Kind: "sqlite-shm", Detail: "SQLite shared-memory index, rebuilt on open"})
 				continue
 			}
+			// The report runtime's scratch folder holds throwaway database snapshots that are created and deleted while a
+			// report is served; they vanished mid-copy and aborted a real move (RTS 2026-10-05). Nothing in it is kept.
+			if child == ".report-cache/.runtime" {
+				findings = append(findings, crewTreeFinding{Rel: child, Kind: "sqlite-shm", Detail: "report runtime scratch folder, recreated on demand"})
+				continue
+			}
 			info, err := root.Lstat(child)
 			if err != nil {
 				return err
@@ -203,6 +209,9 @@ func crewTreeDigest(entries []crewTreeEntry) string {
 type copyOptions struct {
 	// Hook is called with ("copy", n) after every file; returning an error stops the copy (a crash in tests).
 	Hook func(point string, n int) error
+	// SkipVanished drops a file that is deleted between the listing and the copy instead of failing (the backup only: it
+	// is a safety net, and the move itself stays strict).
+	SkipVanished bool
 }
 
 // copyCrewTree copies a walked tree from src into the (empty) dst, returning the entries with the content hashes of
@@ -226,6 +235,10 @@ func copyCrewTree(src, dst *os.Root, entries []crewTreeEntry, opts copyOptions) 
 		case 'f':
 			hash, err := copyOneFile(src, dst, entry)
 			if err != nil {
+				if opts.SkipVanished && errors.Is(err, fs.ErrNotExist) {
+					entry.Kind = 'x' // deleted while the backup ran: nothing to keep
+					continue
+				}
 				return out, fmt.Errorf("%s: %w", entry.Rel, err)
 			}
 			entry.Hash = hash
@@ -241,6 +254,13 @@ func copyCrewTree(src, dst *os.Root, entries []crewTreeEntry, opts copyOptions) 
 			}
 		}
 	}
+	kept := out[:0]
+	for _, entry := range out {
+		if entry.Kind != 'x' {
+			kept = append(kept, entry)
+		}
+	}
+	out = kept
 	// Attributes, children first so a directory's own mode and times are applied last.
 	for i := len(out) - 1; i >= 0; i-- {
 		entry := out[i]
