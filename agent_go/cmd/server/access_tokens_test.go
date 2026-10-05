@@ -528,6 +528,7 @@ func TestAccessTokenRuntimeLeaseAndCancellation(t *testing.T) {
 
 func TestLocalFullAccessTokenIssuance(t *testing.T) {
 	api := tokenTestSetup(t)
+	withMemoryUserDirectory(t, `{"users":[]}`)
 	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
 	t.Setenv("AGENTWORKS_KNOWLEDGEBASE_ROOT", filepath.Join(t.TempDir(), "knowledgebase"))
 	request := func(claims *UserClaims) *httptest.ResponseRecorder {
