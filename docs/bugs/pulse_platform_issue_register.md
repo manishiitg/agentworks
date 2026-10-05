@@ -114,6 +114,10 @@ usable node_modules if the install fails.
 
 [PLAT-504](pulse_platform/coding-agent-bridge/plat-504.md), fixed on main: a failed Codex turn is reported from structured records (rollout `codex_error_info`, `turn.failed`). Left: retry policy.
 
+## Schedule override `force` rejected by update_step — PLAT-506
+
+[PLAT-506](pulse_platform/step-execution/plat-506.md), fixed on main: the guard strips its own `force` before the strict tool validates.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
