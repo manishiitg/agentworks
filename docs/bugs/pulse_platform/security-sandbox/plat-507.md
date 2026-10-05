@@ -6,10 +6,12 @@
 
 **Definition (owner, 2026-10-05):** a vault is a bundle of MCP connections and secrets that any user can create and share with other users. It maps onto the existing Vault group (members plus grants to connections and secrets), owned by a person instead of only by the platform administrator.
 
+**Ownership (owner, 2026-10-05):** a vault has one or more owners. Only an owner can add, remove or update the MCPs and secrets in it and decide who may use it; other members can use what it contains. So members cannot re-share: only owners change membership and contents, and an owner can add another owner. The platform Vault is the same shape with the platform owner as its owner.
+
 **Decided (owner, 2026-10-05):** the platform Vault stays administered by the platform owner. In addition, any person can create their own vaults and share secrets and MCPs from them. So there are two kinds: the platform Vault (owner-administered, company-wide) and personal vaults (the creator administers and shares). Promote into the platform Vault stays administrator-only; promote into a person's own vault is theirs to do.
 
 **Still open (answers change the design):**
-1. A personal vault is its owner's own space: the owner is its administrator, adds MCPs and secrets, and grants named people or groups. Can those members re-share? (Suggest no.)
+1. (Decided above: owners only manage; members use.)
 2. Does a platform administrator see and control every personal vault (audit, takedown)? (Suggest yes, read and revoke, not use.)
 3. (Decided above.)
 4. Limits: vaults per person, secrets and connections per vault.
