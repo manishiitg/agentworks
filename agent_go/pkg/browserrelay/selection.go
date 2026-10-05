@@ -43,8 +43,9 @@ func NewPersistent(root string) (*Manager, error) {
 		}
 		profile := ""
 		for _, g := range m.pairs {
-			if g.User+"\x00"+g.Scope == key {
-				profile = g.ProfileID
+			resolved, ok := resolveProject(g, strings.TrimPrefix(key, g.User+"\x00"))
+			if ok && resolved.User+"\x00"+resolved.Scope == key {
+				profile = resolved.ProfileID
 				break
 			}
 		}

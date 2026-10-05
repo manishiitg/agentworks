@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"log"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -53,6 +54,8 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		callerOwnedBySession := toolSession == authoritySession && callerSession != "" &&
 			mcpclient.GetSessionRegistry().HTTPSessionForMCPSession(callerSession) == authoritySession
 		if callerSession != "" && callerSession != toolSession && !callerOwnedBySession {
+			// A rejection is rare and hard to diagnose from the error alone (PLAT-514): record which sessions disagreed.
+			log.Printf("[TOOL_OWNERSHIP] rejected %s: caller=%q tool_session=%q authority=%q caller_parent=%q", tool, callerSession, toolSession, authoritySession, mcpclient.GetSessionRegistry().HTTPSessionForMCPSession(callerSession))
 			return nil, fmt.Errorf("%s caller does not own this tool session", tool)
 		}
 		if claims := GetUserFromContext(ctx); claims != nil && (claims.UserID != bound.UserID || claims.Provider != bound.Provider || claims.BotRouteGrant != bound.BotRouteGrant) {
@@ -111,6 +114,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
+		// All registered step/delegated tool sessions retain the authenticated
+		// root controller. A child may not invent a different browser owner.
+		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)
 		ctx = executor.WithSessionID(ctx, toolSession)
 		if copy.Provider == "bot_route" || copy.Provider == slackDMProvider {
 			validated, err := api.revalidateExecutionPrincipal(ctx, req)

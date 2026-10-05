@@ -1,11 +1,6 @@
 package server
 
 import (
-	"context"
-	"encoding/json"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -91,87 +86,5 @@ func TestIsWorkflowBuilderConversationLogPathAcceptsOwnedAndLegacyLayouts(t *tes
 		if got := isWorkflowBuilderConversationLogPath("Workflow/instagram", tt.path); got != tt.want {
 			t.Fatalf("isWorkflowBuilderConversationLogPath(%q) = %v, want %v", tt.path, got, tt.want)
 		}
-	}
-}
-
-func TestRestoreLatestBuilderConversationRanksAfterNativeTranscriptCatchUp(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	const workspacePath = "Workflow/sales-outreach"
-	workingDir := filepath.Join(home, "workspace-docs", "Workflow", "sales-outreach")
-	nativeSessionID := "native-most-recent"
-	transcriptDir := filepath.Join(home, ".claude", "projects", claudeNativeTranscriptProjectSlug(workingDir))
-	if err := os.MkdirAll(transcriptDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeTranscriptFixture(t, filepath.Join(transcriptDir, nativeSessionID+".jsonl"), []string{
-		`{"type":"user","timestamp":"2026-08-30T08:00:00Z","message":{"role":"user","content":"original question"}}`,
-		`{"type":"assistant","timestamp":"2026-08-30T08:01:00Z","message":{"role":"assistant","content":[{"type":"text","text":"original answer"}]}}`,
-		`{"type":"user","timestamp":"2026-08-30T10:00:00Z","message":{"role":"user","content":"the actual last request"}}`,
-		`{"type":"assistant","timestamp":"2026-08-30T10:01:00Z","message":{"role":"assistant","content":[{"type":"text","text":"the actual last answer"}]}}`,
-	})
-
-	workspace := &mockWorkspaceAPI{files: map[string]string{}}
-	workspaceServer := httptest.NewServer(workspace)
-	defer workspaceServer.Close()
-	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
-
-	writeConversation := func(sessionID, updatedAt string, history []map[string]interface{}, runtime map[string]interface{}) {
-		t.Helper()
-		record := map[string]interface{}{
-			"session_id":           sessionID,
-			"phase_id":             "workflow-builder",
-			"updated_at":           updatedAt,
-			"conversation_history": history,
-		}
-		if runtime != nil {
-			record["runtime"] = runtime
-		}
-		content, err := json.Marshal(record)
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := workspacePath + "/builder/conversation/2026-08-30/session-" + sessionID + "-conversation.json"
-		workspace.files[path] = string(content)
-	}
-
-	writeConversation("saved-older-session", "2026-08-30T08:01:00Z", []map[string]interface{}{
-		{"Role": "human", "Parts": []map[string]string{{"Text": "original question"}}},
-		{"Role": "ai", "Parts": []map[string]string{{"Text": "original answer"}}},
-	}, map[string]interface{}{
-		"provider": "claude-code", "agent_session_handle": map[string]interface{}{
-			"provider": map[string]interface{}{"provider": "claude-code", "native_session_id": nativeSessionID, "working_dir": workingDir},
-		},
-	})
-	writeConversation("newer-saved-session", "2026-08-30T09:00:00Z", []map[string]interface{}{
-		{"Role": "human", "Parts": []map[string]string{{"Text": "a different older chat"}}},
-		{"Role": "ai", "Parts": []map[string]string{{"Text": "a different older answer"}}},
-	}, nil)
-
-	// A bot lookup (run first: a refresh saves its catch-up, which changes the snapshot) refreshes only the most recently updated few (a busy workflow has dozens, and
-	// refreshing them all took 70 s): with a limit of 1 the older snapshot is not refreshed, so the
-	// most recently saved conversation wins. With room for both it is the caught-up one, as above.
-	limited, err := (&StreamingAPI{}).restoreLatestBuilderConversationLimited(context.Background(), "sales-outreach", workspacePath, 1)
-	if err != nil || limited == nil || limited.SessionID != "newer-saved-session" {
-		t.Fatalf("limited restore = %+v, %v; want the most recently saved conversation", limited, err)
-	}
-	response, err := (&StreamingAPI{}).restoreLatestBuilderConversation(context.Background(), "sales-outreach", workspacePath)
-	if err != nil {
-		t.Fatalf("restore latest builder conversation: %v", err)
-	}
-	if response == nil {
-		t.Fatal("expected a restored builder conversation")
-	}
-	if response.SessionID != "saved-older-session" {
-		t.Fatalf("session = %q, want the native-caught-up conversation", response.SessionID)
-	}
-	if response.UpdatedAt != "2026-08-30T10:01:00Z" {
-		t.Fatalf("updated_at = %q, want native transcript recency", response.UpdatedAt)
-	}
-
-	both, err := (&StreamingAPI{}).restoreLatestBuilderConversationLimited(context.Background(), "sales-outreach", workspacePath, 2)
-	if err != nil || both == nil || both.SessionID != "saved-older-session" {
-		t.Fatalf("restore with room for both = %+v, %v; want the caught-up conversation", both, err)
 	}
 }

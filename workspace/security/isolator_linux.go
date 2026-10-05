@@ -49,7 +49,11 @@ func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command s
 }
 
 func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
-	reads, err := iso.canonicalPolicyPaths(iso.ReadPaths)
+	// A read-only folder that does not exist grants nothing and cannot be granted later (the rules are fixed when the
+	// command starts), so it must not stop the whole sandbox: the platform lists optional folders such as a workflow's
+	// learnings/_global, and a workflow that never created one could not run a single shell command (PLAT-514, RTS
+	// 2026-10-05). Only "does not exist" is skipped; a folder that exists but cannot be read still fails closed.
+	reads, err := iso.canonicalOptionalPolicyPaths(iso.ReadPaths)
 	if err != nil {
 		return LandlockPolicy{}, err
 	}

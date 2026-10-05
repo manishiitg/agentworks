@@ -90,6 +90,47 @@ signed URLs. Shared Playwright skips live registration in unattended contexts;
 native videos/traces remain controlled by the test configuration.
 
 
+### How a step reads its trigger input (all entry paths)
+
+One workflow is often started three ways: a provider webhook (for example GitHub),
+an MCP/CLI or bearer call, and a Crew or Code function call. Every path reaches
+the steps the same way: the run gets a delivery file, and a code step finds it at
+`$WORKFLOW_TRIGGER_INPUT_FILE` (an absolute path inside this workflow's docs
+root). What the file holds depends on the path:
+
+- **Provider webhook** (raw input, the default): `event` and `payload` hold the
+  provider's JSON exactly as sent (for GitHub, `payload.pull_request`,
+  `payload.action`, `payload.repository`). `variables` is empty.
+- **Bearer / MCP call**: with raw input the body is `payload` as sent; with
+  `input_mode="envelope"` the declared `variables` and the free `payload` are
+  separate.
+- **Function call** (Crew, Code, MCP/CLI `call_function`): `variables` holds the
+  declared inputs (for example `GITHUB_OWNER`, `GITHUB_REPO`, `PR_NUMBER`), already
+  validated. `payload` is the call envelope `{function, args, from, call_id}`, and
+  `args` repeats the same inputs. The values are never at the top level of `payload`.
+
+Declared variables are also set for the run, so a step can read
+`$VAR_<NAME>` for any path that supplies them. Read the trigger identity in this
+order and write the same fields whichever path ran:
+
+1. `delivery["variables"]` (function calls, and envelope calls),
+2. `delivery["payload"]["args"]` (function calls), then the flat `payload` keys,
+3. the provider event itself (`payload.pull_request`, `payload.repository`),
+4. the `$VAR_*` values (manual runs from Workshop, which have no delivery).
+
+Rules that keep a multi-path trigger debuggable:
+
+- Never turn "I could not open or parse the delivery" into an ordinary business
+  outcome such as `skip`. Record the real reason (the exception text, the path
+  and whether `$WORKFLOW_TRIGGER_INPUT_FILE` was set) in the step's output so the
+  caller and the next reader can tell a skipped PR from a broken trigger.
+- Do not assume the path from the shape of one example. Test each path you claim
+  to support (`manage_workflow_webhook` for provider webhooks, `call_function` for
+  functions) and read the step output of each run.
+- A tool error such as `caller does not own this tool session` is a platform
+  fault, not a script bug: retrying does not change it. Report the run and the
+  step instead of rewriting the script around it.
+
 ### Retention, concurrency, progress and runtime inputs
 
 - The server uses `workflow.json::run_retention_count` (default 10) for webhook

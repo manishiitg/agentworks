@@ -16,6 +16,10 @@ func TestIsAllowedShellExtraEnvKey(t *testing.T) {
 		"REPORT_CACHE_DIR",
 		"DB_PATH",
 		"PYTHONDONTWRITEBYTECODE",
+		// PLAT-514: a code step must learn where its trigger delivery is.
+		"WORKFLOW_TRIGGER_INPUT_FILE",
+		"WORKFLOW_KB_LATENCY",
+		"WORKFLOW_DB_ACCESS",
 	}
 	for _, key := range allowed {
 		if !isAllowedShellExtraEnvKey(key) {

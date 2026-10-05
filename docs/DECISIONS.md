@@ -17,6 +17,71 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Remember extension connections and resume after transient loss
+
+Persist explicitly enabled project pairings in trusted browser-local extension
+storage and reconnect after network loss or server/worker/browser restarts. Keep
+tab grants only in browser-session storage as exact IDs; a full browser restart
+returns connected with zero tabs, ready for agent-created tabs. Never adopt the
+current page or infer access from tab groups. Explicit Disconnect, account Reset
+and access revocation stop resume; server resume also requires the durable
+selection so offline Disconnect cannot be undone. Why: a stable account token
+should let users return without pasting again, while sharing and revocation stay
+explicit. This reverses the earlier memory-only, manual reconnect lifecycle.
+Ticket: [PLAT-532](bugs/pulse_platform/browser/plat-532.md).
+
+### 2026-10-05 — Workflows use account-private extension connections; human Connect shares the current website
+
+Offer the same account token in editable workflows, with live product/write
+checks, workflow-root manifests and account-scoped bindings. Workflow steps
+retain the authenticated parent run as their controller while keeping step-local
+filesystem grants. Pairing never lends one owner's browser to another owner.
+Human Connect shares the current supported website immediately; a protected or
+already-owned tab leaves the connection ready with zero tabs. Automatically
+connecting another workspace never adopts the user's current tab. Why: workflow
+steps should use the same browser path as Code/Crew, and connecting should make
+that browser usable without a second Share action. Relay rollout remains deferred.
+Ticket: [PLAT-530](bugs/pulse_platform/browser/plat-530.md).
+
+### 2026-10-05 — Chat history is what the platform saved; CLI transcripts are for debugging only
+
+- The saved conversation is built only from what the platform recorded (user rows and structured completions, in arrival order).
+  Claude/Codex/Cursor/... transcripts are never merged back into it; they stay for debugging and chat debugging.
+- Removed the native transcript catch-up (LCS merge) on chat open, resume, builder restore, after retained turns and at
+  server start. It duplicated a live-input message in the Upwork chat (PLAT-518) and caused PLAT-341/178/140 before.
+- Kept: text typed straight into the CLI terminal (native terminal observer) and the read-only proof that an uncertain send
+  never arrived. A retained turn whose completion has no final reply is logged, not repaired.
+- Risk accepted: a reply the platform failed to save stays missing from the restored chat. Ticket: [PLAT-525](bugs/pulse_platform/chat-reliability/plat-525.md).
+
+### 2026-10-05 — One browser account token serves separately authorized Code and Crew projects
+
+Use one persistent token per account/deployment, with separately registered and
+rechecked project grants. Code and owned Crew projects may connect simultaneously
+through the extension; keep target maps, controllers, capabilities and groups
+separate, and refuse sharing the same tab into two projects. Registered projects
+connect to the paired worker automatically; agents create their first tabs without
+manual sharing. The picker only controls manual sharing. Account Reset revokes
+all project connections; disconnecting a project affects only that project.
+Why: an owner uses Code and Crew in one browser and should pair it once without
+turning tab bookkeeping into a cross-project permission boundary. This supersedes
+the Code-only rollout and per-project credential policy below. Workflows remain
+deferred. Ticket: [PLAT-524](bugs/pulse_platform/browser/plat-524.md).
+
+### 2026-10-05 — Code browser changes notify chat and shared tabs group automatically
+
+Use the existing global durable queue to notify the active interactive Code chat
+on extension connection, first share and disconnection; wait behind running turns
+and deduplicate each connection. Code has explicit browser choices, with legacy
+Automatic mapped to Workspace browser, and show choices in idle panes after
+session discovery. Automatically group authorized tabs under deployment brand ·
+project (AgentWorks fallback); moving other tabs into a group never grants access.
+Keep extension operations in the background unless a tool call explicitly sets
+active=true; human popup actions may still select their new tab. Console/errors
+are scoped to the selected shared target. Reuse inline tab selection without
+clearing existing refs when that tab is already selected.
+Why: the agent must notice routing changes and the user must see its shared tabs
+without extra setup actions. Ticket: [PLAT-516](bugs/pulse_platform/browser/plat-516.md).
+
 ### 2026-10-05 — Code-only extension choice with reusable private connection codes
 
 Roll out personal browser extensions in Code projects first. Use the existing

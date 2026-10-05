@@ -6,21 +6,24 @@
     <header><img src="icon-32.png" width="32" height="32" alt=""><div><h1>AgentWorks</h1><p class="subtitle">Browser connection</p></div><span id="status" class="badge" role="status" aria-live="polite">Not connected</span></header>
     <p id="error" class="error" role="alert" hidden></p>
     <section id="setup">
-      <h2>Connect to your Code project</h2>
+      <h2>Connect to Code, Crew or a workflow</h2>
       <p class="muted">In AgentWorks, open <strong>Browser → Settings</strong> and choose <strong>My Chrome or Edge · extension</strong>.</p>
       <label for="pairing">Paste your connection code</label>
       <textarea id="pairing" rows="3" spellcheck="false" autocomplete="off" placeholder="Copy connection in AgentWorks, then paste here"></textarea>
       <button id="connect" class="primary" disabled>Connect browser</button>
-      <p class="hint">Your code stays the same until you reset it in AgentWorks.</p>
+      <p class="hint">Connecting shares your current website. Your connection is remembered on this browser and resumes automatically. Disconnect to stop access.</p>
     </section>
     <section id="controls" hidden>
-      <div class="workspace"><span class="eyebrow">CONNECTED CODE PROJECT</span><h2 id="workspace"></h2><p id="server" class="muted"></p></div>
+      <label for="project">Project</label><select id="project" aria-label="Browser project"></select>
+      <p class="hint">Code, Crew and workflows use one account token. Each project has separate shared tabs. Agents create and choose their project tabs automatically. Use this picker only when sharing an already-open tab.</p>
+      <div class="workspace"><span class="eyebrow">CONNECTED PROJECT</span><h2 id="workspace"></h2><p id="server" class="muted"></p></div>
       <div class="tabs-heading"><h2>Shared tabs</h2><span id="tab-count" class="count">0</span></div>
-      <div id="empty" class="empty"><strong>Share your first tab</strong><p>Open a website and share it below, or create a new tab for your agent.</p></div>
+      <div id="empty" class="empty"><strong>Ready for your agent</strong><p>Your agent can create its own tabs. Sharing an already-open page below is optional.</p></div>
       <ul id="tabs" aria-label="Shared tabs"></ul>
       <button id="share" class="primary">Share this tab</button>
-      <div class="secondary-actions"><button id="newtab" class="secondary">New shared tab</button><button id="group" class="secondary" title="Organize shared tabs without granting access to other tabs">Group shared tabs</button></div>
-      <button id="stop" class="stop">Disconnect browser</button>
+      <div class="secondary-actions"><button id="newtab" class="secondary">New shared tab</button><button id="group" class="secondary" title="Shared tabs are grouped automatically. Use this to regroup them after moving tabs.">Regroup tabs</button></div>
+      <button id="stop" class="stop">Disconnect project</button>
+      <button id="stop-all" class="stop">Disconnect all projects</button>
     </section>
     <footer>Only shared tabs can be read and controlled. Their contents and screenshots are sent to your AgentWorks project.</footer>
   </main>

@@ -298,3 +298,25 @@ func TestMountNamespaceFallbackHandlesFileReadPath(t *testing.T) {
 		t.Fatalf("execute_shell_command-equivalent failed with a file in ReadPaths (the exact live incident): %v\noutput: %s", err, output)
 	}
 }
+
+// PLAT-514 (RTS 2026-10-05): a read-only folder that does not exist (a workflow's learnings/_global before any learning
+// is written) must not stop the sandbox, or no shell command of that workflow can start. A missing WRITE folder and an
+// unreadable existing folder still fail closed.
+func TestLandlockPolicySkipsAMissingReadOnlyFolderButNotAMissingWritableOne(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "learnings", "_global")
+
+	policy, err := (&Isolator{BaseDir: root, WorkDir: root, ReadPaths: []string{root, missing}, WritePaths: []string{root}}).landlockPolicy()
+	if err != nil {
+		t.Fatalf("a missing read-only folder stopped the sandbox: %v", err)
+	}
+	for _, path := range policy.ReadPaths {
+		if path == canonicalPath(missing) {
+			t.Fatalf("a missing folder was granted: %v", policy.ReadPaths)
+		}
+	}
+
+	if _, err := (&Isolator{BaseDir: root, WorkDir: root, ReadPaths: []string{root}, WritePaths: []string{root, missing}}).landlockPolicy(); err == nil {
+		t.Fatal("a missing writable folder must still fail closed")
+	}
+}

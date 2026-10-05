@@ -70,7 +70,6 @@ func newPlat178API(t *testing.T, sessionID, tmuxSession string) (*StreamingAPI, 
 		retainedMainTurnPendingExecutionIDs: make(map[string][]string),
 		retainedMainTurnWatchCancels:        make(map[string]context.CancelFunc),
 		retainedMainTurnCompletionEmitted:   make(map[string]time.Time),
-		nativeTranscriptSyncInFlight:        make(map[string]bool),
 		trackedWorkflowExecutions:           make(map[string]*TrackedWorkflowExecution),
 		internalRetainedTurnFinalResponseReader: func(llmproviders.Provider, string, time.Time) string {
 			return ""
@@ -411,7 +410,6 @@ func TestPLAT178RealTmuxKilledPaneReleasesLane(t *testing.T) {
 		retainedMainTurnPendingExecutionIDs: make(map[string][]string),
 		retainedMainTurnWatchCancels:        make(map[string]context.CancelFunc),
 		retainedMainTurnCompletionEmitted:   make(map[string]time.Time),
-		nativeTranscriptSyncInFlight:        make(map[string]bool),
 		trackedWorkflowExecutions:           make(map[string]*TrackedWorkflowExecution),
 		internalRetainedTurnFinalResponseReader: func(llmproviders.Provider, string, time.Time) string {
 			return ""

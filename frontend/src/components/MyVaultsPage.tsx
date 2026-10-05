@@ -1,22 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Vault } from 'lucide-react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { KeyRound, Loader2, Plug, Plus, RefreshCw, Trash2, Users, Vault } from 'lucide-react'
 import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
+import { Badge } from './ui/badge'
+import { SecretField } from './ui/SecretField'
+import { SettingsCount, SettingsEmpty } from './ui/SettingsCard'
+import ConfirmationDialog from './ui/ConfirmationDialog'
 import { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
 
-// "My vaults" (PLAT-507): a vault is a bundle of MCP connections and secrets that its owner(s) manage and its members use.
-// Only an owner can change a vault; a member can use what is in it and cannot re-share. The server checks ownership on
-// every action; this screen only shows what the person may do. A secret's value is typed here and nowhere else.
+// "My vaults" (PLAT-507). A vault is a shared set of apps (MCP connections) and secrets. The people in it can use what is
+// inside; only its owners change it. The server checks ownership on every action, so this screen only decides what to
+// show. A secret's value is typed here and nowhere else.
+
+interface VaultConnection {
+  id: string
+  label: string
+  provider: string
+  status: string
+}
 
 interface VaultView {
   group: { ID: string; Name: string; Description?: string; Owners?: string[] }
   role: 'owner' | 'member'
   members: string[]
   connector_ids: string[]
+  connections?: VaultConnection[]
   secret_names: string[]
 }
+
+type Pending =
+  | { kind: 'connection'; id: string; name: string }
+  | { kind: 'secret'; name: string }
+  | { kind: 'vault' }
+  | null
 
 function errorText(cause: unknown): string {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
@@ -31,20 +49,55 @@ function signInUrl(text: string): string {
   return match ? match[0] : ''
 }
 
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+/** One part of a vault: a title, what it is for in plain words, its rows, and (for owners) an add action. */
+function Part({ icon, title, count, help, action, children }: { icon: ReactNode; title: string; count: string; help: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="space-y-2 py-4 first:pt-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {icon}
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <SettingsCount>{count}</SettingsCount>
+        </div>
+        {action}
+      </div>
+      <p className="text-muted-foreground">{help}</p>
+      {children}
+    </div>
+  )
+}
+
+function Row({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+  return (
+    <li className="flex min-h-9 flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">{children}</div>
+      {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
+    </li>
+  )
+}
+
 function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => void }) {
   const addToast = useChatStore(state => state.addToast)
   const owner = vault.role === 'owner'
   const vaultId = vault.group.ID
+  const owners = vault.group.Owners ?? []
+  const connections: VaultConnection[] = vault.connections ?? vault.connector_ids.map(id => ({ id, label: id, provider: '', status: '' }))
+  const [open, setOpen] = useState<'person' | 'connection' | 'secret' | null>(null)
   const [email, setEmail] = useState('')
   const [provider, setProvider] = useState('')
   const [label, setLabel] = useState('')
   const [secretName, setSecretName] = useState('')
   const [secretValue, setSecretValue] = useState('')
-  const [replace, setReplace] = useState(false)
+  const [replacing, setReplacing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [signIn, setSignIn] = useState('')
+  const [pending, setPending] = useState<Pending>(null)
 
-  const run = useCallback(async (args: Record<string, unknown>, done: string): Promise<string> => {
+  const run = useCallback(async (args: Record<string, unknown>, done: string): Promise<string | null> => {
     setBusy(true)
     try {
       const result = await agentApi.myVaultsOp({ vault_id: vaultId, ...args })
@@ -53,37 +106,30 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
       return result
     } catch (cause) {
       addToast(errorText(cause), 'error')
-      return ''
+      return null
     } finally {
       setBusy(false)
     }
   }, [vaultId, addToast, onChanged])
 
-  const people = async (operation: string, target: string, done: string) => {
-    if (!target.trim()) return
-    const result = await run({ operation, email: target.trim() }, done)
-    if (result) setEmail('')
+  const addPerson = async () => {
+    if (!email.trim()) return
+    if (await run({ operation: 'add_member', email: email.trim() }, `${email.trim()} can now use this vault`) !== null) { setEmail(''); setOpen(null) }
   }
 
-  const connect = async () => {
+  const addConnection = async () => {
     if (!provider.trim()) return
-    const result = await run({ operation: 'connect', provider: provider.trim(), label: label.trim() }, 'Connection added')
-    if (result) {
-      setProvider('')
-      setLabel('')
-      setSignIn(signInUrl(result))
-    }
+    const result = await run({ operation: 'connect', provider: provider.trim(), label: label.trim() }, 'App added. Sign in to finish.')
+    if (result !== null) { setProvider(''); setLabel(''); setOpen(null); setSignIn(signInUrl(result)) }
   }
 
   const saveSecret = async () => {
     if (!secretName.trim() || !secretValue) return
     setBusy(true)
     try {
-      await agentApi.setMyVaultSecret(vaultId, secretName.trim(), secretValue, replace)
-      addToast('Secret saved', 'success')
-      setSecretName('')
-      setSecretValue('')
-      setReplace(false)
+      await agentApi.setMyVaultSecret(vaultId, secretName.trim(), secretValue, replacing)
+      addToast(replacing ? 'Secret value replaced' : 'Secret saved', 'success')
+      setSecretName(''); setSecretValue(''); setReplacing(false); setOpen(null)
       onChanged()
     } catch (cause) {
       addToast(errorText(cause), 'error')
@@ -92,100 +138,180 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
     }
   }
 
-  const owners = vault.group.Owners ?? []
+  const confirmPending = async () => {
+    const target = pending
+    setPending(null)
+    if (!target) return
+    if (target.kind === 'connection') await run({ operation: 'remove_connection', connection_id: target.id }, `${target.name} removed`)
+    if (target.kind === 'secret') await run({ operation: 'remove_secret', name: target.name }, 'Secret deleted')
+    if (target.kind === 'vault') await run({ operation: 'delete' }, 'Vault deleted')
+  }
+
+  const empty = connections.length === 0 && vault.secret_names.length === 0
+  const pendingText = pending?.kind === 'connection'
+    ? { title: 'Remove this app?', message: `${pending.name} and its sign-in are removed from this vault. Everyone loses access to it. This cannot be undone.`, confirm: 'Remove app' }
+    : pending?.kind === 'secret'
+      ? { title: 'Delete this secret?', message: `${pending.name} and its value are deleted. Anything that uses it stops working. This cannot be undone.`, confirm: 'Delete secret' }
+      : { title: 'Delete this vault?', message: `${vault.group.Name} is deleted for everyone in it. This cannot be undone.`, confirm: 'Delete vault' }
+
   return (
-    <section aria-label={`Vault ${vault.group.Name}`} className="rounded-lg border border-border bg-card p-4">
-      <header className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold text-foreground">{vault.group.Name}</h2>
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{owner ? 'You own this' : 'Member'}</span>
-        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+    <section aria-label={`Vault ${vault.group.Name}`} className="rounded-lg border border-border p-4 text-xs">
+      <header className="flex flex-wrap items-start justify-between gap-2 pb-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Vault className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">{vault.group.Name}</h2>
+            <Badge variant={owner ? 'default' : 'secondary'}>{owner ? 'You own this' : 'You are a member'}</Badge>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          </div>
+          {vault.group.Description && <p className="mt-1 text-muted-foreground">{vault.group.Description}</p>}
+        </div>
+        <p className="text-muted-foreground">
+          {plural(vault.members.length, 'person', 'people')} · {plural(connections.length, 'app', 'apps')} · {plural(vault.secret_names.length, 'secret', 'secrets')}
+        </p>
       </header>
-      {vault.group.Description && <p className="mt-1 text-xs text-muted-foreground">{vault.group.Description}</p>}
+      {!owner && (
+        <p className="mb-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">You can use everything in this vault. Only its owners can change it or add people.</p>
+      )}
 
-      <div className="mt-3 grid gap-4 md:grid-cols-2">
-        <div>
-          <h3 className="text-xs font-semibold text-foreground">People</h3>
-          <ul className="mt-1 space-y-1 text-xs">
-            {vault.members.map(member => (
-              <li key={member} className="flex items-center justify-between gap-2">
-                <span className="truncate text-foreground">{member}{owners.includes(member) ? ' (owner)' : ''}</span>
-                {owner && (
-                  <span className="flex shrink-0 gap-1">
-                    {owners.includes(member)
-                      ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void people('remove_owner', member, 'Owner removed')}>Make member</Button>
-                      : <Button variant="ghost" size="sm" disabled={busy} onClick={() => void people('add_owner', member, 'Owner added')}>Make owner</Button>}
-                    {!owners.includes(member) && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void people('remove_member', member, 'Removed')}>Remove</Button>}
-                  </span>
-                )}
-              </li>
-            ))}
+      <div className="divide-y divide-border">
+        <Part
+          icon={<Users className="h-4 w-4 text-primary" />}
+          title="People"
+          count={plural(vault.members.length, 'person', 'people')}
+          help="Everyone here can use this vault's apps and secrets. Owners can also change the vault and add people."
+          action={owner && open !== 'person' && <Button variant="outline" size="sm" onClick={() => setOpen('person')}><Plus className="mr-1 h-3.5 w-3.5" />Add person</Button>}
+        >
+          <ul className="space-y-1.5">
+            {vault.members.map(member => {
+              const isOwner = owners.includes(member)
+              return (
+                <Row
+                  key={member}
+                  actions={owner && (
+                    <>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run({ operation: isOwner ? 'remove_owner' : 'add_owner', email: member }, isOwner ? `${member} is now a member` : `${member} is now an owner`)}>
+                        {isOwner ? 'Make member' : 'Make owner'}
+                      </Button>
+                      {!isOwner && <Button variant="ghost" size="icon" className="h-7 w-7" title="Remove from this vault" aria-label={`Remove ${member}`} disabled={busy} onClick={() => void run({ operation: 'remove_member', email: member }, `${member} removed`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                    </>
+                  )}
+                >
+                  <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold uppercase text-muted-foreground">{member.charAt(0)}</span>
+                  <span className="truncate text-foreground">{member}</span>
+                  <Badge variant="outline">{isOwner ? 'Owner' : 'Member'}</Badge>
+                </Row>
+              )
+            })}
           </ul>
-          {owner && (
-            <form className="mt-2 flex gap-2" onSubmit={event => { event.preventDefault(); void people('add_member', email, 'Added') }}>
-              <Input value={email} onChange={event => setEmail(event.target.value)} placeholder="Add a person by email" aria-label="Email to add" />
-              <Button type="submit" variant="outline" size="sm" disabled={busy || !email.trim()}>Add</Button>
+          {owner && open === 'person' && (
+            <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addPerson() }}>
+              <Input autoFocus value={email} onChange={event => setEmail(event.target.value)} placeholder="their email address" aria-label="Email of the person to add" className="h-8 min-w-0 flex-1" />
+              <Button type="submit" size="sm" disabled={busy || !email.trim()}>Add</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); setEmail('') }}>Cancel</Button>
             </form>
           )}
-        </div>
+        </Part>
 
-        <div>
-          <h3 className="text-xs font-semibold text-foreground">Connections</h3>
-          {vault.connector_ids.length === 0 && <p className="mt-1 text-xs text-muted-foreground">None yet. Ask an agent to promote a connection, or connect one here.</p>}
-          <ul className="mt-1 space-y-1 text-xs">
-            {vault.connector_ids.map(id => (
-              <li key={id} className="flex items-center justify-between gap-2">
-                <code className="truncate text-foreground">{id}</code>
-                {owner && (
-                  <span className="flex shrink-0 gap-1">
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: id }, 'Sign-in ready'); if (r) setSignIn(signInUrl(r)) }}>Sign in</Button>
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run({ operation: 'sync', connection_id: id }, 'Synced')}>Sync</Button>
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm('Remove this connection and its sign-in from the vault?')) void run({ operation: 'remove_connection', connection_id: id }, 'Connection removed') }}>Remove</Button>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {signIn && <p className="mt-2 text-xs"><a className="text-primary underline" href={signIn} target="_blank" rel="noreferrer">Open the sign-in page</a></p>}
-          {owner && (
-            <form className="mt-2 flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); void connect() }}>
-              <Input value={provider} onChange={event => setProvider(event.target.value)} placeholder="Server (e.g. Notion)" aria-label="Server to connect" className="min-w-0 flex-1" />
-              <Input value={label} onChange={event => setLabel(event.target.value)} placeholder="Label (optional)" aria-label="Connection label" className="min-w-0 flex-1" />
-              <Button type="submit" variant="outline" size="sm" disabled={busy || !provider.trim()}>Connect</Button>
+        <Part
+          icon={<Plug className="h-4 w-4 text-primary" />}
+          title="Apps"
+          count={plural(connections.length, 'app', 'apps')}
+          help="Connected apps, such as Notion, that everyone in this vault can use."
+          action={owner && open !== 'connection' && <Button variant="outline" size="sm" onClick={() => setOpen('connection')}><Plus className="mr-1 h-3.5 w-3.5" />Add app</Button>}
+        >
+          {connections.length === 0 ? <SettingsEmpty>No apps yet. Ask an agent to move one in from a Crew, Code or workflow, or add one here.</SettingsEmpty> : (
+            <ul className="space-y-1.5">
+              {connections.map(connection => {
+                const name = connection.label || connection.provider || connection.id
+                const needsSignIn = connection.status === 'authentication_required'
+                return (
+                  <Row
+                    key={connection.id}
+                    actions={owner && (
+                      <>
+                        <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: connection.id }, 'Sign-in link ready'); if (r) setSignIn(signInUrl(r)) }}>{needsSignIn ? 'Sign in' : 'Sign in again'}</Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Refresh this app's tools" aria-label={`Refresh ${name}`} disabled={busy} onClick={() => void run({ operation: 'sync', connection_id: connection.id }, `${name} refreshed`)}><RefreshCw className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Remove this app" aria-label={`Remove ${name}`} disabled={busy} onClick={() => setPending({ kind: 'connection', id: connection.id, name })}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </>
+                    )}
+                  >
+                    <Plug aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-medium text-foreground">{name}</span>
+                    {connection.provider && connection.provider.toLowerCase() !== name.toLowerCase() && <span className="truncate text-muted-foreground">{connection.provider}</span>}
+                    {connection.status && <Badge variant={needsSignIn ? 'outline' : 'secondary'} className={needsSignIn ? 'border-warning/30 bg-warning/10 text-warning' : ''}>{needsSignIn ? 'Needs sign-in' : connection.status === 'active' ? 'Signed in' : connection.status}</Badge>}
+                  </Row>
+                )
+              })}
+            </ul>
+          )}
+          {signIn && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
+          {owner && open === 'connection' && (
+            <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addConnection() }}>
+              <Input autoFocus value={provider} onChange={event => setProvider(event.target.value)} placeholder="App name, for example Notion" aria-label="App to connect" className="h-8 min-w-0 flex-1" />
+              <Input value={label} onChange={event => setLabel(event.target.value)} placeholder="Your name for it (optional)" aria-label="Name for this connection" className="h-8 min-w-0 flex-1" />
+              <Button type="submit" size="sm" disabled={busy || !provider.trim()}>Add</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); setProvider(''); setLabel('') }}>Cancel</Button>
             </form>
           )}
-        </div>
-      </div>
+        </Part>
 
-      <div className="mt-4">
-        <h3 className="text-xs font-semibold text-foreground">Secrets</h3>
-        {vault.secret_names.length === 0 && <p className="mt-1 text-xs text-muted-foreground">None yet. Members can use a secret but never read its value.</p>}
-        <ul className="mt-1 space-y-1 text-xs">
-          {vault.secret_names.map(name => (
-            <li key={name} className="flex items-center justify-between gap-2">
-              <code className="truncate text-foreground">{name}</code>
-              {owner && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Delete the secret ${name} and its value?`)) void run({ operation: 'remove_secret', name }, 'Secret removed') }}>Remove</Button>}
-            </li>
-          ))}
-        </ul>
-        {owner && (
-          <form className="mt-2 flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void saveSecret() }} autoComplete="off">
-            <Input value={secretName} onChange={event => setSecretName(event.target.value)} placeholder="NAME" aria-label="Secret name" className="min-w-0 flex-1" />
-            <Input type="password" value={secretValue} onChange={event => setSecretValue(event.target.value)} placeholder="Value (never shown again)" aria-label="Secret value" className="min-w-0 flex-1" autoComplete="new-password" />
-            <label className="flex items-center gap-1 text-xs text-muted-foreground"><input type="checkbox" checked={replace} onChange={event => setReplace(event.target.checked)} />Replace</label>
-            <Button type="submit" variant="outline" size="sm" disabled={busy || !secretName.trim() || !secretValue}>Save secret</Button>
-          </form>
-        )}
+        <Part
+          icon={<KeyRound className="h-4 w-4 text-primary" />}
+          title="Secrets"
+          count={plural(vault.secret_names.length, 'secret', 'secrets')}
+          help="Passwords and keys. People in this vault can use them but can never read them."
+          action={owner && open !== 'secret' && <Button variant="outline" size="sm" onClick={() => { setReplacing(false); setSecretName(''); setOpen('secret') }}><Plus className="mr-1 h-3.5 w-3.5" />Add secret</Button>}
+        >
+          {vault.secret_names.length === 0 ? <SettingsEmpty>No secrets yet.</SettingsEmpty> : (
+            <ul className="space-y-1.5">
+              {vault.secret_names.map(name => (
+                <Row
+                  key={name}
+                  actions={owner && (
+                    <>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setReplacing(true); setSecretName(name); setSecretValue(''); setOpen('secret') }}>Replace value</Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Delete this secret" aria-label={`Delete ${name}`} disabled={busy} onClick={() => setPending({ kind: 'secret', name })}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    </>
+                  )}
+                >
+                  <KeyRound aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <code className="truncate text-foreground">{name}</code>
+                  <span className="text-muted-foreground">value hidden</span>
+                </Row>
+              ))}
+            </ul>
+          )}
+          {owner && open === 'secret' && (
+            <form className="space-y-2" onSubmit={event => { event.preventDefault(); void saveSecret() }} autoComplete="off">
+              <Input autoFocus={!replacing} value={secretName} readOnly={replacing} onChange={event => setSecretName(event.target.value)} placeholder="Name, for example GITHUB_TOKEN" aria-label="Secret name" className="h-8" />
+              <SecretField label={replacing ? 'New value' : 'Value'} value={secretValue} onChange={setSecretValue} placeholder="Shown only while you type. It is never shown again." />
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm" disabled={busy || !secretName.trim() || !secretValue}>{replacing ? 'Replace value' : 'Save secret'}</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); setSecretName(''); setSecretValue(''); setReplacing(false) }}>Cancel</Button>
+              </div>
+            </form>
+          )}
+        </Part>
       </div>
 
       {owner && (
-        <footer className="mt-4 border-t border-border pt-3">
-          <Button variant="ghost" size="sm" disabled={busy || vault.connector_ids.length > 0 || vault.secret_names.length > 0}
-            title={vault.connector_ids.length > 0 || vault.secret_names.length > 0 ? 'Remove its connections and secrets first' : 'Delete this vault'}
-            onClick={() => { if (window.confirm(`Delete the vault ${vault.group.Name}?`)) void run({ operation: 'delete' }, 'Vault deleted') }}>
-            Delete vault
-          </Button>
+        <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+          <p className="text-muted-foreground">{empty ? 'Delete this vault when you no longer need it.' : 'To delete this vault, first remove its apps and secrets.'}</p>
+          <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busy || !empty} onClick={() => setPending({ kind: 'vault' })}>Delete vault</Button>
         </footer>
       )}
+
+      <ConfirmationDialog
+        isOpen={pending !== null}
+        onClose={() => setPending(null)}
+        onConfirm={() => void confirmPending()}
+        title={pendingText.title}
+        message={pendingText.message}
+        confirmText={pendingText.confirm}
+        type="danger"
+        requireText={pending?.kind === 'vault' ? vault.group.Name : undefined}
+      />
     </section>
   )
 }
@@ -194,9 +320,10 @@ export default function MyVaultsPage() {
   const addToast = useChatStore(state => state.addToast)
   const [vaults, setVaults] = useState<VaultView[] | null>(null)
   const [maxOwned, setMaxOwned] = useState(5)
+  const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -213,16 +340,15 @@ export default function MyVaultsPage() {
 
   const create = async () => {
     if (!name.trim()) return
-    setCreating(true)
+    setSaving(true)
     try {
       await agentApi.myVaultsOp({ operation: 'create', name: name.trim(), description: description.trim() })
-      setName('')
-      setDescription('')
+      setName(''); setDescription(''); setCreating(false)
       await refresh()
     } catch (cause) {
       addToast(errorText(cause), 'error')
     } finally {
-      setCreating(false)
+      setSaving(false)
     }
   }
 
@@ -235,21 +361,30 @@ export default function MyVaultsPage() {
           <span aria-hidden="true" className="h-4 w-px bg-border" />
           <Vault className="h-4 w-4 text-primary" />
           <h1 className="text-sm font-semibold text-foreground">My vaults</h1>
-          <span className="text-xs text-muted-foreground">{owned} of {maxOwned} owned</span>
+          <SettingsCount>{owned} of {maxOwned} owned</SettingsCount>
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl space-y-4 p-4 sm:p-6">
-          <p className="text-xs text-muted-foreground">
-            A vault is a bundle of MCP connections and secrets you can share with other people. Only its owners add, remove or change what is in it and who may use it; members use it and cannot re-share.
-          </p>
-          <form className="flex flex-wrap gap-2 rounded-lg border border-border bg-card p-3" onSubmit={event => { event.preventDefault(); void create() }}>
-            <Input value={name} onChange={event => setName(event.target.value)} placeholder="New vault name" aria-label="Vault name" className="min-w-0 flex-1" />
-            <Input value={description} onChange={event => setDescription(event.target.value)} placeholder="What is it for? (optional)" aria-label="Vault description" className="min-w-0 flex-[2]" />
-            <Button type="submit" size="sm" disabled={creating || !name.trim() || owned >= maxOwned}>Create vault</Button>
-          </form>
-          {vaults === null && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</div>}
-          {vaults?.length === 0 && <p className="text-xs text-muted-foreground">You have no vaults yet.</p>}
+        <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="max-w-xl text-muted-foreground">
+              A vault shares apps (like Notion) and secrets (passwords and keys) with the people you choose. Everyone in it can use what is inside. Only its owners can change it.
+            </p>
+            {!creating && <Button size="sm" disabled={owned >= maxOwned} title={owned >= maxOwned ? `You can own up to ${maxOwned} vaults` : undefined} onClick={() => setCreating(true)}><Plus className="mr-1 h-3.5 w-3.5" />New vault</Button>}
+          </div>
+          {creating && (
+            <form className="space-y-2 rounded-lg border border-border p-4" onSubmit={event => { event.preventDefault(); void create() }}>
+              <h2 className="text-sm font-semibold text-foreground">New vault</h2>
+              <Input autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="Name, for example Team tools" aria-label="Vault name" className="h-8" />
+              <Input value={description} onChange={event => setDescription(event.target.value)} placeholder="What is it for? (optional)" aria-label="What the vault is for" className="h-8" />
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm" disabled={saving || !name.trim()}>Create vault</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setCreating(false); setName(''); setDescription('') }}>Cancel</Button>
+              </div>
+            </form>
+          )}
+          {vaults === null && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading your vaults…</div>}
+          {vaults?.length === 0 && !creating && <SettingsEmpty>You have no vaults yet. Create one to share apps and secrets with other people.</SettingsEmpty>}
           {vaults?.map(vault => <VaultCard key={vault.group.ID} vault={vault} onChanged={() => void refresh()} />)}
         </div>
       </div>

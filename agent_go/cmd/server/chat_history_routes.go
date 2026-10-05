@@ -722,18 +722,6 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			// check above in startRestoredTerminalHandler.
 		}
 
-		// A resume reads the durable record, but a builder chat continued
-		// through retained live input has turns that exist only in the
-		// coding CLI's own transcript (PLAT-178). Catch the record up first so
-		// Recent/Resume shows where the conversation actually ended, not the
-		// last full-turn snapshot. Best-effort: unsupported providers and
-		// missing transcripts leave the record untouched.
-		if !servedResumeSnapshot && resumeTurns > 0 && strings.TrimSpace(workspacePath) != "" {
-			api.syncWorkflowBuilderConversationFromNativeTranscript(r.Context(), userID, sessionID, workspacePath)
-			if refreshed, refreshErr := ReadChatHistoryConversation(userID, sessionID, workspacePath); refreshErr == nil {
-				data = refreshed
-			}
-		}
 		// The previous-chats panel renders only the tail of a conversation, so
 		// let it ask for just that. Without this it downloaded the whole file --
 		// 1.3 MB for a real builder session, nearly all of it ui_events -- and

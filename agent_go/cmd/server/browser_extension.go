@@ -6,29 +6,51 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
 
 const browserExtensionConnectPath = "/api/browser/extension/connect"
 
-func (api *StreamingAPI) codeExtensionAccess(r *http.Request, workspace, profile string) (string, error) {
-	if profile != "code" || !isCodeProjectPath(workspace) {
-		return "", fmt.Errorf("Browser extension access is available in Code projects only")
-	}
+func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, profile string) (string, error) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !userAllowedProduct(claims, "code") {
-		return "", fmt.Errorf("Code product access required")
+	normalized := normalizeConversationWorkspace(workspace)
+	if (profile == "" || profile == "workflow") && strings.HasPrefix(normalized, "Workflow/") && strings.Count(normalized, "/") == 1 {
+		if claims == nil || !userAllowedProduct(claims, "agentworks") {
+			return "", fmt.Errorf("Workflow product access required")
+		}
+		if _, err := api.browserWorkspaceAccess(r, workspace, "workflow", true); err != nil {
+			return "", err
+		}
+		_, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspace)
+		if manifest == nil || manifest.Kind == "relay" {
+			return "", fmt.Errorf("Open a workflow browser")
+		}
+		return workspace, nil
+	}
+	if !((profile == "code" && isCodeProjectPath(workspace)) || (profile == "work" && isCrewProjectPath(workspace))) {
+		return "", fmt.Errorf("Browser extension access requires Code, Crew or a workflow")
+	}
+	if claims == nil || !userAllowedProduct(claims, profile) {
+		return "", fmt.Errorf("Product access required")
+	}
+	if !crewProjectOwnedByCaller(claims.UserID, workspace) {
+		return "", fmt.Errorf("Project ownership required")
 	}
 	return api.browserWorkspaceAccess(r, workspace, profile, true)
 }
 func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace_path")
-	if _, err := api.codeExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
+	if _, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
 		http.Error(w, err.Error(), 403)
 		return
 	}
 	user := GetUserFromContext(r.Context()).UserID
+	profile := r.URL.Query().Get("profile_id")
+	if profile == "" {
+		profile = "workflow"
+	}
 	scope := browserSessionForWorkspace(user, workspace)
 	if scope == "" {
 		http.Error(w, "Open a project or workflow browser", 400)
@@ -49,15 +71,18 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			var token string
 			var err error
 			if req.Action == "reset" {
-				token, err = browserrelay.Default.Reset(user, scope, workspace, r.URL.Query().Get("profile_id"))
+				token, err = browserrelay.Default.Reset(user, scope, workspace, profile)
 			} else {
-				token, err = browserrelay.Default.PairForProfile(user, scope, workspace, r.URL.Query().Get("profile_id"))
+				token, err = browserrelay.Default.PairForProfile(user, scope, workspace, profile)
 			}
 			if err != nil {
 				http.Error(w, "Cannot start Chrome bridge", 503)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"token": token})
+			if req.Action == "pair" {
+				browserrelay.Default.RequestProjectConnection(user, scope)
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"token": token, "scope": scope})
 			return
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
@@ -83,7 +108,7 @@ func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r 
 			return fmt.Errorf("account unavailable")
 		}
 		checked := r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-		if _, err := api.codeExtensionAccess(checked, workspace, profile); err != nil {
+		if _, err := api.projectExtensionAccess(checked, workspace, profile); err != nil {
 			return err
 		}
 		if browserSessionForWorkspace(user, workspace) != scope {

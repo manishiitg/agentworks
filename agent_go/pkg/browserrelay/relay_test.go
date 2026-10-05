@@ -85,9 +85,13 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		c.Close()
 		t.Fatal("wrong capability admitted")
 	}
+	_, focusRelease, err := b.AcquireForActive(context.Background(), "chat-one", true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client.WriteMessage(websocket.TextMessage, []byte(`{"id":1,"method":"Target.getTargets"}`))
 	extension.ReadJSON(&reply)
-	if reply.Type != "cdp" || !strings.Contains(string(reply.Message), "getTargets") {
+	if reply.Type != "cdp" || !reply.Active || !strings.Contains(string(reply.Message), "getTargets") {
 		t.Fatal("request not forwarded")
 	}
 	extension.WriteJSON(envelope{Type: "cdp", Message: json.RawMessage(`{"id":1,"result":{"targetInfos":[]}}`)})
@@ -95,6 +99,13 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	_, message, err := client.ReadMessage()
 	if err != nil || !strings.Contains(string(message), "targetInfos") {
 		t.Fatal("response not forwarded", err)
+	}
+	focusRelease()
+	client.WriteMessage(websocket.TextMessage, []byte(`{"id":2,"method":"Target.getTargets"}`))
+	reply = envelope{}
+	extension.ReadJSON(&reply)
+	if reply.Active {
+		t.Fatal("activation permission survived the tool call")
 	}
 	reused := dial()
 	reused.WriteJSON(envelope{Type: "pair", Token: token})
@@ -104,6 +115,9 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	}
 	if m.Lookup("alice", "project-one").Session() == b.Session() {
 		t.Fatal("reconnect retained stale refs")
+	}
+	if err := extension.ReadJSON(&reply); !websocket.IsCloseError(err, 4001) {
+		t.Fatal("browser replacement did not stop automatic reconnect", err)
 	}
 	reused.WriteJSON(envelope{Type: "stop"})
 	client.SetReadDeadline(time.Now().Add(time.Second))
@@ -189,5 +203,114 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	binding := m.Lookup("alice", "project-one")
 	if remaining := time.Until(binding.expires); remaining <= 7*time.Hour || remaining > ConnectionLifetime {
 		t.Fatal("live authority lifetime changed", remaining)
+	}
+}
+
+// The account credential must never merge live project controllers or authorize
+// caller-invented scopes. Exercise the real WebSocket handshake and Reset.
+func TestAccountCodeKeepsConcurrentProjectsIsolated(t *testing.T) {
+	root := t.TempDir()
+	// Upgrade the persisted format from the original per-project release.
+	legacyCode := strings.Repeat("A", 43)
+	legacyCrew := strings.Repeat("B", 42) + "A"
+	legacy, err := json.Marshal(map[string]grant{
+		legacyCode: {User: "alice", Scope: "code-one", Label: "Code one", ProfileID: "code"},
+		legacyCrew: {User: "alice", Scope: "crew-one", Label: "Crew one", ProfileID: "work"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "credentials.json"), legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPersistent(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	code, err := m.PairForProfile("alice", "code-one", "Code one", "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != legacyCode {
+		t.Fatal("upgrade rotated the chosen legacy account token")
+	}
+	crew, err := m.PairForProfile("alice", "crew-one", "Crew one", "work")
+	if err != nil || crew != code {
+		t.Fatal("account token changed across products", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(m.ServeExtension))
+	defer server.Close()
+	connect := func(token, scope string) *websocket.Conn {
+		t.Helper()
+		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://test"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		c.SetReadDeadline(time.Now().Add(3 * time.Second))
+		if err = c.WriteJSON(envelope{Type: "pair", Token: token, Scope: scope}); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	for _, scope := range []string{"", "invented-project"} {
+		c := connect(code, scope)
+		var e envelope
+		if err := c.ReadJSON(&e); err != nil || e.Type != "error" {
+			t.Fatal("unregistered/ambiguous scope admitted", scope, e, err)
+		}
+	}
+	oldCrew := connect(legacyCrew, "code-one")
+	var legacyReply envelope
+	if err := oldCrew.ReadJSON(&legacyReply); err != nil || legacyReply.Type != "error" {
+		t.Fatal("legacy project token broadened to another project", legacyReply, err)
+	}
+	a, b := connect(code, "code-one"), connect(code, "crew-one")
+	for _, c := range []*websocket.Conn{a, b} {
+		var e envelope
+		if err := c.ReadJSON(&e); err != nil || e.Type != "paired" || len(e.Projects) != 2 {
+			t.Fatal("project connection", e, err)
+		}
+	}
+	if !m.Status("alice", "code-one").Connected || !m.Status("alice", "crew-one").Connected {
+		t.Fatal("connecting Crew replaced Code")
+	}
+	if m.Lookup("alice", "code-one").Session() == m.Lookup("alice", "crew-one").Session() || m.Lookup("bob", "code-one") != nil {
+		t.Fatal("controller/account isolation")
+	}
+	reloaded, err := NewPersistent(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reloaded.Close()
+	saved, err := reloaded.PairForProfile("alice", "crew-one", "Crew one", "work")
+	if err != nil || saved != code {
+		t.Fatal("restart changed account token", err)
+	}
+	if binding := reloaded.Lookup("alice", "crew-one"); binding == nil || binding.Profile() != "work" || binding.Status().Connected {
+		t.Fatal("Crew restart lost disconnected selection")
+	}
+	rotated, err := m.Reset("alice", "code-one", "Code one", "code")
+	if err != nil || rotated == code {
+		t.Fatal("account reset", err)
+	}
+	for _, scope := range []string{"code-one", "crew-one"} {
+		if m.Status("alice", scope).Connected {
+			t.Fatal("reset left project connected", scope)
+		}
+	}
+	for _, c := range []*websocket.Conn{a, b} {
+		var e envelope
+		if err := c.ReadJSON(&e); err == nil {
+			t.Fatal("reset left live socket")
+		}
+	}
+	for _, token := range []string{code, legacyCrew} {
+		c := connect(token, "crew-one")
+		var e envelope
+		if err := c.ReadJSON(&e); err != nil || e.Type != "error" {
+			t.Fatal("reset left an old account or legacy token usable", e, err)
+		}
 	}
 }

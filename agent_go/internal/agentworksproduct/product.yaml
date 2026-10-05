@@ -236,7 +236,9 @@ chat:
       - manage_custom_commands
       - manage_global_secret
       - manage_internet_share
+      - manage_my_vaults
       - manage_user_access
+      - manage_vault_access
       - manage_workflow_webhook
       - mark_changelog_artifact_reviewed
       - perform_ui_action

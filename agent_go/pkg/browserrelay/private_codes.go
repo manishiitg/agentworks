@@ -26,13 +26,27 @@ func (m *Manager) loadCredentials() error {
 		return errors.New("too many saved browser credentials")
 	}
 	scopes := map[string]bool{}
+	accounts := map[string]bool{}
 	for token, g := range credentials {
 		decoded, err := base64.RawURLEncoding.DecodeString(token)
 		scope := key(g.User, g.Scope)
-		if err != nil || len(decoded) != 32 || g.User == "" || g.Scope == "" || scopes[scope] || len(scope) > 8192 || len(g.Label) > 8192 || len(g.ProfileID) > 8192 {
+		if err != nil || len(decoded) != 32 || g.User == "" || (g.Scope == "" && len(g.Projects) == 0) || (g.Scope != "" && scopes[scope]) || len(scope) > 8192 || len(g.Label) > 8192 || len(g.ProfileID) > 8192 {
 			return errors.New("invalid saved browser credential")
 		}
-		scopes[scope] = true
+		if g.Scope != "" {
+			scopes[scope] = true
+		}
+		if len(g.Projects) > 0 {
+			if g.Scope != "" || accounts[g.User] || len(g.Projects) > 1000 {
+				return errors.New("invalid account browser credential")
+			}
+			accounts[g.User] = true
+			for k, p := range g.Projects {
+				if k == "" || k != p.Scope || len(k) > 8192 || len(p.Label) > 8192 || len(p.ProfileID) > 8192 {
+					return errors.New("invalid browser project grant")
+				}
+			}
+		}
 	}
 	if credentials != nil {
 		m.pairs = credentials

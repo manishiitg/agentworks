@@ -587,7 +587,6 @@ func TestRetainedTurnCompletionPromotesQueuedMessageAndWaitsForItsAnswer(t *test
 		retainedMainTurnPendingExecutionIDs: make(map[string][]string),
 		retainedMainTurnWatchCancels:        make(map[string]context.CancelFunc),
 		retainedMainTurnCompletionEmitted:   make(map[string]time.Time),
-		nativeTranscriptSyncInFlight:        make(map[string]bool),
 	}
 
 	api.markMCPAgentSessionTurnRunning(sessionID, "live-turn:first")

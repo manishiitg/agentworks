@@ -34,7 +34,6 @@ func TestLiveInputFollowupCompletionKeepsInputTurnOpen(t *testing.T) {
 		activeSessions:               map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
 		retainedMainTurns:            make(map[string]time.Time),
 		retainedMainTurnWatchCancels: make(map[string]context.CancelFunc),
-		nativeTranscriptSyncInFlight: make(map[string]bool),
 	}
 	eventStore.SetEventAddedCallback(func(ownerSessionID string, event internalevents.Event) {
 		terminalStore.HandleEventWithChange(ownerSessionID, event)

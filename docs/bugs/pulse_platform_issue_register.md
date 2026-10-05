@@ -1,3 +1,43 @@
+## Workflow extension connections and immediate current-tab sharing — PLAT-530
+
+[PLAT-530](pulse_platform/browser/plat-530.md), P2, fixed on main, not deployed. Account-private workflow pairing, step-parent controller identity, workflow UI/notices and human Connect sharing the current website automatically.
+
+## Account browser token and simultaneous Code/Crew connections — PLAT-524
+
+[PLAT-524](pulse_platform/browser/plat-524.md), P2, fixed on main, not deployed. Persistent account token, separately authorized concurrent projects, Crew rollout and project picker.
+
+## Browser dead-session recovery can misclassify unrelated errors — PLAT-523
+
+[PLAT-523](pulse_platform/browser/plat-523.md), P3, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Browser cleanup trusts persisted process IDs before signaling — PLAT-522
+
+[PLAT-522](pulse_platform/browser/plat-522.md), P2, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Global browser capacity eviction stops unrelated sessions — PLAT-521
+
+[PLAT-521](pulse_platform/browser/plat-521.md), P2, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Shared direct-CDP callers can select other owners’ tabs — PLAT-520
+
+[PLAT-520](pulse_platform/browser/plat-520.md), P1 (conditional on mutually untrusted callers sharing a configured CDP browser), open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## An MCP tool named like a platform tool stops the chat from starting — PLAT-519
+
+[PLAT-519](pulse_platform/mcp/plat-519.md), P1. Stopgap on mcpagent main (platform tool used, the clashing MCP tool hidden with a warning), not deployed. Open: give a clashing MCP tool a server prefix (`neon__delete_function`) so both stay usable.
+
+## Single consolidated browser design — PLAT-517
+
+[PLAT-517](pulse_platform/browser/plat-517.md), P3, fixed on main. Merge extension design/setup/deployment into the canonical browser guide; correct stable-code and Code-only policy, preserve old links.
+
+## Code browser setup, notices and background control — PLAT-516
+
+[PLAT-516](pulse_platform/browser/plat-516.md), P2, fixed on main, not deployed. Chat-queue notices, idle browser choices, branded shared-tab groups, opt-in foreground activation and inline-ref/per-tab console fixes.
+
+## Webhook step cannot write the workflow database ("caller does not own this tool session") — PLAT-514
+
+[PLAT-514](pulse_platform/scheduler-runs/plat-514.md), P1, open, diagnosed to the tool lookup path, not fixed. Blocks the RTS PR review once the run folder is writable (PLAT-502).
+
 ## Code browser extension UI and stable private connection codes — PLAT-513
 
 [PLAT-513](pulse_platform/browser/plat-513.md), P2, fixed on main, not deployed. Integrated Code-only browser choice, connected popup and browser pane, branded icons, stable codes and explicit reset.
@@ -149,6 +189,42 @@ usable node_modules if the install fails.
 ## Free search MCPs in the catalog — PLAT-509
 
 [PLAT-509](pulse_platform/integrations/plat-509.md), fixed on main: Firecrawl added next to Exa and Parallel (both already there); card text says free tier.
+
+## Many template setup rows took over the Crew chat — PLAT-515
+
+[PLAT-515](pulse_platform/frontend-chat/plat-515.md), fixed on main: the rows share one capped, scrolling area. Left: not seen in a browser.
+
+## A live-input message was shown twice, the copy unanswered — PLAT-518
+
+[PLAT-518](pulse_platform/chat-reliability/plat-518.md), fixed on main: the native transcript merge no longer re-adds a human message saved before an earlier reply. Left: flicker.
+
+## Make chat history simple: drop the native transcript merge — PLAT-525
+
+[PLAT-525](pulse_platform/chat-reliability/plat-525.md), open (proposal): one source of truth (the event store) instead of merging the CLI's transcript; decision needed.
+
+## Voice loading bar returned on every workflow switch — PLAT-526
+
+[PLAT-526](pulse_platform/frontend-chat/plat-526.md), fixed on main: the mic no longer trusts a stale loading snapshot.
+
+## Chat scroll flickers after switching workflows — PLAT-527
+
+[PLAT-527](pulse_platform/frontend-chat/plat-527.md), open: cause not found, three suspects, needs a reproduction.
+
+## Working spinner moved to the bottom of the chat, with text — PLAT-528
+
+[PLAT-528](pulse_platform/frontend-chat/plat-528.md), fixed on main: the status line is a footer under the last message.
+
+## formsKitAdoption test fails on main — PLAT-529
+
+[PLAT-529](pulse_platform/frontend-chat/plat-529.md), fixed on main: the raw `<button>` added by PLAT-516 now uses the shared Button.
+
+## Switching to Crew shows 'Opening workspace…' every time — PLAT-531
+
+[PLAT-531](pulse_platform/frontend-chat/plat-531.md), fixed on main (cache); not deployed; first load still the full request chain.
+
+## Returning browser extension loses its connection — PLAT-532
+
+[PLAT-532](pulse_platform/browser/plat-532.md), fixed on main, not deployed: extension 0.4.0 remembers enabled project connections, resumes after transient loss/restarts and respects offline Disconnect; browser restart clears tab grants.
 
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
