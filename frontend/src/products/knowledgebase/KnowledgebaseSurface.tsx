@@ -48,9 +48,9 @@ export function KnowledgebaseSurface() {
     refresh(); const timer = window.setInterval(refresh, 3000)
     return () => { active = false; window.clearInterval(timer) }
   }, [])
-  async function confirmAccess(id: string, approve: boolean) {
+  async function confirmAccess(id: string, approve: boolean, pat?: string) {
     setApproving(true); setApprovalError('')
-    try { await knowledgebaseApi.confirmAccess(id, approve); setProposals(items => items.filter(item => item.id !== id)); setRevision(value => value + 1) }
+    try { await knowledgebaseApi.confirmAccess(id, approve, pat); setProposals(items => items.filter(item => item.id !== id)); setRevision(value => value + 1) }
     catch (error) { setApprovalError(knowledgebaseError(error)) }
     finally { setApproving(false) }
   }
@@ -160,7 +160,7 @@ export function KnowledgebaseSurface() {
             <WorkspaceViewIconButton label="Refresh Knowledge Base" icon={RefreshCw} onClick={() => setRevision(value => value + 1)} />
           </nav>}
           chat={<div className="flex min-h-0 flex-1 flex-col">
-            {bootstrap.backup_configured === false && <div role="status" data-testid="knowledgebase-backup-banner" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/60 px-4 py-2 text-sm text-muted-foreground"><span><strong className="font-medium">Backup not configured.</strong> Content changes are saved and available immediately.{!bootstrap.is_admin && ' Ask an administrator to configure backup.'}</span>{bootstrap.is_admin && tabId && <TooltipProvider><AskAIButton workspacePath={null} onAsk={askChat} label="Configure backup" message="Help me configure Knowledge Base Git backup. Ask for my dedicated private repository's SSH URL and branch, then use manage_knowledgebase_access action=configure_backup. Do not create a commit or push content." /></TooltipProvider>}</div>}
+            {bootstrap.backup_configured === false && <div role="status" data-testid="knowledgebase-backup-banner" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/60 px-4 py-2 text-sm text-muted-foreground"><span><strong className="font-medium">Backup not configured.</strong> Content changes are saved and available immediately.{!bootstrap.is_admin && ' Ask an administrator to configure backup.'}</span>{bootstrap.is_admin && tabId && <TooltipProvider><AskAIButton workspacePath={null} onAsk={askChat} label="Configure backup" message="Help me configure Knowledge Base Git backup. Ask for my repository HTTPS URL and username, then use manage_knowledgebase_access action=configure_backup with those details. The optional PAT for a private repository is entered in the secure confirmation field, not in chat. Do not create a commit or push content." /></TooltipProvider>}</div>}
             <div className="min-h-0 flex-1">{tabId ? <ChatArea ref={chatRef} tabId={tabId} compact showProductSteerAction
             composerPlaceholder="Grant, change, or revoke folder access…" knowledgebaseFolderPath={folder}
             onNewChat={() => { newConversation.current = true; setAttempt(value => value + 1) }}

@@ -141,3 +141,23 @@ no unsolicited highlights and exactly one explicit target.
 Reuse the existing Files Git controls, line decorations and server read/action handlers through a scoped KB adapter. Add whole-repository authority checks and immutable private Git generations; successful pull/branch/stash/discard imports journal live Markdown and registries together. Keep root folder grants and surviving entry metadata. Plain Markdown only, bounded UTF-8 validation, clean-tree protection, fast-forward pull and lease-protected push. Persist uncertain push intents and bind/invalidate receipt branches. Add the `git` action to the existing backup MCP name; managed/scoped content connections retain their existing selected receipt flow.
 
 Validation: real bare-repository domain tests for pull, branch switch, stash/restore, commit/push, scoped Reader visibility, invalid-tree atomic rejection and root/cap authority; server tests exercise shared Files handlers and the five-tool MCP boundary; frontend tests verify shared Source Control uses KB endpoints and disables root-reader writes. Existing Files Git/store tests and frontend typecheck are part of the final checks.
+
+## External MCP setup and access dispatch — 2026-10-05
+
+The external catalog's validation schema still used content/migration-only
+definitions even though per-connection discovery advertised direct access,
+backup setup and repository Git actions. Generate its validation schema from
+the full external surface, keeping per-connection discovery and runtime
+Owner/admin/scope checks. No new MCP tool names or permissions are added.
+
+A Streamable HTTP regression exercises non-admin setup rejection, direct admin
+setup/retry, destination pinning, Reader-to-Editor grants, immediate shared edits,
+Editor access-management rejection, subtree isolation and immediate revocation.
+The operations guide now documents actual external actions and clarifies that
+private Git authentication supports a KB-owned encrypted PAT for HTTPS;
+existing SSH backups retain host SSH credentials. Setup asks for repo URL,
+username and optional PAT. The app uses the shared secret input in the existing
+confirmation card; proposal storage encrypts supplied PATs and responses redact
+them. Credentials do not enter Git config or content. No Vault dependency.
+Validation includes real HTTPS Git authentication for receipt push and Files
+pull, encryption/restart/rotation/removal checks, and masked app proposal flows.

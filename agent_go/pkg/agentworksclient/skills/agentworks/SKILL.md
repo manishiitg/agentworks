@@ -69,10 +69,13 @@ Code review (`code:review`; admins and Code reviewers only, re-checked on every 
 If the task needs a change, say so instead of attempting one — authoring is not exposed.
 
 Administrators may configure an initial Git backup with `manage_knowledgebase_access`
-`action=configure_backup`, the user's exact SSH `remote_url`, optional `branch`
+`action=configure_backup`, the user's exact HTTPS `remote_url`, `username`, optional `pat` and `branch`
 (default `main`), and stable `request_id`. Never invent a destination or ask for
-credentials. Setup is private and durable; it cannot redirect an existing backup
-or perform commit/push. The server must already have SSH repository access.
+credentials in app chat: use its secure confirmation field for the optional PAT.
+Setup is private and durable; it cannot redirect an existing backup or perform
+commit/push. KB encrypts the PAT in its own private storage, with no Vault
+dependency. Omit `pat` to retain it or send an empty string to remove it. SSH URLs
+remain supported without a PAT using the host SSH credentials.
 
 For explicitly requested repository-wide Git work, use `backup_knowledgebase(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
 

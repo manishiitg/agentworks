@@ -32,11 +32,11 @@ administrators: Git cannot enforce the application's folder ACLs. Avoid credenti
 embedded in remote URLs. The product never returns credentials to connected agents.
 
 Administrators can also use the `Configure backup` action above the chat.
-Supply the exact dedicated private repository SSH URL and branch. The existing
+Supply the repository HTTPS URL and username; an optional PAT for a private repository is entered in the secure confirmation field. Branch defaults to main. The existing
 builder proposes `manage_knowledgebase_access` / `configure_backup` for app
 confirmation. An unrestricted external admin connection can apply it directly.
 Setup persists private configuration across restarts; it does not verify remote
-reachability or publish content. Server SSH access must already be provisioned.
+reachability or publish content. An HTTPS PAT is encrypted in KB-owned private configuration; existing SSH URLs use host SSH credentials.
 The setup action cannot redirect an existing destination. Environment variables
 remain authoritative when configured.
 
@@ -83,9 +83,56 @@ The MVP has five tools, all requiring `action`:
 | `read_knowledgebase` | `read`, `search` |
 | `update_knowledgebase` | `create`, `update`, `delete`, `create_folder` |
 | `backup_knowledgebase` | `status`, `commit`, `push`, `git` |
-| `manage_knowledgebase_access` | `inspect`; other access actions belong to the app's builder |
+| `manage_knowledgebase_access` | `inspect`; unrestricted writable external connections also expose `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account`, `configure_backup` |
 
 Read-only connections discover four tools with read-only action schemas. Use different request IDs for different actions.
+
+### Set up a GitHub backup through MCP
+
+An administrator using an unrestricted writable connection can call
+`manage_knowledgebase_access` with:
+
+```json
+{
+  "action": "configure_backup",
+  "remote_url": "https://github.com/your-org/knowledge-backup.git",
+  "username": "your-github-username",
+  "pat": "<optional PAT for a private repository>",
+  "branch": "main",
+  "request_id": "backup-setup-1"
+}
+```
+
+Supply an existing repository URL and username. The PAT is optional: public repositories can be read without one, while private reads and authenticated writes need a suitable credential. A public repository may still need a PAT to push. Setup stores configuration without creating the repository, checking remote access, committing or pushing. Use `backup_knowledgebase` for status, commit and push. External MCP setup applies directly; app chat uses its existing confirmation card with a secure PAT field, never asks for the PAT in messages.
+
+KB owns the secret: the PAT is AES-256-GCM encrypted in private control storage, bound to the organization, remote and username. Git receives it only in a URL-scoped Authorization header via its child environment, with redirects and credential caching disabled. No PAT or header is stored in Git, tool responses or request journals. This has no Vault dependency. Reconfigure the same destination with a new request ID to rotate a PAT; omit `pat` to retain it, or send `pat: ""` to remove it. The repository destination remains pinned. Existing SSH backups continue using host SSH credentials and cannot accept a PAT.
+
+The encryption key derives from the platform's `AUTH_SECRET`. Preserve that secret through restarts/restores; changing it requires re-entering the PAT. Back up KB private configuration securely, separate from its Markdown Git backup. Deployment environment destinations remain operator-managed.
+
+### Give another user read or write access through MCP
+
+Use `manage_knowledgebase_access(action=list)` on the target folder to discover
+existing platform identities and grants, then `action=inspect` to obtain the
+current `acl_version`. A folder Owner or administrator can grant access:
+
+```json
+{
+  "action": "grant",
+  "folder_path": "Engineering/Payments/CheckoutService",
+  "identity_id": "<identity_id returned by list>",
+  "role": "Editor",
+  "expected_acl_version": "<acl_version returned by inspect>",
+  "request_id": "checkout-access-1"
+}
+```
+
+`Reader` can read, `Editor` can read and update, and `Owner` can also manage
+access. Grants inherit to descendants. Repeat `grant` with a new role to change
+access; use `revoke` with the identity, folder, current ACL version and a new
+request ID to remove its direct grant. An inherited parent grant still applies.
+Authorized external MCP changes take effect immediately. These actions target
+existing platform users or managed service accounts; they do not invite users.
+An Editor cannot grant access merely because they can update content.
 
 Typical write flow: list folders, read an entry's version, call
 `update_knowledgebase(action=update)` with `expected_version`, a patch or replacement, and a stable

@@ -798,13 +798,29 @@ the duplicate Connect panel does not grant access to existing connections.
 Show `Backup not configured` once above the access ChatArea. Administrators get
 `Configure backup`, which sends a setup request to the existing builder chat.
 The `manage_knowledgebase_access` action `configure_backup` accepts `remote_url`
-(SSH, without embedded credentials), optional `branch` (default `main`), and a
+(HTTPS or SSH, without embedded credentials), `username`, optional `pat`, optional `branch` (default `main`), and a
 stable `request_id`. The app displays the exact destination in its frozen
 confirmation; authorized external admin connections may apply setup directly.
 Setup persists `private/backup-destination.json` with the existing journal and
 request outcome. Deployment environment configuration takes precedence. Setup
 cannot change an existing destination or bypass reconciliation of old staging
 state. It does not test Git transport, initialize a repository, commit, or push;
-server SSH access must already be provisioned. Normal explicit commit/push uses
+HTTPS backups use the optional KB-owned encrypted PAT; SSH backups use host SSH credentials. Normal explicit commit/push uses
 the saved destination, including after restart. Bootstrap refresh clears the
 banner after setup; content reads and live saves continue independently.
+
+
+KB backup setup asks for three items: repository URL, username and optional PAT.
+The shared SecretField appears in the existing setup confirmation card so PATs
+are entered outside chat. External MCP administrators can supply `pat` directly.
+The PAT is AES-256-GCM encrypted with the host secrets key, bound to the trusted
+organization, repository URL and username, and stored only in private KB control
+state. Pending proposals also encrypt supplied PATs and redact them from responses.
+There is no Vault dependency. Git receives a URL-scoped Authorization header only
+through the network subprocess environment, with redirects and credential helpers
+disabled. Neither plaintext PATs nor headers enter Git config or content. A new
+setup request on the same destination can rotate a PAT; omitting it retains the
+current value and an explicit empty string removes it. Preserve `AUTH_SECRET` for
+recovery; changing it requires re-entering the PAT. Setup saves configuration but
+does not create the remote repository or validate repository access. Public reads
+can omit a PAT; public-repository pushes may still require one.

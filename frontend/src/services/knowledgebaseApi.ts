@@ -42,7 +42,7 @@ export interface KnowledgeAccessProposal { id: string; arguments: Record<string,
 
 export const knowledgebaseApi = {
  proposals: async (): Promise<{ proposals: KnowledgeAccessProposal[] }> => (await api.get("/api/knowledgebase/access-proposals")).data,
- confirmAccess: async (id: string, approve: boolean): Promise<unknown> => (await api.post("/api/knowledgebase/access-proposals", { id, approve })).data,
+ confirmAccess: async (id: string, approve: boolean, pat?: string): Promise<unknown> => (await api.post("/api/knowledgebase/access-proposals", { id, approve, ...(pat ? { pat } : {}) })).data,
   bootstrap: async (signal?: AbortSignal): Promise<KnowledgeBootstrap> => (await api.get('/api/knowledgebase/bootstrap', { signal })).data,
   folders: async (folder_path: string, cursor = '', signal?: AbortSignal): Promise<{ folders: KnowledgeFolder[]; next_cursor?: string }> => {
     const { data } = await api.get<Page & { folders?: KnowledgeFolder[] }>('/api/knowledgebase/folders', { params: { folder_path, depth: 1, cursor, limit: 100 }, signal })

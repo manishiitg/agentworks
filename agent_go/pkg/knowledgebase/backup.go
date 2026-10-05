@@ -131,9 +131,15 @@ func (s *Service) publicationLock() (func(), error) {
 	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
 }
 func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args ...string) (string, error) {
-	args = append(s.gitArgs(), args...)
+	var err error
+	ctx, err = s.withBackupCredentials(ctx)
+	if err != nil {
+		return "", err
+	}
+	authFlags, env := backupGitAuth(ctx, args)
+	args = append(append(s.gitArgs(), authFlags...), args...)
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(gitEnvironment(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
+	cmd.Env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
 	cmd.Env = append(cmd.Env, extraEnv...)
 	if stdin != nil {
 		cmd.Stdin = strings.NewReader(string(stdin))
@@ -1002,7 +1008,7 @@ func gitEnvironment() []string {
 	out := []string{}
 	for _, v := range os.Environ() {
 		key := strings.SplitN(v, "=", 2)[0]
-		if strings.HasPrefix(key, "GIT_") && key != "GIT_SSH" && key != "GIT_SSH_COMMAND" && key != "GIT_ASKPASS" {
+		if strings.HasPrefix(key, "GIT_") && key != "GIT_SSH" && key != "GIT_SSH_COMMAND" && key != "GIT_ASKPASS" && key != "GIT_SSL_CAINFO" {
 			continue
 		}
 		out = append(out, v)

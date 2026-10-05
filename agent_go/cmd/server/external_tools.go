@@ -209,7 +209,11 @@ func externalTools() ([]externalTool, error) {
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalRelayDefinitions(add)
-		for _, def := range knowledgebase.MigrationConnectionToolDefinitions(true) {
+		// Dispatch validates against the full external surface; discovery narrows
+		// it per connection and live action/Owner/admin checks still authorize it.
+		// A content-only schema here would reject advertised setup/access/Git
+		// actions before they reach those permission checks.
+		for _, def := range knowledgebase.ExternalConnectionToolDefinitions(true, true, true) {
 			// The compiler accepts JSON values, rather than Go-specific slices.
 			encoded, err := json.Marshal(def.InputSchema)
 			if err != nil {

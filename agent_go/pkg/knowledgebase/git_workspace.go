@@ -115,6 +115,10 @@ func (s *Service) RunGit(ctx context.Context, p Principal, a map[string]any, run
 	if err = authorize(); err != nil {
 		return nil, err
 	}
+	ctx, err = s.withBackupCredentials(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err = s.cleanupGitGenerations(); err != nil {
 		return nil, err
 	}
@@ -419,10 +423,12 @@ func gitWorkspaceRun(ctx context.Context, dir string, args ...string) (string, e
 	return strings.TrimSuffix(string(raw), "\n"), err
 }
 func gitWorkspaceBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	flags := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.attributesFile=/dev/null", "-c", "core.excludesFile=/dev/null", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "gc.auto=0", "-c", "protocol.allow=never", "-c", "protocol.ssh.allow=always", "-c", "protocol.file.allow=always", "-c", "remote.origin.mirror=false", "--git-dir=" + filepath.Join(dir, ".git"), "--work-tree=" + dir}
+	flags := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.attributesFile=/dev/null", "-c", "core.excludesFile=/dev/null", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "gc.auto=0", "-c", "protocol.allow=never", "-c", "protocol.ssh.allow=always", "-c", "protocol.https.allow=always", "-c", "protocol.file.allow=always", "-c", "remote.origin.mirror=false", "--git-dir=" + filepath.Join(dir, ".git"), "--work-tree=" + dir}
+	authFlags, env := backupGitAuth(ctx, args)
+	flags = append(flags, authFlags...)
 	cmd := exec.CommandContext(ctx, "git", append(flags, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(gitEnvironment(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
+	cmd.Env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=Knowledge Base", "GIT_AUTHOR_EMAIL=knowledgebase@localhost", "GIT_COMMITTER_NAME=Knowledge Base", "GIT_COMMITTER_EMAIL=knowledgebase@localhost")
 	out := gitOutputBuffer{limit: 16 << 20}
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

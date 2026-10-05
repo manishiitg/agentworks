@@ -12,6 +12,8 @@ type Config struct {
 	OrganizationID string
 	BackupRemote   string
 	BackupBranch   string
+	// Host-derived AES key; never persisted in KB configuration or Git.
+	BackupEncryptionKey string `json:"-"`
 }
 
 type Cap struct {

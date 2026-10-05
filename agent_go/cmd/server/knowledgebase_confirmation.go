@@ -19,10 +19,11 @@ var knowledgeAccessApprovalMu sync.Mutex
 // Only an interactive UI request can execute these frozen arguments.
 // Approval is deliberately absent from the agent's MCP schema.
 type knowledgeAccessProposal struct {
-	ID        string         `json:"id"`
-	Owner     string         `json:"owner"`
-	Arguments map[string]any `json:"arguments"`
-	Expires   time.Time      `json:"expires_at"`
+	ID           string         `json:"id"`
+	Owner        string         `json:"owner"`
+	Arguments    map[string]any `json:"arguments"`
+	Expires      time.Time      `json:"expires_at"`
+	EncryptedPAT string         `json:"encrypted_pat,omitempty"`
 }
 
 func knowledgeInteractiveAccess(claims *UserClaims) bool {
@@ -42,7 +43,20 @@ func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]
 		return "", err
 	}
 	id := knowledgeHash(map[string]any{"owner": userID, "arguments": args})
-	proposal := knowledgeAccessProposal{ID: id, Owner: userID, Arguments: args, Expires: time.Now().UTC().Add(15 * time.Minute)}
+	publicArgs := map[string]any{}
+	for key, value := range args {
+		if key != "pat" {
+			publicArgs[key] = value
+		}
+	}
+	proposal := knowledgeAccessProposal{ID: id, Owner: userID, Arguments: publicArgs, Expires: time.Now().UTC().Add(15 * time.Minute)}
+	if pat, ok := args["pat"].(string); ok {
+		proposal.EncryptedPAT, err = encryptSecretValueWithAAD(pat, []byte("knowledgebase:backup-proposal:"+id))
+		if err != nil {
+			return "", fmt.Errorf("could not protect backup credential")
+		}
+		publicArgs["pat_configured"] = pat != ""
+	}
 	b, err := json.Marshal(proposal)
 	if err != nil {
 		return "", err
@@ -76,7 +90,7 @@ func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]
 			return "", err
 		}
 	}
-	result, err := json.Marshal(map[string]any{"status": "awaiting_user_confirmation", "proposal_id": id, "arguments": args})
+	result, err := json.Marshal(map[string]any{"status": "awaiting_user_confirmation", "proposal_id": id, "arguments": publicArgs})
 	return string(result), err
 }
 func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +118,7 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 			}
 			var p knowledgeAccessProposal
 			if json.Unmarshal(b, &p) == nil && p.Owner == claims.UserID && time.Now().Before(p.Expires) {
+				p.EncryptedPAT = ""
 				proposals = append(proposals, p)
 			}
 		}
@@ -111,10 +126,11 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 		return
 	}
 	var request struct {
-		ID      string `json:"id"`
-		Approve bool   `json:"approve"`
+		ID      string  `json:"id"`
+		Approve bool    `json:"approve"`
+		PAT     *string `json:"pat,omitempty"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil || len(request.ID) != 64 || strings.Trim(request.ID, "0123456789abcdef") != "" {
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request) != nil || len(request.ID) != 64 || strings.Trim(request.ID, "0123456789abcdef") != "" {
 		externalError(w, 400, "INVALID_ARGUMENT", "Invalid proposal.")
 		return
 	}
@@ -146,6 +162,22 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 	}
 	p := knowledgebasePrincipal(r, claims)
 	p.AccessOnly = true
+	delete(proposal.Arguments, "pat_configured")
+	if proposal.EncryptedPAT != "" {
+		pat, err := decryptSecretValueWithAAD(proposal.EncryptedPAT, []byte("knowledgebase:backup-proposal:"+proposal.ID))
+		if err != nil {
+			externalError(w, 503, "STORAGE_UNAVAILABLE", "Could not decrypt backup credential.")
+			return
+		}
+		proposal.Arguments["pat"] = pat
+	}
+	if request.PAT != nil {
+		if proposal.Arguments["action"] != "configure_backup" {
+			externalError(w, 400, "INVALID_ARGUMENT", "A PAT is only allowed for backup setup.")
+			return
+		}
+		proposal.Arguments["pat"] = *request.PAT
+	}
 	result, err := knowledgebaseDispatch(r.Context(), service, p, claims.UserID, "manage_knowledgebase_access", proposal.Arguments)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)

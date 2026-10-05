@@ -27,6 +27,10 @@ Decided by the owner so Crews never need a later manual move. The server reserve
 
 ## Decisions
 
+### 2026-10-05 — KB backup has its own encrypted credential — PLAT-496
+
+Backup setup asks for the repository URL, username and optional PAT. Prefer HTTPS for PAT authentication; preserve existing SSH backups. KB owns its encrypted PAT in private control storage, using the existing host secrets key and AES-256-GCM, with no Vault dependency. The app uses the shared secret input in the existing setup confirmation; MCP administrators can configure, rotate or remove a PAT directly. Credentials reach Git only through URL-scoped child-environment authorization headers, with redirects and credential caching disabled. Access changes remain immediate through authorized external MCP. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base reuses Files Git; pull and branches update live knowledge — PLAT-496
 
 Use the existing Files Source Control, branch picker, staging/commit actions, stashes, diff/history/blame and Git line decorations through a scoped data source. Reuse the same server Git read/action handlers. KB adds a repository boundary, current root access checks and an atomic validated Git-to-live import. Root readers can view repository history; unrestricted root Editors/Owners can act. Scoped/managed connections retain selected-version receipt backups. Pull is fast-forward only and checkout refuses dirty content; stash and discard explicitly affect live knowledge. Keep the remote pinned, bind receipts to their branch and invalidate prepared receipts after repository history changes. Retry uncertain Git pushes with the original request ID. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

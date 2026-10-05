@@ -22,4 +22,21 @@ describe('KnowledgebaseAccessConfirmation', () => {
       expect(confirm).toHaveBeenCalledWith('proposal-id', false)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
+  it('sends an optional PAT only on setup approval and clears the secure field', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host); const confirm = vi.fn().mockResolvedValue(undefined)
+    try {
+      await act(async () => root.render(<KnowledgebaseAccessConfirmation proposals={[{ id: 'setup-id', expires_at: '2030-01-01', arguments: { action: 'configure_backup', remote_url: 'https://github.com/org/kb.git', username: 'kb-user' } }]} error="" busy={false} onConfirm={confirm} />))
+      expect(host.textContent).toContain('kb-user')
+      const input = host.querySelector('input[type="password"]') as HTMLInputElement
+      expect(input).not.toBeNull()
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'ui-test-only-pat'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+      expect(confirm).not.toHaveBeenCalled()
+      expect(host.textContent).not.toContain('ui-test-only-pat')
+      const approve = [...host.querySelectorAll('button')].find(button => button.textContent === 'Approve')!
+      await act(async () => approve.click())
+      expect(confirm).toHaveBeenCalledWith('setup-id', true, 'ui-test-only-pat')
+      expect(input.value).toBe('')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
 })
