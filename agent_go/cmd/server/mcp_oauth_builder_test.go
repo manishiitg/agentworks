@@ -2,12 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
-	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -51,101 +46,6 @@ func TestMCPOAuthBuilderIsExplicitAndCLIDefaultsUnchanged(t *testing.T) {
 	scopes, err = store.CLIDeviceRequest(context.Background(), verification)
 	if err != nil || !slices.Equal(scopes, mcpOAuthDefaultScopes) {
 		t.Fatalf("CLI default changed: %v %v", scopes, err)
-	}
-}
-
-func TestMCPOAuthBuilderConsentBoundsSurviveRefreshAndRestart(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	builderOAuthSetup(t)
-	ctx := context.Background()
-	store, err := openMCPOAuthStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if store != nil {
-			store.Close()
-		}
-	}()
-	client, err := store.RegisterClient(ctx, "Builder client", []string{"https://client.example/callback"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	verifier := strings.Repeat("a", 43)
-	sum := sha256.Sum256([]byte(verifier))
-	req := mcpOAuthRequest{ClientID: client.ID, RedirectURI: client.RedirectURIs[0], Resource: "https://agentworks.example.com" + externalMCPPath, State: "state", Scopes: builderConsentScopes, Challenge: base64.RawURLEncoding.EncodeToString(sum[:]), ExpiresAt: time.Now().Add(time.Minute)}
-	raw, err := store.SaveRequest(ctx, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	reader := &UserClaims{UserID: "reader", Username: "reader"}
-	for _, tc := range []struct {
-		user *UserClaims
-		ids  []string
-	}{{owner, nil}, {owner, []string{"secret"}}, {reader, []string{"invoices"}}, {owner, []string{"invoices", "invoices"}}} {
-		if _, _, err := store.Decide(ctx, raw, tc.user, true, tc.ids); err == nil {
-			t.Fatalf("unauthorized bounds approved: %v %v", tc.user.UserID, tc.ids)
-		}
-	}
-	// Rejected submissions leave the consent request available for a valid choice.
-	w := httptest.NewRecorder()
-	f.api.handleMCPOAuthConsent(w, adminRequest("GET", mcpOAuthConsentPath+"?request="+raw, "", owner, nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "invoices") || strings.Contains(w.Body.String(), "Private research") {
-		t.Fatalf("consent choices: %d %s", w.Code, w.Body)
-	}
-	w = httptest.NewRecorder()
-	f.api.handleMCPOAuthConsent(w, adminRequest("POST", mcpOAuthConsentPath+"?request="+raw, `{"decision":"approve","workflow_ids":["invoices"]}`, owner, nil))
-	if w.Code != 200 {
-		t.Fatalf("consent: %d %s", w.Code, w.Body)
-	}
-	var result map[string]string
-	if err = json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	redirect, err := url.Parse(result["redirect_url"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	grant, access, refresh, err := store.ExchangeCode(ctx, redirect.Query().Get("code"), client.ID, req.RedirectURI, req.Resource, verifier)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check := func(grant mcpOAuthGrant) {
-		t.Helper()
-		token := mcpOAuthTokenForGrant(grant)
-		if !token.BuilderAccess() || token.AllWorkflows || !token.AllowsWorkflow("invoices") || token.AllowsWorkflow("secret") {
-			t.Fatalf("bounds changed: %+v", token)
-		}
-	}
-	check(grant)
-	authenticated, err := store.Authenticate(ctx, access)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(authenticated)
-	store.Close()
-	store, err = openMCPOAuthStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	refreshed, _, _, err := store.Refresh(ctx, refresh, client.ID, req.Resource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(refreshed)
-	if refreshed.FamilyID != grant.FamilyID {
-		t.Fatal("refresh changed family binding")
-	}
-	connections, err := store.Connections(ctx, "owner")
-	if err != nil || len(connections) != 1 || connections[0].AllWorkflows || !slices.Equal(connections[0].WorkflowIDs, []string{"invoices"}) {
-		t.Fatalf("connection bounds: %+v %v", connections, err)
-	}
-	if err := store.RevokeFamily(ctx, grant.FamilyID, "owner"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.ActiveFamily(ctx, grant.FamilyID); err == nil {
-		t.Fatal("revoked Builder family remained active")
 	}
 }
 

@@ -19,19 +19,6 @@ async function mount(scopes: string[], workflows = [{ id: 'invoices', label: 'In
   return { host, cleanup: async () => { await act(async () => root.unmount()) } }
 }
 
-it('requires an explicit workflow selection before approving Builder', async () => {
-  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'builder:chat'])
-  try {
-    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
-    expect(allow.disabled).toBe(true)
-    expect(view.host.textContent).toContain('Reading and running are also limited to this selection')
-    await act(async () => (view.host.querySelector('input[type=checkbox]') as HTMLInputElement).click())
-    expect(allow.disabled).toBe(false)
-    await act(async () => allow.click())
-    expect(api.post).toHaveBeenCalledWith(expect.any(String), { decision: 'approve', workflow_ids: ['invoices'] })
-  } finally { await view.cleanup() }
-})
-
 it('keeps ordinary read/run consent unchanged without authoring selection', async () => {
   const view = await mount(['workflows:read', 'runs:execute'])
   try {
@@ -42,17 +29,6 @@ it('keeps ordinary read/run consent unchanged without authoring selection', asyn
     expect(api.post).toHaveBeenCalledWith(expect.any(String), { decision: 'approve', workflow_ids: [] })
   } finally { await view.cleanup() }
 })
-
-it('cannot approve Builder when no workflows are editable', async () => {
-  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'builder:chat'], [])
-  try {
-    expect(view.host.textContent).toContain('You have no editable workflows')
-    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
-    expect(allow.disabled).toBe(true)
-    expect([...view.host.querySelectorAll('button')].find(button => button.textContent === 'Deny')!.disabled).toBe(false)
-  } finally { await view.cleanup() }
-})
-
 
 it('explains explicit Relay authoring without requiring an existing workflow selection', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'relays:write'], [])
@@ -81,7 +57,7 @@ it('leads with a few plain lines and keeps the exact permissions behind details'
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'crews:read', 'crews:run', 'crews:write'], [])
   try {
     const lines = [...view.host.querySelectorAll('main > div > ul > li')].map(li => li.textContent)
-    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Make changes: edit your Crews, Relays and selected workflows'])
+    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Make changes: edit your Crews, Relays and workflows, as far as your role allows'])
     expect(view.host.querySelector('details')).not.toBeNull()
     expect(view.host.querySelector('details')!.textContent).toContain('Read workflow files, including test code')
   } finally { await view.cleanup() }
@@ -95,5 +71,16 @@ it('shows the reason the server gives when a connection is refused', async () =>
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     await act(async () => allow.click())
     expect(view.host.querySelector('[role=alert]')!.textContent).toContain('not available to this account or deployment')
+  } finally { await view.cleanup() }
+})
+
+it('asks for no workflow selection: Builder follows the account', async () => {
+  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'builder:chat'], [])
+  try {
+    expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
+    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    expect(allow.disabled).toBe(false)
+    await act(async () => allow.click())
+    expect(api.post).toHaveBeenCalledWith(expect.any(String), { decision: 'approve', workflow_ids: [] })
   } finally { await view.cleanup() }
 })

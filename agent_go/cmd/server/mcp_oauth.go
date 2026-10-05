@@ -224,20 +224,6 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 
 // builderConsentWorkflows applies the same live account and workflow ACL as
 // workflow discovery. Selection is revalidated when consent is submitted.
-func builderConsentWorkflows(ctx context.Context, claims *UserClaims) ([]map[string]string, error) {
-	discovered, err := DiscoverWorkflowManifests(ctx)
-	if err != nil {
-		return nil, err
-	}
-	choices := []map[string]string{}
-	for _, wf := range filterWorkflowManifestsForUser(claims, discovered) {
-		if wf.MyAccess == WorkflowAccessOwner || wf.MyAccess == WorkflowAccessWrite {
-			choices = append(choices, map[string]string{"id": wf.Manifest.ID, "label": wf.Manifest.Label})
-		}
-	}
-	return choices, nil
-}
-
 func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, scopes, ids []string) error {
 	if slices.Contains(scopes, "relays:write") && (!externalBuilderEnabled() || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "relays")) {
 		return errors.New("Relay authoring is not available to this account or deployment")
@@ -248,22 +234,14 @@ func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, s
 		}
 		return nil
 	}
-	token := accesstokens.Token{Scopes: scopes, WorkflowIDs: ids}
+	// Builder follows the account: no workflow selection. What the connection may edit is decided live, per call, by
+	// the account's role and its access to each workflow.
+	if len(ids) != 0 {
+		return errors.New("Builder follows your own permissions; a workflow selection is not used")
+	}
+	token := accesstokens.Token{Scopes: scopes, AllWorkflows: true}
 	if !token.BuilderAccess() {
-		return errors.New("Builder requires companion read/run permissions and selected workflows")
-	}
-	choices, err := builderConsentWorkflows(ctx, claims)
-	if err != nil {
-		return err
-	}
-	allowed := map[string]bool{}
-	for _, wf := range choices {
-		allowed[wf["id"]] = true
-	}
-	for _, id := range ids {
-		if !allowed[id] {
-			return errors.New("selected workflow is not editable")
-		}
+		return errors.New("Builder requires companion read/run permissions")
 	}
 	return nil
 }
@@ -297,16 +275,8 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			mcpOAuthError(w, http.StatusNotFound, "invalid_client")
 			return
 		}
-		var workflows []map[string]string
-		if slices.Contains(mcpOAuthScopesFor(claims, request.Scopes), "builder:chat") {
-			workflows, err = builderConsentWorkflows(r.Context(), claims)
-			if err != nil {
-				mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
-				return
-			}
-		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes), "editable_workflows": workflows})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes), "editable_workflows": []map[string]string{}})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -483,8 +453,8 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	if grant.ClientID == cliOAuthClientID {
 		name = "AgentWorks CLI"
 	}
-	// Legacy read/run grants reach all accessible workflows. Builder grants
-	// bind every workflow permission to the explicitly selected IDs.
+	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
+	// account's live role); an older Builder grant keeps the IDs it was given.
 	allCrews := slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
-	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && !slices.Contains(grant.Scopes, "builder:chat"), AllCrews: allCrews, ExpiresAt: grant.Expires}
+	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0, AllCrews: allCrews, ExpiresAt: grant.Expires}
 }

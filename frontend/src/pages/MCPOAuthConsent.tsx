@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { Button } from '../components/ui/Button'
 
-type Consent = { client_name: string; redirect_uri: string; scopes: string[]; editable_workflows?: { id: string; label: string }[] }
+type Consent = { client_name: string; redirect_uri: string; scopes: string[] }
 
 const scopeDescriptions: Record<string, string> = {
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
   'relays:write': 'Create, edit, test and publish Relays you can edit; uses your saved Builder model and usage budget',
-  'builder:chat': 'Edit plans and code in selected workflows using their Builder model in your existing chat',
+  'builder:chat': 'Edit plans and code in the workflows you can edit, using their Builder model in your existing chat. Your own role decides what it may change',
   'runs:execute': 'Start, watch, and cancel workflow runs',
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
@@ -22,7 +22,7 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Use Vault MCP tools you are allowed to use', scopes: ['vault:mcp'] },
   { summary: 'See and run your workflows', scopes: ['workflows:read', 'files:read', 'runs:execute'] },
   { summary: 'Use your Crews', scopes: ['crews:read', 'crews:run'] },
-  { summary: 'Make changes: edit your Crews, Relays and selected workflows', scopes: ['crews:write', 'builder:chat', 'relays:write'] },
+  { summary: 'Make changes: edit your Crews, Relays and workflows, as far as your role allows', scopes: ['crews:write', 'builder:chat', 'relays:write'] },
   { summary: 'Review Code workspaces (read-only, logged)', scopes: ['code:review'] },
 ]
 
@@ -33,8 +33,6 @@ export function MCPOAuthConsent() {
   const [consent, setConsent] = useState<Consent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [workflowIDs, setWorkflowIDs] = useState<string[]>([])
-  const builder = consent?.scopes.includes('builder:chat') ?? false
 
   useEffect(() => {
     if (!request || !/^mcp_req_[a-f0-9]{64}$/.test(request)) { setError('This connection request is invalid.'); return }
@@ -48,7 +46,7 @@ export function MCPOAuthConsent() {
     setBusy(true)
     setError(null)
     try {
-      const { data } = await api.post<{ redirect_url: string }>(`${consentAPI}?request=${encodeURIComponent(request)}`, { decision, workflow_ids: builder ? workflowIDs : [] })
+      const { data } = await api.post<{ redirect_url: string }>(`${consentAPI}?request=${encodeURIComponent(request)}`, { decision, workflow_ids: [] })
       const destination = new URL(data.redirect_url)
       if (destination.origin !== new URL(consent.redirect_uri).origin || destination.pathname !== new URL(consent.redirect_uri).pathname) {
         throw new Error('The connection response had an unexpected destination.')
@@ -73,19 +71,10 @@ export function MCPOAuthConsent() {
           <summary className="cursor-pointer">Show details</summary>
           <ul className="mt-2 space-y-1">{consent.scopes.map(scope => <li key={scope}>{scopeDescriptions[scope] || scope}</li>)}</ul>
         </details>
-        {builder && <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Workflows this connection may build</legend>
-          <p className="text-xs text-muted-foreground">Reading and running are also limited to this selection. Builder uses your saved model and normal usage budget.</p>
-          {(consent.editable_workflows ?? []).map(workflow => <label key={workflow.id} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={workflowIDs.includes(workflow.id)} disabled={busy} onChange={event => setWorkflowIDs(current => event.target.checked ? [...current, workflow.id] : current.filter(id => id !== workflow.id))} />
-            {workflow.label || workflow.id}
-          </label>)}
-          {!consent.editable_workflows?.length && <p className="text-sm text-muted-foreground">You have no editable workflows. Ask a workflow owner for write access before connecting Builder.</p>}
-        </fieldset>}
         <p className="text-xs text-muted-foreground break-all">You will return to {new URL(consent.redirect_uri).origin}. You can revoke this connection later.</p>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" disabled={busy} onClick={() => void decide('deny')}>Deny</Button>
-          <Button disabled={busy || (builder && workflowIDs.length === 0)} onClick={() => void decide('approve')}>{busy ? 'Connecting…' : 'Allow access'}</Button>
+          <Button disabled={busy} onClick={() => void decide('approve')}>{busy ? 'Connecting…' : 'Allow access'}</Button>
         </div>
       </>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

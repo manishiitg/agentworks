@@ -68,10 +68,11 @@ func (t Token) FullBuilderAccess() bool {
 	return true
 }
 
-// BuilderAccess is explicit authoring consent restricted to selected workflows.
-// Direct file/plan write scopes are deliberately unnecessary and remain unissued.
+// BuilderAccess is explicit authoring consent. It follows the account's own permission (every workflow the person
+// may edit, checked live on every call) unless a token names specific workflow IDs (an older grant, or a personal
+// access token made for a few workflows). Direct file/plan write scopes are deliberately unnecessary and remain unissued.
 func (t Token) BuilderAccess() bool {
-	if t.AllWorkflows || len(t.WorkflowIDs) == 0 || len(t.WorkflowIDs) > 200 {
+	if t.AllWorkflows && len(t.WorkflowIDs) > 0 || !t.AllWorkflows && (len(t.WorkflowIDs) == 0 || len(t.WorkflowIDs) > 200) {
 		return false
 	}
 	for _, scope := range []string{"builder:chat", "workflows:read", "files:read", "runs:execute"} {
@@ -149,7 +150,7 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("Crew bounds need a Crew permission (crews:read, crews:run or crews:write)")
 	}
 	if t.Allows("builder:chat") && !t.BuilderAccess() {
-		return errors.New("Builder chat requires workflows:read, files:read, runs:execute and specific workflow IDs; all-workflows authoring is not supported")
+		return errors.New("Builder chat requires workflows:read, files:read and runs:execute")
 	}
 	if t.Allows("relays:write") && !t.RelayBuilderAccess() {
 		return errors.New("Relay authoring requires workflows:read, files:read and runs:execute")

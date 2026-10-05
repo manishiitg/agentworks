@@ -227,9 +227,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 	if approve {
 		// Validate what will really be granted: the scopes this server and account allow, not everything requested.
 		granted := mcpOAuthScopesFor(user, req.Scopes)
-		if !slices.Contains(granted, "builder:chat") {
-			workflowIDs = nil
-		}
+		workflowIDs = nil // no workflow selection: a connection follows the account's permissions
 		if err := validateMCPOAuthBuilderSelection(ctx, user, granted, workflowIDs); err != nil {
 			return req, "", &mcpOAuthRefusal{err}
 		}
@@ -452,7 +450,7 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 		if err := json.Unmarshal([]byte(bounds), &c.WorkflowIDs); err != nil {
 			return nil, err
 		}
-		c.AllWorkflows = len(c.WorkflowIDs) == 0 && !slices.Contains(c.Scopes, "builder:chat")
+		c.AllWorkflows = len(c.WorkflowIDs) == 0
 		c.ExpiresAt = time.Unix(expiry, 0)
 		connections = append(connections, c)
 	}

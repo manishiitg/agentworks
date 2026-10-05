@@ -192,11 +192,16 @@ func TestBuilderAccessRequiresExplicitBoundedConsent(t *testing.T) {
 			t.Errorf("invalid bounds accepted: %q", ids)
 		}
 	}
+	// Builder follows the account's permission (no IDs); a token that also lists IDs is ambiguous and refused.
 	token := base
 	token.AllWorkflows = true
 	token.WorkflowIDs = nil
+	if !token.BuilderAccess() || Validate(token, now) != nil {
+		t.Fatal("an all-workflow Builder token must be admitted: it follows the account's own permission")
+	}
+	token.WorkflowIDs = []string{"invoices"}
 	if token.BuilderAccess() || Validate(token, now) == nil {
-		t.Fatal("all-workflow Builder admitted")
+		t.Fatal("a token with both all-workflows and IDs was admitted")
 	}
 	store, err := Open(filepath.Join(t.TempDir(), "tokens.db"))
 	if err != nil {

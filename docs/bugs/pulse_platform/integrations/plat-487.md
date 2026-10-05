@@ -31,3 +31,7 @@ A client still cannot ask for a smaller set of scopes through Claude Code's `mcp
 
 The flag is now set by every deploy of Excellence (`products/agents/product.env`), Confida (`products/confida/product.env`) and RTS (`deploy/aws-ec2/server/build-and-activate.sh`). Config only until each server is next deployed; Excellence first (deploy 8f6e06845). The per-person limits above are unchanged and hold on every server.
 
+## Update 2026-10-05 (later still): no workflow selection (owner decision)
+
+The owner asked to remove the "workflows this connection may build" box ("it should depend on my user permission"). Builder grants are now all-workflows tokens bounded by the account live (see DECISIONS 2026-10-05); the consent page lost the box; the selection tests were removed or turned around (two Go tests, three page tests; the page now has one test for "no selection"). Existing connections that list workflow IDs keep their bound. State: fixed on main, deployed nowhere yet (Excellence has the 8f6e0684 release without this).
+
