@@ -1,6 +1,6 @@
-## Built-in CLI shell has platform secrets in its env and the app Docker socket — PLAT-489
+## Built-in CLI shell has platform secrets in its env and the app Docker socket — PLAT-491
 
-[PLAT-489](pulse_platform/security-sandbox/plat-489.md), P1, open. Found by a read-only probe on Excellence: the Crew's built-in shell runs as the app account (member of every slot group), can print the Supabase service-role key and gog keyring password from its environment by name, and can use the app's rootless Docker.
+[PLAT-491](pulse_platform/security-sandbox/plat-491.md), P1, open. Found by a read-only probe on Excellence: the Crew's built-in shell runs as the app account (member of every slot group), can print the Supabase service-role key and gog keyring password from its environment by name, and can use the app's rootless Docker.
 
 ## MCP connect: 404 on Allow and an over-long consent page — PLAT-487
 
