@@ -398,9 +398,8 @@ its session profile; it now runs with its own `CODEX_HOME` like under Landlock.
 
 ## What a workflow step may do (measured) — PLAT-419
 
-[PLAT-419](pulse_platform/security-sandbox/plat-419.md), open question for the
-owner: the permission map of agent steps vs scripted steps, from the new
-`cli-step-contract`.
+[PLAT-419](pulse_platform/security-sandbox/plat-419.md), decided 2026-10-05: the measured permission map of agent
+steps vs scripted steps is correct and stays; `cli-step-contract` keeps checking it.
 
 ## Muse on a confined host: runtime folder, refused messages, probe folders — PLAT-417
 

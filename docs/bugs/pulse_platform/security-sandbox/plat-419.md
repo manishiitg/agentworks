@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | measured; decision needed from the owner |
+| State | decided 2026-10-05: the agent-step column is correct, no change; the measured map stays as the contract |
 | Date | 2026-10-04 |
 | Owner | security-sandbox |
 | Related | PLAT-394 (sandbox contracts), PLAT-395 |
@@ -37,3 +37,8 @@ asymmetry with scripted steps (which can read `planning/` and write `db/`) is th
 thing to confirm. Nothing is asserted beyond the refusals that must always hold
 (planning, other workflows, private folders); the rest is printed as `info` by the
 command so a change shows up.
+
+## Decision (owner, 2026-10-05)
+
+The agent-step column is what a step needs. Agent steps reach `db/` through the typed DB tools and have no use for
+`code/`, so the asymmetry with scripted steps stays. `cli-step-contract` keeps printing the rest as `info`.

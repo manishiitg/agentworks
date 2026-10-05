@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Agent steps keep today's permission map
+
+Owner decision: an agent step may write only its own execution folder, may read its declared upstream files, and has no
+access to `db/` (it uses the DB tools), `code/`, `planning/` or `workflow.json`. Scripted steps keep reading `code/` and
+`planning/` and writing `db/`. Ticket: [PLAT-419](bugs/pulse_platform/security-sandbox/plat-419.md).
+
 ### 2026-10-05 — A Builder MCP connection follows the account's own permissions; no per-workflow selection
 
 Connecting an outside tool (Claude Code) with Builder permission no longer asks which workflows it may edit. It reaches every workflow the signed-in person may edit, decided live on every call by their role and their access to each workflow (a read-only account fails the write check, the account's product is re-checked, relay authoring needs the Relays product). Before, `BuilderAccess` refused an all-workflows token and the consent page forced a selection of up to 200 workflows, which on a one-workflow account was a click that protected nothing and read as a separate permission system. Accepted consequence: a stolen Builder token can edit everything its owner can, through the Builder model, until revoked (tokens are revocable and expire; older grants that list workflow IDs keep that bound). Code: `pkg/accesstokens/store.go` (`BuilderAccess`), `cmd/server/mcp_oauth.go`, `frontend/src/pages/MCPOAuthConsent.tsx`. Ticket: PLAT-487.
