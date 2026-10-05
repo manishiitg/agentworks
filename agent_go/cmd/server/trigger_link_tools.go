@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 // Crews, workflows and external connections call a Crew or workflow through
@@ -276,12 +277,59 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 			state.Result = string(result.Result)
 			return state, nil
 		}
-		encoded, _ := json.MarshalIndent(map[string]interface{}{"status": result.Status, "error": result.Error, "steps": result.Steps, "run_folder": result.RunFolder}, "", "  ")
-		state.Result = string(encoded)
+		state.Result = workflowCallResultJSON(result)
 		return state, nil
 	default:
 		return triggerTargetRunState{}, fmt.Errorf("unknown target kind %q", target.Kind)
 	}
+}
+
+// triggerTargetRunIsRunning says whether a target's run has started executing. A Crew run reports
+// "running"; a workflow run reports where it is in the scheduler's own vocabulary, so a workflow-backed
+// call stayed "queued" for its whole run (PLAT-535). Only a run that is still starting or waiting behind
+// another one is not running yet.
+func triggerTargetRunIsRunning(kind, status string) bool {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if kind != triggerCallerWorkflow {
+		return status == "running"
+	}
+	switch status {
+	case string(schedulerstate.StateWorkflowRunning), string(schedulerstate.StateWorkflowFinished),
+		string(schedulerstate.StatePulseGate), string(schedulerstate.StatePulseModules), string(schedulerstate.StatePulseFinalizing):
+		return true
+	}
+	return false
+}
+
+// workflowCallResultJSON is a workflow-backed call's result: the run's status, error and folder, and for
+// each step only its file names, paths and sizes. The files themselves are read with read_file / get_run.
+// It used to inline every step's output files, 400 KB for one review run (PLAT-536).
+func workflowCallResultJSON(result webhookRunResult) string {
+	type file struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Size int64  `json:"size_bytes"`
+	}
+	type step struct {
+		StepID string `json:"step_id"`
+		Group  string `json:"group,omitempty"`
+		Files  []file `json:"files"`
+	}
+	steps := make([]step, 0, len(result.Steps))
+	for _, source := range result.Steps {
+		slim := step{StepID: source.StepID, Group: source.Group, Files: make([]file, 0, len(source.Artifacts))}
+		for _, artifact := range source.Artifacts {
+			slim.Files = append(slim.Files, file{Name: artifact.Name, Path: artifact.Path, Size: artifact.Size})
+		}
+		steps = append(steps, slim)
+	}
+	doc := map[string]interface{}{"status": result.Status, "error": result.Error, "run_folder": result.RunFolder, "steps": steps,
+		"note": "Step output files are listed by name and size. Read the ones you need from run_folder with read_file, or with get_run."}
+	if result.Truncated {
+		doc["truncated"] = true
+	}
+	encoded, _ := json.MarshalIndent(doc, "", "  ")
+	return string(encoded)
 }
 
 func workflowRunStatusFailed(status string) bool {

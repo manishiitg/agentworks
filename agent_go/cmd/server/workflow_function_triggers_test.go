@@ -356,3 +356,43 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 		}
 	}
 }
+
+// A workflow-backed call stayed "queued" for its whole run because only the Crew word "running" counted
+// (PLAT-535), and its finished result inlined every step's output files, 400 KB for one run (PLAT-536).
+func TestWorkflowFunctionCallStatusAndResultSize(t *testing.T) {
+	for state, want := range map[string]bool{"starting": false, "waiting_for_capacity": false, "workflow_running": true, "pulse_gate": true, "workflow_finished": true} {
+		if got := triggerTargetRunIsRunning(triggerCallerWorkflow, state); got != want {
+			t.Fatalf("workflow run state %q: running = %v, want %v", state, got, want)
+		}
+	}
+	if !triggerTargetRunIsRunning(triggerCallerCrew, "running") || triggerTargetRunIsRunning(triggerCallerCrew, "workflow_running") {
+		t.Fatal("a Crew call keeps its own vocabulary")
+	}
+
+	big := strings.Repeat("research ", 20000)
+	result := webhookRunResult{Status: "completed", RunFolder: "runs/run-1", Steps: []webhookStepOutput{{
+		StepID: "review", Group: "staging", Outputs: map[string]interface{}{"findings.json": big},
+		Artifacts: []webhookArtifact{{Name: "findings.json", Path: "staging/execution/review/findings.json", Size: int64(len(big))}},
+	}}}
+	encoded := workflowCallResultJSON(result)
+	if len(encoded) > 2000 || strings.Contains(encoded, "research research") {
+		t.Fatalf("the call result inlined file contents (%d bytes)", len(encoded))
+	}
+	var decoded struct {
+		Status    string `json:"status"`
+		RunFolder string `json:"run_folder"`
+		Steps     []struct {
+			StepID string `json:"step_id"`
+			Files  []struct {
+				Name string `json:"name"`
+				Path string `json:"path"`
+				Size int64  `json:"size_bytes"`
+			} `json:"files"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal([]byte(encoded), &decoded); err != nil || decoded.Status != "completed" || decoded.RunFolder != "runs/run-1" ||
+		len(decoded.Steps) != 1 || decoded.Steps[0].StepID != "review" || len(decoded.Steps[0].Files) != 1 ||
+		decoded.Steps[0].Files[0].Name != "findings.json" || decoded.Steps[0].Files[0].Size != int64(len(big)) {
+		t.Fatalf("result = %s err=%v", encoded, err)
+	}
+}

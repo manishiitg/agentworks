@@ -984,7 +984,7 @@ func (api *StreamingAPI) superviseCrewFunctionCall(call *crewFunctionCall, timeo
 		state, err := api.readTriggerTargetRun(ctx, call.UserID, call.caller, call.target, call.TriggerID, runID)
 		if err == nil {
 			call.mu.Lock()
-			if !call.terminalLocked() && strings.EqualFold(state.Status, "running") {
+			if !call.terminalLocked() && triggerTargetRunIsRunning(call.TargetKind, state.Status) {
 				call.Status = "running"
 			}
 			call.mu.Unlock()

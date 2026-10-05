@@ -1,11 +1,10 @@
 # PLAT-535: a workflow function call reports `queued` for its whole run
 
-**State:** open. P3.
+**State:** fixed on main (2026-10-05); not deployed; not yet checked with a live `review_pr` call on RTS. P3.
 
 **Found:** 2026-10-05, RTS, `call_workflow_function` on `rts-pr-reviweer` / `review_pr` (PR 180): `get_workflow_function_call` returned `status: queued` for about eight minutes while `list_executions` showed the run executing (gate done, review step running). It changed to `completed` only at the end.
 
-**Likely cause (read, not verified live):** the call record is created `queued` (`product_webhooks.go`, Status "queued") and only moves to `running` when a Crew agent reports progress (`crew_functions.go`, the progress tool). A workflow-backed function never reports progress, so nothing moves it when its run starts.
+**Cause (verified in code, 2026-10-05):** the call supervisor (`superviseCrewFunctionCall`, `crew_functions.go`) set `running` only when the target run's status was the word `running` (a Crew run). A workflow run reports the scheduler's own states (`starting`, `waiting_for_capacity`, `workflow_running`, `pulse_gate`, `pulse_modules`, `pulse_finalizing`, `workflow_finished`), so the call never left `queued` until it finished. The progress tool the ticket suspected is not involved.
+**Fix:** `triggerTargetRunIsRunning` (`trigger_link_tools.go`): for a workflow target `workflow_running`, `pulse_*` and `workflow_finished` count as running; `starting` and `waiting_for_capacity` stay `queued`. Crew calls keep `running`. Test `TestWorkflowFunctionCallStatusAndResultSize`.
 
-**Fix:** set `running` when the run is accepted and starts (the same moment `list_executions` shows it), and `queued` only while it waits behind another run. Check with a real `review_pr` call: status must be `running` shortly after start.
-
-**Left:** everything.
+**Left:** check with a real `review_pr` call after the next RTS deploy (needs the owner's go): `get_workflow_function_call` must show `running` shortly after the start, then `completed`. Use a scratch PR or a dry run: a real call posts a GitHub review.

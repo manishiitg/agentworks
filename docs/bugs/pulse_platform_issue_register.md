@@ -226,6 +226,10 @@ usable node_modules if the install fails.
 
 [PLAT-534](pulse_platform/scheduler-runs/plat-534.md), built on main; not deployed; needs a live check.
 
+## A relay command catalog test fails on main — PLAT-537
+
+[PLAT-537](pulse_platform/mcp/plat-537.md), open: pre-existing, found while testing PLAT-535/536.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
@@ -2695,8 +2699,8 @@ change what a workflow does while still allowing it to report success.
 
 ## A workflow function call reports `queued` for its whole run — PLAT-535
 
-[PLAT-535](pulse_platform/mcp/plat-535.md), P3, open: `get_workflow_function_call` stays `queued` while the run executes; only Crew calls move to `running` (on a progress report).
+[PLAT-535](pulse_platform/mcp/plat-535.md), P3, fixed on main, not deployed: a workflow run's states (`workflow_running` ...) were never read as running, so the call stayed `queued`; live check on RTS after a deploy.
 
 ## A finished function call returns every step's full output — PLAT-536
 
-[PLAT-536](pulse_platform/mcp/plat-536.md), P3, open: the poll result was 400 KB (all step output files); it should list files and sizes and let the client read what it needs.
+[PLAT-536](pulse_platform/mcp/plat-536.md), P3, fixed on main, not deployed: the call result lists each step's files and sizes; clients read the files they need.
