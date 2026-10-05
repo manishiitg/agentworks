@@ -139,14 +139,21 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	canReview, builderOn := claimsCanReviewCode(user), externalBuilderEnabled()
-	if canReview && builderOn {
-		return scopes
-	}
-	// Builder editing and Relay authoring exist only where the server enables them (AGENTWORKS_MCP_BUILDER_ENABLED):
-	// a connection never asks for, shows or grants what the server would refuse (a client that requests every
-	// advertised scope used to get a 404 on Allow, Excellence 2026-10-05).
+	// Relay authoring needs the server switch AND an account that may edit and has the Relays product (the same rule
+	// validateMCPOAuthBuilderSelection enforces); Builder editing needs the server switch. A connection never asks for,
+	// shows or grants what the server or the account would refuse: a client that requests every advertised scope used
+	// to get a 404 on Allow (Excellence 2026-10-05).
+	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
-		return scope == "code:review" && !canReview || (scope == "builder:chat" || scope == "relays:write") && !builderOn
+		switch scope {
+		case "code:review":
+			return !canReview
+		case "builder:chat":
+			return !builderOn
+		case "relays:write":
+			return !canRelays
+		}
+		return false
 	})
 }
 

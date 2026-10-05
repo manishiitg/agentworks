@@ -27,3 +27,19 @@ func TestMCPOAuthScopesDropBuilderAndRelaysWhereTheServerHasThemOff(t *testing.T
 		t.Errorf("Builder and Relay scopes must stay where the server enables them: %v", on)
 	}
 }
+
+// Where Builder is on, Relay authoring is still offered only to accounts that may edit and have the Relays product.
+func TestMCPOAuthRelayScopeFollowsTheAccount(t *testing.T) {
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
+	all := slices.Clone(mcpOAuthScopes)
+	got := mcpOAuthScopesFor(&UserClaims{}, all)
+	if !slices.Contains(got, "builder:chat") {
+		t.Errorf("builder:chat must stay where the server enables it: %v", got)
+	}
+	if userAllowedProduct(&UserClaims{}, "relays") && userAccessForClaims(&UserClaims{}).CanEdit {
+		t.Skip("the zero-value account has Relays here")
+	}
+	if slices.Contains(got, "relays:write") {
+		t.Errorf("an account without the Relays product was offered relays:write: %v", got)
+	}
+}

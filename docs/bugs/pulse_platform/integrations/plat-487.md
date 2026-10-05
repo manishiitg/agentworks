@@ -14,7 +14,7 @@ Connecting Claude Code to Excellence (`/api/external/v1/mcp`, OAuth) asked for e
 
 ## Fix
 
-- `mcpOAuthScopesFor` also drops `builder:chat` and `relays:write` where the flag is off; the consent GET, the consent POST and `Decide` all use the scopes that will really be granted, so a client that requests everything is approved for the rest.
+- `mcpOAuthScopesFor` drops `builder:chat` where the server flag is off and `relays:write` unless the flag is on AND the account may edit and has the Relays product (the same rule the consent check enforces; on Excellence only 2 of 10 users have Relays); the consent GET, the consent POST and `Decide` all use the scopes that will really be granted, so a client that requests everything is approved for the rest.
 - A refusal the person can act on is returned as `400` with `error_description` and shown on the page instead of the 404 (`mcpOAuthRefusal`).
 - The page leads with up to five plain lines (see and run workflows, use Crews, make changes, review Code, Vault tools); the exact permissions are behind "Show details".
 - Tests: `mcp_oauth_scopes_test.go`; `MCPOAuthConsent.test.tsx` (grouping, refusal reason); `builderOAuthSetup` now switches Builder on explicitly.
