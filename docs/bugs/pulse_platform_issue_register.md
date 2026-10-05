@@ -150,6 +150,10 @@ usable node_modules if the install fails.
 
 [PLAT-509](pulse_platform/integrations/plat-509.md), fixed on main: Firecrawl added next to Exa and Parallel (both already there); card text says free tier.
 
+## Many template setup rows took over the Crew chat — PLAT-515
+
+[PLAT-515](pulse_platform/frontend-chat/plat-515.md), fixed on main: the rows share one capped, scrolling area. Left: not seen in a browser.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

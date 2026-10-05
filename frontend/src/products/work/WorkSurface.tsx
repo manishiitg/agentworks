@@ -1129,7 +1129,11 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       </button>
                     </div>
                   ) : null}
-                  {!selected.shared && selectedTemplates.map(template => (
+                  {!selected.shared && selectedTemplates.length > 0 ? (
+                    // Many templates used to stack their setup rows and push the chat off the screen. The rows share one
+                    // capped area that scrolls, so the chat always keeps most of the height.
+                    <div className="max-h-[min(8rem,25vh)] shrink-0 overflow-y-auto overscroll-contain" data-testid="template-setup-list">
+                  {selectedTemplates.map(template => (
                     <WorkTemplateSetup
                       key={`${selected.id}:${template.id}`}
                       template={template}
@@ -1141,6 +1145,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       }}
                     />
                   ))}
+                    </div>
+                  ) : null}
                   {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
