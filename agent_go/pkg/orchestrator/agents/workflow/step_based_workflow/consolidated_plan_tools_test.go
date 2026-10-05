@@ -142,6 +142,31 @@ func TestConsolidatedToolsPreserveScheduleCollisionGuard(t *testing.T) {
 		t.Fatalf("collision protection lost: %v writes=%d", err, f.writes)
 	}
 }
+
+// The approved schedule override (`force`) must pass the guard AND the real update_step schema: update_step
+// validates strictly and used to reject `force` as an unknown property, so the override never worked
+// (salesoutreach and jobsearch chats, 2026-10-05).
+func TestScheduleOverrideReachesTheRealUpdateStep(t *testing.T) {
+	f := newExternalPlanTestFiles(t, regularStep("fetch"))
+	d := newWorkshopDefinitionDraft()
+	guard := GuardScheduleTools(d, func(_ context.Context, _ string, args map[string]interface{}) error {
+		if args["force"] == true {
+			return nil
+		}
+		return errors.New("schedule_running")
+	})
+	if err := RegisterPlanModificationTools(guard, externalPlanTestWorkspace, loggerv2.NewNoop(), f.read, f.write, nil, "test"); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]interface{}{"step_id": "fetch", "changes": map[string]interface{}{"title": "New", "reason": "Change title"}}
+	if _, err := d.tools["update_step"].Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "schedule_running") {
+		t.Fatalf("without force the guard must block: %v", err)
+	}
+	args["force"] = true
+	if _, err := d.tools["update_step"].Execute(context.Background(), args); err != nil || f.writes == 0 {
+		t.Fatalf("approved override did not apply: err=%v writes=%d", err, f.writes)
+	}
+}
 func TestWorkshopConsolidatesGroupsAndRemovesReviewLauncher(t *testing.T) {
 	d := newWorkshopDefinitionDraft()
 	base := &orchestrator.BaseOrchestrator{}
