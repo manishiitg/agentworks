@@ -50,6 +50,10 @@ selections remain independent, including when their names are identical.
 
 ## Chat navigation
 
+The shared Global Monitor sits beside workspace tools in workflows, Relay,
+Crew and Code. The top header keeps it on project lists and global pages;
+an open project workspace owns the instance so it is not shown twice.
+
 Ctrl+K and Global Monitor use `openGlobalTab` / `openGlobalActivitySession`.
 Direct chat-tab selection uses the same `activateTab` coordinator, with
 workflow tabs committed through `activateWorkflowTab`. A direct schedule/main
