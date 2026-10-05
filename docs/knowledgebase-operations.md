@@ -60,7 +60,7 @@ The MCP endpoint is `/api/external/v1/mcp`. Authenticate with a Bearer token, us
 name and its arguments. The existing local bridge uses the same catalog.
 
 On a local single-user instance, open the global **Connect an AI agent (MCP)**
-page and create an access token. It includes all access available to the local
+page and create the `agentworks-local` access token. No name input is needed. It includes all access available to the local
 account, without a scope picker; live folder grants still apply. Copy the token
 into your HTTP MCP client's `Authorization: Bearer <ACCESS_TOKEN>` header.
 Local tokens have no automatic expiry; remove one from the same page when finished. Multi-user and

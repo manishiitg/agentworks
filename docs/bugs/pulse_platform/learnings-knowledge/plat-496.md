@@ -85,7 +85,7 @@ model/reasoning settings in the workspace Models view.
 ## Local MCP authentication
 
 Shared global Connect detects a verified single-user loopback instance and offers
-access tokens, with name, copy and revocation. Local full-access tokens have no automatic expiry. There is no permission
+access tokens, with a fixed `agentworks-local` name, copy and revocation. Local full-access tokens have no automatic expiry. There is no permission
 picker: local_full_access makes the server derive all scopes available to the
 local account, with unrestricted connection caps but live folder/account grants.
 The request is forbidden for multi-user servers or a foreign local identity.
@@ -100,3 +100,5 @@ until removed, including across restarts. Ordinary scoped tokens and hosted
 OAuth retain their existing expiry behavior. Store tests verify authentication
 ten years later, persistence and removal; server checks reject permanent local
 tokens after switching to multi-user mode.
+
+Local token name is fixed to `agentworks-local` in the UI and server issuance; the name input is removed.

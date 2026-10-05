@@ -6,7 +6,6 @@ import { Button } from '../ui/Button'
 
 /** Local clients use the existing scoped token API; hosted setup retains OAuth. */
 export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
-  const [name, setName] = useState('Local agent')
   const [tokens, setTokens] = useState<PersonalAccessToken[]>([])
   const [issued, setIssued] = useState<{ id: string; token: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -21,7 +20,7 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   async function create() {
     setBusy(true); setError(''); setIssued(null); setCopied(false)
     try {
-      const result = await authApi.createAccessToken({ name: name.trim(), local_full_access: true, scopes: [], workflow_ids: [], all_workflows: true })
+      const result = await authApi.createAccessToken({ name: 'agentworks-local', local_full_access: true, scopes: [], workflow_ids: [], all_workflows: true })
       setIssued({ id: result.access_token.id, token: result.token })
       // The server may replace a previous legacy (non-KB) token.
       try { setTokens((await authApi.listAccessTokens()).tokens) }
@@ -44,9 +43,7 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
     <div><h3 className="text-base font-semibold">Connect a local AI agent</h3><p className="mt-1 text-sm text-muted-foreground">Create an access token and use it with your agent’s HTTP MCP connection. No browser sign-in is needed.</p></div>
     <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Valid until you remove it. Includes all access available to your local account. Your current folder, workflow and Crew permissions still apply.">
       <div className="space-y-3">
-        <label className="block text-xs">Name<input aria-label="Access token name" maxLength={80} value={name} disabled={busy} onChange={event => setName(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-background p-2" /></label>
-
-        <Button disabled={busy || !name.trim()} onClick={() => void create()}>{busy ? 'Working…' : 'Create access token'}</Button>
+        <Button disabled={busy} onClick={() => void create()}>{busy ? 'Working…' : 'Create access token'}</Button>
         {issued && <div className="space-y-2 rounded-md border border-border p-3"><p className="text-xs">Copy this token now. It is shown only for this session.</p><input aria-label="New access token" type="password" readOnly value={issued.token} className="w-full rounded border border-border bg-background p-2 text-xs" /><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(issued.token).then(() => setCopied(true)).catch(() => setError('Could not copy the token.'))}><Copy className="mr-1 h-3 w-3" />{copied ? 'Copied' : 'Copy token'}</Button></div>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>

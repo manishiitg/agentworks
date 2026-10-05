@@ -192,6 +192,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			}
 			// Derive permissions from the current account and enabled products;
 			// a client cannot choose a different identity or broaden folder grants.
+			req.Name = "agentworks-local"
 			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
 			req.AllWorkflows, req.AllCrews = true, true
 			req.WorkflowIDs, req.CrewIDs = nil, nil

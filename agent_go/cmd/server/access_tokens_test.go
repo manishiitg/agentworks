@@ -549,6 +549,9 @@ func TestLocalFullAccessTokenIssuance(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &issued); err != nil {
 		t.Fatal(err)
 	}
+	if issued.AccessToken.Name != "agentworks-local" {
+		t.Fatal("local token name must be fixed")
+	}
 	if !issued.AccessToken.NonExpiring {
 		t.Fatal("local token must not expire")
 	}
