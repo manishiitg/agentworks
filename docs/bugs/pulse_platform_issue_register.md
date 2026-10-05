@@ -1,3 +1,7 @@
+## Any account could list all workflows' schedules and pause every schedule — PLAT-505
+
+[PLAT-505](pulse_platform/scheduler-runs/plat-505.md), P1, fixed on main, not deployed or checked live as a non-admin. The schedules list is now filtered to what the account may open; the global pause is administrators only.
+
 ## Agents cannot attach or share a Vault MCP connection from chat — PLAT-503
 
 [PLAT-503](pulse_platform/security-sandbox/plat-503.md), P2, built on main, not deployed or verified live. Anyone who may manage Vault can connect and share its MCPs from any Code, Crew or workflow chat (`manage_vault_access`, rechecked per call).

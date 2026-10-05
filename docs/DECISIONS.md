@@ -17,6 +17,10 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+## 2026-10-05: the global schedule pause is administrators only; the schedules list shows only what the account may open
+
+The pause stops every schedule on the platform, so only an administrator may use it; everyone else's schedules list is filtered like the workflows list. A local (single-user) run keeps both. Ticket: PLAT-505.
+
 ## 2026-10-05: new Crews are always created at `Crew/<folder>`
 
 Decided by the owner so Crews never need a later manual move. The server reserves the path and registers the owner before the UI writes the files, and `AGENTWORKS_CREW_SHARED_ROOT=on` is set on every server. Ticket: PLAT-442.
