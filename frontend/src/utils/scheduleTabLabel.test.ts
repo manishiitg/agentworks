@@ -12,23 +12,22 @@ describe('scheduleTabLabel', () => {
     expect(scheduleTabLabel('Daily execution')).toBe('Daily execution')
   })
 
-  // The real names that motivated this: the parenthetical is schedule timing,
-  // already shown in the panel below, and it is the least identifying part.
-  it('drops a trailing parenthetical before clipping', () => {
-    expect(scheduleTabLabel('Daily Execution x3 (10:00 / 15:00 / 20:00 IST)')).toBe('Daily Execution x3')
-    expect(scheduleTabLabel('Lead finding — US (Mon/Wed/Fri)')).toBe('Lead finding — US')
+  it('preserves schedule timing and weekdays in the title', () => {
+    expect(scheduleTabLabel('Daily Execution x3 (10:00 / 15:00 / 20:00 IST)')).toBe('Daily Execution x3 (10:00 / 15:00 / 20:00 IST)')
+    expect(scheduleTabLabel('Lead finding — US (Mon/Wed/Fri)')).toBe('Lead finding — US (Mon/Wed/Fri)')
   })
 
-  it('clips an over-long name on a word boundary', () => {
-    const label = scheduleTabLabel('Weekly Strategy Discovery Proposer Pass')
-    expect(label.endsWith('…')).toBe(true)
-    expect(label.length).toBeLessThanOrEqual(23)
-    expect(label).not.toMatch(/\s…$/)
+  it('leaves visual truncation to the tab component', () => {
+    expect(scheduleTabLabel('  Weekly Strategy Discovery Proposer Pass  ')).toBe('Weekly Strategy Discovery Proposer Pass')
   })
 
   it('distinguishes two schedules that used to render identically', () => {
     const a = scheduleTabLabel('Daily Execution x3 (10:00 / 15:00 / 20:00 IST)')
     const b = scheduleTabLabel('Daily Measurement & Critqueue')
     expect(a).not.toBe(b)
+  })
+
+  it('distinguishes schedules with the same name but different times', () => {
+    expect(scheduleTabLabel('News Briefing (7:30 AM IST)')).not.toBe(scheduleTabLabel('News Briefing (8:30 AM IST)'))
   })
 })

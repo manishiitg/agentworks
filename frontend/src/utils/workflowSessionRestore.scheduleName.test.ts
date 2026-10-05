@@ -20,7 +20,6 @@ import type { ActiveSessionInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { openCanonicalActivitySession } from './workflowSessionRestore'
-import { scheduleTabLabel } from './scheduleTabLabel'
 
 const scheduleName = 'Test and Promote (Mon-Fri 8:30 AM IST)'
 const run: ActiveSessionInfo = {
@@ -37,7 +36,7 @@ beforeEach(() => {
   }))
   useChatStore.setState({
     chatTabs: { run: {
-      tabId: 'run', name: scheduleTabLabel(scheduleName), sessionId: run.session_id,
+      tabId: 'run', name: scheduleName, sessionId: run.session_id,
       metadata: { mode: 'workflow', presetQueryId: 'trading', isScheduledRun: true,
         isViewOnly: true, isExecutionRun: true, scheduledJobName: scheduleName },
     } as ChatTab },
@@ -48,14 +47,14 @@ beforeEach(() => {
 it.each(['quick-switcher', 'global-activity-monitor'])('keeps the schedule label when opened from %s with the workflow display title', async source => {
   await openCanonicalActivitySession(run, { source, title: 'trading' })
   const tab = useChatStore.getState().chatTabs.run
-  expect(tab.name).toBe(scheduleTabLabel(scheduleName))
+  expect(tab.name).toBe(scheduleName)
   expect(tab.metadata?.scheduledJobName).toBe(scheduleName)
   expect(Object.keys(useChatStore.getState().chatTabs)).toEqual(['run'])
 })
 
 it('retains the known schedule name when a sparse activity row has no title', async () => {
   await openCanonicalActivitySession({ ...run, title: undefined }, { source: 'quick-switcher', title: 'trading' })
-  expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleTabLabel(scheduleName))
+  expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleName)
   expect(useChatStore.getState().chatTabs.run.metadata?.scheduledJobName).toBe(scheduleName)
 })
 
@@ -63,6 +62,6 @@ it('repairs a previously overwritten label using the scheduler title', async () 
   useChatStore.getState().renameTab('run', 'trading')
   useChatStore.getState().setTabMetadata('run', { scheduledJobName: 'trading' })
   await openCanonicalActivitySession(run, { source: 'quick-switcher' })
-  expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleTabLabel(scheduleName))
+  expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleName)
   expect(useChatStore.getState().chatTabs.run.metadata?.scheduledJobName).toBe(scheduleName)
 })

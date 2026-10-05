@@ -52,6 +52,8 @@ tab click invalidates pending asynchronous navigation even within one workflow.
 Scheduled-run tab labels use the scheduler-stamped session title, falling back
 to the saved job name before the owning workflow's name. Ctrl+K and Global
 Monitor must preserve that schedule identity when reopening its tab.
+Keep timing and weekdays in the stored label; the shared tab component handles
+visual overflow without changing the title between navigation paths.
 
 Formatted transcripts own their scrolling. New conversations open at the latest
 message; revisiting one preserves deliberate reading position and expanded tools.
