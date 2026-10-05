@@ -1,3 +1,7 @@
+## Webhook step cannot write the workflow database ("caller does not own this tool session") — PLAT-514
+
+[PLAT-514](pulse_platform/scheduler-runs/plat-514.md), P1, open, diagnosed to the tool lookup path, not fixed. Blocks the RTS PR review once the run folder is writable (PLAT-502).
+
 ## Code browser extension UI and stable private connection codes — PLAT-513
 
 [PLAT-513](pulse_platform/browser/plat-513.md), P2, fixed on main, not deployed. Integrated Code-only browser choice, connected popup and browser pane, branded icons, stable codes and explicit reset.
