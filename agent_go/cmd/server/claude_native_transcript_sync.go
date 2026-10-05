@@ -856,6 +856,7 @@ func mergeBuilderConversationRecordHistory(record map[string]interface{}, persis
 type builderConversationMergeRef struct {
 	persisted bool
 	index     int
+	matched   bool // persisted entry that the alignment paired with a native message
 }
 
 // builderConversationMergeRefs computes a shortest common supersequence from
@@ -898,7 +899,7 @@ func builderConversationMergeRefs(persisted, native []builderConversationMessage
 			refs = append(refs, builderConversationMergeRef{persisted: true, index: i})
 			i++
 		case persistedKeys[i] == nativeKeys[j]:
-			refs = append(refs, builderConversationMergeRef{persisted: true, index: i})
+			refs = append(refs, builderConversationMergeRef{persisted: true, index: i, matched: true})
 			i++
 			j++
 		case dp[i+1][j] >= dp[i][j+1]:
@@ -909,7 +910,50 @@ func builderConversationMergeRefs(persisted, native []builderConversationMessage
 			j++
 		}
 	}
-	return refs
+	return dropReorderedHumanDuplicates(refs, persistedKeys, nativeKeys)
+}
+
+// dropReorderedHumanDuplicates removes a native human message that is only a second copy of a persisted one.
+// A message sent while Codex is still answering the previous one (live input) is saved before that reply, but
+// Codex's own transcript has it after the reply. The two orders tie in the alignment above, one copy of the
+// message stays unmatched on each side, and the native copy used to be appended as "missing": the chat showed
+// the same user message twice, the second one with no reply after it (2026-10-05, Upwork chat). Only human
+// messages a few positions apart are treated as the same message, so real repeats stay.
+func dropReorderedHumanDuplicates(refs []builderConversationMergeRef, persistedKeys, nativeKeys []string) []builderConversationMergeRef {
+	const window = 4
+	claimed := map[int]bool{}
+	drop := map[int]bool{}
+	for k, ref := range refs {
+		if ref.persisted || !strings.HasPrefix(nativeKeys[ref.index], "human\x00") {
+			continue
+		}
+		for d := 1; d <= window; d++ {
+			for _, at := range []int{k - d, k + d} {
+				if at < 0 || at >= len(refs) || claimed[at] {
+					continue
+				}
+				other := refs[at]
+				if other.persisted && !other.matched && persistedKeys[other.index] == nativeKeys[ref.index] {
+					claimed[at] = true
+					drop[k] = true
+					break
+				}
+			}
+			if drop[k] {
+				break
+			}
+		}
+	}
+	if len(drop) == 0 {
+		return refs
+	}
+	kept := make([]builderConversationMergeRef, 0, len(refs)-len(drop))
+	for k, ref := range refs {
+		if !drop[k] {
+			kept = append(kept, ref)
+		}
+	}
+	return kept
 }
 
 func builderConversationRawHistory(record map[string]interface{}) ([]json.RawMessage, bool) {

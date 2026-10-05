@@ -528,6 +528,37 @@ func TestMergeBuilderConversationHistoryRecoversRepliesBetweenPersistedLiveInput
 	}
 }
 
+// A second message sent while Codex is still answering the first is saved BEFORE that reply, but Codex's own
+// transcript has it after the reply. The sync used to append it again: the same user message twice, the second
+// with no reply after it (Upwork chat, 2026-10-05).
+func TestMergeBuilderConversationHistoryDoesNotDuplicateALiveInputSavedBeforeTheEarlierReply(t *testing.T) {
+	human := func(text string) builderConversationMessage {
+		return builderConversationMessage{Role: "human", Parts: []builderConversationPart{{Text: text}}}
+	}
+	ai := func(text string) builderConversationMessage {
+		return builderConversationMessage{Role: "ai", Parts: []builderConversationPart{{Text: text}}}
+	}
+	persisted := []builderConversationMessage{human("change to browser"), human("if mcp is giving error"), ai("restriction found")}
+	native := []builderConversationMessage{human("change to browser"), ai("restriction found"), human("if mcp is giving error"), ai("If MCP had a connection error")}
+
+	merged := mergeBuilderConversationHistory(persisted, native)
+	humans := 0
+	for _, message := range merged {
+		if message.Role == "human" && message.Parts[0].Text == "if mcp is giving error" {
+			humans++
+		}
+	}
+	if humans != 1 || len(merged) != 4 || merged[3].Parts[0].Text != "If MCP had a connection error" {
+		t.Fatalf("the live input was duplicated or the reply lost (%d copies): %+v", humans, merged)
+	}
+	// A genuine repeat (same text sent again after a reply) is kept.
+	repeatPersisted := []builderConversationMessage{human("retry"), ai("failed"), human("retry")}
+	repeatNative := []builderConversationMessage{human("retry"), ai("failed"), human("retry"), ai("ok")}
+	if got := mergeBuilderConversationHistory(repeatPersisted, repeatNative); len(got) != 4 {
+		t.Fatalf("a real repeat was collapsed: %+v", got)
+	}
+}
+
 func TestRefreshLatestBuilderConversationIgnoresLiveInputUpdatedAtAsTranscriptCursor(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

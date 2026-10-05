@@ -162,6 +162,10 @@ usable node_modules if the install fails.
 
 [PLAT-515](pulse_platform/frontend-chat/plat-515.md), fixed on main: the rows share one capped, scrolling area. Left: not seen in a browser.
 
+## A live-input message was shown twice, the copy unanswered — PLAT-518
+
+[PLAT-518](pulse_platform/chat-reliability/plat-518.md), fixed on main: the native transcript merge no longer re-adds a human message saved before an earlier reply. Left: flicker.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
