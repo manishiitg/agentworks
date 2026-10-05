@@ -389,6 +389,7 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 				manifest.Triggers = runtimeManifest.Triggers
 				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
 				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+				manifest.BrainAccess = runtimeManifest.BrainAccess
 				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
 				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 				manifest.Capabilities = runtimeManifest.Capabilities
@@ -640,6 +641,7 @@ func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, pr
 		manifest.Triggers = runtimeManifest.Triggers
 		manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
 		manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+		manifest.BrainAccess = runtimeManifest.BrainAccess
 		manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
 		manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 		manifest.WorkflowContextPaths = runtimeManifest.WorkflowContextPaths

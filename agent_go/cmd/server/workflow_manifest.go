@@ -119,6 +119,7 @@ type WorkflowManifest struct {
 	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string                              `json:"knowledgebase_mode,omitempty"`
+	BrainAccess                  string                              `json:"brain_access,omitempty"` // off, read or folders; server-managed
 	KnowledgebaseMigration       json.RawMessage                     `json:"knowledgebase_migration,omitempty"`
 	KnowledgebaseSources         []workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
 	CodeLayoutVersion            int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
@@ -1775,6 +1776,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		m.CodeLayoutVersion = prior.CodeLayoutVersion
 		m.SharedKnowledgebase = prior.SharedKnowledgebase
 		m.KnowledgebaseMode = prior.KnowledgebaseMode
+		m.BrainAccess = prior.BrainAccess
 		m.KnowledgebaseMigration = prior.KnowledgebaseMigration
 		m.KnowledgebaseContractHistory = prior.KnowledgebaseContractHistory
 	}

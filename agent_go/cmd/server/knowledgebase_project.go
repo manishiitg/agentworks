@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -44,7 +43,7 @@ func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string
 	for k, v := range args {
 		copy[k] = v
 	}
-	if tool == "manage_knowledgebase_access" && strings.HasSuffix(fmt.Sprint(copy["action"]), "_project") {
+	if tool == "manage_knowledgebase_access" && knowledgebase.IsProjectAction(fmt.Sprint(copy["action"])) {
 		if value, ok := copy["workspace_path"]; ok && value != workspace {
 			return "", &knowledgebase.Error{Code: "FORBIDDEN", Message: "Use the current workflow workspace"}
 		}
@@ -135,7 +134,7 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 			externalError(w, http.StatusForbidden, "FORBIDDEN", "Project access is required.")
 			return
 		}
-		knowledgebaseWriteJSON(w, map[string]any{"manifest_version": project.Version, "shared_knowledgebase": project.Bindings, "can_manage": containsID(project.Owners, claims.UserID) && workflowAccessForClaims(claims) != WorkflowAccessRead})
+		knowledgebaseWriteJSON(w, map[string]any{"manifest_version": project.Version, "brain_access": project.BrainMode(), "shared_knowledgebase": project.Bindings, "can_manage": containsID(project.Owners, claims.UserID) && workflowAccessForClaims(claims) != WorkflowAccessRead})
 		return
 	}
 	args := map[string]any{}
@@ -144,8 +143,8 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 		return
 	}
 	action, _ := args["action"].(string)
-	if action != "bind_project" && action != "unbind_project" {
-		externalError(w, 400, "INVALID_ARGUMENT", "Use bind_project or unbind_project.")
+	if action != "bind_project" && action != "unbind_project" && action != "set_project_access" {
+		externalError(w, 400, "INVALID_ARGUMENT", "Use bind_project, unbind_project or set_project_access.")
 		return
 	}
 	workspace, _ := args["workspace_path"].(string)

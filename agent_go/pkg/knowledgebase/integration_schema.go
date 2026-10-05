@@ -47,5 +47,10 @@ func integrationDefinitions() []ToolDefinition {
 		}
 		defs = append(defs, ToolDefinition{Name: name, InputSchema: obj(required, props), Mutates: true})
 	}
+	defs = append(defs, ToolDefinition{Name: "kb_set_project_access", InputSchema: obj([]any{"workspace_path", "mode", "expected_manifest_version", "request_id"}, map[string]any{
+		"workspace_path": str(), "expected_manifest_version": str(),
+		"mode":       map[string]any{"type": "string", "enum": []any{"off", "read", "folders"}, "description": "off: no Brain access. read: read-only on folders the owner and every output reader can read. folders: only the bound folders, with their read or write access."},
+		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+	}), Mutates: true})
 	return defs
 }

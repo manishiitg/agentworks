@@ -30,6 +30,21 @@ type knowledgeProject struct {
 	Bindings                           []knowledgebase.Binding
 	Audience, Owners, Reserved         []string
 	Shared                             bool
+	// Access is the explicit Brain access setting: "off", "read" or "folders"; empty when never set.
+	Access string
+}
+
+// BrainMode is the project's effective Brain access. An explicit setting wins; otherwise a project with shared
+// bindings (or one migrated to Brain) is "folders", and everything else is "off".
+func (p *knowledgeProject) BrainMode() string {
+	switch p.Access {
+	case "off", "read", "folders":
+		return p.Access
+	}
+	if p.Shared || len(p.Bindings) > 0 {
+		return "folders"
+	}
+	return "off"
 }
 
 func knowledgeHash(v any) string {
@@ -81,6 +96,11 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 	var mode string
 	_ = json.Unmarshal(p.Raw["knowledgebase_mode"], &mode)
 	p.Shared = mode == "shared"
+	if value := p.Raw["brain_access"]; value != nil {
+		if err = json.Unmarshal(value, &p.Access); err != nil || p.Access != "" && p.Access != "off" && p.Access != "read" && p.Access != "folders" {
+			return nil, fmt.Errorf("brain_access must be off, read or folders")
+		}
+	}
 	if kind == common.SessionWorkspaceWorkflow {
 		var manifest WorkflowManifest
 		if err = json.Unmarshal(b, &manifest); err != nil {
@@ -193,9 +213,16 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	if err != nil {
 		return err
 	}
-	originalBindingsHash := knowledgeHash(project.Bindings)
+	mode := project.BrainMode()
+	if mode == "off" {
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Brain access is off for this project."}
+	}
+	originalBindingsHash := knowledgeHash([]any{project.Bindings, mode})
 	policy := &knowledgebase.BindingPolicy{Bindings: append([]knowledgebase.Binding{}, project.Bindings...), Audience: project.Audience}
-	if alias, _ := args["binding_alias"].(string); alias != "" {
+	if mode == "read" {
+		policy.Bindings, policy.ReadAll = nil, true
+	}
+	if alias, _ := args["binding_alias"].(string); alias != "" && !policy.ReadAll {
 		policy.Bindings = nil
 		for _, b := range project.Bindings {
 			if b.Alias == alias {
@@ -226,7 +253,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 		if err != nil {
 			return err
 		}
-		if fresh.ID != project.ID || knowledgeHash(fresh.Bindings) != originalBindingsHash || knowledgeHash(fresh.Audience) != knowledgeHash(policy.Audience) {
+		if fresh.ID != project.ID || knowledgeHash([]any{fresh.Bindings, fresh.BrainMode()}) != originalBindingsHash || knowledgeHash(fresh.Audience) != knowledgeHash(policy.Audience) {
 			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Shared Brain bindings or audience changed; retry under the current configuration."}
 		}
 		return nil
@@ -234,7 +261,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	// Give folder-scoped operations a safe default. Entry/receipt locators are
 	// still checked against every binding by the domain authorizer.
 	action, _ := args["action"].(string)
-	needsFolder := action == "folders" || action == "entries" || action == "search" || action == "status" || action == "inspect" || action == "create" || action == "create_folder"
+	needsFolder := !policy.ReadAll && (action == "folders" || action == "entries" || action == "search" || action == "status" || action == "inspect" || action == "create" || action == "create_folder")
 	if needsFolder && args["folder_id"] == nil && args["folder_path"] == nil {
 		alias, _ := args["binding_alias"].(string)
 		var selected *knowledgebase.Binding
@@ -260,7 +287,7 @@ func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, 
 		}
 		return knowledgebaseGitCall(ctx, service, p, args, &UserClaims{UserID: p.IdentityID, Username: p.IdentityID})
 	}
-	if tool == "manage_knowledgebase_access" && (action == "inspect_project" || action == "bind_project" || action == "unbind_project") {
+	if tool == "manage_knowledgebase_access" && (action == "inspect_project" || action == "bind_project" || action == "unbind_project" || action == "set_project_access") {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
 			return nil, err
 		}
@@ -280,7 +307,7 @@ func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, 
 					return nil, err
 				}
 			}
-			return map[string]any{"manifest_version": project.Version, "shared_knowledgebase": project.Bindings, "audience": project.Audience, "knowledgebase_mode": project.Shared}, nil
+			return map[string]any{"manifest_version": project.Version, "brain_access": project.BrainMode(), "shared_knowledgebase": project.Bindings, "audience": project.Audience, "knowledgebase_mode": project.Shared}, nil
 		}
 		if _, err := service.ReserveIntegrationRequest(ctx, p, tool, args); err != nil {
 			return nil, err
@@ -371,6 +398,9 @@ func knowledgebaseBindProject(ctx context.Context, service *knowledgebase.Servic
 	}
 	if args["expected_manifest_version"] != project.Version {
 		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "The project configuration changed; inspect and retry."}
+	}
+	if args["action"] == "set_project_access" {
+		return knowledgebaseSetProjectAccess(project, args, intentPath)
 	}
 	alias, _ := args["alias"].(string)
 	bindings := []knowledgebase.Binding{}
@@ -517,8 +547,43 @@ func knowledgeRuntimeConfigKey(workspace string) string {
 		return "invalid-knowledge-config"
 	}
 	blocked := workflowkb.LegacyKnowledgeBlocks(base, workspace)
-	if raw["shared_knowledgebase"] == nil && raw["knowledgebase_mode"] == nil && len(blocked) == 0 {
+	if raw["shared_knowledgebase"] == nil && raw["knowledgebase_mode"] == nil && raw["brain_access"] == nil && len(blocked) == 0 {
 		return ""
 	}
-	return knowledgeHash([]any{raw["shared_knowledgebase"], raw["knowledgebase_mode"], blocked})
+	return knowledgeHash([]any{raw["shared_knowledgebase"], raw["knowledgebase_mode"], raw["brain_access"], blocked})
+}
+
+// knowledgebaseSetProjectAccess saves the project's Brain access setting under the same manifest version check and
+// request journal as a binding change. "read" and "folders" never grant anything: the person's and every output
+// reader's folder roles still decide, and "read" cannot write.
+func knowledgebaseSetProjectAccess(project *knowledgeProject, args map[string]any, intentPath string) (any, error) {
+	mode, _ := args["mode"].(string)
+	if mode != "off" && mode != "read" && mode != "folders" {
+		return nil, &knowledgebase.Error{Code: "INVALID_ARGUMENT", Message: "mode must be off, read or folders."}
+	}
+	if project.Shared && mode != "folders" {
+		return nil, fmt.Errorf("this project's knowledge lives in Brain; roll back the migration before turning Brain access off or read-only")
+	}
+	if mode == "read" && len(project.Audience) == 0 {
+		return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "Brain read access requires an explicit output audience."}
+	}
+	value, _ := json.Marshal(mode)
+	project.Raw["brain_access"] = value
+	var intent struct {
+		Hash   string
+		Before string
+		After  string
+		Result map[string]any
+	}
+	intent.Hash = knowledgeHash(args)
+	intent.Before = args["expected_manifest_version"].(string)
+	intent.After = knowledgeHash(project.Raw)
+	intent.Result = map[string]any{"brain_access": mode, "manifest_version": intent.After}
+	if err := knowledgeSavePrivate(intentPath, intent); err != nil {
+		return nil, err
+	}
+	if err := knowledgeProjectSave(project, args["expected_manifest_version"].(string)); err != nil {
+		return nil, err
+	}
+	return intent.Result, nil
 }

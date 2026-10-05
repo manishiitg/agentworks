@@ -237,3 +237,72 @@ func TestKnowledgebaseProjectSetupUsesAuthenticatedToolBinding(t *testing.T) {
 		t.Fatal("child inherited setup")
 	}
 }
+
+// Pins the owner decision for a project's Brain access: Off refuses everything, Read can only read, and Read still
+// stops at a folder that one of the project's output readers cannot read.
+func TestBrainProjectAccessModes(t *testing.T) {
+	service, admin, workspace, folderID := knowledgeIntegrationFixture(t)
+	create := func(folder map[string]any, name string) string {
+		t.Helper()
+		args := map[string]any{"action": "create", "filename": name + ".md", "title": name, "type": "note", "content": name + "-marker", "request_id": "seed-" + name}
+		for key, value := range folder {
+			args[key] = value
+		}
+		entry, err := service.CallTool(t.Context(), admin, "update_knowledgebase", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return knowledgeMap(entry)["entry_id"].(string)
+	}
+	shared := create(map[string]any{"folder_id": folderID}, "shared")
+	// Only the administrator can read this folder; the project's reader (priya) cannot.
+	if _, err := service.Call(t.Context(), admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "Private", "request_id": "private-folder"}); err != nil {
+		t.Fatal(err)
+	}
+	private := create(map[string]any{"folder_path": "Private"}, "private")
+
+	parent := "brain-modes"
+	common.SetSessionWorkflowPath(parent, workspace)
+	defer common.ClearSessionShellConfig(parent)
+	_, executors, _ := createKnowledgebaseTools("admin", parent, workspace)
+	read := executors["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	update := executors["update_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	run := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, parent), "admin")
+
+	rootCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
+	rootCtx = executor.WithSessionID(rootCtx, parent)
+	rootCtx = context.WithValue(rootCtx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{"admin", workspace, parent})
+	rootCtx = context.WithValue(rootCtx, common.ChatSessionIDKey, parent)
+	setMode := func(mode string) {
+		t.Helper()
+		out, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", map[string]any{"action": "inspect_project", "workspace_path": workspace})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var inspected map[string]any
+		if err := json.Unmarshal([]byte(out), &inspected); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": mode, "expected_manifest_version": inspected["manifest_version"], "request_id": "mode-" + mode}); err != nil {
+			t.Fatal("set", mode, err)
+		}
+	}
+
+	if _, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err == nil {
+		t.Fatal("a project with no Brain access read the Brain")
+	}
+	setMode("read")
+	if out, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err != nil || !strings.Contains(out, "shared-marker") {
+		t.Fatalf("read access could not read: %s %v", out, err)
+	}
+	if _, err := update(run, map[string]any{"action": "create", "folder_id": folderID, "filename": "denied.md", "title": "Denied", "type": "note", "content": "denied", "request_id": "read-mode-write"}); err == nil {
+		t.Fatal("read access wrote to the Brain")
+	}
+	if _, err := read(run, map[string]any{"action": "read", "entry_id": private}); err == nil {
+		t.Fatal("read access reached a folder an output reader cannot read")
+	}
+	setMode("off")
+	if _, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err == nil {
+		t.Fatal("turning Brain off did not stop reads")
+	}
+}

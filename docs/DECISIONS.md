@@ -26,6 +26,14 @@ exclude completed recordings. Why: users need connection health at a glance,
 without mistaking a different browser or a replay for their selected connection.
 Ticket: [PLAT-542](bugs/pulse_platform/frontend-chat/plat-542.md).
 
+### 2026-10-05 — A project's Brain access is Off, Read or Folders
+
+A workflow, Crew or Code project turns Brain on or off with one setting. Read is the
+whole Brain, read-only; writing is only through named folders, each read or write.
+The person's folder roles and every output reader's access still bound both, and
+Read can never write. Why: "just enable it" without letting an admin's workflow edit
+every folder. [PLAT-543](bugs/pulse_platform/learnings-knowledge/plat-543.md).
+
 ### 2026-10-05 — Vault and Brain are core products
 
 Vault (`mcp-gateway`) and Brain (`knowledgebase`) are on in every installation,

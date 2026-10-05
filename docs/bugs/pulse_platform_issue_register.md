@@ -2728,3 +2728,7 @@ change what a workflow does while still allowing it to report success.
 ## Vault and Brain are core products, on in every installation — PLAT-541
 
 [PLAT-541](pulse_platform/security-sandbox/plat-541.md), P2, on main, not deployed: `AGENT_PRODUCTS` no longer switches off Vault or Brain; accounts and roles decide access; every active account may use Brain through the MCP, the app tab needs the `knowledgebase` product.
+
+## Brain access setting for projects (Off, Read, Folders) — PLAT-543
+
+[PLAT-543](pulse_platform/learnings-knowledge/plat-543.md), P2: backend on main, not deployed (`brain_access`, `set_project_access`); UI, Code projects and the live check are left.

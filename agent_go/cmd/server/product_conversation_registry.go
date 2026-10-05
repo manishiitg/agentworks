@@ -718,6 +718,7 @@ type productProjectManifest struct {
 	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string          `json:"knowledgebase_mode,omitempty"`
+	BrainAccess                  string          `json:"brain_access,omitempty"`
 	KnowledgebaseMigration       json.RawMessage `json:"knowledgebase_migration,omitempty"`
 	SchemaVersion                int             `json:"schema_version"`
 	Product                      string          `json:"product,omitempty"`
@@ -915,6 +916,7 @@ func resolveProductProjectBindingInRoot(
 				manifest.Triggers = runtimeManifest.Triggers
 				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
 				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+				manifest.BrainAccess = runtimeManifest.BrainAccess
 				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
 				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 				manifest.WorkflowContextPaths = runtimeManifest.WorkflowContextPaths

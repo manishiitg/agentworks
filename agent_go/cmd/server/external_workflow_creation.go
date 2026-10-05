@@ -36,7 +36,7 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 	}
 	// Creation cannot bypass the separate host-folder approvals or KB/project
 	// binding checks. Empty fields from exported manifests are harmless.
-	for _, field := range []string{"folder_access", "folder_access_requests", "shared_knowledgebase", "knowledgebase_sources", "crew_attachments", "workflow_context_paths", "knowledgebase_contract_history", "knowledgebase_migration"} {
+	for _, field := range []string{"folder_access", "folder_access_requests", "shared_knowledgebase", "knowledgebase_sources", "crew_attachments", "workflow_context_paths", "knowledgebase_contract_history", "knowledgebase_migration", "brain_access"} {
 		for key, value := range workflow {
 			if !strings.EqualFold(key, field) {
 				continue

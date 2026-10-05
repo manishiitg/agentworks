@@ -17,6 +17,9 @@ type Binding struct {
 type BindingPolicy struct {
 	Bindings []Binding
 	Audience []string
+	// ReadAll is the project's "Read" Brain access: read-only on any folder the principal can read, and only where every
+	// output reader can read it too. It never allows a write and is exclusive with Bindings.
+	ReadAll bool
 }
 
 var bindingAlias = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
@@ -83,6 +86,9 @@ func (s *Service) boundRole(p Principal, folder string) int {
 		if !s.IdentityActive(context.Background(), id) || s.effectiveRaw(Principal{IdentityID: id}, folder) < roleReader {
 			return 0
 		}
+	}
+	if policy.ReadAll {
+		return roleReader
 	}
 	role := 0
 	for _, b := range policy.Bindings {
