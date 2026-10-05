@@ -13,4 +13,6 @@
 
 **Done (UI):** a Brain tab beside Vault under Integrations → Tools & secrets for workflows and Crews (Off / Read / Read & write, folders only for Read & write; `ProjectKnowledgebasePanel`). The "Connected work" tab is gone: its content (other workflows' knowledge, external folders, legacy knowledge sources, attached-folder grants) is now Integrations → "Folders & workflows" for workflows, Crews and Code. Legacy sources are labelled "Legacy knowledge sources". Brain has its own mark and a findable Ctrl+K entry.
 
-**Left:** Code projects (the backend refuses them, so the Brain tab is hidden for Code); the agent prompt text that explains the modes; an end-to-end check on RTS (a project on Read reads and cannot write; Off sees nothing; a bound-folder write still works; a scheduled run).
+**Left:** Code projects (the backend refuses them, so the Brain tab is hidden for Code); the agent prompt text that explains the modes; a bound-folder write and a scheduled run on RTS.
+
+**Checked live on RTS (2026-10-05):** `set_project_access` Off to Read to Off through the MCP on `rtssprinttracking` (manifest versions chain correctly, state restored); in Read the agent's tools were browse, read, backup and access, with no `update_knowledgebase`; listing returned `NOT_FOUND` because the root folder is not readable by every output reader, which is the audience rule working (an empty or ungranted Brain gives an error rather than an empty list).

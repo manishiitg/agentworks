@@ -13,3 +13,5 @@
 **Known follow-ups from the PR 268 review (not blockers):** default MCP consent includes Brain write (role-bounded); the backup token is stored with the host key, not in Vault; a Builder chat getting the Brain tools has no test.
 
 **Left:** everything above.
+
+**Pilot, 2026-10-05 (rtslatency):** Brain folders `RTS` and `RTS/Latency` created; grants set (admin Owner, yoav and laxmi Reader, the workflow's owner and readers). `migration_preview` then `migration_import` ran through the MCP: 6 files imported (`context/context.md` and five notes, all read back through Brain), `notes/_index.json` skipped (unsupported), source files untouched. **Not done:** cutover. Three workflows still read this one through the old path and must be rebound first: `automationtesting` (alias `rtslatency`), `rtsaws` (`rtslatency`), `rtsprreviweer` (`latency`); the schedules must be paused around cutover. Next: do the same for rtssprinttracking, then rtsaws, automationtesting, rtsprreviweer.
