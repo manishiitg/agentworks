@@ -187,20 +187,34 @@ func (api *StreamingAPI) conversationTurnDispatchPending(sessionID string) bool 
 }
 
 func (api *StreamingAPI) conversationTurnOccupied(sessionID string) bool {
+	return api.conversationTurnOccupiedBy(sessionID) != ""
+}
+
+// conversationTurnOccupiedBy names what occupies the session ("" when idle).
+func (api *StreamingAPI) conversationTurnOccupiedBy(sessionID string) string {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
-		return false
+		return ""
 	}
-	if api.sessionTurnInProgress(sessionID) || api.conversationTurnDispatchPending(sessionID) ||
-		api.hasActiveTurnCancel(sessionID) || api.storedAgentTurnInProgress(sessionID) {
-		return true
+	switch {
+	case api.sessionTurnInProgress(sessionID):
+		return "input_lane"
+	case api.conversationTurnDispatchPending(sessionID):
+		return "dispatch_pending"
+	case api.hasActiveTurnCancel(sessionID):
+		return "active_turn_cancel"
+	case api.storedAgentTurnInProgress(sessionID):
+		return "stored_agent_turn"
 	}
 	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained.ActiveTurnID() != "" {
-		return true
+		return "retained_session_turn"
 	}
 	api.retainedMainTurnsMu.Lock()
 	_, retainedRunning := api.retainedMainTurns[sessionID]
 	api.retainedMainTurnsMu.Unlock()
-	return retainedRunning
+	if retainedRunning {
+		return "retained_main_turn"
+	}
+	return ""
 }
 
 func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, sessionID string) (queuedConversationTurn, bool) {
@@ -285,7 +299,17 @@ func (api *StreamingAPI) dropStartedConversationTurns(sessionID string) int {
 }
 
 func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
-	if api == nil || strings.TrimSpace(sessionID) == "" || api.conversationTurnOccupied(sessionID) {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
+		// A running claimed turn kicks again when it ends. Any other occupant
+		// (lane, cancel handle, stored agent, retained turn) releases without a
+		// kick of its own, or just after the kick that saw it: watch the session
+		// so queued messages cannot wait forever (provider switch, 2026-10-05).
+		if by != "dispatch_pending" {
+			api.watchOccupiedConversationTurnQueue(sessionID, by)
+		}
 		return
 	}
 	api.conversationTurnQueueMu.Lock()
@@ -315,6 +339,45 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		return
 	}
 	go api.executeQueuedConversationTurn(turn)
+}
+
+const conversationTurnQueueWatchInterval = 2 * time.Second
+
+// watchOccupiedConversationTurnQueue re-checks a session whose queued messages
+// found it occupied, and kicks the queue once the occupant is gone. One watcher
+// per session; it stops when nothing is queued for the session any more.
+func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant string) {
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueWatching == nil {
+		api.conversationTurnQueueWatching = make(map[string]bool)
+	}
+	if api.conversationTurnQueueWatching[sessionID] || api.conversationTurnQueueOwners[sessionID] == "" {
+		api.conversationTurnQueueMu.Unlock()
+		return
+	}
+	api.conversationTurnQueueWatching[sessionID] = true
+	api.conversationTurnQueueMu.Unlock()
+	logTurnQueue("session %s occupied by %s; queued messages wait and the queue is re-checked every %s", sessionID, occupant, conversationTurnQueueWatchInterval)
+	go func() {
+		ticker := time.NewTicker(conversationTurnQueueWatchInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			api.conversationTurnQueueMu.Lock()
+			queued := api.conversationTurnQueueOwners[sessionID] != ""
+			api.conversationTurnQueueMu.Unlock()
+			if !queued {
+				break
+			}
+			if api.conversationTurnOccupiedBy(sessionID) != "" {
+				continue
+			}
+			break
+		}
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueWatching, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(sessionID)
+	}()
 }
 
 func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTurn) {

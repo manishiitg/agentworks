@@ -1,3 +1,7 @@
+## Messages queued after a provider switch never ran — PLAT-492
+
+[PLAT-492](pulse_platform/chat-reliability/plat-492.md), P0, fixed on main (deploy pending). The turn queue only started a waiting message when it was kicked at an idle moment; after a provider change (which queues the message, PLAT-425) a missed kick left it waiting forever. A per-session watcher now re-checks until the session is idle; live check `mcp-agent test provider-switch-e2e`.
+
 ## Built-in CLI shell has platform secrets in its env and the app Docker socket — PLAT-491
 
 [PLAT-491](pulse_platform/security-sandbox/plat-491.md), P1, open. Found by a read-only probe on Excellence: the Crew's built-in shell runs as the app account (member of every slot group), can print the Supabase service-role key and gog keyring password from its environment by name, and can use the app's rootless Docker.

@@ -413,6 +413,19 @@ type codingAgentQueryResponse struct {
 }
 
 func (c *codingAgentChatE2EClient) startQueryWithResponse(ctx context.Context, sessionID, provider, model, query string) (codingAgentQueryResponse, time.Duration, error) {
+	resp, latency, err := c.startQueryWithResponseRaw(ctx, sessionID, provider, model, query)
+	if err != nil {
+		return resp, latency, err
+	}
+	if resp.Status != "started" && resp.Status != "workflow_started" && resp.Status != "live_input_delivered" {
+		return resp, latency, fmt.Errorf("unexpected query status %q message=%q", resp.Status, resp.Message)
+	}
+	return resp, latency, nil
+}
+
+// startQueryWithResponseRaw sends the query and returns the server's answer
+// without judging its status (a queued message answers "accepted").
+func (c *codingAgentChatE2EClient) startQueryWithResponseRaw(ctx context.Context, sessionID, provider, model, query string) (codingAgentQueryResponse, time.Duration, error) {
 	payload := map[string]interface{}{
 		"query":    query,
 		"provider": provider,
@@ -449,9 +462,6 @@ func (c *codingAgentChatE2EClient) startQueryWithResponse(ctx context.Context, s
 		return resp, time.Since(startedAt), err
 	}
 	deliveryLatency := time.Since(startedAt)
-	if resp.Status != "started" && resp.Status != "workflow_started" && resp.Status != "live_input_delivered" {
-		return resp, deliveryLatency, fmt.Errorf("unexpected query status %q message=%q", resp.Status, resp.Message)
-	}
 	if resp.QueryID == "" {
 		return resp, deliveryLatency, fmt.Errorf("server returned empty query_id")
 	}

@@ -648,6 +648,7 @@ type StreamingAPI struct {
 	conversationTurnQueueMu        sync.Mutex
 	conversationTurnQueueOwners    map[string]string
 	conversationTurnQueueDraining  map[string]bool
+	conversationTurnQueueWatching  map[string]bool
 	conversationTurnQueueWaiters   map[string]chan queuedConversationTurnResult
 	conversationTurnQueueCallbacks map[string]func(event *unifiedevents.AgentEvent)
 	internalTurnQueueRead          func(context.Context, string) (string, bool, error)
