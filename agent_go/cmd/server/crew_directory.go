@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"io"
 	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -16,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew directory (Crew Run mode): every crew has a single owner and is
@@ -220,6 +223,58 @@ func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *h
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkspacePath < rows[j].WorkspacePath })
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
+}
+
+// POST /api/agent-profiles/{id}/projects/reserve: where the UI should create a new Crew (PLAT-442). With the shared-root
+// switch on, the server picks Crew/<slug>-<id8>, registers the caller as owner and gives the folder its owner's slot
+// group, so a Crew the browser then fills never needs a later move. Switch off, or another product: shared=false and
+// the browser creates in its own tree as before.
+func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	profileID := strings.TrimSpace(mux.Vars(r)["id"])
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" || profileID == "" || api == nil || api.agentProfiles == nil {
+		writeAgentProfileError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
+	if err != nil || !userAllowedProduct(claims, profile.Product) {
+		writeAgentProfileError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) || !crewSharedRootEnabled() {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
+		return
+	}
+	if status, msg := externalCrewAuthorGate(claims); status != 0 {
+		writeAgentProfileError(w, status, msg)
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil || strings.TrimSpace(body.Title) == "" {
+		writeAgentProfileError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	id := uuid.NewString()
+	folder := slugifyCrewTitle(body.Title) + "-" + id[:8]
+	workspacePath := workspaceref.SharedCrewRoot + "/" + folder
+	if err := defaultProjectOwners().Register(projectOwnerRecord{
+		Product: profile.ID, Folder: folder, OwnerID: claims.UserID, ProjectID: id, Shared: true,
+	}); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "register crew owner: "+err.Error())
+		return
+	}
+	if err := createWorkspaceFolder(r.Context(), workspacePath); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "create crew folder: "+err.Error())
+		return
+	}
+	ensureSharedCrewFolderAccess(folder, claims.UserID)
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": workspacePath})
 }
 
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {

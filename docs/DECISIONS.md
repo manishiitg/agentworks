@@ -17,6 +17,10 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+## 2026-10-05: new Crews are always created at `Crew/<folder>`
+
+Decided by the owner so Crews never need a later manual move. The server reserves the path and registers the owner before the UI writes the files, and `AGENTWORKS_CREW_SHARED_ROOT=on` is set on every server. Ticket: PLAT-442.
+
 ## Decisions
 
 ### 2026-10-05 — Local Google apps UI offers account access without incoming-mail setup
