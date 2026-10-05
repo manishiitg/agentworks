@@ -7,6 +7,7 @@ own.
 |---|---|---|
 | Have a workflow or an MCP/CLI tool use a Crew | **Functions** (`ask` or a typed function) | The caller's own continuing conversation with that Crew |
 | Have another Crew use a Crew | **Functions** (`ask` or a typed function) | Same owner: receiving Crew's main chat. Different owner: a separate continuing chat for the calling person |
+| Have Code call a Crew, or an authorized workflow/Crew/Code call a private Code project | **Functions** | A separate continuing chat in the receiving project, keyed by its internal trigger |
 | Run something on a timer | **Schedule** | The Crew's main chat, or the schedule's own conversation |
 | Let an outside system (GitHub, CI) start work | **Webhook** | The Crew's main chat, or the webhook's own conversation |
 
@@ -97,6 +98,13 @@ Crews owned by the same person continue in the receiving Crew's main chat.
 A cross-owner call has its own continuing chat keyed by the trigger and calling
 person. A separate chat retains the target Crew's workspace and capabilities;
 it separates history rather than copying the project into a new workspace.
+
+Code is excluded from the same-owner Crew-to-Crew main-chat rule. Code calling
+a Crew, and calls targeting a private Code project, use an isolated continuing
+chat even when both projects have the same owner. Subsequent calls through the
+same binding reuse that chat. Private Code targets also require the caller's
+actual identity and source ownership to pass the Code authorization checks;
+workflow edit access or platform admin status alone does not grant access.
 
 The conversation is set up automatically on the first call. The Crew's
 **Automation → Functions** tab lists these under **Callers**; **Disconnect**
