@@ -82,6 +82,10 @@ usable node_modules if the install fails.
 
 [PLAT-496](pulse_platform/step-execution/plat-496.md), open: agents report "read-only" without trying to write; the platform allowed the writes each time.
 
+## Released desktop app v1.25.133 crashes at startup — PLAT-498
+
+[PLAT-498](pulse_platform/security-sandbox/plat-498.md), open: the package lacks `lib/` (fixed on main, not released); the release script was stale after the repo rename (fixed).
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

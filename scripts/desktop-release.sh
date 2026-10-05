@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="manishiitg/coding-agent-loop"
+REPO="manishiitg/agentworks"
 GH_USER="manishiitg"
 MAIN_BRANCH="main"
 WORKFLOW_NAME="Desktop DMG"
@@ -113,6 +113,10 @@ fi
 
 origin_url="$(git remote get-url origin)"
 case "$origin_url" in
+  git@github.com:manishiitg/agentworks.git | \
+    https://github.com/manishiitg/agentworks.git | \
+    https://github.com/manishiitg/agentworks | \
+    ssh://git@github.com/manishiitg/agentworks.git | \
   git@github.com:manishiitg/coding-agent-loop.git | \
     https://github.com/manishiitg/coding-agent-loop.git | \
     https://github.com/manishiitg/coding-agent-loop | \
