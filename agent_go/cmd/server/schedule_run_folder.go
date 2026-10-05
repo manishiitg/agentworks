@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"io/fs"
 	"os"
 	"regexp"
@@ -90,6 +91,14 @@ func allocateImmutableRunFolder(workspace, runID, suffix, markerName string) (st
 		}
 		if err != nil {
 			return "", err
+		}
+		// With slots on, a step runs as the owner's slot account (a member of the host's shared group, which the
+		// setgid parent folder passes on): the run folder must be group-writable or its code steps cannot write
+		// their outputs (PLAT-502). Without slots it stays owner-only.
+		if slots.Enabled() {
+			if err := root.Chmod("runs/"+folder, 0o770|os.ModeSetgid); err != nil {
+				return "", err
+			}
 		}
 		marker, openErr := root.OpenFile("runs/"+folder+"/"+markerName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if openErr != nil {

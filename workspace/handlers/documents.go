@@ -125,7 +125,7 @@ func CreateDocument(c *gin.Context) {
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0775); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create directory",
@@ -1086,7 +1086,7 @@ func UpdateDocument(c *gin.Context) {
 		fileExists = false
 		// Create directory if it doesn't exist
 		dir := filepath.Dir(filePath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0775); err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 				Success: false,
 				Message: "Failed to create directory",
@@ -1329,7 +1329,7 @@ func MoveDocument(c *gin.Context) {
 
 	// Create destination directory if it doesn't exist
 	destDir := filepath.Dir(destinationFilePath)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0775); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create destination directory",
@@ -1562,7 +1562,7 @@ func CreateFolder(c *gin.Context) {
 	}
 
 	// Create the folder
-	if err := os.MkdirAll(folderPath, 0755); err != nil {
+	if err := os.MkdirAll(folderPath, 0775); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create folder",
@@ -2088,7 +2088,7 @@ func UploadFile(c *gin.Context) {
 	}
 
 	// Create folder path
-	if err := os.MkdirAll(folderPath, 0755); err != nil {
+	if err := os.MkdirAll(folderPath, 0775); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create folder",

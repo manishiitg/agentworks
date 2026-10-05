@@ -1,6 +1,6 @@
 # PLAT-502: webhook/scheduled run folders are owner-only, so a code step running as a slot cannot write its outputs
 
-**State:** open, diagnosed, not fixed. P1 for slotted hosts (RTS and Confida show it; Excellence had no recent runs to compare).
+**State:** fixed on main (not deployed, not yet verified with a live webhook run). P1 for slotted hosts (RTS and Confida show it; Excellence had no recent runs to compare).
 
 **Found:** 2026-10-05, RTS, workflow `rtsprreviweer`, triggered by SDE Private calling the SDE Crew. The first step `pr-eligibility-gate` finishes its logic, then fails with `PermissionError: [Errno 13] Permission denied: '.../runs/iteration-744-hook/default/execution/pr-eligibility-gate/route_selection.json'` (iteration-743 the first time).
 
@@ -13,4 +13,6 @@
 1. Server: after allocating, set the run folder to `2770` (group `slotshared`/`cfshared` already inherited via setgid); and make the workspace service create folders under a run folder group-writable on slotted hosts (it uses literal 0755 under a 0027 umask, so a mode change alone is not enough).
 2. Stopgap on a host: `chmod -R g+rwX` on a workflow's `runs/`. Helps existing folders only; every new webhook run is created owner-only again.
 
-**Left:** choose and build the fix; check with a real webhook run on RTS (the `rtsprreviweer` hook is the repro); then Confida.
+**Done (option 1):** `allocateImmutableRunFolder` sets the new run folder `2770` when slots are on; the workspace service's folder creation in `workspace/handlers/documents.go` asks for `0775` instead of `0755` (slots-on umask 007 gives `0770`; hosts without slots keep their modes). The workspace service's own umask is 007 with slots on (`workspace/slots/umask_linux.go`), which is why 0755 became 0750.
+
+**Left:** deploy RTS and check with a real webhook run on RTS (new `iteration-N-hook` folder and its `default/execution/<step>` folders must show group rwx, and `pr-eligibility-gate` must write `route_selection.json`) (the `rtsprreviweer` hook is the repro); then Confida.
