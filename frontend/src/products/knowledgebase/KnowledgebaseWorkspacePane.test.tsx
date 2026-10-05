@@ -22,7 +22,7 @@ async function mount() {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanups.push(() => act(() => root.unmount()))
   const onAsk = vi.fn()
-  const render = async (props: Partial<React.ComponentProps<typeof KnowledgebaseWorkspacePane>> = {}) => { await act(async () => { root.render(<KnowledgebaseWorkspacePane view="library" folder="Payments" onFolder={() => {}} onAsk={onAsk} revision={0} isAdmin={false} {...props} />) }) }
+  const render = async (props: Partial<React.ComponentProps<typeof KnowledgebaseWorkspacePane>> = {}) => { await act(async () => { root.render(<KnowledgebaseWorkspacePane view="library" folder="Payments" onFolder={() => {}} onAsk={onAsk} revision={0} {...props} />) }) }
   await render()
   return { host, render, onAsk }
 }

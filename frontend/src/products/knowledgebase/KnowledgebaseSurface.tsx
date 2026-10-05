@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { BookOpen, MessageCircle, Plug, RefreshCw, ShieldCheck } from 'lucide-react'
+import { BookOpen, MessageCircle, RefreshCw, ShieldCheck } from 'lucide-react'
 import ChatArea, { type ChatAreaRef } from '../../components/ChatArea'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -24,7 +24,7 @@ import { KnowledgebaseModelControl } from './KnowledgebaseModelControl'
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
-const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'connect', label: 'Connect', icon: Plug }] as const
+const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }] as const
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
 export function KnowledgebaseSurface() {
@@ -135,7 +135,7 @@ export function KnowledgebaseSurface() {
             {tabId && <KnowledgebaseModelControl tabId={tabId} />}
           </>}
           divider={<WorkspaceSplitDivider ratio={ratio} onPointerDown={startResize} onStep={delta => changeRatio(ratio + delta)} className="md:row-start-2"><WorkspaceSplitCollapseControls onCollapseChat={() => setCollapsed('chat')} onCollapseWorkspace={() => setCollapsed('workspace')} /></WorkspaceSplitDivider>}
-          workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} revision={revision} isAdmin={bootstrap.is_admin} />}
+          workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} revision={revision} />}
         /></div>}
       </div>
     </div>

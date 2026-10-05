@@ -59,3 +59,11 @@ activity operation. Content/access/commit/push/reconciliation no longer create
 activity records or an activity directory. Existing files are not deleted.
 Recovery journals, request outcomes and backup receipts remain intact. Full
 domain race tests and focused server/frontend checks validate this removal.
+
+## Owner simplification: remove dedicated Connect
+
+Removed the KB Connect tab, panel and panel-specific tests. The app now has
+Library and Access; connection management uses the existing global MCP/OAuth
+flow and shared endpoint. No additional MCP server is needed. KB scope and
+folder authorization remain enforced. TypeScript and focused KB frontend checks
+validate the remaining views.

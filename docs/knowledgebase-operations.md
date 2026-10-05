@@ -1,7 +1,7 @@
 # Knowledge Base MVP operations
 
 Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
-shows access and connection settings. Its chat manages folder access.
+shows content and access settings. Its chat manages folder access.
 Content saves and explicit Git backups happen through MCP, including in Crews,
 Code and workflows. An authorized reader sees a successful save immediately.
 
@@ -33,7 +33,9 @@ embedded in remote URLs. The product never returns credentials to connected agen
 
 ## Connections
 
-Create and revoke separate connections in Connect. `knowledgebase:read` admits the
+Manage connections through the platform's global MCP connection settings.
+Knowledge Base uses the same `/api/external/v1/mcp` endpoint; there is no separate
+KB Connect tab or server. `knowledgebase:read` admits the
 reader tools; `knowledgebase:write` additionally admits save and backup tools.
 Write connections carry both scopes.
 Optional folder caps further restrict the identity's current grants. Omitting caps

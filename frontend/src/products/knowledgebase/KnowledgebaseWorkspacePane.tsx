@@ -4,11 +4,10 @@ import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess, type Knowle
 import { KnowledgebaseFolderTree } from './KnowledgebaseFolderTree'
 import { KnowledgebaseReader, backupLabel } from './KnowledgebaseReader'
 import { KnowledgebaseAccessPanel } from './KnowledgebaseAccessPanel'
-import { KnowledgebaseConnectPanel } from './KnowledgebaseConnectPanel'
 
-export type KnowledgebaseView = 'library' | 'access' | 'connect'
+export type KnowledgebaseView = 'library' | 'access'
 const input = 'rounded-md border border-border bg-background px-2.5 py-2 text-xs'
-export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision, isAdmin }: { view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number; isAdmin: boolean }) {
+export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision }: { view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number }) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [type, setType] = useState('')
@@ -97,7 +96,6 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
         {view === 'library' && selectedId && (reading ? <p className="p-6 text-sm text-muted-foreground">Loading entry…</p> : read ? <KnowledgebaseReader read={{ ...read, entry: { ...read.entry, backup_status: backup?.configured === false ? 'not_configured' : backupStatuses.get(read.entry.entry_id) || read.entry.backup_status } }} onBack={() => setSelectedId(undefined)} /> : <div className="p-6"><button type="button" onClick={() => setSelectedId(undefined)} className="mb-3 text-xs text-primary">Back to library</button><p role="alert" className="text-sm text-destructive">{readError || 'This entry is no longer available.'}</p></div>)}
         {loading && view === 'access' && !access && <p className="p-6 text-sm text-muted-foreground">Loading…</p>}
         {view === 'access' && access && <KnowledgebaseAccessPanel access={access} onAsk={onAsk} onFolder={onFolder} />}
-        {view === 'connect' && <KnowledgebaseConnectPanel folder={folder} isAdmin={isAdmin} identities={access?.identities || []} onAsk={onAsk} />}
         {error && <p role="alert" className="m-5 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       </main>
     </div>

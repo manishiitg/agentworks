@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Knowledge Base uses global MCP connection management — PLAT-496
+
+Owner decision: remove the dedicated KB Connect tab and panel. The app has Library and Access. Existing global MCP/OAuth connection management owns the connection to `/api/external/v1/mcp`; explicit KB scopes and live folder grants remain enforced. Code: `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base MVP omits Activity tracking — PLAT-496
 
 Owner decision: remove Activity from frontend and backend for now. The product has Library, Access and Connect; there is no activity endpoint, tool, or event writer. Mutation journals, request deduplication and backup receipts remain correctness records. Existing development activity files are left untouched but unused. Code: `pkg/knowledgebase`, `knowledgebase_routes.go`, `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
