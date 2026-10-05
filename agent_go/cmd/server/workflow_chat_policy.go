@@ -86,8 +86,17 @@ func (p workflowChatPolicy) sessionKey() string {
 	if roleOrigin == "pulse" {
 		roleOrigin = "scheduled"
 	}
+	// An auto-notification is a message into the same interactive chat. As its own role it threw the
+	// coding CLI's session away whenever a notification and a typed message alternated, so the chat
+	// kept showing "Conversation restored" (Upwork chat, 2026-10-05). The capability set below still
+	// starts a fresh session if a notification turn ever gets different tools.
+	if roleOrigin == "notification" {
+		roleOrigin = "interactive"
+	}
 	identity := p.Mode + "|" + roleOrigin + "|" + strings.Join(names, ",")
-	if p.KnowledgeKey != "" {identity += "|knowledge:"+p.KnowledgeKey}
+	if p.KnowledgeKey != "" {
+		identity += "|knowledge:" + p.KnowledgeKey
+	}
 	if p.ProductProfileID != "" {
 		identity += "|profile:" + p.ProductProfileID
 	}

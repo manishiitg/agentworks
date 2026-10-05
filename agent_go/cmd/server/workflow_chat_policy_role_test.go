@@ -101,3 +101,28 @@ func TestRetiredGeneralChatIsRefusedOnlyForInteractiveProfilelessChat(t *testing
 		}
 	}
 }
+
+// An auto-notification and a typed message in the same chat are one role. They used to differ by origin,
+// so each switch between them threw the coding CLI's session away and the chat showed "Conversation
+// restored" again (Upwork chat, 2026-10-05: a browser-extension notice, then the owner's message).
+func TestAutoNotificationKeepsTheInteractiveNativeConversation(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		typed := resolveWorkflowChatPolicy("chat-1", QueryRequest{}, nil, readOnly)
+		notice := resolveWorkflowChatPolicy("chat-1", QueryRequest{IsAutoNotification: true}, nil, readOnly)
+		if notice.Origin != "notification" {
+			t.Fatalf("origin = %q, want notification (provenance is kept)", notice.Origin)
+		}
+		if typed.sessionKey() != notice.sessionKey() {
+			t.Fatalf("readOnly=%v: a notification and a typed message must share the role key", readOnly)
+		}
+		if chatPolicyRoleRequiresReconnect(true, typed.sessionKey(), notice.sessionKey(), true, nil) {
+			t.Fatalf("readOnly=%v: switching between a notification and a typed message must not reconnect", readOnly)
+		}
+	}
+	// A real capability difference still reconnects.
+	notice := workflowChatPolicy{Mode: "builder", Origin: "notification", Capabilities: map[string]bool{"authoring": true}}
+	narrower := workflowChatPolicy{Mode: "builder", Origin: "interactive", Capabilities: map[string]bool{}}
+	if !chatPolicyRoleRequiresReconnect(true, notice.sessionKey(), narrower.sessionKey(), true, nil) {
+		t.Fatal("different capabilities must still reconnect")
+	}
+}
