@@ -177,6 +177,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", err.Error())
 			return
 		}
+		if t.Allows("vault:manage") && !vaultAdminActive(c.UserID) {
+			externalError(w, 403, "forbidden", "vault:manage requires an active Vault administrator.")
+			return
+		}
 		if t.Allows("code:review") && !currentUserCanReviewCode(r) {
 			externalError(w, 403, "forbidden", "code:review is for admins and Code reviewers.")
 			return
@@ -266,6 +270,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
 	}
+	if isExternalVaultTool(tool.Name) {
+		return vaultAdminActive(c.UserID) && (c.AccessToken == nil || c.AccessToken.Allows("vault:manage"))
+	}
 	// Code review tools exist only for admins and Code reviewers, and a token
 	// also needs code:review; both are re-checked on every call.
 	if isExternalCodeReviewTool(tool.Name) {
@@ -314,7 +321,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("workflows:read")
 	case "get_agent_context", "list_guidance_topics", "get_guidance_topic":
 		// Canonical server-owned guidance carries no workflow content.
-		return reads
+		return reads || t.Allows("vault:manage")
 	case "list_workflow_knowledge", "read_workflow_knowledge":
 		// Workflow-authored learnings, notes, and skills are workflow content.
 		return t.Allows("files:read")

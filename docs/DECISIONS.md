@@ -2854,3 +2854,7 @@ exited after the release went live left it behind and pinned the release (14 GB 
   API key) and `ALLOW_PERSONAL_PROVIDER_CONNECTIONS` is not set
   (`personalProviderConnectionsLocked`, `provider_connections.go`). It is a
   server setting with no UI switch, and the screen does not say who can change it.
+
+### 2026-10-05 — Vault administration through platform MCP
+
+The main platform MCP catalog exposes Vault MCP setup/policies, groups/membership, and secret-name permissions with `vault:manage`. Discovery and execution require a live active Vault administrator; local single-user mode uses its administrator account, while SSO follows live roles. OAuth/PAT scopes are explicit and older grants are not automatically expanded. Management reuses Vault handlers and does not grant runtime authority or return secret values. The separate Vault MCP endpoint remains user/group scoped for upstream execution.

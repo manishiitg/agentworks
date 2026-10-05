@@ -53,7 +53,15 @@ func (s *mcpOAuthStore) DecideCLIDevice(ctx context.Context, verificationCode st
 	if approve {
 		status = "approved"
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE cli_devices SET status=?,user_id=?,username=?,email=?,provider=? WHERE verification_hash=? AND status='pending' AND expires_at>?`, status, user.UserID, user.Username, user.Email, user.Provider, mcpOAuthHash(verificationCode), time.Now().Unix())
+	requested, err := s.CLIDeviceRequest(ctx, verificationCode)
+	if err != nil {
+		return err
+	}
+	scopes, err := json.Marshal(mcpOAuthScopesFor(user, requested))
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE cli_devices SET status=?,user_id=?,username=?,email=?,provider=?,scopes=? WHERE verification_hash=? AND status='pending' AND expires_at>?`, status, user.UserID, user.Username, user.Email, user.Provider, string(scopes), mcpOAuthHash(verificationCode), time.Now().Unix())
 	if err != nil {
 		return err
 	}

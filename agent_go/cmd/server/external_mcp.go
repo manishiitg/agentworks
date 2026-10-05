@@ -104,9 +104,14 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
 		// execute_step's presence proves this connection runs.
-		if tool.Name == "execute_step" {
+		if tool.Name == "execute_step" || isExternalVaultTool(tool.Name) {
 			instructions = externalMCPInstructions
 			break
+		}
+	}
+	for _, tool := range allowed {
+		if tool.Name == "manage_vault_access" {
+			instructions += " Vault management is authorized for this administrator via vault:manage: use manage_vault_access for MCP connections and immediate tool/regex permissions, manage_vault_groups for groups/members, and manage_vault_secret_access for secret names and group grants. These are global tools and need no workflow_id. Regex rules require human-readable descriptions. Secret values are never returned. Connected MCP execution uses the separate Vault MCP endpoint."
 		}
 	}
 	for _, tool := range allowed {

@@ -54,3 +54,13 @@ Code review (`code:review`; admins and Code reviewers only, re-checked on every 
 ## Answer from reading
 
 If the task needs a change, say so instead of attempting one — authoring is not exposed.
+
+## Vault management
+
+When `get_api_spec` lists `manage_vault_access`, the connection has `vault:manage` and the account is a current Vault administrator. These global tools need no `workflow_id`:
+
+- `manage_vault_access`: inspect connections/users/tool schemas; connect, sign in, sync or disconnect an MCP; apply tool permissions and regex rules immediately. Regex conditions require a human-readable description.
+- `manage_vault_groups`: list/create/update groups and list/add/remove active platform members. Does not create platform accounts or provision product slots.
+- `manage_vault_secret_access`: list secret names and grant/revoke a group's access. Values are never accepted or returned. Add/rotate values in Vault's secure Secrets UI.
+
+Use the separate Vault MCP connection to execute upstream tools with the caller's live group/tool permissions. Management does not grant a runtime bypass.

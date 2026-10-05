@@ -24,7 +24,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 
 // code:review is inert for anyone but an admin or Code reviewer: the tools
 // re-check the account on every call.
-var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
+var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
 var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write")
@@ -146,6 +146,8 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
 		switch scope {
+		case "vault:manage":
+			return user == nil || !vaultAdminActive(user.UserID)
 		case "code:review":
 			return !canReview
 		case "builder:chat":
