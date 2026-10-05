@@ -1,3 +1,7 @@
+## `search_web_llm` tool removed; coding agents use their own web search — PLAT-508
+
+[PLAT-508](pulse_platform/step-execution/plat-508.md), fixed on main, not deployed. The tool only wrapped free-tier hosted MCP search that hit rate limits. Existing workflows keep a harmless stale name in `enabled_custom_tools`.
+
 ## People create their own vaults and share secrets and MCPs; promote existing ones into Vault — PLAT-507
 
 [PLAT-507](pulse_platform/security-sandbox/plat-507.md), P2, open, design only. Owner direction 2026-10-05; changes the "private logins stay private" rule, so four questions are recorded for the owner first.
@@ -125,6 +129,10 @@ usable node_modules if the install fails.
 ## Schedule override `force` rejected by update_step — PLAT-506
 
 [PLAT-506](pulse_platform/step-execution/plat-506.md), fixed on main: the guard strips its own `force` before the strict tool validates.
+
+## Free search MCPs in the catalog — PLAT-509
+
+[PLAT-509](pulse_platform/integrations/plat-509.md), fixed on main: Firecrawl added next to Exa and Parallel (both already there); card text says free tier.
 
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 

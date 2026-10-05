@@ -17,6 +17,10 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+## 2026-10-05: `search_web_llm` is removed; coding agents use their own web search
+
+Every agent is a coding CLI with its own native web search. The tool only wrapped anonymous free-tier hosted MCP search (Parallel, Exa, Firecrawl) that hit rate limits, so it is gone from the tool lists, guidance and the Video Studio prompt. Old workflows' `enabled_custom_tools` entries for it are harmless. Ticket: [PLAT-508](bugs/pulse_platform/step-execution/plat-508.md).
+
 ## 2026-10-05: the global schedule pause is administrators only; the schedules list shows only what the account may open
 
 The pause stops every schedule on the platform, so only an administrator may use it; everyone else's schedules list is filtered like the workflows list. A local (single-user) run keeps both. Ticket: PLAT-505.
@@ -2896,3 +2900,9 @@ exited after the release went live left it behind and pinned the release (14 GB 
 ### 2026-10-05 — Vault administration through platform MCP
 
 The main platform MCP catalog exposes Vault MCP setup/policies, groups/membership, and secret-name permissions with `vault:manage`. Discovery and execution require a live active Vault administrator; local single-user mode uses its administrator account, while SSO follows live roles. OAuth/PAT scopes are explicit and older grants are not automatically expanded. Management reuses Vault handlers and does not grant runtime authority or return secret values. The separate Vault MCP endpoint remains user/group scoped for upstream execution.
+
+## 2026-10-05 — Share Vault management through its product manifest
+
+Vault's `product.yaml` owns one tool declaration for the builder, native bridge and main platform MCP. Shared schemas/executors cover MCP connection and regex management, groups/members, secret name/grant management, guarded governance SQL, and administrative MCP inventory/execution. The main MCP catalog admits the Vault product's declarations instead of duplicating them in AgentWorks' Run mode. Contract tests compare the actual registered builder schemas with external discovery.
+
+Local uses its active administrator; SSO requires an active Vault administrator and external clients additionally require `vault:manage`. Administrative resource lookup uses the same service-only setup execution path as the Vault builder, independently of group grants. The separate `vault:mcp` endpoint and other product runtime calls remain group/regex scoped. Secret values and other users' private connections are excluded. Native provider shell/file tools remain the provider runtime's responsibility, not external Vault management tools.

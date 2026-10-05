@@ -11,7 +11,7 @@ import (
 var socialMediaSubAgentTools = []string{
 	"agent_browser", "diff_patch_workspace_file", "execute_shell_command",
 	"mutate_workflow_db", "query_workflow_db", "read_skill",
-	"record_run_concern", "search_web_llm",
+	"record_run_concern",
 }
 
 // TestStepExecutionSurfaceNeverAdvertisesUnheldProviderTools reproduces the
@@ -101,9 +101,9 @@ func TestStepExecutionSurfaceFollowsTheToolsHeld(t *testing.T) {
 			without: StepExecutionSignals{ToolNames: []string{"agent_browser"}},
 		},
 		{
-			name:    "workspace-media-tools follows search_web_llm",
+			name:    "workspace-media-tools follows generate_text_llm",
 			doc:     "workspace-media-tools",
-			with:    StepExecutionSignals{ToolNames: []string{"search_web_llm"}},
+			with:    StepExecutionSignals{ToolNames: []string{"generate_text_llm"}},
 			without: StepExecutionSignals{ToolNames: []string{"agent_browser"}},
 		},
 		{
@@ -139,7 +139,7 @@ func TestStepExecutionSurfaceFollowsTheToolsHeld(t *testing.T) {
 // call without raw endpoints or credentials.
 func TestScriptedActiveProviderToolsReceiveBridgeSafeGuidance(t *testing.T) {
 	skill := MaterializeStepExecutionReferenceSkill(StepExecutionSignals{
-		ToolNames:         []string{"execute_shell_command", "generate_text_llm", "search_web_llm"},
+		ToolNames:         []string{"execute_shell_command", "generate_text_llm"},
 		CodeExecutionMode: true,
 		ScriptedStep:      true,
 	})
@@ -152,7 +152,7 @@ func TestScriptedActiveProviderToolsReceiveBridgeSafeGuidance(t *testing.T) {
 		}
 	}
 	mediaTools := materializedFileContent(t, skill, "references/workspace-media-tools.md")
-	for _, want := range []string{"## Scripted workflow use", "$MCP_CUSTOM/generate_text_llm", "$MCP_CUSTOM/search_web_llm", "must never be replaced with a direct provider request"} {
+	for _, want := range []string{"## Scripted workflow use", "$MCP_CUSTOM/generate_text_llm", "must never be replaced with a direct provider request"} {
 		if !strings.Contains(mediaTools, want) {
 			t.Fatalf("scripted active-provider tool guidance missing %q\n%s", want, mediaTools)
 		}

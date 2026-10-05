@@ -95,31 +95,6 @@ func generateTextLLMToolDef() llmtypes.Tool {
 	}
 }
 
-// searchWebLLMToolDef returns the search_web_llm tool definition (single source of truth).
-func searchWebLLMToolDef() llmtypes.Tool {
-	return llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "search_web_llm",
-			Description: "Search the web through a hosted MCP provider. Provider is required: parallel, exa, or firecrawl. Do not pass model_id. Parallel and Exa use their anonymous free MCP tiers; Firecrawl keyless availability is service-controlled.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"query": map[string]interface{}{
-						"type":        "string",
-						"description": "The web search query.",
-					},
-					"provider": map[string]interface{}{
-						"type":        "string",
-						"description": "Required hosted MCP provider: parallel, exa, or firecrawl. Firecrawl keyless availability is service-controlled.",
-					},
-				},
-				"required": []string{"query", "provider"},
-			}),
-		},
-	}
-}
-
 // diffPatchToolDef returns the diff_patch_workspace_file tool definition.
 func diffPatchToolDef() llmtypes.Tool {
 	return llmtypes.Tool{
@@ -161,18 +136,13 @@ func GetGenerateTextLLMToolDefinitions() []llmtypes.Tool {
 	return []llmtypes.Tool{generateTextLLMToolDef()}
 }
 
-// GetSearchWebLLMToolDefinitions returns only the web search tool.
-func GetSearchWebLLMToolDefinitions() []llmtypes.Tool {
-	return []llmtypes.Tool{searchWebLLMToolDef()}
-}
-
 // GetDiffPatchToolDefinitions returns only the diff_patch_workspace_file tool definition.
 func GetDiffPatchToolDefinitions() []llmtypes.Tool {
 	return []llmtypes.Tool{diffPatchToolDef()}
 }
 
 // GetAdvancedToolDefinitions returns the active agent-facing tools: shell,
-// image understanding (read_image), text generation, web search, and diff
+// image understanding (read_image), text generation, and diff
 // patch. Image/video/audio/music *generation* tools remain retired -- only
 // read_image (pure inspection, no provider media creation) is active here.
 func GetAdvancedToolDefinitions() []llmtypes.Tool {
@@ -180,7 +150,6 @@ func GetAdvancedToolDefinitions() []llmtypes.Tool {
 	tools = append(tools, GetShellToolDefinitions()...)
 	tools = append(tools, GetImageToolDefinitions()...)
 	tools = append(tools, GetGenerateTextLLMToolDefinitions()...)
-	tools = append(tools, GetSearchWebLLMToolDefinitions()...)
 	tools = append(tools, GetDiffPatchToolDefinitions()...)
 	return tools
 }

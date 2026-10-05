@@ -274,7 +274,7 @@ export async function createProductProject<P extends string>(options: {
   const description = options.description.trim()
   // The server decides where a new Crew lives (the shared Crew/ root once that is on); any failure or another product
   // falls back to the user's own tree.
-  const reserved = await agentApi.reserveProject(options.product, title).catch(() => ({ shared: false } as { shared: boolean; id?: string; workspace_path?: string }))
+  const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch(() => ({ shared: false } as { shared: boolean; id?: string; workspace_path?: string }))
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
   const id = shared ? reserved.id! : globalThis.crypto.randomUUID()
   const sessionId = `${options.sessionPrefix}:${id}`

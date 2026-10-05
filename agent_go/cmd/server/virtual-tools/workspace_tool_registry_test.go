@@ -22,7 +22,6 @@ func TestCreateWorkspaceToolRegistryIncludesActiveTextSearchAndImageTools(t *tes
 		"execute_shell_command",
 		"diff_patch_workspace_file",
 		"generate_text_llm",
-		"search_web_llm",
 		"read_image",
 		"image_gen",
 		"image_edit",

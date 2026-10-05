@@ -87,4 +87,7 @@ When `get_api_spec` lists `manage_vault_access`, the connection has `vault:manag
 - `manage_vault_groups`: list/create/update groups and list/add/remove active platform members. Does not create platform accounts or provision product slots.
 - `manage_vault_secret_access`: list secret names and grant/revoke a group's access. Values are never accepted or returned. Add/rotate values in Vault's secure Secrets UI.
 
-Use the separate Vault MCP connection to execute upstream tools with the caller's live group/tool permissions. Management does not grant a runtime bypass.
+- `query_vault_db` / `mutate_vault_db`: inspect or atomically change allowlisted governance tables through the gateway. Never supply a database path.
+- `list_vault_mcp_servers` / `call_vault_mcp_tool`: discover active approved connections and perform administrator setup lookups to resolve resource IDs before writing rules. Upstream mutations require an explicit user request.
+
+Vault's `product.yaml` declares this same management tool surface for the builder and platform MCP. These setup calls use administrator authority independently of group grants; ordinary product calls and the separate Vault runtime MCP endpoint continue to enforce user/group/tool/regex permissions. Secret values and other users' private connections remain unavailable.

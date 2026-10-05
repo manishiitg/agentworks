@@ -99,7 +99,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Live chat is enabled. Accept steering while a turn is running and keep each durable project conversation resumable.",
 	},
 	"coding": {
-		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command", "read_image", "search_web_llm"},
+		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command", "read_image"},
 		Skills:          []string{"code-reviewer"},
 		PromptExtension: "Coding tools are enabled. Inspect existing files before editing, keep changes scoped to the request, and validate in proportion to risk.",
 	},
@@ -123,7 +123,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Secret management is enabled. Read the attached `work-integrations` skill before managing secrets. Use dedicated secret tools, refer to credentials only by name, and never print or store secret values in project files.",
 	},
 	"mcp": {
-		Tools:           []string{"list_mcp_servers", "search_mcp_catalog", "install_mcp_server", "add_mcp_server", "remove_mcp_server", "get_mcp_server_logs", "trigger_mcp_discovery", "update_project_mcp_server_selection", "manage_vault_access"},
+		Tools:           []string{"list_mcp_servers", "search_mcp_catalog", "install_mcp_server", "add_mcp_server", "remove_mcp_server", "get_mcp_server_logs", "trigger_mcp_discovery", "update_project_mcp_server_selection", "manage_vault_access", "manage_my_vaults"},
 		Skills:          []string{"work-mcp"},
 		UIPanels:        []string{"mcp"},
 		Capabilities:    map[string]CapabilityRequirement{"mcp_selection": CapabilityPreferred},

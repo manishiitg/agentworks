@@ -28,7 +28,7 @@ SQL tools can change explicitly requested membership and simple tool assignments
 
 # Project SQLite tools
 
-Vault exposes the same query_workflow_db and mutate_workflow_db SQL tool contracts as Crew/workflows. The gateway resolves this project's database; never supply a path. Start with action=describe and optionally table=<name>.
+Vault exposes the same query_vault_db and mutate_vault_db SQL tool contracts as Crew/workflows. The gateway resolves this project's database; never supply a path. Start with action=describe and optionally table=<name>.
 
 - Read tables: workspaces, users, groups, group_members, connectors, tools, user_tool_grants, group_tool_grants, group_server_grants, published_permissions and policy_history.
 - Mutable tables: groups (id, workspace_id, name), group_members (group_id, user_id), user_tool_grants (user_id, public_name), group_tool_grants (group_id, public_name).
@@ -61,8 +61,8 @@ Use disconnect_connection with {"connection_id":"..."} only when the user explic
 
 ## Look up entities before saving restrictions
 
-- Use list_mcp_servers for all active connected Vault MCPs, their approved schemas, all groups and secret names, plus active platform identities in vault_users. The Vault administrator builder has setup authority independent of group membership; other product chats and external clients remain group scoped. Secret values are excluded.
-- Use the native api-bridge call_mcp_tool with server, tool, and arguments. It shares AgentWorks' MCP executor and Vault's live authorization/audit path; no shell, credentials, alternate endpoint or provider-specific integration is needed.
+- Use list_vault_mcp_servers for all active connected Vault MCPs, their approved schemas, all groups and secret names, plus active platform identities in users. The Vault administrator builder has setup authority independent of group membership; other product chats and ordinary external runtime clients remain group scoped. The main platform MCP shares these setup tools only for a current administrator with vault:manage. Secret values are excluded.
+- Use the native api-bridge call_vault_mcp_tool with server, tool, and arguments. It shares the same Vault setup executor and gateway authorization/audit path as the platform management MCP; no shell, credentials, alternate endpoint or provider-specific integration is needed.
 - For a request such as restricting a Notion task database, search/fetch the resource using its real schema, resolve ambiguous matches, and use the returned exact ID/data-source link. Do not invent an ID, guess a collection URL, or require the user to copy it before trying permitted tools.
 - Query/fetch only the information needed for the permissions. A setup request does not authorize upstream mutations, new membership, self-grants or relaxed policies. Report actual connection, schema or administrator/session errors. Do not require the administrator to join a group for setup lookups.
 - Use approved fingerprints when saving rules, prefer equals for IDs, and explain any upstream query/implicit-scope gap a regex cannot enforce.

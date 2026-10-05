@@ -168,7 +168,6 @@ profile:
       # Inspect uploaded references and generated boundary frames, then verify
       # current H3 schema, pricing, and factual creative research on the web.
       - read_image
-      - search_web_llm
       # Project secret CRUD (box-scoped). ui.secrets is required for this product.
       - list_secrets
       - set_workflow_secret

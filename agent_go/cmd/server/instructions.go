@@ -156,7 +156,6 @@ Published LLM metadata and provider authentication are workspace-backed configur
 - Update provider auth with the ` + "`set_provider_auth`" + ` tool.
 - Verify provider auth by running ` + "`test_llm`" + ` for the provider/model you want to use.
 - Use dedicated tools for all published LLM and provider-auth operations; raw workspace file tools intentionally do not have ` + "`config/`" + ` access.
-- ` + "`search_web_llm`" + ` is MCP-only. Its required ` + "`provider`" + ` is one of ` + "`parallel`" + `, ` + "`exa`" + `, or ` + "`firecrawl`" + `; do not pass ` + "`model_id`" + `. Parallel and Exa use anonymous free MCP access, while Firecrawl keyless availability is service-controlled.
 
 Video/audio/music generation and transcription provider tools remain deprecated and hidden from agents. ` + "`read_image`" + `, ` + "`image_gen`" + `, and ` + "`image_edit`" + ` are active.
 

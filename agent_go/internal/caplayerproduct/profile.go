@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -12,48 +13,48 @@ import (
 const ProfileID = "caplayer"
 const WorkspaceRoot = "Chats/CapLayer"
 
-//go:embed system-prompt.md skills/vault-access/SKILL.md
+//go:embed product.yaml system-prompt.md skills/vault-access/SKILL.md
 var files embed.FS
 
 // Vault uses the same provider catalog, conversation runtime and composer
 // as Crew. Its allowlist also exposes the shared, permission-checked MCP bridge.
 func BuiltinAgentProfile() agentprofiles.Profile {
+	manifest := Manifest()
+	profile := manifest.Profile
+	// Provider choices and confinement remain shared with Crew. Vault declares
+	// its management tools and product runtime controls in its own manifest.
 	runtime := workproduct.BuiltinAgentProfile().Runtime
-	// Use the shared full native CLI setup, including skill/file/shell tools.
-	// The server applies the same confinement policy as other product builders.
-	runtime.AgentTools = agentprofiles.AgentToolsPolicy{Mode: "full"}
-	runtime.APITransport = agentprofiles.APITransportPolicy{}
-	runtime.BridgeTools = []string{"manage_vault_access", "query_workflow_db", "mutate_workflow_db", "manage_vault_secret_access", "list_mcp_servers", "call_mcp_tool"}
-	runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: "fixed", Root: WorkspaceRoot}
-	runtime.Conversation = agentprofiles.ConversationPolicy{Mode: "singleton"}
-	runtime.Capabilities = agentprofiles.RuntimeCapabilities{
-		LiveInput:         agentprofiles.CapabilityPreferred,
-		WarmSession:       agentprofiles.CapabilityPreferred,
-		RawTerminal:       agentprofiles.CapabilityPreferred,
-		Voice:             agentprofiles.CapabilityPreferred,
-		NewConversation:   agentprofiles.CapabilityPreferred,
-		WorkflowExecution: agentprofiles.CapabilityDisabled,
-		Secrets:           agentprofiles.CapabilityDisabled,
+	runtime.AgentTools = profile.Runtime.AgentTools
+	runtime.APITransport = profile.Runtime.APITransport
+	runtime.BridgeTools = profile.Runtime.BridgeTools
+	runtime.Workspace = profile.Runtime.Workspace
+	runtime.Conversation = profile.Runtime.Conversation
+	runtime.Capabilities = profile.Runtime.Capabilities
+	profile.Runtime = runtime
+	profile.BuiltIn = true
+	prompt, err := manifest.RenderPrompt(files, profile, nil)
+	if err != nil {
+		panic(err)
 	}
-	prompt, _ := files.ReadFile("system-prompt.md")
-	return agentprofiles.Profile{
-		ID: ProfileID, Name: "Vault", Version: 10, BuiltIn: true,
-		Scope:                agentprofiles.ProfileScopeProject,
-		SystemPromptTemplate: string(prompt), Skills: []string{"vault-access"},
-		Tools:      []agentprofiles.ToolBinding{{ID: "caplayer.access"}, {ID: "caplayer.database.query"}, {ID: "caplayer.database.mutate"}, {ID: "caplayer.secrets"}},
-		ToolPolicy: agentprofiles.ToolPolicy{Mode: "allowlist", Enabled: []string{"manage_vault_access", "query_workflow_db", "mutate_workflow_db", "manage_vault_secret_access", "list_mcp_servers", "call_mcp_tool"}}, Runtime: runtime,
-	}
+	profile.SystemPromptTemplate = prompt
+	return profile
 }
 
 // AccessExecutor is provided by the product server. It rechecks the current
 // administrator role and calls the fixed gateway service using server secrets.
 type AccessExecutor func(context.Context, string, string, json.RawMessage) (string, error)
 
+var registerSkillsOnce sync.Once
+var registerSkillsErr error
+
 func RegisterRuntime(registry *agentprofiles.Registry, execute AccessExecutor) error {
-	if err := agentprofiles.RegisterEmbeddedSkills(files, []agentprofiles.SkillFileBinding{{
-		Name: "vault-access", Description: "Connect MCPs, inspect schemas, look up permitted resources and apply validated deterministic access permissions.", Path: "skills/vault-access/SKILL.md",
-	}}); err != nil {
-		return err
+	registerSkillsOnce.Do(func() {
+		registerSkillsErr = agentprofiles.RegisterEmbeddedSkills(files, []agentprofiles.SkillFileBinding{{
+			Name: "vault-access", Description: "Connect MCPs, inspect schemas, look up permitted resources and apply validated deterministic access permissions.", Path: "skills/vault-access/SKILL.md",
+		}})
+	})
+	if registerSkillsErr != nil {
+		return registerSkillsErr
 	}
 	return registry.RegisterToolFactory("caplayer.access", func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
 		return agentprofiles.ToolSpec{
@@ -74,7 +75,7 @@ func RegisterRuntime(registry *agentprofiles.Registry, execute AccessExecutor) e
 
 // AccessToolDescription and AccessToolParameters describe manage_vault_access. The Vault chat and the other chats an
 // administrator works in (Crew, Builder, Code) offer the same tool; the server rechecks the administrator role on every call.
-const AccessToolDescription = "Create named catalog MCP connections with separate OAuth accounts, start sign-in for a connection, check connection status, sync tools, disconnect an explicitly requested connection, connect a custom MCP server by name and URL, list active platform users by email, username and ID, inspect a group's effective tool access, remove all access to one MCP from one group, inspect connected MCP tools and groups, inspect an exact tool schema, or save and immediately apply validated access permissions. Connection approves initial tool definitions but assigns no group access. Regex conditions require a human-readable description. Cannot handle credentials, add group members or execute upstream tools. Read vault-access first."
+const AccessToolDescription = "Create named catalog MCP connections with separate OAuth accounts, start sign-in for a connection, check connection status, sync tools, disconnect an explicitly requested connection, connect a custom MCP server by name and URL, list active platform users by email, username and ID, inspect a group's effective tool access, remove all access to one MCP from one group, inspect connected MCP tools and groups, inspect an exact tool schema, or save and immediately apply validated access permissions. Connection approves initial tool definitions but assigns no group access. Regex conditions require a human-readable description. Cannot handle credentials, add group members or execute upstream tools. Inspect the environment and exact tool schemas before changing permissions."
 
 func AccessToolParameters() map[string]interface{} {
 	return map[string]interface{}{

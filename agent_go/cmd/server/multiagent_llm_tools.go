@@ -605,37 +605,6 @@ func buildChatLLMCapabilities(keys *llm.ProviderAPIKeys, includeModels bool) []l
 	return result
 }
 
-func buildFixedCapabilityProviders(keys *llm.ProviderAPIKeys, providerModels map[string][]string, defaults map[string]string, notes map[string][]string) []llmCapabilityProvider {
-	result := make([]llmCapabilityProvider, 0, len(providerModels))
-	for _, provider := range []string{
-		string(llm.ProviderCodexCLI),
-		string(llm.ProviderCursorCLI),
-		string(llm.ProviderPiCLI),
-		string(llm.ProviderClaudeCode),
-	} {
-		models, ok := providerModels[provider]
-		if !ok {
-			continue
-		}
-		authConfigured, authSource := providerAuthConfigured(provider, keys)
-		usable, runtime, runtimeOK := providerUsable(provider, authConfigured)
-		entry := llmCapabilityProvider{
-			Provider:          provider,
-			Models:            models,
-			ModelCount:        len(models),
-			DefaultModel:      defaults[provider],
-			AuthSource:        authSource,
-			AuthConfigured:    authConfigured,
-			RuntimeDependency: runtime,
-			RuntimeAvailable:  runtimeOK,
-			Usable:            usable,
-			Notes:             notes[provider],
-		}
-		result = append(result, entry)
-	}
-	return result
-}
-
 func buildLLMCapabilities(ctx context.Context, capability string, includeModels bool) map[string]interface{} {
 	keys := MergedProviderAPIKeys(ctx)
 	capability = normalizeManagedProvider(capability)
@@ -654,30 +623,6 @@ func buildLLMCapabilities(ctx context.Context, capability string, includeModels 
 		all["chat"] = map[string]interface{}{
 			"description": "Providers usable for normal chat/text LLM calls.",
 			"providers":   buildChatLLMCapabilities(keys, includeModels),
-		}
-	}
-
-	if capability == "all" || capability == "search" || capability == "search_web" {
-		all["search_web"] = map[string]interface{}{
-			"description": "Providers usable by search_web_llm. Routing comes from the workspace published LLM set managed by list_published_llms/save_published_llm.",
-			"providers": buildFixedCapabilityProviders(
-				keys,
-				map[string][]string{
-					string(llm.ProviderClaudeCode): claudeCodeCapabilityModels(),
-					string(llm.ProviderCodexCLI):   {"codex-cli", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"},
-					string(llm.ProviderCursorCLI):  {"cursor-cli", "composer-2.5", "gpt-5", "sonnet-4-thinking", "sonnet-4"},
-					string(llm.ProviderPiCLI):      {"google/gemini-3.5-flash", "google/gemini-2.5-flash"},
-				},
-				map[string]string{},
-				map[string][]string{
-					string(llm.ProviderCursorCLI): {"Uses Cursor Agent CLI through tmux; model availability follows the signed-in Cursor account."},
-					string(llm.ProviderPiCLI):     {"Uses Pi CLI through tmux marker transport; use provider/model ids such as google/gemini-3.5-flash."},
-				},
-			),
-			"routing_fields": map[string]interface{}{
-				"search_role":     []string{"primary", "fallback"},
-				"search_priority": "lower number wins within the same role",
-			},
 		}
 	}
 
@@ -714,13 +659,13 @@ func (api *StreamingAPI) registerMultiAgentLLMTools(underlyingAgent definitionTo
 func registerLLMCapabilityDiscoveryTools(registerTool func(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error)) error) error {
 	if err := registerTool(
 		"list_llm_capabilities",
-		"List supported and currently usable LLM providers/models by capability: chat and search_web. Use include_models=true before choosing an explicit provider/model_id pair. Includes workspace defaults, auth requirements, and CLI runtime availability.",
+		"List supported and currently usable LLM providers/models by capability: chat. Use include_models=true before choosing an explicit provider/model_id pair. Includes workspace defaults, auth requirements, and CLI runtime availability.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"capability": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional filter. Supported values: all, chat, search_web.",
+					"description": "Optional filter. Supported values: all, chat.",
 				},
 				"include_models": map[string]interface{}{
 					"type":        "boolean",
@@ -753,13 +698,13 @@ func (api *StreamingAPI) registerWorkflowLLMDiscoveryTools(underlyingAgent defin
 func registerLLMCapabilityTools(registerTool func(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error)) error) error {
 	if err := registerTool(
 		"list_llm_capabilities",
-		"List supported and currently usable LLM providers/models by capability: chat and search_web. Use include_models=true before choosing an explicit provider/model_id pair. Includes workspace defaults, auth requirements, and CLI runtime availability.",
+		"List supported and currently usable LLM providers/models by capability: chat. Use include_models=true before choosing an explicit provider/model_id pair. Includes workspace defaults, auth requirements, and CLI runtime availability.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"capability": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional filter. Supported values: all, chat, search_web.",
+					"description": "Optional filter. Supported values: all, chat.",
 				},
 				"include_models": map[string]interface{}{
 					"type":        "boolean",

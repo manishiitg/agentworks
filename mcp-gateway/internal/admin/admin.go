@@ -594,6 +594,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 	a.accessRoutes(mux)
 	a.databaseRoutes(mux)
 	a.setupRoutes(mux)
+	a.vaultRoutes(mux)
 	mux.HandleFunc("/api/admin/users/sync", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)

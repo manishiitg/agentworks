@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -258,6 +259,7 @@ func externalTools() ([]externalTool, error) {
 			return
 		}
 		admitted = append(admitted, kbTools...)
+		admitted = append(admitted, caplayerproduct.ExternalTools()...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
 			if seen[name] {

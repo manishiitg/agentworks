@@ -50,6 +50,9 @@ type Connector struct {
 	OAuthCredentialID string // connection-scoped identity; empty preserves legacy provider credentials
 	AuthScheme        string // empty/Bearer or Basic; credential bytes are stored separately
 	Status            string
+	// VaultID is the person-owned vault this connection belongs to; empty for a platform connection (PLAT-507). Only
+	// the vault's owners may change or remove it.
+	VaultID string `json:",omitempty"`
 }
 
 // ToolSnapshot is one discovered upstream tool plus its gateway identity.
@@ -83,6 +86,10 @@ type Group struct {
 	Name        string
 	Description string
 	BuiltIn     bool
+	// Kind is "vault" for a person-owned vault (a group whose owners, not only the platform administrator, manage its
+	// connections and members); empty for an ordinary platform group (PLAT-507).
+	Kind   string   `json:",omitempty"`
+	Owners []string `json:",omitempty"`
 }
 
 const MaxGroupDescriptionLength = 1000

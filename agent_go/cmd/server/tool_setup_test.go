@@ -186,7 +186,6 @@ func TestWorkspaceAdvancedToolBundleIncludesActiveTextAndSearchTools(t *testing.
 
 	for _, name := range []string{
 		"generate_text_llm",
-		"search_web_llm",
 	} {
 		if !toolDefs[name] {
 			t.Fatalf("workspace tool definitions missing %q", name)

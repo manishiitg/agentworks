@@ -123,7 +123,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "manage_vault_access" {
-			instructions += " Vault management is authorized for this administrator via vault:manage: use manage_vault_access for MCP connections and immediate tool/regex permissions, manage_vault_groups for groups/members, and manage_vault_secret_access for secret names and group grants. These are global tools and need no workflow_id. Regex rules require human-readable descriptions. Secret values are never returned. Connected MCP execution uses the separate Vault MCP endpoint."
+			instructions += " Vault management is authorized for this administrator via vault:manage: use manage_vault_access for MCP connections and immediate tool/regex permissions, manage_vault_groups for groups/members, and manage_vault_secret_access for secret names and group grants. These are global tools and need no workflow_id. Regex rules require human-readable descriptions. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped."
 		}
 	}
 	for _, tool := range allowed {

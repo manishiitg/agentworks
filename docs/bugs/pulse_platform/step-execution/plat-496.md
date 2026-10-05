@@ -32,6 +32,16 @@ run fails:
   own working folder is an isolated temp folder (`mlp-cli-session-*`), not the step folder.
 - A "WRITE-ACCESS REALITY CHECK" guard exists on one step only (`enrich-shortlist`, added 2026-10-04): a FAILED for permissions must quote the failed write command and its error.
 
+## Done (2026-10-05, found in the saved step prompt)
+
+Two causes in the prompt every step agent gets (read from a saved session prompt of the same template):
+- The platform's own failure rule (`guidance/templates/system/step-system-prompts.md`) gave an EXAMPLE failure: "STATUS: FAILED — cannot write the summary file: this step is read-only or this turn
+  explicitly narrows writes away from that folder." Agents' failure messages ("the session's read-only filesystem restriction prevents creating `job_brief.json`") echo that sentence. The rule now
+  requires quoting the exact command tried and its exact error, forbids concluding "read-only" from instructions or file descriptions, and the example is a quoted real error.
+- mcpagent (`agent/isolated_output.go`) appended "Save deliverable files under output/ when using native file tools, or cd output before native shell commands" to EVERY step agent with an output dir,
+  while the same prompt says "Provider-native filesystem, shell, edit, and browser tools are disabled". It is now added only when native tools are on (mcpagent `a78e6cb`, pinned).
+- Not proven: that these two are the whole cause; no live run yet (the failing prompts had rotated out of the logs).
+
 ## Left
 
 - Find where the stale "Save deliverable files under output/ when using native file tools" paragraph is generated and drop it when native tools are off.

@@ -75,6 +75,8 @@ profile:
       - manage_my_mcp_servers
       # Vault MCP connections and group access, for an active administrator only (rechecked on every call, PLAT-503).
       - manage_vault_access
+      # Any account: create vaults and share MCP connections through them (owner-checked by the Vault service).
+      - manage_my_vaults
   runtime:
     transport: auto
     provider_options:

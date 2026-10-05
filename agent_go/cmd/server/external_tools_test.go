@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -172,7 +173,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		body := externalTestBody(t, w, 200)
 		definitions, ok := body["tools"].([]any)
 		want := map[string]bool{}
-		for _, name := range agentworksproduct.RunExternalTools() {
+		for _, name := range append(agentworksproduct.RunExternalTools(), caplayerproduct.ExternalTools()...) {
 			want[name] = true
 		}
 		for _, name := range agentworksproduct.RunTools() {
@@ -194,7 +195,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
 		native := map[string]bool{}
-		for _, name := range agentworksproduct.RunExternalTools() {
+		for _, name := range append(agentworksproduct.RunExternalTools(), caplayerproduct.ExternalTools()...) {
 			native[name] = true
 		}
 		for _, name := range relayNames {
@@ -270,6 +271,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			wantCatalog = append(wantCatalog, name)
 		}
 	}
+	wantCatalog = append(wantCatalog, caplayerproduct.ExternalTools()...)
 	for _, name := range run {
 		if denied[name] {
 			continue
@@ -338,7 +340,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit"}
+	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}

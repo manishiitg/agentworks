@@ -1200,7 +1200,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// Workspace advanced tools. Basic workspace file tools are intentionally
 		// not in the central workspace registry; use the active shell/diff/text/search tools.
 		"execute_shell_command", "diff_patch_workspace_file",
-		"generate_text_llm", "search_web_llm",
+		"generate_text_llm",
 		"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration", "create_workflow_database_snapshot",
 		// PLAT-184. This workflow's own per-workspace cost ledger.
 		"query_workflow_costs",

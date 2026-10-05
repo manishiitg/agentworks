@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 const { hookState } = vi.hoisted(() => ({ hookState: { current: null as null | Record<string, unknown> } }))
 vi.mock('./scheduleRuns/useScheduleRunsData', () => ({ useScheduleRunsData: () => hookState.current }))
+// The global pause is administrators only (PLAT-505); these tests render as one.
+vi.mock('../../hooks/useCanPauseSchedules', () => ({ useCanPauseSchedules: () => true }))
 vi.mock('./scheduleRuns/ScheduleTableView', () => ({ ScheduleTableView: () => <div data-testid="schedule-table" /> }))
 vi.mock('./scheduleRuns/ScheduleListView', () => ({ ScheduleListView: () => null }))
 vi.mock('./scheduleRuns/ScheduleGroupsView', () => ({ ScheduleGroupsView: () => null }))

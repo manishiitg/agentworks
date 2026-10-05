@@ -2140,9 +2140,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		if err := profileRegistry.RegisterProfile(profile); err != nil {
 			log.Fatalf("Failed to register CapLayer profile: %v", err)
 		}
-		if err := registerCapLayerDatabaseTools(profileRegistry); err != nil {
-			log.Fatalf("Failed to register CapLayer database tools: %v", err)
-		}
 	}
 	if productEnabled(knowledgebaseproduct.ProfileID) {
 		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
@@ -2268,6 +2265,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
 	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
+		if err := registerVaultManagementTools(profileRegistry, api); err != nil {
+			log.Fatalf("Failed to register Vault management tools: %v", err)
+		}
 		if err := caplayerproduct.RegisterRuntime(profileRegistry, api.capLayerConnectionAccess); err != nil {
 			log.Fatalf("Failed to register Vault tools: %v", err)
 		}
@@ -6617,6 +6617,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if resolvedProfile == nil || resolvedProfile.Definition.ID != caplayerproduct.ProfileID {
 				if err := api.registerVaultAccessChatTool(llmAgent, currentUserID); err != nil {
 					sendError(fmt.Sprintf("Failed to register Vault access tool: %v", err), true)
+					return
+				}
+				if err := api.registerMyVaultsTool(llmAgent, currentUserID); err != nil {
+					sendError(fmt.Sprintf("Failed to register vault tool: %v", err), true)
 					return
 				}
 			}
