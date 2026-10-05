@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Browser toolbar status follows the selected live connection
+
+Show a green dot and Connected label on the Workflow, Code and Crew Browser
+button even while another pane is open. A selected extension owns this status,
+including zero-tab connections; otherwise use active live browser sessions and
+exclude completed recordings. Why: users need connection health at a glance,
+without mistaking a different browser or a replay for their selected connection.
+Ticket: [PLAT-542](bugs/pulse_platform/frontend-chat/plat-542.md).
+
 ### 2026-10-05 — Vault and Brain are core products
 
 Vault (`mcp-gateway`) and Brain (`knowledgebase`) are on in every installation,

@@ -44,6 +44,7 @@ import { WorkPlanPanel } from './WorkPlanPanel'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
+import { useBrowserToolbarConnection } from '../../hooks/useBrowserToolbarConnection'
 
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
@@ -107,7 +108,8 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
-  const isCode = useProjectProduct().profileId === 'code'
+  const product = useProjectProduct()
+  const isCode = product.profileId === 'code'
   const hasSuggestions = !isCode
   // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
   // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
@@ -126,6 +128,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
     : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
     .filter(item => item.id !== 'shell' || showShell)
+  const browserConnected = useBrowserToolbarConnection(workspacePath, product.profileId, [...visibleViews, ...visibleOps].some(item => item.id === 'browser'), !readOnly)
   // Setup (identity, integrations) edits owner state, so someone else's
   // Crew offers no setup views at all — not even the always-on identity.
   // A Code's Share view is open to everyone in it (co-owners edit it, the
@@ -136,7 +139,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
-      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>
 
   return (
@@ -149,11 +152,11 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           {!isCode && viewsGroup}
           {/* Ops and Setup show their icons only: always open, no label. */}
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
-            <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
+            <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
           {isCode && viewsGroup}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
-            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
+            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
         </WorkspaceToolbarFrame>
       </TooltipProvider>

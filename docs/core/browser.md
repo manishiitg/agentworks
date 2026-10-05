@@ -93,6 +93,13 @@ In workflows, the Browser icon stays visible in the main toolbar beside Activity
 before Ops. It opens the existing Browser pane, including connection choices,
 settings and live status. Selecting Browser highlights that icon.
 
+Workflow, Code and Crew Browser icons also show a green dot while connected,
+with a Connected tooltip and accessible description. This remains visible while
+another pane is open. A selected extension can be connected with zero shared
+tabs; otherwise active live browser sessions count. Disconnects and failed status
+requests clear the dot, and completed recordings never count as live connections.
+Tracking: [PLAT-542](../bugs/pulse_platform/frontend-chat/plat-542.md).
+
 ### Install and connect
 
 1. Build/restart the platform with this change. In an owned Code/Crew project or a workflow you can edit,

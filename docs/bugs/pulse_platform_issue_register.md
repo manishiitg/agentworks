@@ -1,3 +1,7 @@
+## Browser connection health in workspace toolbars — PLAT-542
+
+[PLAT-542](pulse_platform/frontend-chat/plat-542.md), P3, fixed on main, not deployed. Green Browser status dot and accessible connection label in Workflow, Code and Crew; read-only scoped discovery distinguishes selected extensions, live browsers and completed replays.
+
 ## Workflow extension connections and immediate current-tab sharing — PLAT-530
 
 [PLAT-530](pulse_platform/browser/plat-530.md), P2, fixed on main, not deployed. Account-private workflow pairing, step-parent controller identity, workflow UI/notices and human Connect sharing the current website automatically.

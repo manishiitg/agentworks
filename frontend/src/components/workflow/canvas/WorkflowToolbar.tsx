@@ -35,6 +35,7 @@ import { ReportDocumentSwitcher } from '../ReportDocumentSwitcher'
 import { WorkflowActivityButton } from '../../topbar/WorkflowActivityButton'
 import { useAppStore } from '../../../stores/useAppStore'
 import { useLLMStore } from '../../../stores/useLLMStore'
+import { useBrowserToolbarConnection } from '../../../hooks/useBrowserToolbarConnection'
 
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
@@ -48,12 +49,13 @@ const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
 
 // Icon button inside an inline Ops/Setup group: same size and tooltip behavior
 // as the always-visible primary buttons, with an optional status dot.
-function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, ...attrs }: {
+function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, statusLabel, ...attrs }: {
   label: string
   Icon: React.ComponentType<{ className?: string }>
   active: boolean
   onClick: () => void
   indicatorClass?: string
+  statusLabel?: string
 } & Record<`data-${string}`, string | undefined>) {
   const button = (
     <button
@@ -62,11 +64,13 @@ function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, ...at
       {...attrs}
       className={`flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
       aria-label={label}
+      aria-description={statusLabel}
+      title={statusLabel ? `${label} · ${statusLabel}` : undefined}
       aria-pressed={active}
     >
       <span className="relative shrink-0">
         <Icon className="h-3.5 w-3.5" />
-        {indicatorClass && <span className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full border border-border ${indicatorClass}`} />}
+        {indicatorClass && <span aria-hidden="true" className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full border border-border ${indicatorClass}`} />}
       </span>
     </button>
   )
@@ -74,7 +78,7 @@ function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, ...at
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="bottom"><p>{label}</p></TooltipContent>
+      <TooltipContent side="bottom"><p>{label}{statusLabel ? ` · ${statusLabel}` : ''}</p></TooltipContent>
     </Tooltip>
   )
 }
@@ -129,6 +133,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const [operationsOpen, setOperationsOpen] = useState(false)
   const { count: pendingDecisionCount, loaded: pendingDecisionsLoaded } = usePendingDecisionState(workspacePath)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
+  const browserConnected = useBrowserToolbarConnection(workspacePath, 'workflow', !relayMode, canWriteWorkflow)
   const canManageAccess = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
 
   // Workspace store for opening folders
@@ -439,7 +444,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                   }}
                 />}
                 {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? 'Graph' : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? 'Graph' : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
                 ))}
               </div>
             </WorkspaceToolbarGroup>
