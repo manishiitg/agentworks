@@ -1,3 +1,7 @@
+## Agents cannot attach or share a Vault MCP connection from chat — PLAT-503
+
+[PLAT-503](pulse_platform/security-sandbox/plat-503.md), P2, open, not built. Owner wants agents to do it (2026-10-05); today only the Integrations UI can.
+
 ## Webhook/scheduled run folders are owner-only, slot steps cannot write outputs — PLAT-502
 
 [PLAT-502](pulse_platform/security-sandbox/plat-502.md), P1, fixed on main, not deployed or verified live. New hook/scheduled run folders have been `0700` (group no access) since 10-01/10-02, so a code step running as a slot gets "Permission denied" writing into its run folder. Seen on RTS (`rtsprreviweer`), same modes on Confida.
