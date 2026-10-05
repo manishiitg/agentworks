@@ -368,3 +368,5 @@ RTS dry run (read-only): 3 Crews (ci-cd 0.9 GiB, gptlive1 7.2 GiB / 307k files, 
 
 Third `gptlive1` abort (backup, after 2 min): `.report-cache/.runtime/db-read-snapshot-<n>.sqlite` deleted mid-copy (the report runtime's throwaway snapshots). Fix: the walk skips `.report-cache/.runtime` entirely (reported as a warning, recreated on demand); the BACKUP (a safety net) now skips a file deleted between listing and copy (`copyOptions.SkipVanished`), the move itself stays strict (a vanished file there still fails the move).
 
+The same abort has a root cause beyond file names: `gptlive1` is written from outside during a 20-minute backup (the SDE Code chat references it with `#workflow` and runs a report-preview, which queued a turn in its session; it also has a daily wrap-up schedule). Fix: the Crew is now LOCKED while it is backed up (the same `active.json` marker the move uses: the server binds no turn and the proxy refuses writes), released as soon as its copy is done; a crashed command's marker stops counting once its process is gone.
+

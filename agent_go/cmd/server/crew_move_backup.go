@@ -73,24 +73,35 @@ func (m *crewMover) makeBackup(todo []crewMoveCandidate) error {
 		if err := runRoot.MkdirAll(rel, 0o700); err != nil {
 			return err
 		}
+		// Lock the Crew while it is backed up: the server then runs no turn and the proxy refuses writes for it, so the copy
+		// is of a still Crew. A 7 GiB Crew took ~20 minutes to back up on RTS and its chat, report runtime and schedule kept
+		// writing, which aborted three attempts (PLAT-442, 2026-10-05).
+		if err := writeCrewMoveActive(m.opts.StateRoot, c.plan.Folder); err != nil {
+			return err
+		}
+		unlockBackup := func() { clearCrewMoveActive(m.opts.StateRoot, c.plan.Folder) }
 		src, err := openProjectDir(m.docs, c.plan.Owner, workspaceref.CrewProjectsRoot, c.plan.Folder)
 		if err != nil {
+			unlockBackup()
 			return err
 		}
 		entries, _, err := walkCrewTree(src)
 		if err != nil {
 			_ = src.Close()
+			unlockBackup()
 			return fmt.Errorf("%s: %w", c.plan.Folder, err)
 		}
 		dst, err := runRoot.OpenRoot(rel)
 		if err != nil {
 			_ = src.Close()
+			unlockBackup()
 			return err
 		}
 		// The backup mirrors the Crew's modes and groups as far as the account may (it is a restore source), but never
 		// fails the run for a group it cannot set: the content is what a restore needs.
 		copied, copyErr := copyCrewTree(src, dst, entries, copyOptions{SkipVanished: true})
 		_ = src.Close()
+		unlockBackup() // the source is no longer read; the read-back below touches only the backup
 		if copyErr != nil && !strings.Contains(copyErr.Error(), "cannot keep group") {
 			_ = dst.Close()
 			return fmt.Errorf("%s: %w", c.plan.Folder, copyErr)
