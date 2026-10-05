@@ -2708,3 +2708,7 @@ change what a workflow does while still allowing it to report success.
 ## A finished function call returns every step's full output — PLAT-536
 
 [PLAT-536](pulse_platform/mcp/plat-536.md), P3, fixed on main, not deployed: the call result lists each step's files and sizes; clients read the files they need.
+
+## Move RTS knowledge to Brain, then retire per-workflow KB sharing — PLAT-538
+
+[PLAT-538](pulse_platform/learnings-knowledge/plat-538.md), P2, open: Brain is on main (PR 268), not deployed; migrate RTS knowledge in dependency order before the old `knowledgebase_sources` path is removed.
