@@ -46,13 +46,19 @@ func privateCodeWorkflowTools(t *testing.T, env crewFunctionEnv, actor string) m
 }
 
 func TestOwnedCrewAndWorkflowCanCallDeclaredCodeFunctions(t *testing.T) {
-	for _, kind := range []string{"crew", "workflow"} {
+	for _, kind := range []string{"crew", "workflow", "code"} {
 		t.Run(kind, func(t *testing.T) {
 			env := ownedCodeFunctionEnv(t)
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 			sourceTools := env.alpha
 			if kind == "workflow" {
 				sourceTools = privateCodeWorkflowTools(t, env, "owner")
+			} else if kind == "code" {
+				const source = "_users/owner/Chats/Code/projects/source"
+				env.mock.mu.Lock()
+				env.mock.files[source+"/product.json"] = `{"schema_version":1,"product":"code","id":"source","title":"Source","session_id":"code-source"}`
+				env.mock.mu.Unlock()
+				sourceTools = env.functionTools(t, source, "source-code", nil)
 			}
 			targetTools := env.functionTools(t, ownedCodeFunctionPath, "target-code", nil)
 			listed, err := sourceTools["list_functions"].exec(ctx, map[string]interface{}{"target": "#code:target"})
@@ -63,6 +69,9 @@ func TestOwnedCrewAndWorkflowCanCallDeclaredCodeFunctions(t *testing.T) {
 				t.Fatal("implicit ask exposed Code")
 			}
 			for _, name := range []string{"define_function", "delete_function"} {
+				if kind == "code" {
+					continue // An owner's Code chat already has Code authoring access.
+				}
 				if _, err := sourceTools[name].exec(ctx, map[string]interface{}{"target": "#code:target", "name": "check_build", "description": "Changed", "instructions": "Change the Code."}); err == nil {
 					t.Fatalf("%s let Crew/workflow author Code", name)
 				}
@@ -91,11 +100,15 @@ func TestOwnedCrewAndWorkflowCanCallDeclaredCodeFunctions(t *testing.T) {
 				}
 			}
 			env.svc.mu.Unlock()
-			if job == nil || job.UserID != "owner" || job.GuestCallerID != "" || job.CodeCaller == nil || job.CodeCaller.Type != kind {
+			callerKind := kind
+			if kind == "code" {
+				callerKind = triggerCallerCrew
+			}
+			if job == nil || job.UserID != "owner" || job.GuestCallerID != "" || job.CodeCaller == nil || job.CodeCaller.Type != callerKind || job.Schedule.Isolated {
 				t.Fatalf("queued call = %+v", job)
 			}
 			binding, err := env.svc.codeFunctionRunBinding(ctx, *job, "Code function")
-			if err != nil || binding.WorkspacePath != ownedCodeFunctionPath {
+			if err != nil || binding.WorkspacePath != ownedCodeFunctionPath || binding.ConversationKey != "target" {
 				t.Fatalf("run binding = %+v, %v", binding, err)
 			}
 			// Code is a function target, never a folder attachment or public target.

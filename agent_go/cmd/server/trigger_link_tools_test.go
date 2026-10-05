@@ -150,7 +150,7 @@ func TestConnectCrewToCrewCreatesVisibleBoundTrigger(t *testing.T) {
 		t.Fatalf("trigger does not record its caller: name=%q message=%q", bound.Name, bound.Message)
 	}
 	if !bound.ownConversation() || bound.RunDestination != runDestinationIsolated {
-		t.Fatalf("caller binding must run in its own conversation: %+v", bound)
+		t.Fatalf("caller binding must store an isolated fallback: %+v", bound)
 	}
 	if bound.Webhook != nil {
 		t.Fatalf("internal trigger carries secret material: %+v", bound.Webhook)
@@ -161,9 +161,8 @@ func TestConnectCrewToCrewCreatesVisibleBoundTrigger(t *testing.T) {
 	}
 }
 
-// An existing caller binding saved with crew_chat still runs in its own
-// conversation: the main chat is for people.
-func TestCallerBindingNeverRunsInMainChat(t *testing.T) {
+// Internal bindings default to isolation until dispatch resolves project owners.
+func TestCallerBindingDefaultsToIsolationBeforeOwnerRouting(t *testing.T) {
 	trigger := productWebhookTrigger{ID: "t", Kind: triggerKindInternal, RunDestination: runDestinationCrewChat}
 	if !trigger.ownConversation() {
 		t.Fatal("internal trigger with crew_chat must still run in its own conversation")

@@ -256,6 +256,9 @@ func (s *ProductScheduleService) codeFunctionRunBinding(ctx context.Context, job
 	if canonicalCrewWorkspaceRoot(target.WorkspacePath) != canonicalCrewWorkspaceRoot(job.WorkspacePath) || trigger.PrivateCallerPath != job.CodeCallerPath {
 		return productConversationBinding{}, ErrInternalTriggerNotFound
 	}
+	if !job.Schedule.Isolated {
+		return resolveProductConversationBinding(ctx, job.UserID, job.Profile, job.ProjectID)
+	}
 	return codePeerRunBinding(ctx, job.UserID, job.Profile, job.ProjectID, job.WorkspacePath, job.Schedule.ID, title)
 }
 

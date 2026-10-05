@@ -20,6 +20,12 @@ const restoredBuilderConversationMessageLimit = 12
 const restoredBuilderStepSummaryLimit = 1600
 const workflowBuilderConversationDateLayout = "2006-01-02"
 
+// Automation and cross-owner assistant conversations are not the main
+// workflow chat, even when they use the workflow-builder phase.
+func separateWorkflowConversation(sessionID string) bool {
+	return strings.HasPrefix(sessionID, "wfask-") || strings.HasPrefix(sessionID, "schedule-")
+}
+
 type workflowBuilderSessionResponse struct {
 	Revision           uint64            `json:"revision,omitempty"`
 	Success            bool              `json:"success"`
@@ -146,7 +152,7 @@ func (api *StreamingAPI) findLiveWorkflowBuilderSession(ctx context.Context, pre
 	var chosen *ActiveSessionInfo
 	api.activeSessionsMux.RLock()
 	for _, session := range api.activeSessions {
-		if session == nil || session.AgentMode != "workflow_phase" {
+		if session == nil || session.AgentMode != "workflow_phase" || separateWorkflowConversation(session.SessionID) || session.SessionKind != "" || session.ParentSessionID != "" {
 			continue
 		}
 		if session.UserID != "" && session.UserID != currentUserID {
@@ -323,7 +329,7 @@ func (api *StreamingAPI) restoreLatestBuilderConversationLimited(ctx context.Con
 		if err := json.Unmarshal([]byte(content), &log); err != nil {
 			continue
 		}
-		if !builderConversationVisibleTo(log.UserID, viewerID, workflowAccess) {
+		if separateWorkflowConversation(log.SessionID) || !builderConversationVisibleTo(log.UserID, viewerID, workflowAccess) {
 			continue
 		}
 		updatedAt := parseBuilderConversationUpdatedAt(log.UpdatedAt)

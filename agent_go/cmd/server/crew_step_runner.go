@@ -97,9 +97,12 @@ func (r *crewStepRunner) RunCrewStep(ctx context.Context, req stepworkflow.CrewS
 	// The trigger and its destination join the key so retargeting a step
 	// (or flipping isolated/crew_chat) fires a new run instead of
 	// adopting the previous trigger's success.
-	destination := runDestinationCrewChat
-	if _, _, _, trigger, terr := r.crews.findInternalProductTrigger(ctx, r.userID, req.ProfileID, req.ProjectID, req.TriggerID); terr == nil && trigger != nil {
-		destination = runDestination(trigger.ownConversation())
+	destination := runDestinationIsolated
+	if _, binding, _, _, terr := r.crews.findInternalProductTrigger(ctx, r.userID, req.ProfileID, req.ProjectID, req.TriggerID); terr == nil {
+		if owner, ok := crewProjectOwnerID(binding.WorkspacePath); ok {
+			owners := r.crews.projectCallerOwners(ctx, r.userID, triggerLinkCaller{Stamp: caller})
+			destination = runDestination(!projectsShareOwner(owners, []string{owner}))
+		}
 	}
 	base := crewStepDeliveryBase(req.WorkflowID, runScope, req.Group, req.StepID, req.TriggerID, destination)
 	runID := ""

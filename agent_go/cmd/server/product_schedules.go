@@ -85,15 +85,17 @@ type productScheduleUserState struct {
 
 // productScheduleJob is one (profile, schedule, user) triple.
 type productScheduleJob struct {
-	UserID         string
-	GuestCallerID  string // a non-owner's call: the turn runs as their guest
-	Profile        agentprofiles.Profile
-	Schedule       productschedule.Schedule
-	State          productScheduleUserState
-	ProjectID      string
-	ProjectTitle   string
-	CodeCaller     *triggerCaller // private Code function source, rechecked before a queued turn
-	CodeCallerPath string
+	UserID            string
+	GuestCallerID     string // a non-owner's call: the turn runs as their guest
+	Profile           agentprofiles.Profile
+	Schedule          productschedule.Schedule
+	State             productScheduleUserState
+	ProjectID         string
+	ProjectTitle      string
+	CodeCaller        *triggerCaller // private Code function source, rechecked before a queued turn
+	CodeCallerPath    string
+	ProjectCaller     *triggerCaller
+	ProjectCallerPath string
 	// ConversationKey narrows an isolated run's conversation to one calling
 	// person (a cross-owner Crew call); empty keeps one per schedule/trigger.
 	ConversationKey string
@@ -1119,14 +1121,15 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
 	var binding productConversationBinding
 	var bindErr error
-	if job.ProjectID != "" && job.Schedule.Isolated {
+	if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
+		bindErr = routeErr
+	} else if job.ProjectID != "" && job.Profile.ID == codeproduct.ProfileID && job.CodeCaller != nil && job.AutomationKind == "trigger" {
+		// Revalidate private Code ownership even for a main-chat delivery.
+		binding, bindErr = s.codeFunctionRunBinding(runCtx, job, job.ProjectTitle+" · "+job.Schedule.Name)
+	} else if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
-		if job.Profile.ID == codeproduct.ProfileID && job.CodeCaller != nil && kind == "trigger" {
-			binding, bindErr = s.codeFunctionRunBinding(runCtx, job, title)
-		} else {
-			binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, job.ConversationKey), title)
-		}
+		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, job.ConversationKey), title)
 	} else if job.ProjectID != "" {
 		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, job.ProjectID)
 	} else if job.Schedule.Isolated {

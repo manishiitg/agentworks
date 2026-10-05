@@ -19,9 +19,8 @@ import (
 // Crews, workflows and external connections call a Crew or workflow through
 // one mechanism: its functions (crew_functions.go; `ask` is always there).
 // Underneath, each caller has one internal trigger binding on the target,
-// created on the first call. On a Crew that binding always runs in its own
-// continuing conversation with that caller (never the Crew's main chat,
-// which is for people), so follow-up calls remember earlier ones.
+// created on the first call. Project calls use the receiving main chat when
+// the projects share an owner, otherwise a separate continuing conversation.
 //
 // Targets are any Crew on the server (Crews are shared read-write) and
 // workflows the requester owns or can edit; workflow readers and Crew
@@ -182,15 +181,15 @@ func crewTargetMessage(caller triggerLinkCaller) string {
 	return fmt.Sprintf("The %s %q called you. %s The task is in the payload's `task` field; any extra input is under `payload`. Do the task, then end with a clear, self-contained final answer: it is returned to the caller.", kind, caller.Label, crewCallPrivateConversationNote)
 }
 
-// The conversation sentence of a call's instructions. Crew-to-Crew calls
+// The conversation sentence of a call's instructions. Internal project calls
 // swap it at delivery for where the turn really runs (crewCallMessage).
 const crewCallPrivateConversationNote = "This conversation is yours and that caller's alone (earlier calls from it are above); your main chat is for people and does not see it."
 
-// crewCallMessage fits a Crew-to-Crew call's stored instructions to where
+// crewCallMessage fits a project call's stored instructions to where
 // it runs: the called Crew's own chat (same owner) or a conversation for the
 // calling person (another owner).
 func crewCallMessage(stored string, sameOwner bool) string {
-	note := "This conversation is only for this person's calls to you (earlier ones are above); your main chat does not see it."
+	note := "This conversation is only for this caller's calls to you (earlier ones are above); your main chat does not see it."
 	if sameOwner {
 		note = "This call runs in your main chat, so the people here see it too."
 	}
@@ -199,8 +198,7 @@ func crewCallMessage(stored string, sameOwner bool) string {
 
 // connectTriggerTarget reuses the internal binding on target that names this
 // caller or creates the standard one. It returns the binding's trigger ID and
-// whether it was created. A Crew binding runs every call in the caller's own
-// continuing conversation with that Crew.
+// whether it was created. Project ownership selects the conversation at delivery.
 func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) (string, bool, error) {
 	if caller.isTarget(target) {
 		return "", false, fmt.Errorf("a %s cannot connect to itself", target.Kind)

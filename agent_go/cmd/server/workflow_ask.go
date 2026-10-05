@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
@@ -16,7 +18,8 @@ import (
 // never straight into a run. The assistant answers questions ("what can you
 // do?", "what did the last run do?") and, when asked to run something,
 // starts the right route with the right variables itself and reports the
-// outcome. Each caller keeps one continuing conversation with it. (Sending
+// outcome. Shared-owner projects use the caller's visible main workflow chat;
+// other callers keep a separate continuing conversation. (Sending
 // free text straight into a run is what let the PR-review gate ignore the
 // requested PR and fall back to a saved PR_NUMBER.)
 
@@ -45,8 +48,8 @@ func isWorkflowAsk(target triggerTarget, fn crewFunction) bool {
 
 // workflowAskSessionID is the caller's continuing conversation with the
 // workflow's assistant: stable per workflow and caller.
-func workflowAskSessionID(workflowID string, caller triggerCaller) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(workflowID) + "\x1f" + strings.ToLower(strings.TrimSpace(caller.Type)) + "\x1f" + strings.TrimSpace(caller.ProfileID) + "\x1f" + strings.TrimSpace(caller.ID)))
+func workflowAskSessionID(workflowID string, caller triggerCaller, userID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(workflowID) + "\x1f" + strings.ToLower(strings.TrimSpace(caller.Type)) + "\x1f" + strings.TrimSpace(caller.ProfileID) + "\x1f" + strings.TrimSpace(caller.ID) + "\x1f" + strings.TrimSpace(userID)))
 	return "wfask-" + hex.EncodeToString(sum[:])[:24]
 }
 
@@ -73,8 +76,27 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
 	defer cancel()
 	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
-	manifest := target.Manifest
-	sessionID := workflowAskSessionID(manifest.ID, caller.Stamp)
+	manifest, exists, readErr := ReadWorkflowManifest(ctx, target.Path)
+	if readErr != nil || !exists || manifest == nil || target.Manifest == nil || manifest.ID != target.Manifest.ID {
+		call.finish("failed", nil, "workflow is unavailable or access denied")
+		return
+	}
+	access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
+	if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+		call.finish("failed", nil, "workflow is unavailable or access denied")
+		return
+	}
+	sessionID := workflowAskSessionID(manifest.ID, caller.Stamp, call.UserID)
+	sharedOwner := projectsShareOwner(api.productSchedules.projectCallerOwners(ctx, call.UserID, caller), manifest.effectiveOwners())
+	if sharedOwner {
+		// Workflow chats are private to the executing user. Never restore
+		// another owner's transcript or substitute that owner as principal.
+		sessionID = api.userWorkflowChat(ctx, call.UserID, services.ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: target.Path})
+		if sessionID == "" {
+			sum := sha256.Sum256([]byte(manifest.ID + "\x1f" + call.UserID))
+			sessionID = "wfmain-" + hex.EncodeToString(sum[:])[:24]
+		}
+	}
 	query := QueryRequest{
 		Query: workflowAskMessage(caller, message), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
 		PresetQueryID: manifest.ID, SelectedFolder: target.Path,

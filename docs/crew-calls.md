@@ -5,14 +5,14 @@ own.
 
 | You want to… | Use | Runs in |
 |---|---|---|
-| Have a workflow or an MCP/CLI tool use a Crew | **Functions** (`ask` or a typed function) | The caller's own continuing conversation with that Crew |
-| Have another Crew use a Crew | **Functions** (`ask` or a typed function) | Same owner: receiving Crew's main chat. Different owner: a separate continuing chat for the calling person |
-| Have Code call a Crew, or an authorized workflow/Crew/Code call a private Code project | **Functions** | A separate continuing chat in the receiving project, keyed by its internal trigger |
+| Have a workflow, Crew or Code project call a Crew or an authorized private Code project | **Functions** (`ask` or a declared function) | Any shared project owner: receiving project's main chat. No shared owner: separate continuing chat |
+| Have an external MCP/CLI connection call a Crew | **Functions** | Existing external connection routing; a person's `ask` uses their own Crew chat |
 | Run something on a timer | **Schedule** | The Crew's main chat, or the schedule's own conversation |
 | Let an outside system (GitHub, CI) start work | **Webhook** | The Crew's main chat, or the webhook's own conversation |
 
-Workflow and MCP/CLI callers have separate chats. A Crew calling another Crew
-owned by the same person uses the receiving Crew's main chat.
+Project calls compare the owners recorded on the calling and receiving
+projects. For workflows with multiple owners, **any shared owner** counts.
+The person executing the call is not used as a substitute project owner.
 
 ## Functions
 
@@ -87,29 +87,31 @@ declared inputs. Both feed the same workflow variables.
 
 ## One continuing conversation per caller
 
-Workflow and MCP/CLI callers get **a continuing conversation** with the Crew.
-For a workflow caller, it is keyed by the Crew project and internal trigger ID.
-Follow-up calls through the same trigger land in the same conversation, so the
-Crew remembers earlier calls. Calling a Crew with `ask_crew` repeatedly is
-effectively a chat with it.
+Workflow, Crew and Code project calls use one owner rule. If the two projects
+share any recorded owner, the call continues in the receiving project's main
+chat. Otherwise it uses a separate continuing chat, keyed by the internal
+trigger and, for a guest call, the calling person. Unknown ownership also
+uses a separate chat. Follow-up calls reuse that chat; isolation does not
+create a new project or copy its files.
 
-Crew-to-Crew calls use the owners to choose the destination: calls between
-Crews owned by the same person continue in the receiving Crew's main chat.
-A cross-owner call has its own continuing chat keyed by the trigger and calling
-person. A separate chat retains the target Crew's workspace and capabilities;
-it separates history rather than copying the project into a new workspace.
+The same rule applies to a workflow's `ask` assistant. Workflow main chats are
+private to each account: a same-owner project call uses the **executing user's**
+visible workflow chat, never another owner's private transcript. Cross-owner
+assistant chats are separate for each calling project and executing user and
+are excluded from the main-chat restore lookup. Typed workflow functions still
+execute normal workflow runs with their own run records and step history.
 
-Code is excluded from the same-owner Crew-to-Crew main-chat rule. Code calling
-a Crew, and calls targeting a private Code project, use an isolated continuing
-chat even when both projects have the same owner. Subsequent calls through the
-same binding reuse that chat. Private Code targets also require the caller's
-actual identity and source ownership to pass the Code authorization checks;
-workflow edit access or platform admin status alone does not grant access.
+Private Code targets still require the actual caller and source project to
+pass Code authorization checks. Sharing an owner chooses a conversation; it
+does not grant access. Code calls revalidate source ownership at queued start,
+including main-chat calls. Other queued project calls reject a changed owner
+relationship instead of entering a chat using a stale routing decision.
 
-The conversation is set up automatically on the first call. The Crew's
-**Automation → Functions** tab lists these under **Callers**; **Disconnect**
-removes one, and the caller's next call starts a new conversation. Each
-caller's conversation appears in the Crew's **Chats** list.
+Internal bindings keep their stored isolated fallback for old installations;
+the owner rule overrides it at dispatch. External MCP/CLI connections, public
+webhooks and schedules keep their existing destination rules. The Crew's
+**Automation → Functions** tab lists bindings under **Callers**; **Disconnect**
+removes a binding. Cross-owner conversations appear in the Crew's **Chats** list.
 
 ## Long calls, timeouts and restarts
 

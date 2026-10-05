@@ -100,49 +100,35 @@ paths are display metadata and must not be execution identities.
 
 ## Conversation destinations
 
-The caller type is checked before the stored run destination. A workflow's
-internal caller binding always executes in the trigger's own continuing
-conversation. Even a legacy internal trigger saved with
-`run_destination: "crew_chat"` runs separately from the Crew's main chat.
+Workflow steps, Crew calls and Code calls use the same project owner rule:
 
-The following destination choice applies to external webhooks and schedules.
+- **Any shared owner:** use the receiving project's main chat.
+- **No shared owner:** use a separate continuing chat.
+- **Unknown ownership:** use a separate chat.
 
-### Main Crew chat (`crew_chat`)
+Ownership comes from the source workflow's `access.owners` (or `created_by`
+for older manifests) and the receiving Crew/Code project's owner record. A
+workflow with several owners only needs one owner in common with the target.
+The logged-in or executing person does not replace these project owners.
+Existing access checks and guest permissions remain in effect.
 
-The invocation continues in the same persistent conversation used by the
-person and the Crew. Choose it when the instruction depends on discussion in
-that main conversation.
+This rule overrides the stored `run_destination` of internal project bindings.
+External webhooks and schedules still choose `crew_chat` or `isolated` in their
+settings. An isolated chat retains earlier deliveries through the same trigger;
+it does **not** mean a fresh chat per invocation. Its workspace stays the target
+project's workspace, while its conversation history remains separate.
 
-### Trigger conversation (`isolated`)
+Cross-owner workflow calls use `<crew-project-id>:trigger:<trigger-id>` as their
+conversation key, with a calling-person suffix for guest calls. Same-owner calls
+use the receiving project's normal conversation key. Both destinations retain
+context and return the exact run's final response to the workflow step's
+`context_output`. The delivery idempotency key includes the effective destination
+so a changed owner relationship cannot adopt a result from the old destination.
+Queued calls also reject an ownership change before entering the conversation.
 
-The invocation continues in the trigger's own persistent automation
-conversation. It retains earlier deliveries for that trigger but does not mix
-them into the main user conversation. Choose it when the task should build on
-previous automated runs.
-
-`isolated` does **not** mean a fresh conversation for every invocation. Both
-destinations retain context; they retain different histories. Avoiding visible
-interruption is a secondary consideration. The primary choice is which history
-the work requires.
-
-For workflow calls, the conversation key is
-`<crew-project-id>:trigger:<trigger-id>`, resolved in the target user's
-conversation registry. The first invocation creates that chat; subsequent
-invocations reuse it. A new run ID identifies each invocation without creating
-a fresh chat. The isolated chat inherits the Crew's workspace and capability
-policy; isolation separates conversation history, not the project files.
-
-For example, the local Trading workflow's `crew-news-monitor` step calls News
-Monitor through `news monitor trigger` (kind `internal`, caller type
-`workflow`). Its stored destination is the legacy `crew_chat` value, but the
-registry confirms a separate trigger chat. The October 5 and September 28,
-2026 runs reused that chat. The workflow waits for the Crew's response and
-writes it to the step's `context_output` (`news_response.md` in this example).
-
-Crew-to-Crew calls have a separate owner rule: a same-owner call uses the
-receiving Crew's main chat; a cross-owner call uses a continuing chat dedicated
-to that trigger and calling person. This exception does not apply to a
-workflow caller.
+The local Trading → News Monitor runs observed on September 28 and October 5,
+2026 used a separate trigger chat under the previous workflow-only rule. New
+calls use the common owner rule above; existing saved history is preserved.
 
 ## Runtime contract
 
@@ -964,8 +950,8 @@ plan, Crew files, tool response, or Builder conversation. Builder should show
 the requested integrations in one approval step and ask the user to connect
 only anything that is missing.
 
-The default trigger uses an `isolated` Crew conversation so automated workflow
-runs do not clutter the main Crew chat. It is internal, accepts the step
+The default trigger stores `isolated` as a fallback; the common project owner
+rule selects the actual conversation at dispatch. It is internal, accepts the step
 instruction and workflow inputs, and is automatically selected by the new Crew
 step. The creation result returns the Crew ID, trigger ID, attachment alias, and
 step configuration so Builder can finish without asking the user to copy IDs.

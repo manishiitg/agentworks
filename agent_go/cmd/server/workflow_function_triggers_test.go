@@ -223,6 +223,13 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 // per caller; it never starts a run by itself.
 func TestWorkflowAskUsesCallersAssistantThread(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	// Different project owners retain a private continuing assistant chat.
+	manifest, _, _ := ReadWorkflowManifest(context.Background(), "Workflow/reports")
+	manifest.Access = &WorkflowAccess{Owners: []string{"other"}, Editors: []string{"owner"}}
+	raw, _ := json.Marshal(manifest)
+	env.mock.mu.Lock()
+	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
+	env.mock.mu.Unlock()
 	var mu sync.Mutex
 	var turns []map[string]interface{}
 	var sessions []string
@@ -258,7 +265,7 @@ func TestWorkflowAskUsesCallersAssistantThread(t *testing.T) {
 	if req["pin_run_mode"] != true || req["agent_mode"] != "workflow_phase" || !strings.Contains(fmt.Sprint(req["query"]), "Alpha Bot") || !strings.Contains(fmt.Sprint(req["query"]), "submit_workflow_suggestion") {
 		t.Fatalf("assistant request = %v", req)
 	}
-	if other := workflowAskSessionID("reports", triggerCaller{Type: triggerCallerCrew, ID: "beta", ProfileID: "work"}); other == sessions[0] {
+	if other := workflowAskSessionID("reports", triggerCaller{Type: triggerCallerCrew, ID: "beta", ProfileID: "work"}, "owner"); other == sessions[0] {
 		t.Fatal("another caller must get its own thread")
 	}
 }
