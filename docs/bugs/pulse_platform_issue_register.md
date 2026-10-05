@@ -49,7 +49,7 @@
 
 ## An MCP tool named like a platform tool stops the chat from starting — PLAT-519
 
-[PLAT-519](pulse_platform/mcp/plat-519.md), P1. Stopgap on mcpagent main (platform tool used, the clashing MCP tool hidden with a warning), not deployed. Open: give a clashing MCP tool a server prefix (`neon__delete_function`) so both stay usable.
+[PLAT-519](pulse_platform/mcp/plat-519.md), P1. Stopgap in the builder build (mcpagent pin 78db549), not deployed. Open: prefix every MCP tool as `<alias>__<tool>` in the direct-tool path (owner decision 2026-10-06).
 
 ## Single consolidated browser design — PLAT-517
 

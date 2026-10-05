@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Every MCP tool is exposed with its connection as a prefix
+- In the platform's own agent loop every MCP tool is named `<alias>__<tool>` (a short, stable connection alias); platform
+  tools keep their names, so a connector can never clash with or hide a platform tool, and two connections of the same server
+  stay distinct. Saved `server:tool` selections and the `$MCP_MCP/<server>/<tool>` bridge URL are unchanged. Replaces the
+  "prefix only on a clash" direction. Until it ships, the stopgap keeps the platform tool and hides the clashing MCP tool.
+  A read-only scan of local, Confida, Excellence and RTS found nothing saved that depends on bare MCP tool names.
+  Ticket: [PLAT-519](bugs/pulse_platform/mcp/plat-519.md).
+
 ### 2026-10-05 — Product workspace toolbar choices survive page refresh
 
 Use one view-preference helper across all products, scoped by server connection,
