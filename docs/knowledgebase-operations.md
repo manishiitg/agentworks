@@ -1,7 +1,7 @@
 # Knowledge Base MVP operations
 
 Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
-shows access, activity and connection settings. Its chat manages folder access.
+shows access and connection settings. Its chat manages folder access.
 Content saves and explicit Git backups happen through MCP, including in Crews,
 Code and workflows. An authorized reader sees a successful save immediately.
 
@@ -67,8 +67,7 @@ The MVP has five tools, all requiring `action`:
 | `backup_knowledgebase` | `status`, `commit`, `push` |
 | `manage_knowledgebase_access` | `inspect`; other access actions belong to the app's builder |
 
-Read-only connections discover four tools with read-only action schemas. Activity
-history stays in the app. Use different request IDs for different actions.
+Read-only connections discover four tools with read-only action schemas. Use different request IDs for different actions.
 
 Typical write flow: list folders, read an entry's version, call
 `update_knowledgebase(action=update)` with `expected_version`, a patch or replacement, and a stable
@@ -97,7 +96,7 @@ retryable `BACKUP_BUSY`. Live reads and ordinary content saves remain available.
 
 Git contains plain Markdown from explicitly pushed snapshots. It is insufficient
 to recover pending edits, permissions or metadata. Back up the entire Knowledge
-Base data root, including live files, registries, private identity/activity/request/
+Base data root, including live files, registries, private identity/request/
 journal/receipt records, staging Git objects and a consistent SQLite snapshot.
 Use the SQLite backup API or stop all writers before copying the grant database;
 copying only its main file while WAL is active is not a consistent backup.
@@ -146,3 +145,6 @@ then rebind every consumer through its owner and confirmed access proposal,
 then cut over. Pause writers, schedules, executions and affected configuration
 changes; cutover re-scans and refuses remaining legacy consumers. No installation
 is migrated by merging this PR. OAuth Knowledge Base scopes are opt-in.
+
+Activity tracking is deferred for MVP: no Activity view, API endpoint, or event
+recording. Recovery journals and retry/backup receipts remain in private state.

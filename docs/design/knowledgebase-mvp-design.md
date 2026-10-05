@@ -18,7 +18,7 @@ The live knowledge base is the source of truth. A private Git repository is a ve
 | --- | --- |
 | Content | Skills, notes, facts, and sources use one common entry model. |
 | Organization | Nested folders, for example `Engineering/Payments/Checkout`. |
-| Application | Browse folders, search, and read entries; display relevant activity and backup status. |
+| Application | Browse folders, search, and read entries; display backup status. |
 | Builder chat | View access, grant or revoke access, and change basic roles. |
 | MCP clients | Crews, Code, Workflows, and external local agents use the same backend. |
 | Content mutations | Create, update, patch, and delete through MCP. |
@@ -149,7 +149,7 @@ New folders and entries inherit the parent folder's grants immediately. Inherita
 Credential → Identity → Organization → Effective folder grants → Operation
 ```
 
-The server checks authorization on every operation, including listing, searching, reading, patching, deleting, committing, and pushing. The same policy applies to the app and all MCP clients. Folder grants are stored in a server-owned sqlite database outside the workspace, so content writers can never modify permissions through file tools. Sqlite holds access control only: no content, metadata, versions, or activity.
+The server checks authorization on every operation, including listing, searching, reading, patching, deleting, committing, and pushing. The same policy applies to the app and all MCP clients. Folder grants are stored in a server-owned sqlite database outside the workspace, so content writers can never modify permissions through file tools. Sqlite holds access control only: no content, metadata, or versions.
 
 - Respect existing platform account status, read-only restrictions, product entitlements, and connection capabilities before evaluating folder grants. A folder role cannot override a disabled account or a stricter platform/connection boundary.
 - Search and folder listing return only accessible content.
@@ -158,7 +158,7 @@ The server checks authorization on every operation, including listing, searching
 - Paths must stay within the organization and authorized folder. Reject traversal, absolute host paths, and patch headers targeting another file.
 - Revocation takes effect on subsequent operations, including push of an already prepared commit.
 - Tool results and error details must not expose inaccessible content.
-- A resource that does not exist and a resource the caller cannot read return the same `NOT_FOUND` code, message, and response shape, with no existence hint. This applies to entry/folder lookup, filtered searches, activity, and backup receipts. If the caller can read an entry but lacks permission to mutate it, `FORBIDDEN` is appropriate.
+- A resource that does not exist and a resource the caller cannot read return the same `NOT_FOUND` code, message, and response shape, with no existence hint. This applies to entry/folder lookup, filtered searches and backup receipts. If the caller can read an entry but lacks permission to mutate it, `FORBIDDEN` is appropriate.
 - Recheck current authorization before returning a cached idempotent result; a revoked caller must not recover protected content through retries.
 
 ## 6. Application and builder chat
@@ -190,7 +190,7 @@ The MVP exposes five public MCP names, each with an explicit `action`. They shar
 | `backup_knowledgebase` | `status`, `commit` selected versions/deletions, `push` an owned receipt. | Reader for status; Editor on every selected path for commit/push |
 | `manage_knowledgebase_access` | `inspect` for connected agents; `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account` only in the app's access builder. | Reader for inspection; Owner/admin for access changes; admin for service accounts |
 
-Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; content connections expose access inspection only. Dispatch rechecks the action's write scope and live folder grants independently of discovery. Activity history remains in the app through its read-only viewer API.
+Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; content connections expose access inspection only. Dispatch rechecks the action's write scope and live folder grants independently of discovery.
 
 All operations are scoped to the authenticated organization. Content operations resolve an entry by ID or organization-relative path. Types use the same tools; no separate tool families are needed for skills, notes, facts, or sources.
 
@@ -301,7 +301,7 @@ Expose the existing diff patch capability as `update_knowledgebase(action=update
 
 The existing workspace client accepts `filepath` and `diff` and includes folder write-path validation. The knowledge-base adapter maps the public entry locator to an authorized target and reuses the underlying patch implementation.
 
-The adapter must add knowledge-base identity and folder authorization, required version checks, atomic persistence, and activity recording. Renaming the tool alone does not provide these guarantees. Keep the general workspace tool available to its existing consumers.
+The adapter must add knowledge-base identity and folder authorization, required version checks, and atomic persistence. Renaming the tool alone does not provide these guarantees. Keep the general workspace tool available to its existing consumers.
 
 Relevant existing code inspected during planning:
 
@@ -398,7 +398,7 @@ A later commit may have another user's already-pushed commit as its ancestor, in
 
 Before publication, reject a snapshot of an entry that has since been deleted or replaced by a new entry at that path. Also reject a content snapshot older than that entry's already-published content-change sequence with `BACKUP_VERSION_CONFLICT`; do not regress a newer backup. A newer live version that has not yet been backed up does not invalidate an earlier prepared content snapshot.
 
-Because live content is shared, a selected entry snapshot may contain edits by multiple contributors. Record both the contributors in the activity history and the identity initiating backup. The commit receipt shows exactly which entry versions will be backed up.
+Because live content is shared, a selected entry snapshot may contain edits by multiple contributors. Record the identity initiating backup in its receipt. The commit receipt shows exactly which entry versions will be backed up.
 
 If content changes after commit, pushing the earlier snapshot is allowed, but the newer live version remains pending. A push must never mark a newer version as backed up when that version was not included.
 
@@ -468,7 +468,7 @@ Commit and push calls can be retried safely using their request IDs and receipts
 
 Application folder permissions do not apply inside the Git repository. Anyone granted direct repository access may read the entire exported content. Restrict repository access to backup administrators; normal readers and writers use the app and MCP.
 
-Git backs up published content and non-empty folder paths. It does not back up identities, permissions, entry metadata, empty folders, activity, configuration, or edits that have not been pushed. Infrastructure backups must include the complete live Markdown tree, per-folder registries, private identity/request/journal/activity/receipt state, the isolated staging repository, and a consistent SQLite grant-store snapshot. File backup is infrastructure recovery, not an automatic Git publishing agent.
+Git backs up published content and non-empty folder paths. It does not back up identities, permissions, entry metadata, empty folders, configuration, or edits that have not been pushed. Infrastructure backups must include the complete live Markdown tree, per-folder registries, private identity/request/journal/receipt state, the isolated staging repository, and a consistent SQLite grant-store snapshot. File backup is infrastructure recovery, not an automatic Git publishing agent.
 
 Recovery must preserve folder grants and metadata from the grant-store and registry-file backups. If only Markdown files are available, restore them into an administrator-only area until access has been assigned; do not make recovered files broadly readable by default. A self-service restore interface is deferred.
 
@@ -478,7 +478,6 @@ Recovery must preserve folder grants and metadata from the grant-store and regis
 App viewer ───────────────┐
                          ├─→ Knowledge-base service → Live files + sqlite grants
 MCP clients → MCPBridge ─┘              │
-                                       ├─→ Activity records
 Builder chat → Access actions ──────────┤
                                        └─→ Git backup adapter → Private remote
 ```
@@ -496,15 +495,15 @@ Minimum internal records:
 | Folder grant | Identity, folder, and Reader/Editor/Owner role, plus the ACL generation counter; SQLite outside workspace-docs. |
 | Entry | Markdown file on disk; metadata and change sequence in the per-folder registry file. |
 | Deletion tombstone | Recorded in the per-folder registry file: stable token, original path, sequence, attribution. |
-| Change/activity | Permission-filtered private activity records plus existing tool-call logs and Git history; preserve deletion attribution. |
+| Recovery | Private mutation journals, retry outcomes and backup receipts; preserve deletion attribution. |
 | Mutation request | Domain request IDs and durable outcomes in the private file journal; seven-day retry retention. The existing workflow-specific submission ledger is not a drop-in content transaction. |
 | Backup snapshot/receipt | Prepared Git commit anchored in the private staging repository, with an opaque receipt ID and private ownership/selection/version/expiry/state record. A commit SHA alone is insufficient. |
 | Backup path state | Derived by comparing live bytes against the tracked remote branch tip. |
 | Publication lock | File lock (flock) on the staging repo; safe across server processes. |
 
-Keep credentials out of content, tool responses, exported files, and activity logs. Activity displays follow the same content access boundaries.
+Keep credentials out of content, tool responses, exported files, or ordinary tool-call logs.
 
-Each file mutation takes a process-safe lock and durably journals its complete content, registry, activity, and retry-outcome changes before applying them. Recovery completes an interrupted transaction before any content read or write. Readers take the corresponding lock, so they cannot observe the middle of a multi-file save. Atomic rename is one step of this protocol; it does not by itself make a content file and its registry a single transaction.
+Each file mutation takes a process-safe lock and durably journals its complete content, registry, and retry-outcome changes before applying them. Recovery completes an interrupted transaction before any content read or write. Readers take the corresponding lock, so they cannot observe the middle of a multi-file save. Atomic rename is one step of this protocol; it does not by itself make a content file and its registry a single transaction.
 
 Private registries, journals, identities, request outcomes and backup receipts are never content targets or search results. The entire data root is outside general workspace file roots. Folder authorization runs before returning entries or consuming a page; opaque cursors bind the query and principal scope and recheck current grants.
 
@@ -541,7 +540,7 @@ Private registries, journals, identities, request outcomes and backup receipts a
 ## 12. MVP acceptance criteria
 
 1. Priya granted Reader on Payments can browse and read Checkout and Billing through both app and MCP, but cannot update either.
-2. Priya granted Reader only on Checkout cannot discover Billing entries through listing, search, reads, activity, or backup results.
+2. Priya granted Reader only on Checkout cannot discover Billing entries through listing, search, reads, or backup results.
 3. A workflow with Editor on Checkout can create and patch entries there and cannot modify Billing.
 4. A saved update is readable by Priya before any commit or push.
 5. Two agents editing the same version cannot silently overwrite one another; the later conflicting write is rejected.
@@ -626,7 +625,6 @@ frontend/src/
 │   ├── KnowledgebaseLibraryPanel.tsx
 │   ├── KnowledgebaseReader.tsx
 │   ├── KnowledgebaseAccessPanel.tsx
-│   ├── KnowledgebaseActivityPanel.tsx
 │   └── KnowledgebaseConnectPanel.tsx
 └── services/knowledgebaseApi.ts
 ```
@@ -659,7 +657,7 @@ Layout:
 ```text
 Shared product navigation and workspace toolbar
 ┌────────────────────────┬──────────────────────────────────┐
-│ Access-management chat │ Library / Access / Activity /    │
+│ Access-management chat │ Library / Access / Connect    │
 │                        │ Connect                          │
 │ Existing ChatArea      │ Folder tree + Markdown reader    │
 │ and conversation tabs  │ or the selected management view │
@@ -670,8 +668,7 @@ Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, shared toolbar buttons, 
 
 - **Library:** nested folders, search/type/tag filters, read-only content, attribution, and per-entry backup status. No editor or generic writable file panel.
 - **Access:** inspect effective access; Owners/admins can use chat to grant, change, or revoke folder grants. Show inherited grants as inherited rather than implying a child can cancel them.
-- **Activity:** permission-filtered content/access/backup events.
-- **Connect:** the actual MCP endpoint and connection instructions; reuse secure token creation/revocation controls for users and administrator-managed service accounts. Do not put credential values in chat or ordinary activity messages.
+- **Connect:** the actual MCP endpoint and connection instructions; reuse secure token creation/revocation controls for users and administrator-managed service accounts. Do not put credential values in chat or ordinary tool messages.
 - **Models:** use the existing shared model settings where the shell exposes them.
 
 Git configuration is administrator-managed through secure platform settings/provisioning. The reader shows backup status, but commit and push are MCP operations rather than application buttons or access-chat actions.
@@ -770,3 +767,12 @@ bindings. External OAuth/PAT connections explicitly request Knowledge Base
 scopes; ordinary agents cannot invoke migration. See the integration design's
 [review hardening](knowledgebase-integration-migration.md#review-hardening-plat-496)
 for source-owner migration authority and consumer cutover prerequisites.
+
+## MVP simplification: no Activity tracking
+
+Activity is deferred. The frontend has Library, Access and Connect views;
+there is no Activity API, activity tool, or backend activity-event recording.
+Private mutation journals, deduplication outcomes, deletion records, migration
+checkpoints and backup receipts remain required for correctness and recovery.
+Existing activity files from earlier development builds are no longer read or
+extended; they are not deleted automatically.

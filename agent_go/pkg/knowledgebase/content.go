@@ -23,13 +23,13 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[string]any) (any, []fileChange, error) {
 	switch tool {
 	case "manage_knowledgebase_access":
 		return s.manage(ctx, p, a)
 	case "get_knowledgebase_access":
 		v, e := s.access(p, a)
-		return v, nil, nil, e
+		return v, nil, e
 	case "create_knowledgebase_folder":
 		return s.createFolder(p, a)
 	case "create_knowledgebase":
@@ -40,21 +40,18 @@ func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[s
 		return s.deleteEntry(p, a)
 	case "read_knowledgebase":
 		v, e := s.readEntry(p, a)
-		return v, nil, nil, e
+		return v, nil, e
 	case "list_knowledgebase", "list_knowledgebase_folders":
 		v, e := s.list(p, tool, a)
-		return v, nil, nil, e
+		return v, nil, e
 	case "search_knowledgebase":
 		v, e := s.search(ctx, p, a)
-		return v, nil, nil, e
-	case "get_knowledgebase_activity":
-		v, e := s.activity(p, a)
-		return v, nil, nil, e
+		return v, nil, e
 	case "get_knowledgebase_backup_status":
 		v, e := s.backupStatus(p, a)
-		return v, nil, nil, e
+		return v, nil, e
 	}
-	return nil, nil, nil, badArg("Unsupported tool.")
+	return nil, nil, badArg("Unsupported tool.")
 }
 func (s *Service) collision(r folderRegistry, name string) bool {
 	if files, e := os.ReadDir(filepath.Join(s.live, filepath.FromSlash(r.Path))); e == nil {
@@ -77,26 +74,26 @@ func (s *Service) collision(r folderRegistry, name string) bool {
 	}
 	return false
 }
-func (s *Service) createFolder(p Principal, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) createFolder(p Principal, a map[string]any) (any, []fileChange, error) {
 	r, err := s.resolveFolder(p, a, roleEditor)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	name := stringArg(a, "name")
 	if !validName(name, false) {
-		return nil, nil, nil, badArg("Invalid folder name.")
+		return nil, nil, badArg("Invalid folder name.")
 	}
 	cp := childPath(r.Path, name)
 	if err = validatePath(cp, false); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if s.collision(r, name) {
-		return nil, nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
+		return nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
 	}
 	nr := folderRegistry{ID: "folder_" + uuid.NewString(), Path: cp, Entries: []Entry{}, Deletions: []Deletion{}}
 	result := map[string]any{"folder_id": nr.ID, "folder_path": nr.Path, "name": name}
-	act := newActivity(p, "create_folder", cp, "", "")
-	return result, []fileChange{jsonChange(s.registryPath(cp), nr)}, act, nil
+
+	return result, []fileChange{jsonChange(s.registryPath(cp), nr)}, nil
 }
 func validateMetadata(e *Entry) error {
 	if e.Type != "skill" && e.Type != "note" && e.Type != "fact" && e.Type != "source" {
@@ -159,40 +156,40 @@ func tagsArg(v any) ([]string, error) {
 		return nil, badArg("tags must be an array of strings.")
 	}
 }
-func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	r, err := s.resolveFolder(p, a, roleEditor)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	name := stringArg(a, "filename")
 	if !validName(name, true) {
-		return nil, nil, nil, badArg("Invalid Markdown filename.")
+		return nil, nil, badArg("Invalid Markdown filename.")
 	}
 	ep := childPath(r.Path, name)
 	if err = validatePath(ep, true); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if s.collision(r, name) {
-		return nil, nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
+		return nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
 	}
 	for _, d := range r.Deletions {
 		if strings.EqualFold(d.Path, ep) && !s.deletionReusable(d) {
-			return nil, nil, nil, kbErr("PATH_PENDING_DELETION_BACKUP", "The deleted path is reserved until its backup is confirmed.")
+			return nil, nil, kbErr("PATH_PENDING_DELETION_BACKUP", "The deleted path is reserved until its backup is confirmed.")
 		}
 	}
 	content, ok := a["content"].(string)
 	if !ok {
-		return nil, nil, nil, badArg("content must be a string.")
+		return nil, nil, badArg("content must be a string.")
 	}
 	content, err = normalizeText(content, 10*1024*1024, "Content")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	tags := []string{}
 	if v, has := a["tags"]; has {
 		tags, err = tagsArg(v)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 	}
 	description := ""
@@ -200,18 +197,18 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 		var ok bool
 		description, ok = v.(string)
 		if !ok {
-			return nil, nil, nil, badArg("description must be a string.")
+			return nil, nil, badArg("description must be a string.")
 		}
 	}
 	now := stamp()
 	e := Entry{ID: "entry_" + uuid.NewString(), FolderID: r.ID, FolderPath: r.Path, Path: ep, Filename: name, Type: stringArg(a, "type"), Title: stringArg(a, "title"), Description: description, Tags: tags, Sequence: 1, ContentSequence: 1, Fingerprint: digest([]byte(content)), CreatedAt: now, UpdatedAt: now, CreatedBy: p.IdentityID, UpdatedBy: p.IdentityID}
 	if err = validateMetadata(&e); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	e.Version = entryVersion(e)
 	r.Entries = append(r.Entries, e)
 	result := entryResult(e, true)
-	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: []byte(content)}, jsonChange(s.registryPath(r.Path), r)}, newActivity(p, "create", r.Path, e.Path, e.ID), nil
+	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: []byte(content)}, jsonChange(s.registryPath(r.Path), r)}, nil
 }
 func publicEntry(e Entry) map[string]any {
 	m := asMap(e)
@@ -241,68 +238,68 @@ func (s *Service) entryContent(e Entry) ([]byte, error) {
 	}
 	return b, err
 }
-func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	e, r, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if stringArg(a, "expected_version") != e.Version {
-		return nil, nil, nil, versionConflict(e)
+		return nil, nil, versionConflict(e)
 	}
 	_, hasDiff := a["diff"]
 	_, hasContent := a["content"]
 	if hasDiff && hasContent {
-		return nil, nil, nil, badArg("Choose diff or content, never both.")
+		return nil, nil, badArg("Choose diff or content, never both.")
 	}
 	old, err := s.entryContent(e)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	content := string(old)
 	if hasContent {
 		var ok bool
 		content, ok = a["content"].(string)
 		if !ok {
-			return nil, nil, nil, badArg("content must be a string.")
+			return nil, nil, badArg("content must be a string.")
 		}
 	}
 	if hasDiff {
 		d, ok := a["diff"].(string)
 		if !ok {
-			return nil, nil, nil, badArg("diff must be a string.")
+			return nil, nil, badArg("diff must be a string.")
 		}
 		d, err = normalizeText(d, 2*1024*1024, "Diff")
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		if err = validateDiffTarget(d, e); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		content, err = handlers.ApplyDiffPatchDirect(content, d)
 		if err != nil {
-			return nil, nil, nil, kbErr("PATCH_FAILED", "The patch could not be applied completely.")
+			return nil, nil, kbErr("PATCH_FAILED", "The patch could not be applied completely.")
 		}
 	}
 	content, err = normalizeText(content, 10*1024*1024, "Content")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	before := e
 	meta, hasMeta := a["metadata"]
 	if hasMeta {
 		m, ok := meta.(map[string]any)
 		if !ok {
-			return nil, nil, nil, badArg("metadata must be an object.")
+			return nil, nil, badArg("metadata must be an object.")
 		}
 		if len(m) == 0 && !hasContent && !hasDiff {
-			return nil, nil, nil, badArg("Supply a content update or non-empty metadata.")
+			return nil, nil, badArg("Supply a content update or non-empty metadata.")
 		}
 		for k, v := range m {
 			switch k {
 			case "title", "description", "type":
 				str, ok := v.(string)
 				if !ok {
-					return nil, nil, nil, badArg("Metadata fields cannot be null and must have their declared types.")
+					return nil, nil, badArg("Metadata fields cannot be null and must have their declared types.")
 				}
 				switch k {
 				case "title":
@@ -315,25 +312,25 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 			case "tags":
 				e.Tags, err = tagsArg(v)
 				if err != nil {
-					return nil, nil, nil, err
+					return nil, nil, err
 				}
 			default:
-				return nil, nil, nil, badArg("Unknown metadata field.")
+				return nil, nil, badArg("Unknown metadata field.")
 			}
 		}
 	}
 	if !hasDiff && !hasContent && !hasMeta {
-		return nil, nil, nil, badArg("Supply a content update or non-empty metadata.")
+		return nil, nil, badArg("Supply a content update or non-empty metadata.")
 	}
 	if err = validateMetadata(&e); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	newHash := digest([]byte(content))
 	beforeJSON, _ := json.Marshal(before)
 	afterJSON, _ := json.Marshal(e)
 	changed := newHash != before.Fingerprint || string(beforeJSON) != string(afterJSON)
 	if !changed {
-		return entryResult(e, false), nil, nil, nil
+		return entryResult(e, false), nil, nil
 	}
 	e.Sequence++
 	if newHash != e.Fingerprint {
@@ -352,7 +349,7 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 	if newHash != before.Fingerprint {
 		changes = append([]fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: []byte(content)}}, changes...)
 	}
-	return entryResult(e, true), changes, newActivity(p, "update", r.Path, e.Path, e.ID), nil
+	return entryResult(e, true), changes, nil
 }
 func versionConflict(e Entry) *Error {
 	return &Error{Code: "VERSION_CONFLICT", Message: "The entry changed; read its current version and retry.", Details: map[string]any{"current_version": e.Version}}
@@ -425,13 +422,13 @@ func validateDiffTarget(diff string, e Entry) error {
 	}
 	return nil
 }
-func (s *Service) deleteEntry(p Principal, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) deleteEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	e, r, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if stringArg(a, "expected_version") != e.Version {
-		return nil, nil, nil, versionConflict(e)
+		return nil, nil, versionConflict(e)
 	}
 	d := Deletion{ID: "deletion_" + uuid.NewString(), EntryID: e.ID, FolderID: r.ID, FolderPath: r.Path, Path: e.Path, Sequence: e.Sequence + 1, Actor: p.IdentityID, CreatedAt: stamp()}
 	entries := make([]Entry, 0, len(r.Entries)-1)
@@ -444,11 +441,9 @@ func (s *Service) deleteEntry(p Principal, a map[string]any) (any, []fileChange,
 	r.Deletions = append(r.Deletions, d)
 	result := asMap(d)
 	result["deleted"] = true
-	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Delete: true}, jsonChange(s.registryPath(r.Path), r)}, newActivity(p, "delete", r.Path, e.Path, e.ID), nil
+	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Delete: true}, jsonChange(s.registryPath(r.Path), r)}, nil
 }
-func newActivity(p Principal, action, folder, ep, id string) *Activity {
-	return &Activity{ID: uuid.NewString(), Action: action, Actor: p.IdentityID, FolderPath: folder, Path: ep, EntryID: id, At: stamp()}
-}
+
 func numeric(v any) (int, bool) {
 	switch n := v.(type) {
 	case int:
@@ -829,41 +824,6 @@ func (s *Service) search(ctx context.Context, p Principal, a map[string]any) (an
 		return nil, err
 	}
 	out["matches"] = out["items"]
-	return out, nil
-}
-func (s *Service) activity(p Principal, a map[string]any) (any, error) {
-	r, _, err := s.listingScope(p, a)
-	if err != nil {
-		return nil, err
-	}
-	des, err := os.ReadDir(filepath.Join(s.private, "activity"))
-	if err != nil {
-		return nil, err
-	}
-	acts := []Activity{}
-	for _, de := range des {
-		b, e := os.ReadFile(filepath.Join(s.private, "activity", de.Name()))
-		if e != nil {
-			return nil, e
-		}
-		var act Activity
-		if json.Unmarshal(b, &act) != nil {
-			continue
-		}
-		if within(act.FolderPath, r.Path) && s.effective(p, act.FolderPath) >= roleReader {
-			acts = append(acts, act)
-		}
-	}
-	sort.Slice(acts, func(i, j int) bool { return acts[i].At > acts[j].At })
-	items := make([]any, len(acts))
-	for i, a := range acts {
-		items[i] = a
-	}
-	out, err := s.paginate(p, "get_knowledgebase_activity", a, items)
-	if err != nil {
-		return nil, err
-	}
-	out["activity"] = out["items"]
 	return out, nil
 }
 

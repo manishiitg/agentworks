@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 var validStem = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$`)
@@ -381,20 +379,20 @@ func (s *Service) access(p Principal, args map[string]any) (any, error) {
 	out["identities"] = identities
 	return out, nil
 }
-func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, *Activity, error) {
+func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
 	action := stringArg(a, "action")
 	if action == "list" {
 		v, e := s.accessDiscovery(p, a)
-		return v, nil, nil, e
+		return v, nil, e
 	}
 	r, err := s.resolveFolder(p, a, roleOwner)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	target := stringArg(a, "identity_id")
 	ids, err := s.identities()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	changes := []fileChange{}
 	result := map[string]any{"action": action, "folder_path": r.Path, "identity_id": target}
@@ -403,14 +401,14 @@ func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (an
 	aclMutation := action == "grant" || action == "revoke"
 	if aclMutation {
 		if stringArg(a, "expected_acl_version") == "" {
-			return nil, nil, nil, badArg("expected_acl_version is required for grant changes.")
+			return nil, nil, badArg("expected_acl_version is required for grant changes.")
 		}
 		if e := s.db.QueryRowContext(ctx, `SELECT value FROM security WHERE key=?`, "acl:"+r.ID).Scan(&aclSequence); e != nil {
 			aclSequence = 1
 		}
 		version := s.aclToken(r.ID, aclSequence)
 		if stringArg(a, "expected_acl_version") != version {
-			return nil, nil, nil, &Error{Code: "ACL_VERSION_CONFLICT", Message: "Folder access changed; inspect its current grants and retry.", Details: map[string]any{"current_acl_version": version}}
+			return nil, nil, &Error{Code: "ACL_VERSION_CONFLICT", Message: "Folder access changed; inspect its current grants and retry.", Details: map[string]any{"current_acl_version": version}}
 		}
 		security.OnlyGeneration = false
 		security.IdentityID = target
@@ -423,26 +421,26 @@ func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (an
 	case "grant":
 		role := roleNum(stringArg(a, "role"))
 		if role == 0 {
-			return nil, nil, nil, badArg("role must be Reader, Editor, or Owner.")
+			return nil, nil, badArg("role must be Reader, Editor, or Owner.")
 		}
 		id, ok := ids[target]
 		if !ok || id.Disabled {
-			return nil, nil, nil, kbErr("NOT_FOUND", "Resource not found.")
+			return nil, nil, kbErr("NOT_FOUND", "Resource not found.")
 		}
 		security.Role = role
 		result["role"] = roleName(role)
 	case "revoke":
 		if target == "" {
-			return nil, nil, nil, badArg("identity_id is required.")
+			return nil, nil, badArg("identity_id is required.")
 		}
 		security.Revoke = true
 	case "create_service_account":
 		if !p.IsAdmin {
-			return nil, nil, nil, kbErr("FORBIDDEN", "An administrator is required.")
+			return nil, nil, kbErr("FORBIDDEN", "An administrator is required.")
 		}
 		name := stringArg(a, "name")
 		if strings.TrimSpace(name) == "" || len([]rune(name)) > 200 {
-			return nil, nil, nil, badArg("name must contain 1–200 characters.")
+			return nil, nil, badArg("name must contain 1–200 characters.")
 		}
 		target = "service_" + digest([]byte(p.IdentityID + "\x00" + stringArg(a, "request_id")))[:32]
 		id := Identity{ID: target, Name: name, Type: "service"}
@@ -456,21 +454,21 @@ func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (an
 		result["identity"] = id
 	case "disable_service_account":
 		if !p.IsAdmin {
-			return nil, nil, nil, kbErr("FORBIDDEN", "An administrator is required.")
+			return nil, nil, kbErr("FORBIDDEN", "An administrator is required.")
 		}
 		id, ok := ids[target]
 		if !ok || id.Type != "service" {
-			return nil, nil, nil, kbErr("NOT_FOUND", "Resource not found.")
+			return nil, nil, kbErr("NOT_FOUND", "Resource not found.")
 		}
 		id.Disabled = true
 		ids[target] = id
 		changes = append(changes, jsonChange(filepath.Join(s.private, "identities.json"), ids))
 	default:
-		return nil, nil, nil, badArg("Unknown access action.")
+		return nil, nil, badArg("Unknown access action.")
 	}
 	changes = append([]fileChange{{Access: &security}}, changes...)
-	activity := &Activity{ID: uuid.NewString(), Action: action, Actor: p.IdentityID, FolderPath: r.Path, At: stamp()}
-	return result, changes, activity, nil
+
+	return result, changes, nil
 }
 func entryVersion(e Entry) string {
 	return "v_" + digest([]byte(fmt.Sprintf("%s:%d:%s", e.ID, e.Sequence, e.Fingerprint)))[:40]

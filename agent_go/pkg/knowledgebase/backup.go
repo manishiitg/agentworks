@@ -673,8 +673,7 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 		return nil, err
 	}
 	result := asMap(r)
-	act := newActivity(p, "commit", commonFolder(sels), "", "")
-	return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result}), jsonChange(filepath.Join(s.private, "activity", act.ID+".json"), act)})
+	return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result})})
 }
 func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Receipt, tip, reqPath, hash string) (any, error) {
 	unlock, err := s.lock(ctx, false)
@@ -785,8 +784,7 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 			st.Paths[sel.Path] = publishedPath{EntryID: sel.EntryID, Sequence: sel.Sequence, Fingerprint: sel.Fingerprint, Deleted: sel.DeletionID != ""}
 		}
 		result := asMap(r)
-		act := newActivity(p, "push", commonFolder(r.Selections), "", "")
-		return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(filepath.Join(s.private, "backup-state.json"), st), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result}), jsonChange(filepath.Join(s.private, "activity", act.ID+".json"), act)})
+		return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(filepath.Join(s.private, "backup-state.json"), st), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result})})
 	}
 	if observed == r.Base {
 		r.State = "PREPARED"
@@ -804,22 +802,7 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 	s.transact([]fileChange{receiptChange(s, r), jsonChange(filepath.Join(s.private, "backup-state.json"), st)})
 	return nil, kbErr("BACKUP_BRANCH_ADVANCED", "The backup branch advanced; prepare a new commit.")
 }
-func commonFolder(sels []Snapshot) string {
-	if len(sels) == 0 {
-		return ""
-	}
-	common := sels[0].FolderPath
-	for _, sel := range sels[1:] {
-		for !within(sel.FolderPath, common) {
-			if i := strings.LastIndexByte(common, '/'); i >= 0 {
-				common = common[:i]
-			} else {
-				common = ""
-			}
-		}
-	}
-	return common
-}
+
 func (s *Service) deletionReusable(d Deletion) bool {
 	st := s.backupState()
 	// A live-only installation has no remote deletion to confirm. Never use
@@ -1077,7 +1060,6 @@ func (s *Service) ReconcileBackup(ctx context.Context, p Principal) (any, error)
 			}
 		}
 	}
-	act := newActivity(p, "reconcile_backup", "", "", "")
 	result := map[string]any{"reconciled": true, "base_commit_id": tip}
-	return result, s.transact(append(staleChanges, jsonChange(filepath.Join(s.private, "backup-state.json"), st), jsonChange(filepath.Join(s.private, "activity", act.ID+".json"), act)))
+	return result, s.transact(append(staleChanges, jsonChange(filepath.Join(s.private, "backup-state.json"), st)))
 }

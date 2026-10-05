@@ -2442,7 +2442,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
-	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "activity", "backup"} {
+	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup"} {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")

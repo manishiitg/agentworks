@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { BookOpen, Cloud, Search, X } from 'lucide-react'
-import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess, type KnowledgeBackup, type KnowledgeEntry, type KnowledgeEvent, type KnowledgeRead } from '../../services/knowledgebaseApi'
+import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess, type KnowledgeBackup, type KnowledgeEntry, type KnowledgeRead } from '../../services/knowledgebaseApi'
 import { KnowledgebaseFolderTree } from './KnowledgebaseFolderTree'
 import { KnowledgebaseReader, backupLabel } from './KnowledgebaseReader'
 import { KnowledgebaseAccessPanel } from './KnowledgebaseAccessPanel'
-import { KnowledgebaseActivityPanel } from './KnowledgebaseActivityPanel'
 import { KnowledgebaseConnectPanel } from './KnowledgebaseConnectPanel'
 
-export type KnowledgebaseView = 'library' | 'access' | 'activity' | 'connect'
+export type KnowledgebaseView = 'library' | 'access' | 'connect'
 const input = 'rounded-md border border-border bg-background px-2.5 py-2 text-xs'
 export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision, isAdmin }: { view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number; isAdmin: boolean }) {
   const [query, setQuery] = useState('')
@@ -17,7 +16,6 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
   const [debouncedTag, setDebouncedTag] = useState('')
   const [entries, setEntries] = useState<Array<{ entry: KnowledgeEntry; excerpt?: string }>>([])
   const [access, setAccess] = useState<KnowledgeAccess | null>(null)
-  const [events, setEvents] = useState<KnowledgeEvent[]>([])
   const [backup, setBackup] = useState<KnowledgeBackup | null>(null)
   const [nextCursor, setNextCursor] = useState<string>()
   const [selectedId, setSelectedId] = useState<string>()
@@ -40,7 +38,7 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
     const context = JSON.stringify([view, folder, debouncedQuery, type, debouncedTag])
     if (context !== previousContext.current) {
       // Clear old-folder state immediately. Polls retain form and scroll state.
-      setEntries([]); setEvents([]); setAccess(null); setBackup(null)
+      setEntries([]); setAccess(null); setBackup(null)
       previousContext.current = context
     }
     async function load() {
@@ -51,16 +49,12 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
         const [result, backupResult] = await Promise.all([listing, knowledgebaseApi.backup(folder, controller.signal)])
         if (generation.current !== current) return
         setEntries(result.entries); setNextCursor(result.next_cursor); setBackup(backupResult)
-      } else if (view === 'activity') {
-        const result = await knowledgebaseApi.activity(folder, '', controller.signal)
-        if (generation.current !== current) return
-        setEvents(result.events || []); setNextCursor(result.next_cursor)
       } else {
         const result = await knowledgebaseApi.access(folder, controller.signal)
         if (generation.current === current) setAccess(result)
       }
     }
-    void load().catch(error => { if (!controller.signal.aborted && generation.current === current) { setError(knowledgebaseError(error)); setEntries([]); setEvents([]); setAccess(null); setBackup(null); setRead(null); setSelectedId(undefined) } })
+    void load().catch(error => { if (!controller.signal.aborted && generation.current === current) { setError(knowledgebaseError(error)); setEntries([]); setAccess(null); setBackup(null); setRead(null); setSelectedId(undefined) } })
       .finally(() => { if (!controller.signal.aborted && generation.current === current) setLoading(false) })
     return () => controller.abort()
   }, [view, folder, debouncedQuery, type, debouncedTag, revision])
@@ -80,16 +74,10 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
     const current = generation.current
     setLoading(true); setError('')
     try {
-      if (view === 'activity') {
-        const result = await knowledgebaseApi.activity(folder, nextCursor)
-        if (current !== generation.current) return
-        setEvents(previous => [...previous, ...(result.events || [])]); setNextCursor(result.next_cursor)
-      } else {
-        const params = { folder_path: folder, type, tag: debouncedTag, cursor: nextCursor }
-        const result = debouncedQuery ? await knowledgebaseApi.search({ ...params, query: debouncedQuery }) : await knowledgebaseApi.entries(params).then(data => ({ results: (data.entries || []).map(entry => ({ entry })), next_cursor: data.next_cursor }))
-        if (current !== generation.current) return
-        setEntries(previous => [...previous, ...(result.results || [])]); setNextCursor(result.next_cursor)
-      }
+      const params = { folder_path: folder, type, tag: debouncedTag, cursor: nextCursor }
+      const result = debouncedQuery ? await knowledgebaseApi.search({ ...params, query: debouncedQuery }) : await knowledgebaseApi.entries(params).then(data => ({ results: (data.entries || []).map(entry => ({ entry })), next_cursor: data.next_cursor }))
+      if (current !== generation.current) return
+      setEntries(previous => [...previous, ...(result.results || [])]); setNextCursor(result.next_cursor)
     } catch (error) { if (current === generation.current) setError(knowledgebaseError(error)) }
     finally { if (current === generation.current) setLoading(false) }
   }
@@ -109,7 +97,6 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
         {view === 'library' && selectedId && (reading ? <p className="p-6 text-sm text-muted-foreground">Loading entry…</p> : read ? <KnowledgebaseReader read={{ ...read, entry: { ...read.entry, backup_status: backup?.configured === false ? 'not_configured' : backupStatuses.get(read.entry.entry_id) || read.entry.backup_status } }} onBack={() => setSelectedId(undefined)} /> : <div className="p-6"><button type="button" onClick={() => setSelectedId(undefined)} className="mb-3 text-xs text-primary">Back to library</button><p role="alert" className="text-sm text-destructive">{readError || 'This entry is no longer available.'}</p></div>)}
         {loading && view === 'access' && !access && <p className="p-6 text-sm text-muted-foreground">Loading…</p>}
         {view === 'access' && access && <KnowledgebaseAccessPanel access={access} onAsk={onAsk} onFolder={onFolder} />}
-        {view === 'activity' && <KnowledgebaseActivityPanel events={events} nextCursor={nextCursor} loading={loading} onMore={() => void more()} />}
         {view === 'connect' && <KnowledgebaseConnectPanel folder={folder} isAdmin={isAdmin} identities={access?.identities || []} onAsk={onAsk} />}
         {error && <p role="alert" className="m-5 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       </main>

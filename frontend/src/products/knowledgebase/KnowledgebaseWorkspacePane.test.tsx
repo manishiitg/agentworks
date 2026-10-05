@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ entries: vi.fn(), read: vi.fn(), search: vi.fn(), access: vi.fn(), activity: vi.fn(), backup: vi.fn(), folders: vi.fn() }))
+const mocks = vi.hoisted(() => ({ entries: vi.fn(), read: vi.fn(), search: vi.fn(), access: vi.fn(), backup: vi.fn(), folders: vi.fn() }))
 vi.mock('../../services/knowledgebaseApi', async original => ({ ...await original<typeof import('../../services/knowledgebaseApi')>(), knowledgebaseApi: mocks }))
 vi.mock('../../services/api', () => ({ default: {}, authApi: { listAccessTokens: async () => ({ tokens: [] }) }, getApiBaseUrl: () => 'https://knowledge.example' }))
 import { KnowledgebaseWorkspacePane } from './KnowledgebaseWorkspacePane'
@@ -17,7 +17,6 @@ beforeEach(() => {
   mocks.read.mockResolvedValue({ entry, content: '# Procedure\n\nRead-only instructions.\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://tracker.example/image)', version: 'v1' })
   mocks.backup.mockResolvedValue({ configured: true, entries: [{ entry_id: 'entry', status: 'backed_up' }] })
   mocks.access.mockResolvedValue({ folder_path: 'Payments', effective_role: 'owner', grants: [{ identity_id: 'priya', role: 'reader', folder_path: '', inherited: true }], identities: [{ id: 'priya', name: 'Priya', type: 'user' }], acl_version: 'v1' })
-  mocks.activity.mockResolvedValue({ events: [] })
 })
 async function mount() {
   const host = document.createElement('div'); document.body.append(host)

@@ -51,3 +51,11 @@ passed. Server KB race tests also passed.
 Merge/deploy and a deliberately authorized production pilot. No production
 migration performed. Git remote operator hardening remains a separate follow-up;
 this PR keeps the configured backup remote and explicit commit/push semantics.
+
+## Owner simplification: remove Activity
+
+Removed the Activity view/component, viewer client, backend route and internal
+activity operation. Content/access/commit/push/reconciliation no longer create
+activity records or an activity directory. Existing files are not deleted.
+Recovery journals, request outcomes and backup receipts remain intact. Full
+domain race tests and focused server/frontend checks validate this removal.

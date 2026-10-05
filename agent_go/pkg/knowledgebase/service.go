@@ -63,15 +63,6 @@ type Deletion struct {
 	Actor      string `json:"actor"`
 	CreatedAt  string `json:"created_at"`
 }
-type Activity struct {
-	ID         string `json:"id"`
-	Action     string `json:"action"`
-	Actor      string `json:"actor"`
-	FolderPath string `json:"folder_path"`
-	Path       string `json:"path,omitempty"`
-	EntryID    string `json:"entry_id,omitempty"`
-	At         string `json:"at"`
-}
 type accessChange struct {
 	IdentityID         string `json:"identity_id,omitempty"`
 	FolderPath         string `json:"folder_path,omitempty"`
@@ -114,7 +105,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	cfg.Root = root
 	s := &Service{cfg: cfg, live: filepath.Join(root, "live"), private: filepath.Join(root, "private")}
-	for _, p := range []string{root, s.live, s.private, filepath.Join(s.private, "requests"), filepath.Join(s.private, "activity"), filepath.Join(s.private, "receipts")} {
+	for _, p := range []string{root, s.live, s.private, filepath.Join(s.private, "requests"), filepath.Join(s.private, "receipts")} {
 		if err := os.MkdirAll(p, 0700); err != nil {
 			return nil, err
 		}
@@ -450,15 +441,13 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 			return cached, e
 		}
 	}
-	result, changes, activity, err := s.execute(ctx, p, tool, args)
+	result, changes, err := s.execute(ctx, p, tool, args)
 	if err != nil {
 		return nil, err
 	}
 	if mutates {
 		changes = append(changes, jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result}))
-		if activity != nil {
-			changes = append(changes, jsonChange(filepath.Join(s.private, "activity", activity.ID+".json"), activity))
-		}
+
 		if err = s.transact(changes); err != nil {
 			return nil, err
 		}

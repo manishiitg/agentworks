@@ -20,7 +20,6 @@ export interface KnowledgeFolder { path: string; name: string; effective_role?: 
 export interface KnowledgeIdentity { id: string; name: string; type: string; disabled?: boolean }
 export interface KnowledgeGrant { identity_id: string; role: KnowledgeRole; folder_path: string; inherited: boolean }
 export interface KnowledgeAccess { folder_path: string; effective_role: KnowledgeRole | ''; grants: KnowledgeGrant[]; identities: KnowledgeIdentity[]; acl_version: string }
-export interface KnowledgeEvent { id: string; type?: string; action?: string; path?: string; folder_path?: string; identity_id: string; timestamp: string; message?: string }
 export interface KnowledgeBootstrap { organization_id: string; profile_id: string; chat_workspace: string; is_admin: boolean; identity_id: string }
 export interface KnowledgeRead { entry: KnowledgeEntry; content: string; version: string; start_line: number; end_line: number; total_lines: number }
 export interface KnowledgeBackup { configured: boolean; entries: Array<{ entry_id: string; path: string; status: string }>; pending_count?: number; last_backup_error?: string }
@@ -33,9 +32,6 @@ export function normalizeKnowledgeRole(role: unknown): KnowledgeRole | '' {
 }
 export function normalizeKnowledgeAccess(data: KnowledgeAccess): KnowledgeAccess {
   return { ...data, effective_role: normalizeKnowledgeRole(data.effective_role), grants: (data.grants || []).map(grant => ({ ...grant, role: normalizeKnowledgeRole(grant.role) as KnowledgeRole })), identities: data.identities || [] }
-}
-export function normalizeKnowledgeEvents(data: Page & { events?: KnowledgeEvent[]; activity?: KnowledgeEvent[] }): KnowledgeEvent[] {
-  return ((data.items || data.events || data.activity || []) as Array<KnowledgeEvent & { actor?: string; at?: string }>).map(event => ({ ...event, identity_id: event.identity_id || event.actor || '', timestamp: event.timestamp || event.at || '' }))
 }
 export function normalizeKnowledgeSearch(data: Page & { results?: Array<{ entry: KnowledgeEntry; excerpt?: string }>; matches?: Record<string, unknown>[] }): Array<{ entry: KnowledgeEntry; excerpt?: string }> {
   if (!data.items && data.results) return data.results
@@ -62,10 +58,6 @@ export const knowledgebaseApi = {
     return { results: normalizeKnowledgeSearch(data), next_cursor: data.next_cursor || undefined }
   },
   access: async (folder_path: string, signal?: AbortSignal): Promise<KnowledgeAccess> => normalizeKnowledgeAccess((await api.get('/api/knowledgebase/access', { params: { folder_path }, signal })).data),
-  activity: async (folder_path: string, cursor = '', signal?: AbortSignal): Promise<{ events: KnowledgeEvent[]; next_cursor?: string }> => {
-    const { data } = await api.get('/api/knowledgebase/activity', { params: { folder_path, cursor, limit: 50 }, signal })
-    return { events: normalizeKnowledgeEvents(data), next_cursor: data.next_cursor || undefined }
-  },
   backup: async (folder_path: string, signal?: AbortSignal): Promise<KnowledgeBackup> => {
     const { data } = await api.get('/api/knowledgebase/backup', { params: { folder_path }, signal })
     return { ...data, entries: (data.entries || []).map((entry: { entry_id: string; path: string; status?: string; backup_status?: string }) => ({ ...entry, status: entry.status || entry.backup_status || 'pending' })) }

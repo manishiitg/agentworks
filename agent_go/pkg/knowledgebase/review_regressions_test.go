@@ -164,7 +164,7 @@ func TestGrantJournalRecoversAfterSQLiteBeforeRequestOutcome(t *testing.T) {
 	s, a, p := fixture(t, false)
 	folder(t, s, a, "", "Checkout")
 	args := map[string]any{"action": "grant", "folder_path": "Checkout", "identity_id": p.IdentityID, "role": "Reader", "request_id": "g_crash", "expected_acl_version": call(t, s, a, "get_knowledgebase_access", map[string]any{"folder_path": "Checkout"})["acl_version"]}
-	result, changes, activity, e := s.manage(context.Background(), a, args)
+	result, changes, e := s.manage(context.Background(), a, args)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -172,7 +172,7 @@ func TestGrantJournalRecoversAfterSQLiteBeforeRequestOutcome(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	changes = append(changes, jsonChange(requestPath, requestRecord{Hash: hash, At: stamp(), Result: result}), jsonChange(filepath.Join(s.private, "activity", activity.ID+".json"), activity))
+	changes = append(changes, jsonChange(requestPath, requestRecord{Hash: hash, At: stamp(), Result: result}))
 	if e = atomicJSON(filepath.Join(s.private, "mutation-journal.json"), journal{Changes: changes}); e != nil {
 		t.Fatal(e)
 	}

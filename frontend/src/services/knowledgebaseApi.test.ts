@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 const get = vi.hoisted(() => vi.fn())
 vi.mock('./api', () => ({ default: { get } }))
-import { knowledgebaseApi, normalizeKnowledgeAccess, normalizeKnowledgeEvents, normalizeKnowledgeSearch } from './knowledgebaseApi'
+import { knowledgebaseApi, normalizeKnowledgeAccess, normalizeKnowledgeSearch } from './knowledgebaseApi'
 
 describe('Knowledge Base viewer wire contract', () => {
   it('uses permission-filtered paged items rather than an unpaged alias', async () => {
@@ -16,8 +16,7 @@ describe('Knowledge Base viewer wire contract', () => {
     expect(result.effective_role).toBe('owner')
     expect(result.grants[0]).toMatchObject({ role: 'reader', inherited: true })
   })
-  it('renders domain activity attribution and keyword search snippets', () => {
-    expect(normalizeKnowledgeEvents({ items: [{ id: 'event', actor: 'priya', at: '2026-10-04T01:00:00Z', action: 'update' }] })).toMatchObject([{ identity_id: 'priya', timestamp: '2026-10-04T01:00:00Z' }])
+  it('normalizes keyword search snippets', () => {
     expect(normalizeKnowledgeSearch({ items: [{ entry_id: 'entry', path: 'Payments/checkout.md', snippet: 'Checkout retries', line_number: 3 }] })).toMatchObject([{ entry: { entry_id: 'entry' }, excerpt: 'Checkout retries' }])
   })
   it('uses the actual backup status field and never requests a mutation route', async () => {

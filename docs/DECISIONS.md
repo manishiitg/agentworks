@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Knowledge Base MVP omits Activity tracking — PLAT-496
+
+Owner decision: remove Activity from frontend and backend for now. The product has Library, Access and Connect; there is no activity endpoint, tool, or event writer. Mutation journals, request deduplication and backup receipts remain correctness records. Existing development activity files are left untouched but unused. Code: `pkg/knowledgebase`, `knowledgebase_routes.go`, `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base uses folder grants, confirmed access changes and explicit migration — PLAT-496
 
 Knowledge Base content has its own inherited folder ACL; Vault governs connections and secrets and is not a substitute for content authorization. Installation administrators retain implicit Owner authority for administration, but a bound output audience needs actual folder grants, including admins. Managed workflow/Crew calls intersect those grants with current bindings; missing session policy fails closed. Content tools and guidance appear only in bound projects, while explicit external scopes preserve local agent use. Existing mixed legacy tokens retain their independent legacy behavior; requesting a Knowledge Base scope does not grant workflow/Crew authority.

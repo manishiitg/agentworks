@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { BookOpen, History, MessageCircle, Plug, RefreshCw, ShieldCheck } from 'lucide-react'
+import { BookOpen, MessageCircle, Plug, RefreshCw, ShieldCheck } from 'lucide-react'
 import ChatArea, { type ChatAreaRef } from '../../components/ChatArea'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -24,7 +24,7 @@ import { KnowledgebaseModelControl } from './KnowledgebaseModelControl'
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
-const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'activity', label: 'Activity', icon: History }, { id: 'connect', label: 'Connect', icon: Plug }] as const
+const views = [{ id: 'library', label: 'Library', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'connect', label: 'Connect', icon: Plug }] as const
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
 export function KnowledgebaseSurface() {

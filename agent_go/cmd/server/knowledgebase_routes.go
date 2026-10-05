@@ -265,8 +265,6 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 		tool = "search_knowledgebase"
 	case "access":
 		tool = "get_knowledgebase_access"
-	case "activity":
-		tool = "get_knowledgebase_activity"
 	case "backup":
 		tool = "get_knowledgebase_backup_status"
 	default:

@@ -10,7 +10,6 @@ Read a current version and use expected_version for update/delete. Mutations nee
 a stable request_id; use different IDs for different actions, including commit and
 push. Patches support large files. Saves are immediately visible to permitted readers.
 Git is explicit backup, only on request. Read-only connections expose only read actions.
-Activity history stays in the app.
 Keep request IDs and receipts for safe retries. Folder grants and connection caps
 are checked for every operation, including push. Do not request repository keys.
 

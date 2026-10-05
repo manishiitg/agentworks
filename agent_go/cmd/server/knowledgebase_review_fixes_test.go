@@ -191,3 +191,13 @@ func TestKnowledgebaseEmptyDirectoryDoesNotDisableLastSnapshot(t *testing.T) {
 		t.Fatal("last known identity snapshot erased", err)
 	}
 }
+
+func TestKnowledgebaseActivityEndpointRemoved(t *testing.T) {
+	api, _ := knowledgebaseServerTest(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/knowledgebase/activity", nil).WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"}))
+	w := httptest.NewRecorder()
+	api.handleKnowledgebaseViewer(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("activity endpoint remains available: %d", w.Code)
+	}
+}
