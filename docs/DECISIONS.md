@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Personal Chrome extension connections are private and explicit
+
+An extension shares selected tabs with one account/workspace, through a paired
+CDP bridge retaining agent-browser. A disconnected selection fails browser
+actions rather than switching browsers. Collaborators cannot inherit personal
+Chrome access. Why: hosted agents need existing local logins without exposing
+a debugging port or sharing one person’s browser profile. Ticket:
+[PLAT-510](bugs/pulse_platform/browser/plat-510.md).
+
 ## 2026-10-05: `search_web_llm` is removed; coding agents use their own web search
 
 Every agent is a coding CLI with its own native web search. The tool only wrapped anonymous free-tier hosted MCP search (Parallel, Exa, Firecrawl) that hit rate limits, so it is gone from the tool lists, guidance and the Video Studio prompt. Old workflows' `enabled_custom_tools` entries for it are harmless. Ticket: [PLAT-508](bugs/pulse_platform/step-execution/plat-508.md).

@@ -1,3 +1,11 @@
+## Recording stale-state test lacks native browser IPC — PLAT-511
+
+[PLAT-511](pulse_platform/browser/plat-511.md), P3, open. Existing capture fixture fails with `browser IPC unavailable`, reproduced unchanged; real browser IPC qualification remains.
+
+## Personal Chrome extension connection — PLAT-510
+
+[PLAT-510](pulse_platform/browser/plat-510.md), P2, built on main, not deployed. Private extension/CDP bridge retaining agent-browser, verified with real Chrome and guarded workspace execution.
+
 ## `search_web_llm` tool removed; coding agents use their own web search — PLAT-508
 
 [PLAT-508](pulse_platform/step-execution/plat-508.md), fixed on main, not deployed. The tool only wrapped free-tier hosted MCP search that hit rate limits. Existing workflows keep a harmless stale name in `enabled_custom_tools`.

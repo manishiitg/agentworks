@@ -428,6 +428,11 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		return "", fmt.Errorf("command is required")
 	}
 	command = strings.ToLower(strings.TrimSpace(command))
+	if e.configuredBrowserMode() != "none" {
+		if binding := extensionBinding(ctx); binding != nil {
+			return e.handleExtensionBrowser(ctx, args, binding)
+		}
+	}
 	// Status is a backend-owned live capability query. It never launches
 	// agent-browser and intentionally does not require or accept a --cdp value.
 	if command == "status" {
@@ -723,91 +728,11 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		tabArgs = commandArgs
 	}
 
-	// Determine timeout
-	timeout := getTimeoutForCommand(command)
-
-	// Resolve folder guard and working directory — same priority as execute_shell_command.
-	// This ensures agent_browser has identical sandboxing to shell commands.
-	var folderGuard *FolderGuardConfig
-	workingDir := "."
-
-	// Look up per-session config (working dir + folder guard)
-	var sessionCfg *common.SessionShellConfig
-	if agentSessionID != "" {
-		sessionCfg = common.GetSessionShellConfig(agentSessionID)
+	opts, sessionCfg, optsErr := browserExecuteOptions(ctx, agentSessionID, workflowSessionID, getTimeoutForCommand(command))
+	if optsErr != nil {
+		return "", optsErr
 	}
-	// Fallback: try workflow session if agent session didn't have config
-	if sessionCfg == nil && workflowSessionID != "" && workflowSessionID != agentSessionID {
-		sessionCfg = common.GetSessionShellConfig(workflowSessionID)
-	}
-
-	// Working directory priority: browser downloads path > session config > default
-	if downloadsPath, ok := ctx.Value(common.BrowserDownloadsPathKey).(string); ok && downloadsPath != "" {
-		workingDir = downloadsPath
-	} else if sessionCfg != nil && sessionCfg.WorkingDir != "" {
-		workingDir = sessionCfg.WorkingDir
-	}
-
-	// Folder guard priority: session config > context system 1 > context system 2
-	if sessionCfg != nil && (sessionCfg.FolderGuardSet || len(sessionCfg.ReadPaths) > 0 || len(sessionCfg.WritePaths) > 0 ||
-		len(sessionCfg.BlockedPaths) > 0 || len(sessionCfg.BlockedWritePaths) > 0) {
-		readPaths := sessionCfg.WritePaths
-		if len(sessionCfg.ReadPaths) > 0 {
-			readPaths = common.DeduplicateStrings(append(sessionCfg.ReadPaths, sessionCfg.WritePaths...))
-		}
-		folderGuard = &FolderGuardConfig{
-			Enabled:           true,
-			WritePaths:        sessionCfg.WritePaths,
-			ReadPaths:         readPaths,
-			BlockedPaths:      sessionCfg.BlockedPaths,
-			BlockedWritePaths: sessionCfg.BlockedWritePaths,
-		}
-	} else if allowedWrites, ok := ctx.Value(common.FolderGuardAllowedWriteFolderKey).([]string); ok {
-		// Context System 1: chat/plan/prototype mode
-		ctxReads, hasCtxReads := ctx.Value(common.FolderGuardReadPathsKey).([]string)
-		readPaths := allowedWrites
-		if hasCtxReads && len(ctxReads) > 0 {
-			readPaths = common.DeduplicateStrings(append(ctxReads, allowedWrites...))
-		}
-		folderGuard = &FolderGuardConfig{
-			Enabled:           true,
-			WritePaths:        allowedWrites,
-			ReadPaths:         readPaths,
-			BlockedPaths:      browserContextGuardPaths(ctx, common.FolderGuardBlockedPathsKey),
-			BlockedWritePaths: browserContextGuardPaths(ctx, common.FolderGuardBlockedWritePathsKey),
-		}
-	} else if ctxWrites, ok := ctx.Value(common.FolderGuardWritePathsKey).([]string); ok {
-		// Context System 2: workflow orchestrator
-		ctxReads, hasCtxReads := ctx.Value(common.FolderGuardReadPathsKey).([]string)
-		readPaths := ctxWrites
-		if hasCtxReads && len(ctxReads) > 0 {
-			readPaths = common.DeduplicateStrings(append(ctxReads, ctxWrites...))
-		}
-		folderGuard = &FolderGuardConfig{
-			Enabled:           true,
-			WritePaths:        ctxWrites,
-			ReadPaths:         readPaths,
-			BlockedPaths:      browserContextGuardPaths(ctx, common.FolderGuardBlockedPathsKey),
-			BlockedWritePaths: browserContextGuardPaths(ctx, common.FolderGuardBlockedWritePathsKey),
-		}
-	}
-	if folderGuard != nil && len(folderGuard.ReadPaths) == 0 && len(folderGuard.WritePaths) == 0 {
-		return "", fmt.Errorf("ACCESS DENIED: agent_browser has no granted workspace paths")
-	}
-	if folderGuard != nil {
-		folderGuard.BrowserSession = common.SandboxBrowserSession(agentSessionID)
-		if folderGuard.BrowserSession == "" && workflowSessionID != "" {
-			folderGuard.BrowserSession = common.SandboxBrowserSession(workflowSessionID)
-		}
-	}
-
-	// Execute via client
-	opts := &ExecuteOptions{
-		UserID:           common.SessionUserIDFromContext(ctx),
-		Timeout:          timeout,
-		FolderGuard:      folderGuard,
-		WorkingDirectory: workingDir,
-	}
+	folderGuard := opts.FolderGuard
 	if command == "capture" {
 		return e.handleCapture(ctx, session, argsWithoutCDP, sessionCfg, folderGuard)
 	}

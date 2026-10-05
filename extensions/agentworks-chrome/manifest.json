@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "AgentWorks Chrome Bridge",
+  "version": "0.1.0",
+  "description": "Share selected Chrome tabs with your AgentWorks chat or workflow.",
+  "minimum_chrome_version": "125",
+  "permissions": ["debugger", "tabs"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "AgentWorks browser connection" }
+}
