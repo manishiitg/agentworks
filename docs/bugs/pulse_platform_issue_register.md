@@ -214,6 +214,10 @@ usable node_modules if the install fails.
 
 [PLAT-529](pulse_platform/frontend-chat/plat-529.md), open: pre-existing, found while testing PLAT-528.
 
+## Switching to Crew shows 'Opening workspace…' every time — PLAT-531
+
+[PLAT-531](pulse_platform/frontend-chat/plat-531.md), fixed on main (cache); not deployed; first load still the full request chain.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
