@@ -110,10 +110,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               <span className="flex items-center gap-2">
                 <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span>Gmail</span>
-                <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${gmailConfig.enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${gmailConfig.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-                  {gmailConfig.enabled ? 'On' : 'Off'}
-                </span>
               </span>
             }
             description="Your Google accounts for this project. The agent uses them through the server; the default one sends workflow notifications."
@@ -152,21 +148,21 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
           </FormSection>
           <FormSection
             title="Delivery settings"
-            description={<>Account-wide one-way email delivery, used by <code>notify_user</code> in workflows. Turn this off to stop all outbound email. Email replies do not resume an agent.</>}
+            description={<>Account-wide one-way email delivery, used by <code>notify_user</code> in workflows. This setting controls workflow notification emails; connected Google accounts and their read/write permissions are managed above. Email replies do not resume an agent.</>}
           >
             {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change shared Gmail delivery settings or send a test email.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
             {gmailSuccess && <StatusBanner tone="success">{gmailSuccess}</StatusBanner>}
             <Card className="p-4">
               <ToggleRow
-                label="Enable Gmail"
-                description="Available to notify_user in workflows."
+                label="Workflow email notifications"
+                description="Turns on automatically after Gmail sign-in, unless previously turned off. Controls notify_user emails in workflows."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}
                 disabled={gmailSettingsReadOnly || (!gmailConfig.enabled && !gmailCanEnable)}
                 disabledTitle={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}
               />
-              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Sign in a Gmail account above to enable; it switches on automatically once one is connected.</p>}
+              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Sign in a Gmail account with sending access above. Workflow email notifications switch on automatically unless previously turned off.</p>}
             </Card>
             <Card className="space-y-3 p-4">
                 <div>

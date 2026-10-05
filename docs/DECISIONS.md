@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Google accounts use compact summaries and one permission comparison
+
+Show identity, status and selected app access for each connected account; expand
+only one full AgentWorks/Google grant comparison at a time. Keep permission
+warnings visible while collapsed. Why: repeated inactive-app tiles obscure
+multiple accounts. Label the existing delivery switch Workflow email
+notifications, because account sign-in/access and notification delivery are
+separate states. Ticket: [PLAT-512](bugs/pulse_platform/integrations/plat-512.md).
+
 ### 2026-10-05 — Personal Chrome extension connections are private and explicit
 
 An extension shares selected tabs with one account/workspace, through a paired
