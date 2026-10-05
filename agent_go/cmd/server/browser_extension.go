@@ -12,19 +12,22 @@ import (
 
 const browserExtensionConnectPath = "/api/browser/extension/connect"
 
-func (api *StreamingAPI) codeExtensionAccess(r *http.Request, workspace, profile string) (string, error) {
-	if profile != "code" || !isCodeProjectPath(workspace) {
-		return "", fmt.Errorf("Browser extension access is available in Code projects only")
+func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, profile string) (string, error) {
+	if !((profile == "code" && isCodeProjectPath(workspace)) || (profile == "work" && isCrewProjectPath(workspace))) {
+		return "", fmt.Errorf("Browser extension access requires a Code or Crew project")
 	}
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !userAllowedProduct(claims, "code") {
-		return "", fmt.Errorf("Code product access required")
+	if claims == nil || !userAllowedProduct(claims, profile) {
+		return "", fmt.Errorf("Product access required")
+	}
+	if !crewProjectOwnedByCaller(claims.UserID, workspace) {
+		return "", fmt.Errorf("Project ownership required")
 	}
 	return api.browserWorkspaceAccess(r, workspace, profile, true)
 }
 func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace_path")
-	if _, err := api.codeExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
+	if _, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
 		http.Error(w, err.Error(), 403)
 		return
 	}
@@ -57,7 +60,10 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 				http.Error(w, "Cannot start Chrome bridge", 503)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"token": token})
+			if req.Action == "pair" {
+				browserrelay.Default.RequestProjectConnection(user, scope)
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"token": token, "scope": scope})
 			return
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
@@ -83,7 +89,7 @@ func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r 
 			return fmt.Errorf("account unavailable")
 		}
 		checked := r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-		if _, err := api.codeExtensionAccess(checked, workspace, profile); err != nil {
+		if _, err := api.projectExtensionAccess(checked, workspace, profile); err != nil {
 			return err
 		}
 		if browserSessionForWorkspace(user, workspace) != scope {

@@ -22,6 +22,7 @@ function render(state) {
   $('controls').hidden = !state.connected;
   $('workspace').textContent = (state.workspace || '').split('/').filter(Boolean).pop() || '';
   $('server').textContent = state.server || '';
+  $('project').replaceChildren(...(state.projects || []).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=`${p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.workspace.split('/').pop()}${p.connected ? ' · connected' : ''}`;option.selected=p.scope === state.selectedScope;return option;}));
   $('tab-count').textContent = String(state.tabs.length);
   $('empty').hidden = !!state.tabs.length;
   $('tabs').replaceChildren(...state.tabs.map(tab => {
@@ -55,6 +56,8 @@ $('share').onclick = () => action(async () => {
 });
 $('newtab').onclick = () => action(() => run({ action: 'newtab' }));
 $('group').onclick = () => action(() => run({ action: 'group' }));
+$('project').onchange = () => action(() => run({action:'select-project',scope:$('project').value}));
+$('stop-all').onclick = () => action(() => run({action:'stop-all'}));
 $('stop').onclick = () => action(() => run({ action: 'stop' }));
 void action(() => run({ action: 'state' }));
 // Reflect Stop, closed tabs and connection loss while the popup remains open.

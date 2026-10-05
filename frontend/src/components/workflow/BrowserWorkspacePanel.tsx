@@ -54,7 +54,7 @@ export function BrowserWorkspacePanel({
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [extensionSetup, setExtensionSetup] = useState(false)
-  const extensionAvailable = profileId === 'code' && !!workspacePath && !readOnly
+  const extensionAvailable = (profileId === 'code' || profileId === 'work') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, profileId, !extensionAvailable)
   const extensionView = connection.status.selected || extensionSetup
   const choice: BrowserChoice = extensionView ? 'extension' : browserMode
@@ -113,9 +113,9 @@ export function BrowserWorkspacePanel({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto my-6 max-w-sm space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"><PlugZap className="h-6 w-6" /></div>
-            <div className="space-y-2"><p className="text-sm font-medium">{connection.status.connected ? connection.status.tabs > 0 ? 'Your browser is ready' : 'Share your first tab' : connection.status.selected ? 'Browser disconnected' : 'Connect your browser'}</p>
+            <div className="space-y-2"><p className="text-sm font-medium">{connection.status.connected ? connection.status.tabs > 0 ? 'Your browser is ready' : 'Ready for your agent' : connection.status.selected ? 'Browser disconnected' : 'Connect your browser'}</p>
               <p className="break-words text-xs text-muted-foreground">{(connection.status.workspace || workspacePath || '').split('/').filter(Boolean).pop()}</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.connected ? connection.status.tabs > 0 ? `Your agent can use ${connection.status.tabs} shared ${connection.status.tabs === 1 ? 'tab' : 'tabs'}. Watch its actions in your browser.` : 'Open the AgentWorks extension on a website and choose Share this tab.' : connection.status.selected ? 'Actions are paused. Reconnect the extension to continue.' : 'Connect the AgentWorks extension to use your signed-in Chrome or Edge tabs.'}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.connected ? connection.status.tabs > 0 ? `Your agent can use ${connection.status.tabs} shared ${connection.status.tabs === 1 ? 'tab' : 'tabs'}. Watch its actions in your browser.` : 'Your agent can create and choose its own project tabs. Sharing an already-open page is optional.' : connection.status.selected ? 'Actions are paused. Reconnect the extension to continue.' : 'Connect the AgentWorks extension to use your signed-in Chrome or Edge tabs.'}</p>
             </div>
             <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${connection.status.connected ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border text-muted-foreground'}`}><span className={`h-1.5 w-1.5 rounded-full ${connection.status.connected ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{connection.status.connected ? `Connected · ${connection.status.tabs} shared ${connection.status.tabs === 1 ? 'tab' : 'tabs'}` : connection.status.selected ? 'Disconnected' : 'Not connected'}</span>
             {connection.status.connected && connection.status.tab_titles?.length ? <ul className="space-y-1.5 text-left" aria-label="Shared browser tabs">{connection.status.tab_titles.map((title, index) => <li key={index} title={title} className="truncate rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">{title}</li>)}</ul> : null}

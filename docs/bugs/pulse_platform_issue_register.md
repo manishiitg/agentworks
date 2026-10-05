@@ -1,3 +1,23 @@
+## Account browser token and simultaneous Code/Crew connections — PLAT-524
+
+[PLAT-524](pulse_platform/browser/plat-524.md), P2, fixed on main, not deployed. Persistent account token, separately authorized concurrent projects, Crew rollout and project picker.
+
+## Browser dead-session recovery can misclassify unrelated errors — PLAT-523
+
+[PLAT-523](pulse_platform/browser/plat-523.md), P3, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Browser cleanup trusts persisted process IDs before signaling — PLAT-522
+
+[PLAT-522](pulse_platform/browser/plat-522.md), P2, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Global browser capacity eviction stops unrelated sessions — PLAT-521
+
+[PLAT-521](pulse_platform/browser/plat-521.md), P2, open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
+## Shared direct-CDP callers can select other owners’ tabs — PLAT-520
+
+[PLAT-520](pulse_platform/browser/plat-520.md), P1 (conditional on mutually untrusted callers sharing a configured CDP browser), open. Source-reviewed; see ticket for guards, evidence limits and required fix.
+
 ## An MCP tool named like a platform tool stops the chat from starting — PLAT-519
 
 [PLAT-519](pulse_platform/mcp/plat-519.md), P1. Stopgap on mcpagent main (platform tool used, the clashing MCP tool hidden with a warning), not deployed. Open: give a clashing MCP tool a server prefix (`neon__delete_function`) so both stay usable.

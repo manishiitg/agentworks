@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ func extensionBinding(ctx context.Context) *browserrelay.Binding {
 	for _, key := range []interface{}{common.ChatSessionIDKey, common.WorkflowSessionIDKey} {
 		id, _ := ctx.Value(key).(string)
 		if scope := common.SandboxBrowserSession(id); scope != "" {
-			if b := browserrelay.Default.Lookup(user, scope); b != nil && b.Profile() == "code" {
+			if b := browserrelay.Default.Lookup(user, scope); b != nil && (b.Profile() == "code" || b.Profile() == "work") {
 				return b
 			}
 		}
@@ -110,7 +111,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Call agent_browser with ordinary commands and no --cdp. tab lists only shared tabs. Tabs stay in the background by default; set active=true on a tab selection or other command only when visible activation is needed. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Files/download transfer, teaching and recording are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only shared tabs. Tabs stay in the background by default; set active=true on a tab selection or other command only when visible activation is needed. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Files/download transfer, teaching and recording are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
 		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
 		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
@@ -160,6 +161,60 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if err != nil {
 		return "", err
 	}
+	createdFirstTab := false
+	firstTabLabel := ""
+	if b.Status().Tabs == 0 {
+		if command == "tab" && (len(values) == 0 || (len(values) == 1 && values[0] == "list")) {
+			return `{"success":true,"data":{"tabs":[]}}`, nil
+		}
+		createsTab := command == "open" || command == "navigate" || (command == "tab" && len(values) > 0 && values[0] == "new")
+		if !createsTab {
+			return "", fmt.Errorf("CHROME_EXTENSION_NO_TABS: create a project tab with tab new or open; sharing an existing tab is optional")
+		}
+		targetURL := "about:blank"
+		hasURL := false
+		if command == "tab" {
+			for i := 1; i < len(values); i++ {
+				if values[i] == "--label" && i+1 < len(values) {
+					i++
+					firstTabLabel = strings.TrimSpace(values[i])
+					if firstTabLabel == "" {
+						return "", fmt.Errorf("--label requires a non-empty value")
+					}
+					continue
+				}
+				if strings.HasPrefix(values[i], "-") || hasURL {
+					return "", fmt.Errorf("tab new accepts one URL and an optional --label")
+				}
+				targetURL = values[i]
+				hasURL = true
+			}
+		}
+		parsed, parseErr := url.Parse(targetURL)
+		if parseErr != nil || (targetURL != "about:blank" && (parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "")) {
+			return "", fmt.Errorf("Only HTTP(S) pages and about:blank are supported")
+		}
+		createCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		bootstrapURL := targetURL
+		if firstTabLabel != "" {
+			bootstrapURL = "about:blank"
+		}
+		bootstrapTarget, createErr := b.CreateTarget(createCtx, bootstrapURL)
+		cancel()
+		if createErr != nil {
+			return "", fmt.Errorf("Create project browser tab: %w", createErr)
+		}
+		createdFirstTab = command == "tab" && firstTabLabel == ""
+		if firstTabLabel != "" {
+			// Native CLI labels are written by tab new. Give it a temporary bootstrap
+			// target, then let the ordinary new command create the labeled project tab.
+			defer func() {
+				closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = b.CloseTarget(closeCtx, bootstrapTarget)
+			}()
+		}
+	}
 	// Let a fresh CLI attach to an explicitly shared tab before making its
 	// binding strict. Once pinned, a closed tab must fail instead of selecting
 	// another shared tab while retaining stale element references.
@@ -176,6 +231,10 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if current.Active {
 			selected = current
 		}
+	}
+	if createdFirstTab {
+		output, marshalErr := json.Marshal(map[string]interface{}{"success": true, "data": selected})
+		return string(output), marshalErr
 	}
 	if tab != "" && command != "tab" && selected.TabID != tab && selected.Label != tab && selected.TargetID != tab {
 		if _, err = e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", tab, "--cdp", endpoint, "--json"}, opts); err != nil {

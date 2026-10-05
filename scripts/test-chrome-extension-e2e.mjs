@@ -24,6 +24,7 @@ async function tool(payload) {
   const data = JSON.parse(stdout);
   assert.equal(data.success, true, stdout); return data.data;
 }
+    const crewTool=async command=>{const r=await fetch(`${base}/fixture/tool?project=crew`,{method:'POST',body:JSON.stringify(command)});const text=await r.text();assert.equal(r.status,200,text);return JSON.parse(text)};
 try {
   browser = await chromium.launchPersistentContext(profile, { executablePath, headless: false, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
   console.log(`Chrome ${browser.browser().version()}`);
@@ -36,12 +37,23 @@ try {
   await popup.locator('body').screenshot({path:`${evidence}/popup-setup.png`});
   assert.equal(await popup.locator('header img').evaluate(img => img.complete && img.naturalWidth > 0), true, 'branded icon loaded');
   const message = async payload => popup.evaluate(payload => chrome.runtime.sendMessage(payload), payload);
-  const paired = await message({ action: 'connect', pairing: JSON.stringify({ url: base.replace('http', 'ws') + '/api/browser/extension/connect', token: process.env.CHROME_EXTENSION_E2E_TOKEN, brand:'Acme Test' }) });
+  const paired = await message({ action: 'connect', pairing: JSON.stringify({ url: base.replace('http', 'ws') + '/api/browser/extension/connect', token: process.env.CHROME_EXTENSION_E2E_TOKEN, scope:process.env.CHROME_EXTENSION_E2E_SCOPE, brand:'Acme Test' }) });
   assert.equal(paired.ok, true, JSON.stringify(paired));
   await popup.locator('#setup').waitFor({state:'hidden'});
   await popup.getByText('Connected', {exact:true}).waitFor();
   await popup.locator('body').screenshot({path:`${evidence}/popup-connected-empty.png`});
   console.log('PASS distinct connected state, hidden pairing form and brand icon');
+  if(process.env.CHROME_EXTENSION_E2E_CREW_SCOPE) {
+    assert.equal((await fetch(`${base}/fixture/connect-crew`,{method:'POST'})).status,202);
+    for(let i=0;i<50;i++){if((await (await fetch(`${base}/fixture/crew-status`)).json()).connected)break;await new Promise(resolve=>setTimeout(resolve,100));}
+    assert.equal((await message({action:'state'})).selectedScope,process.env.CHROME_EXTENSION_E2E_SCOPE,'automatic project connection preserves manual-sharing selection');
+    assert.deepEqual((await crewTool({command:'tab',args:[]})).data.tabs,[]);
+    await crewTool({command:'open',args:[`${base}/fixture?crew-auto=1`]});
+    await crewTool({command:'snapshot',args:['-i']});
+    assert.deepEqual((await cli('tab')).tabs,[],'agent-created Crew tab is absent from empty Code project');
+    await fetch(`${base}/fixture/disconnect-crew`,{method:'POST'});
+    console.log('PASS automatically connected project and agent-created first tab without any manual sharing');
+  }
   const tabId = await popup.evaluate(async base => (await chrome.tabs.query({})).find(t => t.url === `${base}/fixture`).id, base);
   const shared = await message({ action: 'share', tabId }); assert.equal(shared.ok, true, JSON.stringify(shared));
   const grouping = await popup.evaluate(async id => { const tab = await chrome.tabs.get(id); return {groupId:tab.groupId, tabs:(await chrome.tabs.query({groupId:tab.groupId})).map(t=>t.id), title:(await chrome.tabGroups.get(tab.groupId)).title}; }, tabId);
@@ -104,16 +116,34 @@ try {
   const withNewTab = await message({action:'state'}); assert.ok(withNewTab.tabs.length >= 2);
   const newTabId = withNewTab.tabs.find(t => t.id !== tabId).id;
   assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, newTabId), grouping.groupId, 'new shared tab joins the selected group');
-  await popup.getByRole('button',{name:'Disconnect browser',exact:true}).click();
+  await popup.getByRole('button',{name:'Disconnect project',exact:true}).click();
   await popup.locator('#setup').waitFor({state:'visible'});
   console.log('PASS new shared tab and popup disconnect'); const stopped = await fetch(`${base}/fixture/cdp`); assert.equal(stopped.status, 409); console.log('PASS immediate stop');
   const blocked = await fetch(`${base}/fixture/tool`, { method: 'POST', body: JSON.stringify({ command: 'snapshot', args: [] }) }); assert.equal(blocked.status, 409); assert.match(await blocked.text(), /CHROME_EXTENSION_DISCONNECTED/); console.log('PASS tool fails closed after stop with host CDP disabled');
-  const reconnected = await message({action:'connect', pairing:JSON.stringify({url:base.replace('http','ws')+'/api/browser/extension/connect',token:process.env.CHROME_EXTENSION_E2E_TOKEN})});
+  const reconnected = await message({action:'connect', pairing:JSON.stringify({url:base.replace('http','ws')+'/api/browser/extension/connect',token:process.env.CHROME_EXTENSION_E2E_TOKEN,scope:process.env.CHROME_EXTENSION_E2E_SCOPE})});
   assert.equal(reconnected.ok,true,JSON.stringify(reconnected)); assert.equal(reconnected.tabs.length,0);
   assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), -1, 'disconnect ungroups shared tabs');
   await message({action:'share',tabId});
   assert.match(await popup.evaluate(async id => (await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,tabId), /^AgentWorks · /, 'older codes without branding use AgentWorks');
-  await message({action:'stop'}); console.log('PASS same saved code reconnects without restoring tab authority');
+  if(process.env.CHROME_EXTENSION_E2E_CREW_SCOPE) {
+    const codeScope=process.env.CHROME_EXTENSION_E2E_SCOPE, crewScope=process.env.CHROME_EXTENSION_E2E_CREW_SCOPE;
+    let result=await message({action:'select-project',scope:crewScope});assert.equal(result.ok,true,JSON.stringify(result));
+    assert.equal(result.tabs.length,0,'Crew starts without Code tabs');
+    const rejected=await message({action:'share',tabId});assert.equal(rejected.ok,false,'Code tab cannot be shared into Crew');
+    assert.match(rejected.error,/another project/);
+    await crewTool({command:'tab',args:['new','--label','crew-agent-tab',`${base}/fixture?crew-tab-new=1`]});const crewState=await message({action:'state'});assert.equal(crewState.tabs.length,1);
+    const code=await message({action:'select-project',scope:codeScope});assert.equal(code.connected,true);assert.equal(code.tabs.length,1,'Code connection remains live');
+    assert.notEqual(await popup.evaluate(async id=>(await chrome.tabs.get(id)).groupId,crewState.tabs[0].id),await popup.evaluate(async id=>(await chrome.tabs.get(id)).groupId,tabId),'each project has its own group');
+    const crewTabs=await crewTool({command:'tab',args:[]});assert.equal(crewTabs.data.tabs.length,1);assert.equal(crewTabs.data.tabs[0].label,'crew-agent-tab','first labeled tab retains its native alias');assert.doesNotMatch(JSON.stringify(crewTabs),/navigation=1/,'Crew cannot list Code tabs');
+    await crewTool({command:'open',args:[`${base}/fixture?crew=1`]});
+    await crewTool({command:'snapshot',args:['-i']});
+    const codeTabs=await cli('tab');assert.doesNotMatch(JSON.stringify(codeTabs),/crew=1/,'Code cannot list Crew tabs');
+    await message({action:'stop'});const crewStill=await message({action:'state'});assert.equal(crewStill.connected,true);assert.equal(crewStill.selectedScope,crewScope,'disconnecting Code preserves Crew');
+    await crewTool({command:'snapshot',args:['-i']});
+    await popup.locator('body').screenshot({path:`${evidence}/popup-crew-project.png`});
+    await message({action:'stop-all'});console.log('PASS one account pairing, simultaneous Code/Crew, isolated targets/groups and project-local disconnect');
+  } else await message({action:'stop'});
+  console.log('PASS same saved code reconnects without restoring tab authority');
 } finally {
   if (connection) await run('agent-browser', ['--session', connection.session, 'close'], { timeout: 10000 }).catch(() => {});
   await browser?.close(); await rm(profile, { recursive: true, force: true });

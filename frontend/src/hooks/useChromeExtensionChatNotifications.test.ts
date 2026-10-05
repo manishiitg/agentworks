@@ -28,7 +28,7 @@ it('uses the real global queue for connect, first share, disconnect and reconnec
   await Promise.all([deliverChromeExtensionChatNotifications('code-chat', workspace), deliverChromeExtensionChatNotifications('code-chat', workspace)])
   expect(fixture.tab.config.queuedMessages).toHaveLength(2)
   expect(fixture.tab.config.queuedMessages[1]).toContain('without --cdp')
-  expect(fixture.tab.config.queuedMessages[1]).toContain('No tabs are shared yet')
+  expect(fixture.tab.config.queuedMessages[1]).toContain('No tabs exist for this project yet')
   await deliverChromeExtensionChatNotifications('code-chat', workspace)
   expect(fixture.tab.config.queuedMessages).toHaveLength(2)
   observe({ selected: true, connected: true, tabs: 1, connection_id: 'connection-one' })
@@ -49,13 +49,21 @@ it('uses the real global queue for connect, first share, disconnect and reconnec
   expect(fixture.tab.sessionId).toBe('code-session')
   expect(fixture.refreshSessions).toHaveBeenCalledWith(true)
 })
-it('does not deliver stale responses into another conversation or poll Crew/foreign workspaces', async () => {
+it('does not deliver stale responses into another conversation or poll unsupported profiles/foreign workspaces', async () => {
   fixture.get.mockImplementationOnce(async () => { fixture.tab.sessionId = 'another-session'; return { data: { selected: true, connected: true, tabs: 1, connection_id: 'connection-one' } } })
   await deliverChromeExtensionChatNotifications('code-chat', workspace)
   expect(fixture.tab.config.queuedMessages).toEqual(['Existing request'])
-  fixture.get.mockClear(); fixture.tab.metadata.agentProfileId = 'work'
+  fixture.get.mockClear(); fixture.tab.metadata.agentProfileId = 'workflow'
   await deliverChromeExtensionChatNotifications('code-chat', workspace)
   fixture.tab.metadata.agentProfileId = 'code'
   await deliverChromeExtensionChatNotifications('code-chat', 'Chats/Code/projects/another')
   expect(fixture.get).not.toHaveBeenCalled()
+})
+
+it('notifies the owning Crew chat through the same queue and correct profile route', async () => {
+ fixture.tab.metadata.agentProfileId='work'
+ observe({selected:true,connected:true,tabs:1,connection_id:'crew-connection'})
+ await deliverChromeExtensionChatNotifications('code-chat',workspace)
+ expect(fixture.get).toHaveBeenCalledWith('/api/browser/extension', expect.objectContaining({params:{workspace_path:workspace,profile_id:'work'}}))
+ expect(fixture.tab.config.queuedMessages[1]).toContain('this project')
 })

@@ -17,6 +17,20 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — One browser account token serves separately authorized Code and Crew projects
+
+Use one persistent token per account/deployment, with separately registered and
+rechecked project grants. Code and owned Crew projects may connect simultaneously
+through the extension; keep target maps, controllers, capabilities and groups
+separate, and refuse sharing the same tab into two projects. Registered projects
+connect to the paired worker automatically; agents create their first tabs without
+manual sharing. The picker only controls manual sharing. Account Reset revokes
+all project connections; disconnecting a project affects only that project.
+Why: an owner uses Code and Crew in one browser and should pair it once without
+turning tab bookkeeping into a cross-project permission boundary. This supersedes
+the Code-only rollout and per-project credential policy below. Workflows remain
+deferred. Ticket: [PLAT-524](bugs/pulse_platform/browser/plat-524.md).
+
 ### 2026-10-05 — Code browser changes notify chat and shared tabs group automatically
 
 Use the existing global durable queue to notify the active interactive Code chat

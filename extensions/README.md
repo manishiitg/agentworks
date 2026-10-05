@@ -10,4 +10,5 @@ for packaging, split-service configuration and real browser checks.
 
 Implementation tracking: [PLAT-510](../docs/bugs/pulse_platform/browser/plat-510.md),
 [PLAT-513](../docs/bugs/pulse_platform/browser/plat-513.md) and
-[PLAT-516](../docs/bugs/pulse_platform/browser/plat-516.md).
+[PLAT-516](../docs/bugs/pulse_platform/browser/plat-516.md) and
+[PLAT-524](../docs/bugs/pulse_platform/browser/plat-524.md).

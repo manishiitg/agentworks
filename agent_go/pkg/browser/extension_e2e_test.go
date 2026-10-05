@@ -48,6 +48,19 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	crewWorkspace := "Chats/Work/projects/crew-extension-e2e"
+	if err := os.MkdirAll(filepath.Join(root, crewWorkspace), 0755); err != nil {
+		t.Fatal(err)
+	}
+	crewSession := "crew-extension-e2e"
+	common.BindSessionBrowserIsolationForProject(crewSession, "_users/alice/"+crewWorkspace)
+	common.SetSessionWorkingDir(crewSession, crewWorkspace)
+	common.SetSessionFolderGuard(crewSession, []string{crewWorkspace}, []string{crewWorkspace})
+	defer common.ClearSessionShellConfig(crewSession)
+	crewToken, err := m.PairForProfile("alice", common.SandboxBrowserSession(crewSession), crewWorkspace, "work")
+	if err != nil || crewToken != token {
+		t.Fatal("account token differs in Crew", err)
+	}
 	router := gin.New()
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
 	shell := httptest.NewServer(router)
@@ -55,6 +68,19 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	executor := NewExecutor(NewClient(shell.URL), WithBrowserRuntimeConfig(NewBrowserRuntimeConfig("auto", nil)))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/browser/extension/connect", m.ServeExtension)
+	mux.HandleFunc("/fixture/connect-crew", func(w http.ResponseWriter, r *http.Request) {
+		if !m.RequestProjectConnection("alice", common.SandboxBrowserSession(crewSession)) {
+			http.Error(w, "not paired", 409)
+			return
+		}
+		w.WriteHeader(202)
+	})
+	mux.HandleFunc("/fixture/disconnect-crew", func(w http.ResponseWriter, r *http.Request) {
+		m.Disconnect("alice", common.SandboxBrowserSession(crewSession))
+	})
+	mux.HandleFunc("/fixture/crew-status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(m.Status("alice", common.SandboxBrowserSession(crewSession)))
+	})
 	mux.HandleFunc("/fixture/cdp", func(w http.ResponseWriter, r *http.Request) {
 		b := m.Lookup("alice", common.SandboxBrowserSession(session))
 		if b == nil {
@@ -73,7 +99,11 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		var args map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&args)
 		args["session"] = "main"
-		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, session)
+		activeSession := session
+		if r.URL.Query().Get("project") == "crew" {
+			activeSession = crewSession
+		}
+		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, activeSession)
 		ctx = context.WithValue(ctx, common.UserIDKey, "alice")
 		output, err := executor.HandleAgentBrowser(ctx, args)
 		if err != nil {
@@ -100,7 +130,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("node", filepath.Join(project, "scripts/test-chrome-extension-e2e.mjs"))
-	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token)
+	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession))
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
 	if err != nil {

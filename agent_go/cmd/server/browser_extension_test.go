@@ -37,7 +37,7 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 	if w := call("alice", "/?workspace_path=../Chats/Code/projects/one&profile_id=code"); w.Code != 403 {
 		t.Fatal("noncanonical scope admitted")
 	}
-	for _, path := range []string{"/?workspace_path=Workflow/one&profile_id=code", "/?workspace_path=Chats/Work/projects/one&profile_id=work", "/?workspace_path=_users/alice/Chats/Code/projects/one&profile_id=work"} {
+	for _, path := range []string{"/?workspace_path=Workflow/one&profile_id=code", "/?workspace_path=Workflow/one&profile_id=work", "/?workspace_path=_users/alice/Chats/Code/projects/one&profile_id=work"} {
 		if w := call("alice", path); w.Code != 403 {
 			t.Fatalf("extension rollout leaked: %s %d", path, w.Code)
 		}
@@ -49,9 +49,19 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 	}
 	var result struct {
 		Token string `json:"token"`
+		Scope string `json:"scope"`
 	}
 	if err := json.Unmarshal(first.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
+	}
+	crewPath := "/?workspace_path=_users/alice/Chats/Work/projects/one&profile_id=work"
+	crew := call("alice", crewPath)
+	var crewCode struct{ Token, Scope string }
+	if err := json.Unmarshal(crew.Body.Bytes(), &crewCode); err != nil || crew.Code != 200 || crewCode.Token != result.Token || crewCode.Scope == result.Scope {
+		t.Fatalf("Code/Crew account code or scope: %d %s", crew.Code, crew.Body.String())
+	}
+	if w := call("bob", crewPath); w.Code != 403 {
+		t.Fatal("Crew reader paired owner's browser")
 	}
 	socketServer := httptest.NewServer(http.HandlerFunc(api.handleBrowserExtensionConnect))
 	defer socketServer.Close()
@@ -66,7 +76,7 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 		return c
 	}
 	connection := connect()
-	connection.WriteJSON(map[string]string{"type": "pair", "token": result.Token})
+	connection.WriteJSON(map[string]string{"type": "pair", "token": result.Token, "scope": result.Scope})
 	var reply map[string]any
 	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "paired" {
 		t.Fatal("Code socket authorization", err, reply)
@@ -82,12 +92,31 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 		t.Fatal("disabled owner kept browser authority")
 	}
 	rejected := connect()
-	rejected.WriteJSON(map[string]string{"type": "pair", "token": result.Token})
+	rejected.WriteJSON(map[string]string{"type": "pair", "token": result.Token, "scope": result.Scope})
 	if err := rejected.ReadJSON(&reply); err != nil || reply["type"] != "error" {
 		t.Fatal("saved code bypassed disabled account", err, reply)
 	}
 
 	if !shouldSkipAuth(browserExtensionConnectPath) || shouldSkipAuth("/api/browser/extension") || shouldSkipAuth(browserExtensionConnectPath+"/other") {
 		t.Fatal("extension auth exemption is not exact")
+	}
+}
+
+func TestChromeExtensionSharedCrewRequiresRegisteredOwner(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	previous := browserrelay.Default
+	browserrelay.Default = browserrelay.New()
+	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
+	workspace := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
+	for _, user := range []string{fixtureUserA, fixtureUserB, fixtureUserC} {
+		r := httptest.NewRequest(http.MethodPost, "/?workspace_path="+workspace+"&profile_id=work", strings.NewReader(`{"action":"pair"}`)).WithContext(f.Ctx(user))
+		w := httptest.NewRecorder()
+		f.API.handleBrowserExtension(w, r)
+		if user == fixtureUserA && w.Code != 200 {
+			t.Fatalf("shared Crew owner rejected: %d %s", w.Code, w.Body.String())
+		}
+		if user != fixtureUserA && w.Code != 403 {
+			t.Fatalf("Crew reader paired: %s %d", user, w.Code)
+		}
 	}
 }

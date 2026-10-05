@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,12 @@ const maxMessage = 16 << 20
 
 type grant struct {
 	User, Scope, Label, ProfileID string
+	Projects                      map[string]projectGrant `json:"projects,omitempty"`
+}
+type projectGrant struct {
+	Scope     string `json:"scope"`
+	Label     string `json:"workspace"`
+	ProfileID string `json:"profile_id"`
 }
 type Status struct {
 	Selected     bool     `json:"selected"`
@@ -49,6 +56,8 @@ type Binding struct {
 	diagnostics                        map[string]*tabDiagnostics
 	childTargets                       map[string]string
 	gate                               chan struct{}
+	newTabRequest                      string
+	newTabResult                       chan envelope
 }
 type Manager struct {
 	mu              sync.Mutex
@@ -98,7 +107,8 @@ func (m *Manager) start() error {
 	return nil
 }
 
-// Pair returns the same private connection code for an account/workspace.
+// Pair returns the same private connection code for an account, registering
+// the workspace separately. The token never grants arbitrary project access.
 // Copying or reconnecting never rotates it; Reset explicitly revokes the code.
 func (m *Manager) Pair(user, scope, label string) (string, error) {
 	return m.PairForProfile(user, scope, label, "")
@@ -113,14 +123,17 @@ func (m *Manager) Reset(user, scope, label, profile string) (string, error) {
 	defer m.mu.Unlock()
 	token, err := m.connectionCode(user, scope, label, profile, true)
 	if err == nil {
-		if b := m.bindings[key(user, scope)]; b != nil {
-			b.close()
+		for bindingKey, b := range m.bindings {
+			if strings.HasPrefix(bindingKey, user+"\x00") {
+				b.close()
+			}
 		}
 	}
 	return token, err
 }
 
-// Caller holds m.mu. Persist before changing credentials or live authority.
+// Caller holds m.mu. Upgrade the first legacy project code to the account code;
+// keep other legacy copies usable for their original project until account Reset.
 func (m *Manager) connectionCode(user, scope, label, profile string, reset bool) (string, error) {
 	if user == "" || scope == "" {
 		return "", errors.New("account and browser scope required")
@@ -131,30 +144,200 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 	if err := m.start(); err != nil {
 		return "", err
 	}
-	token := ""
 	next := make(map[string]grant, len(m.pairs)+1)
+	projects := map[string]projectGrant{}
+	var token string
+	var legacy []string
 	for existing, g := range m.pairs {
-		if key(g.User, g.Scope) == key(user, scope) {
-			if !reset {
-				token = existing
+		if g.User == user {
+			if g.Scope != "" {
+				if _, registered := projects[g.Scope]; !registered {
+					projects[g.Scope] = projectGrant{g.Scope, g.Label, g.ProfileID}
+				}
+				legacy = append(legacy, existing)
 			}
-			continue
+			if len(g.Projects) > 0 {
+				token = existing
+				for k, p := range g.Projects {
+					projects[k] = p
+				}
+			}
+			if reset {
+				continue
+			}
 		}
 		next[existing] = g
 	}
-	if len(next) >= 1000 {
-		return "", errors.New("too many browser connections")
+	if !reset && token == "" && len(legacy) > 0 {
+		sort.Strings(legacy)
+		token = legacy[0]
 	}
-	if token == "" {
+	if reset || token == "" {
 		token = secret()
 	}
-	next[token] = grant{User: user, Scope: scope, Label: label, ProfileID: profile}
+	projects[scope] = projectGrant{scope, label, profile}
+	if len(projects) > 1000 {
+		return "", errors.New("too many browser connections")
+	}
+	next[token] = grant{User: user, Projects: projects}
+	if len(next) > 1000 {
+		return "", errors.New("too many browser connections")
+	}
+	registered := map[string]bool{}
+	for _, g := range next {
+		if g.Scope != "" {
+			registered[key(g.User, g.Scope)] = true
+		}
+		for scope := range g.Projects {
+			registered[key(g.User, scope)] = true
+		}
+	}
+	if len(registered) > 1000 {
+		return "", errors.New("too many registered browser projects")
+	}
 	if err := m.persistCredentials(next); err != nil {
 		return "", err
 	}
 	m.pairs = next
 	return token, nil
 }
+
+// Scope is routing metadata, never authority. Only previously registered grants
+// belonging to the token's account can be resolved. A legacy one-project code
+// still works without scope; an ambiguous account code must name its project.
+func resolveProject(g grant, scope string) (grant, bool) {
+	if g.Scope != "" {
+		return g, scope == "" || scope == g.Scope
+	}
+	if scope == "" && len(g.Projects) == 1 {
+		for k := range g.Projects {
+			scope = k
+		}
+	}
+	p, ok := g.Projects[scope]
+	return grant{User: g.User, Scope: p.Scope, Label: p.Label, ProfileID: p.ProfileID}, ok
+}
+func sameProject(a, b grant) bool {
+	return a.User == b.User && a.Scope == b.Scope && a.Label == b.Label && a.ProfileID == b.ProfileID
+}
+
+func (m *Manager) availableProjects(token string, authorize func(string, string, string, string) error) []projectGrant {
+	m.mu.Lock()
+	g, exists := m.pairs[token]
+	projects := make([]projectGrant, 0, len(g.Projects)+1)
+	for _, p := range g.Projects {
+		projects = append(projects, p)
+	}
+	if g.Scope != "" {
+		projects = append(projects, projectGrant{g.Scope, g.Label, g.ProfileID})
+	}
+	m.mu.Unlock()
+	if !exists {
+		return nil
+	}
+	result := projects[:0]
+	for _, p := range projects {
+		if authorize == nil || authorize(g.User, p.Scope, p.Label, p.ProfileID) == nil {
+			result = append(result, p)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Label < result[j].Label })
+	return result
+}
+
+// A project registered by its authenticated owner can attach to the already
+// paired account browser. This does not share any pre-existing tab.
+func (m *Manager) RequestProjectConnection(user, scope string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if b := m.bindings[key(user, scope)]; b != nil && b.Status().Connected {
+		return true
+	}
+	var g grant
+	found := false
+	for _, credential := range m.pairs {
+		if credential.User == user {
+			if resolved, ok := resolveProject(credential, scope); ok {
+				g = resolved
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		return false
+	}
+	var source *Binding
+	for bindingKey, b := range m.bindings {
+		if strings.HasPrefix(bindingKey, user+"\x00") && b.Status().Connected {
+			source = b
+			break
+		}
+	}
+	if source == nil {
+		return false
+	}
+	if err := m.persistSelection("", &g); err != nil {
+		return false
+	}
+	if m.bindings[key(user, scope)] == nil {
+		m.bindings[key(user, scope)] = &Binding{key: key(user, scope), label: g.Label, profile: g.ProfileID, gate: make(chan struct{}, 1)}
+	}
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.extension == nil {
+		return false
+	}
+	source.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	return source.extension.WriteJSON(envelope{Type: "connect-project", Scope: scope}) == nil
+}
+
+// Called under the binding's automation gate. Create the first project tab
+// without a CLI that requires an existing target to bootstrap its CDP session.
+func (b *Binding) CreateTarget(ctx context.Context, targetURL string) (string, error) {
+	return b.targetCommand(ctx, targetURL, "")
+}
+func (b *Binding) CloseTarget(ctx context.Context, targetID string) error {
+	_, err := b.targetCommand(ctx, "", targetID)
+	return err
+}
+func (b *Binding) targetCommand(ctx context.Context, targetURL, targetID string) (string, error) {
+	request := secret()
+	result := make(chan envelope, 1)
+	b.mu.Lock()
+	if b.extension == nil || time.Now().After(b.expires) {
+		b.mu.Unlock()
+		return "", errors.New("Chrome disconnected")
+	}
+	b.newTabRequest, b.newTabResult = request, result
+	b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err := b.extension.WriteJSON(envelope{Type: "target-command", RequestID: request, URL: targetURL, TargetID: targetID, Active: b.active})
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		if b.newTabRequest == request {
+			b.newTabRequest = ""
+			b.newTabResult = nil
+		}
+		b.mu.Unlock()
+	}()
+	if err != nil {
+		return "", errors.New("Chrome connection could not create a tab")
+	}
+	select {
+	case response := <-result:
+		if response.Error != "" {
+			return "", errors.New(response.Error)
+		}
+		if response.TargetID == "" {
+			return "", errors.New("Chrome returned no new target")
+		}
+		return response.TargetID, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
 func (m *Manager) Lookup(user, scope string) *Binding {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -195,9 +378,9 @@ func (b *Binding) AcquireForActive(ctx context.Context, owner string, active boo
 	release := func() { <-b.gate }
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.extension == nil || time.Now().After(b.expires) || b.tabs == 0 {
+	if b.extension == nil || time.Now().After(b.expires) {
 		release()
-		return "", nil, errors.New("CHROME_EXTENSION_DISCONNECTED: connect Chrome and share a tab, or disconnect the extension in browser settings to use the workspace browser")
+		return "", nil, errors.New("CHROME_EXTENSION_DISCONNECTED: connect Chrome, or disconnect the extension in browser settings to use the workspace browser")
 	}
 	if owner != "" {
 		if b.owner != "" && b.owner != owner {
@@ -231,6 +414,12 @@ func (m *Manager) Disconnect(user, scope string) error {
 func (b *Binding) close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.newTabResult != nil {
+		select {
+		case b.newTabResult <- envelope{Error: "Chrome connection stopped"}:
+		default:
+		}
+	}
 	if b.extension != nil {
 		b.extension.Close()
 		b.extension = nil
@@ -262,10 +451,17 @@ func (m *Manager) Close() {
 type envelope struct {
 	Type      string          `json:"type"`
 	Token     string          `json:"token,omitempty"`
+	Scope     string          `json:"scope,omitempty"`
+	ProfileID string          `json:"profile_id,omitempty"`
+	Projects  []projectGrant  `json:"projects,omitempty"`
 	Workspace string          `json:"workspace,omitempty"`
 	Tabs      int             `json:"tabs,omitempty"`
 	TabTitles []string        `json:"tab_titles,omitempty"`
 	Message   json.RawMessage `json:"message,omitempty"`
+	RequestID string          `json:"request_id,omitempty"`
+	URL       string          `json:"url,omitempty"`
+	TargetID  string          `json:"target_id,omitempty"`
+	Error     string          `json:"error,omitempty"`
 	Active    bool            `json:"active,omitempty"`
 }
 
@@ -293,7 +489,9 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	m.mu.Lock()
-	g, ok := m.pairs[hello.Token]
+	credential, exists := m.pairs[hello.Token]
+	g, ok := resolveProject(credential, hello.Scope)
+	ok = ok && exists
 	m.mu.Unlock()
 	if !ok {
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code is invalid or was reset"})
@@ -303,9 +501,12 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		conn.WriteJSON(envelope{Type: "error", Workspace: "This account no longer has browser access to the workspace"})
 		return
 	}
+	available := m.availableProjects(hello.Token, authorize)
 	m.mu.Lock()
 	// Reset may have revoked the code while the workspace access check ran.
-	if current, exists := m.pairs[hello.Token]; !exists || current != g {
+	current, exists := m.pairs[hello.Token]
+	checked, granted := resolveProject(current, g.Scope)
+	if !exists || !granted || !sameProject(checked, g) {
 		m.mu.Unlock()
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code was reset; copy it again"})
 		return
@@ -331,7 +532,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		old.close()
 	}
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available})
 	b.mu.Unlock()
 	if err != nil {
 		return
@@ -349,11 +550,16 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		if e.Type == "ping" && authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
 			return
 		}
+
+		var projects []projectGrant
+		if e.Type == "ping" {
+			projects = m.availableProjects(hello.Token, authorize)
+		}
 		b.mu.Lock()
 		switch e.Type {
 		case "ping":
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			err = conn.WriteJSON(envelope{Type: "pong"})
+			err = conn.WriteJSON(envelope{Type: "pong", Projects: projects})
 		case "tabs":
 			if e.Tabs >= 0 && e.Tabs <= 32 {
 				b.tabs = e.Tabs
@@ -366,6 +572,13 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 						title = title[:512]
 					}
 					b.tabTitles = append(b.tabTitles, title)
+				}
+			}
+		case "target-result":
+			if b.newTabResult != nil && e.RequestID == b.newTabRequest {
+				select {
+				case b.newTabResult <- e:
+				default:
 				}
 			}
 		case "cdp":

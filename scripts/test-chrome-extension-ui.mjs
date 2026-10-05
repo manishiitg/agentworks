@@ -22,7 +22,7 @@ try {
     if (action === 'disconnect') { selected = connected = false; tabs = []; disconnectCount++; }
     if (action === 'pair') copyCount++;
     if (action === 'reset') { currentToken = token + '-rotated'; connected = false; tabs = []; }
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(['pair','reset'].includes(action) ? { token:currentToken } : { selected, connected, tabs: tabs.length, workspace: 'customer-portal', connection_id: connectionID, tab_titles: tabs }) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(['pair','reset'].includes(action) ? { token:currentToken, scope:'qa-project-scope' } : { selected, connected, tabs: tabs.length, workspace: 'customer-portal', connection_id: connectionID, tab_titles: tabs }) });
   });
   const openSettings = async () => page.getByRole('button', { name: 'Browser settings', exact: true }).click();
   await page.goto(fixture);
@@ -53,7 +53,7 @@ try {
     await page.screenshot({ path: `${evidence}/setup-${width}.png`, fullPage: true });
   }
   selected = connected = true; connectionID = 'new-connection-one';
-  await page.getByText('Share your first tab', { exact: true }).waitFor({ timeout: 10000 });
+  await page.getByText('Ready for your agent', { exact: true }).waitFor({ timeout: 10000 });
   assert.equal(await page.getByRole('button', { name: 'Start browser', exact: true }).count(), 0, 'extension tab does not expose workspace launch');
   assert.equal(await page.getByRole('button', { name: 'Copy connection', exact: true }).count(), 0, 'setup disappears after connection');
   await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
@@ -72,18 +72,23 @@ try {
   await openSettings();
   await page.getByText('Connection code options', {exact:true}).click();
   await page.getByRole('button', {name:'Reset connection code',exact:true}).click();
-  await page.getByRole('button', {name:'Reset and disconnect',exact:true}).click();
+  await page.getByRole('button', {name:'Reset all connections',exact:true}).click();
   await page.getByText('Browser disconnected', {exact:true}).waitFor();
   assert.equal(JSON.parse(await page.evaluate(() => navigator.clipboard.readText())).token, token + '-rotated');
   await choice.selectOption('headless');
   assert.equal(disconnectCount, 1, 'switching browser explicitly disconnects extension');
   await page.getByRole('button', { name: 'Start browser', exact: true }).waitFor();
-  for (const profile of ['work', 'workflow']) {
+  for (const profile of ['workflow']) {
     const previousCalls = calls;
     await page.goto(`${fixture}?profile=${profile}`); await openSettings();
     assert.equal(await page.locator('option[value="extension"]').count(), 0, `${profile} extension rollout hidden`);
     assert.equal(calls, previousCalls, `${profile} does not query extension API`);
   }
+  await page.goto(`${fixture}?profile=work`); await openSettings();
+  assert.equal(await page.locator('option[value="extension"]').count(),1,'Crew offers extension');
+  await choice.selectOption('extension');
+  await page.getByRole('button',{name:'Copy connection',exact:true}).click();
+  assert.equal(JSON.parse(await page.evaluate(()=>navigator.clipboard.readText())).token,currentToken,'same account token in Code and Crew');
   await page.goto(`${fixture}?theme=light`); await openSettings();
   await choice.selectOption('extension');
   await page.screenshot({ path: `${evidence}/setup-light.png`, fullPage: true });
@@ -94,7 +99,7 @@ try {
   const notices = page.getByRole('list', {name:'Automatic chat notifications'}).locator('li');
   assert.equal(await notices.count(), 0, 'initial disconnected state is quiet');
   selected = connected = true; connectionID = 'notification-connection-one'; tabs = [];
-  await notices.filter({hasText:'No tabs are shared yet'}).waitFor({timeout:10000});
+  await notices.filter({hasText:'No tabs exist for this project yet'}).waitFor({timeout:10000});
   tabs = ['Shared website'];
   await notices.filter({hasText:'tab is now shared'}).waitFor({timeout:10000});
   connected = false; tabs = [];
@@ -106,5 +111,5 @@ try {
   selected = connected = true; connectionID = 'notification-connection-two'; tabs = ['Shared website'];
   await notices.filter({hasText:'Shared tabs are available'}).waitFor({timeout:10000});
   console.log('PASS browser-rendered connect, share-ready, disconnect, browser change and reconnect messages through the real global queue');
-  console.log('PASS Code browser choice, hidden raw code, stable copy, connected states, reconnect identity, explicit browser switch, Code-only rollout, dark/light layouts at 1000/420px');
+  console.log('PASS Code browser choice, hidden raw code, stable copy, connected states, reconnect identity, explicit browser switch, Code/Crew rollout, dark/light layouts at 1000/420px');
 } finally { await browser.close(); }
