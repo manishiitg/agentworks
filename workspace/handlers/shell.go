@@ -562,7 +562,13 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		strings.HasPrefix(key, "REPORT_") ||
 		key == "DB_PATH" ||
 		key == "WORKFLOW_CODE_ROOT" || key == "WORKFLOW_CODE_DEPS" || key == "PYTHONPATH" ||
-		key == "PYTHONDONTWRITEBYTECODE"
+		key == "PYTHONDONTWRITEBYTECODE" ||
+		// Paths and flags the platform sets for a workflow's code steps (code_layout.go codeRuntimeEnv). Dropping them
+		// here meant a step never learned where its trigger delivery was, so a webhook, MCP or Crew-started run always
+		// looked like it had no input (PLAT-514), and knowledge-base and database access flags never arrived either.
+		strings.HasPrefix(key, "WORKFLOW_TRIGGER_") ||
+		strings.HasPrefix(key, "WORKFLOW_KB_") ||
+		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER"
 }
 
 // stripShellPrefix removes a leading "sh -c " wrapper from the command string.
