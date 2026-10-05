@@ -51,10 +51,12 @@ func (r collisionToolRegistrar) RegisterCustomToolWithTimeout(name, description 
 			copySchema[k] = v
 		}
 		props := map[string]interface{}{}
+		declaresForce := false
 		if original, ok := schema["properties"].(map[string]interface{}); ok {
 			for k, v := range original {
 				props[k] = v
 			}
+			_, declaresForce = original["force"]
 		}
 		props["force"] = map[string]interface{}{"type": "boolean", "description": "Default false. Only set true after showing a schedule_running warning and receiving explicit user approval to proceed concurrently. Does not stop the schedule or bypass permissions."}
 		copySchema["properties"] = props
@@ -63,6 +65,18 @@ func (r collisionToolRegistrar) RegisterCustomToolWithTimeout(name, description 
 		execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if err := r.check(ctx, name, args); err != nil {
 				return "", err
+			}
+			// `force` belongs to the guard. A tool with a strict argument schema (update_step) rejects it as
+			// an unknown property, so an approved override could never run. A tool that declares its own
+			// `force` keeps it.
+			if _, hasForce := args["force"]; hasForce && !declaresForce {
+				trimmed := make(map[string]interface{}, len(args))
+				for k, v := range args {
+					if k != "force" {
+						trimmed[k] = v
+					}
+				}
+				args = trimmed
 			}
 			return original(ctx, args)
 		}
