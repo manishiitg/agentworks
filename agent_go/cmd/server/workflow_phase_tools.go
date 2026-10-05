@@ -106,6 +106,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			if err := api.registerVaultAccessChatTool(definitionAgent, userID); err != nil {
 				return err
 			}
+			if err := api.registerMyVaultsTool(definitionAgent, userID); err != nil {
+				return err
+			}
 		}
 	}
 
