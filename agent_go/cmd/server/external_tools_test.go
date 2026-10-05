@@ -271,6 +271,11 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			wantCatalog = append(wantCatalog, name)
 		}
 	}
+	kbTools, err := knowledgebaseproduct.ExternalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCatalog = append(wantCatalog, kbTools...)
 	wantCatalog = append(wantCatalog, caplayerproduct.ExternalTools()...)
 	for _, name := range run {
 		if denied[name] {
