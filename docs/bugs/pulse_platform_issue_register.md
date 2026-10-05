@@ -190,6 +190,10 @@ usable node_modules if the install fails.
 
 [PLAT-518](pulse_platform/chat-reliability/plat-518.md), fixed on main: the native transcript merge no longer re-adds a human message saved before an earlier reply. Left: flicker.
 
+## Make chat history simple: drop the native transcript merge — PLAT-525
+
+[PLAT-525](pulse_platform/chat-reliability/plat-525.md), open (proposal): one source of truth (the event store) instead of merging the CLI's transcript; decision needed.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
