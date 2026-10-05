@@ -72,6 +72,13 @@ func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool,
 		return nil, errors.New("invalid Vault response")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// The Vault service's own refusal text (for example "only an owner of this vault can do that") helps the caller.
+		var refusal struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &refusal) == nil && strings.TrimSpace(refusal.Error) != "" && len(refusal.Error) <= 300 {
+			return nil, fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, strings.TrimSpace(refusal.Error))
+		}
 		return nil, fmt.Errorf("Vault operation failed (%d)", resp.StatusCode)
 	}
 	return body, nil

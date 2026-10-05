@@ -169,10 +169,9 @@ func vaultPromoteJSON(value any) json.RawMessage {
 func createPlatformVaultConnection(ctx context.Context, person, provider string, server placeMCPServer) (string, error) {
 	var created string
 	var err error
-	if provider != "" {
+	if provider = resolveVaultProvider(ctx, provider, server.URL); provider != "" {
 		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"provider": provider, "label": server.Label}))
-	}
-	if provider == "" || err != nil {
+	} else {
 		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"name": server.Name, "url": server.URL}))
 	}
 	if err != nil {
@@ -194,10 +193,9 @@ func createOwnVaultConnection(ctx context.Context, person, vaultID, provider str
 	path := "/api/vaults/" + url.PathEscape(vaultID) + "/connectors"
 	var data []byte
 	var err error
-	if provider != "" {
+	if provider = resolveVaultProvider(ctx, provider, server.URL); provider != "" {
 		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": provider, "Label": server.Label}))
-	}
-	if provider == "" || err != nil {
+	} else {
 		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": server.Name, "Label": server.Name, "URL": server.URL}))
 	}
 	if err != nil {
@@ -208,4 +206,33 @@ func createOwnVaultConnection(ctx context.Context, person, vaultID, provider str
 		return "", errors.New("the vault created a connection but returned no usable connection ID")
 	}
 	return made.ID, nil
+}
+
+// resolveVaultProvider returns the Vault catalog entry that matches the connection: the one whose URL is the same (the
+// place connection's own catalog name is not necessarily a Vault catalog name), else the given name if the catalog has
+// it, else "" (a custom server). A catalog entry is created without contacting the server; a bare URL is not, so a server
+// that needs a sign-in can only be created from the catalog.
+func resolveVaultProvider(ctx context.Context, given, rawURL string) string {
+	data, err := vaultServiceRequest(ctx, "", http.MethodGet, "/api/admin/catalog", nil)
+	if err != nil {
+		return strings.TrimSpace(given)
+	}
+	var catalog struct {
+		Providers []struct{ Name, URL string } `json:"providers"`
+	}
+	if json.Unmarshal(data, &catalog) != nil {
+		return strings.TrimSpace(given)
+	}
+	norm := func(u string) string { return strings.TrimRight(strings.ToLower(strings.TrimSpace(u)), "/") }
+	for _, p := range catalog.Providers {
+		if rawURL != "" && norm(p.URL) == norm(rawURL) {
+			return p.Name
+		}
+	}
+	for _, p := range catalog.Providers {
+		if given != "" && strings.EqualFold(p.Name, strings.TrimSpace(given)) {
+			return p.Name
+		}
+	}
+	return ""
 }
