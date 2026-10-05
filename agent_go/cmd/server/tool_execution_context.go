@@ -113,6 +113,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
+		// All registered step/delegated tool sessions retain the authenticated
+		// root controller. A child may not invent a different browser owner.
+		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)
 		ctx = executor.WithSessionID(ctx, toolSession)
 		if copy.Provider == "bot_route" || copy.Provider == slackDMProvider {
 			validated, err := api.revalidateExecutionPrincipal(ctx, req)

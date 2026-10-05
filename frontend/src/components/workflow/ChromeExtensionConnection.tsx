@@ -126,7 +126,7 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
         <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-xs font-medium text-muted-foreground">2</span>
         <div className="min-w-0 flex-1 space-y-2">
           <h4 className="text-sm font-medium">Connect to this workspace</h4>
-          <p className="text-xs leading-relaxed text-muted-foreground">Copy the connection and paste it into the extension once. If your browser is already paired, this connects the project automatically.</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">Copy the connection and paste it into the extension once. Connecting shares your current website. If your browser is already paired, this connects the project automatically.</p>
           <Button size="sm" disabled={busy} onClick={() => { void copy() }}>{busy ? <Loader2 className="animate-spin" /> : copied ? <Check /> : <Copy />}{busy ? 'Preparing…' : copied ? 'Copied connection' : 'Copy connection'}</Button>
           {pairing && <>
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Waiting for your browser…</p>
@@ -135,7 +135,7 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
               <textarea aria-label="Browser connection code" readOnly value={pairing} rows={3} className="mt-2 w-full resize-none rounded-md border border-border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed" onFocus={event => event.target.select()} />
             </details>
           </>}
-          <p className="text-[11px] text-muted-foreground">One stable token works across your Code and Crew projects. Each project keeps its own shared tabs.</p>
+          <p className="text-[11px] text-muted-foreground">One stable token works across your Code projects, Crews and workflows. Each project keeps its own shared tabs.</p>
         </div>
       </li>
       <li className="flex gap-3">
@@ -148,7 +148,7 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer hover:text-foreground">Connection code options</summary>
       <div className="mt-2 space-y-2">
-        <p>Reset invalidates all saved copies of your account token and disconnects every Code and Crew browser connection.</p>
+        <p>Reset invalidates all saved copies of your account token and disconnects every Code, Crew and workflow browser connection.</p>
         {resetting ? <div className="flex flex-wrap gap-2"><Button size="sm" variant="destructive" disabled={busy} onClick={() => { void copy(true); setResetting(false); setReconnect(true) }}>Reset all connections</Button><Button size="sm" variant="ghost" onClick={() => setResetting(false)}>Cancel</Button></div> : <Button size="sm" variant="outline" disabled={busy} onClick={() => setResetting(true)}><RefreshCw />Reset connection code</Button>}
       </div>
     </details>

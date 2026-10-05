@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
@@ -13,10 +14,24 @@ import (
 const browserExtensionConnectPath = "/api/browser/extension/connect"
 
 func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, profile string) (string, error) {
-	if !((profile == "code" && isCodeProjectPath(workspace)) || (profile == "work" && isCrewProjectPath(workspace))) {
-		return "", fmt.Errorf("Browser extension access requires a Code or Crew project")
-	}
 	claims := GetUserFromContext(r.Context())
+	normalized := normalizeConversationWorkspace(workspace)
+	if (profile == "" || profile == "workflow") && strings.HasPrefix(normalized, "Workflow/") && strings.Count(normalized, "/") == 1 {
+		if claims == nil || !userAllowedProduct(claims, "agentworks") {
+			return "", fmt.Errorf("Workflow product access required")
+		}
+		if _, err := api.browserWorkspaceAccess(r, workspace, "workflow", true); err != nil {
+			return "", err
+		}
+		_, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspace)
+		if manifest == nil || manifest.Kind == "relay" {
+			return "", fmt.Errorf("Open a workflow browser")
+		}
+		return workspace, nil
+	}
+	if !((profile == "code" && isCodeProjectPath(workspace)) || (profile == "work" && isCrewProjectPath(workspace))) {
+		return "", fmt.Errorf("Browser extension access requires Code, Crew or a workflow")
+	}
 	if claims == nil || !userAllowedProduct(claims, profile) {
 		return "", fmt.Errorf("Product access required")
 	}
@@ -32,6 +47,10 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 		return
 	}
 	user := GetUserFromContext(r.Context()).UserID
+	profile := r.URL.Query().Get("profile_id")
+	if profile == "" {
+		profile = "workflow"
+	}
 	scope := browserSessionForWorkspace(user, workspace)
 	if scope == "" {
 		http.Error(w, "Open a project or workflow browser", 400)
@@ -52,9 +71,9 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			var token string
 			var err error
 			if req.Action == "reset" {
-				token, err = browserrelay.Default.Reset(user, scope, workspace, r.URL.Query().Get("profile_id"))
+				token, err = browserrelay.Default.Reset(user, scope, workspace, profile)
 			} else {
-				token, err = browserrelay.Default.PairForProfile(user, scope, workspace, r.URL.Query().Get("profile_id"))
+				token, err = browserrelay.Default.PairForProfile(user, scope, workspace, profile)
 			}
 			if err != nil {
 				http.Error(w, "Cannot start Chrome bridge", 503)

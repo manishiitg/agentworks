@@ -444,6 +444,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             )}
             {section === 'browser' && (
               <BrowserWorkspacePanel
+                profileId={relayMode ? 'relay' : 'workflow'}
                 workspacePath={workspacePath}
                 browserMode={capabilities.browser_mode as BrowserAutomationMode}
                 onBrowserModeChange={(browser_mode) => setCapabilities(current => ({ ...current, browser_mode }))}

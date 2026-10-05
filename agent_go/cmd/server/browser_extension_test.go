@@ -120,3 +120,76 @@ func TestChromeExtensionSharedCrewRequiresRegisteredOwner(t *testing.T) {
 		}
 	}
 }
+
+// A workflow grant uses the same account credential, never another owner's
+// personal binding. Revoking workflow write access closes the live socket.
+func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","can_create":true,"products":[]},{"id":"bob","can_create":true,"products":[]},{"id":"charlie","can_create":true,"products":["agentworks"]},{"id":"code-only","can_create":true,"products":["code"]}]}`)
+	manifest := `{"version":"1","id":"browser-workflow","label":"Browser workflow","access":{"owners":["alice","charlie","code-only"],"readers":["bob"]},"capabilities":{"browser_mode":"auto"}}`
+	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": manifest}})
+	}))
+	defer workspaceServer.Close()
+	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
+	previous := browserrelay.Default
+	browserrelay.Default = browserrelay.New()
+	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
+	api := &StreamingAPI{}
+	call := func(user, path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"action":"pair"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		api.handleBrowserExtension(w, r)
+		return w
+	}
+	path := "/?workspace_path=Workflow/browser-workflow"
+	for _, user := range []string{"bob", "code-only", "unknown"} {
+		if w := call(user, path); w.Code != 403 {
+			t.Fatalf("workflow access %s: %d", user, w.Code)
+		}
+	}
+	for _, invalid := range []string{path + "/runs/run-one", path + "&profile_id=code", path + "&profile_id=work"} {
+		if w := call("alice", invalid); w.Code != 403 {
+			t.Fatalf("invalid workflow binding admitted: %s %d", invalid, w.Code)
+		}
+	}
+	var account, workflow, other struct{ Token, Scope string }
+	code := call("alice", "/?workspace_path=Chats/Code/projects/one&profile_id=code")
+	json.Unmarshal(code.Body.Bytes(), &account)
+	first := call("alice", path)
+	json.Unmarshal(first.Body.Bytes(), &workflow)
+	second := call("charlie", path+"&profile_id=workflow")
+	json.Unmarshal(second.Body.Bytes(), &other)
+	if first.Code != 200 || second.Code != 200 || workflow.Token != account.Token || workflow.Scope == account.Scope || other.Token == workflow.Token {
+		t.Fatalf("workflow pairing: %d %d", first.Code, second.Code)
+	}
+	server := httptest.NewServer(http.HandlerFunc(api.handleBrowserExtensionConnect))
+	defer server.Close()
+	socket, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer socket.Close()
+	socket.SetReadDeadline(time.Now().Add(3 * time.Second))
+	socket.WriteJSON(map[string]string{"type": "pair", "token": workflow.Token, "scope": workflow.Scope})
+	var reply map[string]any
+	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "paired" || reply["profile_id"] != "workflow" {
+		t.Fatal("workflow socket", reply, err)
+	}
+	socket.WriteJSON(map[string]string{"type": "ping"})
+	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "pong" {
+		t.Fatal("workflow heartbeat", reply, err)
+	}
+	if browserrelay.Default.Lookup("charlie", workflow.Scope) != nil {
+		t.Fatal("one owner's socket appeared in another owner's binding")
+	}
+	manifest = `{"version":"1","id":"browser-workflow","label":"Browser workflow","access":{"owners":["charlie"],"readers":["alice"]},"capabilities":{"browser_mode":"auto"}}`
+	socket.WriteJSON(map[string]string{"type": "ping"})
+	if err := socket.ReadJSON(&reply); err == nil {
+		t.Fatal("revoked workflow owner kept browser authority")
+	}
+	manifest = `{"version":"1","id":"browser-workflow","label":"Browser workflow","kind":"relay","access":{"owners":["charlie"]},"capabilities":{"browser_mode":"auto"}}`
+	if w := call("charlie", path); w.Code != 403 {
+		t.Fatal("Relay manifest admitted as a workflow")
+	}
+}

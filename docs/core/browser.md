@@ -3,7 +3,7 @@
 This is the single browser design and implementation guide for our products.
 It consolidates the former core browser, workflow authoring, live browser and
 Chrome/Edge extension designs, including extension installation and deployment.
-The extension policy is current through PLAT-524 (2026-10-05); other browser
+The extension policy is current through PLAT-530 (2026-10-05); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
@@ -27,7 +27,7 @@ must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
 | --- | --- | --- |
 | Workspace browser | Managed Chromium in the workspace; existing agent-browser execution and viewer. | Products with browser capability enabled. |
 | Chrome · direct connection | Configured debugging endpoint reachable by the runtime; direct CDP. | Where deployment settings permit operator-host CDP. |
-| My Chrome or Edge · extension | User's local browser; outbound WebSocket → private server relay → agent-browser CDP. | Owned Code and Crew projects; Workflow rollout deferred. |
+| My Chrome or Edge · extension | User's local browser; outbound WebSocket → private server relay → agent-browser CDP. | Owned Code/Crew projects and workflows you can edit; connections stay account-private. |
 
 The extension uses CDP internally but has its own authorization and supported
 command boundary. Later direct-CDP sections describing host file URLs, shared
@@ -80,9 +80,10 @@ Neither dependency requires a source change for this feature.
 Tracking: [PLAT-510](../bugs/pulse_platform/browser/plat-510.md),
 [PLAT-513](../bugs/pulse_platform/browser/plat-513.md) and
 [PLAT-516](../bugs/pulse_platform/browser/plat-516.md) and
-[PLAT-524](../bugs/pulse_platform/browser/plat-524.md).
+[PLAT-524](../bugs/pulse_platform/browser/plat-524.md) and
+[PLAT-530](../bugs/pulse_platform/browser/plat-530.md).
 
-Let a Code or Crew agent use explicitly shared tabs in the user's
+Let a Code, Crew or workflow agent use explicitly shared tabs in the user's
 existing Chrome profile, locally or from a hosted platform. Keep the existing
 `agent_browser` tool and agent-browser CLI. Chrome remains on the user's machine;
 its login cookies are not exported. Page text, screenshots and action results
@@ -90,14 +91,17 @@ do travel to the platform and model.
 
 ### Install and connect
 
-1. Build/restart the platform with this change. In an owned Code or Crew project,
+1. Build/restart the platform with this change. In an owned Code/Crew project or a workflow you can edit,
    open **Browser → Settings** and choose **My Chrome or Edge · extension**.
-   Workflows do not offer the extension yet; Crew readers cannot pair the owner's browser.
+   Readers cannot pair a browser. Relay rollout remains deferred.
 2. Download the extension ZIP from that panel and unzip it.
 3. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose
    **Load unpacked**, and select the unzipped folder. Pin the extension if useful.
 4. Copy the connection from AgentWorks into the extension popup and choose
-   **Connect browser**. The token is shared across your owned Code/Crew projects until account Reset.
+   **Connect browser**. This immediately connects and shares the current HTTP(S)
+   website or about:blank; protected pages and tabs belonging to another workspace
+   remain unshared, while the connection still becomes ready for agent-created tabs.
+   Automatic connections to other workspaces never adopt your current tab. The token is shared across your Code/Crew projects and workflows until account Reset.
 5. Ask the agent to browse. It creates and chooses its own project tabs and
    groups them automatically. No first-tab sharing step is required. To use an
    already-open page, optionally choose the project and **Share this tab** in the extension.
@@ -137,13 +141,15 @@ or rejected explicitly.
 
 ### Pairing and ownership
 
-The authenticated Code/Crew Browser settings picker exposes My Chrome or Edge ·
+The authenticated Code/Crew/workflow Browser settings picker exposes My Chrome or Edge ·
 extension. Copy connection registers the server-derived project and returns one
 persistent random token for the account plus that project's routing scope. The
 full JSON differs by scope even though the token is identical across projects.
 Only registered scopes can connect; scope is metadata, not authorization.
 Product access, project ownership and write access are checked on management,
-every connection and every heartbeat. Workflow rollout remains deferred.
+every connection and every heartbeat. Workflow pairing requires AgentWorks product
+access, an existing workflow root manifest and owner/editor access; Relay manifests
+are excluded. Each collaborator pairs their own account browser.
 
 The private credential survives server restarts in the existing 0600 file.
 Account Reset rotates it and closes all of that account's live connections;
@@ -155,11 +161,19 @@ the credential identifies one project unambiguously.
 
 A live binding is private to `(account identity, server-derived browser workspace
 identity)`. Each project has its own private CDP capability, target/session maps,
-controller, diagnostics and groups. Several Code/Crew projects can connect from
+controller, diagnostics and groups. Several Code/Crew projects and workflows can connect from
 one extension simultaneously. A local tab can be shared with only one project;
 sharing it into a second project is refused. A collaborator's run never inherits
 another person's Chrome. Reusing a token in another browser replaces only the
 project named by that connection's scope, after successful authorization.
+
+Workflow steps with agent_browser enabled inherit the workflow's scope and the
+server-bound account/run identity. Registered child/group tool sessions retain
+that run as the browser controller, so later steps can use earlier steps' tabs
+without inheriting their filesystem grants. Separate runs/chats cannot take over
+a live controller; reconnect to change it. Scheduled or background steps can use
+the connection only while the local browser is online; disconnect fails closed.
+The account's connection is never borrowed by another workflow owner or reader.
 
 Live bindings last at most eight hours and remain process-local. Selection is
 recorded without credentials or target IDs. Server/browser/worker restart
@@ -215,7 +229,7 @@ Opening an existing browser keeps those choices in the header settings. This
 avoids flashing setup over a running session while discovery is pending.
 
 The branded popup hides setup after connecting. It shows a Connected badge,
-Code/Crew project picker and server identity, empty or populated shared-tab list, Share this tab,
+Code/Crew/workflow workspace picker and server identity, empty or populated shared-tab list, Share this tab,
 New shared tab, Regroup tabs, Disconnect project and Disconnect all projects.
 Sharing or creating the first tab automatically creates a deployment-brand · project group in its window. New tabs
 may be created by either the popup or the agent and join that managed group.
@@ -249,7 +263,7 @@ must remain inside those paths; global /tmp/tool_output_folder paths stay denied
 
 #### Chat notices and connection lifecycle
 
-The active interactive Code or Crew chat observes status every 2.5 seconds even with
+The active interactive Code, Crew or workflow chat observes status every 2.5 seconds even with
 its Browser pane closed. Connection, first-share and disconnection notices use
 the existing global durable chat queue, preserve drafts and wait behind running
 turns. Per-connection receipts prevent repeats; failed status requests do not
@@ -257,7 +271,9 @@ mean disconnection. Notices tell the agent to verify status, discard old refs
 and use ordinary agent_browser commands through the backend-owned connection.
 Code has explicit browser choices; missing or legacy Automatic settings select
 Workspace browser. Crew retains its ordinary Automatic/managed/direct-CDP
-settings alongside the new extension choice; Workflow rollout is unchanged.
+settings alongside the new extension choice. Workflows offer that same choice.
+Workflow notices resolve the tab's preset ID to its workspace, revalidate after
+responses, and do not send to execution diagnostics, scheduled or bot observer tabs.
 Reusing a code in another browser replaces that project's prior browser on successful
 connection; each new binding receives a fresh private relay capability.
 Sharing another tab is explicit. Removing a shared tab detaches its debugger;
@@ -543,7 +559,7 @@ extension relay with ordinary tool commands and no model-supplied `--cdp`.
 
 The workflow manifest stores the mode under
 `capabilities.browser_mode`. Browser steps attach the `agent-browser` skill.
-The Code/Crew extension is a separately stored private account/workspace selection
+The Code/Crew/workflow extension is a separately stored private account/workspace selection
 that overrides ordinary execution while selected; it is not a manifest mode.
 A disconnected selected extension fails until explicit reconnection or a browser
 choice change, rather than falling back through `auto`.
@@ -617,7 +633,7 @@ endpoint and argument form for the active session.
 
 ## Shared CDP tab lifecycle
 
-This section describes configured direct CDP. The Code/Crew extension instead exposes
+This section describes configured direct CDP. The Code/Crew/workflow extension instead exposes
 only authorized targets, has one controlling root chat per binding and keeps tabs
 in the background unless a call sets `active=true`.
 
@@ -859,7 +875,7 @@ There are two CDP download paths:
   tab locking and can race other workflows.
 - On a local installation, a site rejecting managed headless browsing may
   require `cdp`; record that precondition in its learnings. A server with external
-  CDP disabled cannot use that direct-connection workaround. A Code or Crew project may
+  CDP disabled cannot use that direct-connection workaround. A Code/Crew project or workflow may
   separately pair the user's browser through the extension, subject to its policy.
 
 ## Workflow authoring

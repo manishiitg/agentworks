@@ -37,6 +37,7 @@ try {
   await popup.locator('body').screenshot({path:`${evidence}/popup-setup.png`});
   assert.equal(await popup.locator('header img').evaluate(img => img.complete && img.naturalWidth > 0), true, 'branded icon loaded');
   const message = async payload => popup.evaluate(payload => chrome.runtime.sendMessage(payload), payload);
+  await popup.bringToFront();
   const paired = await message({ action: 'connect', pairing: JSON.stringify({ url: base.replace('http', 'ws') + '/api/browser/extension/connect', token: process.env.CHROME_EXTENSION_E2E_TOKEN, scope:process.env.CHROME_EXTENSION_E2E_SCOPE, brand:'Acme Test' }) });
   assert.equal(paired.ok, true, JSON.stringify(paired));
   await popup.locator('#setup').waitFor({state:'hidden'});
@@ -53,6 +54,24 @@ try {
     assert.deepEqual((await cli('tab')).tabs,[],'agent-created Crew tab is absent from empty Code project');
     await fetch(`${base}/fixture/disconnect-crew`,{method:'POST'});
     console.log('PASS automatically connected project and agent-created first tab without any manual sharing');
+  }
+  if(process.env.CHROME_EXTENSION_E2E_WORKFLOW_SCOPE) {
+    assert.equal((await fetch(`${base}/fixture/connect-workflow`,{method:'POST'})).status,202);
+    for(let i=0;i<50;i++){if((await (await fetch(`${base}/fixture/workflow-status`)).json()).connected)break;await new Promise(resolve=>setTimeout(resolve,100));}
+    const workflowTool=async(command,step='one')=>{const r=await fetch(`${base}/fixture/tool?project=workflow&step=${step}`,{method:'POST',body:JSON.stringify(command)});const output=await r.text();assert.equal(r.status,200,output);return JSON.parse(output)};
+    await workflowTool({command:'open',args:[`${base}/fixture?workflow=1`]});
+    await workflowTool({command:'fill',args:['#name','Workflow step']});
+    await workflowTool({command:'click',args:['#save']},'two');
+    const result=await workflowTool({command:'get',args:['text','#result']},'two');
+    assert.match(JSON.stringify(result),/Saved Workflow step/);
+    assert.deepEqual((await cli('tab')).tabs,[],'workflow step target is absent from Code');
+    assert.equal((await message({action:'state'})).selectedScope,process.env.CHROME_EXTENSION_E2E_SCOPE);
+    await popup.locator('#project').selectOption(process.env.CHROME_EXTENSION_E2E_WORKFLOW_SCOPE);
+    const workflowState=await message({action:'state'});assert.equal(workflowState.tabs.length,1);
+    const group=await popup.evaluate(async id=>(await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,workflowState.tabs[0].id);
+    assert.equal(group,'Acme Test · extension-workflow');
+    await message({action:'stop'});
+    console.log('PASS workflow step one creates/fills its own background tab; step two reuses it, isolated from Code/Crew, with workflow group and disconnect');
   }
   const tabId = await popup.evaluate(async base => (await chrome.tabs.query({})).find(t => t.url === `${base}/fixture`).id, base);
   const shared = await message({ action: 'share', tabId }); assert.equal(shared.ok, true, JSON.stringify(shared));
@@ -120,6 +139,7 @@ try {
   await popup.locator('#setup').waitFor({state:'visible'});
   console.log('PASS new shared tab and popup disconnect'); const stopped = await fetch(`${base}/fixture/cdp`); assert.equal(stopped.status, 409); console.log('PASS immediate stop');
   const blocked = await fetch(`${base}/fixture/tool`, { method: 'POST', body: JSON.stringify({ command: 'snapshot', args: [] }) }); assert.equal(blocked.status, 409); assert.match(await blocked.text(), /CHROME_EXTENSION_DISCONNECTED/); console.log('PASS tool fails closed after stop with host CDP disabled');
+  await popup.bringToFront();
   const reconnected = await message({action:'connect', pairing:JSON.stringify({url:base.replace('http','ws')+'/api/browser/extension/connect',token:process.env.CHROME_EXTENSION_E2E_TOKEN,scope:process.env.CHROME_EXTENSION_E2E_SCOPE})});
   assert.equal(reconnected.ok,true,JSON.stringify(reconnected)); assert.equal(reconnected.tabs.length,0);
   assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), -1, 'disconnect ungroups shared tabs');
@@ -144,6 +164,16 @@ try {
     await message({action:'stop-all'});console.log('PASS one account pairing, simultaneous Code/Crew, isolated targets/groups and project-local disconnect');
   } else await message({action:'stop'});
   console.log('PASS same saved code reconnects without restoring tab authority');
+  await message({action:'stop-all'});
+  await page.goto(`${base}/fixture?auto-share=1`);await page.bringToFront();
+  const automaticallyShared=await message({action:'connect',pairing:JSON.stringify({url:base.replace('http','ws')+'/api/browser/extension/connect',token:process.env.CHROME_EXTENSION_E2E_TOKEN,scope:process.env.CHROME_EXTENSION_E2E_SCOPE,brand:'Acme Test'})});
+  assert.equal(automaticallyShared.ok,true,JSON.stringify(automaticallyShared));
+  assert.equal(automaticallyShared.connected,true);assert.equal(automaticallyShared.tabs.length,1);
+  assert.equal(automaticallyShared.tabs[0].id,tabId,'human Connect shares the currently open website immediately');
+  await popup.getByText('Connected',{exact:true}).waitFor();
+  assert.match(JSON.stringify(await cli('snapshot','-i')),/Save customer/);
+  await message({action:'stop-all'});
+  console.log('PASS human Connect immediately reports connected, shares current website and makes it usable without Share');
 } finally {
   if (connection) await run('agent-browser', ['--session', connection.session, 'close'], { timeout: 10000 }).catch(() => {});
   await browser?.close(); await rm(profile, { recursive: true, force: true });

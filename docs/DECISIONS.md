@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Workflows use account-private extension connections; human Connect shares the current website
+
+Offer the same account token in editable workflows, with live product/write
+checks, workflow-root manifests and account-scoped bindings. Workflow steps
+retain the authenticated parent run as their controller while keeping step-local
+filesystem grants. Pairing never lends one owner's browser to another owner.
+Human Connect shares the current supported website immediately; a protected or
+already-owned tab leaves the connection ready with zero tabs. Automatically
+connecting another workspace never adopts the user's current tab. Why: workflow
+steps should use the same browser path as Code/Crew, and connecting should make
+that browser usable without a second Share action. Relay rollout remains deferred.
+Ticket: [PLAT-530](bugs/pulse_platform/browser/plat-530.md).
+
 ### 2026-10-05 — Chat history is what the platform saved; CLI transcripts are for debugging only
 
 - The saved conversation is built only from what the platform recorded (user rows and structured completions, in arrival order).

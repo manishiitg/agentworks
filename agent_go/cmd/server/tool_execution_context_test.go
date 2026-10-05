@@ -98,12 +98,16 @@ func TestToolExecutionContextAdmitsRegisteredWorkflowChildSession(t *testing.T) 
 	requestCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Provider: "local"})
 	resolve := api.bindToolExecutionContext(requestCtx, parentSession, QueryRequest{}, false)
 
-	ctx, err := resolve(executor.WithSessionID(context.Background(), childSession), "agent_browser")
+	incoming := context.WithValue(context.Background(), common.WorkflowSessionIDKey, "forged-controller")
+	ctx, err := resolve(executor.WithSessionID(incoming, childSession), "agent_browser")
 	if err != nil {
 		t.Fatalf("registered workflow child was rejected: %v", err)
 	}
 	if got := executor.SessionIDFromContext(ctx); got != parentSession {
 		t.Fatalf("bound execution session = %q, want authenticated parent %q", got, parentSession)
+	}
+	if got := ctx.Value(common.WorkflowSessionIDKey); got != parentSession {
+		t.Fatalf("child browser controller = %v, want authenticated parent %q", got, parentSession)
 	}
 	if got := GetUserFromContext(ctx); got == nil || got.UserID != "alice" {
 		t.Fatalf("registered child lost owner identity: %+v", got)

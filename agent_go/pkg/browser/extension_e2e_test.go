@@ -61,6 +61,24 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	if err != nil || crewToken != token {
 		t.Fatal("account token differs in Crew", err)
 	}
+	workflowWorkspace := "Workflow/extension-workflow"
+	if err := os.MkdirAll(filepath.Join(root, workflowWorkspace), 0755); err != nil {
+		t.Fatal(err)
+	}
+	workflowSession := "workflow-extension-e2e"
+	common.BindSessionBrowserIsolationForWorkflow(workflowSession, workflowWorkspace)
+	common.SetSessionWorkingDir(workflowSession, workflowWorkspace)
+	common.SetSessionFolderGuard(workflowSession, []string{workflowWorkspace}, []string{workflowWorkspace})
+	defer common.ClearSessionShellConfig(workflowSession)
+	workflowToken, err := m.PairForProfile("alice", common.SandboxBrowserSession(workflowSession), workflowWorkspace, "workflow")
+	if err != nil || workflowToken != token {
+		t.Fatal("workflow account token", err)
+	}
+	for _, step := range []string{"workflow-step-one", "workflow-step-two"} {
+		common.CopySessionFolderGuard(workflowSession, step)
+		common.BindSessionBrowserIsolationForWorkflow(step, workflowWorkspace)
+		defer common.ClearSessionShellConfig(step)
+	}
 	router := gin.New()
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
 	shell := httptest.NewServer(router)
@@ -80,6 +98,16 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	})
 	mux.HandleFunc("/fixture/crew-status", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(m.Status("alice", common.SandboxBrowserSession(crewSession)))
+	})
+	mux.HandleFunc("/fixture/connect-workflow", func(w http.ResponseWriter, r *http.Request) {
+		if !m.RequestProjectConnection("alice", common.SandboxBrowserSession(workflowSession)) {
+			http.Error(w, "not paired", 409)
+			return
+		}
+		w.WriteHeader(202)
+	})
+	mux.HandleFunc("/fixture/workflow-status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(m.Status("alice", common.SandboxBrowserSession(workflowSession)))
 	})
 	mux.HandleFunc("/fixture/cdp", func(w http.ResponseWriter, r *http.Request) {
 		b := m.Lookup("alice", common.SandboxBrowserSession(session))
@@ -103,7 +131,16 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		if r.URL.Query().Get("project") == "crew" {
 			activeSession = crewSession
 		}
-		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, activeSession)
+		rootSession := activeSession
+		if r.URL.Query().Get("project") == "workflow" {
+			activeSession = "workflow-step-one"
+			if r.URL.Query().Get("step") == "two" {
+				activeSession = "workflow-step-two"
+			}
+			rootSession = workflowSession
+		}
+		ctx := context.WithValue(r.Context(), common.WorkflowSessionIDKey, rootSession)
+		ctx = context.WithValue(ctx, common.ChatSessionIDKey, activeSession)
 		ctx = context.WithValue(ctx, common.UserIDKey, "alice")
 		output, err := executor.HandleAgentBrowser(ctx, args)
 		if err != nil {
@@ -130,7 +167,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("node", filepath.Join(project, "scripts/test-chrome-extension-e2e.mjs"))
-	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession))
+	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
 	if err != nil {

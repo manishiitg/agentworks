@@ -243,7 +243,18 @@ chrome.runtime.onMessage.addListener((request,sender,respond)=>{
  if(sender.id !== chrome.runtime.id) return;
  const run=async()=>{
   if(request.action==='state')return state();
-  if(request.action==='connect')return connectProject(request.pairing);
+  if(request.action==='connect') {
+   await connectProject(request.pairing);
+   const c=connections.get(selectedScope);
+   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+   // Connect is a human action granting this workspace the current website.
+   // Automatic project connections above never adopt the user's active tab.
+   const url=tab?.pendingUrl || tab?.url || '';
+   if(c && tab && (/^https?:\/\//.test(url) || url==='about:blank') && (!tabOwners.has(tab.id) || tabOwners.get(tab.id)===c)) {
+    try {await c.share(tab.id);} catch { /* Pairing remains usable if Chrome refuses this page. */ }
+   }
+   return state();
+  }
   if(request.action==='select-project') {
    if(!availableProjects.some(p=>p.scope===request.scope) || !accountPairing)throw new Error('Project is not available to this account');
    if(!connections.get(request.scope)?.state().connected)await connectProject(JSON.stringify({...accountPairing,scope:request.scope}));

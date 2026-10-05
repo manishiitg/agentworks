@@ -21,7 +21,7 @@ func extensionBinding(ctx context.Context) *browserrelay.Binding {
 	for _, key := range []interface{}{common.ChatSessionIDKey, common.WorkflowSessionIDKey} {
 		id, _ := ctx.Value(key).(string)
 		if scope := common.SandboxBrowserSession(id); scope != "" {
-			if b := browserrelay.Default.Lookup(user, scope); b != nil && (b.Profile() == "code" || b.Profile() == "work") {
+			if b := browserrelay.Default.Lookup(user, scope); b != nil && (b.Profile() == "code" || b.Profile() == "work" || b.Profile() == "workflow") {
 				return b
 			}
 		}

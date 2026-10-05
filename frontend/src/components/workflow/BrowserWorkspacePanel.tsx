@@ -54,8 +54,9 @@ export function BrowserWorkspacePanel({
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [extensionSetup, setExtensionSetup] = useState(false)
-  const extensionAvailable = (profileId === 'code' || profileId === 'work') && !!workspacePath && !readOnly
-  const connection = useChromeExtensionConnection(workspacePath, profileId, !extensionAvailable)
+  const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
+  const extensionAvailable = ['code', 'work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
+  const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
   const extensionView = connection.status.selected || extensionSetup
   const choice: BrowserChoice = extensionView ? 'extension' : browserMode
   useEffect(() => { setExtensionSetup(false); setSettingsOpen(false) }, [workspacePath, profileId])

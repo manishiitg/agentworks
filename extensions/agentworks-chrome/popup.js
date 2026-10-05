@@ -22,7 +22,7 @@ function render(state) {
   $('controls').hidden = !state.connected;
   $('workspace').textContent = (state.workspace || '').split('/').filter(Boolean).pop() || '';
   $('server').textContent = state.server || '';
-  $('project').replaceChildren(...(state.projects || []).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=`${p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.workspace.split('/').pop()}${p.connected ? ' · connected' : ''}`;option.selected=p.scope === state.selectedScope;return option;}));
+  $('project').replaceChildren(...(state.projects || []).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=`${p.profile_id === 'workflow' ? 'Workflow' : p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.workspace.split('/').pop()}${p.connected ? ' · connected' : ''}`;option.selected=p.scope === state.selectedScope;return option;}));
   $('tab-count').textContent = String(state.tabs.length);
   $('empty').hidden = !!state.tabs.length;
   $('tabs').replaceChildren(...state.tabs.map(tab => {

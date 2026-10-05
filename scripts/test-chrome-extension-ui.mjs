@@ -78,17 +78,23 @@ try {
   await choice.selectOption('headless');
   assert.equal(disconnectCount, 1, 'switching browser explicitly disconnects extension');
   await page.getByRole('button', { name: 'Start browser', exact: true }).waitFor();
-  for (const profile of ['workflow']) {
-    const previousCalls = calls;
+  for (const profile of ['work','workflow']) {
     await page.goto(`${fixture}?profile=${profile}`); await openSettings();
-    assert.equal(await page.locator('option[value="extension"]').count(), 0, `${profile} extension rollout hidden`);
-    assert.equal(calls, previousCalls, `${profile} does not query extension API`);
+    assert.equal(await page.locator('option[value="extension"]').count(),1,`${profile} offers extension`);
+    await choice.selectOption('extension');
+    await page.getByRole('button',{name:'Copy connection',exact:true}).click();
+    assert.equal(JSON.parse(await page.evaluate(()=>navigator.clipboard.readText())).token,currentToken,'same account token in Code, Crew and workflow');
+    if(profile==='workflow') {
+      selected=connected=true;connectionID='workflow-ui-connection';tabs=[];
+      await page.getByText('Ready for your agent',{exact:true}).waitFor({timeout:10000});
+      await page.screenshot({path:`${evidence}/workflow-connected.png`,fullPage:true});
+      selected=connected=false;tabs=[];
+    }
   }
-  await page.goto(`${fixture}?profile=work`); await openSettings();
-  assert.equal(await page.locator('option[value="extension"]').count(),1,'Crew offers extension');
-  await choice.selectOption('extension');
-  await page.getByRole('button',{name:'Copy connection',exact:true}).click();
-  assert.equal(JSON.parse(await page.evaluate(()=>navigator.clipboard.readText())).token,currentToken,'same account token in Code and Crew');
+  const previousCalls=calls;
+  await page.goto(`${fixture}?profile=relay`);await openSettings();
+  assert.equal(await page.locator('option[value="extension"]').count(),0,'relay rollout remains deferred');
+  assert.equal(calls,previousCalls,'relay does not query extension API');
   await page.goto(`${fixture}?theme=light`); await openSettings();
   await choice.selectOption('extension');
   await page.screenshot({ path: `${evidence}/setup-light.png`, fullPage: true });
@@ -110,6 +116,14 @@ try {
   await notices.filter({hasText:'extension is no longer selected'}).waitFor({timeout:10000});
   selected = connected = true; connectionID = 'notification-connection-two'; tabs = ['Shared website'];
   await notices.filter({hasText:'Shared tabs are available'}).waitFor({timeout:10000});
+  selected=connected=false;tabs=[];connectionID='';
+  await page.goto(`${fixture}?profile=workflow&notifications=1`);
+  const workflowNotices=page.getByRole('list',{name:'Automatic chat notifications'}).locator('li');
+  selected=connected=true;connectionID='workflow-notification-one';
+  await workflowNotices.filter({hasText:'connected to this workflow'}).waitFor({timeout:10000});
+  connected=false;
+  await workflowNotices.filter({hasText:'disconnected from this workflow'}).waitFor({timeout:10000});
+  console.log('PASS workflow connect/disconnect notices through the real preset binding and global queue');
   console.log('PASS browser-rendered connect, share-ready, disconnect, browser change and reconnect messages through the real global queue');
-  console.log('PASS Code browser choice, hidden raw code, stable copy, connected states, reconnect identity, explicit browser switch, Code/Crew rollout, dark/light layouts at 1000/420px');
+  console.log('PASS Code browser choice, hidden raw code, stable copy, connected states, reconnect identity, explicit browser switch, Code/Crew/workflow rollout, dark/light layouts at 1000/420px');
 } finally { await browser.close(); }

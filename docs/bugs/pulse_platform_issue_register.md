@@ -1,3 +1,7 @@
+## Workflow extension connections and immediate current-tab sharing — PLAT-530
+
+[PLAT-530](pulse_platform/browser/plat-530.md), P2, fixed on main, not deployed. Account-private workflow pairing, step-parent controller identity, workflow UI/notices and human Connect sharing the current website automatically.
+
 ## Account browser token and simultaneous Code/Crew connections — PLAT-524
 
 [PLAT-524](pulse_platform/browser/plat-524.md), P2, fixed on main, not deployed. Persistent account token, separately authorized concurrent projects, Crew rollout and project picker.
