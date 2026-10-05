@@ -44,3 +44,8 @@ easy to miss (social-media had two since 2026-09-25/28).
   plus answered-not-applied decisions (`needsYouDecisions`, owner decision).
 - Left: an answer given in Slack or WhatsApp waits in Needs you until someone
   presses Apply in chat (the owner's rule); the badges show it.
+
+## Done (2026-10-05)
+
+- The "PENDING OPERATOR DECISIONS" notice that every scheduled run still got on its first message is removed
+  (`attachScheduledPendingDecisionNotice` and its test). A scheduled run now says nothing about unanswered decisions.

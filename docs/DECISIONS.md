@@ -644,6 +644,15 @@ write access and exclusive control for every transfer; never use the shared
 server OS clipboard. Browser controls use the selected neutral header/tab/address
 layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/plat-382.md).
 
+### 2026-10-05 — Scheduled runs say nothing about unanswered decisions
+
+Owner decision: unanswered decisions have nothing to do with schedules. The
+"PENDING OPERATOR DECISIONS" text that was added to the first message of every
+scheduled run is removed; the run's prompt is just the schedule's own. Unanswered
+decisions live in Needs you and the Builder chat, where a person can answer them.
+This finishes the 2026-10-03 decision below (scheduled runs never apply decisions).
+Ticket: [PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
+
 ### 2026-10-03 — Scheduled runs never apply decisions; the UI and Builder chat do
 
 Owner decision: decisions are applied only where the person can watch. The

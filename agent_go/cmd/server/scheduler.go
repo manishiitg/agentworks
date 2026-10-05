@@ -3625,45 +3625,6 @@ func scheduledDecisionApplyMode(input ReportHumanInput) string {
 	}
 }
 
-// attachScheduledPendingDecisionNotice makes unanswered operator decisions
-// visible to the first normal schedule turn without adding another LLM turn.
-// Go only transports typed state here; it does not answer the question, choose
-// an option, or block unrelated work. The agent can inspect the full request
-// through get_human_input_request and must keep decision-dependent behavior on
-// the currently approved configuration until the operator answers.
-func attachScheduledPendingDecisionNotice(turns []scheduledWorkshopTurn, pending []ReportHumanInput) []scheduledWorkshopTurn {
-	refs := make([]string, 0, len(pending))
-	for _, input := range pending {
-		id := strings.TrimSpace(input.ID)
-		if id == "" {
-			continue
-		}
-		ref := id
-		if source := strings.TrimSpace(input.Source); source != "" {
-			ref += " (source: " + source + ")"
-		}
-		refs = append(refs, ref)
-	}
-	if len(refs) == 0 {
-		return turns
-	}
-
-	notice := fmt.Sprintf(
-		"PENDING OPERATOR DECISIONS. The following typed decisions are unanswered: %s. "+
-			"Do not infer an answer and do not apply their proposed changes. Continue only behavior that is valid under the currently approved workflow configuration. "+
-			"If one affects this run, inspect it with get_human_input_request and clearly identify the decision-dependent portion you left unchanged; do not block unrelated safe work.\n\n",
-		strings.Join(refs, ", "),
-	)
-	for i := range turns {
-		if turns[i].upgradeTarget != "" || turns[i].decisionDrain {
-			continue
-		}
-		turns[i].query = notice + turns[i].query
-		break
-	}
-	return turns
-}
-
 func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 	if sctx == nil {
 		return nil
@@ -3829,16 +3790,9 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	// in the workflow's Builder chat: in the turn that answers it, or from the
 	// "Apply in chat" button Needs you shows for every answered decision that
 	// is not applied yet.
-	// Unanswered decisions are not executable instructions and must never be
-	// silently inferred. Surface them to the first normal schedule turn so the
-	// agent can preserve the current approved behavior around the affected
-	// boundary while continuing unrelated safe work. This adds no extra turn.
-	if pending, listErr := listReportHumanInputs(ctx, sctx.WorkspacePath, "pending", ""); listErr != nil {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Could not read pending decisions for pre-run context (continuing): %v", listErr)
-	} else if len(pending) > 0 {
-		turns = attachScheduledPendingDecisionNotice(turns, pending)
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Surfaced %d unanswered operator decision(s) to the first schedule message", len(pending))
-	}
+	// Unanswered decisions are not part of a scheduled run at all (owner decision
+	// 2026-10-05): no notice is added to the schedule's messages. They live in
+	// Needs you and the Builder chat.
 
 	// This run owns the session until its work is done: it alone hands step
 	// results back to the agent (scheduled_turn_followups.go). Released when
