@@ -7,6 +7,7 @@ let discover = false;
 let autoAttach = false;
 const shared = new Map();
 const sessions = new Map();
+const groups = new Map();
 let queue = Promise.resolve();
 
 function safeURL(raw) {
@@ -15,6 +16,7 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
+function announceTabs() { send({ type: 'tabs', tabs: shared.size, tab_titles: [...shared.values()].map(tab => tab.title || 'Untitled tab') }); }
 function event(method, params, sessionId) { send({ type: 'cdp', message: { method, params, ...(sessionId ? { sessionId } : {}) } }); }
 function target(tab) { return { targetId: `tab-${tab.id}`, type: 'page', title: tab.title || '', url: tab.url || 'about:blank', attached: sessions.has(`session-${tab.id}`), browserContextId: 'agentworks' }; }
 async function tabForTarget(id) {
@@ -49,7 +51,7 @@ async function share(tabId) {
     await attach(tab);
     shared.set(tabId, tab);
     await announce(tab);
-    send({ type: 'tabs', tabs: shared.size });
+    announceTabs();
   }
   return state();
 }
@@ -59,19 +61,23 @@ async function unshare(tabId) {
   for (const [id, debuggee] of sessions) if (debuggee.tabId === tabId) {
     sessions.delete(id); event('Target.detachedFromTarget', { sessionId: id, targetId: `tab-${tabId}` });
   }
+  try { const tab = await chrome.tabs.get(tabId); if (groups.get(tab.windowId) === tab.groupId) await chrome.tabs.ungroup(tabId); } catch {}
   try { await chrome.debugger.detach({ tabId }); } catch {}
   event('Target.targetDestroyed', { targetId: `tab-${tabId}` });
-  send({ type: 'tabs', tabs: shared.size });
+  announceTabs();
 }
 async function stop(reason = '') {
   const previous = socket; socket = null; workspace = ''; error = reason;
   clearInterval(heartbeat); discover = false; autoAttach = false;
   if (previous) { if (previous.readyState === WebSocket.OPEN) previous.send(JSON.stringify({ type: 'stop' })); previous.close(); }
-  const ids = [...shared.keys()]; shared.clear(); sessions.clear();
-  await Promise.allSettled(ids.map(tabId => chrome.debugger.detach({ tabId })));
+  const ids = [...shared.keys()], previousGroups = new Map(groups); shared.clear(); sessions.clear(); groups.clear();
+  await Promise.allSettled(ids.map(async tabId => {
+    try { await chrome.debugger.detach({ tabId }); } catch {}
+    try { const tab = await chrome.tabs.get(tabId); if (previousGroups.get(tab.windowId) === tab.groupId) await chrome.tabs.ungroup(tabId); } catch {}
+  }));
   await chrome.action.setBadgeText({ text: '' });
 }
-function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, error, tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
+function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
 async function connect(raw) {
   const pairing = JSON.parse(raw);
   const endpoint = new URL(pairing.url);
@@ -100,7 +106,7 @@ async function connect(raw) {
       }
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('Cannot connect to the platform')); };
-    ws.onclose = () => { clearTimeout(timer); reject(new Error('Connection closed')); if (socket === ws) void stop('Chrome connection stopped. Pair again to reconnect.'); };
+    ws.onclose = () => { clearTimeout(timer); reject(new Error('Connection closed')); if (socket === ws) void stop('Browser disconnected. Paste your saved connection code to reconnect.'); };
   });
 }
 
@@ -117,9 +123,10 @@ async function command(message) {
       case 'Target.attachToTarget': { const tab = await tabForTarget(params.targetId); return { sessionId: await attach(tab) }; }
       case 'Target.detachFromTarget': { const src = sessions.get(params.sessionId); if (!src) throw new Error('Session is not shared'); sessions.delete(params.sessionId); await chrome.debugger.detach(src); return {}; }
       case 'Target.createTarget': {
+        if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
         const tab = await chrome.tabs.create({ url: safeURL(params.url || 'about:blank'), active: false });
-        try { await attach(tab); shared.set(tab.id, tab); await announce(tab); send({ type: 'tabs', tabs: shared.size }); return { targetId: `tab-${tab.id}` }; }
+        try { await attach(tab); shared.set(tab.id, tab); if (groups.has(tab.windowId)) { try { await chrome.tabs.group({ groupId: groups.get(tab.windowId), tabIds: [tab.id] }); } catch { groups.delete(tab.windowId); } } await announce(tab); announceTabs(); return { targetId: `tab-${tab.id}` }; }
         catch (e) { await chrome.tabs.remove(tab.id); throw e; }
       }
       case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id); await chrome.tabs.remove(tab.id); return { success: true }; }
@@ -154,7 +161,7 @@ chrome.debugger.onDetach.addListener(source => { if (shared.has(source.tabId)) v
 chrome.tabs.onRemoved.addListener(tabId => { void unshare(tabId); });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (!shared.has(tabId)) return;
-  try { safeURL(tab.url); shared.set(tabId, tab); if (change.url || change.title) event('Target.targetInfoChanged', { targetInfo: target(tab) }); }
+  try { safeURL(tab.pendingUrl || tab.url || 'about:blank'); shared.set(tabId, tab); if (change.url || change.title) { event('Target.targetInfoChanged', { targetInfo: target(tab) }); announceTabs(); } }
   catch { void unshare(tabId); }
 });
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
@@ -164,6 +171,26 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     if (request.action === 'state') return state();
     if (request.action === 'connect') return connect(request.pairing);
     if (request.action === 'share') return share(request.tabId);
+    if (request.action === 'newtab') {
+      const result = await command({ method: 'Target.createTarget', params: { url: 'about:blank' } });
+      const tab = await tabForTarget(result.targetId); await chrome.tabs.update(tab.id, { active: true }); return state();
+    }
+    if (request.action === 'group') {
+      if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
+      const byWindow = new Map();
+      for (const id of shared.keys()) { const tab = await chrome.tabs.get(id); byWindow.set(tab.windowId, [...(byWindow.get(tab.windowId) || []), id]); }
+      const connection = socket;
+      for (const [windowId, ids] of byWindow) {
+        if (socket !== connection || !workspace) throw new Error('Connection stopped');
+        let groupId;
+        try { groupId = await chrome.tabs.group({ ...(groups.has(windowId) ? { groupId: groups.get(windowId) } : { createProperties: { windowId } }), tabIds: ids }); }
+        catch { groupId = await chrome.tabs.group({ createProperties: { windowId }, tabIds: ids }); }
+        if (socket !== connection || !workspace) { try { await chrome.tabs.ungroup(ids); } catch {} throw new Error('Connection stopped'); }
+        groups.set(windowId, groupId);
+        await chrome.tabGroups.update(groupId, { title: `AgentWorks · ${workspace.split('/').pop()}`, color: 'blue' });
+      }
+      return state();
+    }
     if (request.action === 'unshare') { await unshare(request.tabId); return state(); }
     if (request.action === 'stop') { await stop(); return state(); }
     throw new Error('Unknown action');

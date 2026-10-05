@@ -20,6 +20,7 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
 export type BrowserAutomationMode = 'none' | 'auto' | 'headless' | 'cdp'
+export type BrowserChoice = BrowserAutomationMode | 'extension'
 
 interface BrowserAutomationSettingsProps {
   browserMode: BrowserAutomationMode
@@ -30,6 +31,10 @@ interface BrowserAutomationSettingsProps {
   cdpError: string | null
   cdpChecking: boolean
   onCheckCdpConnection: (port: number) => void
+  browserChoice?: BrowserChoice
+  onBrowserChoiceChange?: (choice: BrowserChoice) => void
+  extensionAvailable?: boolean
+  extensionContent?: React.ReactNode
   readOnly?: boolean
   scopeNoun?: 'workflow' | 'project'
 }
@@ -83,13 +88,15 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   cdpError,
   cdpChecking,
   onCheckCdpConnection,
+  browserChoice, onBrowserChoiceChange, extensionAvailable = false, extensionContent,
   readOnly = false,
   scopeNoun = 'workflow',
 }) => {
   const platform = typeof navigator !== 'undefined' ? navigator.platform : undefined
   const isMac = platform?.includes('Mac')
   const cdpEnabled = isBrowserCDPEnabled()
-  const usesCdp = cdpEnabled && (browserMode === 'auto' || browserMode === 'cdp')
+  const choice = browserChoice ?? (browserMode === 'none' ? 'auto' : browserMode)
+  const usesCdp = cdpEnabled && choice !== 'extension' && (browserMode === 'auto' || browserMode === 'cdp')
 
   const connectionLabel = cdpChecking
     ? 'Checking'
@@ -109,20 +116,24 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
 
   return (
     <section className="space-y-3" aria-labelledby="browser-automation-heading">
-      {cdpEnabled ? (
-        <>
-          <label className="flex items-center justify-between gap-3 text-sm" htmlFor="browser-automation-heading">
-            Browser
-            <select id="browser-automation-heading" aria-label="Browser choice" disabled={readOnly} value={browserMode === 'none' ? 'auto' : browserMode} onChange={event => onBrowserModeChange(event.target.value as BrowserAutomationMode)} className="rounded border bg-background px-2 py-1.5">
-              <option value="auto">Automatic (recommended)</option>
-              <option value="headless">Workspace browser</option>
-              <option value="cdp">My Chrome</option>
-            </select>
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {browserMode === 'cdp' ? 'Uses your connected Chrome. Connect it below before starting.' : browserMode === 'headless' ? `Uses a dedicated browser for this ${scopeNoun}. Sign in from its live view.` : 'Uses your connected Chrome when available, otherwise starts a workspace browser.'}
-          </p>
-        </>
+      {cdpEnabled || extensionAvailable ? (
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="browser-automation-heading">Browser</label>
+          <select id="browser-automation-heading" aria-label="Browser choice" disabled={readOnly} value={choice} onChange={event => {
+            const next = event.target.value as BrowserChoice
+            if (onBrowserChoiceChange) onBrowserChoiceChange(next)
+            else if (next !== 'extension') onBrowserModeChange(next)
+          }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="auto">Automatic (recommended)</option>
+            <option value="headless">Workspace browser</option>
+            {extensionAvailable && <option value="extension">My Chrome or Edge · extension</option>}
+            {cdpEnabled && <option value="cdp">Chrome · direct connection</option>}
+          </select>
+          {choice !== 'extension' && <p className="text-xs leading-relaxed text-muted-foreground">
+            {choice === 'cdp' ? 'Connect directly to Chrome on this machine using the advanced settings below.' : choice === 'headless' ? `Uses a dedicated browser for this ${scopeNoun}. Sign in from its live view.` : cdpEnabled ? 'Uses your direct Chrome connection when available, otherwise starts a workspace browser.' : `Starts a browser for this ${scopeNoun} when your agent needs it.`}
+          </p>}
+          {choice === 'extension' && extensionContent}
+        </div>
       ) : <p id="browser-automation-heading" className="text-sm text-muted-foreground">This {scopeNoun} has its own browser. Start it to visit a website, sign in, or teach your helper.</p>}
 
       {usesCdp && (

@@ -1,11 +1,34 @@
 {
   "manifest_version": 3,
-  "name": "AgentWorks Chrome Bridge",
-  "version": "0.1.0",
-  "description": "Share selected Chrome tabs with your AgentWorks chat or workflow.",
+  "name": "AgentWorks Browser Bridge",
+  "version": "0.2.0",
+  "description": "Connect shared Chrome or Edge tabs to your AgentWorks Code project.",
   "minimum_chrome_version": "125",
-  "permissions": ["debugger", "tabs"],
-  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_popup": "popup.html", "default_title": "AgentWorks browser connection" }
+  "permissions": [
+    "debugger",
+    "tabs",
+    "tabGroups"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AgentWorks browser connection",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "128": "icon-128.png"
+  }
 }

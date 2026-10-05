@@ -10,6 +10,13 @@ shared tabs in a user's existing local Chrome through an extension. Retain
 agent-browser and the existing browser tool, with an authenticated extension/CDP
 adapter. [Design](../../../design/chrome_extension_cdp_bridge.md).
 
+## Current scope
+
+[PLAT-513](plat-513.md) supersedes the original five-minute single-use pairing
+and broad rollout below: Code only, reusable private codes with explicit Reset,
+and integrated browser settings/connected popup. Original qualification here
+records the implementation as it was tested at the time.
+
 ## Implemented
 
 - Manifest V3 extension using Chrome 125+ debugger/tabs, explicit sharing,
