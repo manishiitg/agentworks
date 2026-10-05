@@ -27,3 +27,7 @@ A client still cannot ask for a smaller set of scopes through Claude Code's `mcp
 
 `AGENTWORKS_MCP_BUILDER_ENABLED=true` is now in `deploy/rootless-linux/products/agents/product.env` (EXTRA_ENV), Excellence only. RTS and Confida are unchanged (flag off). It stays a per-person capability: a connection is bounded to the workflows the person selected and may edit, `validateBuilderGrant` re-checks live workflow write access (owner or write, so a read-only user cannot edit a plan) and the account's product on every call, and `relays:write` is offered only to accounts with the Relays product (2 of 10 users on Excellence at the time).
 
+## Update 2026-10-05 (later): enabled for all servers (owner: "it should be enabled for all")
+
+The flag is now set by every deploy of Excellence (`products/agents/product.env`), Confida (`products/confida/product.env`) and RTS (`deploy/aws-ec2/server/build-and-activate.sh`). Config only until each server is next deployed; Excellence first (deploy 8f6e06845). The per-person limits above are unchanged and hold on every server.
+

@@ -266,6 +266,9 @@ if [ -r /etc/agentworks/slots.json ]; then
   slots_install_shim "$remote_app" "$remote_release" >/dev/null
   echo 'AGENTWORKS_SLOTS=optin' >> "$env_file.next"
 fi
+# Outside MCP connections may edit Builder plans/code and write Relays (owner 2026-10-05); per-person limits unchanged (PLAT-487).
+awk '!/^AGENTWORKS_MCP_BUILDER_ENABLED=/' "$env_file.next" > "$env_file.next2" && mv "$env_file.next2" "$env_file.next"
+echo 'AGENTWORKS_MCP_BUILDER_ENABLED=true' >> "$env_file.next"
 chmod 600 "$env_file.next"
 mv "$env_file.next" "$env_file"
 
