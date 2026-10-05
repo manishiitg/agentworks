@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Knowledge Base follows Vault’s shared chat and Models layout — PLAT-496
+
+Use the same `ChatArea` default composer/rendering configuration, chat tab, landing card, split rail and workspace Models panel as Vault. Remove the KB-only model strip and product chat variant. Retain the access-only profile and app confirmation for grants; the disabled raw terminal stays unavailable. New chat uses the shared profile-conversation rotation API. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base uses global MCP connection management — PLAT-496
 
 Owner decision: remove the dedicated KB Connect tab and panel. The app has Library and Access. Existing global MCP/OAuth connection management owns the connection to `/api/external/v1/mcp`; explicit KB scopes and live folder grants remain enforced. Code: `products/knowledgebase`. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

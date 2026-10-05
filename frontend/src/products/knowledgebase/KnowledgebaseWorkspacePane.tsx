@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BookOpen, Cloud, Search, X } from 'lucide-react'
 import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess, type KnowledgeBackup, type KnowledgeEntry, type KnowledgeRead } from '../../services/knowledgebaseApi'
 import { KnowledgebaseFolderTree } from './KnowledgebaseFolderTree'
 import { KnowledgebaseReader, backupLabel } from './KnowledgebaseReader'
+import { SettingsCardLayout } from '../../components/ui/SettingsCard'
 import { KnowledgebaseAccessPanel } from './KnowledgebaseAccessPanel'
 
-export type KnowledgebaseView = 'library' | 'access'
+export type KnowledgebaseView = 'library' | 'access' | 'models'
 const input = 'rounded-md border border-border bg-background px-2.5 py-2 text-xs'
-export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision }: { view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number }) {
+export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision, modelSettings }: { view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number; modelSettings?: ReactNode }) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [type, setType] = useState('')
@@ -48,7 +49,7 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
         const [result, backupResult] = await Promise.all([listing, knowledgebaseApi.backup(folder, controller.signal)])
         if (generation.current !== current) return
         setEntries(result.entries); setNextCursor(result.next_cursor); setBackup(backupResult)
-      } else {
+      } else if (view === 'access') {
         const result = await knowledgebaseApi.access(folder, controller.signal)
         if (generation.current === current) setAccess(result)
       }
@@ -80,6 +81,9 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
     } catch (error) { if (current === generation.current) setError(knowledgebaseError(error)) }
     finally { if (current === generation.current) setLoading(false) }
   }
+  if (view === 'models') return <div className="flex h-full min-h-0 flex-col">
+    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"><SettingsCardLayout unboxed>{modelSettings}</SettingsCardLayout></div>
+  </div>
   const backupStatuses = new Map(backup?.entries?.map(entry => [entry.entry_id, entry.status]))
   return <div className="flex h-full min-h-0 min-w-0 flex-col">
     <div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs"><button type="button" className="rounded border border-border px-2 py-1 md:hidden" onClick={() => setShowFolders(value => !value)} aria-expanded={showFolders}>Folders</button><button type="button" onClick={() => onFolder('')} className="shrink-0 text-muted-foreground hover:text-primary">Organization</button>{folder && <><span className="text-muted-foreground">/</span><span className="truncate" title={folder}>{folder}</span></>}{view === 'library' && backup && <span className="ml-auto flex items-center gap-1 text-muted-foreground"><Cloud className="h-3.5 w-3.5" />{backup.configured ? 'Git backup' : 'Backup not configured'}</span>}</div>

@@ -62,6 +62,16 @@ describe('Knowledge Base workspace', () => {
     expect(host.textContent).not.toContain('Read-only instructions.')
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('Resource not found')
   })
+  it('shows model settings without folder navigation or access fetches', async () => {
+    const { host, render } = await mount()
+    mocks.access.mockClear(); mocks.folders.mockClear(); mocks.entries.mockClear()
+    await render({ view: 'models', modelSettings: <div>Shared model settings</div> })
+    expect(host.textContent).toContain('Shared model settings')
+    expect(host.textContent).not.toContain('Organization')
+    expect(mocks.access).not.toHaveBeenCalled()
+    expect(mocks.folders).not.toHaveBeenCalled()
+    expect(mocks.entries).not.toHaveBeenCalled()
+  })
   it('labels inherited grants and sends access management to the chat', async () => {
     const { host, render, onAsk } = await mount()
     await render({ view: 'access' })

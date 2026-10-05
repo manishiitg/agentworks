@@ -656,7 +656,7 @@ Layout:
 ```text
 Shared product navigation and workspace toolbar
 ┌────────────────────────┬──────────────────────────────────┐
-│ Access-management chat │ Library / Access             │
+│ Access-management chat │ Library / Access / Models    │
 │ Existing ChatArea      │ Folder tree + Markdown reader    │
 │ and conversation tabs  │ or the selected management view │
 └────────────────────────┴──────────────────────────────────┘
@@ -666,7 +666,7 @@ Reuse `ProductWorkspaceShell`, `WorkspaceToolbarFrame`, shared toolbar buttons, 
 
 - **Library:** nested folders, search/type/tag filters, read-only content, attribution, and per-entry backup status. No editor or generic writable file panel.
 - **Access:** inspect effective access; Owners/admins can use chat to grant, change, or revoke folder grants. Show inherited grants as inherited rather than implying a child can cancel them.
-- **Models:** use the existing shared model settings where the shell exposes them.
+- **Models:** a workspace toolbar view using the existing shared model settings, as in Vault. Use the shared compact ChatArea, chat tab and landing card; no custom composer or model strip.
 
 Git configuration is administrator-managed through secure platform settings/provisioning. The reader shows backup status, but commit and push are MCP operations rather than application buttons or access-chat actions.
 
@@ -767,7 +767,7 @@ for source-owner migration authority and consumer cutover prerequisites.
 
 ## MVP simplification: no Activity tracking
 
-Activity is deferred. The frontend has Library and Access views;
+Activity is deferred. The frontend has Library, Access and Models views;
 there is no Activity API, activity tool, or backend activity-event recording.
 Private mutation journals, deduplication outcomes, deletion records, migration
 checkpoints and backup receipts remain required for correctness and recovery.

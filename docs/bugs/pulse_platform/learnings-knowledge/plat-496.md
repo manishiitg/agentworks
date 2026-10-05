@@ -67,3 +67,17 @@ Library and Access; connection management uses the existing global MCP/OAuth
 flow and shared endpoint. No additional MCP server is needed. KB scope and
 folder authorization remain enforced. TypeScript and focused KB frontend checks
 validate the remaining views.
+
+## Owner correction: reuse Vault’s platform UI
+
+KB uses Vault’s shared chat tab, standard compact ChatArea composer/rendering,
+ProductChatLandingCard and WorkspaceSplitRail. The custom model strip is removed;
+Models is a workspace toolbar view using the existing WorkModelsPanel, without
+folder navigation. New chat rotates the server-owned profile conversation and
+marks the previous conversation view-only. Access-only capabilities, folder
+context and confirmation remain enforced.
+
+Validation: TypeScript project build and 22 focused frontend tests passed,
+including conversation rotation, standard composer configuration and Models
+placement. The running local app shows the shared composer and provider/account/
+model/reasoning settings in the workspace Models view.
