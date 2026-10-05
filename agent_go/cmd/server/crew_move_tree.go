@@ -129,6 +129,12 @@ func entryFromInfo(rel string, info fs.FileInfo) crewTreeEntry {
 // crewLinkEscapes reports whether a symlink at rel with the given target leaves the Crew folder: an absolute target,
 // or a relative one that resolves above the Crew's root.
 func crewLinkEscapes(rel, target string) (bool, string) {
+	// A link to a system program or library (a virtualenv's python, a .bin shim) gives nobody anything: every account can
+	// read /usr already, and the link is copied as a link, never followed. Everything else that leaves the folder (a
+	// login file, an app folder, /tmp, another Crew) still blocks the move.
+	if path.IsAbs(target) && crewSystemLinkTarget(target) {
+		return false, ""
+	}
 	if path.IsAbs(target) || strings.HasPrefix(target, "\\") {
 		return true, "absolute target " + target
 	}
@@ -137,6 +143,17 @@ func crewLinkEscapes(rel, target string) (bool, string) {
 		return true, "target " + target + " leaves the Crew folder"
 	}
 	return false, ""
+}
+
+// crewSystemLinkTarget says whether an absolute link target is inside a read-only system tree.
+func crewSystemLinkTarget(target string) bool {
+	clean := path.Clean(target)
+	for _, root := range []string{"/usr/", "/bin/", "/sbin/", "/lib/", "/lib64/"} {
+		if strings.HasPrefix(clean, root) && !strings.Contains(clean, "..") {
+			return true
+		}
+	}
+	return false
 }
 
 // crewTreeSummaryOf counts a walked tree (the root entry is not a directory of the Crew's own).

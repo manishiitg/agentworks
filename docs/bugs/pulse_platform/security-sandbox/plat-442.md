@@ -357,3 +357,8 @@ in PLAT-435: `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
 `TestSalesCrewCatalogHasInstallableRoles`, `TestCrewProductSurfaceE2E`.
 This review did not rerun their old baseline or a real Linux CLI launch.
 The shared Crew-root move remains step 4, not implemented by these commits.
+
+## 2026-10-05: first dry run on a real host (RTS) and what it changed
+
+RTS dry run (read-only): 3 Crews (ci-cd 0.9 GiB, gptlive1 7.2 GiB / 307k files, rts-flow-tester 1.1 GiB), all registry-consistent, 0 could move: each had symlinks that leave the Crew folder. Found: CLI login links inside `.sandbox-cache/cli-home/*` pointing at the app account's own login files (`/var/lib/video-studio/.claude/.credentials.json`, `.cursor/...`), a link into `/tmp/aw-browser-0/...`, a link to another path in the same Crew by absolute spelling, and virtualenv/`.bin` links to `/usr/bin/python3`. Decision made while fixing: `crewLinkEscapes` now allows absolute links into read-only system trees (`/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`: copied as links, never followed); everything else that leaves the folder still blocks. The login, `/tmp` and absolute self-links are removed on the host before the move (the CLI recreates the login links at its next launch). Owner instruction 2026-10-05: do the move on RTS first, without waiting for him.
+
