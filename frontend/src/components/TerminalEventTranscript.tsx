@@ -45,6 +45,25 @@ type TranscriptRenderItem = TranscriptItem | {
   status: string
 }
 
+type TranscriptHistoryContext = {
+  hasOlder: boolean
+  loadingOlder: boolean
+  onLoadOlder: () => void
+}
+
+// Keep history navigation inside the virtual scroller. A fixed sibling header
+// can flash during tab hydration and change the viewport while rows settle.
+const TranscriptHistoryHeader = ({ context }: { context?: TranscriptHistoryContext }) => {
+  if (!context?.hasOlder && !context?.loadingOlder) return null
+  return <div className="flex justify-center px-3 py-1.5 text-[11px]" data-testid="transcript-history-header">
+    <button type="button" onClick={context.onLoadOlder} disabled={context.loadingOlder}
+      className="rounded px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-60">
+      {context.loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
+    </button>
+  </div>
+}
+const transcriptComponents = { Header: TranscriptHistoryHeader }
+
 // Clean view = the SAME rich event components the tree used, laid out as one
 // flat chronological conversation for a single terminal.
 //
@@ -881,14 +900,6 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const retryItem = useMemo(() => [...items].reverse().find(item =>
     item.kind === 'event' && (item.event.type === 'user_message' || isAgentResponseEvent(item.event) || turnFailureText(item.event)),
   ), [items])
-  // Do not reserve a permanent header for history. The user reaches this
-  // control at the oldest currently-loaded item; it only exists when another
-  // page can actually be fetched from the backend. A short restored transcript
-  // can fit entirely in the viewport, which means it starts at item zero and
-  // has no physical scroll gesture to make. Treat that as "at the top" too —
-  // otherwise a reader can see "Previous conversation" but has no way to load
-  // the older durable page.
-  const [isAtTranscriptStart, setIsAtTranscriptStart] = useState(false)
   const [isAtTranscriptEnd, setIsAtTranscriptEnd] = useState(true)
   const listData = useMemo<TranscriptRenderItem[]>(
     () => ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
@@ -912,13 +923,6 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     setPagination({ keys, first: firstItemIndex })
   }
   const scroll = useTranscriptScroll(keys, readingState, virtuosoRef, readingKey)
-  // The list mounts at its first row and then jumps to the bottom, reporting
-  // "at the top" in between. The row is shown only once the transcript has
-  // settled (or the reader scrolled), so a freshly opened chat never first
-  // shows "Load earlier messages" above its latest turn.
-  const showEarlierMessagesControl = Boolean(
-    error || (isAtTranscriptStart && scroll.settled && (hasOlder || loadingOlder) && onLoadOlder),
-  )
   const latestUserMessageKey = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index--) {
       const item = items[index]
@@ -948,6 +952,12 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     scroll.preserveReadingPosition()
     onLoadOlder?.()
   }, [hasOlder, onLoadOlder, scroll])
+
+  const historyContext = useMemo<TranscriptHistoryContext>(() => ({
+    hasOlder: Boolean(hasOlder && onLoadOlder),
+    loadingOlder,
+    onLoadOlder: handleEarlierMessages,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()
@@ -1007,29 +1017,12 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
     >
-      {showEarlierMessagesControl && (
-        <div className={`flex shrink-0 items-center border-b px-3 py-1.5 text-[11px] ${
-          error
-            ? 'border-red-900/60 bg-red-950/25 text-red-300'
-            : 'border-border bg-muted/40 text-muted-foreground'
-        }`}>
-          {error ? (
-            <>
-              <span className="truncate">Refresh failed: {error}</span>
-              {onRetry && (
-                <button type="button" onClick={onRetry} className="ml-auto shrink-0 text-red-200 hover:text-white">
-                  Retry
-                </button>
-              )}
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={handleEarlierMessages}
-              disabled={loadingOlder}
-              className="mx-auto rounded px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-60"
-            >
-              {loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
+      {error && (
+        <div className="flex shrink-0 items-center border-b border-red-900/60 bg-red-950/25 px-3 py-1.5 text-[11px] text-red-300">
+          <span className="truncate">Refresh failed: {error}</span>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className="ml-auto shrink-0 text-red-200 hover:text-white">
+              Retry
             </button>
           )}
         </div>
@@ -1039,9 +1032,10 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       <Virtuoso
         ref={virtuosoRef}
         data={listData}
+        components={transcriptComponents}
+        context={historyContext}
         className="custom-scrollbar min-h-0 flex-1"
         scrollerRef={scroll.scrollerRef}
-        atTopStateChange={setIsAtTranscriptStart}
         atBottomStateChange={setIsAtTranscriptEnd}
         atBottomThreshold={24}
         firstItemIndex={firstItemIndex}

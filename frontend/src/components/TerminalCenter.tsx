@@ -1,3 +1,4 @@
+import { transcriptReadingKey } from './useTranscriptScroll'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, ArrowDownToLine, ArrowRightToLine, Bot, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCheck, Copy, CornerDownLeft, CornerUpLeft, GitBranch, History, Info, ListRestart, MessageSquare, Network, Power, RefreshCw, SearchCheck, Square, Terminal, Trash2, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -3005,6 +3006,10 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
       tab.metadata?.mode === 'workflow'
     )
   })
+  const mainTranscriptReadingKey = useChatStore(state => {
+    const tab = Object.values(state.chatTabs).find(candidate => candidate.sessionId === currentSessionId)
+    return tab ? transcriptReadingKey(tab.tabId, currentSessionId ?? undefined) : undefined
+  })
   const activeEventViewMode = useChatStore(state => {
     const tab = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
     return normalizeEventViewMode(tab?.viewMode ?? state.eventViewModePreference)
@@ -5413,6 +5418,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
                     // carry what the pane cannot show well -- tool arguments,
                     // results, and an unwrapped final answer.
                     <TerminalEventTranscript
+                      scrollKey={selectedTerminalUsesSessionEvents ? mainTranscriptReadingKey : undefined}
                       events={selectedTerminalEventSource}
                       terminal={selectedTerminalView}
                       siblingTerminals={terminals}

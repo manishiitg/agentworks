@@ -117,9 +117,9 @@ export function activateWorkflowTab(
   const crossingWorkflowBoundary = context.workflowId !== workflowId ||
     useGlobalPresetStore.getState().activePresetIds.workflow !== workflowId
 
-  if (crossingWorkflowBoundary) {
-    // A direct tab click is a newer navigation intent and cancels any older
-    // asynchronous workflow lookup.
+  if (crossingWorkflowBoundary || options.expectedGeneration === undefined) {
+    // Any direct tab click is a newer intent, including a schedule/main switch
+    // inside the same workflow. Older asynchronous opens must not steal focus.
     context = {
       workflowId,
       tabId: null,

@@ -15,6 +15,7 @@ vi.mock('../services/llm-config-api', () => {
   const service = new Proxy({}, { get: () => vi.fn(async () => ({})) })
   return { llmConfigService: service, default: service }
 })
+vi.mock('../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: vi.fn(async () => []) }))
 
 import QuickSwitcher from './QuickSwitcher'
 import { useChatStore } from '../stores/useChatStore'
@@ -25,9 +26,10 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.useRealTimers() })
 
-it('asks for the bottom once when switching chats, with no timed repeats', async () => {
+it('preserves transcript scroll ownership when switching chats, with no timed repeats', async () => {
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   useChatStore.setState({
+    getActiveSessions: vi.fn(async () => []), activeSessionsCache: [],
     chatTabs: { t1: { tabId: 't1', name: 'Switch target chat', createdAt: 1, metadata: { mode: 'multi-agent' } } } as never,
     activeTabId: null,
   })
@@ -44,5 +46,6 @@ it('asks for the bottom once when switching chats, with no timed repeats', async
   cleanups.push(() => window.removeEventListener(CHAT_SCROLL_TO_BOTTOM_EVENT, seen))
   await act(async () => { row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
   await act(async () => { vi.advanceTimersByTime(2000) })
-  expect(seen).toHaveBeenCalledTimes(1)
+  expect(useChatStore.getState().activeTabId).toBe('t1')
+  expect(seen).not.toHaveBeenCalled()
 })

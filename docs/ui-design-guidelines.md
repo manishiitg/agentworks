@@ -42,6 +42,30 @@ Plugins, one header row contains Connected, Available, Secrets, Skills and
 Vault. `ProjectPluginsPanel` accepts the controlled header tab and renders
 content without another tab row. Crew, Code, workflows and Relay reuse it.
 
+## Chat navigation
+
+Ctrl+K and Global Monitor use `openGlobalTab` / `openGlobalActivitySession`.
+Direct chat-tab selection uses the same `activateTab` coordinator, with
+workflow tabs committed through `activateWorkflowTab`. A direct schedule/main
+tab click invalidates pending asynchronous navigation even within one workflow.
+
+Formatted transcripts own their scrolling. New conversations open at the latest
+message; revisiting one preserves deliberate reading position and expanded tools.
+Reading state is scoped to both tab and session, so a reused schedule tab does
+not inherit its previous run's position. Navigation must not force a bottom
+scroll; explicit sends and “Jump to latest” still do.
+
+“Load earlier messages” belongs inside the transcript's virtual scroller, above
+its oldest loaded row. It must not be a fixed banner that resizes the viewport
+on tab switches. Older pages and their pagination cursors stay together, scoped
+to the conversation. The shared event buffer's cursor describes only its own
+bounded tail, never another reader's locally loaded older pages.
+
+Schedule/trigger restores share concurrent requests, establish the live-event
+cursor before SSE, and preserve events received while history was loading.
+Opening an already-loaded run uses its cached transcript; background events
+continue through the existing live transport.
+
 ## Ask AI and chat
 
 One function sends every right-pane message to chat:

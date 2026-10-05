@@ -3,7 +3,6 @@ import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare,
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
-import { requestChatScrollToBottom } from '../utils/chatScrollRequest'
 import type { ChatTab } from '../stores/useChatStore'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -596,7 +595,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     if ((item.type === 'chat' || item.type === 'crew' || item.type === 'code') && item.tabId) {
       console.log(`%c[QuickSwitcher] Switching to chat tab: ${item.label} (${item.tabId})`, 'color: #FF9800; font-weight: bold')
       openGlobalTab(item.tabId)
-      requestChatScrollToBottom()
       onClose()
       return
     }
@@ -617,7 +615,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       source: 'quick-switcher',
     })
     console.timeEnd('[QuickSwitcher] workflow-switch-total')
-    requestChatScrollToBottom()
     onClose()
   }, [onClose])
 

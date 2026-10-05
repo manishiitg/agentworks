@@ -152,4 +152,16 @@ describe('workflow navigation coordinator', () => {
     expect(navigation.activateWorkflowTab(tabB.tabId, { expectedGeneration: current })).toBe(true)
     expect(useChatStore.getState().activeTabId).toBe(tabB.tabId)
   })
+
+  it('a direct schedule/main switch invalidates a pending open within the same workflow', () => {
+    const main = workflowTab('workflow-a', 'main')
+    const run = { ...workflowTab('workflow-a', 'run'), sessionId: 'schedule-run' }
+    useChatStore.setState({ chatTabs: { main, run } })
+    const pending = navigation.beginWorkflowNavigation('workflow-a')
+    navigation.selectWorkflowPreset('workflow-a')
+    expect(navigation.activateWorkflowTab('run')).toBe(true)
+    expect(navigation.activateWorkflowTab('main', { expectedGeneration: pending })).toBe(false)
+    expect(useChatStore.getState().activeTabId).toBe('run')
+    expect(navigation.getWorkflowNavigationContext().sessionId).toBe('schedule-run')
+  })
 })

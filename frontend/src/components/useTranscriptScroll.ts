@@ -19,6 +19,11 @@ export interface TranscriptReadingState {
 export const TRANSCRIPT_SETTLE_MS = 700
 
 const positions = new Map<string, TranscriptReadingState>()
+// A schedule's tab can be reused for its next run. The new conversation must
+// not inherit the previous run's reading anchor or expanded tool cards.
+export function transcriptReadingKey(tabId: string, sessionId?: string | null): string {
+  return `${tabId}:${sessionId ?? 'pending'}`
+}
 export function transcriptReadingState(key: string): TranscriptReadingState {
   const saved = positions.get(key) ?? { following: true, disclosures: new Map<string, boolean>() }
   if (!saved.deliberate) { saved.following = true; saved.anchor = undefined }

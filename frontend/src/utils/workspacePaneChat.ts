@@ -2,7 +2,7 @@ import type { ChatTab, EventViewMode } from '../stores/useChatStore'
 import { useChatStore } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
-import { transcriptIsFollowing } from '../components/useTranscriptScroll'
+import { transcriptIsFollowing, transcriptReadingKey } from '../components/useTranscriptScroll'
 import { activateTab } from './activateTab'
 import { requestChatScrollToBottom } from './chatScrollRequest'
 import { selectWorkflowPreset } from './workflowNavigation'
@@ -175,7 +175,7 @@ export async function sendWorkspacePaneMessageToChat(request: WorkspacePaneChatR
   // they have scrolled up; into any other chat (or one at the bottom) it lands
   // at the bottom, as a normal send does.
   const keepReadingPosition = chatStore.activeTabId === tabId &&
-    (!chatStore.autoScroll || !transcriptIsFollowing(tabId))
+    (!chatStore.autoScroll || !transcriptIsFollowing(transcriptReadingKey(tabId, targetTab.sessionId)))
   if (!keepReadingPosition) chatStore.setAutoScroll(true)
   activateTab(tabId)
 

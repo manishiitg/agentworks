@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { requestChatScrollToBottom } from '../../utils/chatScrollRequest'
+import { activateTab } from '../../utils/activateTab'
 import { hydrateExecutionConversation } from '../../utils/executionConversationRestore'
 import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
 import { loadWorkSessions, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
@@ -140,10 +140,13 @@ export async function openWorkAutomationRunChat(
   }, session.session_id)
   if (existing) chatStore.setTabMetadata(runTabId, { isExecutionRun: true })
   chatStore.setTabCanSteer(runTabId, false)
-  const runtime = await hydrateExecutionConversation(session.session_id, session.workspace_path || project.workspacePath)
-  chatStore.setTabStreaming(runTabId, runtime.status === 'running')
-  chatStore.setTabCompleted(runTabId, runtime.status !== 'running')
+  const hasCachedTranscript = existing && chatStore.getTabEvents(session.session_id).length > 0 &&
+    chatStore.tabEventIndices[session.session_id] !== undefined
+  if (!hasCachedTranscript) {
+    const runtime = await hydrateExecutionConversation(session.session_id, session.workspace_path || project.workspacePath)
+    chatStore.setTabStreaming(runTabId, runtime.status === 'running')
+    chatStore.setTabCompleted(runTabId, runtime.status !== 'running')
+  }
   chatStore.setTabViewMode(runTabId, 'formatted')
-  chatStore.switchTab(runTabId)
-  requestChatScrollToBottom()
+  activateTab(runTabId)
 }

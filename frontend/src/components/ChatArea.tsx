@@ -1,3 +1,4 @@
+import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
 import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
@@ -26,7 +27,7 @@ import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
-import { followTranscriptLatest } from './useTranscriptScroll'
+import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
 import { MainAgentTerminal } from './MainAgentTerminal'
 import { placeViewKey } from '../utils/placeViewMode'
@@ -778,15 +779,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const streamingStatus = useChatStore((state) =>
     activeSessionId ? state.streamingStatus[activeSessionId] || '' : ''
   )
-  const historyPagination = useChatStore((state) =>
+  const storedHistoryPagination = useChatStore((state) =>
     activeSessionId ? state.tabHistoryPagination[activeSessionId] : undefined
   )
-  const [olderHistory, setOlderHistory] = useState<{
-    sessionId?: string
-    events: PollingEvent[]
-    loading: boolean
-    error?: string
-  }>({ events: [], loading: false })
+  const { page: olderHistory, updatePage: updateOlderHistory } = useConversationOlderPages(activeSessionId)
+  const historyPagination = olderHistory.pagination ?? storedHistoryPagination
 
   // Get active preset for workflow mode
   const activeWorkflowPreset = getActivePreset('workflow')
@@ -877,10 +874,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Keeping older pages locally avoids polluting the live event working set,
   // while the stable server cursor prevents loading the same page twice.
   const transcriptEvents = useMemo(() => (
-    olderHistory.sessionId === activeSessionId && olderHistory.events.length > 0
+    olderHistory.events.length > 0
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
-  ), [activeSessionId, displayEvents, olderHistory.events, olderHistory.sessionId])
+  ), [displayEvents, olderHistory.events])
   // A question only locks the composer while its turn is running. One left
   // without a settled record (crash, restart) must not lock the chat again on
   // every reload; the server's "no longer open" answer also releases it.
@@ -911,9 +908,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     if (!activeSessionId || !historyPagination?.hasMore || olderHistory.loading) return
 
     const sessionId = activeSessionId
-    setOlderHistory((current) => ({
-      sessionId,
-      events: current.sessionId === sessionId ? current.events : [],
+    const identity = captureChatIdentity()
+    updateOlderHistory(sessionId, (current) => ({
+      ...current,
       loading: true,
       error: undefined,
     }))
@@ -944,36 +941,31 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         hasMore = response.has_more
         nextOffset = response.oldest_sequence
       }
+      if (!isChatIdentityCurrent(identity)) return
       olderEvents = resolveLiveInputConfirmations(olderEvents)
       const chatStore = useChatStore.getState()
       const currentIDs = new Set([
         ...chatStore.getTabEvents(sessionId),
-        ...(olderHistory.sessionId === sessionId ? olderHistory.events : []),
+        ...olderHistory.events,
       ].map(event => event.id).filter(Boolean))
       olderEvents = olderEvents.filter(event => !event.id || !currentIDs.has(event.id))
-      chatStore.setTabHistoryPagination(
-        sessionId,
-        nextOffset
-          ? { hasMore, nextOffset, ...(historyPagination.compact ? { compact: true } : {}) }
-          : null,
-      )
-      chatStore.setTabHasMoreOlderEvents(sessionId, hasMore)
-      setOlderHistory((current) => ({
-        sessionId,
-        events: current.sessionId === sessionId
-          ? [...olderEvents, ...current.events]
-          : olderEvents,
+      // These rows live in this reader's cache, so their cursor must too.
+      // Advancing the shared tail cursor would skip pages after a remount or
+      // when the same conversation is opened in another transcript renderer.
+      updateOlderHistory(sessionId, (current) => ({
+        events: [...olderEvents, ...current.events],
         loading: false,
+        pagination: { hasMore, nextOffset: nextOffset ?? historyPagination.nextOffset, compact: historyPagination.compact },
       }))
     } catch (error) {
-      setOlderHistory((current) => ({
-        sessionId,
-        events: current.sessionId === sessionId ? current.events : [],
+      if (!isChatIdentityCurrent(identity)) return
+      updateOlderHistory(sessionId, (current) => ({
+        ...current,
         loading: false,
         error: error instanceof Error ? error.message : 'Could not load earlier messages',
       }))
     }
-  }, [activeSessionId, activeTabIsExecution, activeTabProfileWorkspace, activeWorkflowPreset, historyPagination?.hasMore, historyPagination?.nextOffset, historyPagination?.compact, olderHistory.loading])
+  }, [activeSessionId, activeTabIsExecution, activeTabProfileWorkspace, activeWorkflowPreset, historyPagination?.hasMore, historyPagination?.nextOffset, historyPagination?.compact, olderHistory.loading, olderHistory.events, updateOlderHistory])
 
   const hasConversationContent = useMemo(() => {
     return displayEvents.some(event =>
@@ -1340,14 +1332,15 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     }
   }, [scrollToBottom, setAutoScroll])
 
-  // Scroll to bottom when switching tabs (including workflow switch via Ctrl+K)
+  // Formatted transcripts own their per-conversation reading position. The
+  // legacy outer scroller only follows navigation in non-formatted views.
   useEffect(() => {
-    if (!targetTabId) return
+    if (!targetTabId || activeEventViewMode === 'formatted') return
     // Re-enable auto-scroll so subsequent events keep the view pinned to the bottom
     setAutoScroll(true)
     const version = manualScrollVersionRef.current
     settledBottomRef.current?.request(() => manualScrollVersionRef.current === version)
-  }, [targetTabId, setAutoScroll])
+  }, [targetTabId, activeEventViewMode, setAutoScroll])
 
   // Update refs when values change (for global observer)
   useEffect(() => {
@@ -2924,7 +2917,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     chatStore.setAutoScroll(true)
     setTimeout(() => { scrollToBottom('smooth') }, 50)
     // The conversation scrolls inside the transcript, not the chat container.
-    followTranscriptLatest(currentTab.tabId)
+    followTranscriptLatest(transcriptReadingKey(currentTab.tabId, currentTab.sessionId))
 
     // Clear query text
     useAppStore.getState().setCurrentQuery('')
@@ -3629,8 +3622,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             streamingText={activeStreamingText}
             streamingStatus={streamingStatus}
             hasOlder={historyPagination?.hasMore ?? false}
-            loadingOlder={olderHistory.sessionId === activeSessionId && olderHistory.loading}
-            historyError={olderHistory.sessionId === activeSessionId ? olderHistory.error : undefined}
+            loadingOlder={olderHistory.loading}
+            historyError={olderHistory.error}
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
@@ -3685,7 +3678,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                       : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
-                    scrollKey={activeTab.tabId}
+                    scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
@@ -3696,8 +3689,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     streamingText={activeStreamingText}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
-                    loadingOlder={olderHistory.sessionId === activeSessionId && olderHistory.loading}
-                    error={olderHistory.sessionId === activeSessionId ? olderHistory.error : undefined}
+                    loadingOlder={olderHistory.loading}
+                    error={olderHistory.error}
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={loadOlderConversationPage}
                   />
@@ -3752,7 +3745,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                       : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
-                    scrollKey={activeTab.tabId}
+                    scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
@@ -3763,8 +3756,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     streamingText={activeStreamingText}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
-                    loadingOlder={olderHistory.sessionId === activeSessionId && olderHistory.loading}
-                    error={olderHistory.sessionId === activeSessionId ? olderHistory.error : undefined}
+                    loadingOlder={olderHistory.loading}
+                    error={olderHistory.error}
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={loadOlderConversationPage}
                   />

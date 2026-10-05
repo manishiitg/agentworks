@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { prependedIndex, TranscriptScrollController, transcriptReadingState } from './useTranscriptScroll'
+import { prependedIndex, TranscriptScrollController, transcriptReadingState, transcriptReadingKey } from './useTranscriptScroll'
 
 describe('transcript scroll ownership', () => {
+  it('keeps a reused schedule tab’s new run separate from its previous conversation', () => {
+    const old = transcriptReadingState(transcriptReadingKey('schedule-tab', 'run-1'))
+    old.deliberate = true
+    old.following = false
+    old.anchor = { key: 'old-message', offset: 10 }
+    old.disclosures.set('old-tool', true)
+    const fresh = transcriptReadingState(transcriptReadingKey('schedule-tab', 'run-2'))
+    expect(fresh.following).toBe(true)
+    expect(fresh.anchor).toBeUndefined()
+    expect(fresh.disclosures.size).toBe(0)
+    expect(transcriptReadingState(transcriptReadingKey('schedule-tab', 'run-1'))).toBe(old)
+  })
   it('coalesces updates, cancels pending movement, and resumes explicitly', () => {
     const frames = new Map<number, FrameRequestCallback>()
     let id = 0

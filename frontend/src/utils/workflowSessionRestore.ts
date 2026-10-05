@@ -36,6 +36,14 @@ function isPresetStillActive(presetId?: string | null): boolean {
   return !presetId || useGlobalPresetStore.getState().activePresetIds.workflow === presetId
 }
 
+function activateRestoredTab(tabId: string, generation?: number): boolean {
+  const tab = useChatStore.getState().chatTabs[tabId]
+  // Legacy run records can lack workflow ownership metadata. The base
+  // coordinator still reveals their chat without changing the report owner.
+  if (!tab?.metadata?.presetQueryId) return activateTab(tabId)
+  return activateWorkflowTab(tabId, { expectedGeneration: generation })
+}
+
 function isActiveWorkflowSession(session: ActiveSessionInfo): boolean {
   const status = (session.status || '').toLowerCase().trim()
   return (
@@ -302,11 +310,9 @@ async function restoreWorkflowSessionChat(
     if (via === 'existing' && hasExistingEvents) {
       latestChatStore.setTabStreaming(tabId, isActive)
       latestChatStore.setTabCompleted(tabId, !isActive)
-      activateWorkflowTab(tabId, {
-        expectedGeneration: options.navigationGeneration,
-      })
+      if (!activateRestoredTab(tabId, options.navigationGeneration)) return tabId
       revealWorkflowChat()
-      if (options.scrollToBottom !== false) requestChatScrollToBottom()
+      if (options.scrollToBottom === true) requestChatScrollToBottom()
       return tabId
     }
 
@@ -315,11 +321,9 @@ async function restoreWorkflowSessionChat(
     // the tree/debug view lazy-loads events only when the user opens it.
     latestChatStore.setTabStreaming(tabId, isActive)
     latestChatStore.setTabCompleted(tabId, !isActive)
-    activateWorkflowTab(tabId, {
-      expectedGeneration: options.navigationGeneration,
-    })
+    if (!activateRestoredTab(tabId, options.navigationGeneration)) return tabId
     revealWorkflowChat()
-    if (options.scrollToBottom !== false) requestChatScrollToBottom()
+    if (options.scrollToBottom === true) requestChatScrollToBottom()
 
     return tabId
   } finally {
@@ -446,7 +450,7 @@ export async function openWorkflowPresetPage(
 
   activateWorkflowTab(tabId, { expectedGeneration: navigationGeneration })
   useWorkflowStore.getState().setShowChatArea(true)
-  if (options.scrollToBottom !== false) requestChatScrollToBottom()
+  if (options.scrollToBottom === true) requestChatScrollToBottom()
 }
 
 type ReadOnlyWorkflowRunOptions = RestoreWorkflowSessionOptions & {
@@ -490,11 +494,9 @@ async function restoreReadOnlyWorkflowRunChat(
   // monitor would spawn a duplicate 'Schedule' tab for the same session.
   const interactiveTab = findTabForSession(chatStore.chatTabs, session.session_id)
   if (interactiveTab && !interactiveTab.metadata?.isViewOnly) {
-    activateWorkflowTab(interactiveTab.tabId, {
-      expectedGeneration: options.navigationGeneration,
-    })
+    if (!activateRestoredTab(interactiveTab.tabId, options.navigationGeneration)) return interactiveTab.tabId
     revealWorkflowChat()
-    if (options.scrollToBottom !== false) requestChatScrollToBottom()
+    if (options.scrollToBottom === true) requestChatScrollToBottom()
     return interactiveTab.tabId
   }
 
@@ -527,14 +529,18 @@ async function restoreReadOnlyWorkflowRunChat(
   const isActive = isActiveWorkflowSession(session)
   chatStore.setTabStreaming(tabId, isActive)
   chatStore.setTabCompleted(tabId, !isActive)
-  activateWorkflowTab(tabId, {
-    expectedGeneration: options.navigationGeneration,
-  })
+  if (!activateRestoredTab(tabId, options.navigationGeneration)) return tabId
   revealWorkflowChat()
   window.dispatchEvent(new CustomEvent('workflow-readonly-run-restored', {
     detail: { presetId, tabId, workspacePath }
   }))
-  if (options.scrollToBottom !== false) requestChatScrollToBottom()
+  if (options.scrollToBottom === true) requestChatScrollToBottom()
+
+  // Revisiting an already-open run preserves its loaded history and cursor.
+  // Polling/SSE keep a live run current; a first open still restores its JSON.
+  const store = useChatStore.getState()
+  if (via === 'existing' && store.getTabEvents(session.session_id).length > 0 &&
+      store.tabEventIndices[session.session_id] !== undefined) return tabId
 
   // A scheduled run is an execution diagnostic, not an interactive chat.
   // Read its saved JSON explicitly without admitting it to SQLite chat.
@@ -577,12 +583,10 @@ async function openActiveSession(
   const existingTab = findTabForSession(chatStore.chatTabs, session.session_id)
   if (existingTab) {
     activateTab(existingTab.tabId)
-    requestChatScrollToBottom()
     return
   }
   const tabId = await restoreSession(session.session_id, { title: options.title, source: options.source })
   activateTab(tabId)
-  requestChatScrollToBottom()
 }
 
 // Global workflow navigation is workflow-scoped, not child-execution-scoped.
