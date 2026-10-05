@@ -74,6 +74,10 @@ usable node_modules if the install fails.
 
 [PLAT-495](pulse_platform/coding-agent-bridge/plat-495.md), fixed on main: the structured completion tracker is bound to the run's own thread.
 
+## Step agents fail runs by claiming a read-only filesystem — PLAT-496
+
+[PLAT-496](pulse_platform/step-execution/plat-496.md), open: agents report "read-only" without trying to write; the platform allowed the writes each time.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
