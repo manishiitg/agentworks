@@ -10,7 +10,7 @@ Build a shared knowledge base that Crews, Code, Workflows, and external local ag
 
 The application is a content viewer with a builder chat for basic access management. It has no content editor. Entries live in nested folders, and access granted on a folder applies to its descendants.
 
-The live knowledge base is the source of truth. A private Git repository is a versioned content backup. Writers explicitly commit and push through MCP; saving content does not depend on Git.
+Live knowledge is immediately shared. A private Git repository provides versioned content backup and explicit pull/branch synchronization. Writers commit and push themselves; saving content does not depend on Git. Authorized repository actions can also update live knowledge.
 
 ## 2. Agreed MVP scope
 
@@ -163,7 +163,7 @@ The server checks authorization on every operation, including listing, searching
 
 ## 6. Application and builder chat
 
-The application provides a nested folder browser, basic keyword search, type/tag filters, and a Markdown reader. Entries show their title, type, attribution, last updated time, and backup status.
+The application reuses the Files explorer, filename search, tabs, breadcrumbs, Markdown viewer and Git controls. Content editing remains through MCP. Entries show their title, type, attribution, last updated time, and backup status.
 
 There are no create, edit, patch, or delete controls for content in the application. Content changes happen through MCP.
 
@@ -176,7 +176,7 @@ The builder chat is limited to access management. Examples:
 
 The chat resolves the folder and identity, displays the applied change, and invokes dedicated access-management backend actions. Those actions independently check the signed-in user's authority. Resolve ambiguous names before changing access.
 
-The builder chat cannot create or edit entry content, patch files, or initiate Git backups. Readers can inspect their own effective access; Owners and administrators can inspect and manage grants within their authority.
+The builder chat cannot create or edit entry content or patch files. Shared Files AI actions use the same chat through a narrow Git/status tool. Readers can inspect their own effective access; Owners and administrators can inspect and manage grants within their authority.
 
 ## 7. MCP interface
 
@@ -187,7 +187,7 @@ The MVP exposes five public MCP names, each with an explicit `action`. They shar
 | `browse_knowledgebase` | `folders`, `entries` — nested folder/entry browsing, filters, and pagination. | Reader |
 | `read_knowledgebase` | `read` — whole entry, heading, or lines; `search` — literal content search. | Reader |
 | `update_knowledgebase` | `create`, `update` (diff, replacement, and/or metadata), `delete`, `create_folder`. | Editor on the affected folder |
-| `backup_knowledgebase` | `status`, `commit` selected versions/deletions, `push` an owned receipt. | Reader for status; Editor on every selected path for commit/push |
+| `backup_knowledgebase` | `status`, `commit` selected versions/deletions, `push` an owned receipt; `git` for repository operations. | Reader for status; Editor on selected paths for receipt backup; root Reader for Git reads, unrestricted root Editor for Git writes |
 | `manage_knowledgebase_access` | `inspect` for content connections; unrestricted writable external connections and the app access builder also support `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account`, `configure_backup`. | Reader for inspection; Owner/admin for access changes; admin for service accounts and backup setup |
 
 Every call requires an action matching its schema. Discovery for a read-only connection omits `update_knowledgebase` and limits backup to `status`; managed workflow/Crew and folder-capped content connections expose access inspection only. Unrestricted external writers may manage access within their current Owner grants. Dispatch rechecks the action's write scope and live folder grants independently of discovery.
@@ -336,7 +336,7 @@ Unpushed changes are shared saved content. A Git commit is a backup snapshot, no
 
 ### 9.1 Backup repository
 
-Use a private Git repository, including GitHub or another supported Git remote. For MVP, configure one repository and one backup branch per organization.
+Use a private Git repository, including GitHub or another supported Git remote. For MVP, configure one repository and an initial branch per organization. Files can select or create another branch; that branch becomes the active target for subsequent backups. The repository remote remains pinned.
 
 Mirror folder paths and store plain Markdown:
 
@@ -352,7 +352,19 @@ Engineering/
 
 Do not inject YAML frontmatter, entry IDs, revision numbers, access grants, or metadata manifests. Git provides version history for backed-up content. Internal live version tokens serve concurrency checks and do not duplicate Git metadata in files.
 
-### 9.2 Commit and push flow
+### 9.2 Files Git and live synchronization
+
+Reuse the platform Files Git surface and server Git handlers. A KB adapter supplies a separate Git store/API and private repository; organization content never goes through general workspace endpoints. Existing products retain their normal Files behavior.
+
+The shared UI supports staging, unstaging, commit, push, pull, branch selection/creation/deletion, stash/restore/discard, and file diffs/history/blame. Repository history needs root Reader access. Writes need an unrestricted root Editor or Owner; folder-capped tokens and workflow/Crew execution cannot call repository-wide operations. Their selected-version receipt flow below remains available. External MCP discovery offers the repository `git` action only to unrestricted writable connections; Files root Readers receive read-only Git views.
+
+Pull fetches branches and fast-forwards the active branch. Pull and switching an existing branch require a clean tree; commit or stash live edits first. Stash/discard and successful branch/pull changes update live content immediately. Surviving paths keep IDs, metadata and folder grants. New Markdown files become notes and inherit folder access; removed files become deletion records. Existing empty folders and grants remain. Switching back restores content, with new IDs for paths removed from live knowledge in the intervening branch.
+
+Each operation uses a private candidate Git generation. Validate the entire incoming tree and index before journaling its pointer and live registry/content changes together. Only valid regular UTF-8 Markdown paths are allowed; reject links, submodules, control files, binary content, case collisions and oversized trees. Limits: 5,000 files, 10 MiB per file, 50 MiB content per import and 512 MiB of local Git state. Unresolved stash conflicts fail without changing live knowledge. Pull never rebases or force-merges.
+
+Receipts bind their branch and prepared receipts become stale after Git history changes. Push pending Files commits before preparing a selected receipt. Git push requires fast-forward ancestry plus a lease against the observed remote tip. A private delivery intent persists before transport; retry the original request ID to reconcile a disconnected push. No background sync or automatic push runs.
+
+### 9.3 Selected commit and push flow
 
 ```text
 Save through MCP → Immediately shared live content
@@ -402,7 +414,7 @@ Because live content is shared, a selected entry snapshot may contain edits by m
 
 If content changes after commit, pushing the earlier snapshot is allowed, but the newer live version remains pending. A push must never mark a newer version as backed up when that version was not included.
 
-### 9.3 Concurrent publication
+### 9.4 Concurrent publication
 
 Use one shared publication lock per organization/repository/branch across server processes. A preparation call holds this lock during bounded remote reconciliation and isolated commit preparation, and releases it before returning; it does not hold this lock through the user's later push. Network operations use a 30-second timeout, and overlapping backup calls return retryable `BACKUP_BUSY`. A prepared commit may therefore become stale, which is an ordinary explicit retry case. Never hold the lock while waiting for a user to initiate push. Security mutations acquire publication before content, consistently with backup calls. Identity synchronization checks for changes under the content lock first, then releases it before acquiring publication and re-reading under both locks. An unchanged identity snapshot needs no publication lock and does not block live reads while a backup is in progress.
 
@@ -420,7 +432,7 @@ Example: two writers prepare from `C0`. The first pushes Checkout changes as `C1
 
 Expected pushes by other users and unexpected direct repository changes both require a new preparation. The exact expected-base ref lease rejects any branch change during publication, even a rewind that would still allow an ordinary fast-forward. Repository changes outside this adapter require administrator reconciliation before the adapter trusts their file state; a conflict does not import them into the live knowledge base.
 
-### 9.4 Deletion backups and path reuse
+### 9.5 Deletion backups and path reuse
 
 `update_knowledgebase(action=delete)` atomically removes the entry from live listing/search/read results and retains a tombstone containing its entry ID, folder ID, path, deletion sequence, actor, and a stable opaque `deletion_id`. Its idempotent response returns that deletion ID. Normal readers cannot read the removed content through the deletion record.
 
@@ -440,7 +452,7 @@ Resolve the token to its server-side path and retained folder; a client-supplied
 
 Keep tombstones and their tokens as durable internal records. Do not export them to Git. Reserve the deleted path until its absence is confirmed in the remote and no unknown push can restore it. It can then be reused by a new entry with a new ID. On a live-only installation with no configured remote, no initialized backup history, and no receipts, the path can be reused immediately; its deletion status is `not_required`. Removing a configured remote does not release paths with existing backup history. Prepared snapshots are bound to entry IDs as well as paths, so an old content or deletion receipt cannot overwrite or remove a replacement entry. A retry of an already-pushed receipt returns its recorded outcome without touching the replacement.
 
-### 9.5 Receipt lifecycle and retries
+### 9.6 Receipt lifecycle and retries
 
 - A prepared receipt expires 24 hours after creation if it has not been pushed. Expiry discards staging objects when safe, without changing live content; the writer prepares a new commit.
 - States are `PREPARED`, `PUSH_UNKNOWN`, `PUSHED`, `STALE`, and `EXPIRED`. A failure confirmed to have made no remote change returns an unexpired receipt to `PREPARED` with failure details and can be retried. Uncertain delivery remains `PUSH_UNKNOWN`.
@@ -450,7 +462,7 @@ Keep tombstones and their tokens as durable internal records. Do not export them
 - If a push times out or the process fails before recording success, set or recover `PUSH_UNKNOWN`. The next explicit push call checks whether the prepared commit reached the remote. Record an observed success without pushing again. If it did not reach the remote and the base still matches, the original receipt can be retried.
 - Do not expire an unknown outcome or permit another publication until it has been reconciled. If the remote is unavailable, return a retryable backup error; live reads and writes remain available. Reconciliation only observes the remote and records state; it does not commit or push autonomously.
 
-### 9.6 Backup status and failures
+### 9.7 Backup status and failures
 
 Track current entry version, current content fingerprint, prepared snapshots, and the selected path's latest confirmed remote fingerprint/existence. Internally retain content-change sequences to detect attempts to publish older content. Equality with the current remote fingerprint is sufficient to determine whether live bytes are backed up; clients do not need ordered public tokens.
 
@@ -464,7 +476,7 @@ Expose `last_backup_error`, `last_successful_backup_at`, and any unknown/stale r
 
 Commit and push calls can be retried safely using their request IDs and receipts. Network, credential, and Git failures never undo a successful content write or block readers from using live content.
 
-### 9.7 Backup access and recovery limits
+### 9.8 Backup access and recovery limits
 
 Application folder permissions do not apply inside the Git repository. Anyone granted direct repository access may read the entire exported content. Restrict repository access to backup administrators; normal readers and writers use the app and MCP.
 
@@ -575,7 +587,7 @@ Deployment does not automatically rewrite legacy manifests or move their files.
 - Automated ingestion, fact extraction, enrichment, and consolidation.
 - Semantic retrieval, synthesized answers, and broader research capabilities.
 - Two-way Git synchronization and imports of repository edits.
-- Branches, pull requests, review/approval workflows, and automatic merge resolution.
+- Pull requests, review/approval workflows, and automatic merge resolution.
 - Folder deletion, entry/folder moves and renames, inheritance exceptions, explicit deny rules, and per-entry access overrides.
 - Group-based permission management and advanced identity provisioning.
 - Automated Git backup schedules and a self-service restore interface.

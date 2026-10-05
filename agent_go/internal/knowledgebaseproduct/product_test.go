@@ -16,7 +16,7 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 	if p.Product != ProfileID || p.Scope != agentprofiles.ProfileScopeProject || p.Runtime.AgentTools.Mode != "mcp_only" || p.Runtime.Workspace.Root != "Chats/Knowledgebase" {
 		t.Fatalf("invalid product runtime: %+v", p.Runtime)
 	}
-	if len(p.ToolPolicy.Enabled) != 1 || p.ToolPolicy.Enabled[0] != "manage_knowledgebase_access" || len(p.Runtime.BridgeTools) != 1 {
+	if len(p.ToolPolicy.Enabled) != 2 || p.ToolPolicy.Enabled[0] != "manage_knowledgebase_access" || len(p.Runtime.BridgeTools) != 2 {
 		t.Fatalf("builder tools: %+v", p.ToolPolicy)
 	}
 	if len(m.Chat["mcp"].ExternalTools) != 5 {

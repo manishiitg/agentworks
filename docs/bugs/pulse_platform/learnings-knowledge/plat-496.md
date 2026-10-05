@@ -135,3 +135,9 @@ Files highlight regression: absent `highlightedFile` and `originalFilepath`
 previously compared equal, highlighting every KB row in blue. Require a nonempty
 highlight target before matching either path. Shared tree regression verifies
 no unsolicited highlights and exactly one explicit target.
+
+## Files Git follow-up — 2026-10-05
+
+Reuse the existing Files Git controls, line decorations and server read/action handlers through a scoped KB adapter. Add whole-repository authority checks and immutable private Git generations; successful pull/branch/stash/discard imports journal live Markdown and registries together. Keep root folder grants and surviving entry metadata. Plain Markdown only, bounded UTF-8 validation, clean-tree protection, fast-forward pull and lease-protected push. Persist uncertain push intents and bind/invalidate receipt branches. Add the `git` action to the existing backup MCP name; managed/scoped content connections retain their existing selected receipt flow.
+
+Validation: real bare-repository domain tests for pull, branch switch, stash/restore, commit/push, scoped Reader visibility, invalid-tree atomic rejection and root/cap authority; server tests exercise shared Files handlers and the five-tool MCP boundary; frontend tests verify shared Source Control uses KB endpoints and disables root-reader writes. Existing Files Git/store tests and frontend typecheck are part of the final checks.

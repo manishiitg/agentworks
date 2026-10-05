@@ -25,16 +25,16 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
   const openFile = useCallback(async (path: string) => {
     readGeneration.current++
     const entry = entryIndex.current.get(path)
-    if (!entry) return
     readController.current?.abort()
     const controller = new AbortController(); readController.current = controller
     setRead(null); setSelectedPath(path); selectedRef.current = path; setShowFileContent(true); setLoadingFileContent(true); setError(null)
-    onFolder(entry.folder_path)
+    onFolder(entry?.folder_path ?? path.split('/').slice(0, -1).join('/'))
     try {
-      const result = await knowledgebaseApi.read(entry.entry_id, controller.signal)
+      const result = entry ? await knowledgebaseApi.read(entry.entry_id, controller.signal) : await knowledgebaseApi.readPath(path, controller.signal)
       if (controller.signal.aborted) return
+      entryIndex.current.set(path, result.entry)
       setRead(result)
-      setOpenTabs(tabs => tabs.some(tab => tab.path === path) ? tabs : [...tabs, { name: entry.filename, path }])
+      setOpenTabs(tabs => tabs.some(tab => tab.path === path) ? tabs : [...tabs, { name: result.entry.filename, path }])
     } catch (failure) {
       if (controller.signal.aborted) return
       setRead(null); setShowFileContent(false); setSelectedPath(null); selectedRef.current = null

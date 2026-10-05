@@ -5,7 +5,13 @@ func integrationDefinitions() []ToolDefinition {
 	obj := func(required []any, properties map[string]any) map[string]any {
 		return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
 	}
+	gitSchema := obj([]any{"op"}, map[string]any{
+		"op":   map[string]any{"type": "string", "enum": []any{"status", "diff", "log", "branches", "stashes", "blame", "show", "stage", "unstage", "commit", "discard", "checkout", "create_branch", "delete_branch", "stash", "stash_apply", "stash_pop", "stash_drop", "resolve", "pull", "push"}},
+		"file": str(), "commit": str(), "files": map[string]any{"type": "array", "maxItems": 500, "items": str()}, "all": map[string]any{"type": "boolean"}, "message": map[string]any{"type": "string", "maxLength": 5000}, "branch": str(), "remote": map[string]any{"type": "boolean"}, "ref": str(), "choice": map[string]any{"type": "string", "enum": []any{"ours", "theirs", "both"}}, "request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+	})
+	gitSchema["allOf"] = []any{map[string]any{"if": map[string]any{"properties": map[string]any{"op": map[string]any{"enum": []any{"status", "diff", "log", "branches", "stashes", "blame", "show"}}}}, "else": map[string]any{"required": []any{"request_id"}}}}
 	defs := []ToolDefinition{{Name: "kb_inspect_project", InputSchema: obj([]any{"workspace_path"}, map[string]any{"workspace_path": str()})}}
+	defs = append(defs, ToolDefinition{Name: "kb_git", InputSchema: gitSchema, Mutates: true})
 	defs = append(defs, ToolDefinition{Name: "kb_configure_backup", InputSchema: obj([]any{"remote_url", "request_id"}, map[string]any{
 		"remote_url": str(), "branch": str(),
 		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},

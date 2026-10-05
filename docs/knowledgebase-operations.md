@@ -1,7 +1,7 @@
 # Knowledge Base MVP operations
 
 Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
-shows content and access settings. Its chat manages folder access and initial backup configuration. The reader reuses the platform Files view.
+shows content and access settings. Its chat manages folder access, initial backup configuration and shared Files Git requests. The reader and Git controls reuse the platform Files view.
 Content saves and explicit Git backups happen through MCP, including in Crews,
 Code and workflows. An authorized reader sees a successful save immediately.
 
@@ -82,7 +82,7 @@ The MVP has five tools, all requiring `action`:
 | `browse_knowledgebase` | `folders`, `entries` |
 | `read_knowledgebase` | `read`, `search` |
 | `update_knowledgebase` | `create`, `update`, `delete`, `create_folder` |
-| `backup_knowledgebase` | `status`, `commit`, `push` |
+| `backup_knowledgebase` | `status`, `commit`, `push`, `git` |
 | `manage_knowledgebase_access` | `inspect`; other access actions belong to the app's builder |
 
 Read-only connections discover four tools with read-only action schemas. Use different request IDs for different actions.
@@ -133,9 +133,7 @@ their normal signed-in session. Review the repository's branch first. This
 maintenance endpoint observes and accepts the base; it never imports live content,
 commits or pushes, and MCP connection tokens cannot call it. A pending unknown
 receipt must be reconciled by retrying its explicit push before this operation.
-The repository's configured organization, remote and branch are pinned; changing
-them requires provisioning a separate data root rather than silently redirecting
-existing receipts.
+The repository's organization and remote are pinned. Files selects the active branch; receipts are branch-bound and stale receipts cannot be pushed to a different branch.
 
 The dedicated access builder offers the shared Codex and Pi provider adapters in
 MCP-only structured mode. Other engines can be added after their adapter preserves
@@ -166,3 +164,19 @@ is migrated by merging this PR. OAuth Knowledge Base scopes are opt-in.
 
 Activity tracking is deferred for MVP: no Activity view, API endpoint, or event
 recording. Recovery journals and retry/backup receipts remain in private state.
+
+## Files Git controls
+
+Configure the repository using the existing backup setup action. Root Readers see the shared Files Source Control, history, diff and blame; unrestricted root Editors/Owners can stage, commit, push, pull, change branches, stash or discard. Folder-scoped readers keep the ordinary Files view and selected receipt backup tools. The external MCP `git` action is available to unrestricted writable connections; the viewer exposes read-only Git to root Readers. Git requests use `/api/knowledgebase/git` and `backup_knowledgebase(action=git)`, not workspace paths or a separate MCP server.
+
+Example external MCP call:
+
+```json
+{"action":"git","op":"pull","request_id":"pull-main-001"}
+```
+
+Pull fast-forwards and updates live knowledge. Commit or stash unpublished edits before pulling or switching an existing branch. A branch change preserves metadata/IDs for surviving files and existing folder grants; imports new files as notes. Stash/restore/discard also change live content and are immediately visible to authorized readers. No UI content editor is added.
+
+The remote repository must contain only regular Markdown using KB-valid paths. Links, submodules, binary/control files, case collisions or trees above 5,000 files / 50 MiB are rejected atomically. Each Markdown file is limited to 10 MiB; private Git generations are limited to 512 MiB. Unresolved conflicts leave the previous live state intact. Pull supports fast-forward only; reconcile diverged histories outside the MVP flow.
+
+Push uses a remote lease and persists a delivery intent before transport. If its outcome is unknown, retry the original Git push request ID as the same user; other repository actions and receipt publication remain blocked until it is reconciled. Complete Files commits/pushes before using the scoped selected-version receipt flow. Include the private Git generation pointer/directories and pending delivery intent in a full disaster-recovery backup.

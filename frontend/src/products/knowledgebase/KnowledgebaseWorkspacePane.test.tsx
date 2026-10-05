@@ -2,9 +2,9 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ entries: vi.fn(), read: vi.fn(), access: vi.fn(), folders: vi.fn(), workspaceRead: vi.fn(), workspaceGit: vi.fn() }))
+const mocks = vi.hoisted(() => ({ entries: vi.fn(), read: vi.fn(), access: vi.fn(), folders: vi.fn(), workspaceRead: vi.fn(), workspaceGit: vi.fn(), gitGet: vi.fn(), gitPost: vi.fn() }))
 vi.mock('../../services/knowledgebaseApi', async original => ({ ...await original<typeof import('../../services/knowledgebaseApi')>(), knowledgebaseApi: mocks }))
-vi.mock('../../services/api', () => ({ default: {}, agentApi: { getPlannerFileContent: mocks.workspaceRead }, workspaceApi: {}, authApi: {}, getApiBaseUrl: () => 'https://knowledge.example' }))
+vi.mock('../../services/api', () => ({ default: { get:mocks.gitGet, post:mocks.gitPost }, agentApi: { getPlannerFileContent: mocks.workspaceRead }, workspaceApi: {}, authApi: {}, getApiBaseUrl: () => 'https://knowledge.example' }))
 vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: mocks.workspaceGit } }))
 vi.mock('../../components/Workspace', () => ({ default: () => <div>Ordinary workspace</div> }))
 import { KnowledgebaseWorkspacePane } from './KnowledgebaseWorkspacePane'
@@ -14,6 +14,8 @@ const entry: KnowledgeEntry = { entry_id: 'entry', path: 'Payments/checkout.md',
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.clearAllMocks(); document.body.innerHTML = '' })
 beforeEach(() => {
+  mocks.gitGet.mockResolvedValue({data:{repos:[],writable:false}})
+  mocks.gitPost.mockResolvedValue({data:{ok:true}})
   mocks.folders.mockImplementation(async path => ({ folders: path === '' ? [{ path: 'Payments', name: 'Payments' }] : [] }))
   mocks.entries.mockImplementation(async () => ({ entries: [entry] }))
   mocks.read.mockResolvedValue({ entry, content: '# Procedure\n\nRead-only instructions.\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://tracker.example/image)', version: 'v1' })
@@ -51,6 +53,28 @@ describe('Knowledge Base shared Files view', () => {
     expect(mocks.workspaceGit).not.toHaveBeenCalled()
     expect([...host.querySelectorAll('button')].some(button => /^(Upload|Create folder|Edit|Save|Commit|Push)$/.test(button.textContent || ''))).toBe(false)
     expect(host.textContent).not.toContain('Backup not configured')
+  })
+  it('reuses shared Source Control with isolated KB endpoints and root write controls', async () => {
+    const repo = {root:'',branch:'main',ahead:0,behind:0,files:[{path:entry.path,status:'modified',worktree_status:'modified'}]}
+    mocks.gitGet.mockImplementation(async (_url, options) => ({data:options.params.op === 'status' ? {repos:[repo],writable:true} : {commits:[],stashes:[],branches:[{name:'main',current:true},{name:'release'}]}}))
+    const {host} = await mount()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Source Control"]')!.click() })
+    expect(host.querySelector('[aria-label="Commit message"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Pull"]')).not.toBeNull()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Stage all"]')!.click() })
+    expect(mocks.gitPost).toHaveBeenCalledWith('/api/knowledgebase/git', expect.objectContaining({op:'stage',all:true,request_id:expect.any(String)}))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Pull"]')!.click() })
+    expect(mocks.gitPost).toHaveBeenCalledWith('/api/knowledgebase/git', expect.objectContaining({op:'pull'}))
+    expect(mocks.workspaceGit).not.toHaveBeenCalled()
+    expect(mocks.workspaceRead).not.toHaveBeenCalled()
+  })
+  it('keeps root-reader Git history available while disabling writes', async () => {
+    mocks.gitGet.mockResolvedValue({data:{repos:[{root:'',branch:'main',ahead:0,behind:0,files:[]}],writable:false,commits:[],stashes:[]}})
+    const {host} = await mount()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Source Control"]')!.click() })
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Pull"]')!.disabled).toBe(true)
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Push"]')!.disabled).toBe(true)
+    expect(mocks.gitPost).not.toHaveBeenCalled()
   })
   it('removes displayed content and its tab when a refresh discovers revoked access', async () => {
     const { host, render } = await mount(); await openEntry(host)

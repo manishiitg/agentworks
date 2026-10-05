@@ -71,6 +71,18 @@ func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.Tool
 	return knowledgebaseExecute(ctx, runtime.UserID, true, "manage_knowledgebase_access", args)
 }
 
+// The Files AI actions use the existing product chat and a narrow Git tool.
+func knowledgebaseBackupExecutor(ctx context.Context, runtime agentprofiles.ToolRuntimeContext, args map[string]any) (string, error) {
+	if runtime.Product != "knowledgebase" {
+		return "", fmt.Errorf("Git tool requires the Knowledge Base profile")
+	}
+	action, _ := args["action"].(string)
+	if action != "git" && action != "status" {
+		return "", fmt.Errorf("This chat supports only Files Git operations and backup status")
+	}
+	return knowledgebaseExecute(ctx, runtime.UserID, false, "backup_knowledgebase", args)
+}
+
 // Bound workflow/Crew operations use the same domain boundary as external agents.
 // The dedicated access builder's allowlist excludes every one of these tools.
 func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.Tool, map[string]interface{}, map[string]string) {

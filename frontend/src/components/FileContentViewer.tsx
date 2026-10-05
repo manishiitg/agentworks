@@ -1,3 +1,4 @@
+import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -5,7 +6,7 @@ import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github,
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
-import { repoForPath, useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
+import { repoForPath } from '../stores/useWorkspaceGitStore'
 import { useGitLineChanges } from '../hooks/useGitLineChanges'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
 import { CsvRenderer } from './ui/CsvRenderer'
@@ -348,21 +349,22 @@ export function FileContentViewerBody({ headerAction, source }: { headerAction?:
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
   const tallSurfaceClass = 'h-full min-h-0'
 
-  const gitWorkspacePath = useWorkspaceGitStore(state => state.workspacePath)
-  const gitRepos = useWorkspaceGitStore(state => state.repos)
-  const gitFile = !source && selectedFile?.path && gitWorkspacePath ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
+  const git = useFileGit()
+  const gitWorkspacePath = useFileGitStore(state => state.workspacePath)
+  const gitRepos = useFileGitStore(state => state.repos)
+  const gitFile = (!source || source.git) && selectedFile?.path && gitWorkspacePath !== null ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
   const gitFileChanged = !!gitFile && gitFile.repo.files.some(entry => entry.path === gitFile.file)
 
-  const gitLineChanges = useGitLineChanges(source ? undefined : selectedFile?.path, fileContent)
+  const gitLineChanges = useGitLineChanges(source && !source.git ? undefined : selectedFile?.path, fileContent)
 
   const paneActions: PaneAction[] = [
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     ...(!source ? [{ key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink }] : []),
     ...(gitFile ? [
-      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
-      { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },
-      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
+      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
+      { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },
+      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
     ] : []),
     ...(isMarkdownFile ? [
       { key: 'pdf', label: isExportingPdf ? 'Exporting…' : 'Export as PDF', icon: isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <PdfIcon />, onSelect: () => { void handleExportPdf() }, disabled: isExportingPdf },

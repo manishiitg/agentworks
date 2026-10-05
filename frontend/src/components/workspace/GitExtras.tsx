@@ -1,8 +1,8 @@
+import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, ArrowLeft, ChevronDown, Cloud, GitBranch as GitBranchIcon, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
-import { agentApi } from '../../services/api'
-import { workspaceGitApi, type GitAction, type GitBlameLine, type GitBranch, type GitChangedFile, type GitRepo, type GitStash } from '../../services/workspaceGit'
-import { gitFullPath, useWorkspaceGitStore } from '../../stores/useWorkspaceGitStore'
+import { type GitAction, type GitBlameLine, type GitBranch, type GitChangedFile, type GitRepo, type GitStash } from '../../services/workspaceGit'
+import { gitFullPath } from '../../stores/useWorkspaceGitStore'
 import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
 import { FileTypeIcon } from './fileTypeIcon'
 
@@ -26,13 +26,14 @@ function useLoaded<T>(load: () => Promise<T>, deps: unknown[], initial: T) {
 
 /** The branch name as a button that opens the branch switcher (VS Code's status-bar branch picker). */
 export function BranchPicker({ workspacePath, repo, run, busy }: { workspacePath: string; repo: GitRepo; run: RunAction; busy: boolean }) {
+  const git = useFileGit()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const branches = useLoaded<GitBranch[]>(() => open ? workspaceGitApi.branches(workspacePath, repo.root) : Promise.resolve([]), [open, workspacePath, repo.root, repo.branch], [])
+  const branches = useLoaded<GitBranch[]>(() => open ? git.api.branches(workspacePath, repo.root) : Promise.resolve([]), [open, workspacePath, repo.root, repo.branch], [])
 
   useEffect(() => {
     if (!open) return
@@ -118,10 +119,11 @@ export function BranchPicker({ workspacePath, repo, run, busy }: { workspacePath
 
 /** Stashed work: stash everything now, apply/pop/drop earlier stashes. */
 export function StashSection({ workspacePath, repo, run, busy, reloadKey }: { workspacePath: string; repo: GitRepo; run: RunAction; busy: boolean; reloadKey: number }) {
+  const git = useFileGit()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [dropping, setDropping] = useState<string | null>(null)
-  const stashes = useLoaded<GitStash[]>(() => workspaceGitApi.stashes(workspacePath, repo.root), [workspacePath, repo.root, repo.files.length, reloadKey], [])
+  const stashes = useLoaded<GitStash[]>(() => git.api.stashes(workspacePath, repo.root), [workspacePath, repo.root, repo.files.length, reloadKey], [])
   const hasChanges = repo.files.length > 0
   if (!hasChanges && stashes.value.length === 0) return null
   return (
@@ -206,13 +208,14 @@ function relativeTime(seconds: number): string {
 
 /** Line-by-line blame: who last changed each line, grouped by commit. */
 export function GitBlamePanel({ workspacePath, repo, file, onAsk }: { workspacePath: string; repo: string; file: string; onAsk?: AskAgent }) {
-  const openPanel = useWorkspaceGitStore(state => state.openPanel)
+  const git = useFileGit()
+  const openPanel = useFileGitStore(state => state.openPanel)
   const [selected, setSelected] = useState<string | null>(null)
   const full = gitFullPath(workspacePath, repo, file)
   const data = useLoaded<{ lines: GitBlameLine[]; text: string[]; error: string | null; truncated: boolean }>(async () => {
     try {
-      const [blame, content] = await Promise.all([workspaceGitApi.blame(workspacePath, repo, file), agentApi.getPlannerFileContent(full)])
-      const text = String(content.data?.content ?? '').split('\n')
+      const [blame, content] = await Promise.all([git.api.blame(workspacePath, repo, file), git.readFile(full)])
+      const text = content.split('\n')
       return { lines: blame.lines, text, error: null, truncated: blame.truncated }
     } catch {
       return { lines: [], text: [], error: 'This file has no git history yet, so there is nothing to blame.', truncated: false }

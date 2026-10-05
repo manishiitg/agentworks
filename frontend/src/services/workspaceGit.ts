@@ -61,6 +61,7 @@ export interface GitBlameLine {
 }
 
 export type GitAction =
+  | { op: 'pull' | 'push' }
   | { op: 'stage' | 'unstage' | 'discard'; files: string[] }
   | { op: 'stage' | 'unstage'; all: true }
   | { op: 'commit'; message: string; all?: boolean }
@@ -72,8 +73,8 @@ export type GitAction =
 
 /** The server's own sentence for a failed action (permission, nothing staged, filters, lock...). */
 export function gitActionError(error: unknown): string {
-  const data = (error as { response?: { data?: { error?: string } } })?.response?.data
-  return data?.error || 'Git could not do that.'
+  const data = (error as { response?: { data?: { error?: string | {message?: string} } } })?.response?.data
+  return typeof data?.error === 'string' ? data.error : data?.error?.message || 'Git could not do that.'
 }
 
 export const workspaceGitApi = {

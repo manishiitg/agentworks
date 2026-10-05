@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-05 — Knowledge Base reuses Files Git; pull and branches update live knowledge — PLAT-496
+
+Use the existing Files Source Control, branch picker, staging/commit actions, stashes, diff/history/blame and Git line decorations through a scoped data source. Reuse the same server Git read/action handlers. KB adds a repository boundary, current root access checks and an atomic validated Git-to-live import. Root readers can view repository history; unrestricted root Editors/Owners can act. Scoped/managed connections retain selected-version receipt backups. Pull is fast-forward only and checkout refuses dirty content; stash and discard explicitly affect live knowledge. Keep the remote pinned, bind receipts to their branch and invalidate prepared receipts after repository history changes. Retry uncertain Git pushes with the original request ID. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).
+
 ### 2026-10-05 — Knowledge Base reuses Files and supports direct external access management — PLAT-496
 
 Replace the custom Library/reader with the shared Files pane, explorer tree, tabs, breadcrumbs and viewer through a read-only KB data source. Remove the type/tag filter row; Folder access uses the shared Ask AI action. Show unconfigured backup once above ChatArea with an admin Configure backup action in the same chat. Setup saves a private SSH destination without committing/pushing or redirecting an existing backup. Environment settings retain precedence. Unrestricted writable external MCP connections apply grants/revocations directly after current Owner checks; service accounts and backup setup require an admin. App chat retains frozen proposals and confirmation; scoped and managed execution connections remain content-only. Ticket: [PLAT-496](bugs/pulse_platform/learnings-knowledge/plat-496.md).

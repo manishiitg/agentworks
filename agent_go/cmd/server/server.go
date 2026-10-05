@@ -2148,7 +2148,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
 			log.Fatalf("Failed to register Knowledge Base profile: %v", err)
 		}
-		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor); err != nil {
+		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor, knowledgebaseBackupExecutor); err != nil {
 			log.Fatalf("Failed to register Knowledge Base runtime: %v", err)
 		}
 	}
@@ -2445,6 +2445,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup"} {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
+	apiRouter.HandleFunc("/knowledgebase/git", api.handleKnowledgebaseGit).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

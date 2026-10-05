@@ -221,6 +221,12 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 
 func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, userID, tool string, args map[string]any) (any, error) {
 	action, _ := args["action"].(string)
+	if tool == "backup_knowledgebase" && action == "git" {
+		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
+			return nil, err
+		}
+		return knowledgebaseGitCall(ctx, service, p, args, &UserClaims{UserID: p.IdentityID, Username: p.IdentityID})
+	}
 	if tool == "manage_knowledgebase_access" && (action == "inspect_project" || action == "bind_project" || action == "unbind_project") {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
 			return nil, err

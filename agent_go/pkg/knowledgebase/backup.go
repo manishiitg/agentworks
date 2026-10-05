@@ -25,6 +25,7 @@ type Snapshot struct {
 	Content     []byte `json:"-"`
 }
 type Receipt struct {
+	Branch         string     `json:"branch,omitempty"`
 	ID             string     `json:"receipt_id"`
 	IdentityID     string     `json:"-"`
 	OrganizationID string     `json:"-"`
@@ -144,7 +145,7 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
 func (s *Service) ensureRepo(ctx context.Context) error {
-	destination, err := s.backupDestination()
+	destination, err := s.configuredBackupDestination()
 	if err != nil {
 		return err
 	}
@@ -245,6 +246,21 @@ func (s *Service) gitBytes(ctx context.Context, args ...string) ([]byte, error) 
 func (s *Service) authorizeSelections(p Principal, r Receipt) error {
 	if r.IdentityID != p.IdentityID || r.OrganizationID != s.cfg.OrganizationID {
 		return kbErr("NOT_FOUND", "Resource not found.")
+	}
+	destination, err := s.backupDestination()
+	if err != nil {
+		return err
+	}
+	configured, err := s.configuredBackupDestination()
+	if err != nil {
+		return err
+	}
+	branch := r.Branch
+	if branch == "" {
+		branch = configured.Branch
+	}
+	if branch != destination.Branch || r.State == "STALE" {
+		return kbErr("BACKUP_BRANCH_ADVANCED", "Repository history changed; prepare a new receipt.")
 	}
 	for _, sel := range r.Selections {
 		if err := s.require(p, sel.FolderPath, roleEditor); err != nil {
@@ -413,6 +429,27 @@ func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a ma
 	if err = s.recover(); err != nil {
 		unlock()
 		return nil, err
+	}
+	if intent, e := s.readGitPushIntent(); e != nil || intent != nil {
+		unlock()
+		if e != nil {
+			return nil, e
+		}
+		return nil, kbErr("BACKUP_OUTCOME_UNKNOWN", "Reconcile the pending Files Git push first.")
+	}
+	if tool == "commit_knowledgebase" {
+		workspace, e := s.readGitWorkspace()
+		if e != nil {
+			unlock()
+			return nil, e
+		}
+		if workspace.Directory != "" {
+			head, _ := gitWorkspaceRun(ctx, filepath.Join(s.private, workspace.Directory), "rev-parse", "--verify", "HEAD")
+			if head != "" && head != workspace.PublishedTip {
+				unlock()
+				return nil, kbErr("GIT_LOCAL_COMMITS", "Push the pending Files Git commits before preparing a receipt.")
+			}
+		}
 	}
 	if b, e := os.ReadFile(reqPath); e == nil {
 		var rec requestRecord
@@ -596,6 +633,10 @@ func (s *Service) reconcile(ctx context.Context, tip string) error {
 	return s.transact(changes)
 }
 func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, sels []Snapshot, base, reqPath, hash string) (any, error) {
+	destination, err := s.backupDestination()
+	if err != nil {
+		return nil, err
+	}
 	idx := filepath.Join(s.private, "index-"+uuid.NewString())
 	defer os.Remove(idx)
 	env := []string{"GIT_INDEX_FILE=" + idx}
@@ -641,7 +682,7 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 		defer unlock()
 		st := s.backupState()
 		st.LastError = ""
-		check := Receipt{IdentityID: p.IdentityID, OrganizationID: s.cfg.OrganizationID, Selections: sels}
+		check := Receipt{Branch: destination.Branch, IdentityID: p.IdentityID, OrganizationID: s.cfg.OrganizationID, Selections: sels}
 		if err = s.validateGenerations(ctx, p, check); err != nil {
 			return nil, err
 		}
@@ -665,7 +706,7 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 	if err != nil {
 		return nil, err
 	}
-	r := Receipt{ID: "receipt_" + uuid.NewString(), IdentityID: p.IdentityID, OrganizationID: s.cfg.OrganizationID, Base: base, Commit: commit, Selections: sels, CreatedAt: stamp(), ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano), State: "PREPARED"}
+	r := Receipt{Branch: destination.Branch, ID: "receipt_" + uuid.NewString(), IdentityID: p.IdentityID, OrganizationID: s.cfg.OrganizationID, Base: base, Commit: commit, Selections: sels, CreatedAt: stamp(), ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano), State: "PREPARED"}
 	for i := range r.Selections {
 		r.Selections[i].Content = nil
 	}

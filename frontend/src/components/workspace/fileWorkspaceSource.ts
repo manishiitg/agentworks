@@ -1,3 +1,4 @@
+import type { FileGitSource } from './FileGitContext'
 import type { ReactNode } from 'react'
 import type { PlannerFile } from '../../services/api-types'
 
@@ -12,6 +13,7 @@ export interface FileViewerSource {
   closeFile: (path: string) => void
   revealFolder: (path: string) => void
   contentHeader?: ReactNode
+  git?: FileGitSource
 }
 
 /** A read-only product data source. Paths never go through workspace APIs. */

@@ -18,7 +18,7 @@ type backupDestination struct {
 
 // Deployment configuration takes precedence. An app-configured destination is
 // private control state, separate from both live Markdown and the Git backup.
-func (s *Service) backupDestination() (backupDestination, error) {
+func (s *Service) configuredBackupDestination() (backupDestination, error) {
 	if s.cfg.BackupRemote != "" {
 		return backupDestination{s.cfg.BackupRemote, s.cfg.BackupBranch}, nil
 	}
@@ -32,6 +32,22 @@ func (s *Service) backupDestination() (backupDestination, error) {
 	var destination backupDestination
 	if json.Unmarshal(data, &destination) != nil || !validBackupSSHRemote(destination.Remote) || destination.Branch == "" {
 		return backupDestination{}, kbErr("STORAGE_UNAVAILABLE", "The saved backup destination is invalid.")
+	}
+	return destination, nil
+}
+
+// The remote remains pinned; Files chooses the active local branch.
+func (s *Service) backupDestination() (backupDestination, error) {
+	destination, err := s.configuredBackupDestination()
+	if err != nil {
+		return destination, err
+	}
+	state, err := s.readGitWorkspace()
+	if err != nil {
+		return destination, err
+	}
+	if state.Branch != "" {
+		destination.Branch = state.Branch
 	}
 	return destination, nil
 }
@@ -83,7 +99,7 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 		return nil, nil, badArg("Invalid backup branch.")
 	}
 	destination := backupDestination{remote, branch}
-	current, err := s.backupDestination()
+	current, err := s.configuredBackupDestination()
 	if err != nil {
 		return nil, nil, err
 	}

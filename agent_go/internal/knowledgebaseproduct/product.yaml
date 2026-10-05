@@ -9,12 +9,13 @@ profile:
   scope: project
   tools:
     - id: knowledgebase.manage-access
+    - id: knowledgebase.git
   tool_policy:
     mode: allowlist
-    enabled: [manage_knowledgebase_access]
+    enabled: [manage_knowledgebase_access, backup_knowledgebase]
   runtime:
     transport: structured
-    bridge_tools: [manage_knowledgebase_access]
+    bridge_tools: [manage_knowledgebase_access, backup_knowledgebase]
     api_transport: {mode: disabled}
     agent_tools: {mode: mcp_only}
     workspace: {mode: fixed, root: Chats/Knowledgebase}
@@ -64,7 +65,7 @@ workflows: {enabled: [], selected_skills: [], browser_mode: ""}
 chat:
   builder:
     prompt: {file: prompts/access-builder.md}
-    tools: [manage_knowledgebase_access]
+    tools: [manage_knowledgebase_access, backup_knowledgebase]
   mcp:
     prompt: {file: prompts/mcp.md}
     external_tools:

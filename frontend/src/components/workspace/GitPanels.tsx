@@ -1,9 +1,9 @@
+import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
 import DiffRenderer from '../ui/DiffRenderer'
-import { gitActionError, workspaceGitApi, type GitChangedFile, type GitCommit as GitCommitInfo, type GitRepo } from '../../services/workspaceGit'
-import { gitFullPath, useWorkspaceGitStore, type GitPanel } from '../../stores/useWorkspaceGitStore'
-import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { gitActionError, type GitChangedFile, type GitCommit as GitCommitInfo, type GitRepo } from '../../services/workspaceGit'
+import { gitFullPath, type GitPanel } from '../../stores/useWorkspaceGitStore'
 import { FileTypeIcon } from './fileTypeIcon'
 import { BranchPicker, ConflictSection, GitBlamePanel, StashSection, type AskAgent, type RunAction } from './GitExtras'
 import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
@@ -35,7 +35,7 @@ function BranchChip({ repo, showName }: { repo: GitRepo; showName: boolean }) {
 
 /** Branch strip above the tree (VS Code's status-bar branch); the rail switches to Source Control. */
 export function GitBar() {
-  const repos = useWorkspaceGitStore(state => state.repos)
+  const repos = useFileGitStore(state => state.repos)
   if (repos.length === 0) return null
   return (
     <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2 text-xs">
@@ -49,7 +49,7 @@ export function GitBar() {
 
 /** VS Code-style activity rail: Explorer and Source Control (with a change-count badge). */
 export function ActivityRail({ view, onChange }: { view: 'files' | 'scm'; onChange: (view: 'files' | 'scm') => void }) {
-  const changed = useWorkspaceGitStore(state => state.repos.reduce((sum, repo) => sum + repo.files.length, 0))
+  const changed = useFileGitStore(state => state.repos.reduce((sum, repo) => sum + repo.files.length, 0))
   const item = (id: 'files' | 'scm', label: string, icon: ReactNode, badge?: number) => (
     <button
       key={id}
@@ -81,8 +81,9 @@ function FileRow({ repo, file, staged, workspacePath, busy, run }: {
   busy: boolean
   run: RunAction
 }) {
-  const openPanel = useWorkspaceGitStore(state => state.openPanel)
-  const activePanel = useWorkspaceGitStore(state => state.panel)
+  const git = useFileGit()
+  const openPanel = useFileGitStore(state => state.openPanel)
+  const activePanel = useFileGitStore(state => state.panel)
   const [confirming, setConfirming] = useState(false)
   const status = (staged ? file.index_status : file.worktree_status) ?? file.status
   const style = STATUS_STYLE[status]
@@ -117,7 +118,7 @@ function FileRow({ repo, file, staged, workspacePath, busy, run }: {
       </button>
       <span className="hidden shrink-0 items-center group-hover/row:flex group-focus-within/row:flex">
         {!isFolder && status !== 'deleted' && (
-          <button type="button" title="Open file" aria-label={`Open ${base}`} onClick={() => { void openWorkspaceFile(full) }} className={iconButton}><FileText className="h-3.5 w-3.5" /></button>
+          <button type="button" title="Open file" aria-label={`Open ${base}`} onClick={() => { void git.openFile(full) }} className={iconButton}><FileText className="h-3.5 w-3.5" /></button>
         )}
         {!staged && (
           <button type="button" disabled={busy} title={status === 'untracked' ? 'Delete file' : 'Discard changes'} aria-label={`Discard ${base}`} onClick={() => setConfirming(true)} className={iconButton}><Undo2 className="h-3.5 w-3.5" /></button>
@@ -165,7 +166,8 @@ function refBadge(ref: string): { label: string; className: string } | null {
 
 /** Recent commits of the repo, newest first, with branch and tag badges. */
 function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; repo: GitRepo; reloadKey: number }) {
-  const commits = useAsync(() => workspaceGitApi.log(workspacePath, repo.root), [workspacePath, repo.root, repo.branch, repo.ahead, repo.behind, reloadKey])
+  const git = useFileGit()
+  const commits = useAsync(() => git.api.log(workspacePath, repo.root), [workspacePath, repo.root, repo.branch, repo.ahead, repo.behind, reloadKey])
   const list = commits.value ?? []
   return (
     <Section title="Graph" count={list.length}>
@@ -202,6 +204,7 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
   /** Bumped by the view's refresh so the graph and stashes reload with the status. */
   reloadKey: number
 }) {
+  const git = useFileGit()
   const [message, setMessage] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [graphKey, setGraphKey] = useState(0)
@@ -215,7 +218,10 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
     if (await run(repo, { op: 'commit', message, all })) {
       setMessage('')
       setGraphKey(key => key + 1)
-      if (options.push && onAsk) void onAsk(gitAgentPrompts.push(repo.root))
+      if (options.push) {
+        if (git.remoteAction) await run(repo, git.remoteAction('push'))
+        else if (onAsk) void onAsk(gitAgentPrompts.push(repo.root))
+      }
     }
   }
   const headerButton = 'inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -229,10 +235,10 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
           {repo.ahead > 0 && <span className="inline-flex items-center text-emerald-500" title={`${repo.ahead} to push`}><ArrowUp className="h-3 w-3" />{repo.ahead}</span>}
           {repo.behind > 0 && <span className="inline-flex items-center text-amber-500" title={`${repo.behind} to pull`}><ArrowDown className="h-3 w-3" />{repo.behind}</span>}
         </div>
-        {onAsk && (
+        {(onAsk || git.remoteAction) && (
           <>
-            <button type="button" title="Ask the agent to pull" aria-label="Pull" onClick={() => { void onAsk(gitAgentPrompts.pull(repo.root)) }} className={headerButton}><ArrowDown className="h-3.5 w-3.5" />{repo.behind > 0 ? repo.behind : ''}</button>
-            <button type="button" title="Ask the agent to push" aria-label="Push" onClick={() => { void onAsk(gitAgentPrompts.push(repo.root)) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
+            <button type="button" title={git.remoteAction ? "Pull live knowledge" : "Ask the agent to pull"} aria-label="Pull" disabled={busy || git.writable === false} onClick={() => { if (git.remoteAction) void run(repo, git.remoteAction('pull')); else void onAsk?.(gitAgentPrompts.pull(repo.root)) }} className={headerButton}><ArrowDown className="h-3.5 w-3.5" />{repo.behind > 0 ? repo.behind : ''}</button>
+            <button type="button" title={git.remoteAction ? "Push knowledge commits" : "Ask the agent to push"} aria-label="Push" disabled={busy || git.writable === false} onClick={() => { if (git.remoteAction) void run(repo, git.remoteAction('push')); else void onAsk?.(gitAgentPrompts.push(repo.root)) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
           </>
         )}
       </div>
@@ -285,7 +291,7 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
             <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-popover shadow-md">
               <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0 }) }}>Commit</button>
               {staged.length > 0 && unstaged.length > 0 && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: true }) }}>Commit All (stage everything)</button>}
-              {onAsk && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0, push: true }) }}>Commit &amp; Push (agent)</button>}
+              {(onAsk || git.remoteAction) && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0, push: true }) }}>Commit &amp; Push{git.remoteAction ? "" : " (agent)"}</button>}
             </div>
           )}
         </div>
@@ -318,8 +324,9 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
 
 /** Source Control view: commit box and staged / unstaged changes, per repo. */
 export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string; onAsk?: AskAgent }) {
-  const repos = useWorkspaceGitStore(state => state.repos)
-  const refresh = useWorkspaceGitStore(state => state.refresh)
+  const git = useFileGit()
+  const repos = useFileGitStore(state => state.repos)
+  const refresh = useFileGitStore(state => state.refresh)
   const [busyRepo, setBusyRepo] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
@@ -328,7 +335,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
     setBusyRepo(repo.root)
     setErrors(current => ({ ...current, [repo.root]: null }))
     try {
-      await workspaceGitApi.act(workspacePath, repo.root, action)
+      await git.api.act(workspacePath, repo.root, action)
       await refresh(workspacePath)
       return true
     } catch (error) {
@@ -355,7 +362,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
           showName={repos.length > 1}
           onAsk={onAsk}
           run={run}
-          busy={busyRepo === repo.root}
+          busy={busyRepo === repo.root || git.writable === false}
           error={errors[repo.root] ?? null}
           reloadKey={reloadKey}
         />
@@ -392,21 +399,22 @@ function DiffBody({ diff, truncated, empty }: { diff: string; truncated?: boolea
 
 /** Right-hand panel: a file's diff against HEAD, or its commit history. */
 export function GitFilePanel({ workspacePath, panel, onClose, onAsk }: { workspacePath: string; panel: GitPanel; onClose: () => void; onAsk?: AskAgent }) {
-  const openPanel = useWorkspaceGitStore(state => state.openPanel)
+  const git = useFileGit()
+  const openPanel = useFileGitStore(state => state.openPanel)
   const [commit, setCommit] = useState<GitCommitInfo | null>(null)
   useEffect(() => setCommit(null), [panel.kind, panel.repo, panel.file])
   const fullPath = gitFullPath(workspacePath, panel.repo, panel.file)
 
   const diff = useAsync(
-    () => panel.kind === 'diff' ? workspaceGitApi.diff(workspacePath, panel.repo, panel.file) : Promise.resolve(null),
+    () => panel.kind === 'diff' ? git.api.diff(workspacePath, panel.repo, panel.file) : Promise.resolve(null),
     [workspacePath, panel.kind, panel.repo, panel.file],
   )
   const log = useAsync(
-    () => panel.kind === 'history' ? workspaceGitApi.log(workspacePath, panel.repo, panel.file) : Promise.resolve([] as GitCommitInfo[]),
+    () => panel.kind === 'history' ? git.api.log(workspacePath, panel.repo, panel.file) : Promise.resolve([] as GitCommitInfo[]),
     [workspacePath, panel.kind, panel.repo, panel.file],
   )
   const shown = useAsync(
-    () => panel.kind === 'history' && commit ? workspaceGitApi.show(workspacePath, panel.repo, panel.file, commit.hash) : Promise.resolve(null),
+    () => panel.kind === 'history' && commit ? git.api.show(workspacePath, panel.repo, panel.file, commit.hash) : Promise.resolve(null),
     [workspacePath, panel.kind, panel.repo, panel.file, commit?.hash],
   )
 
@@ -423,7 +431,7 @@ export function GitFilePanel({ workspacePath, panel, onClose, onAsk }: { workspa
           <button type="button" onClick={() => openPanel({ kind: 'history', repo: panel.repo, file: panel.file })} aria-pressed={panel.kind === 'history'} className={`rounded px-2 py-1 ${panel.kind === 'history' ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>History</button>
           <button type="button" onClick={() => openPanel({ kind: 'blame', repo: panel.repo, file: panel.file })} aria-pressed={panel.kind === 'blame'} className={`rounded px-2 py-1 ${panel.kind === 'blame' ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Blame</button>
           {onAsk && panel.kind === 'diff' && <button type="button" title="Ask the agent to explain these changes" onClick={() => { void onAsk(gitAgentPrompts.explainChanges(panel.repo, panel.file)) }} className="inline-flex items-center gap-1 rounded px-2 py-1 text-muted-foreground hover:bg-muted"><Sparkles className="h-3 w-3" />Explain</button>}
-          <button type="button" onClick={() => { void openWorkspaceFile(fullPath) }} className="rounded px-2 py-1 text-muted-foreground hover:bg-muted">Open file</button>
+          <button type="button" onClick={() => { void git.openFile(fullPath) }} className="rounded px-2 py-1 text-muted-foreground hover:bg-muted">Open file</button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">

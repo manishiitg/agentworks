@@ -141,16 +141,16 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	}
 }
 
-func TestKnowledgebaseBuilderOnlyAdmitsAccessTool(t *testing.T) {
+func TestKnowledgebaseBuilderOnlyAdmitsAccessAndGitTools(t *testing.T) {
 	api, service := knowledgebaseServerTest(t)
 	p := knowledgebaseproduct.BuiltinAgentProfile()
 	gate := newProductToolGate(&resolvedAgentProfile{Definition: p})
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "query_database", "agent_browser"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "query_database", "agent_browser"} {
 		if gate.Admit(name) {
 			t.Fatalf("builder admitted %s", name)
 		}
 	}
-	if !gate.Admit("manage_knowledgebase_access") {
+	if !gate.Admit("manage_knowledgebase_access") || !gate.Admit("backup_knowledgebase") {
 		t.Fatal("builder cannot manage access")
 	}
 	_, err := service.Call(t.Context(), knowledgebase.Principal{IdentityID: "admin", IsAdmin: true, AccessOnly: true}, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "blocked.md", "type": "note", "title": "Blocked", "content": "blocked", "request_id": "blocked"})

@@ -52,6 +52,7 @@ export const knowledgebaseApi = {
     const { data } = await api.get<Page & { entries?: KnowledgeEntry[] }>('/api/knowledgebase/entries', { params: { limit: 50, ...params }, signal })
     return { entries: (data.items ? data.items.filter(item => item.kind === 'entry' || item.entry_id) : data.entries || []) as KnowledgeEntry[], next_cursor: data.next_cursor || undefined }
   },
+  readPath: async (path: string, signal?: AbortSignal): Promise<KnowledgeRead> => (await api.get('/api/knowledgebase/read', { params: { path }, signal })).data,
   read: async (entry_id: string, signal?: AbortSignal): Promise<KnowledgeRead> => (await api.get('/api/knowledgebase/read', { params: { entry_id }, signal })).data,
   search: async (params: KnowledgeListQuery & { query: string }, signal?: AbortSignal): Promise<{ results: Array<{ entry: KnowledgeEntry; excerpt?: string }>; next_cursor?: string }> => {
     const { data } = await api.get('/api/knowledgebase/search', { params: { limit: 50, ...params }, signal })

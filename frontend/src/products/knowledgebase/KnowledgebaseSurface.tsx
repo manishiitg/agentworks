@@ -169,7 +169,7 @@ export function KnowledgebaseSurface() {
               examples={['Who can read this folder?', 'Give Priya read access to Payments', 'Change a folder grant', 'Revoke access to a service']} />}
           /> : <p className="p-5 text-xs text-muted-foreground">Connecting access chat…</p>}</div></div>}
           divider={<WorkspaceSplitRail ratio={ratio} onPointerDown={startResize} onStep={delta => changeRatio(ratio + delta)} className="md:row-start-2" onCollapseChat={() => setCollapsed('chat')} onCollapseWorkspace={() => setCollapsed('workspace')} />}
-          workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} revision={revision} modelSettings={<KnowledgebaseModelSettings tabId={tabId} />} />}
+          workspace={<KnowledgebaseWorkspacePane view={view} folder={folder} onFolder={setFolder} onAsk={askAccess} onGitAsk={askChat} revision={revision} modelSettings={<KnowledgebaseModelSettings tabId={tabId} />} />}
         /></div>}
       </div>
     </div>

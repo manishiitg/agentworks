@@ -477,6 +477,13 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
+	serveWorkspaceGitRead(w, r, ctx, repoDir)
+}
+
+// Shared read implementation; callers must authorize and select the repository.
+func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.Context, repoDir string) {
+	query := r.URL.Query()
+	op := query.Get("op")
 	file := ""
 	if raw := query.Get("file"); raw != "" {
 		clean, ok := workspaceGitRelFile(raw)

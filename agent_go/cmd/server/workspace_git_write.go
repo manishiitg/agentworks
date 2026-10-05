@@ -225,6 +225,11 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		return
 	}
 
+	serveWorkspaceGitAction(w, r, repoDir, req, claims)
+}
+
+// Shared action implementation; callers must authorize and select the repository.
+func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, repoDir string, req workspaceGitActionRequest, claims *UserClaims) {
 	unlock := workspaceGitLock(repoDir)
 	defer unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), workspaceGitWriteTimeout)
@@ -466,10 +471,6 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
-	rel, _ := filepath.Rel(realBase, repoDir)
-	if rel == "." {
-		rel = ""
-	}
-	repo.Root = filepath.ToSlash(rel)
+	repo.Root = req.Repo
 	writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"ok": true, "repo": repo})
 }
