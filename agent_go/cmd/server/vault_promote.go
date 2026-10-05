@@ -73,12 +73,11 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 		return fmt.Sprintf("Promoting %q copies its existing sign-in into Vault as a new shared connection (no new sign-in). Anyone in a group you later grant it to will use it as the account that signed in. No group is given access by this step, and the personal connection stays as it is. Call promote_place_connection again with confirm=true to go ahead.", name), nil
 	}
 
-	provider := strings.TrimSpace(server.Catalog)
 	id, createErr := "", error(nil)
 	if vaultID == "" {
-		id, createErr = createPlatformVaultConnection(ctx, person, provider, server)
+		id, createErr = createPlatformVaultConnection(ctx, person, server)
 	} else {
-		id, createErr = createOwnVaultConnection(ctx, person, vaultID, provider, server)
+		id, createErr = createOwnVaultConnection(ctx, person, vaultID, server)
 	}
 	if createErr != nil {
 		return "", fmt.Errorf("create the Vault connection: %w", createErr)
@@ -166,14 +165,12 @@ func vaultPromoteJSON(value any) json.RawMessage {
 }
 
 // createPlatformVaultConnection creates the connection in the platform Vault, as connect_server does.
-func createPlatformVaultConnection(ctx context.Context, person, provider string, server placeMCPServer) (string, error) {
-	var created string
-	var err error
-	if provider = resolveVaultProvider(ctx, provider, server.URL); provider != "" {
-		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"provider": provider, "label": server.Label}))
-	} else {
-		created, err = capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"name": server.Name, "url": server.URL}))
+func createPlatformVaultConnection(ctx context.Context, person string, server placeMCPServer) (string, error) {
+	provider, err := vaultCatalogProvider(ctx, server.URL)
+	if err != nil {
+		return "", err
 	}
+	created, err := capLayerAgentAccess(ctx, person, "connect_server", vaultPromoteJSON(map[string]string{"provider": provider, "label": server.Label}))
 	if err != nil {
 		return "", err
 	}
@@ -189,15 +186,13 @@ func createPlatformVaultConnection(ctx context.Context, person, provider string,
 }
 
 // createOwnVaultConnection creates the connection inside a vault the person owns (the Vault service checks ownership).
-func createOwnVaultConnection(ctx context.Context, person, vaultID, provider string, server placeMCPServer) (string, error) {
+func createOwnVaultConnection(ctx context.Context, person, vaultID string, server placeMCPServer) (string, error) {
 	path := "/api/vaults/" + url.PathEscape(vaultID) + "/connectors"
-	var data []byte
-	var err error
-	if provider = resolveVaultProvider(ctx, provider, server.URL); provider != "" {
-		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": provider, "Label": server.Label}))
-	} else {
-		data, err = vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": server.Name, "Label": server.Name, "URL": server.URL}))
+	provider, err := vaultCatalogProvider(ctx, server.URL)
+	if err != nil {
+		return "", err
 	}
+	data, err := vaultPersonRequest(ctx, person, http.MethodPost, path, vaultPromoteJSON(map[string]string{"Provider": provider, "Label": server.Label}))
 	if err != nil {
 		return "", err
 	}
@@ -208,31 +203,25 @@ func createOwnVaultConnection(ctx context.Context, person, vaultID, provider str
 	return made.ID, nil
 }
 
-// resolveVaultProvider returns the Vault catalog entry that matches the connection: the one whose URL is the same (the
-// place connection's own catalog name is not necessarily a Vault catalog name), else the given name if the catalog has
-// it, else "" (a custom server). A catalog entry is created without contacting the server; a bare URL is not, so a server
-// that needs a sign-in can only be created from the catalog.
-func resolveVaultProvider(ctx context.Context, given, rawURL string) string {
+// vaultCatalogProvider returns the Vault catalog entry whose URL is the connection's. A catalog entry is created without
+// contacting the server, and the existing sign-in is then attached; a server that is not in the catalog cannot be created
+// without a sign-in, so there is no other path: it is refused with the reason.
+func vaultCatalogProvider(ctx context.Context, rawURL string) (string, error) {
 	data, err := vaultServiceRequest(ctx, "", http.MethodGet, "/api/admin/catalog", nil)
 	if err != nil {
-		return strings.TrimSpace(given)
+		return "", fmt.Errorf("read the Vault catalog: %w", err)
 	}
 	var catalog struct {
 		Providers []struct{ Name, URL string } `json:"providers"`
 	}
-	if json.Unmarshal(data, &catalog) != nil {
-		return strings.TrimSpace(given)
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		return "", errors.New("the Vault catalog could not be read")
 	}
 	norm := func(u string) string { return strings.TrimRight(strings.ToLower(strings.TrimSpace(u)), "/") }
 	for _, p := range catalog.Providers {
-		if rawURL != "" && norm(p.URL) == norm(rawURL) {
-			return p.Name
+		if norm(p.URL) == norm(rawURL) {
+			return p.Name, nil
 		}
 	}
-	for _, p := range catalog.Providers {
-		if given != "" && strings.EqualFold(p.Name, strings.TrimSpace(given)) {
-			return p.Name
-		}
-	}
-	return ""
+	return "", fmt.Errorf("%s is not in the Vault catalog, so it cannot be promoted: add it to the catalog first", rawURL)
 }
