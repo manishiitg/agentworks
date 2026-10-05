@@ -87,7 +87,7 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 		return
 	}
 	sessionID := workflowAskSessionID(manifest.ID, caller.Stamp, call.UserID)
-	sharedOwner := projectsShareOwner(api.productSchedules.projectCallerOwners(ctx, call.UserID, caller), manifest.effectiveOwners())
+	sharedOwner := projectsShareOwner(api.productSchedules.projectCallerOwners(ctx, call.UserID, caller), workflowProjectCallOwners(manifest))
 	if sharedOwner {
 		// Workflow chats are private to the executing user. Never restore
 		// another owner's transcript or substitute that owner as principal.

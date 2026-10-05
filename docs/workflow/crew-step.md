@@ -112,6 +112,10 @@ workflow with several owners only needs one owner in common with the target.
 The logged-in or executing person does not replace these project owners.
 Existing access checks and guest permissions remain in effect.
 
+On single-user installs only, a legacy workflow with no `access` block or
+`created_by` stamp uses the configured local account (`DEFAULT_USER_ID`, or
+`default`) as its owner for routing. SSO servers keep unknown owners isolated.
+
 This rule overrides the stored `run_destination` of internal project bindings.
 External webhooks and schedules still choose `crew_chat` or `isolated` in their
 settings. An isolated chat retains earlier deliveries through the same trigger;

@@ -94,6 +94,13 @@ trigger and, for a guest call, the calling person. Unknown ownership also
 uses a separate chat. Follow-up calls reuse that chat; isolation does not
 create a new project or copy its files.
 
+On single-user local installs, legacy workflows with neither an access block
+nor a creator stamp belong to the configured local account (`DEFAULT_USER_ID`,
+defaulting to `default`) for this routing decision. This applies both to
+workflow step calls and assistant calls. Explicit ownership is preserved;
+multi-user/SSO servers never infer an owner for a legacy workflow. The
+executing user is never used as a fallback owner.
+
 The same rule applies to a workflow's `ask` assistant. Workflow main chats are
 private to each account: a same-owner project call uses the **executing user's**
 visible workflow chat, never another owner's private transcript. Cross-owner

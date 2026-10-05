@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	productschedule "github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
@@ -27,6 +28,123 @@ func TestProjectsShareAnyOwner(t *testing.T) {
 				t.Fatalf("share owner = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestWorkflowProjectCallOwnersLegacyLocalOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		multi    bool
+		manifest *WorkflowManifest
+		want     string
+	}{
+		{"local legacy", false, &WorkflowManifest{}, "local-account"},
+		{"server legacy", true, &WorkflowManifest{}, ""},
+		{"local explicit owner", false, &WorkflowManifest{Access: &WorkflowAccess{Owners: []string{"other"}}}, "other"},
+		{"local creator", false, &WorkflowManifest{CreatedBy: "creator"}, "creator"},
+		{"local explicit empty access", false, &WorkflowManifest{Access: &WorkflowAccess{}}, ""},
+		{"missing manifest", false, nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MULTI_USER_MODE", "false")
+			if tc.multi {
+				t.Setenv("MULTI_USER_MODE", "true")
+			}
+			t.Setenv("DEFAULT_USER_ID", "local-account")
+			owners := workflowProjectCallOwners(tc.manifest)
+			if tc.want == "" && len(owners) != 0 || tc.want != "" && (len(owners) != 1 || owners[0] != tc.want) {
+				t.Fatalf("owners = %v, want %q", owners, tc.want)
+			}
+		})
+	}
+}
+
+func TestLegacyWorkflowTriggerRoutesLocalOwnerToMainChat(t *testing.T) {
+	for _, tc := range []struct {
+		name, path string
+		multi      bool
+	}{
+		{"local builder", "Workflow/reports", false},
+		{"local plan step", "", false},
+		{"server builder", "Workflow/reports", true},
+		{"server plan step", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newTriggerLinkEnv(t)
+			t.Setenv("DEFAULT_USER_ID", "owner")
+			if !tc.multi {
+				t.Setenv("MULTI_USER_MODE", "false")
+			}
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+			manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
+			manifest.Access, manifest.CreatedBy = nil, ""
+			raw, _ := json.Marshal(manifest)
+			env.mock.files[manifestPath("Workflow/reports")] = string(raw)
+			caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Path: tc.path}
+			target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
+			if err != nil {
+				t.Fatal(err)
+			}
+			triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, "legacy-routing", "test", map[string]interface{}{"task": "test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			env.svc.mu.Lock()
+			defer env.svc.mu.Unlock()
+			for _, queue := range env.svc.queued {
+				for _, item := range queue {
+					if item.options.RunID == delivery.RunID {
+						if item.job.Schedule.Isolated != tc.multi {
+							t.Fatalf("isolated = %v, want %v", item.job.Schedule.Isolated, tc.multi)
+						}
+						if err := env.svc.validateProjectCallConversation(ctx, item.job); err != nil {
+							t.Fatalf("queued ownership recheck: %v", err)
+						}
+						return
+					}
+				}
+			}
+			t.Fatal("delivery did not queue")
+		})
+	}
+}
+
+func TestLegacyLocalCrewStepAdoptsMainChatDelivery(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("DEFAULT_USER_ID", "owner")
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
+	manifest.Access, manifest.CreatedBy = nil, ""
+	raw, _ := json.Marshal(manifest)
+	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}}
+	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := stepworkflow.CrewStepRequest{WorkflowID: manifest.ID, ExecutionID: "exec-local", StepID: "notify", Group: "default", ProfileID: "work", ProjectID: "beta", TriggerID: triggerID, TimeoutSeconds: 1}
+	deliveryID := crewStepDeliveryBase(req.WorkflowID, req.ExecutionID, req.Group, req.StepID, req.TriggerID, runDestinationCrewChat)
+	delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, deliveryID, "test", map[string]interface{}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateScheduleRunResult(ctx, linkBetaPath, delivery.RunID, ScheduleRunCompletion{Status: "success", SessionID: "sess-beta", FinalResponse: "Recorded"}); err != nil {
+		t.Fatal(err)
+	}
+	deadline, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	result, err := newCrewStepRunner(env.svc, "owner").RunCrewStep(deadline, req)
+	if err != nil || result.CrewRunID != delivery.RunID || result.SessionID != "sess-beta" || result.FinalResponse != "Recorded" {
+		t.Fatalf("local main-chat delivery was not adopted: result=%+v err=%v", result, err)
 	}
 }
 

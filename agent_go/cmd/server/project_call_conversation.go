@@ -8,7 +8,8 @@ import (
 
 // Conversation routing is based on the two projects' recorded owners. The
 // executing user may be a reader/editor, so their identity is not an owner
-// fallback. Missing or ambiguous ownership keeps the call isolated.
+// fallback. Legacy workflows on single-user installs belong to the configured
+// local account. Missing or ambiguous ownership on servers keeps calls isolated.
 func projectsShareOwner(source, target []string) bool {
 	for _, a := range source {
 		a = strings.TrimSpace(a)
@@ -22,6 +23,23 @@ func projectsShareOwner(source, target []string) bool {
 		}
 	}
 	return false
+}
+
+// workflowProjectCallOwners preserves the local legacy ownership convention
+// without inferring ownership from the user executing a call. An explicit access
+// block (including an empty one) always wins; multi-user deployments require
+// recorded owners. Keep this routing fallback separate from manifest grants.
+func workflowProjectCallOwners(manifest *WorkflowManifest) []string {
+	if manifest == nil {
+		return nil
+	}
+	if owners := manifest.effectiveOwners(); len(owners) > 0 {
+		return owners
+	}
+	if manifest.Access == nil && !IsMultiUserMode() {
+		return []string{GetDefaultUserID()}
+	}
+	return nil
 }
 
 // A queued call must not enter a main chat using an ownership decision that
@@ -46,7 +64,7 @@ func (s *ProductScheduleService) projectCallerOwners(ctx context.Context, userID
 		if caller.Path != "" {
 			manifest, exists, err := ReadWorkflowManifest(ctx, caller.Path)
 			if err == nil && exists && manifest != nil && manifest.ID == caller.Stamp.ID {
-				return manifest.effectiveOwners()
+				return workflowProjectCallOwners(manifest)
 			}
 			return nil
 		}
@@ -62,7 +80,7 @@ func (s *ProductScheduleService) projectCallerOwners(ctx context.Context, userID
 				if found {
 					return nil
 				}
-				owners, found = workflow.Manifest.effectiveOwners(), true
+				owners, found = workflowProjectCallOwners(workflow.Manifest), true
 			}
 		}
 		return owners
