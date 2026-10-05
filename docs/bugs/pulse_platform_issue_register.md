@@ -202,6 +202,14 @@ usable node_modules if the install fails.
 
 [PLAT-527](pulse_platform/frontend-chat/plat-527.md), open: cause not found, three suspects, needs a reproduction.
 
+## Working spinner moved to the bottom of the chat, with text — PLAT-528
+
+[PLAT-528](pulse_platform/frontend-chat/plat-528.md), fixed on main: the status line is a footer under the last message.
+
+## formsKitAdoption test fails on main — PLAT-529
+
+[PLAT-529](pulse_platform/frontend-chat/plat-529.md), open: pre-existing, found while testing PLAT-528.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its

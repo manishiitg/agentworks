@@ -50,6 +50,7 @@ type TranscriptHistoryContext = {
   hasOlder: boolean
   loadingOlder: boolean
   onLoadOlder: () => void
+  activity?: ChatRuntimeActivity
 }
 
 // Keep history navigation inside the virtual scroller. A fixed sibling header
@@ -63,7 +64,26 @@ const TranscriptHistoryHeader = ({ context }: { context?: TranscriptHistoryConte
     </button>
   </div>
 }
-const transcriptComponents = { Header: TranscriptHistoryHeader }
+
+// The agent's working state sits under the last message, inside the scroller, so it is visible while
+// reading the end of a very long reply (at the top of the turn it scrolled out of sight). The row keeps
+// the same height whether or not the agent is working, so it appearing never moves the list.
+const ACTIVITY_TEXT: Record<string, string> = {
+  running: 'Working…',
+  'background running': 'Background agent running…',
+  'waiting for input': 'Waiting for your input',
+}
+const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryContext }) => {
+  const activity = context?.activity
+  const working = activity !== undefined && activity.state !== 'ready'
+  return <div data-testid="transcript-activity-footer" className="flex h-7 items-center gap-2 px-3 text-xs text-muted-foreground">
+    {working && <>
+      <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
+      <span>{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
+    </>}
+  </div>
+}
+const transcriptComponents = { Header: TranscriptHistoryHeader, Footer: TranscriptActivityFooter }
 
 // Clean view = the SAME rich event components the tree used, laid out as one
 // flat chronological conversation for a single terminal.
@@ -324,7 +344,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
 // The turn's header line: who spoke, turn, duration, time. It sits at the top
 // of the agent's block, which starts at the turn's first tool call when there
 // is one, so tool work reads as part of the reply rather than a stray chip.
-const AssistantTurnHeader = memo(function AssistantTurnHeader({ event, timestamp, label = 'Agent', icon, activity }: { event?: PollingEvent; timestamp: string; label?: string; icon?: React.ReactNode; activity?: ChatRuntimeActivity }) {
+const AssistantTurnHeader = memo(function AssistantTurnHeader({ event, timestamp, label = 'Agent', icon }: { event?: PollingEvent; timestamp: string; label?: string; icon?: React.ReactNode }) {
   const fields = event ? transcriptEventPayload(event) : {}
   // Only a reply event's duration describes the turn. When the header falls
   // back to the block's first tool call, that event's duration is one shell
@@ -345,7 +365,6 @@ const AssistantTurnHeader = memo(function AssistantTurnHeader({ event, timestamp
     <div data-testid="terminal-clear-assistant-header" aria-label={label} className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground [&>img]:h-4 [&>img]:w-4 [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">{mark}</span>
       {label !== 'Agent' && <span>{label}</span>}
-      {activity && <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />}
       {metadata && <>
         <span className="h-1 w-1 rounded-full bg-muted-foreground/60" />
         <span className="normal-case font-medium tracking-normal text-muted-foreground">{metadata}</span>
@@ -910,9 +929,6 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     [items, streamingStatus, streamingText, runtimeActivity?.state],
   )
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
-  // Only the most recent turn owns the live indicator. Historical headers
-  // keep their recorded duration, even while a new turn is starting.
-  const activeTurnHeader = turnSlots.reduce((last, slot, index) => slot.first ? index : last, -1)
 
   const keys = useMemo(() => listData.map(item => item.key), [listData])
   const [pagination, setPagination] = useState(() => ({ keys, first: 1_000_000 }))
@@ -958,7 +974,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     hasOlder: Boolean(hasOlder && onLoadOlder),
     loadingOlder,
     onLoadOlder: handleEarlierMessages,
-  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages])
+    activity: runtimeActivity,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()
@@ -1087,7 +1104,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           return (
             <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-2">
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
-                {slot.first && <AssistantTurnHeader event={slot.header} timestamp={slot.showTime && slot.header ? transcriptTimestamp(slot.header) : ''} label={assistantLabel} icon={assistantIcon} activity={index === activeTurnHeader ? runtimeActivity : undefined} />}
+                {slot.first && <AssistantTurnHeader event={slot.header} timestamp={slot.showTime && slot.header ? transcriptTimestamp(slot.header) : ''} label={assistantLabel} icon={assistantIcon} />}
                 {body}
               </div>
             </div>

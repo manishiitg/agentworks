@@ -9,8 +9,8 @@ import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
 
 vi.mock('react-virtuoso', () => ({
-  Virtuoso: ({ data, firstItemIndex, itemContent, computeItemKey }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode; computeItemKey: (index: number, item: unknown) => string }) => (
-    <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}</div>
+  Virtuoso: ({ data, firstItemIndex, itemContent, computeItemKey, components, context }: { components?: { Footer?: React.ComponentType<{ context?: unknown }> }; context?: unknown; data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode; computeItemKey: (index: number, item: unknown) => string }) => (
+    <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}{components?.Footer && <components.Footer context={context} />}</div>
   ),
 }))
 vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
@@ -36,6 +36,7 @@ async function mount(props: Partial<TerminalEventTranscriptProps>) {
   return { host, render }
 }
 function indicators(host: HTMLElement) { return host.querySelectorAll('[data-testid="agent-runtime-activity"]') }
+function footer(host: HTMLElement) { return host.querySelector('[data-testid="transcript-activity-footer"]') as HTMLElement }
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
 describe('activity belongs to the current agent turn', () => {
@@ -90,7 +91,7 @@ describe('activity belongs to the current agent turn', () => {
     expect(answerCount(restored.host)).toBe(3)
   })
 
-  it('removes the actual header spinner when the turn completes while cache and tab flags remain running', async () => {
+  it('removes the footer spinner when the turn completes while cache and tab flags remain running', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const original = useChatStore.getState()
     useChatStore.setState({
@@ -116,13 +117,16 @@ describe('activity belongs to the current agent turn', () => {
       useChatStore.setState({ tabEvents: { 'chat-a': [user, completed, event('next-user', 'user_message', { content: 'Check again' })] } })
     })
     expect(indicators(host)).toHaveLength(1)
+    expect(footer(host).querySelector('[role="status"]')).not.toBeNull()
     expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
   })
   it.each([{ events: [] }, { events: [user] }])('shows the agent before any response or tool event arrives', async ({ events }) => {
     const { host } = await mount({ events, runtimeActivity: running })
     expect(headers(host)).toHaveLength(1)
     expect(indicators(host)).toHaveLength(1)
-    expect(headers(host)[0].querySelector('.animate-spin')).not.toBeNull()
+    expect(footer(host).querySelector('.animate-spin')).not.toBeNull()
+    expect(footer(host).textContent).toContain('Working…')
+    expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
   })
   it('keeps a single stable header and spinner through streamed token updates', async () => {
     const props = { events: [user], runtimeActivity: running }
@@ -146,7 +150,9 @@ describe('activity belongs to the current agent turn', () => {
     expect(headers(host)).toHaveLength(2)
     expect(headers(host)[0].textContent).toContain('32.1s')
     expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
-    expect(headers(host)[1].querySelector('[role="status"]')).not.toBeNull()
+    expect(headers(host)[1].querySelector('[role="status"]')).toBeNull()
+    expect(indicators(host)).toHaveLength(1)
+    expect(footer(host).querySelector('[role="status"]')).not.toBeNull()
   })
   it('replaces the pending spinner with recorded duration at completion', async () => {
     const { host, render } = await mount({ events: [user], runtimeActivity: running })
@@ -159,6 +165,7 @@ describe('activity belongs to the current agent turn', () => {
   it('shows accessible amber waiting instead of a spinner', async () => {
     const { host } = await mount({ events: [user], runtimeActivity: { state: 'waiting', label: 'waiting for input' }, assistantLabel: 'Quill' })
     expect(headers(host)[0].textContent).toContain('Quill')
+    expect(footer(host).textContent).toContain('Waiting for your input')
     expect(indicators(host)[0].getAttribute('aria-label')).toBe('waiting for input')
     expect(indicators(host)[0].querySelector('.animate-spin')).toBeNull()
     expect(indicators(host)[0].querySelector('.bg-amber-400')).not.toBeNull()
@@ -175,6 +182,7 @@ describe('activity belongs to the current agent turn', () => {
   it('keeps recorded history quiet without a live session', async () => {
     const { host } = await mount({ events: [user, completed] })
     expect(indicators(host)).toHaveLength(0)
+    expect(footer(host).textContent).toBe('')
     expect(headers(host)[0].textContent).toContain('32.1s')
   })
 })
