@@ -28,6 +28,7 @@ import { getExecutionModeVisuals } from '../nodes/executionModeVisuals'
 import { edgeTypes } from '../edges'
 import { routeTraceFromEdge, traceRouteGraph, type RouteTrace } from './routeTrace'
 import { usePlanTriggers } from './usePlanTriggers'
+import { planNodesChanged, planEdgesChanged } from './planGraphUpdates'
 import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 import { appendTriggerCards, traceTriggerGraph } from './triggerLayout'
 import { WorkflowTriggerNode, WorkflowTriggerHeading } from '../nodes/WorkflowTriggerNodes'
@@ -40,7 +41,6 @@ import {
 } from '../../../utils/reportPreviewPreference'
 import type { PlanChanges } from '../hooks/usePlanData'
 import { usePlanToFlow, type WorkflowNode, type WorkflowEdge, type WorkflowNodeData, type StepNodeData, type RoutingStepNodeData } from '../hooks/usePlanToFlow'
-import type { VariablesNodeData } from '../nodes/VariablesNode'
 import { useWorkspaceViewData, type WorkflowImageExportFormat } from './workspaceViewData'
 import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
@@ -1202,7 +1202,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const viewData = useWorkspaceViewData()
   const { variablesManifest, isLoadingVariables, setVariablesManifest } = viewData
   const [showVariablesSidebar, setShowVariablesSidebar] = React.useState(false)
-  const [selectedFlowNode, setSelectedFlowNode] = React.useState<WorkflowNode | null>(null)
+  const [selectedFlowNodeID, setSelectedFlowNodeID] = React.useState<{ workspace: string | null | undefined; id: string } | null>(null)
+  const planWorkspaceRef = React.useRef(workspacePath)
+  planWorkspaceRef.current = workspacePath
   const pendingPlanStepFocusRef = React.useRef<string | null>(null)
   
   // Workflow store actions
@@ -1373,19 +1375,26 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     setVariablesManifestInStore(manifest)
   }, [setVariablesManifest, setVariablesManifestInStore])
 
-  // The in-canvas Plan control is intentionally narrower than the canvas-wide
-  // refresh used by the toolbar and imperative API: it reloads plan inputs and triggers.
+  // Reload every file-backed input shown in the plan, including variables.
   const handlePlanRefresh = useCallback(async () => {
-    if (isRefreshingPlan) return
+    if (isRefreshingPlan || !workspacePath) return
     setIsRefreshingPlan(true)
     try {
       refreshTriggers()
-      const reloaded = await loadPlanRefresh()
+      const [reloaded, variables] = await Promise.all([
+        loadPlanRefresh(),
+        agentApi.getVariableGroups(workspacePath),
+      ])
+      if (planWorkspaceRef.current !== workspacePath) return
+      if (!variables.success) throw new Error(variables.error || 'Variables could not be reloaded')
+      setVariablesManifest(variables.manifest ?? null)
+      setVariablesManifestInStore(variables.manifest ?? null)
       if (!reloaded) {
         throw new Error('Plan could not be reloaded')
       }
       useChatStore.getState().addToast('Plan reloaded', 'success')
     } catch (err) {
+      if (planWorkspaceRef.current !== workspacePath) return
       useChatStore.getState().addToast(
         err instanceof Error ? err.message : 'Failed to reload plan',
         'error'
@@ -1393,7 +1402,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     } finally {
       setIsRefreshingPlan(false)
     }
-  }, [isRefreshingPlan, loadPlanRefresh, setIsRefreshingPlan, refreshTriggers])
+  }, [isRefreshingPlan, loadPlanRefresh, setIsRefreshingPlan, refreshTriggers, workspacePath, setVariablesManifest, setVariablesManifestInStore])
 
   const [selectedTrigger, setSelectedTrigger] = React.useState<{ workspace: string | null; id: string } | null>(null)
   const selectedTriggerJob = selectedTrigger?.workspace === workspacePath ? triggers.jobs.find(job => job.id === selectedTrigger.id) : undefined
@@ -1404,13 +1413,17 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   // React Flow state (need to define before usePlanToFlow to use in callbacks)
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<WorkflowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>([])
+  // Keep the selection by ID; details always read the current graph after reload.
+  const selectedFlowNode = selectedFlowNodeID?.workspace === workspacePath
+    ? nodes.find(node => node.id === selectedFlowNodeID.id) ?? null
+    : null
   const [routeTrace, setRouteTrace] = React.useState<(RouteTrace & { workspace: string | null | undefined }) | null>(null)
   const traceSource = routeTrace && routeTrace.workspace === workspacePath ? nodes.find(node => node.id === routeTrace.nodeId) : undefined
   const tracedRoute = (traceSource?.data as RoutingStepNodeData | undefined)?.routes?.find(route => route.route_id === routeTrace?.routeId)
   const activeTrace = tracedRoute ? routeTrace : null
   const selectTrigger = useCallback((id: string) => {
     setRouteTrace(null)
-    setSelectedFlowNode(null)
+    setSelectedFlowNodeID(null)
     setSelectedTrigger(current => current?.workspace === workspacePath && current.id === id ? null : { workspace: workspacePath, id })
   }, [workspacePath])
   const triggerFlow = React.useMemo(() => appendTriggerCards(nodes, edges, triggers.jobs, {
@@ -1431,7 +1444,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     : traceRouteGraph(triggerFlow.nodes, triggerFlow.edges, activeTrace), [triggerFlow, selectedTriggerJob, activeTrace])
   const toggleRouteTrace = useCallback((trace: RouteTrace) => {
     setSelectedTrigger(null)
-    setSelectedFlowNode(null)
+    setSelectedFlowNodeID(null)
     setRouteTrace(current => current?.workspace === workspacePath && current.nodeId === trace.nodeId && current.routeId === trace.routeId
       ? null : { workspace: workspacePath, ...trace })
   }, [workspacePath])
@@ -1844,12 +1857,12 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     }
 
     setShowVariablesSidebar(false)
-    setSelectedFlowNode(nodeToShow)
+    setSelectedFlowNodeID({ workspace: workspacePath, id: nodeToShow.id })
     // The pane may be transitioning from hidden/report to flow. Focus after
     // that layout change so the node lands inside the final-sized viewport.
     focusNode(nodeToShow.id, { topPadding: 100, delay: 350 })
     return true
-  }, [focusNode])
+  }, [focusNode, workspacePath])
 
   useLayoutEffect(() => {
     const handlePlanStepFocus = (event: Event) => {
@@ -2021,66 +2034,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       return // No change
     }
     
-    // Compare by length, IDs, node data (status), and step configs to detect actual changes
-    const nodesChanged =
-      prevNodesRef.current.length !== initialNodes.length ||
-      prevNodesRef.current.some((node, i) => {
-        const newNode = initialNodes[i]
-        if (!newNode) return true
-        // Check if ID changed
-        if (node?.id !== newNode.id) return true
-        // Check if position changed (important for layout direction changes)
-        if (node?.position?.x !== newNode.position?.x || node?.position?.y !== newNode.position?.y) return true
-        // Check if status changed (important for completed steps highlighting)
-        if (node?.data?.status !== newNode.data?.status) return true
-        
-        // Check if VariablesNode manifest changed
-        if (node?.type === 'variables' || newNode.type === 'variables') {
-          const oldData = node?.data as VariablesNodeData | undefined
-          const newData = newNode.data as VariablesNodeData | undefined
-          const oldManifest = oldData?.manifest
-          const newManifest = newData?.manifest
-          const oldManifestStr = JSON.stringify(oldManifest)
-          const newManifestStr = JSON.stringify(newManifest)
-          if (oldManifestStr !== newManifestStr) {
-            console.log(`[WorkflowPlanUpdate] Variables node manifest changed`)
-            return true
-          }
-        }
-        
-        // Check if step data changed (especially agent_configs)
-        // This is important when saving config in the side panel
-        const oldData = node?.data as StepNodeData | undefined
-        const newData = newNode?.data as StepNodeData | undefined
-        const oldStep = oldData?.step
-        const newStep = newData?.step
-        if (oldStep && newStep) {
-          // Compare agent_configs by JSON stringify (handles nested objects)
-          const oldConfigs = JSON.stringify(oldStep.agent_configs || {})
-          const newConfigs = JSON.stringify(newStep.agent_configs || {})
-          if (oldConfigs !== newConfigs) {
-            console.log(`[WorkflowPlanUpdate] Node ${node.id} agent_configs changed`)
-            return true
-          }
-          // Also check if other step fields changed
-          const oldStepStr = JSON.stringify(oldStep)
-          const newStepStr = JSON.stringify(newStep)
-          if (oldStepStr !== newStepStr) {
-            console.log(`[WorkflowPlanUpdate] Node ${node.id} step data changed`)
-            return true
-          }
-        } else if (oldStep !== newStep) {
-          // One has step data and the other doesn't
-          console.log(`[WorkflowPlanUpdate] Node ${node.id} step data presence changed`)
-          return true
-        }
-        return false
-      })
-    
-    const edgesChanged = 
-      prevEdgesRef.current.length !== initialEdges.length ||
-      prevEdgesRef.current.some((edge, i) => edge?.id !== initialEdges[i]?.id)
-    
+    const nodesChanged = planNodesChanged(prevNodesRef.current, initialNodes)
+    const edgesChanged = planEdgesChanged(prevEdgesRef.current, initialEdges)
+
     if (nodesChanged) {
       // Nodes changed - will apply positions from usePlanToFlow
       console.log(`%c[WorkflowCanvas] setNodes: ${initialNodes.length} nodes (preset: ${presetQueryId?.slice(0,8)})`, 'color: #4CAF50')
@@ -2439,7 +2395,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       if (event.key === 'Escape') {
         setSelectedTrigger(null)
         setRouteTrace(null)
-        setSelectedFlowNode(null)
+        setSelectedFlowNodeID(null)
       }
     }
 
@@ -2451,15 +2407,17 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     if (node.type === 'workflow-trigger' || node.type === 'workflow-trigger-heading') return
     if (node.type === 'variables') {
       setShowVariablesSidebar(true)
-      setSelectedFlowNode(null)
+      setSelectedFlowNodeID(null)
       return
     }
-    setSelectedFlowNode(current => current?.id === node.id ? null : node)
-  }, [])
+    setSelectedFlowNodeID(current => current?.workspace === workspacePath && current.id === node.id
+      ? null
+      : { workspace: workspacePath, id: node.id })
+  }, [workspacePath])
   const onPaneClick = useCallback(() => {
     setSelectedTrigger(null)
     setRouteTrace(null)
-    setSelectedFlowNode(null)
+    setSelectedFlowNodeID(null)
   }, [])
 
   // The toolbar (owned by WorkspaceViewHost) triggers image export through
@@ -2667,7 +2625,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
           <ReadOnlyStepDetailPanel
             node={selectedFlowNode}
             workspacePath={workspacePath}
-            onClose={() => setSelectedFlowNode(null)}
+            onClose={() => setSelectedFlowNodeID(null)}
           />
         )}
 

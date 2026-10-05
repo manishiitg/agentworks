@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { agentApi } from '../../../services/api'
 import { usePlanData } from './usePlanData'
 vi.mock('../../../utils/whenWorkflowChatSettled', () => ({ whenWorkflowChatSettled: () => Promise.resolve() }))
-vi.mock('../../../services/api',()=>({agentApi:{getPlannerFileContent:vi.fn(),getPlanChangelog:vi.fn()}}))
+vi.mock('../../../services/api',()=>({agentApi:{getPlannerFileContent:vi.fn(),getPlanChangelog:vi.fn(),updatePlanStep:vi.fn(),updateStepConfig:vi.fn(),deleteStep:vi.fn(),addStep:vi.fn()}}))
 vi.mocked(agentApi.getPlanChangelog).mockResolvedValue({success:true,entries:[],count:0})
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 it('loads plan/config concurrently, shares requests and ignores a late previous workflow',async()=>{
@@ -64,5 +64,38 @@ it('keeps the current graph visible while a live refresh reads the edited plan',
   expect(data!.loading).toBe(false)
   await act(async()=>{resolveFresh!({success:true,data:{content:'{"steps":[{"id":"new","type":"regular","title":"New"}]}'}});await refreshed})
   expect(data!.plan?.steps[0].id).toBe('new')
+ }finally{act(()=>root.unmount())}
+})
+
+// A successful save must not read back the cached pre-save plan.
+it('reloads persisted edits, additions and deletions instead of the pre-write cache', async () => {
+ let stored = [{id:'original',type:'regular' as const,title:'Before'}]
+ vi.mocked(agentApi.getPlannerFileContent).mockImplementation(async path => ({
+  success:true,data:{content:JSON.stringify({steps:path.endsWith('/plan.json') ? stored : []})},
+ }))
+ vi.mocked(agentApi.updatePlanStep).mockImplementation(async () => {
+  stored = [{...stored[0],title:'After'}]
+  return {success:true,message:'Saved'}
+ })
+ vi.mocked(agentApi.addStep).mockImplementation(async () => {
+  stored = [...stored,{id:'added',type:'regular',title:'Added'}]
+  return {success:true,message:'Added'}
+ })
+ vi.mocked(agentApi.deleteStep).mockImplementation(async () => {
+  stored = stored.slice(1)
+  return {success:true,message:'Deleted'}
+ })
+ let data: ReturnType<typeof usePlanData>
+ function Probe() {data=usePlanData('Workflow/mutation-cache-regression');return null}
+ const root=createRoot(document.createElement('div'))
+ try {
+  await act(async()=>root.render(<Probe/>))
+  expect(data!.plan?.steps[0].title).toBe('Before')
+  await act(async()=>{await data!.updateStep(0,{title:'After'})})
+  expect(data!.plan?.steps[0].title).toBe('After')
+  await act(async()=>{await data!.addStep({id:'added',type:'regular',title:'Added',description:''})})
+  expect(data!.plan?.steps.map(step=>step.id)).toEqual(['original','added'])
+  await act(async()=>{await data!.deleteStep(0)})
+  expect(data!.plan?.steps.map(step=>step.id)).toEqual(['added'])
  }finally{act(()=>root.unmount())}
 })

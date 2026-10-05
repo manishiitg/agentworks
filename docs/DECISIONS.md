@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Plan refresh includes the displayed variables
+
+The Plan refresh control reloads variables alongside the plan and step config,
+and reports success only if both reads succeed. Open step details follow the
+current graph data. Why: a refresh should show the current plan inputs and
+details, including after an edit.
+Ticket: [PLAT-544](bugs/pulse_platform/frontend-chat/plat-544.md).
+
 ### 2026-10-05 — Browser toolbar status follows the selected live connection
 
 Show a green dot and Connected label on the Workflow, Code and Crew Browser

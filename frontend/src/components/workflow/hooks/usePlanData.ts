@@ -65,7 +65,7 @@ export interface UsePlanDataReturn {
   updateStep: (stepIndex: number, updates: Partial<PlanStep>) => Promise<void>
   deleteStep: (stepIndex: number) => Promise<void>
   addStep: (step: PlanStep, afterIndex?: number) => Promise<void>
-  refresh: () => Promise<boolean>  // Refreshes plan without comparison (alias for loadPlan)
+  refresh: () => Promise<boolean>  // Fetches fresh plan/config data without clearing the displayed plan
   clearChanges: () => void  // Clear the changes state
   setChanges: (changes: PlanChanges | null) => void  // Set changes directly (for granular events)
 }
@@ -356,6 +356,46 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
     cacheEntry.promise = null
   }, [workspacePath])
 
+  // Refresh from the server without clearing the currently rendered graph.
+  // A failed read keeps the old graph visible; a genuinely missing plan shows
+  // the empty state. Older in-flight loads cannot overwrite this result.
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (!workspacePath) return false
+    const requestVersion = ++requestVersionRef.current
+    const isCurrent = () => currentWorkspaceRef.current === workspacePath && requestVersionRef.current === requestVersion
+    invalidatePlanCache()
+    const cacheEntry = getPlanCacheEntry(workspacePath)
+    const promise = fetchPlanData().then(data => {
+      if (cacheEntry.promise === promise) {
+        cacheEntry.data = data
+        cacheEntry.timestamp = Date.now()
+      }
+      return data
+    }).finally(() => { if (cacheEntry.promise === promise) cacheEntry.promise = null })
+    cacheEntry.promise = promise
+    try {
+      const data = await promise
+      if (isCurrent()) {
+        setPlan(data)
+        setError(null)
+        setLoading(false)
+      }
+      return data !== null
+    } catch (err) {
+      if (!isCurrent()) return false
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const message = err instanceof Error ? err.message : String(err)
+      if (status === 404 || /not found|does not exist|no such file/i.test(message)) {
+        setPlan(null)
+        setError(null)
+      } else {
+        setError(message || 'Failed to load plan')
+      }
+      setLoading(false)
+      return false
+    }
+  }, [workspacePath, invalidatePlanCache, fetchPlanData])
+
   const savePlan = useCallback(async (updatedPlan: PlanningResponse) => {
     const planPath = getPlanFilePath()
     if (!planPath) {
@@ -617,9 +657,9 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
     // Wait for all updates to complete
     await Promise.all(promises)
 
-    // Refresh plan from backend
-    await loadPlan()
-  }, [plan, workspacePath, loadPlan])
+    // Use the fresh-read path after writes; keep the displayed plan while reading.
+    await refresh()
+  }, [plan, workspacePath, refresh])
 
   // Delete a step
   const deleteStep = useCallback(async (stepIndex: number) => {
@@ -640,9 +680,9 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
     // Call backend API to delete step
     await agentApi.deleteStep(workspacePath, stepId)
 
-    // Refresh plan from backend
-    await loadPlan()
-  }, [plan, workspacePath, loadPlan])
+    // Use the fresh-read path after writes; keep the displayed plan while reading.
+    await refresh()
+  }, [plan, workspacePath, refresh])
 
   // Add a new step
   const addStep = useCallback(async (step: PlanStep, afterIndex?: number) => {
@@ -669,51 +709,11 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
       await agentApi.updateStepConfig(workspacePath, step.id, agent_configs)
     }
 
-    // Refresh plan from backend
-    await loadPlan()
-  }, [plan, workspacePath, loadPlan])
+    // Use the fresh-read path after writes; keep the displayed plan while reading.
+    await refresh()
+  }, [plan, workspacePath, refresh])
 
   // Save global step override
-
-  // Refresh from a live notice without clearing the currently rendered graph.
-  // A failed read keeps the old graph visible; a genuinely missing plan shows
-  // the empty state. Older in-flight loads cannot overwrite this result.
-  const refresh = useCallback(async (): Promise<boolean> => {
-    if (!workspacePath) return false
-    const requestVersion = ++requestVersionRef.current
-    const isCurrent = () => currentWorkspaceRef.current === workspacePath && requestVersionRef.current === requestVersion
-    invalidatePlanCache()
-    const cacheEntry = getPlanCacheEntry(workspacePath)
-    const promise = fetchPlanData().then(data => {
-      if (cacheEntry.promise === promise) {
-        cacheEntry.data = data
-        cacheEntry.timestamp = Date.now()
-      }
-      return data
-    }).finally(() => { if (cacheEntry.promise === promise) cacheEntry.promise = null })
-    cacheEntry.promise = promise
-    try {
-      const data = await promise
-      if (isCurrent()) {
-        setPlan(data)
-        setError(null)
-        setLoading(false)
-      }
-      return data !== null
-    } catch (err) {
-      if (!isCurrent()) return false
-      const status = (err as { response?: { status?: number } })?.response?.status
-      const message = err instanceof Error ? err.message : String(err)
-      if (status === 404 || /not found|does not exist|no such file/i.test(message)) {
-        setPlan(null)
-        setError(null)
-      } else {
-        setError(message || 'Failed to load plan')
-      }
-      setLoading(false)
-      return false
-    }
-  }, [workspacePath, invalidatePlanCache, fetchPlanData])
 
   // Clear changes state (call after highlighting animation completes)
   const clearChanges = useCallback(() => {

@@ -1,3 +1,7 @@
+## Plan reload leaves variables, connections and open details stale — PLAT-544
+
+[PLAT-544](pulse_platform/frontend-chat/plat-544.md), P2, fixed on main, not deployed. Reload all displayed plan inputs, reconcile card/connection content, refresh open details and bypass cached data after step writes. Verified with the actual canvas button against an isolated local HTTP fixture.
+
 ## Browser connection health in workspace toolbars — PLAT-542
 
 [PLAT-542](pulse_platform/frontend-chat/plat-542.md), P3, fixed on main, not deployed. Green Browser status dot and accessible connection label in Workflow, Code and Crew; read-only scoped discovery distinguishes selected extensions, live browsers and completed replays.
