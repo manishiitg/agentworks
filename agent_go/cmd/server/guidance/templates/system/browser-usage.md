@@ -13,7 +13,14 @@ explicit project-relative path inside your granted writable workspace, such as
 `tool_output_folder` destinations are outside that grant.
 Read a fresh snapshot before acting. A disconnected extension must be reconnected
 by the user; do not switch to another browser, restart Chrome, or recover through
-shell commands. Local upload/download transfer, recording and teaching are not
+shell commands. `skills list` and `skills get core` (including `--full`) read
+the installed CLI documentation on the server; they do not require a shared tab
+or connect to Chrome. You can also read this attached platform guide through
+`read_skill(skills=[{"name":"builder-reference","path":"references/browser-usage.md"}])`
+and the attached `agent-browser` skill through
+`read_skill(skills=[{"name":"agent-browser"}])`. Documentation reads do not
+prove a browser is connected; keep the live-status check before page actions.
+Network/HAR, trace, profiler, local upload/download transfer, recording and teaching are not
 available through this connection. This status overrides local-port setup advice
 below, including on deployments where local operator CDP is disabled.
 
@@ -50,6 +57,7 @@ rejected. Desktop/local deployments may still report CDP as supported.
 
 | Mode | Browser | Visibility | Logins / cookies |
 |---|---|---|---|
+| **Extension** (`agent_browser`, no `--cdp`) | The account's connected Chrome or Edge extension | Background by default; `active=true` opts into foreground | Existing cookies + sessions on shared project tabs |
 | **CDP** (`agent_browser` with `--cdp`) | The user's real Chrome via Chrome DevTools Protocol | User sees every action | Existing cookies + sessions are available — leverage them |
 | **Headless** (`agent_browser`) | Server-side Chromium | Live in the workflow Browser view; screenshots also available | User-owned browser shared across chats and workflow steps |
 
@@ -67,7 +75,9 @@ status = browser_raw("status", [])
 ```
 
 Use `effective_mode` and `authorized_endpoints` from that response to set the
-prefix for later calls. Then load the installed CLI's current core overview:
+prefix for later calls. In extension mode the prefix is empty; documentation
+reads are server-side and independent of tab availability. Then load the
+installed CLI's current core overview:
 
 ```python
 browser("skills", ["get", "core"])
@@ -125,7 +135,7 @@ snap = browser("snapshot", ["-i"])      # refresh after page changes
 browser("screenshot", ["page.png"])
 ```
 
-**Key commands:** `skills`, `open`, `snapshot`, `click`, `fill`, `type`, `press`,
+**Key commands (check the selected mode's supported features):** `skills`, `open`, `snapshot`, `click`, `fill`, `type`, `press`,
 `screenshot`, `wait`, `get`, `scroll`, `select`, `hover`, `upload`,
 `download`, `eval`, `network`, `console`, `errors`, `record`, `trace`,
 `profiler`, `close`, `back`, `forward`, `reload`, `reset`.

@@ -1392,7 +1392,7 @@ func formatAgentBrowserSkillsOutput(output string) string {
 		return raw
 	}
 
-	const adapterNote = "Builder adapter note: this is version-matched upstream documentation from the installed agent-browser CLI. Treat its `agent-browser ...` shell examples as logical commands and invoke them through the managed `agent_browser` tool. In CDP mode, preserve the configured `--cdp` prefix on every call."
+	const adapterNote = "Builder adapter note: this is version-matched upstream documentation from the installed agent-browser CLI. Treat its `agent-browser ...` shell examples as logical commands and invoke them through the managed `agent_browser` tool. Follow live status: in CDP mode, preserve the configured `--cdp` prefix on every call; in extension mode, omit --cdp and all launch/connection options. Extension skills reads are server-side documentation only and need no shared tab. Extension network/HAR, upload/download transfer, record, trace, profiler and teaching are unavailable; upstream examples do not enable them. The attached agent-browser skill and builder-reference references/browser-usage.md describe the platform adapter."
 	sections := make([]string, 0, len(payload.Data))
 	for _, entry := range payload.Data {
 		if content := strings.TrimSpace(entry.Content); content != "" {

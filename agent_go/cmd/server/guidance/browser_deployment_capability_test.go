@@ -15,6 +15,11 @@ func TestBrowserGuidanceTreatsDisabledCDPAsDeploymentPolicy(t *testing.T) {
 		"is disabled on that server",
 		"`auto` mode is intentionally headless-only",
 		"do not probe ports",
+		"skills get core",
+		"they do not require a shared tab",
+		`read_skill(skills=[{"name":"builder-reference","path":"references/browser-usage.md"}])`,
+		"Documentation reads do not",
+		"In extension mode the prefix is empty",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Fatalf("browser guidance missing %q", want)

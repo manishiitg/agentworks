@@ -121,6 +121,37 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		data, _ := json.Marshal(result)
 		return string(data), nil
 	}
+	if isBrowserDocumentationCommand(command) {
+		// Installed CLI documentation does not use the relay or a browser tab.
+		// Keep this available with zero tabs or an offline selected extension.
+		values := stringArgs(args["args"])
+		valid := len(values) == 1 && values[0] == "list"
+		if (len(values) == 2 || len(values) == 3 && values[2] == "--full") && values[0] == "get" {
+			name := values[1]
+			valid = name != ""
+			for _, ch := range name {
+				if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
+					valid = false
+				}
+			}
+			valid = valid && !strings.HasPrefix(name, "-")
+		}
+		if !valid {
+			return "", fmt.Errorf("CHROME_EXTENSION_DOCUMENTATION: use skills list or skills get <name> [--full]; connection and launch options are backend-owned")
+		}
+		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
+		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
+		opts, _, err := browserExecuteOptions(ctx, agent, workflow, getTimeoutForCommand(command))
+		if err != nil {
+			return "", err
+		}
+		cli := append([]string{"skills"}, values...)
+		output, err := e.Client.ExecuteCommand(ctx, append(cli, "--json"), opts)
+		if err != nil {
+			return "", err
+		}
+		return formatAgentBrowserSkillsOutput(output), nil
+	}
 	allowed := map[string]bool{"open": true, "navigate": true, "snapshot": true, "click": true, "dblclick": true, "fill": true, "type": true, "press": true, "keydown": true, "keyup": true, "hover": true, "scroll": true, "scrollintoview": true, "select": true, "check": true, "uncheck": true, "get": true, "find": true, "wait": true, "tab": true, "back": true, "forward": true, "reload": true, "screenshot": true, "console": true, "errors": true, "eval": true}
 	if !allowed[command] {
 		return "", fmt.Errorf("CHROME_EXTENSION_UNSUPPORTED: %s is unavailable through the extension", command)

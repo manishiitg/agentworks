@@ -59,6 +59,15 @@ try {
     assert.equal((await fetch(`${base}/fixture/connect-workflow`,{method:'POST'})).status,202);
     for(let i=0;i<50;i++){if((await (await fetch(`${base}/fixture/workflow-status`)).json()).connected)break;await new Promise(resolve=>setTimeout(resolve,100));}
     const workflowTool=async(command,step='one')=>{const r=await fetch(`${base}/fixture/tool?project=workflow&step=${step}`,{method:'POST',body:JSON.stringify(command)});const output=await r.text();assert.equal(r.status,200,output);return JSON.parse(output)};
+    for (const args of [['list'], ['get', 'core'], ['get', 'core', '--full']]) {
+      const response=await fetch(`${base}/fixture/tool?project=workflow`,{method:'POST',body:JSON.stringify({command:'skills',args})});
+      const docs=await response.text();assert.equal(response.status,200,docs);
+      assert.match(docs,/version-matched upstream documentation/);
+      assert.match(docs,/in extension mode, omit --cdp/);
+      assert.match(docs,args[0]==='list'?/`core`/:/snapshot/i);
+    }
+    assert.equal((await (await fetch(`${base}/fixture/workflow-status`)).json()).tabs,0,'documentation reads never create a workflow tab');
+    console.log('PASS extension workflow reads installed core overview/full and skill list before any page action');
     await workflowTool({command:'open',args:[`${base}/fixture?workflow=1`]});
     await workflowTool({command:'fill',args:['#name','Workflow step']});
     await workflowTool({command:'click',args:['#save']},'two');

@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-05 — Extension browser documentation reads stay on the server
+
+Allow managed `skills list` and `skills get <name> [--full]` with a selected
+extension, including zero-tab and offline connections. Read only installed CLI
+docs under the caller's workspace grants; do not acquire a relay or launch a
+browser. Reject connection/launch flags and paths. Explain the attached
+`read_skill` route and extension limitations in the browser guidance.
+Why: required documentation must not block a connected workflow before browsing.
+Ticket: [PLAT-550](bugs/pulse_platform/browser/plat-550.md).
+
 ### 2026-10-05 — An auto-notification is the same chat role as a typed message
 - A coding CLI's session is replaced only on a role change (mode, origin, capabilities). An auto-notification now counts as
   `interactive` for that role, like Pulse counts as scheduled, so notifications no longer restart the CLI and repeat the

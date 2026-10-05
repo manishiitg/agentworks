@@ -300,6 +300,22 @@ disconnecting clears its cache; --clear affects only the selected tab.
 Status returns screenshot_write_paths from the trusted folder guard. Output
 must remain inside those paths; global /tmp/tool_output_folder paths stay denied.
 
+#### Browser documentation
+
+`agent_browser skills list` and `skills get <name> [--full]` read the installed
+CLI's version-matched documentation on the server. In extension mode they use
+no CDP endpoint, relay lease, tab selection or browser launch, and remain
+available with zero tabs or an offline selected extension. They retain the
+authenticated account and the calling step's workspace grants. Only those
+documentation forms are accepted; connection/launch flags and skill paths are
+refused. Documentation success never proves browser connectivity: page actions
+still require the selected extension and fail closed when it is offline.
+
+The attached `agent-browser` skill and
+`read_skill(skills=[{"name":"builder-reference","path":"references/browser-usage.md"}])`
+provide the platform adapter guidance. Upstream examples do not enable extension
+network/HAR, recording, trace, profiler, transfer or teaching capabilities.
+
 #### Connection status and lifecycle
 
 Code, Crew and workflow Browser toolbars observe status every 2.5 seconds even
@@ -660,6 +676,10 @@ Before the first browser action, load the installed CLI's matching command guide
 ```text
 agent_browser(command="skills", args=["get", "core"])
 ```
+
+This documentation route also works in extension mode, without shared tabs.
+An attached `read_skill` guide is another documentation route; keep the status
+check before browsing regardless of how the guide was loaded.
 
 The common flow is:
 

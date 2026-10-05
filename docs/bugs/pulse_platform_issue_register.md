@@ -1,3 +1,7 @@
+## Extension workflow cannot read required browser documentation — PLAT-550
+
+[PLAT-550](pulse_platform/browser/plat-550.md), P2, fixed on main, not deployed. Serve installed CLI skills through the managed extension adapter without a relay/tab; retain workspace grants, clarify attached read_skill guidance and extension limitations. Isolated real Chrome workflow qualification passes.
+
 ## Browser connection changes send unwanted automatic chat messages — PLAT-549
 
 [PLAT-549](pulse_platform/browser/plat-549.md), P3, fixed on main, not deployed. Remove browser lifecycle chat polling/messages in Code, Crew and workflows; discard legacy pending browser notices while keeping browser status and tool routing.
