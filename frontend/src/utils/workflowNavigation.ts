@@ -47,6 +47,11 @@ export function getWorkflowNavigationContext(): Readonly<WorkflowNavigationConte
   return context
 }
 
+/** Leaving a workflow invalidates its delayed session/tab activation. */
+export function cancelPendingWorkflowNavigation(): void {
+  context = { ...context, workflowId: null, tabId: null, sessionId: null, generation: context.generation + 1 }
+}
+
 /**
  * The product surface a workflow belongs to: a Relay opens in Relays, everything else in Goals. Navigation that
  * lands on a workflow tab (activity pills, the global tab opener) must not force Goals, or opening a Relay

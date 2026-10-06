@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-563](plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 |
 | [PLAT-558](plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 |
 | [PLAT-551](plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 |
 | [PLAT-542](plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 |

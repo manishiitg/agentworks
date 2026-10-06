@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 68 | 11 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 14 | 2 |
 | [Browser and browser automation](browser/index.md) | 31 | 10 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
 | [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-526](app/navigation/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [app/navigation](app/navigation/index.md) |
 | [PLAT-525](chat/reliability/plat-525.md) | Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-524](crew/browser/plat-524.md) | Account browser token and simultaneous Code/Crew connections | fixed on main | P2 | [crew/browser](crew/browser/index.md) |
-| [PLAT-523](browser/browser/plat-523.md) | Browser dead-session recovery can misclassify unrelated errors | open | P3 | [browser/browser](browser/browser/index.md) |

@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Product selection owns the chat mode before mounting
+
+Set product and chat mode as one navigation intent. A Code/Crew/Brain chat must
+not mount with a workflow handler, and late workflow restoration must not reclaim
+a product the user has left. Preserve saved workflow/project choices for return.
+Why: sidebar Code selection bounced back to Goals while existing-tab Ctrl+K
+navigation worked. Ticket: [PLAT-563](bugs/pulse_platform/app/navigation/plat-563.md).
+
 ### 2026-10-06 — Step test mode fails closed: only what is known to be read-only runs
 - `execute_step(test_mode=true)` runs a step with reads real and external effects stubbed and recorded: an MCP tool runs
   only when its server marks it `readOnlyHint` (and not destructive); the browser only navigates and reads (`eval` is

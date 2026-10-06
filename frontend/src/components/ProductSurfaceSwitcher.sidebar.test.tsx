@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const auth = vi.hoisted(() => ({ allowed: null as string[] | null }))
-const app = vi.hoisted(() => ({ setModeCategory: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: vi.fn(), setAdminPage: vi.fn(), setActivityWorkflowPath: vi.fn() }))
+const app = vi.hoisted(() => ({ setModeCategory: vi.fn(), setAgentMode: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: vi.fn(), setAdminPage: vi.fn(), setActivityWorkflowPath: vi.fn() }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ user: { allowed_products: auth.allowed } }) }))
 vi.mock('../stores/useLLMStore', () => ({ useLLMStore: { getState: () => ({ setShowLLMModal: vi.fn() }) } }))
 vi.mock('../stores/useAppStore', () => ({ useAppStore: { getState: () => app } }))

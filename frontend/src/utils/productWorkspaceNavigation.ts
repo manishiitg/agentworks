@@ -3,9 +3,12 @@ import { useAppStore } from '../stores/useAppStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
+import { cancelPendingWorkflowNavigation } from './workflowNavigation'
 
 /** Product icons and page Back buttons share the same workspace destination. */
 export function openProductWorkspace(surface: ProductSurface) {
+  // A product click is newer intent than any in-flight workflow lookup.
+  cancelPendingWorkflowNavigation()
   const app = useAppStore.getState()
   useLLMStore.getState().setShowLLMModal(false)
   app.setShowSchedulesOverview(false)
@@ -20,6 +23,12 @@ export function openProductWorkspace(surface: ProductSurface) {
       presets.setSelectedPresetFolder(null)
     }
     app.setModeCategory('workflow')
+    app.setAgentMode('workflow')
+  } else if (surface === 'code' || surface === 'work' || surface === 'knowledgebase') {
+    // Set both mode projections before mounting the product chat. Waiting for
+    // its mount effect lets the legacy workflow handler restore Goals first.
+    app.setModeCategory('multi-agent')
+    app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
 }

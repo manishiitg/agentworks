@@ -110,6 +110,23 @@ describe('workflow navigation coordinator', () => {
     expect(navigation.getWorkflowNavigationContext().workflowId).toBe('workflow-b')
   })
 
+  it('rejects a delayed workflow activation after leaving through product navigation', async () => {
+    const { openProductWorkspace } = await import('./productWorkspaceNavigation')
+    const { useProductSurfaceStore } = await import('../stores/useProductSurfaceStore')
+    const tab = workflowTab('workflow-a', 'tab-a')
+    useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
+    const pending = navigation.beginWorkflowNavigation('workflow-a')
+    navigation.selectWorkflowPreset('workflow-a')
+    openProductWorkspace('code')
+    // Product switches preserve the workflow for a later return, so checking
+    // only the active preset cannot detect that this old lookup lost ownership.
+    expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe('workflow-a')
+    expect(navigation.isCurrentWorkflowNavigation(pending, 'workflow-a')).toBe(false)
+    expect(navigation.activateWorkflowTab(tab.tabId, { expectedGeneration: pending })).toBe(false)
+    expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+    expect(useChatStore.getState().activeTabId).toBeNull()
+  })
+
   it('commits workflow, tab, session, and the user-selected terminal view together', () => {
     const tabA = workflowTab('workflow-a', 'tab-a')
     const tabB = workflowTab('workflow-b', 'tab-b')

@@ -84,6 +84,7 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
 
   // Handle preset restoration when switching to workflow mode
   useEffect(() => {
+    let cancelled = false
     if (agentMode === 'workflow' && selectedWorkflowPreset) {
       // Find the preset in available presets
       const selectedPreset = availablePresets.find(p => p.id === selectedWorkflowPreset)
@@ -99,6 +100,9 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
           const loadPresetsAndSelect = async () => {
             try {
               await useGlobalPresetStore.getState().refreshPresets()
+              // The user may have left Goals while manifests were loading.
+              // An unmounted handler must never navigate back to its preset.
+              if (cancelled) return
               const workflowPresets = useGlobalPresetStore.getState().workflowPresets
               const presets = workflowPresets
                 .filter(p => p.agentMode === 'workflow')
@@ -125,6 +129,7 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
         }
       }
     }
+    return () => { cancelled = true }
   }, [agentMode, selectedWorkflowPreset, availablePresets, hasAttemptedLoad, onPresetSelected, onWorkflowPhaseChange])
 
   // Step 1: Create workflow with objective (generates todo list)

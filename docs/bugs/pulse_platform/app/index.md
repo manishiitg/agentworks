@@ -8,6 +8,6 @@
 | [chat](chat/index.md) | 26 | 6 |
 | [general](general/index.md) | 3 | 0 |
 | [models](models/index.md) | 2 | 1 |
-| [navigation](navigation/index.md) | 18 | 1 |
+| [navigation](navigation/index.md) | 19 | 1 |
 | [reports](reports/index.md) | 7 | 2 |
 | [tests](tests/index.md) | 5 | 1 |
