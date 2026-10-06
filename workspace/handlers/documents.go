@@ -1863,8 +1863,8 @@ func DeleteFolder(c *gin.Context) {
 		return
 	}
 
-	// Remove the folder and all its contents
-	if err := os.RemoveAll(folderPath); err != nil {
+	cleanupPending, err := removeFolderAtomically(docsDir, folderPath)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to delete folder",
@@ -1877,7 +1877,8 @@ func DeleteFolder(c *gin.Context) {
 		Success: true,
 		Message: "Folder deleted successfully",
 		Data: map[string]interface{}{
-			"folder_path": folderPathParam,
+			"folder_path":     folderPathParam,
+			"cleanup_pending": cleanupPending,
 		},
 	})
 }

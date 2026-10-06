@@ -544,7 +544,13 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
 
     try {
       const deletingActiveWorkflow = useGlobalPresetStore.getState().activePresetIds.workflow === preset.id
-      await agentApi.deleteWorkflowFolder(workspacePath)
+      const result = await agentApi.deleteWorkflowFolder(workspacePath)
+      useChatStore.getState().addToast(
+        result.cleanup_pending
+          ? 'Automation deleted. An administrator needs to finish removing some sandbox files.'
+          : 'Automation deleted.',
+        result.cleanup_pending ? 'warning' : 'success',
+      )
 
       if (deletingActiveWorkflow) {
         clearActivePreset('workflow')

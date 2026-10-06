@@ -751,7 +751,8 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 		}
 	}
 
-	if err := deleteWorkspaceFolder(r.Context(), workspacePath); err != nil {
+	cleanupPending, err := deleteWorkspaceFolderWithCleanup(r.Context(), workspacePath)
+	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -774,11 +775,16 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	delete(api.workflowObjectives, manifest.ID)
 	api.workflowObjectiveMux.Unlock()
 
+	message := fmt.Sprintf("Deleted workflow folder %s", workspacePath)
+	if cleanupPending {
+		message += ". Some sandbox files require administrator cleanup."
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":        true,
-		"workspace_path": workspacePath,
-		"message":        fmt.Sprintf("Deleted workflow folder %s", workspacePath),
+		"success":         true,
+		"workspace_path":  workspacePath,
+		"cleanup_pending": cleanupPending,
+		"message":         message,
 	})
 }
 

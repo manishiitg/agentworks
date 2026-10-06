@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,72 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
+
+// PLAT-597: private sandbox directories used to make RemoveAll delete the
+// workflow manifest and then return 500, leaving the UI unable to retry.
+func TestDeleteFolderWithPrivateSandboxFilesRemovesWorkspaceAndReportsCleanup(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can traverse the permission-denied fixture")
+	}
+	parent := t.TempDir()
+	docsDir := filepath.Join(parent, "docs")
+	target := filepath.Join(docsDir, "Workflow", "delete-regression")
+	private := filepath.Join(target, ".sandbox-cache", "private")
+	if err := os.MkdirAll(private, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "workflow.json"), []byte(`{"id":"regression"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(private, "credential"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(private, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		entries, _ := os.ReadDir(parent)
+		for _, entry := range entries {
+			_ = os.Chmod(filepath.Join(parent, entry.Name(), "folder", ".sandbox-cache", "private"), 0700)
+		}
+		_ = os.Chmod(private, 0700)
+	})
+	gin.SetMode(gin.TestMode)
+	viper.Set("docs-dir", docsDir)
+	r := gin.New()
+	r.DELETE("/api/folders/*folderpath", DeleteFolder)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/folders/Workflow/delete-regression?confirm=true", nil))
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			CleanupPending bool `json:"cleanup_pending"`
+		} `json:"data"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &result) != nil || !result.Success || !result.Data.CleanupPending {
+		t.Fatalf("expected successful removal with cleanup pending: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("deleted workflow remains in the served tree: %v", err)
+	}
+	entries, _ := os.ReadDir(parent)
+	for _, entry := range entries {
+		if entry.Name() == "docs" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.Mode().Perm() != 0700 {
+			t.Fatalf("cleanup staging must remain private: %v %v", info, err)
+		}
+		stagedPrivate := filepath.Join(parent, entry.Name(), "folder", ".sandbox-cache", "private")
+		if err := os.Chmod(stagedPrivate, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(stagedPrivate, "credential")); err != nil {
+			t.Fatalf("inaccessible sandbox files were not isolated for cleanup: %v", err)
+		}
+	}
+}
 
 // Gin's wildcard route capture always includes the leading slash
 // ("/Chats/foo" for a request to /api/folders/Chats/foo). Without stripping

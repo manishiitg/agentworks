@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 70 | 11 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 71 | 12 |
 | [Brain](brain/index.md) | 17 | 2 |
 | [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
@@ -20,12 +20,14 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 6 | 1 |
+| [Vault](vault/index.md) | 7 | 1 |
 
 ## Newest tickets
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | in progress | P2 | [app/workspaces](app/workspaces/index.md) |
+| [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |
 | [PLAT-595](code/terminal/plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | fixed on main | P2 | [code/terminal](code/terminal/index.md) |
 | [PLAT-594](crew/frontend-chat/plat-594.md) | Show installed template setup progress and exclude optional checks from completion | fixed on main | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-593](goals/plans-contracts/plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 | [goals/plans-contracts](goals/plans-contracts/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |
 | [PLAT-559](goals/pulse/general/plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-558](app/navigation/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-557](brain/learnings-knowledge/plat-557.md) | Brain restricted folders (private folders inside shared ones) | open | P3 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
-| [PLAT-556](goals/pulse/fixer/plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | in progress | P1 | [goals/pulse/fixer](goals/pulse/fixer/index.md) |

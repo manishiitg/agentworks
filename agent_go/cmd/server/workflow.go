@@ -4874,6 +4874,11 @@ func collectWorkspaceFilePaths(items []virtualtools.WorkspaceFolderItem, out *[]
 }
 
 func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
+	_, err := deleteWorkspaceFolderWithCleanup(ctx, folderPath)
+	return err
+}
+
+func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (bool, error) {
 	noteWorkspaceMutation(folderPath, true)
 	pathSegments := strings.Split(folderPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -4885,26 +4890,31 @@ func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
 	apiURL := getWorkspaceAPIURL() + "/api/folders/" + encodedPath + "?confirm=true"
 	req, err := http.NewRequestWithContext(ctx, "DELETE", apiURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := workspaceHTTPClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to call workspace API: %w", err)
+		return false, fmt.Errorf("failed to call workspace API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return false, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil
+		return false, nil
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
+		return false, fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
-
-	return nil
+	var result struct {
+		Data struct {
+			CleanupPending bool `json:"cleanup_pending"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(body, &result)
+	return result.Data.CleanupPending, nil
 }

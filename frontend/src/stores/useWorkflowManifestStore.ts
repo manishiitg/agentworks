@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useChatStore } from './useChatStore'
 import { workflowManifestApi } from '../services/api'
 import type {
   WorkflowManifest,
@@ -131,7 +132,13 @@ export const useWorkflowManifestStore = create<WorkflowManifestState>((set, get)
   },
 
   deleteWorkflow: async (workspacePath) => {
-    await workflowManifestApi.deleteWorkflowFolder(workspacePath)
+    const result = await workflowManifestApi.deleteWorkflowFolder(workspacePath)
+    useChatStore.getState().addToast(
+      result.cleanup_pending
+        ? 'Automation deleted. An administrator needs to finish removing some sandbox files.'
+        : 'Automation deleted.',
+      result.cleanup_pending ? 'warning' : 'success',
+    )
     // Refresh to remove from list
     const { activeWorkflowId, workflows } = get()
     const deleted = workflows.find(w => w.workspace_path === workspacePath)

@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Folder deletion removes the workspace atomically before sandbox cleanup
+
+Rename a deleted folder into a fresh service-owned 0700 directory outside the
+served documents tree, then remove its contents. If sandbox-owned private files
+cannot be removed, the deletion succeeds with an administrator-cleanup warning
+and logs the isolated path; never broaden permissions. If staging or rename
+fails, leave the original intact. Why: recursive deletion removed a workflow's
+manifest before failing on a slot-owned 0700 directory, returning a misleading
+500 and making every retry fail authorization. Ticket: [PLAT-597](bugs/pulse_platform/app/workspaces/plat-597.md).
+
 ### 2026-10-06 — Template setup counts required checks; terminal keyboard paste uses browser events
 
 Template installation and verified setup remain separate. Show saved required-check
@@ -34,6 +44,7 @@ What: an old-format plan change (no `change_id`) more than 30 days old leaves th
 stamped, and the changelog keeps it. Why: Upwork had 193 such July and August changes that Pulse kept working through;
 the steps they touched have changed since, and the reference map already checks the current workflow for anything
 broken and flags Plan Drift. Ticket: [PLAT-593](bugs/pulse_platform/goals/plans-contracts/plat-593.md).
+
 
 ### 2026-10-06 — Crew runtime reads preserve product fields; failed call lookups settle visibly
 

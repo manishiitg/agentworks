@@ -5,5 +5,6 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [local](local/index.md) | 1 | 0 |
+| [oauth](oauth/index.md) | 1 | 0 |
 | [scheduler-runs](scheduler-runs/index.md) | 1 | 0 |
 | [security-sandbox](security-sandbox/index.md) | 4 | 1 |
