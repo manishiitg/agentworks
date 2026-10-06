@@ -87,3 +87,4 @@ PLAT-559's migration. One test (`reference_map_test.go`) pins the core cases.
 - Make plan_drift_review due on new breaks once PLAT-559's code due rules land.
 - Native CLI file edits and shell writes in Builder are not hooked (they show in prompt health and Pulse).
 - Not deployed.
+- Native CLI and shell writes are now seen: the Go-side flag in [PLAT-565](plat-565.md) recomputes the map when the workflow files change and makes Plan Drift due for new breaks.

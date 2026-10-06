@@ -101,6 +101,13 @@ notes, soul.md and guides. Breaks naming a due step or what it changed are
 dependents to fix or file in this review; `get_plan_prompt_health` has the
 full list.
 
+### New broken references (any candidate, including the workflow-level one)
+
+A candidate whose due reason starts "New broken references since the last review" was flagged by the Go-side reference
+map: a note, eval, learnings file or step text now names something that no longer resolves, however it was edited.
+Read the open breaks in `get_plan_prompt_health` (`reference_map`) for that step or file, fix the text you may edit,
+and record the review; report what needs the owner. Breaks that existed before are not a reason to stay due.
+
 ### Workflow-level deletion audit (candidates with no real step_id)
 
 `plan_drift_candidates` may include one entry whose `step_id` is

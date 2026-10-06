@@ -176,6 +176,7 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 		}
 	}
 
+	refFlags := openReferenceMapFlags(workspacePath, byID, stepIDs)
 	items := make([]PlanDriftDueItem, 0)
 	for id := range stepIDs {
 		cfg, ok := byID[id]
@@ -188,6 +189,8 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 			reason = "The plan changed or a prior drift check remains unresolved."
 		case cfg.AgentConfigs.DriftReview.ContractVersion < requiredVersion:
 			reason = "The saved review predates the current Plan Drift contract."
+		case refFlags[id] != "":
+			reason = refFlags[id]
 		}
 		if reason != "" {
 			items = append(items, PlanDriftDueItem{StepID: id, StepType: stepTypeByID[id], Reason: reason})
@@ -195,6 +198,9 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 	}
 	if cfg, ok := byID[WorkflowDriftReviewStepID]; ok && cfg.AgentConfigs != nil && cfg.AgentConfigs.DriftReview != nil && cfg.AgentConfigs.DriftReview.NeedsReview {
 		items = append(items, PlanDriftDueItem{StepID: WorkflowDriftReviewStepID, StepType: "workflow", Reason: "A deleted step's dependent artifacts still require review."})
+	}
+	if reason := refFlags[WorkflowDriftReviewStepID]; reason != "" && !hasDriftDueItem(items, WorkflowDriftReviewStepID) {
+		items = append(items, PlanDriftDueItem{StepID: WorkflowDriftReviewStepID, StepType: "workflow", Reason: reason})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].StepID < items[j].StepID })
 	return items, nil
@@ -349,13 +355,15 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 		}
 	}
 
+	refFlags := openReferenceMapFlags(workspacePath, byID, stepIDs)
 	var pendingStepIDs []string
 	for id := range stepIDs {
 		cfg, ok := byID[id]
 		requiredVersion := requiredPlanDriftReviewContractVersion(stepTypeByID[id])
 		if !ok || cfg.AgentConfigs == nil || cfg.AgentConfigs.DriftReview == nil ||
 			cfg.AgentConfigs.DriftReview.NeedsReview ||
-			cfg.AgentConfigs.DriftReview.ContractVersion < requiredVersion {
+			cfg.AgentConfigs.DriftReview.ContractVersion < requiredVersion ||
+			refFlags[id] != "" {
 			pendingStepIDs = append(pendingStepIDs, id)
 		}
 	}
@@ -370,6 +378,9 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 	// pass. Only an EXISTING record with NeedsReview==true is pending.
 	workflowLevelPending := false
 	if cfg, ok := byID[WorkflowDriftReviewStepID]; ok && cfg.AgentConfigs != nil && cfg.AgentConfigs.DriftReview != nil && cfg.AgentConfigs.DriftReview.NeedsReview {
+		workflowLevelPending = true
+	}
+	if refFlags[WorkflowDriftReviewStepID] != "" {
 		workflowLevelPending = true
 	}
 	if len(pendingStepIDs) == 0 && !workflowLevelPending {
@@ -413,4 +424,13 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 		})
 	}
 	return candidates, nil
+}
+
+func hasDriftDueItem(items []PlanDriftDueItem, id string) bool {
+	for _, item := range items {
+		if item.StepID == id {
+			return true
+		}
+	}
+	return false
 }

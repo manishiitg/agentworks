@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 2 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 168 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 169 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-565](goals/plans-contracts/plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-564](vault/local/plat-564.md) | Local Vault fails to start: configuration key left in the old state folder | fixed on main | P0 | [vault/local](vault/local/index.md) |
 | [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-528](app/chat/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [app/chat](app/chat/index.md) |
 | [PLAT-527](app/chat/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [app/chat](app/chat/index.md) |
 | [PLAT-526](app/navigation/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [app/navigation](app/navigation/index.md) |
-| [PLAT-525](chat/reliability/plat-525.md) | Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation | open | P2 | [chat/reliability](chat/reliability/index.md) |

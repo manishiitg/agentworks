@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — A new broken reference makes Plan Drift due, whoever wrote the file
+
+What: the Go side compares the workflow's broken references with those it saw last time; a new one flags its step
+(or the workflow, for a note, eval or learnings file) as due for Plan Drift until a review is recorded. Breaks that
+already existed do not keep it due. Why: the reference map only reported, so native CLI edits and shell writes were
+never seen and Upwork's 75 breaks sat unfixed; flagging only new breaks keeps a break Drift cannot fix from blocking
+Technical and Architecture forever. It reports and flags, never blocks an edit or a run.
+Ticket: [PLAT-565](bugs/pulse_platform/goals/plans-contracts/plat-565.md).
+
 ### 2026-10-06 — Local Vault is required: a failed start stops the local run
 
 What: with local Vault on (the default), the launcher stops when Vault fails to start, naming the log and the
