@@ -35,3 +35,9 @@ Owner, 2026-10-06: "agent should get raw access to file system and it should use
 - After each shell or file-edit command in that chat, Brain re-reads the folder (`SyncDisk`) as that person.
 - Tests: `TestBrainPicksUpDirectEditsInItsFolder`, `TestBrainNotesMoveIntoDocumentsOnceAndStayAdminOnly`; backup-tool and reservation tests removed.
 - Not verified live: needs an RTS deploy, then from the Brain chat `git status` / commit / push to the configured repository. The current push failure (`could not read Username`) should then show git's real message.
+
+## RTS check 1 (2026-10-06)
+
+Deployed 8ae73b047: notes moved into `/data/video-studio/docs/Brain` (13 files, 0700; old folder kept as `live.moved-…`). Two problems in the owner's first Brain chat turn:
+- The shell ran as the owner's slot account (`slotctl: could not start … permission denied`): slot accounts cannot enter the app-only `Brain/`. Fixed: a command working in `Brain/` whose folder guard grants `Brain/` runs as the service account, still confined by Landlock (`isBrainFolderCommand`, test `TestOnlyGrantedBrainFolderCommandsRunAsTheService`).
+- `git init` failed in the server with no message. The error now includes git's exec error, and Brain sets up the repository at service start and logs `[BRAIN] Git folder ready|not ready`.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,6 +115,12 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 			return nil, err
 		}
 		knowledgebaseInstance.service, knowledgebaseInstance.config = service, config
+		// Brain's folder is a Git repository from the start, not only once a Brain chat opens it (PLAT-633).
+		if folder, gitErr := service.EnsureGitRepository(context.Background()); gitErr != nil {
+			log.Printf("[BRAIN] Git folder not ready: %v", gitErr)
+		} else {
+			log.Printf("[BRAIN] Git folder ready at %s (origin configured: %v)", folder.Path, folder.Remote != "")
+		}
 	}
 	return knowledgebaseInstance.service, nil
 }

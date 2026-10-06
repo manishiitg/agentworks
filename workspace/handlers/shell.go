@@ -185,6 +185,13 @@ func ExecuteShellCommand(c *gin.Context) {
 		log.Printf("[SLOTS] browser command for %s runs as the service account, not %s", resolvedUserID, userSlot)
 		userSlot = ""
 	}
+	// Brain's folder is app-owned (PLAT-633): a command working there runs as the service account, and only when the
+	// server's folder guard grants it Brain/ (the Brain chat of someone who owns the whole Brain); Landlock still
+	// confines it to that guard.
+	if slotsOn && slotErr == nil && userSlot != "" && isBrainFolderCommand(docsDir, workingDir, req.FolderGuard) {
+		log.Printf("[SLOTS] Brain folder command for %s runs as the service account, not %s", resolvedUserID, userSlot)
+		userSlot = ""
+	}
 	if slotsOn {
 		if slotErr != nil {
 			c.JSON(http.StatusForbidden, models.APIResponse[any]{

@@ -55,7 +55,7 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 		cmd.Dir = s.live
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0")
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return kbErr("GIT_FAILED", "git "+args[0]+": "+strings.TrimSpace(string(out)))
+			return kbErr("GIT_FAILED", "git "+args[0]+" in "+s.live+": "+err.Error()+": "+strings.TrimSpace(string(out)))
 		}
 		return nil
 	}
