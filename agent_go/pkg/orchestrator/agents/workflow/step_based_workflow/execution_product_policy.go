@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,7 +120,10 @@ func configureNoPlatformStoresSession(sessionID, workspacePath string) {
 }
 
 func withoutPlatformStoreTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
-	blocked := map[string]bool{"browse_knowledgebase": true, "read_knowledgebase": true, "update_knowledgebase": true, "backup_knowledgebase": true, "knowledgebase_skills": true, "manage_knowledgebase_access": true, "query_workflow_db": true, "mutate_workflow_db": true, "apply_workflow_db_migration": true, "create_workflow_database_snapshot": true, "get_goal_metrics": true, "record_goal_observations": true}
+	blocked := map[string]bool{"query_workflow_db": true, "mutate_workflow_db": true, "apply_workflow_db_migration": true, "create_workflow_database_snapshot": true, "get_goal_metrics": true, "record_goal_observations": true}
+	for _, name := range knowledgebase.ToolNames() {
+		blocked[name] = true
+	}
 	filtered := make([]llmtypes.Tool, 0, len(tools))
 	for _, tool := range tools {
 		if tool.Function == nil || !blocked[tool.Function.Name] {

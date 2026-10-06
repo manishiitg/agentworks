@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
 	"strings"
@@ -262,9 +263,9 @@ var platformTools = map[string]verdict{
 	"mutate_workflow_db":   redirect,
 	"get_goal_metrics":     allow,
 	// Knowledgebase reads.
-	"browse_knowledgebase": allow,
-	"read_knowledgebase":   allow,
-	"knowledgebase_skills": allow,
+	knowledgebase.ToolBrowse: allow,
+	knowledgebase.ToolRead:   allow,
+	knowledgebase.ToolSkills: allow,
 	// Orchestrator sub-steps run inside the same test run (their sessions
 	// are registered by the step controller).
 	"call_sub_agent":             allow,
@@ -291,7 +292,7 @@ func classify(ctx context.Context, call toolguard.Call) (verdict, string) {
 			return classifyBrowser(call.Args)
 		}
 		// Brain skills: listing and reading run; publishing would change company skills, so it does not.
-		if call.Tool == "knowledgebase_skills" {
+		if call.Tool == knowledgebase.ToolSkills {
 			if action, _ := call.Args["action"].(string); action == "publish" {
 				return stub, "publishing a Brain skill is a real write"
 			}

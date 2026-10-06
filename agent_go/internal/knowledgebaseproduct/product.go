@@ -59,7 +59,7 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, execute Acces
 	factories := []struct {
 		id, name string
 		execute  AccessExecutor
-	}{{"knowledgebase.manage-access", "manage_knowledgebase_access", execute}}
+	}{{"knowledgebase.manage-access", knowledgebase.ToolAccess, execute}}
 	var gitExecutor AccessExecutor
 	if len(backup) > 0 {
 		gitExecutor = backup[0]
@@ -67,13 +67,13 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, execute Acces
 	factories = append(factories, struct {
 		id, name string
 		execute  AccessExecutor
-	}{"knowledgebase.git", "backup_knowledgebase", gitExecutor})
+	}{"knowledgebase.git", knowledgebase.ToolBackup, gitExecutor})
 	for _, factory := range factories {
 		factory := factory
 		if err := registry.RegisterToolFactory(factory.id, func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
 			for _, def := range knowledgebase.ToolDefinitions() {
 				if def.Name == factory.name {
-					if factory.name == "backup_knowledgebase" {
+					if factory.name == knowledgebase.ToolBackup {
 						variants := []any{}
 						for _, value := range def.InputSchema["oneOf"].([]any) {
 							variant := value.(map[string]any)

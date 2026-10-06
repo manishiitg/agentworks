@@ -31,7 +31,7 @@ func knowledgeInteractiveAccess(claims *UserClaims) bool {
 }
 
 func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]any) (string, error) {
-	if err := knowledgebase.ValidateToolArguments("manage_knowledgebase_access", args); err != nil {
+	if err := knowledgebase.ValidateToolArguments(knowledgebase.ToolAccess, args); err != nil {
 		return "", err
 	}
 	claims := GetUserFromContext(ctx)
@@ -178,7 +178,7 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 		}
 		proposal.Arguments["pat"] = *request.PAT
 	}
-	result, err := knowledgebaseDispatch(r.Context(), service, p, claims.UserID, "manage_knowledgebase_access", proposal.Arguments)
+	result, err := knowledgebaseDispatch(r.Context(), service, p, claims.UserID, knowledgebase.ToolAccess, proposal.Arguments)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return

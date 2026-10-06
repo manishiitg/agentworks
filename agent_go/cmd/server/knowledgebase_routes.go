@@ -344,7 +344,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 	principal := knowledgebasePrincipal(r, claims)
 	// Only this authenticated external boundary enables direct access actions.
 	// App chat continues to use proposals; managed sessions remain content-only.
-	if action, _ := args["action"].(string); tool == "manage_knowledgebase_access" && action != "inspect" {
+	if action, _ := args["action"].(string); tool == knowledgebase.ToolAccess && action != "inspect" {
 		principal.AccessOnly = true
 	}
 	result, err := knowledgebaseDispatch(context.WithValue(r.Context(), knowledgebaseMigrationAuthorityKey{}, true), service, principal, claims.UserID, tool, args)

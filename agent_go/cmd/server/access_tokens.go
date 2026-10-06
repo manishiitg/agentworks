@@ -349,7 +349,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		}
 		// Backup/access include read actions. Dispatch checks each action;
 		// only the all-write update tool is hidden from read-only connections.
-		if tool.Name == "update_knowledgebase" {
+		if tool.Name == knowledgebase.ToolUpdate {
 			return c.AccessToken.Allows("knowledgebase:read") && c.AccessToken.Allows("knowledgebase:write")
 		}
 		return c.AccessToken.Allows("knowledgebase:read")

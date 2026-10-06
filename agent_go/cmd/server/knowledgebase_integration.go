@@ -309,13 +309,13 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 
 func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, userID, tool string, args map[string]any) (any, error) {
 	action, _ := args["action"].(string)
-	if tool == "backup_knowledgebase" && action == "git" {
+	if tool == knowledgebase.ToolBackup && action == "git" {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
 			return nil, err
 		}
 		return knowledgebaseGitCall(ctx, service, p, args, &UserClaims{UserID: p.IdentityID, Username: p.IdentityID})
 	}
-	if tool == "manage_knowledgebase_access" && (action == "inspect_project" || action == "bind_project" || action == "unbind_project" || action == "set_project_access") {
+	if tool == knowledgebase.ToolAccess && (action == "inspect_project" || action == "bind_project" || action == "unbind_project" || action == "set_project_access") {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {
 			return nil, err
 		}
@@ -342,7 +342,7 @@ func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, 
 		}
 		return knowledgebaseBindProject(ctx, service, p, args)
 	}
-	if tool == "update_knowledgebase" && strings.HasPrefix(action, "migration_") {
+	if tool == knowledgebase.ToolUpdate && strings.HasPrefix(action, "migration_") {
 		if authorized, _ := ctx.Value(knowledgebaseMigrationAuthorityKey{}).(bool); !authorized {
 			return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "Migration requires an explicitly authorized external owner connection."}
 		}
@@ -377,7 +377,7 @@ func knowledgebaseBindProject(ctx context.Context, service *knowledgebase.Servic
 		return nil, err
 	}
 	defer unlock()
-	key, err := service.ReserveIntegrationRequest(ctx, p, "manage_knowledgebase_access", args)
+	key, err := service.ReserveIntegrationRequest(ctx, p, knowledgebase.ToolAccess, args)
 	if err != nil {
 		return nil, err
 	}

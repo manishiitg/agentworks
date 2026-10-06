@@ -52,7 +52,7 @@ func knowledgebaseReadReferencedNote(ctx context.Context, workspacePath, notePat
 	r := (&http.Request{}).WithContext(context.WithValue(ctx, UserContextKey, claims))
 	principal := knowledgebasePrincipal(r, claims)
 	principal.BindingPolicy = policy
-	result, err := service.CallTool(r.Context(), principal, "read_knowledgebase", map[string]any{"action": "read", "path": notePath})
+	result, err := service.CallTool(r.Context(), principal, knowledgebase.ToolRead, map[string]any{"action": "read", "path": notePath})
 	if err != nil {
 		return "", err
 	}

@@ -361,7 +361,7 @@ func knowledgeMigration(ctx context.Context, service *knowledgebase.Service, p k
 			for _, part := range strings.Split(dir, "/") {
 				child := strings.Trim(parent+"/"+part, "/")
 				if _, ok := receipt.Folders[child]; !ok {
-					result, err := service.CallTool(ctx, p, "update_knowledgebase", map[string]any{"action": "create_folder", "folder_path": parent, "name": part, "request_id": "mig_f_" + knowledgeHash([]string{receipt.ID, child})})
+					result, err := service.CallTool(ctx, p, knowledgebase.ToolUpdate, map[string]any{"action": "create_folder", "folder_path": parent, "name": part, "request_id": "mig_f_" + knowledgeHash([]string{receipt.ID, child})})
 					if err != nil {
 						return nil, err
 					}
@@ -384,7 +384,7 @@ func knowledgeMigration(ctx context.Context, service *knowledgebase.Service, p k
 		}
 		name := filepath.Base(file.Path)
 		title := strings.TrimSuffix(name, ".md")
-		result, err := service.CallTool(ctx, p, "update_knowledgebase", map[string]any{"action": "create", "folder_path": parent, "filename": name, "type": "note", "title": title, "content": text, "request_id": "mig_e_" + knowledgeHash([]string{receipt.ID, file.Path})})
+		result, err := service.CallTool(ctx, p, knowledgebase.ToolUpdate, map[string]any{"action": "create", "folder_path": parent, "filename": name, "type": "note", "title": title, "content": text, "request_id": "mig_e_" + knowledgeHash([]string{receipt.ID, file.Path})})
 		if err != nil {
 			return nil, err
 		}
@@ -440,7 +440,7 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 			return nil, err
 		}
 	}
-	listing, err := service.CallTool(ctx, p, "browse_knowledgebase", map[string]any{"action": "entries", "folder_id": binding.FolderID, "depth": 1024, "limit": 1})
+	listing, err := service.CallTool(ctx, p, knowledgebase.ToolBrowse, map[string]any{"action": "entries", "folder_id": binding.FolderID, "depth": 1024, "limit": 1})
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +492,7 @@ func knowledgeMigrationConsumers(projectID string) ([]string, error) {
 }
 
 func knowledgeVerifyImported(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, file knowledgeImportFile) error {
-	result, err := service.CallTool(ctx, p, "read_knowledgebase", map[string]any{"action": "read", "entry_id": file.EntryID})
+	result, err := service.CallTool(ctx, p, knowledgebase.ToolRead, map[string]any{"action": "read", "entry_id": file.EntryID})
 	if err != nil {
 		return err
 	}

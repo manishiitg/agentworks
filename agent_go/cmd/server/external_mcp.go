@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"io"
 	"net/http"
 	"strings"
@@ -104,7 +105,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
 		// execute_step's presence proves this connection runs.
-		if tool.Name == "execute_step" || tool.Name == "update_knowledgebase" || isExternalVaultTool(tool.Name) {
+		if tool.Name == "execute_step" || tool.Name == knowledgebase.ToolUpdate || isExternalVaultTool(tool.Name) {
 			instructions = externalMCPInstructions
 			break
 		}
@@ -116,7 +117,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "update_knowledgebase" {
+		if tool.Name == knowledgebase.ToolUpdate {
 			instructions += " This connection also authorizes Brain saves and explicit Git backups. These operations affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
 			break
 		}

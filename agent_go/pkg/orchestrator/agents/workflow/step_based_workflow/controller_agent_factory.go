@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
 	"slices"
@@ -910,9 +911,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	}
 	enabledTools = narrowed
 	if access := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()); access != KBAccessNone {
-		enabledTools = append(enabledTools, "knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:backup_knowledgebase", "knowledgebase:manage_knowledgebase_access")
+		// Steps that may read Brain also list and read company skills (PLAT-576); publishing is limited by the tool schema.
+		enabledTools = append(enabledTools, "knowledgebase:"+knowledgebase.ToolBrowse, "knowledgebase:"+knowledgebase.ToolRead, "knowledgebase:"+knowledgebase.ToolBackup, "knowledgebase:"+knowledgebase.ToolSkills, "knowledgebase:"+knowledgebase.ToolAccess)
 		if access == KBAccessWrite || access == KBAccessReadWrite {
-			enabledTools = append(enabledTools, "knowledgebase:update_knowledgebase")
+			enabledTools = append(enabledTools, "knowledgebase:"+knowledgebase.ToolUpdate)
 		}
 	}
 	hasBrowserCategory := false
@@ -947,7 +949,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareWorkspaceToolsOnly() ([]llmtyp
 		hcpo.WorkspaceTools,
 		hcpo.WorkspaceToolExecutors,
 		[]string{
-			"knowledgebase:browse_knowledgebase", "knowledgebase:read_knowledgebase", "knowledgebase:update_knowledgebase",
+			"knowledgebase:" + knowledgebase.ToolBrowse, "knowledgebase:" + knowledgebase.ToolRead, "knowledgebase:" + knowledgebase.ToolUpdate,
 			"workspace_advanced:execute_shell_command",
 			"workspace_advanced:diff_patch_workspace_file",
 			"workflow_db:query_workflow_db",

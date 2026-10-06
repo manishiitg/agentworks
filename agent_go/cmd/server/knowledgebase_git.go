@@ -81,7 +81,7 @@ func (api *StreamingAPI) handleKnowledgebaseGit(w http.ResponseWriter, r *http.R
 			return
 		}
 		args["action"] = "git"
-		if !knowledgebaseConnectionAllowsAction(claims, "backup_knowledgebase", args) {
+		if !knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolBackup, args) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -100,7 +100,7 @@ func (api *StreamingAPI) handleKnowledgebaseGit(w http.ResponseWriter, r *http.R
 		}
 		args["action"] = "git"
 	}
-	if err := knowledgebase.ValidateToolArguments("backup_knowledgebase", args); err != nil {
+	if err := knowledgebase.ValidateToolArguments(knowledgebase.ToolBackup, args); err != nil {
 		knowledgebaseHTTPError(w, err)
 		return
 	}

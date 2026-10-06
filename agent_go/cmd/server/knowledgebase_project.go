@@ -31,7 +31,7 @@ func knowledgeProjectBuilderQuery(req QueryRequest, claims *UserClaims, authorit
 func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string, args map[string]any) (string, error) {
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID != userID || !knowledgebaseProductAllowed(claims) ||
-		!knowledgebaseConnectionAllowsAction(claims, "manage_knowledgebase_access", map[string]any{"action": "bind_project"}) ||
+		!knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "bind_project"}) ||
 		workflowAccessForClaims(claims) == WorkflowAccessRead {
 		return "", &knowledgebase.Error{Code: "FORBIDDEN", Message: "Project setup authority is required"}
 	}
@@ -46,12 +46,12 @@ func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string
 	for k, v := range args {
 		copy[k] = v
 	}
-	if tool == "manage_knowledgebase_access" && knowledgebase.IsProjectAction(fmt.Sprint(copy["action"])) {
+	if tool == knowledgebase.ToolAccess && knowledgebase.IsProjectAction(fmt.Sprint(copy["action"])) {
 		if value, ok := copy["workspace_path"]; ok && value != workspace {
 			return "", &knowledgebase.Error{Code: "FORBIDDEN", Message: "Use the current workflow workspace"}
 		}
 		copy["workspace_path"] = workspace
-	} else if tool != "browse_knowledgebase" || copy["action"] != "folders" || copy["binding_alias"] != nil {
+	} else if tool != knowledgebase.ToolBrowse || copy["action"] != "folders" || copy["binding_alias"] != nil {
 		return knowledgebaseExecute(ctx, userID, false, tool, copy)
 	}
 	service, err := knowledgebaseService()
@@ -64,7 +64,7 @@ func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string
 	r := (&http.Request{}).WithContext(ctx)
 	p := knowledgebasePrincipal(r, claims)
 	var result any
-	if tool == "browse_knowledgebase" {
+	if tool == knowledgebase.ToolBrowse {
 		// Only caller-authorized folder metadata is available before attachment.
 		result, err = service.CallTool(ctx, p, tool, copy)
 	} else {
@@ -153,7 +153,7 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 		return
 	}
 	workspace, _ := args["workspace_path"].(string)
-	result, err := knowledgeProjectExecute(r.Context(), claims.UserID, workspace, "manage_knowledgebase_access", args)
+	result, err := knowledgeProjectExecute(r.Context(), claims.UserID, workspace, knowledgebase.ToolAccess, args)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return
@@ -164,5 +164,5 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 
 // isKnowledgeProjectTool names the Builder's project-scoped Brain tools.
 func isKnowledgeProjectTool(name string) bool {
-	return name == "browse_knowledgebase" || name == "manage_knowledgebase_access"
+	return name == knowledgebase.ToolBrowse || name == knowledgebase.ToolAccess
 }

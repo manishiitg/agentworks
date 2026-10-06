@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"path"
 	"strings"
 
@@ -29,7 +30,7 @@ func brainSkillCall(ctx context.Context, args map[string]any) (map[string]any, e
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return nil, fmt.Errorf("Brain skills need a signed-in caller")
 	}
-	raw, err := knowledgebaseExecute(ctx, claims.UserID, false, "knowledgebase_skills", args)
+	raw, err := knowledgebaseExecute(ctx, claims.UserID, false, knowledgebase.ToolSkills, args)
 	if err != nil {
 		return nil, err
 	}

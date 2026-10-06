@@ -63,22 +63,22 @@ func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.Tool
 		return "", fmt.Errorf("access tool requires the Brain profile")
 	}
 	action, _ := args["action"].(string)
-	if knowledgebase.ToolActionMutates("manage_knowledgebase_access", action) {
+	if knowledgebase.ToolActionMutates(knowledgebase.ToolAccess, action) {
 		if knowledgebaseChatActsDirectly(action, args) {
 			if pat, _ := args["pat"].(string); pat != "" {
 				return "", fmt.Errorf("a token must not be sent through chat: ask the person to add it under Secrets and pass its name as pat_secret")
 			}
-			if err := knowledgebase.ValidateToolArguments("manage_knowledgebase_access", args); err != nil {
+			if err := knowledgebase.ValidateToolArguments(knowledgebase.ToolAccess, args); err != nil {
 				return "", err
 			}
 			if claims := GetUserFromContext(ctx); claims == nil || claims.UserID != runtime.UserID || !knowledgeInteractiveAccess(claims) || !knowledgebaseProductAllowed(claims) {
 				return "", fmt.Errorf("interactive Brain access required")
 			}
-			return knowledgebaseExecute(ctx, runtime.UserID, true, "manage_knowledgebase_access", args)
+			return knowledgebaseExecute(ctx, runtime.UserID, true, knowledgebase.ToolAccess, args)
 		}
 		return knowledgeProposeAccess(ctx, runtime.UserID, args)
 	}
-	return knowledgebaseExecute(ctx, runtime.UserID, true, "manage_knowledgebase_access", args)
+	return knowledgebaseExecute(ctx, runtime.UserID, true, knowledgebase.ToolAccess, args)
 }
 
 // knowledgebaseChatActsDirectly says which Brain-chat changes run when the person asks for them, like any other
@@ -105,7 +105,7 @@ func knowledgebaseBackupExecutor(ctx context.Context, runtime agentprofiles.Tool
 	if action != "git" && action != "status" {
 		return "", fmt.Errorf("This chat supports only Files Git operations and backup status")
 	}
-	return knowledgebaseExecute(ctx, runtime.UserID, false, "backup_knowledgebase", args)
+	return knowledgebaseExecute(ctx, runtime.UserID, false, knowledgebase.ToolBackup, args)
 }
 
 // Bound workflow/Crew operations use the same domain boundary as external agents.
@@ -189,7 +189,7 @@ func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args m
 		return false
 	}
 	action, _ := args["action"].(string)
-	if tool == "manage_knowledgebase_access" && action != "inspect" {
+	if tool == knowledgebase.ToolAccess && action != "inspect" {
 		if claims.ExecutionPrincipal != nil || !knowledgeInteractiveAccess(claims) && claims.AccessToken == nil {
 			return false
 		}
@@ -217,7 +217,7 @@ func knowledgebaseToolForClaims(claims *UserClaims, tool externalTool) externalT
 		return tool
 	}
 	canWrite := claims != nil && (claims.AccessToken == nil || claims.AccessToken.Allows("knowledgebase:write"))
-	canManage := knowledgebaseConnectionAllowsAction(claims, "manage_knowledgebase_access", map[string]any{"action": "grant"})
+	canManage := knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "grant"})
 	canMigrate := claims != nil && claims.AccessToken != nil && (claims.AccessToken.BuilderAccess() ||
 		claims.AccessToken.Allows("crews:read") && claims.AccessToken.Allows("crews:write"))
 	defs := knowledgebase.ExternalConnectionToolDefinitions(canWrite, canManage, canMigrate)

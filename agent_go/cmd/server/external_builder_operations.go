@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"net/http"
 	"os"
 	"slices"
@@ -548,7 +549,7 @@ var externalBuilderManagedTools = []string{
 	"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
 }
 
-var externalBuilderKnowledgeTools = []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access"}
+var externalBuilderKnowledgeTools = knowledgebase.ToolNames()
 
 func externalBuilderToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.ExternalBuilderOperationID == "" {
