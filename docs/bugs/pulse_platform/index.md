@@ -12,7 +12,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
-| [Crew](crew/index.md) | 17 | 5 |
+| [Crew](crew/index.md) | 18 | 6 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 172 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | open | P2 | [crew/functions](crew/functions/index.md) |
 | [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |
 | [PLAT-587](browser/browser/plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-586](browser/browser/plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-552](schedules/stopping/plat-552.md) | Stopping a workflow did not stop its Codex step: the real Codex process kept running | fixed on main | - | [schedules/stopping](schedules/stopping/index.md) |
 | [PLAT-551](app/navigation/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-550](browser/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-549](browser/browser/plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
