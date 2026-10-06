@@ -2030,6 +2030,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"additionalProperties": true,
 					"description":          "Named runtime inputs for a scripted step. Values must match that step's declared script_parameters contract and are passed to main.py as STEP_PARAMS_JSON. Omit for non-scripted steps.",
 				},
+				"source_run": map[string]interface{}{
+					"type":        "string",
+					"description": "Only with test_mode: the real run to read upstream step outputs from, as <iteration>/<group> (for example iteration-26-sched/daily-bid). Omit to use the most complete of the newest real runs of the group; the test receipt names the run used.",
+				},
 				"test_mode": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Run the step once WITHOUT real-world side effects, to verify a change before it counts as done. Reads stay real (DB, files, read-only MCP tools, browser navigation and snapshots). Everything with an external effect is NOT performed but recorded as 'would have run': MCP tools not annotated read-only (send, post, submit, spend), browser clicks/typing/forms/eval, notifications and human-input requests, Crew calls, KB and goal-metric writes. The workflow DB is a copy and files go to runs/test-<id>/; learnings are not written. The shell's outbound network is NOT blocked, so a step that sends through curl in a script is not contained. The result lists every stubbed action. Cannot run while another step of this workshop runs.",
@@ -2166,6 +2170,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				// reads upstream outputs copied from the real run folder.
 				execOpts.TestRunID = fmt.Sprintf("%s%d", testmode.FolderPrefix, time.Now().UnixNano())
 				execOpts.RealRunFolder = runFolder
+				execOpts.TestSourceRun, _ = args["source_run"].(string)
 				execOpts.RunFolder = fmt.Sprintf("%s/%s", execOpts.TestRunID, groupFolderName)
 				execOpts.AllowScriptRepair = false
 			}

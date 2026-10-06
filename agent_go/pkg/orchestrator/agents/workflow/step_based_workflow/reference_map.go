@@ -435,6 +435,7 @@ func (m *referenceMap) checkDependencies() {
 				continue
 			}
 			if strings.Contains(dep, "/") {
+				m.checkRelativeScriptDependency(s, dep)
 				m.checkPathDependency(s, dep)
 				continue
 			}
@@ -451,13 +452,32 @@ func (m *referenceMap) checkDependencies() {
 					severity, effect = refSeverityWarn, "the agent gets only the bare name and must find the file itself"
 				}
 				m.add(RefMapIssue{Kind: "dependency_not_staged", Severity: severity, Source: "step:" + s.id, Ref: dep,
-					Detail: fmt.Sprintf("context_dependencies names %s; %s writes it (validation_schema) but no context_output lists it, so %s", dep, strings.Join(declarers, ", "), effect)})
+					Detail: fmt.Sprintf("context_dependencies names %s; %s writes it (validation_schema) but no context_output lists it, so %s. Fix: list %s in %s's context_output (comma-separated); do not switch the dependency to a ../ path unless main.py resolves it", dep, strings.Join(declarers, ", "), effect, dep, declarers[0])})
 				continue
 			}
 			m.add(RefMapIssue{Kind: "dependency_unproduced", Severity: refSeverityBreak, Source: "step:" + s.id, Ref: dep,
 				Detail: fmt.Sprintf("context_dependencies names %s, which no step produces", dep)})
 		}
 	}
+}
+
+// checkRelativeScriptDependency flags a ../step/file dependency on a scripted
+// step whose main.py never reads STEP_OUTPUT_DIR. The platform passes a
+// dependency containing a slash through unchanged and runs the script from
+// code/<step>, so such a script opens the path relative to its own code folder
+// and the file is not there (bid-record, 2026-10-06). outreach-record resolves
+// relative inputs against STEP_OUTPUT_DIR, which is what makes the form valid.
+func (m *referenceMap) checkRelativeScriptDependency(s *refStep, dep string) {
+	if s.typ != string(StepTypeRegular) || filepath.IsAbs(dep) || strings.HasPrefix(dep, "$") {
+		return
+	}
+	raw, err := os.ReadFile(filepath.Join(m.root, "code", s.id, "main.py"))
+	src := string(raw)
+	if err != nil || strings.Contains(src, "STEP_OUTPUT_DIR") && (strings.Contains(src, "is_absolute") || strings.Contains(src, "isabs")) {
+		return
+	}
+	m.add(RefMapIssue{Kind: "relative_dependency_unresolved", Severity: refSeverityBreak, Source: "step:" + s.id, Ref: dep,
+		Detail: fmt.Sprintf("context_dependencies passes %s unchanged and code/%s/main.py does not resolve paths against STEP_OUTPUT_DIR, so it opens code/%s/%s. List the file in its producer's context_output and use the bare name, or resolve the argument against STEP_OUTPUT_DIR in main.py", dep, s.id, s.id, dep)})
 }
 
 func (m *referenceMap) checkPathDependency(s *refStep, dep string) {

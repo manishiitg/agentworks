@@ -99,7 +99,7 @@ func TestStepTestModeContainsExternalEffects(t *testing.T) {
 	base.SetWorkspacePath(workflow)
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 	hcpo.selectedRunFolder = "test-1/default"
-	run, err := hcpo.beginTestRun(context.Background(), "test-1", "iteration-0/default")
+	run, err := hcpo.beginTestRun(context.Background(), "test-1", "iteration-0/default", "")
 	if err != nil {
 		t.Fatal(err)
 	}

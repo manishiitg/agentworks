@@ -33,6 +33,9 @@ type WorkshopExecuteOptions struct {
 	// upstream outputs are copied in. Server-generated, never model input.
 	TestRunID     string
 	RealRunFolder string
+	// TestSourceRun optionally names the real run (<iteration>/<group>) to copy
+	// upstream outputs from. Model input: validated in resolveTestSourceRun.
+	TestSourceRun string
 }
 
 // cleanupWorkshopExecutionPath removes a specific workshop execution folder and archives
@@ -82,7 +85,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	// belongs to the test run until the step finishes.
 	var testRun *testmode.Run
 	if opts != nil && opts.TestRunID != "" {
-		run, err := hcpo.beginTestRun(ctx, opts.TestRunID, opts.RealRunFolder)
+		run, err := hcpo.beginTestRun(ctx, opts.TestRunID, opts.RealRunFolder, opts.TestSourceRun)
 		if err != nil {
 			return "", fmt.Errorf("test mode: %w", err)
 		}

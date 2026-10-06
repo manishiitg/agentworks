@@ -63,3 +63,13 @@ removed the test fails (`submit_bid` reached the server). Not yet run live throu
   test-mode run (PLAT-559 migration step 5).
 - Per-connection read-only overrides for MCP tools without annotations; a network allow list for test-mode shells.
 - Run-history UI marker for test runs.
+
+## Source run for upstream outputs (2026-10-06)
+
+First live use, `bid-record` on Upwork: the test copied its upstream outputs from `iteration-0/daily-bid`, the
+Builder's scratch run, which held only the access guard, so the step stopped on a missing `bid-submit/submission.json`
+(the real database was untouched and the test folder, DB copy and receipt were correct). The default is now the most
+complete of the ten newest real runs of the group (most populated step folders, newest on a tie), and `execute_step`
+takes an optional `source_run` (`<iteration>/<group>`, validated: no `..`, no absolute path, no `test-` run, must have
+an `execution` folder). The receipt records `source_run`. One test pins the choice.
+

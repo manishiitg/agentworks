@@ -108,6 +108,13 @@ map: a note, eval, learnings file or step text now names something that no longe
 Read the open breaks in `get_plan_prompt_health` (`reference_map`) for that step or file, fix the text you may edit,
 and record the review; report what needs the owner. Breaks that existed before are not a reason to stay due.
 
+Fix an unstaged dependency by listing the file in its producer's `context_output` (comma-separated, for example
+`submission.json,verify.json`) and leaving the consumer's dependency as a bare name. Never rewrite a bare dependency
+to a `../step/file` path: the platform passes a path with a slash to the script unchanged and runs it from
+`code/<step>`, so a script that opens its arguments directly looks in the wrong folder and the next run fails
+(Upwork `bid-record`, 2026-10-06). That form is only valid when `main.py` resolves relative arguments against
+`STEP_OUTPUT_DIR`.
+
 ### Workflow-level deletion audit (candidates with no real step_id)
 
 `plan_drift_candidates` may include one entry whose `step_id` is

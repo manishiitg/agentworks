@@ -37,6 +37,7 @@ type Run struct {
 	RunFolder    string // relative to runs/, e.g. "test-<id>/<group>"
 	DBPath       string // workspace-relative path of the run's DB copy ("" when the workflow has no DB)
 	DBAbsPath    string // absolute path of the DB copy
+	SourceRun    string // real run folder (<iteration>/<group>) the upstream outputs were copied from
 	ActionsPath  string // absolute path of the recorded actions (JSON lines)
 	DocsRootAbs  string // absolute workspace root
 	// FixedBlockedWrites denies writes to every entry of the workflow folder

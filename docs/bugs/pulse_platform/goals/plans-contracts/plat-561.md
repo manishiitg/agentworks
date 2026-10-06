@@ -101,3 +101,21 @@ naming `knowledgebase/context/context.md`, which does not exist.
 Still noisy: a note that names a retired step as history (for example instagram's `failure-patterns.md`) counts as a
 break. Only new ones flag Plan Drift (PLAT-565), so the cost is an occasional review, not a block.
 
+## Upwork incident and a new check (2026-10-06)
+
+Plan Drift fixed Upwork's unstaged dependencies by rewriting six steps' bare `context_dependencies` to `../step/file`.
+For the three scripted steps (`bid-record`, `bid-record-skip`, `bid-record-no-bid`) that breaks the next real run: the
+platform passes a dependency containing a slash to the script unchanged and runs it from `code/<step>`, and those
+`main.py` files open their arguments directly. `outreach-record` uses the form safely because its `main.py` resolves
+relative arguments against `STEP_OUTPUT_DIR`. The map was right that something was broken: the 2026-10-05 17:48 merge
+of `bid-read-and-draft` into `bid-pick-job` left `selected_job.json`, `draft.json`, `job_brief.json`,
+`job_candidates_raw.json`, `job_details_final.json` and `verify.json` without a producer listing them in
+`context_output`, and there was no real run since. The map's advice was incomplete, so Drift chose the wrong fix.
+
+Repaired on the live workflow (backup `upwork-backup-20261006-114503-predrift`): the six dependency lists are bare
+names again and the producers list the files (`search-find-and-shortlist`, `bid-pick-job`, `bid-submit`). Drift's one
+description tweak on `bid-pick-job` was kept. Code: the `dependency_not_staged` detail now says how to fix it, a new
+`relative_dependency_unresolved` break flags a scripted step whose `../` dependency its `main.py` does not resolve
+(checked: it flags the post-Drift plan and nothing on the repaired one), and the Drift guidance forbids the rewrite.
+Not yet run end to end: `bid-record` in test mode with `source_run=iteration-26-sched/daily-bid`.
+

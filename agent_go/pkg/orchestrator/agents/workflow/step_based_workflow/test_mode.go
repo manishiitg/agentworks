@@ -8,7 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,7 +31,7 @@ const testRunUpstreamCopyLimit int64 = 512 << 20
 // the workflow DB) and marks this controller's sessions as test sessions.
 // realRunFolder is the run folder the step would normally use; the controller's
 // selected run folder must already be the test run's.
-func (hcpo *StepBasedWorkflowOrchestrator) beginTestRun(ctx context.Context, runID, realRunFolder string) (*testmode.Run, error) {
+func (hcpo *StepBasedWorkflowOrchestrator) beginTestRun(ctx context.Context, runID, realRunFolder, explicitSource string) (*testmode.Run, error) {
 	_ = ctx
 	if !strings.HasPrefix(runID, testmode.FolderPrefix) || strings.ContainsAny(runID, `/\`) {
 		return nil, fmt.Errorf("invalid test run id %q", runID)
@@ -46,11 +48,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) beginTestRun(ctx context.Context, run
 		return nil, fmt.Errorf("test run %s: no workflow folder", runID)
 	}
 	workflowAbs := filepath.Join(docsRoot, filepath.FromSlash(workflowPath))
+	sourceRun, err := resolveTestSourceRun(workflowAbs, realRunFolder, explicitSource)
+	if err != nil {
+		return nil, err
+	}
 	run := &testmode.Run{
 		ID:           runID,
 		WorkflowPath: workflowPath,
 		RunFolder:    hcpo.selectedRunFolder,
 		DocsRootAbs:  docsRoot,
+		SourceRun:    sourceRun,
 	}
 	rootAbs := filepath.Join(docsRoot, filepath.FromSlash(run.Root()))
 	if err := os.MkdirAll(rootAbs, 0o775); err != nil {
@@ -81,8 +88,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) beginTestRun(ctx context.Context, run
 	run.FixedBlockedWrites = append(run.FixedBlockedWrites, workflowPath+"/"+DBFolderName)
 
 	// Upstream outputs: the step reads what earlier steps wrote in the real run.
-	if realRunFolder != "" {
-		src := filepath.Join(workflowAbs, "runs", filepath.FromSlash(realRunFolder), "execution")
+	if sourceRun != "" {
+		src := filepath.Join(workflowAbs, "runs", filepath.FromSlash(sourceRun), "execution")
 		dst := filepath.Join(docsRoot, filepath.FromSlash(workflowPath), "runs", filepath.FromSlash(run.RunFolder), "execution")
 		if err := copyTreeLimited(src, dst, testRunUpstreamCopyLimit); err != nil {
 			return nil, fmt.Errorf("copy upstream outputs into the test run: %w", err)
@@ -119,6 +126,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) endTestRun(run *testmode.Run, stepID 
 		"test_run_id": run.ID,
 		"step_id":     stepID,
 		"run_folder":  run.RunFolder,
+		"source_run":  run.SourceRun,
 		"db_copy":     run.DBPath,
 		"finished_at": time.Now().UTC().Format(time.RFC3339),
 		"succeeded":   execErr == nil,
@@ -255,4 +263,74 @@ func testModePromptSection(run *testmode.Run) string {
 		"\"TEST MODE ... was NOT run\" result and are recorded. Treat such a result as if the action succeeded and finish " +
 		"the step; never retry it or look for another way to perform it (shell, curl, scripts). The workflow database is a " +
 		"copy and files go to the test run folder; nothing written here reaches the real workflow. $" + testmode.EnvFlag + "=1 in the shell.\n"
+}
+
+// resolveTestSourceRun picks the real run a test run copies upstream outputs
+// from. The workshop's own folder (iteration-0) is a scratch run that usually
+// holds only the steps the Builder ran by hand, so a late step such as a
+// recorder finds nothing upstream. Without an explicit source, the most
+// complete of the ten newest real runs of the group is used (the one with the
+// most populated step folders, newest on a tie); the fallback is the workshop's
+// own run folder. An explicit source is model input and must be a plain
+// relative run folder that has an execution folder.
+func resolveTestSourceRun(workflowAbs, fallback, explicit string) (string, error) {
+	runsDir := filepath.Join(workflowAbs, "runs")
+	group := path.Base(filepath.ToSlash(fallback))
+	if explicit = strings.Trim(strings.TrimSpace(filepath.ToSlash(explicit)), "/"); explicit != "" {
+		first, _, _ := strings.Cut(explicit, "/")
+		if strings.Contains(explicit, "..") || filepath.IsAbs(explicit) || strings.HasPrefix(first, testmode.FolderPrefix) {
+			return "", fmt.Errorf("source_run %q is not a real run folder", explicit)
+		}
+		if info, err := os.Stat(filepath.Join(runsDir, filepath.FromSlash(explicit), "execution")); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("source_run %q has no execution folder", explicit)
+		}
+		return explicit, nil
+	}
+	entries, err := os.ReadDir(runsDir)
+	if err != nil || group == "" || group == "." {
+		return fallback, nil
+	}
+	type candidate struct {
+		folder  string
+		modTime time.Time
+		steps   int
+	}
+	var candidates []candidate
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), testmode.FolderPrefix) {
+			continue
+		}
+		execution := filepath.Join(runsDir, entry.Name(), group, "execution")
+		info, err := os.Stat(execution)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		steps := 0
+		if children, err := os.ReadDir(execution); err == nil {
+			for _, child := range children {
+				name := child.Name()
+				if !child.IsDir() || strings.HasPrefix(name, ".") || name == "archived" || name == "Downloads" {
+					continue
+				}
+				if files, err := os.ReadDir(filepath.Join(execution, name)); err == nil && len(files) > 0 {
+					steps++
+				}
+			}
+		}
+		candidates = append(candidates, candidate{folder: entry.Name() + "/" + group, modTime: info.ModTime(), steps: steps})
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].modTime.After(candidates[j].modTime) })
+	if len(candidates) > 10 {
+		candidates = candidates[:10]
+	}
+	best := -1
+	for i, c := range candidates {
+		if best < 0 || c.steps > candidates[best].steps {
+			best = i
+		}
+	}
+	if best < 0 || candidates[best].steps == 0 {
+		return fallback, nil
+	}
+	return candidates[best].folder, nil
 }
