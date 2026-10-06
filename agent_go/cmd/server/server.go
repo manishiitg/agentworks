@@ -5263,6 +5263,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				err = preflightCrewSteps(workflowCtx, api.productSchedules, claims.UserID, workflowWorkspacePath)
 			}
 			if err == nil {
+				// An unreadable input is refused before anything runs (PLAT-579).
+				_, err = workflowGraphPreflight(workflowWorkspacePath, "")
+			}
+			if err == nil {
 				_, err = workflowOrchestrator.Execute(
 					workflowCtx,
 					workflowObjective, // Use preset objective instead of req.Query

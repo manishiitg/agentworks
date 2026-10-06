@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 170 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 171 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 20 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | open | P2 | [brain/skills](brain/skills/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-542](app/navigation/plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |
 | [PLAT-540](app/navigation/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-539](chat/reliability/plat-539.md) | A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn | fixed on main | - | [chat/reliability](chat/reliability/index.md) |

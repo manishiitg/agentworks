@@ -39,7 +39,19 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 			if err := requireCurrentWorkflowContractForManualRun(ctx, r.workspacePath); err != nil {
 				return "", err
 			}
-			return original(ctx, args)
+			stepID := ""
+			if name == "execute_step" {
+				stepID, _ = args["step_id"].(string)
+			}
+			notice, err := workflowGraphPreflight(r.workspacePath, stepID)
+			if err != nil {
+				return "", err
+			}
+			out, runErr := original(ctx, args)
+			if notice != "" && runErr == nil {
+				out = notice + "\n\n" + out
+			}
+			return out, runErr
 		}
 	}
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)

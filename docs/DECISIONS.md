@@ -17,6 +17,7 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+<<<<<<< HEAD
 ### 2026-10-06 — Relays execute once per invocation, without variable groups
 
 Use flat `variables[].value` for reusable configuration and per-call INPUT for
@@ -25,7 +26,17 @@ without group batching or iteration-0 rotation. Builder node tests identify the
 run by ID. Legacy published group bindings resolve configuration read-only;
 ambiguous drafts require explicit consolidation. Why: Relays are API agent/script
 chains, and groups add selection and fan-out that callers do not need.
-Ticket: [PLAT-577](bugs/pulse_platform/relays/execution/plat-577.md).
+Ticket: [PLAT-579](bugs/pulse_platform/relays/execution/plat-579.md).
+=======
+### 2026-10-06 — A step or run whose inputs cannot be read is refused before it starts
+
+What: the input and output graph is checked in Go before `execute_step`, `run_full_workflow` and a full workflow run.
+A step whose input no step produces, or that no producer lists in `context_output`, is refused with the exact input
+named, before anything is spent. `AGENTWORKS_GRAPH_STRICT=warn` (default) only logs and tells the builder;
+`enforce` refuses. Why: the Upwork merge left six inputs unreadable and nothing failed until the next run; the owner
+wants structural checks in Go, not left to the agent. This is a structural check, not a judgment: it never rules on
+what a step should do. Ticket: [PLAT-579](bugs/pulse_platform/goals/plans-contracts/plat-579.md).
+>>>>>>> e13a23dea (PLAT-579: refuse a step or run whose inputs cannot be read, before it starts)
 
 ### 2026-10-06 — Browser groups show only the project or workflow name
 
