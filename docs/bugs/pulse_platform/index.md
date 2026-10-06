@@ -17,7 +17,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 58 | 13 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 6 | 1 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-568](sandbox/skills/plat-568.md) | Custom skills can be installed again; only our policy files are protected | fixed on main | P2 | [sandbox/skills](sandbox/skills/index.md) |
 | [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
 | [PLAT-565](goals/plans-contracts/plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-531](crew/frontend-chat/plat-531.md) | Switching from a workflow to Crew (or Code) shows "Opening workspace…" every time, slow on RTS | fixed on main | - | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-530](browser/browser/plat-530.md) | Workflow extension rollout and immediate current-tab sharing | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-529](app/tests/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [app/tests](app/tests/index.md) |
-| [PLAT-528](app/chat/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [app/chat](app/chat/index.md) |
