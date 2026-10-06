@@ -144,9 +144,9 @@ def table_exists(conn, name: str) -> bool:
 def load_register_ids(repo_root: Path) -> set:
     """Every PLAT-NNN already known, so a finding citing one isn't re-flagged."""
     ids = set()
-    register = repo_root / "docs" / "bugs" / "pulse_platform/index.md"
-    if register.exists():
-        ids |= {m.upper() for m in PLAT_ID_RE.findall(register.read_text(errors="replace"))}
+    # Every ticket is a file under docs/bugs/pulse_platform/<product>/<area>/ (no register since 2026-10-06).
+    for ticket in (repo_root / "docs" / "bugs" / "pulse_platform").rglob("plat-*.md"):
+        ids |= {m.upper() for m in PLAT_ID_RE.findall(ticket.name)}
     frag_dir = repo_root / "docs" / "bugs" / "pulse_platform"
     if frag_dir.exists():
         for f in frag_dir.rglob("plat-*.md"):
