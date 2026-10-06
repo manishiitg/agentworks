@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-475 — Agent-started OAuth sign-ins redirect to a port nothing listens on (local runs)
 

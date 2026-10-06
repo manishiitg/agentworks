@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-301 — MCP catalog name collision can strand a user's custom connector
 

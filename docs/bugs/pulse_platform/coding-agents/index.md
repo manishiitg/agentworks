@@ -4,4 +4,12 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [bridge](bridge/index.md) | 66 | 15 |
+| [agents](agents/index.md) | 3 | 0 |
+| [claude](claude/index.md) | 4 | 0 |
+| [codex](codex/index.md) | 7 | 1 |
+| [cursor](cursor/index.md) | 2 | 0 |
+| [general](general/index.md) | 5 | 0 |
+| [muse](muse/index.md) | 5 | 2 |
+| [pi](pi/index.md) | 5 | 1 |
+| [sessions](sessions/index.md) | 20 | 7 |
+| [tools](tools/index.md) | 15 | 4 |

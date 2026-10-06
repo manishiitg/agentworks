@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-178 — retained chat delivery and transcript recovery can leave the chat UI behind the terminal
 
@@ -24,7 +24,7 @@
   `cmd/server/server.go`'s full-turn save block), terminal/session restore
   (`cmd/server/chat_history_routes.go`), Claude Code transcript reader
   (`multi-llm-provider-go`'s `claudecode_transcript_messages.go`).
-- **Related:** [PLAT-177](../../coding-agents/bridge/plat-177.md)) (same session, same resume boundary,
+- **Related:** [PLAT-177](../../coding-agents/claude/plat-177.md)) (same session, same resume boundary,
   different symptom — tool-access confusion vs. this ticket's conversation
   data loss; investigated together, filed separately since the root causes
   are unrelated).

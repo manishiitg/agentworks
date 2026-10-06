@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-007 — image verification cannot reliably read workflow images
 
@@ -40,7 +40,7 @@
   folder, reads it by the exact absolute and workflow-qualified paths, and uses
   a supported configured model. A bad path and unavailable model produce
   distinct actionable errors.
-- **Related recurrence:** [PLAT-328](../../goals/step-execution/plat-328.md) records the
+- **Related recurrence:** [PLAT-328](../../goals/steps/routing/plat-328.md) records the
   same absolute-versus-canonical workspace-path mismatch in the trusted
   deterministic-routing reader. It is tracked separately because PLAT-007's
   media-tool normalization did not cover that internal read path.

@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-352 — Chat reliability umbrella: durable log, turn delivery, continuity
 
@@ -42,7 +42,7 @@ sends also gain the two-stage receipt: tmux sends quickly and a separate
 watcher confirms the exact message against a new SQLite user step, including
 repeated identical sends. The provider live test and isolated full application
 P0 runner passed against AGY 1.2.12 in Gemini API-key mode. See
-[PLAT-354](../../coding-agents/bridge/plat-354.html) for the completion guard, and
+[PLAT-354](../../coding-agents/muse/plat-354.html) for the completion guard, and
 [durable acknowledgement](../../refactor/durable_ack_p0.md) for the receipt
 contract.
 

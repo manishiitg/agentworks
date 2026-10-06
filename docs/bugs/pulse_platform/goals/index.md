@@ -8,5 +8,5 @@
 | [human-decisions](human-decisions/index.md) | 15 | 2 |
 | [learnings](learnings/index.md) | 16 | 3 |
 | [plans-contracts](plans-contracts/index.md) | 18 | 4 |
-| [pulse-governance](pulse-governance/index.md) | 50 | 13 |
-| [step-execution](step-execution/index.md) | 50 | 10 |
+| [pulse](pulse/index.md) | 50 | 13 |
+| [steps](steps/index.md) | 50 | 10 |

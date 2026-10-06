@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-215 — guarded `agent_browser download` already uses platform staging; correct the stale external-only diagnosis
 

@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-190 — proposal: make sure agents act on skill guidance for plan/report/config tools
 
@@ -29,7 +29,7 @@
 - **Related:** grew out of [PLAT-189](../evaluation/plat-189.md))'s investigation. Revised
   after re-reading two documents that should have been checked before the
   first draft: `docs/design/agent_tool_surface_single_source.md` and
-  [PLAT-125](../step-execution/plat-125.md)), the platform's own shipped answer to a near-identical
+  [PLAT-125](../steps/tools/plat-125.md)), the platform's own shipped answer to a near-identical
   problem.
 
 ## Original proposal (first draft, 2026-08-27) — demoted, not deleted

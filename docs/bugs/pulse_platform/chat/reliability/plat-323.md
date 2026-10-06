@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-323 — workflow-builder chats stay inside their workflow but are isolated by authenticated user
 

@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-340 — Stopping an interactive workflow response stranded the next message
 

@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-525 — Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation
 

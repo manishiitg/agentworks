@@ -257,7 +257,7 @@ Landlock denies the exec, `rc=126: Permission denied`, no login/config
 error, no hint it's a permissions problem. This is exactly what happened
 to the `alpaca` CLI (`tectonicusadaytrading`'s trading step): installed,
 on PATH, working login — and unable to launch from inside a workflow step
-for the same reason for over a week (see [PLAT-281](../../docs/bugs/pulse_platform/sandbox/security/plat-281.md)).
+for the same reason for over a week (see [PLAT-281](../../docs/bugs/pulse_platform/sandbox/confinement/plat-281.md)).
 
 **Any CLI tool installed under `/srv/dominion/tools` that a *workflow
 step* (not the agent process itself) will invoke needs an explicit grant**
@@ -275,7 +275,7 @@ verification endpoint for this — the `/health` sandbox check only proves
 the launcher itself works, not that a specific path is granted; confirm by
 actually running the tool from inside a real workflow step, or by
 reproducing directly against the shipped launcher binary the way
-[PLAT-281](../../docs/bugs/pulse_platform/sandbox/security/plat-281.md) did.
+[PLAT-281](../../docs/bugs/pulse_platform/sandbox/confinement/plat-281.md) did.
 
 ### A workflow step CAN install packages — and what that relies on (PLAT-283)
 

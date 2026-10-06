@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-246 — Workflow Builder lacks actionable scripted-use guidance for the active text and web-search tools
 
@@ -20,8 +20,8 @@
 - **Findings:** No production workflow failure is linked yet. The gap was found
   while refactoring the shared provider-backed agent surface to retain only
   `generate_text_llm` and `search_web_llm`.
-- **Related:** [PLAT-244](../../sandbox/security/plat-244.md)) (narrowed tool surface and restored
-  reference pointer); [PLAT-234](../../coding-agents/bridge/plat-234.md)) (search timeout guidance).
+- **Related:** [PLAT-244](../../sandbox/tools/plat-244.md)) (narrowed tool surface and restored
+  reference pointer); [PLAT-234](../../coding-agents/general/plat-234.md)) (search timeout guidance).
 
 ## Problem
 

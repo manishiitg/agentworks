@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-322 — One persistent managed browser per workflow
 

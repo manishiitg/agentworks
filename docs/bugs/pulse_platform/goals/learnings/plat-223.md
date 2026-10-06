@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-223 — the managed-DB guidance no longer tells every step to read a file its own session may not be able to read
 
@@ -91,4 +91,4 @@ outside the agent's available `db/assets` surface. The managed guidance fallback
 is already implemented; this recurrence does not justify granting arbitrary raw
 DB access. Acceptance must exercise the actual reviewer/step capability context
 and reconcile stale workflow instructions with the canonical managed DB tools.
-The separate root-manifest retention denial is now [PLAT-304](../../sandbox/security/plat-304.md)).
+The separate root-manifest retention denial is now [PLAT-304](../../sandbox/general/plat-304.md)).

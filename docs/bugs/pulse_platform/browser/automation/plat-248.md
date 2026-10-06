@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-248 — Managed browser tool can be present without its built-in operating skill
 

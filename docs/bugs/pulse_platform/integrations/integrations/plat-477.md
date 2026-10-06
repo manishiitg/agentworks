@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-477 — trigger_mcp_discovery cannot be called for a private MCP connection (schema declares no name)
 

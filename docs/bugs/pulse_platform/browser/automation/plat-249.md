@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-249 — `auto` browser mode omits the built-in host Downloads grant
 

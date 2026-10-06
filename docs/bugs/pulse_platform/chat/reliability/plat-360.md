@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-360 — A step-completion turn colliding with a user turn closed the CLI and lost the message
 

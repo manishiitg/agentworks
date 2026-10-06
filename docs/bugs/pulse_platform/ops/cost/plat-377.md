@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-377 — RTS workshop child costs lose user attribution
 

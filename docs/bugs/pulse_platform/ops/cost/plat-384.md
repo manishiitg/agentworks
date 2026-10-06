@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-384 — RTS latency workflow cost ledger has damaged unique indexes
 

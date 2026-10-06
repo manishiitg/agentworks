@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-184 — Pulse and the Workflow Builder cannot access the cost ledger at all, including everything PLAT-166/167 added
 

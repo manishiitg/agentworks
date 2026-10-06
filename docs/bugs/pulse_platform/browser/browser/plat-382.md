@@ -1,4 +1,4 @@
-[← platform / browser](index.md)
+[← browser / browser](index.md)
 
 # PLAT-382 — Browser toolbar and manual copy/paste
 

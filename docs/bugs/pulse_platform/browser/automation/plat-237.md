@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-237 — X quote-compose sometimes renders reply mode instead of quote mode: not a platform defect
 

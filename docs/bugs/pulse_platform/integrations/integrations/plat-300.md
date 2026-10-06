@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-300 — Gmail send-only default and Google Workspace (Drive/Sheets/Docs/Slides/Calendar) connections
 

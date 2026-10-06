@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-548 — An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored"
 

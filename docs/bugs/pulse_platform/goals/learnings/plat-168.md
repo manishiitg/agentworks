@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-168 — after a successful `query_workflow_db` call, an agent redundantly hand-rebuilt the same HTTP request and burned 45 minutes fighting its own Python quoting
 
@@ -17,7 +17,7 @@
 | Last synchronized | `2026-08-21` |
 
 - **Priority:** P2 — not a platform reliability bug (the 45m ceiling from
-  [PLAT-153](../../coding-agents/bridge/plat-153.md)) caught it and recovered cleanly, exactly as
+  [PLAT-153](../../coding-agents/pi/plat-153.md)) caught it and recovered cleanly, exactly as
   designed). The cost is wasted turn time and tool-call spend on a step that
   never needed to fail at all.
 - **Owner:** step/skill guidance for agentic steps that use `query_workflow_db`
@@ -80,7 +80,7 @@ loop" classifier is the wrong bet:
 
 **The right split, reached explicitly:**
 
-- **Real time stays dumb.** The turn ceiling ([PLAT-153](../../coding-agents/bridge/plat-153.md))) is a
+- **Real time stays dumb.** The turn ceiling ([PLAT-153](../../coding-agents/pi/plat-153.md))) is a
   resource/cost cap, not a quality judgment — it should not try to
   distinguish good iteration from bad. Its only job is to bound total spend
   (time, tool-call cost, a held workflow slot) so nothing runs unbounded,

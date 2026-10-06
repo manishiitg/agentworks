@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-226 — orchestrator/Pulse/Builder overhead cost is provably merged, and the disambiguating signal doesn't exist yet
 

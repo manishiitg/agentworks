@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-509 — Free search MCPs in the MCP catalog (after `search_web_llm` was removed)
 

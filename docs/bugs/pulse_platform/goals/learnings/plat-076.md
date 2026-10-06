@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-076 — learning and scripted metadata record claims instead of runtime facts
 

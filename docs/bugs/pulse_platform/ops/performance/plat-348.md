@@ -1,4 +1,4 @@
-[← platform / performance](index.md)
+[← ops / performance](index.md)
 
 # PLAT-348 — Retained completed sessions fan out workflow-open restoration
 
@@ -16,7 +16,7 @@
 | Priority | P0 production navigation latency |
 | Owner | frontend workflow reconnect / active-session projection |
 | Reported | 2026-09-21 |
-| Related | [PLAT-109](../../app/ui/plat-109.md), [PLAT-343](../../app/ui/plat-343.md), [PLAT-341](plat-341.md) |
+| Related | [PLAT-109](../../app/chat/plat-109.md), [PLAT-343](../../app/chat/plat-343.md), [PLAT-341](plat-341.md) |
 
 ## Incident
 

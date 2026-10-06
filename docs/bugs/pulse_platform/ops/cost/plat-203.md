@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-203 — pi-cli-routed models had no rate card at all, and a genuinely-zero cost was indistinguishable from "we don't know"
 

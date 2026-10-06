@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-019 — Pulse agent metrics capture usage but leave every call unpriced
 

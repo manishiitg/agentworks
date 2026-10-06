@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-124 — an oversized browser snapshot returned nothing, and its spill was unreadable
 
@@ -22,7 +22,7 @@
 - **Owner:** `pkg/browser/executor.go` (snapshot inline cap),
   `controller_message_sequence.go` + `controller_agent_factory.go` (folder guard
   read paths)
-- **Related:** [PLAT-073](../../goals/pulse-governance/plat-073-remaining-board.md)) cluster F (`dd9ede3c`)
+- **Related:** [PLAT-073](../../goals/pulse/findings/plat-073-remaining-board.md)) cluster F (`dd9ede3c`)
   granted `tool_output_folder` to `setupExecutionFolderGuard` for exactly this
   reason; the two parallel guard builders were never updated and nothing pinned
   the parity.

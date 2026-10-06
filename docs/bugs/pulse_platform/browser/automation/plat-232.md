@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-232 — `agent_browser click` success proves the event dispatched, not that a toggle control's state changed
 

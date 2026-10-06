@@ -25,7 +25,7 @@
   ticket completes — it fixed routing *between* stores but left the KB half's
   own write discipline unstated), [PLAT-058](../../goals/learnings/plat-058.md) (the same
   append-forever pattern, caught and fixed for learnings only),
-  [PLAT-123](../../goals/step-execution/plat-123.md)) (the `record_run_concern` path that surfaced this).
+  [PLAT-123](../../goals/steps/file-tools/plat-123.md)) (the `record_run_concern` path that surfaced this).
 
 ## How it surfaced
 

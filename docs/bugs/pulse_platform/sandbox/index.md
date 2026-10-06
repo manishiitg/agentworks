@@ -4,4 +4,10 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [security](security/index.md) | 58 | 13 |
+| [access](access/index.md) | 9 | 5 |
+| [confinement](confinement/index.md) | 9 | 1 |
+| [general](general/index.md) | 5 | 1 |
+| [paths](paths/index.md) | 13 | 2 |
+| [secrets](secrets/index.md) | 9 | 2 |
+| [slots](slots/index.md) | 7 | 1 |
+| [tools](tools/index.md) | 6 | 1 |

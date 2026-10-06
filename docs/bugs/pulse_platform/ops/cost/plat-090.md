@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-090 — no surface reports Pulse time/cost against workflow time/cost, so "is Pulse worth it?" cannot be answered
 

@@ -4,4 +4,8 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [runs](runs/index.md) | 39 | 8 |
+| [general](general/index.md) | 11 | 2 |
+| [history](history/index.md) | 9 | 2 |
+| [occurrences](occurrences/index.md) | 11 | 3 |
+| [stopping](stopping/index.md) | 5 | 1 |
+| [webhooks](webhooks/index.md) | 1 | 0 |

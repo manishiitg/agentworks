@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-129 — 13 more guidance test assertions traced to specific renames and removals from `0174b6aff`/`aad50dfb0`/`f67ccc832`
 

@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-132 — a permanently-broken MCP server is re-attempted on every server restart
 

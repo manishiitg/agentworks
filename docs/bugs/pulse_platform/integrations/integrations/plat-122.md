@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-122 — real microphone reads digital silence through every app on a dev machine
 

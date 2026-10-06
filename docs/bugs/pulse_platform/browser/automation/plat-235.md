@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-235 — Internal CDP tab-listing helper had zero retry on timeout, unlike every other read command
 

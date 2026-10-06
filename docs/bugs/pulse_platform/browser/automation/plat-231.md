@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-231 — the two CDP tab-creation errors are correct input validation, not a harness defect; not PLAT-028
 

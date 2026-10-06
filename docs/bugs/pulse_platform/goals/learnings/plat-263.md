@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-263 — Retire the redundant per-step learning lock
 
@@ -18,7 +18,7 @@
 
 - **Priority:** product simplification, severity medium.
 - **Related:** [PLAT-055](plat-055.md), [PLAT-059](plat-059.md),
-  [PLAT-258](../pulse-governance/plat-258.md)), [PLAT-260](../pulse-governance/plat-260.md)), [PLAT-265](../../brain/learnings-knowledge/plat-265.md).
+  [PLAT-258](../pulse/reviews/plat-258.md)), [PLAT-260](../pulse/lifecycle/plat-260.md)), [PLAT-265](../../brain/learnings-knowledge/plat-265.md).
 
 ## Problem
 

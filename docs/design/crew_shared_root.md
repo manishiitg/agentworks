@@ -1,6 +1,6 @@
 # Crews at a shared root (`Crew/<id>`)
 
-> **Update 2026-09-30:** "Run mode" readers and guest calls now share one Crew prompt with the owner; the reader role is a block in front of each message, enforced by tools and folder guards, and refusals name `submit_crew_suggestion`. A guest call is a reader. See [project instruction files](project_instruction_files.md), [PLAT-371](../bugs/pulse_platform/sandbox/security/plat-371.md).
+> **Update 2026-09-30:** "Run mode" readers and guest calls now share one Crew prompt with the owner; the reader role is a block in front of each message, enforced by tools and folder guards, and refusals name `submit_crew_suggestion`. A guest call is a reader. See [project instruction files](project_instruction_files.md), [PLAT-371](../bugs/pulse_platform/sandbox/general/plat-371.md).
 
 Status: **superseded by [PLAT-442 step 4](../bugs/pulse_platform/crew/security-sandbox/plat-442.md)** (built 2026-10-04, not yet run on a server). Where this document differs, the ticket
 wins: the owner is the server's registry (PLAT-449), not `product.json`; old paths resolve through the registry's alias list, not `_system/crew-path-aliases.json`; stored

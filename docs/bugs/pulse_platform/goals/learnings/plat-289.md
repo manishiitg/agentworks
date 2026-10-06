@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-289 — Substack research paths were fixed, but learning notes retained contradictory write/success contracts
 

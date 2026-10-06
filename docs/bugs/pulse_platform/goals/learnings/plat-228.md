@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-228 — the "bug-review" guided flow that referenced a missing skill file no longer exists
 

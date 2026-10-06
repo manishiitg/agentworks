@@ -1,4 +1,4 @@
-[← platform / performance](index.md)
+[← ops / performance](index.md)
 
 # PLAT-344 — Global workspace write lock turns one slow upload into a server-wide write stall
 

@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-166 — the cost ledger cannot separate a step's execution cost from its reflection cost
 
@@ -23,7 +23,7 @@
 - **Owner:** cost ledger schema/aggregation (`pkg/costledger`), cost observer
   attribution (`pkg/costobserver`), Cost Analysis UI (`CostsPopup.tsx`).
 - **Related:** [PLAT-068](../../goals/learnings/plat-068.md)) (shipped the execution/reflection split
-  for the *older* token-usage-file system, not this one), [PLAT-111](../../app/ui/plat-111.md))
+  for the *older* token-usage-file system, not this one), [PLAT-111](../../app/activity/plat-111.md))
   (Cost Analysis performance, unrelated to attribution), [PLAT-090](plat-090.md)
   (Pulse-specific cost measurement, unrelated).
 
@@ -285,7 +285,7 @@ workflow step, not only ones that ever run a reflection turn — grew a
 in every Cost Analysis API response, forever. Harmless to the UI (which only
 ever rendered something when a *second*, non-default phase was also
 present), but a real, permanent payload-size regression, and one directly
-relevant to [PLAT-111](../../app/ui/plat-111.md))'s already-tracked Cost Analysis
+relevant to [PLAT-111](../../app/activity/plat-111.md))'s already-tracked Cost Analysis
 first-paint/payload problem.
 
 **Fix:** `Observer.phase` now starts empty (`""`). `addEntryToExecutionBucket`

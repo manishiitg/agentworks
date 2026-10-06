@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-257 — Step learnings/knowledge access contract diverged across prompts, filesystem guards, and Builder guidance
 
@@ -17,7 +17,7 @@
 | Last synchronized | `2026-08-30` |
 
 - **Priority:** runtime permission contract, severity high.
-- **Related:** [PLAT-061](../step-execution/plat-061.md)), [PLAT-062](../step-execution/plat-062.md)),
+- **Related:** [PLAT-061](../steps/config/plat-061.md)), [PLAT-062](../steps/scripted/plat-062.md)),
   [PLAT-124](../../browser/automation/plat-124.md)), [PLAT-223](plat-223.md).
 - **Origin:** user-requested audit of whether every workflow step can read the
   shared learnings and knowledgebase stores.
@@ -90,7 +90,7 @@ mark that prevention complete from the workflow-level prompt repair alone.
 
 ## 2026-09-10 improvement-system dependency
 
-[PLAT-305](../pulse-governance/plat-305.md)) implements the first review/scheduling/research/lifecycle
+[PLAT-305](../pulse/reviews/plat-305.md)) implements the first review/scheduling/research/lifecycle
 release. This ticket's remaining foundation acceptance is still required and is
 not closed by adding Architecture or outcome tracking. Historical evidence and
 legacy workflow behavior remain unchanged by that release.

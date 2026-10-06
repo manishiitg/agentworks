@@ -1,6 +1,6 @@
 # Work Product Design
 
-> **Update 2026-09-30:** Crew (Work) chats run in the project folder. A project's own `AGENTS.md`, `.claude/`, `.cursor/` and other CLI files are read, never overwritten or deleted; the session prompt is added as a marked, session-counted block in `AGENTS.md`. A Crew has two roles, owner (Builder) and reader (Run, including guest calls); every session shares one prompt and the reader role is sent as a block in front of each message. See [project instruction files](project_instruction_files.md) and [PLAT-371](../bugs/pulse_platform/sandbox/security/plat-371.md).
+> **Update 2026-09-30:** Crew (Work) chats run in the project folder. A project's own `AGENTS.md`, `.claude/`, `.cursor/` and other CLI files are read, never overwritten or deleted; the session prompt is added as a marked, session-counted block in `AGENTS.md`. A Crew has two roles, owner (Builder) and reader (Run, including guest calls); every session shares one prompt and the reader role is sent as a block in front of each message. See [project instruction files](project_instruction_files.md) and [PLAT-371](../bugs/pulse_platform/sandbox/general/plat-371.md).
 
 ## Main Goal
 

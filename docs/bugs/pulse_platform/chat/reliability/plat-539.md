@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-539 — A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn
 

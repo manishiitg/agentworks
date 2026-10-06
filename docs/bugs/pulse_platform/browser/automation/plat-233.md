@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-233 — `agent_browser wait`'s fixed-delay mode takes a bare number, not `--ms`
 

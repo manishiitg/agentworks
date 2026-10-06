@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-482 — An MCP added to a workflow, Relay, Crew or Code belongs to that place and is used by everyone with access to it
 

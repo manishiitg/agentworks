@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-319 — Slack notifications display plain text and formatted attachment twice
 

@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-309 — Authenticated workflow webhooks and visible schedule/trigger routes
 

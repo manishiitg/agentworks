@@ -1,4 +1,4 @@
-[← platform / browser](index.md)
+[← browser / browser](index.md)
 
 # PLAT-414 — Stop browser finds nothing; a crashed tab stays stuck; tall screenshots kill Chrome
 

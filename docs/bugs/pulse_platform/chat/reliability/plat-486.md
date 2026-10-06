@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-486 — Muse's "AgentWorks note: platform bridge mounted" shows in chat messages
 

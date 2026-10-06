@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-028 — a recovered CDP tab leaks into page-action arguments
 

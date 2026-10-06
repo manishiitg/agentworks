@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-081 — workflow-builder chat cost writer inflated its own ledger every turn; two other cost findings were scope/documentation gaps, not bugs
 

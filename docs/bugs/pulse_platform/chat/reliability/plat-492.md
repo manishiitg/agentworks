@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-492 — After a provider switch the next messages never ran (queued messages were never re-kicked)
 

@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-518 — A message sent while Codex was still answering showed up twice, the second with no reply ("stuck")
 

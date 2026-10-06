@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-037 — learning freshness ledger assigns out-of-band edits to the next step
 

@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-224 — `agent_browser network requests` tab-scoping is a third-party CLI defect, not a repository fix
 

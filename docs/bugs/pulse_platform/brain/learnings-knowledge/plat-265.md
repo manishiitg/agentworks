@@ -17,7 +17,7 @@
 | Last synchronized | `2026-08-31` |
 
 - **Priority:** product simplification, severity medium.
-- **Related:** [PLAT-257](../../goals/learnings/plat-257.md), [PLAT-260](../../goals/pulse-governance/plat-260.md)),
+- **Related:** [PLAT-257](../../goals/learnings/plat-257.md), [PLAT-260](../../goals/pulse/lifecycle/plat-260.md)),
   [PLAT-263](../../goals/learnings/plat-263.md).
 - **Renumbering note:** this work was initially recorded as PLAT-262 in a
   concurrent local change. Upstream already owned PLAT-262 for read-only

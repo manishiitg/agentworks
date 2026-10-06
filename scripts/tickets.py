@@ -389,6 +389,8 @@ def relocate(moves, file_moves=None):
             new_abs = mapping.get(old_abs, old_abs)
             if old_abs.name == 'index.md' and old_abs.parent in dir_mapping:
                 new_abs = dir_mapping[old_abs.parent] / 'index.md'
+            elif old_abs.name == 'index.md' and fp in mapping and old_abs.parent == fp.parent:
+                new_abs = mapping[fp].parent / 'index.md'  # a moved ticket's own back link follows it
             elif not old_abs.exists() and old_abs not in mapping:
                 return m.group(0)
             return '](' + rel_link(here_new, new_abs) + anchor + ')'

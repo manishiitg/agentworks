@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-069 — nothing measures whether a workflow is getting cheaper, faster, or more accurate over time
 

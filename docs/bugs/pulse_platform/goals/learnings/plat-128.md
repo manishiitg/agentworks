@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-128 — guidance tests assert content for two docs that were deliberately deleted 8 days before
 

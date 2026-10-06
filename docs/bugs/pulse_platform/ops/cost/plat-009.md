@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-009 — `get_cost_summary` loses grouped and historical run spend
 

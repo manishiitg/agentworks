@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-167 — break out cost and time per message_sequence item, not just execution vs reflection
 

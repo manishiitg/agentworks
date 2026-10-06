@@ -40,7 +40,7 @@ agent_go (now `pkg/workspaceref`), the `workspace/` module (`slots.SlotForDir`, 
 
 **Superseded decision.** The text below describes what step 1 first did: trust `product.json`'s `owner_id` over the path. That was wrong: the manifest is
 user-writable project data (a user, or a Crew's own agent turn with write access to the project, can edit it) and it chose a Linux slot
-([PLAT-449](../../sandbox/security/plat-449.md)); and the backfill followed symlinks ([PLAT-450](../../sandbox/security/plat-450.md)). Now: ownership is **server-controlled** metadata in a registry in the app's
+([PLAT-449](../../sandbox/access/plat-449.md)); and the backfill followed symlinks ([PLAT-450](../../sandbox/paths/plat-450.md)). Now: ownership is **server-controlled** metadata in a registry in the app's
 state area (`<state root>/ownership/projects.json`, outside the docs root); resolution is registry entry, else the physical path owner, else (shared `Crew/` with no
 entry) nobody; `owner_id` in `product.json` is written but is information only and is never trusted (a disagreement is logged `[OWNER_MISMATCH]`, registry or path
 wins). A private Code whose registered owner is not the admitted caller is refused before any CLI starts. The startup scan, the owner opening a project, server-side
@@ -351,9 +351,9 @@ loaded full run and passes alone and on rerun (timing). Workspace module: all gr
 
 Reviewed AgentWorks `a04b393c9` with provider `ae8e204` and mcpagent `ffc32d7`.
 Do not treat the current ownership/identity implementation as ready for rollout:
-[PLAT-449](../../sandbox/security/plat-449.md) reproduces editable owner metadata selecting another
-user's slot; [PLAT-450](../../sandbox/security/plat-450.md) reproduces cross-user manifest mutation
-through a symlink in startup backfill; [PLAT-451](../../sandbox/security/plat-451.md) traces a slot
+[PLAT-449](../../sandbox/access/plat-449.md) reproduces editable owner metadata selecting another
+user's slot; [PLAT-450](../../sandbox/paths/plat-450.md) reproduces cross-user manifest mutation
+through a symlink in startup backfill; [PLAT-451](../../sandbox/slots/plat-451.md) traces a slot
 mismatch falling through to app-account tmux rather than rejecting the launch.
 No implementation fix or live server change was made in this review.
 

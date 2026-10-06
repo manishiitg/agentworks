@@ -1,4 +1,4 @@
-[← platform / performance](index.md)
+[← ops / performance](index.md)
 
 # PLAT-342 — Ctrl+K quick switcher incurred avoidable first-open latency
 

@@ -98,7 +98,7 @@ with a Connected tooltip and accessible description. This remains visible while
 another pane is open. A selected extension can be connected with zero shared
 tabs; otherwise active live browser sessions count. Disconnects and failed status
 requests clear the dot, and completed recordings never count as live connections.
-Tracking: [PLAT-542](../bugs/pulse_platform/app/ui/plat-542.md).
+Tracking: [PLAT-542](../bugs/pulse_platform/app/navigation/plat-542.md).
 
 ### Install and connect
 

@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-487 — Connecting an MCP client answered "404" on Allow where Builder/Relay authoring is switched off, and the consent page listed everything
 

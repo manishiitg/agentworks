@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-474 — OAuth consent screens say "Multi Agent Builder", not AgentWorks
 

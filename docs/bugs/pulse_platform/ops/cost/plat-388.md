@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-388 — Cursor native model defaults and suffix IDs need pricing resolution
 
@@ -32,7 +32,7 @@ pricing visibly estimated instead of presenting it as exact. Cover bare Grok,
 explicit Fast/non-Fast selectors and live suffix IDs with deterministic tests
 and account-qualified CLI evidence before certifying cost attribution.
 
-[PLAT-386](../../app/ui/plat-386.md) tracks completed Cursor effort forwarding;
+[PLAT-386](../../app/models/plat-386.md) tracks completed Cursor effort forwarding;
 that fix does not close this pricing issue.
 
 ## Register notes

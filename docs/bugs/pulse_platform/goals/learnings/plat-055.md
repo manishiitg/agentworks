@@ -1,4 +1,4 @@
-[← platform / learnings-knowledge](index.md)
+[← goals / learnings](index.md)
 
 # PLAT-055 — the reflection turn can only write learnings, so learnings absorbs every store's content
 

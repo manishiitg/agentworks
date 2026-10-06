@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-247 — restore `read_image`/`image_gen`/`image_edit`: PLAT-244's media-tool retirement swept a load-bearing inspection tool out with the generation tools
 
@@ -23,7 +23,7 @@
   `pkg/orchestrator/base_orchestrator_folder_guard.go`,
   `pkg/orchestrator/base_orchestrator_tools.go`, `cmd/server/instructions.go`,
   `interactive_workshop_manager.go`.
-- **Related:** [PLAT-244](../../sandbox/security/plat-244.md)) (the retirement this partially
+- **Related:** [PLAT-244](../../sandbox/tools/plat-244.md)) (the retirement this partially
   reverses) and the two commits that implemented it —
   `01909fb4b` "feat: focus workspace provider tools on text and search" and
   `7ec055a74` "refactor: remove retired media tool escape hatches".

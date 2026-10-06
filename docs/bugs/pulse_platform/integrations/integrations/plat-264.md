@@ -1,4 +1,4 @@
-[← platform / integrations](index.md)
+[← integrations / integrations](index.md)
 
 # PLAT-264 — Make Org Dashboard a durable notification provider instead of parsing stale Builder cards
 
@@ -17,8 +17,8 @@
 | Last synchronized | `2026-09-04` |
 
 - **Priority:** P1 product-truth and observability boundary.
-- **Related:** [PLAT-018](../../goals/pulse-governance/plat-018.md)), [PLAT-083](../../goals/pulse-governance/plat-083.md)),
-  [PLAT-085](../../app/ui/plat-085.md)).
+- **Related:** [PLAT-018](../../goals/pulse/findings/plat-018.md)), [PLAT-083](../../goals/pulse/findings/plat-083.md)),
+  [PLAT-085](../../app/reports/plat-085.md)).
 - **Origin:** The user observed that the Organization page still read
   `builder/card.health.html`, `builder/card.progress.html`, and
   `builder/card.cost.html`, although current workflow/Pulse paths no longer

@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-425 — Switching provider mid-chat killed the running turn and the next messages were rejected with 409 delivery_uncertain
 

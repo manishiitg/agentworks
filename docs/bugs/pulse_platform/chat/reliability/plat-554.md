@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-554 — Live context fill and plan-limit warning in the chat during a turn
 

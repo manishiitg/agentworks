@@ -19,8 +19,8 @@
 - **Priority:** — (closed)
 - **Owner:** `multi-llm-provider-go` — `coding_agent_certification.go`,
   `coding_agent_contract.go`, `coding_agent_contract_test.go`
-- **Related:** [PLAT-116](../../coding-agents/bridge/plat-116.md)) (its Pi structured section documents the
-  disproven diagnosis), [PLAT-139](../../coding-agents/bridge/plat-139.md)) (the still-unexplained incident)
+- **Related:** [PLAT-116](../../coding-agents/sessions/plat-116.md)) (its Pi structured section documents the
+  disproven diagnosis), [PLAT-139](../../coding-agents/general/plat-139.md)) (the still-unexplained incident)
 
 ## Closed 2026-08-18 — premise disproven
 
@@ -38,7 +38,7 @@ a contract that already required the property.
 `default:` arm that exists to log unhandled types. Running the real CLI shows
 `agent_settled` emitted as the final event of every run, with pi exiting on its
 own and leaving no stale processes. Full evidence in
-[PLAT-139](../../coding-agents/bridge/plat-139.md)) §"What this is NOT".
+[PLAT-139](../../coding-agents/general/plat-139.md)) §"What this is NOT".
 
 **2. The coverage this ticket said was missing is present.** The concern was
 that `RequiredP0CodingAgentCertificationIDs` early-returns `nil` for

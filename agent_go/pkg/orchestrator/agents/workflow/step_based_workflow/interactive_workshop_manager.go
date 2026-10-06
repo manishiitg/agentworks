@@ -968,7 +968,7 @@ type InteractiveWorkshopManager struct {
 // and skills. A read-only-access identity is always pinned to "run" by the
 // caller (cmd/server); anyone else genuinely in "run" mode (Bot Connector
 // routes, scheduled runs, the agent-profile runtime) gets the same reduced
-// tool set on purpose. See RCA #2 in docs/bugs/pulse_platform/sandbox/security/plat-262.md.
+// tool set on purpose. See RCA #2 in docs/bugs/pulse_platform/sandbox/access/plat-262.md.
 func (iwm *InteractiveWorkshopManager) isRunModeRestricted() bool {
 	return canonicalWorkshopMode(iwm.workshopModeOverride) == "run"
 }

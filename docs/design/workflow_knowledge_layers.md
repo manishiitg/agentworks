@@ -1,7 +1,7 @@
 # Workflow knowledge layers and the improvement loop
 
-Status: proposal (2026-10-06), owner-reviewed direction; ticket [PLAT-556](../bugs/pulse_platform/goals/pulse-governance/plat-556.md).
-Related: [PLAT-555](../bugs/pulse_platform/goals/step-execution/plat-555.md) (step layout),
+Status: proposal (2026-10-06), owner-reviewed direction; ticket [PLAT-556](../bugs/pulse_platform/goals/pulse/fixer/plat-556.md).
+Related: [PLAT-555](../bugs/pulse_platform/goals/steps/scripted/plat-555.md) (step layout),
 [PLAT-538](../bugs/pulse_platform/brain/learnings-knowledge/plat-538.md) (Brain migration),
 PLAT-049, PLAT-303, PLAT-305 (Pulse roles), [Brain migration design](knowledgebase-integration-migration.md).
 

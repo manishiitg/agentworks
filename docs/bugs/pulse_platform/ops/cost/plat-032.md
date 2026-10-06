@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-032 — child-agent LLM calls are missing from parent step telemetry
 

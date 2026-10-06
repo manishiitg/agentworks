@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-088 — every scheduled workflow and Pulse turn was billed to `chat`, so Pulse cost could not be measured
 

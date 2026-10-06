@@ -1,4 +1,4 @@
-[← platform / chat-reliability](index.md)
+[← chat / reliability](index.md)
 
 # PLAT-424 — CLI delivery health: notice duplicate sends, instant launch deaths and slow acceptance without waiting for a user report
 

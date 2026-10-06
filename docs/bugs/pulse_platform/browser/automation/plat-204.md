@@ -1,4 +1,4 @@
-[← platform / browser-automation](index.md)
+[← browser / automation](index.md)
 
 # PLAT-204 — a null `lcp_ms` under shared CDP is a confirmed structural race, not an independently fixable bug this pass
 

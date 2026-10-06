@@ -1,4 +1,4 @@
-[← platform / performance](index.md)
+[← ops / performance](index.md)
 
 # PLAT-341 — Native transcript recovery replay saturated the RTS agent CPU
 

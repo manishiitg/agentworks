@@ -1,4 +1,4 @@
-[← platform / cost-telemetry](index.md)
+[← ops / cost](index.md)
 
 # PLAT-136 — every run in the schedule popup showed the same cost, because every run claimed the same folder
 
