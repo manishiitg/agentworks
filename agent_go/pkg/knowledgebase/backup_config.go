@@ -161,8 +161,10 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 		return nil, nil, err
 	}
 	if current.Remote != "" {
-		if current.Remote != remote || current.Branch != branch {
-			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "Backup is already configured; changing the destination requires operator reconciliation.")
+		// Brain's folder is a plain Git repository (PLAT-633): pointing it at another repository is just a new origin,
+		// with nothing to reconcile. A destination set by the deployment stays the operator's.
+		if (current.Remote != remote || current.Branch != branch) && s.cfg.BackupRemote != "" {
+			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "This backup destination is set by the deployment; the operator changes it.")
 		}
 		if s.cfg.BackupRemote != "" && (hasPAT || hasPATSecret || current.Username != username) {
 			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "Deployment-managed backup credentials must be configured by the operator.")
@@ -172,12 +174,6 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 		}
 		destination.EncryptedPAT = current.EncryptedPAT
 		destination.PATSecret = current.PATSecret
-	}
-	// Removing an environment remote must not allow replacing an old staging repo.
-	if current.Remote == "" {
-		if _, err := os.Stat(filepath.Join(s.private, "backup-configuration.json")); err == nil || !os.IsNotExist(err) {
-			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "An existing backup requires operator reconciliation.")
-		}
 	}
 	if hasPATSecret {
 		// An empty name removes the reference; a name replaces any token this destination held itself.

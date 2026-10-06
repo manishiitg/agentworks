@@ -47,3 +47,7 @@ Deployed 8ae73b047: notes moved into `/data/video-studio/docs/Brain` (13 files, 
 Owner: Brain's folder and chat are for "only brain writers and owners"; Readers get "no chat, just files". `bootstrap` reports `can_write` (Editor or Owner of any folder; administrators always); the server refuses Brain chat turns from anyone else; the Brain tab shows a Reader only the Files view (their folders, parents as path only), with no chat and no Access/Models/Secrets views. Test `TestOnlyWritersAndOwnersCanWriteSomewhere`. Not deployed.
 
 Next (agreed): a dedicated `brain` slot account owns `Brain/` (shared group with the service account) and runs Brain-folder commands; writers get the shell limited to their Editor/Owner folders; git for writers and Owners of the whole Brain.
+
+## Changing the backup repository (2026-10-06)
+
+RTS: the Brain chat could not point backup at `https://github.com/mprealtrainingsys/brain.git` (BACKUP_REMOTE_CHANGED, "changing the destination requires operator reconciliation"), a rule from the receipt-based backup. With Brain as a plain Git folder, an app-set destination can now be changed (the token secret is kept unless a new one is given), and the folder's `origin` follows at once. A destination set by the deployment's environment stays operator-only. Not deployed.

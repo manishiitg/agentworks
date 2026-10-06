@@ -2,7 +2,9 @@ package knowledgebase
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,8 +51,16 @@ func TestBackupSetupIsAdminOnlyDurableAndDoesNotPublish(t *testing.T) {
 	changed := merge(args, map[string]any{"remote_url": "https://github.com/org/other.git"})
 	mcpError(t, s, admin, "manage_knowledgebase_access", changed, "REQUEST_ID_REUSE")
 	changed["request_id"] = "redirect"
-	mcpError(t, s, admin, "manage_knowledgebase_access", changed, "BACKUP_REMOTE_CHANGED")
-	mcpCall(t, s, admin, "manage_knowledgebase_access", merge(args, map[string]any{"request_id": "same-destination"}))
+	// Brain's folder is a plain Git repository (PLAT-633): an app-set destination can be pointed elsewhere, and the
+	// folder's origin follows it.
+	mcpCall(t, s, admin, "manage_knowledgebase_access", changed)
+	if folder, err := s.GitFolder(); err != nil || folder.Remote != "https://github.com/org/other.git" {
+		t.Fatalf("destination not changed: %+v %v", folder, err)
+	}
+	out, err := exec.Command("git", "-C", s.live, "remote", "get-url", "origin").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "https://github.com/org/other.git" {
+		t.Fatalf("the folder's origin must follow the destination: %q %v", out, err)
+	}
 }
 
 func TestBackupSetupRejectsUnsafeDestinationsAndKeepsDeploymentConfiguration(t *testing.T) {
