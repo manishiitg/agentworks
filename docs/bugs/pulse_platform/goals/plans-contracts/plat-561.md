@@ -88,3 +88,16 @@ PLAT-559's migration. One test (`reference_map_test.go`) pins the core cases.
 - Native CLI file edits and shell writes in Builder are not hooked (they show in prompt health and Pulse).
 - Not deployed.
 - Native CLI and shell writes are now seen: the Go-side flag in [PLAT-565](plat-565.md) recomputes the map when the workflow files change and makes Plan Drift due for new breaks.
+
+## Checked on every local workflow (2026-10-06)
+
+Run read-only on all 18 local workflows: 11 had no breaks. The rest showed two kinds of noise, now fixed: template
+paths (`db/.../YYYY-MM-DD-x.json`) were reported as missing files, and missing `db/` or `reports/` files (which runs
+create) counted as breaks. Template paths are skipped and runtime data paths are now warnings
+(`missing_data_file`), so they never make Plan Drift due. Breaks after the fix: substack 33 to 4, build-in-public
+18 to 5, linkedin 14 to 5, upwork 64 to 49 (15 now warnings). Real finds kept, for example websiteaeo's five steps
+naming `knowledgebase/context/context.md`, which does not exist.
+
+Still noisy: a note that names a retired step as history (for example instagram's `failure-patterns.md`) counts as a
+break. Only new ones flag Plan Drift (PLAT-565), so the cost is an occasional review, not a block.
+

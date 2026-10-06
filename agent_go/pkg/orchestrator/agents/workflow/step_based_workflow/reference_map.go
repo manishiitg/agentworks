@@ -100,6 +100,8 @@ type referenceMap struct {
 }
 
 var (
+	// Template parts of a name: YYYY-MM-DD, NNN, XXXX.
+	refPlaceholderRe = regexp.MustCompile(`YYYY|MM-DD|NNN|XXXX|<|>|\*`)
 	// A workflow-relative path: code/..., learnings/..., knowledgebase/...
 	refWorkflowPathRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_./$~{}<>-])((?:code|learnings|knowledgebase|soul|db|evaluation|reports|variables)/[A-Za-z0-9_./-]*[A-Za-z0-9_/])`)
 	// A step folder: <step-id>/<file>, optionally after $VAR_TARGET_RUN_PATH/ or ../
@@ -501,7 +503,18 @@ func (m *referenceMap) checkText(source, text string, isLog bool, selfID string)
 		if !strings.HasSuffix(path, "/") && !strings.Contains(filepath.Base(path), ".") {
 			continue
 		}
+		// A template name (db/posts/YYYY-MM-DD-x.json) is a pattern, not a file.
+		if refPlaceholderRe.MatchString(path) {
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(m.root, filepath.FromSlash(path))); err == nil {
+			continue
+		}
+		// Runs create files under db/ and reports/, so a missing one is not
+		// clearly a break: it stays visible but does not make Plan Drift due.
+		if strings.HasPrefix(path, "db/") || strings.HasPrefix(path, "reports/") {
+			m.add(RefMapIssue{Kind: "missing_data_file", Severity: refSeverityWarn, Source: source, Ref: path,
+				Detail: fmt.Sprintf("names %s, a runtime data path that does not exist now; a run may create it, or the name is stale", path)})
 			continue
 		}
 		kind, detail := "missing_file", fmt.Sprintf("names %s, which does not exist in the workflow", path)
