@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { ChatTab } from '../../stores/useChatStore'
 import { selectWorkChatTabIds } from './WorkSurface'
+import { isWorkSideChatTab, workSideChatKey } from './workTabs'
 
 function crewTab(tabId: string, projectId: string, inputText = ''): ChatTab {
   return {
@@ -20,6 +21,18 @@ describe('Work surface chat-tab selection', () => {
     const b = selectWorkChatTabIds(after, 'p1')
     expect(a).toEqual({ canonicalTabId: 't1', activeProjectTabId: 't1' })
     expect(shallow(a, b)).toBe(true)
+  })
+
+  // PLAT-571: a side chat is a second full chat in the project. It stays the
+  // active tab when chosen, but never becomes the primary, which keeps
+  // Slack, WhatsApp, MCP, schedules and triggers.
+  it('keeps a side chat active without making it the primary chat', () => {
+    const side = { ...crewTab('t2', 'p1'), metadata: { agentProfileId: 'code', agentProfileProjectId: 'p1', agentProfileConversationKey: workSideChatKey('p1', 'a1b2c3d4') } } as unknown as ChatTab
+    const state = { chatTabs: { t1: crewTab('t1', 'p1'), t2: side }, activeTabId: 't2' }
+    expect(selectWorkChatTabIds(state, 'p1')).toEqual({ canonicalTabId: 't1', activeProjectTabId: 't2' })
+    expect(isWorkSideChatTab(side, 'p1')).toBe(true)
+    expect(isWorkSideChatTab(crewTab('t1', 'p1'), 'p1')).toBe(false)
+    expect(isWorkSideChatTab(side, 'p2')).toBe(false)
   })
 
   it('still reacts when the active tab moves to another project', () => {

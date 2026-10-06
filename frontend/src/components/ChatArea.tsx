@@ -889,9 +889,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // without a settled record (crash, restart) must not lock the chat again on
   // every reload; the server's "no longer open" answer also releases it.
   const [closedCodingAgentQuestions, setClosedCodingAgentQuestions] = useState<ReadonlySet<string>>(() => new Set())
-  const pendingCodingAgentChoice = useMemo(() => isStreaming && buildCleanConversationItems(transcriptEvents).some(
+  // The tab's own flag: with two live chats of one project (PLAT-571) the
+  // global isStreaming can belong to the other chat.
+  const activeTabIsStreaming = !!activeTab?.isStreaming
+  const pendingCodingAgentChoice = useMemo(() => activeTabIsStreaming && buildCleanConversationItems(transcriptEvents).some(
     (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
-  ), [isStreaming, transcriptEvents, closedCodingAgentQuestions])
+  ), [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions])
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.

@@ -24,6 +24,22 @@ export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
   ))
 }
 
+// Code side chats (PLAT-571): extra full Builder chats in one project, like
+// running several agents on one repository locally. Each has its own server
+// conversation keyed `<projectId>:chat:<id>`; the primary chat (key = projectId)
+// keeps every channel, MCP call, schedule, trigger and Pulse message.
+export const WORK_SIDE_CHAT_LIMIT = 3
+
+export function workSideChatKey(projectId: string, id: string): string {
+  return `${projectId}:chat:${id}`
+}
+
+export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
+  const key = tab?.metadata?.agentProfileConversationKey
+  if (!tab || !key || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
+  return projectId ? key.startsWith(`${projectId}:chat:`) : /:chat:[^:]+$/.test(key)
+}
+
 /** Find the local projection of the server-owned conversation for this project. */
 export function findCanonicalWorkProjectTab(
   tabs: Record<string, ChatTab>,

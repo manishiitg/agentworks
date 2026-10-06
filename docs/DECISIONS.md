@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Code projects can have up to 4 chats; the primary keeps every channel
+
+What: a Code project has its primary chat plus up to 3 side chats, each a full Builder chat (own conversation and
+CLI session, same folder, model, MCPs and skills). Slack, WhatsApp, MCP, in-chat schedules, triggers and Pulse use
+only the primary; "New chat" replaces only the primary. Revises "One chat per Crew and Code" for Code; Crew keeps one.
+Why: the owner works with 3-4 agents on one repository at a time. Two chats editing the same files can overwrite
+each other until each side chat gets its own worktree. Ticket: [PLAT-571](bugs/pulse_platform/code/frontend-chat/plat-571.md).
+
 ### 2026-10-06 — Crew template removal detaches the receipt and skill, preserving work
 
 Remove an attached template directly from its setup row above chat. Deselect

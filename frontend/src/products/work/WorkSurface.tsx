@@ -1,6 +1,6 @@
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -37,7 +37,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -471,11 +471,13 @@ function useWorkChatTab(
   // resolution and history hydration performed above.
   useEffect(() => {
     if (!session) return
-    const tab = Object.values(useChatStore.getState().chatTabs).find(candidate =>
+    // The primary chat and every side chat of the project share its identity,
+    // model, MCPs and skills (PLAT-571).
+    const projectTabs = Object.values(useChatStore.getState().chatTabs).filter(candidate =>
       belongsToWorkProject(candidate, session.id) &&
       candidate.metadata?.agentProfileBuilder !== true &&
-      candidate.metadata?.agentProfileConversationKey === session.id)
-    if (!tab) return
+      (candidate.metadata?.agentProfileConversationKey === session.id || isWorkSideChatTab(candidate, session.id)))
+    for (const tab of projectTabs) {
     const savedRuntime = workLLMSelectionFromConfig(session.llmConfig)
     const metadata = {
       agentProfileWorkspace: session.workspacePath,
@@ -499,6 +501,7 @@ function useWorkChatTab(
     if (!sameList(tab.config.selectedServers, selectedServers) || !sameList(tab.config.selectedSkills, selectedSkills)) {
       useChatStore.getState().setTabConfig(tab.tabId, { selectedServers, selectedSkills })
     }
+    }
   }, [session])
 
   useLayoutEffect(() => {
@@ -515,24 +518,79 @@ function useWorkChatTab(
   }
 }
 
-function WorkChatTabs({ projectId, projectName, canonicalTabId }: { projectId: string; projectName: string; canonicalTabId: string }) {
+function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats }: {
+  projectId: string
+  projectName: string
+  canonicalTabId: string
+  profileId: string
+  allowSideChats: boolean
+}) {
   const { chatTabs, activeTabId, closeTab } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
     closeTab: state.closeTab,
   })))
+  const [opening, setOpening] = useState(false)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
   const tabs = Object.values(chatTabs)
     .filter(tab => belongsToWorkProject(tab, projectId) && (
       tab.tabId === canonicalTabId ||
+      isWorkSideChatTab(tab, projectId) ||
       (tab.metadata?.isViewOnly === true && tab.sessionId !== canonicalSessionId)
     ))
     .sort((a, b) => a.tabId === canonicalTabId ? -1 : b.tabId === canonicalTabId ? 1 : a.createdAt - b.createdAt)
+  const sideChats = tabs.filter(tab => isWorkSideChatTab(tab, projectId))
   const selectTab = (nextTabId: string) => { activateTab(nextTabId) }
-  const closeHistoryTab = (closingTabId: string) => {
-    void closeTab(closingTabId, false).then(() => {
+  const closeProjectTab = (closingTabId: string) => {
+    const closing = chatTabs[closingTabId]
+    const side = isWorkSideChatTab(closing, projectId)
+    // A side chat that is still working keeps its tab, so the result of what it
+    // started is not delivered to a chat nobody can see.
+    if (side && (closing?.isStreaming || closing?.hasRunningBgAgents)) {
+      useChatStore.getState().addToast('This chat is still working. Stop it first, then close the tab.', 'error')
+      return
+    }
+    void closeTab(closingTabId, side).then(() => {
       if (activeTabId === closingTabId) activateTab(canonicalTabId)
     })
+  }
+  const renameSideChat = async (tab: ChatTab, name: string) => {
+    const title = name.trim()
+    if (!title || !tab.sessionId) return false
+    await agentApi.renameChatHistorySession(tab.sessionId, title, tab.metadata?.agentProfileWorkspace)
+    useChatStore.getState().renameTab(tab.tabId, title)
+    return true
+  }
+  // A side chat is a second full Builder chat in the same project: same
+  // folder, model, MCPs and skills as the primary, its own conversation.
+  const openSideChat = async () => {
+    if (opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT) return
+    const primary = chatTabs[canonicalTabId]
+    if (!primary) return
+    setOpening(true)
+    try {
+      const key = workSideChatKey(projectId, globalThis.crypto.randomUUID().slice(0, 8))
+      const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key })
+      const chatStore = useChatStore.getState()
+      const name = `Chat ${sideChats.length + 2}`
+      const tabId = await chatStore.createChatTab(name, {
+        ...primary.metadata,
+        agentProfileBuilder: false,
+        agentProfileConversationKey: conversation.conversation_key,
+        agentProfileConversationId: conversation.conversation_id,
+        agentProfileMCPSelectionInitialized: true,
+      }, conversation.session_id)
+      chatStore.renameTab(tabId, name)
+      chatStore.setTabConfig(tabId, {
+        selectedServers: primary.config.selectedServers,
+        selectedSkills: primary.config.selectedSkills,
+      })
+      activateTab(tabId)
+    } catch (cause) {
+      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new chat.', 'error')
+    } finally {
+      setOpening(false)
+    }
   }
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1">
@@ -546,8 +604,24 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId }: { projectId: s
         titleOverride={tab.tabId === canonicalTabId ? projectName : undefined}
         productSurface={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileId === 'code' ? 'code' : 'work') : undefined}
         onTabClick={selectTab}
-        onCloseTab={closeHistoryTab}
+        onCloseTab={closeProjectTab}
+        onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
       />)}
+      {allowSideChats && (
+        <button
+          type="button"
+          onClick={() => { void openSideChat() }}
+          disabled={opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="New chat tab"
+          title={sideChats.length >= WORK_SIDE_CHAT_LIMIT
+            ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} chats per project`
+            : 'New chat tab: another full chat in this project (the first chat keeps Slack, WhatsApp, MCP and schedules)'}
+          data-testid="work-new-chat-tab"
+        >
+          {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+        </button>
+      )}
     </div>
   )
 }
@@ -1134,7 +1208,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={splitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
+              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
@@ -1199,7 +1273,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           showProductTerminalControl
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.
-                          showNewChatAction={product.profileId === 'code' && !selected.shared}
+                          showNewChatAction={product.profileId === 'code' && !selected.shared && tabId === canonicalTabId}
                         />
                       </div>
                   ) : (

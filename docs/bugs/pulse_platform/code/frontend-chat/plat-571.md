@@ -1,14 +1,14 @@
 [← code / frontend-chat](index.md)
 
-# PLAT-571: Code side-chat tabs (parked)
+# PLAT-571: Code side-chat tabs
 
 | Field | Value |
 |---|---|
-| State | open |
-| Priority | P3 |
+| State | fixed on main |
+| Priority | P1 |
 | Product | code |
 | Area | frontend-chat |
-| Summary | Parked: extra chat tabs in a Code project and renaming tabs; one primary chat keeps owning WhatsApp and Slack |
+| Summary | Up to 3 extra full chats per Code project, renamable; the primary chat keeps Slack, WhatsApp, MCP, schedules and triggers |
 
 ## What is wanted
 
@@ -47,3 +47,39 @@ channels; side tabs are extra. A new `DECISIONS.md` entry is needed when it is b
 - Code's "New chat" replaces the primary conversation (the server rotates the session); keep it distinct from "new tab".
 - Tab logic is fragile (a 6h tab sweep shipped and was reverted): verify live in a browser, switching mid-turn, typing
   in one tab while another streams, closing a side tab.
+
+## Built (2026-10-06)
+
+Owner: take it up; every tab is full Builder mode, like running 3-4 agents on one repository locally; keep a primary
+chat for MCP, Slack, in-chat schedules and triggers; be careful with ChatArea, tabs, chat input, tab switching and
+Ctrl+K.
+
+- The server already supported it: `resolveProductProjectBindingWithStore` gives a suffixed key
+  (`<projectId>:<suffix>`) its own native CLI session and durable conversation in the same project folder, with
+  native agent tools on, and no `product.json` session. No server change.
+- `WorkChatTabs` (`WorkSurface.tsx`) shows live side chats next to the primary and a "+" (Code, own projects only)
+  that opens one: key `workSideChatKey(projectId, id)` = `<projectId>:chat:<id>`, resolved on the server first so it
+  has a real session, copying the primary's model, MCPs and skills. At most 3 side chats (4 chats) per project.
+- Side chats are renamable (`renameChatHistorySession`, the existing tab-pill control). A side chat that is still
+  working cannot be closed (its started work reports back to it); closing an idle one stops its session.
+- "New chat" (which replaces the primary conversation) is offered only in the primary tab.
+- Manifest changes (identity, model, MCPs, skills) update every live chat of the project, not only the primary.
+- Ctrl+K names a side chat in its subtitle (`Code · Chat 2`) so two chats of one project differ.
+- The pending coding-agent question card follows the tab's own streaming flag, not the global one.
+
+Unchanged, checked by reading the code: Slack and WhatsApp use the bare project id; MCP ask-a-Crew uses it; in-chat
+schedules (including one-time) default to the primary; webhooks, Gmail and trigger links use isolated chats; workspace
+pane messages need an exact primary match; completion notices go to the session that started the work. Per tab
+already: draft, queued messages, Stop/Send, steer, terminal view, scroll; hidden tabs keep streaming.
+
+Tests: a side chat stays active but is never the primary (`workChatTabSelection.test.ts`); `tsc -b` clean; Work,
+tab-helper and quick-switcher tests pass.
+
+## Left
+
+- Owner browser check: open two side chats, type in one while another streams, switch tabs mid-run, refresh, Ctrl+K
+  away and back, try closing a running side chat, send a Slack or MCP message while a side chat is active.
+- Two chats editing the same files can overwrite each other (owner chose full mode). Next: a git worktree per side
+  chat, after checking whether Code projects are git repositories.
+- The cap is enforced in the UI only; the server accepts any suffixed key.
+

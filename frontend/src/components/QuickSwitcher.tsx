@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { isWorkSideChatTab } from '../products/work/workTabs'
 import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
@@ -349,7 +350,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'code' as const,
           id: `code:${tab.tabId}`,
           label: tab.metadata?.agentProfileProjectTitle || tab.name || 'Code',
-          subtitle: `Code${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          // A side chat (PLAT-571) is named after itself so two chats of one project differ.
+          subtitle: `Code${isWorkSideChatTab(tab) ? ` · ${tab.name}` : ''}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
           isActive: productSurface === 'code' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
           tabId: tab.tabId,
