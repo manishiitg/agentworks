@@ -11,4 +11,5 @@
 | [navigation](navigation/index.md) | 22 | 1 |
 | [reports](reports/index.md) | 7 | 2 |
 | [tests](tests/index.md) | 5 | 1 |
+| [tools](tools/index.md) | 1 | 1 |
 | [workspaces](workspaces/index.md) | 1 | 0 |
