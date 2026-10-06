@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -33,25 +31,6 @@ func TestLiveOnlyDeletedPathCanBeRecreated(t *testing.T) {
 	if failure, ok := err.(*Error); !ok || failure.Code != "BACKUP_VERSION_CONFLICT" {
 		t.Fatal("historical deletion selected over replacement", err)
 	}
-}
-
-func TestCorruptBackupStateDoesNotReleaseDeletedPath(t *testing.T) {
-	s, admin, _ := fixture(t, false)
-	entry := create(t, s, admin, "", "guide.md", "old", "create")
-	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
-	if err := os.WriteFile(filepath.Join(s.private, "backup-state.json"), []byte("{broken"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"}, "PATH_PENDING_DELETION_BACKUP")
-}
-
-func TestRemovingRemoteDoesNotReleaseDeletedBackupPath(t *testing.T) {
-	s, admin, _ := fixture(t, true)
-	entry := create(t, s, admin, "", "guide.md", "old", "create")
-	push(t, s, admin, commit(t, s, admin, entry, "commit"), "push")
-	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
-	s.cfg.BackupRemote = ""
-	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"}, "PATH_PENDING_DELETION_BACKUP")
 }
 
 func TestValidateCapsUsesLiveGrantsAndIdentity(t *testing.T) {
@@ -147,13 +126,4 @@ func TestEntryAndFolderNamesRejectUnsafePaths(t *testing.T) {
 	code(t, s, admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "payments", "request_id": "case-folder"}, "NAME_CONFLICT")
 	create(t, s, admin, "Payments", "guide.md", "text", "valid")
 	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "Payments", "filename": "GUIDE.md", "type": "note", "title": "Title", "content": "text", "request_id": "case-file"}, "NAME_CONFLICT")
-}
-
-// A backup that is configured but has never published anything has no remote deletion to confirm: the deleted path is
-// free again (RTS 2026-10-06, a curator could not recreate notes at their topic paths while backup had never worked).
-func TestNeverPublishedBackupReleasesDeletedPath(t *testing.T) {
-	s, admin, _ := fixture(t, true)
-	entry := create(t, s, admin, "", "guide.md", "old", "create")
-	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
-	call(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"})
 }

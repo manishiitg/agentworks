@@ -54,28 +54,6 @@ describe('Brain shared Files view', () => {
     expect([...host.querySelectorAll('button')].some(button => /^(Upload|Create folder|Edit|Save|Commit|Push)$/.test(button.textContent || ''))).toBe(false)
     expect(host.textContent).not.toContain('Backup not configured')
   })
-  it('reuses shared Source Control with isolated KB endpoints and root write controls', async () => {
-    const repo = {root:'',branch:'main',ahead:0,behind:0,files:[{path:entry.path,status:'modified',worktree_status:'modified'}]}
-    mocks.gitGet.mockImplementation(async (_url, options) => ({data:options.params.op === 'status' ? {repos:[repo],writable:true} : {commits:[],stashes:[],branches:[{name:'main',current:true},{name:'release'}]}}))
-    const {host} = await mount()
-    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Source Control"]')!.click() })
-    expect(host.querySelector('[aria-label="Commit message"]')).not.toBeNull()
-    expect(host.querySelector('[aria-label="Pull"]')).not.toBeNull()
-    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Stage all"]')!.click() })
-    expect(mocks.gitPost).toHaveBeenCalledWith('/api/knowledgebase/git', expect.objectContaining({op:'stage',all:true,request_id:expect.any(String)}))
-    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Pull"]')!.click() })
-    expect(mocks.gitPost).toHaveBeenCalledWith('/api/knowledgebase/git', expect.objectContaining({op:'pull'}))
-    expect(mocks.workspaceGit).not.toHaveBeenCalled()
-    expect(mocks.workspaceRead).not.toHaveBeenCalled()
-  })
-  it('keeps root-reader Git history available while disabling writes', async () => {
-    mocks.gitGet.mockResolvedValue({data:{repos:[{root:'',branch:'main',ahead:0,behind:0,files:[]}],writable:false,commits:[],stashes:[]}})
-    const {host} = await mount()
-    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Source Control"]')!.click() })
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="Pull"]')!.disabled).toBe(true)
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="Push"]')!.disabled).toBe(true)
-    expect(mocks.gitPost).not.toHaveBeenCalled()
-  })
   it('removes displayed content and its tab when a refresh discovers revoked access', async () => {
     const { host, render } = await mount(); await openEntry(host)
     mocks.read.mockRejectedValue(new Error('Resource not found.'))

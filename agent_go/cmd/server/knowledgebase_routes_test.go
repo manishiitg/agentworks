@@ -145,18 +145,25 @@ func TestKnowledgebaseBuilderAdmitsOnlyBrainTools(t *testing.T) {
 	api, service := knowledgebaseServerTest(t)
 	p := knowledgebaseproduct.BuiltinAgentProfile()
 	gate := newProductToolGate(&resolvedAgentProfile{Definition: p})
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "query_database", "agent_browser"} {
+	for _, name := range []string{"query_database", "agent_browser"} {
 		if gate.Admit(name) {
 			t.Fatalf("builder admitted %s", name)
 		}
 	}
-	// The curator (PLAT-618) edits content with the person's own roles; no shell, files, database or browser.
+	// The shell and file edits work in Brain's folder for people who own the whole Brain (PLAT-633); the session's
+	// folder guard decides where they reach.
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file"} {
+		if !gate.Admit(name) {
+			t.Fatalf("builder refused %s", name)
+		}
+	}
+	// The curator (PLAT-618) edits content with the person's own roles; no database or browser, and no backup tool.
 	for _, name := range []string{"brain_browse", "brain_read", "brain_update", "brain_skills"} {
 		if !gate.Admit(name) {
 			t.Fatalf("builder cannot curate with %s", name)
 		}
 	}
-	if !gate.Admit("brain_access") || !gate.Admit("brain_backup") {
+	if !gate.Admit("brain_access") || gate.Admit("brain_backup") {
 		t.Fatal("builder cannot manage access")
 	}
 	_, err := service.Call(t.Context(), knowledgebase.Principal{IdentityID: "admin", IsAdmin: true, AccessOnly: true}, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "blocked.md", "type": "note", "title": "Blocked", "content": "blocked", "request_id": "blocked"})

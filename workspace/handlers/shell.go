@@ -573,7 +573,11 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		// looked like it had no input (PLAT-514), and knowledge-base and database access flags never arrived either.
 		strings.HasPrefix(key, "WORKFLOW_TRIGGER_") ||
 		strings.HasPrefix(key, "WORKFLOW_KB_") ||
-		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER"
+		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER" ||
+		// Brain's chat runs git in Brain's folder (PLAT-633): the token its credential helper reads, and the person as
+		// the commit author.
+		strings.HasPrefix(key, "BRAIN_GIT_") ||
+		key == "GIT_AUTHOR_NAME" || key == "GIT_AUTHOR_EMAIL" || key == "GIT_COMMITTER_NAME" || key == "GIT_COMMITTER_EMAIL"
 }
 
 // stripShellPrefix removes a leading "sh -c " wrapper from the command string.

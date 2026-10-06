@@ -30,6 +30,7 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 		org = "installation"
 	}
 	root := strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_ROOT"))
+	explicitRoot := root != ""
 	if root == "" {
 		state, err := workflowCLIStateRoot()
 		if err != nil {
@@ -66,17 +67,32 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 	}
 	root = canonical(root)
+	// Brain's private data (access database, requests, journal) stays outside the workspace tool roots.
 	for _, docs := range []string{fsutil.WorkspaceDocsRoot(), fsutil.WorkspaceShellRoot()} {
 		docs = canonical(docs)
 		if inside(docs, root) || inside(root, docs) {
 			return knowledgebase.Config{}, fmt.Errorf("Brain data must be outside workspace tool roots")
 		}
 	}
+	// Its notes are plain files in the documents tree, Brain/, a normal Git folder like every product's (PLAT-633).
+	// An explicitly placed Brain (AGENTWORKS_KNOWLEDGEBASE_ROOT, as tests and custom installs set) keeps its notes
+	// inside that root unless AGENTWORKS_KNOWLEDGEBASE_LIVE_ROOT names another folder.
+	live := strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_LIVE_ROOT"))
+	if live == "" && explicitRoot {
+		live = filepath.Join(root, "live")
+	}
+	if live == "" {
+		live = filepath.Join(fsutil.WorkspaceDocsRoot(), brainFolderName)
+	}
+	if !filepath.IsAbs(live) {
+		return knowledgebase.Config{}, fmt.Errorf("Brain's folder must be absolute")
+	}
+	live = canonical(live)
 	branch := strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_BRANCH"))
 	if branch == "" {
 		branch = "main"
 	}
-	return knowledgebase.Config{Root: root, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true", SecretResolver: knowledgebaseBackupSecret}, nil
+	return knowledgebase.Config{Root: root, LiveRoot: live, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true", SecretResolver: knowledgebaseBackupSecret}, nil
 }
 
 func knowledgebaseService() (*knowledgebase.Service, error) {
@@ -89,6 +105,9 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 	if knowledgebaseInstance.service == nil || !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
 		if knowledgebaseInstance.service != nil {
 			_ = knowledgebaseInstance.service.Close()
+		}
+		if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
+			return nil, fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
 		}
 		service, err := knowledgebase.New(config)
 		if err != nil {
@@ -369,6 +388,6 @@ func knowledgebaseBackupSecret(name string) (string, bool) {
 
 // sameKnowledgebaseConfig compares everything except the secret resolver (a function, always the same one).
 func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
-	return a.Root == b.Root && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
+	return a.Root == b.Root && a.LiveRoot == b.LiveRoot && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
 		a.BackupBranch == b.BackupBranch && a.AllowPrivateBackup == b.AllowPrivateBackup && a.BackupEncryptionKey == b.BackupEncryptionKey
 }

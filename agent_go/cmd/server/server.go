@@ -2179,7 +2179,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
 			log.Fatalf("Failed to register Brain profile: %v", err)
 		}
-		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor, knowledgebaseBackupExecutor); err != nil {
+		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor); err != nil {
 			log.Fatalf("Failed to register Brain runtime: %v", err)
 		}
 		// The chat is told the caller's own role: without it the model could not tell an administrator from anyone else
@@ -2484,7 +2484,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
 	apiRouter.HandleFunc("/knowledgebase/project", api.handleKnowledgebaseProject).Methods("GET", "POST", "OPTIONS")
-	apiRouter.HandleFunc("/knowledgebase/git", api.handleKnowledgebaseGit).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -6259,9 +6258,27 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardWrite = nil
 						guardBlocked = append(guardBlocked, profileWrite)
 					}
+					// Brain's chat: a person who owns the whole Brain also works in Brain's folder with a shell and git,
+					// like any product's folder (PLAT-633); everyone else stays in their own Brain chat folder.
+					brainGrant := ""
+					var brainEnv map[string]string
+					if strings.EqualFold(resolvedProfile.Definition.ID, knowledgebaseproduct.ProfileID) {
+						if env, ok := brainShellGrant(r); ok {
+							brainGrant, brainEnv = brainFolderName+"/", env
+							guardWrite = append(guardWrite, brainGrant)
+						}
+					}
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
+					if brainGrant != "" {
+						executorWrite = append(executorWrite, brainGrant)
+					}
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
+					if brainGrant != "" {
+						syncBrainAfterFileTools(workspaceExecutors, currentUserID)
+						workspace.SetSessionWorkingDir(sessionID, brainFolderName)
+						common.SetSessionShellEnv(sessionID, brainEnv)
+					}
 					if strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 						// The chat's person is pinned once; personal MCP servers
 						// and secrets follow the pin, never the mutable session
@@ -6283,8 +6300,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardBlocked = append(guardBlocked,
 							filepath.Join(profileRoot, "workflow.json"), filepath.Join(profileRoot, "product.json"))
 					}
+					guardRead := append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...)
+					if brainGrant != "" {
+						guardRead = append(guardRead, brainGrant)
+					}
 					workspace.SetSessionFolderGuard(sessionID,
-						append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...),
+						guardRead,
 						append(append(append(guardWrite, chatHistoryGrants...), workGrantWrite...), crewRefWrite...),
 					)
 					guardBlocked = append(guardBlocked, workGrantReadOnly...)

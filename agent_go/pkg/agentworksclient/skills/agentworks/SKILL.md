@@ -43,7 +43,6 @@ Discover the schemas through `get_api_spec`, then invoke actions through `call_t
 - `brain_browse`: `folders` / `entries` for accessible skills, facts, notes and sources.
 - `brain_read`: `read` / `search`; read the current version before changing content.
 - `brain_update`: `create` / `update` / `delete` / `create_folder`. Use diff patches for large files, `expected_version` for updates/deletes and stable `request_id` values. Saves become readable immediately.
-- `brain_backup`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
 - `brain_skills`: company skills. `list` finds skills you can read; `get` returns one skill's files: install it by writing each file under your own skills folder as `.claude/skills/<name>/<path>` (Claude Code) or `.agents/skills/<name>/<path>` (Codex, Cursor), decoding `content_base64`; `publish` uploads a skill package (`SKILL.md` plus `references/`, `scripts/`, assets) into a Brain folder and replaces its previous files (Editor; a skill with scripts needs Owner). Re-run `get` to update.
 - Files of any type (images, PDF, PPTX, XLSX; not programs) can be stored: send text in `content`, anything else in `content_base64`.
 - `brain_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
@@ -85,7 +84,7 @@ commit/push. KB encrypts the PAT in its own private storage, with no Vault
 dependency. Omit `pat` to retain it or send an empty string to remove it. SSH URLs
 require deployment configuration and use host SSH credentials; app/MCP setup is HTTPS only.
 
-For explicitly requested repository-wide Git work, use `brain_backup(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
+Git backup is not a tool: people who own the whole Brain run git in Brain's folder from the Brain chat.
 
 ## Vault management
 

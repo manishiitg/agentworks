@@ -912,7 +912,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	enabledTools = narrowed
 	if access := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()); access != KBAccessNone {
 		// Steps that may read Brain also list and read company skills (PLAT-576); publishing is limited by the tool schema.
-		enabledTools = append(enabledTools, "knowledgebase:"+knowledgebase.ToolBrowse, "knowledgebase:"+knowledgebase.ToolRead, "knowledgebase:"+knowledgebase.ToolBackup, "knowledgebase:"+knowledgebase.ToolSkills, "knowledgebase:"+knowledgebase.ToolAccess)
+		enabledTools = append(enabledTools, "knowledgebase:"+knowledgebase.ToolBrowse, "knowledgebase:"+knowledgebase.ToolRead, "knowledgebase:"+knowledgebase.ToolSkills, "knowledgebase:"+knowledgebase.ToolAccess)
 		if access == KBAccessWrite || access == KBAccessReadWrite {
 			enabledTools = append(enabledTools, "knowledgebase:"+knowledgebase.ToolUpdate)
 		}

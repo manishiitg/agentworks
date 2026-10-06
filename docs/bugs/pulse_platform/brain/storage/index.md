@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-633](plat-633.md) | Brain as a normal Git folder; backup through the terminal | open | P1 |
+| [PLAT-633](plat-633.md) | Brain as a normal Git folder; backup through the terminal | fixed on main | P1 |

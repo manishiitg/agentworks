@@ -7,14 +7,13 @@ import { SettingsCardLayout } from '../../components/ui/SettingsCard'
 import { KnowledgebaseAccessPanel } from './KnowledgebaseAccessPanel'
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { KnowledgebaseFolderTree } from './KnowledgebaseFolderTree'
-import { useKnowledgebaseGit } from './useKnowledgebaseGit'
 import { useKnowledgebaseFiles } from './useKnowledgebaseFiles'
 
 export type KnowledgebaseView = 'library' | 'access' | 'models' | 'secrets'
 function KnowledgebaseFiles({ onFolder, onAsk, onGitAsk, revision, active }: { onGitAsk?: (message: string) => void | Promise<unknown>; active: boolean; onFolder: (path: string) => void; onAsk: () => void; revision: number }) {
   const source = useKnowledgebaseFiles(revision, active, onFolder)
-  const git = useKnowledgebaseGit(source, revision, active)
-  return <TooltipProvider><FileWorkspacePane title="Brain" source={{ ...source, git: active ? git : undefined }} testId="knowledgebase-files" onAsk={onGitAsk} hideAddToChat hideRootActions
+  // Git backup runs with plain git in Brain's folder, from the Brain chat (PLAT-633), not a panel here.
+  return <TooltipProvider><FileWorkspacePane title="Brain" source={source} testId="knowledgebase-files" onAsk={onGitAsk} hideAddToChat hideRootActions
     headerAction={<AskAIButton workspacePath={null} onAsk={onAsk} message="Inspect the selected folder's access." label="Folder access" />} /></TooltipProvider>
 }
 export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revision, modelSettings, onGitAsk }: { onGitAsk?: (message: string) => void | Promise<unknown>; view: KnowledgebaseView; folder: string; onFolder: (path: string) => void; onAsk: () => void; revision: number; modelSettings?: ReactNode }) {

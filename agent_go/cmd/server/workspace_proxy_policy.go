@@ -12,7 +12,7 @@ import (
 // workspaceProxyPolicy decides, per workspace path a proxied request names
 // (URL, query or body field), whether the caller may reach it. It complements
 // the cross-user rule (workspaceProxyPathIsOtherUser):
-//   - the docs root, config/ and _system/ are admin-only;
+//   - the docs root, config/, _system/ and Brain/ are admin-only;
 //   - inside Workflow/<id> reads need workflow read access, writes need write
 //     access, and workflow.json (its access record) only its owners;
 //   - bulk routes (search, glob, folder copy) never run on the whole
@@ -131,6 +131,9 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 	switch segments[0] {
 	case "config", "_system":
 		return "server configuration is admin-only"
+	case brainFolderName:
+		// Brain's raw files bypass its folder roles; everyone else reads Brain through Brain (PLAT-633).
+		return "Brain's files are admin-only here; open them in Brain"
 	case "Workflow":
 		if len(segments) == 1 {
 			if write || p.bulk {

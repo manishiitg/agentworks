@@ -97,18 +97,6 @@ func knowledgebaseChatActsDirectly(action string, args map[string]any) bool {
 	return false
 }
 
-// The Files AI actions use the existing product chat and a narrow Git tool.
-func knowledgebaseBackupExecutor(ctx context.Context, runtime agentprofiles.ToolRuntimeContext, args map[string]any) (string, error) {
-	if runtime.Product != "knowledgebase" {
-		return "", fmt.Errorf("Git tool requires the Brain profile")
-	}
-	action, _ := args["action"].(string)
-	if action != "git" && action != "status" {
-		return "", fmt.Errorf("This chat supports only Files Git operations and backup status")
-	}
-	return knowledgebaseExecute(ctx, runtime.UserID, false, knowledgebase.ToolBackup, args)
-}
-
 // Bound workflow/Crew operations use the same domain boundary as external agents.
 // The dedicated access builder's allowlist excludes every one of these tools.
 func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.Tool, map[string]interface{}, map[string]string) {
@@ -138,7 +126,7 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 		// The Brain chat curates with the person's own folder roles, like an MCP connection (PLAT-618). Its access and
 		// Git tools come from the product's own factories, so only the content tools are added here.
 		for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
-			if def.Name != knowledgebase.ToolAccess && def.Name != knowledgebase.ToolBackup {
+			if def.Name != knowledgebase.ToolAccess {
 				defs = append(defs, def)
 			}
 		}

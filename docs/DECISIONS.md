@@ -17,6 +17,25 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Brain is a plain Git folder; backup runs with git, not a tool
+
+Brain's notes live as plain files in `Brain/` at the top of the documents tree (moved
+once from the server's state folder; the old copy is kept aside). It is a normal Git
+repository whose origin is the backup destination; its credential helper reads the
+token from the shell's environment (from the `BRAIN_GITHUB_PAT`-style platform secret),
+so nothing secret is in the folder. The Brain chat of a person who owns the whole Brain
+(administrators) works in `Brain/` with a shell and runs git there; Brain picks up direct
+edits, new files and removals before each call, recorded as theirs. `brain_backup`, its
+commit/push receipts and the "reserved until backup confirms" rule for deleted paths are
+removed; Brain tools only store. Everyone else, and every workflow, Crew and Code, uses
+the Brain tools with their folder roles: `Brain/` is admin-only in the Files proxy, no
+session's sandbox gets it unless granted, and it is app-owned 0700 so slot accounts
+cannot read it. Brain's private data (access database, journal) stays outside the
+workspace roots. Why: owner, 2026-10-06 ("agent should get raw access to file system and
+it should use git normally", "like all other agents products"); the backup tool wedged on
+RTS with its git errors hidden. Replaces the rule that all Brain data stays outside the
+workspace tool roots. [PLAT-633](bugs/pulse_platform/brain/storage/plat-633.md).
+
 ### 2026-10-06 — Workflow's single Model card represents Builder chat
 
 Show Builder's effective model and effort beside the chat, including managed

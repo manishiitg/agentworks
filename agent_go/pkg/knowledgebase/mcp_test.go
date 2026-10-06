@@ -25,7 +25,7 @@ func mcpError(t *testing.T, s *Service, p Principal, tool string, args map[strin
 	}
 }
 
-func TestFiveMCPToolsCompleteContentAndBackupLifecycle(t *testing.T) {
+func TestMCPToolsCompleteContentLifecycle(t *testing.T) {
 	s, admin, editor := fixture(t, true)
 	grant(t, s, admin, editor.IdentityID, "", "Editor", "grant-editor")
 	folder := mcpCall(t, s, editor, "brain_update", map[string]any{"action": "create_folder", "folder_path": "", "name": "Payments", "request_id": "create-folder"})
@@ -52,16 +52,7 @@ func TestFiveMCPToolsCompleteContentAndBackupLifecycle(t *testing.T) {
 	if found := mcpCall(t, s, editor, "brain_read", map[string]any{"action": "search", "query": "updated", "tag": "payments"}); len(found["matches"].([]any)) != 1 {
 		t.Fatal("public search did not find updated content", found)
 	}
-	commitArgs := map[string]any{"action": "commit", "entries": []any{map[string]any{"entry_id": entry["entry_id"], "expected_version": updated["version"]}}, "message": "Backup", "request_id": "commit-entry"}
-	receipt := mcpCall(t, s, editor, "brain_backup", commitArgs)
-	mcpCall(t, s, editor, "brain_backup", map[string]any{"action": "push", "receipt_id": receipt["receipt_id"], "request_id": "push-entry"})
-	status := mcpCall(t, s, editor, "brain_backup", map[string]any{"action": "status", "folder_id": folder["folder_id"]})
-	if asMap(status["entries"].([]any)[0])["backup_status"] != "backed_up" {
-		t.Fatal("public backup did not publish the selection", status)
-	}
-	deleted := mcpCall(t, s, editor, "brain_update", map[string]any{"action": "delete", "entry_id": entry["entry_id"], "expected_version": updated["version"], "request_id": "delete-entry"})
-	receipt = mcpCall(t, s, editor, "brain_backup", map[string]any{"action": "commit", "deletions": []any{map[string]any{"deletion_id": deleted["deletion_id"]}}, "message": "Back up deletion", "request_id": "commit-deletion"})
-	mcpCall(t, s, editor, "brain_backup", map[string]any{"action": "push", "receipt_id": receipt["receipt_id"], "request_id": "push-deletion"})
+	mcpCall(t, s, editor, "brain_update", map[string]any{"action": "delete", "entry_id": entry["entry_id"], "expected_version": updated["version"], "request_id": "delete-entry"})
 	mcpError(t, s, editor, "brain_read", map[string]any{"action": "read", "entry_id": entry["entry_id"]}, "NOT_FOUND")
 }
 
@@ -69,8 +60,6 @@ func TestMCPActionsKeepPurposeIsolationAndRequestNamespace(t *testing.T) {
 	s, admin, _ := fixture(t, true)
 	entry := mcpCall(t, s, admin, "brain_update", map[string]any{"action": "create", "folder_path": "", "filename": "guide.md", "type": "note", "title": "Guide", "content": "live", "request_id": "same-id"})
 	mcpError(t, s, admin, "brain_update", map[string]any{"action": "delete", "entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "same-id"}, "REQUEST_ID_REUSE")
-	receipt := mcpCall(t, s, admin, "brain_backup", map[string]any{"action": "commit", "entries": []any{map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"]}}, "message": "Backup", "request_id": "backup-id"})
-	mcpError(t, s, admin, "brain_backup", map[string]any{"action": "push", "receipt_id": receipt["receipt_id"], "request_id": "backup-id"}, "REQUEST_ID_REUSE")
 	acl := mcpCall(t, s, admin, "brain_access", map[string]any{"action": "inspect"})["acl_version"]
 	grantArgs := map[string]any{"action": "grant", "folder_path": "", "identity_id": "priya", "role": "Reader", "expected_acl_version": acl, "request_id": "grant"}
 	mcpError(t, s, admin, "brain_access", grantArgs, "FORBIDDEN")
@@ -92,7 +81,7 @@ func TestMCPDiscoveryLimitsActionsByConnection(t *testing.T) {
 	for _, def := range ToolDefinitions() {
 		fullNames = append(fullNames, def.Name)
 	}
-	if !reflect.DeepEqual(fullNames, []string{"brain_browse", "brain_read", "brain_update", "brain_backup", "brain_skills", "brain_access"}) {
+	if !reflect.DeepEqual(fullNames, []string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}) {
 		t.Fatal("unexpected public surface", fullNames)
 	}
 	for _, writable := range []bool{false, true} {

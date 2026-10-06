@@ -144,7 +144,6 @@ func TestGitSnapshotsConcurrencyMetadataAndDeletion(t *testing.T) {
 	}
 	push(t, s, p, r, "retry_pushed")
 	d := call(t, s, p, "delete_knowledgebase", map[string]any{"entry_id": e["entry_id"], "expected_version": meta["version"], "request_id": "d1"})
-	code(t, s, p, "create_knowledgebase", map[string]any{"folder_path": "Checkout", "filename": "guide.md", "type": "note", "title": "New", "content": "new", "request_id": "c3"}, "PATH_PENDING_DELETION_BACKUP")
 	dr := call(t, s, p, "commit_knowledgebase", map[string]any{"deletions": []any{map[string]any{"deletion_id": d["deletion_id"]}}, "message": "Delete", "request_id": "b5"})
 	push(t, s, p, dr, "p5")
 	replacement := create(t, s, p, "Checkout", "guide.md", "replacement\n", "c4")

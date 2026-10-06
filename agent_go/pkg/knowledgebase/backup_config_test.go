@@ -39,10 +39,6 @@ func TestBackupSetupIsAdminOnlyDurableAndDoesNotPublish(t *testing.T) {
 	if configured, err := reopened.BackupConfigured(); err != nil || !configured {
 		t.Fatal("setup lost after restart", err)
 	}
-	status := mcpCall(t, s, content, "backup_knowledgebase", map[string]any{"action": "status"})
-	if status["configured"] != true {
-		t.Fatal("backup operations ignored saved destination", status)
-	}
 	if err := s.ensureRepo(t.Context()); err != nil {
 		t.Fatal("staging repository ignored saved destination", err)
 	}

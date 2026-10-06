@@ -179,7 +179,6 @@ chat:
       - brain_browse
       - brain_read
       - brain_update
-      - brain_backup
       - brain_skills
       - brain_access
       - add_step
@@ -295,7 +294,6 @@ chat:
       - brain_browse
       - brain_read
       - brain_update
-      - brain_backup
       - brain_skills
       - brain_access
       - agent_browser

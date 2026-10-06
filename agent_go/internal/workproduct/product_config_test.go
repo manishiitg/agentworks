@@ -173,12 +173,11 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"perform_ui_action":                 false,
 		"manage_vault_access":               false,
 		"manage_my_vaults":                  false,
-		"brain_browse":              false,
-		"brain_read":                false,
-		"brain_update":              false,
-		"brain_backup":              false,
-		"brain_skills":              false,
-		"brain_access":       false,
+		"brain_browse":                      false,
+		"brain_read":                        false,
+		"brain_update":                      false,
+		"brain_skills":                      false,
+		"brain_access":                      false,
 	}
 	for _, name := range manifest.Profile.ToolPolicy.Enabled {
 		if _, expected := wantEnabled[name]; !expected {

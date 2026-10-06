@@ -9,6 +9,7 @@ const (
 	ToolBrowse = "brain_browse"
 	ToolRead   = "brain_read"
 	ToolUpdate = "brain_update"
+	// ToolBackup was the Git backup tool, removed: Brain is a plain Git folder backed up with git (PLAT-633).
 	ToolBackup = "brain_backup"
 	ToolSkills = "brain_skills"
 	ToolAccess = "brain_access"
@@ -16,7 +17,7 @@ const (
 
 // ToolNames lists the public Brain tools in surface order.
 func ToolNames() []string {
-	return []string{ToolBrowse, ToolRead, ToolUpdate, ToolBackup, ToolSkills, ToolAccess}
+	return []string{ToolBrowse, ToolRead, ToolUpdate, ToolSkills, ToolAccess}
 }
 
 // legacyToolNames are the names the tools had before the Brain rename (2026-10-06). They are accepted where a call

@@ -2,6 +2,7 @@ package knowledgebaseproduct
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -20,11 +21,11 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 	if len(p.Commands) != 1 || p.Commands[0].Name != "organize" {
 		t.Fatalf("curator commands: %+v", p.Commands)
 	}
-	if len(p.ToolPolicy.Enabled) != 9 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 9 || len(p.Schedules) != 1 || p.Schedules[0].ID != "organize" || p.Schedules[0].Isolated || p.Schedules[0].Enabled {
+	if len(p.ToolPolicy.Enabled) != 10 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 10 || slices.Contains(p.ToolPolicy.Enabled, "brain_backup") || !slices.Contains(p.ToolPolicy.Enabled, "execute_shell_command") || len(p.Schedules) != 1 || p.Schedules[0].ID != "organize" || p.Schedules[0].Isolated || p.Schedules[0].Enabled {
 		t.Fatalf("builder tools: %+v", p.ToolPolicy)
 	}
-	if len(m.Chat["mcp"].ExternalTools) != 6 {
-		t.Fatal("Brain must expose six action-based tools", m.Chat["mcp"].ExternalTools)
+	if len(m.Chat["mcp"].ExternalTools) != 5 {
+		t.Fatal("Brain must expose five action-based tools (no backup tool, PLAT-633)", m.Chat["mcp"].ExternalTools)
 	}
 	if m.UI.FilesPanel || m.UI.WorkflowPanel || m.UI.Secrets {
 		t.Fatal("access builder exposes general workspace capabilities")

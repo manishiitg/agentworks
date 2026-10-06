@@ -249,11 +249,6 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 	if s.collision(r, name) {
 		return nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
 	}
-	for _, d := range r.Deletions {
-		if strings.EqualFold(d.Path, ep) && !s.deletionReusable(d) {
-			return nil, nil, kbErr("PATH_PENDING_DELETION_BACKUP", "The deleted path is reserved until its backup is confirmed.")
-		}
-	}
 	data, binary, hasData, err := contentArg(a)
 	if err != nil {
 		return nil, nil, err

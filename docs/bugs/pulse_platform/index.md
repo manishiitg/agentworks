@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
-| [Brain](brain/index.md) | 24 | 5 |
+| [Brain](brain/index.md) | 24 | 4 |
 | [Browser and browser automation](browser/index.md) | 43 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
@@ -28,7 +28,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|---|---|
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
-| [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | open | P1 | [brain/storage](brain/storage/index.md) |
+| [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | fixed on main | P1 | [brain/storage](brain/storage/index.md) |
 | [PLAT-632](brain/access/plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 | [brain/access](brain/access/index.md) |
 | [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |

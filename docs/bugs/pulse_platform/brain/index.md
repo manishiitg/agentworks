@@ -17,4 +17,4 @@
 | [security-sandbox](security-sandbox/index.md) | 1 | 0 |
 | [skills](skills/index.md) | 1 | 0 |
 | [step-execution](step-execution/index.md) | 1 | 0 |
-| [storage](storage/index.md) | 1 | 1 |
+| [storage](storage/index.md) | 1 | 0 |

@@ -9,10 +9,9 @@ profile:
   scope: project
   tools:
     - id: knowledgebase.manage-access
-    - id: knowledgebase.git
   tool_policy:
     mode: allowlist
-    enabled: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
+    enabled: [brain_access, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule, execute_shell_command, diff_patch_workspace_file]
   # Curator command (PLAT-618): /organize suggests ways to organize (products, teams, entities, timeline), the person
   # picks, then it restructures and merges duplicates with the person's own folder roles.
   commands:
@@ -22,7 +21,7 @@ profile:
       file: commands/organize.md
   runtime:
     transport: structured
-    bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
+    bridge_tools: [brain_access, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule, execute_shell_command, diff_patch_workspace_file]
     api_transport: {mode: disabled}
     agent_tools: {mode: mcp_only}
     workspace: {mode: fixed, root: Chats/Knowledgebase}
@@ -120,13 +119,12 @@ workflows: {enabled: [], selected_skills: [], browser_mode: ""}
 chat:
   builder:
     prompt: {file: prompts/access-builder.md}
-    tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
+    tools: [brain_access, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule, execute_shell_command, diff_patch_workspace_file]
   mcp:
     prompt: {file: prompts/mcp.md}
     external_tools:
       - brain_browse
       - brain_read
       - brain_update
-      - brain_backup
       - brain_skills
       - brain_access

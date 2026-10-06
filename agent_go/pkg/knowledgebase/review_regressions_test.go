@@ -83,7 +83,6 @@ func TestRemoteBindingHooksAndFailClosedAbsence(t *testing.T) {
 	if e := os.Rename(s.repo(), s.repo()+".offline"); e != nil {
 		t.Fatal(e)
 	}
-	code(t, s, a, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "new", "content": "new", "request_id": "c2"}, "PATH_PENDING_DELETION_BACKUP")
 	code(t, s, a, "get_knowledgebase_backup_status", nil, "BACKUP_UNAVAILABLE")
 }
 func TestUnknownExpiryAndRecheckBeforePublication(t *testing.T) {
