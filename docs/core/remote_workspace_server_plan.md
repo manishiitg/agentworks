@@ -34,10 +34,13 @@ Implemented now:
   heartbeat/reconnect, token revocation and pending-request failure on disconnect.
 - Local file writes retain private receipts across reconnects/restarts. The
   server never blindly resends a write after a timeout or disconnect.
-- Code's Files view has a per-project **Files location: Server / My computer**
-  selector, browser-scoped device/folder selection, connection setup, live status,
-  text browsing, Ask Code and guarded saves. Local chat tools are bound to the
-  selected alias; location changes refresh retained tools between turns.
+- Code **Settings → General → Local files** offers **Connect local files** and
+  **Disconnect local files**, with CLI setup and device/folder selection. The
+  browser-scoped binding takes over file access for the current Code session;
+  ordinary chat and the server runtime remain available when a device is offline.
+  Files shows live status, text browsing, Ask Code and guarded saves. Local file
+  tools are bound to the selected alias; binding changes refresh retained tools
+  between turns without replacing the conversation.
 
 The first executor is file-only. Shell/browser operations, workflow execution
 against laptop-owned plans, a general device-management panel, remote schedules,

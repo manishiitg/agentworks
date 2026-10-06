@@ -2,6 +2,30 @@ package server
 
 import "testing"
 
+func TestCodeLocalFilesOfflineSelectionDoesNotBlockOrdinaryChat(t *testing.T) {
+	api := &StreamingAPI{}
+	target := &codeLocalFileTarget{DeviceID: "offline-laptop", ResourceID: "project"}
+	if err := api.validateCodeLocalFiles(&UserClaims{UserID: "owner"}, target); err != nil {
+		t.Fatalf("offline selection blocked chat: %v", err)
+	}
+	if err := api.validateCodeLocalFiles(&UserClaims{UserID: "owner", Provider: "bot_route"}, target); err == nil {
+		t.Fatal("connector acquired local file context")
+	}
+	profile := routeTestProfile("code", true, "")
+	conversation := ProductConversationRecord{SessionID: "same-session", WorkspacePath: "Chats/Code/projects/project"}
+	baseline, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hello"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connected, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hello", CodeLocalFiles: target}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if baseline.RestoredConversationSessionID != connected.RestoredConversationSessionID || baseline.Provider != connected.Provider || baseline.ModelID != connected.ModelID || baseline.SelectedFolder != connected.SelectedFolder {
+		t.Fatal("file binding changed the chat or server runtime")
+	}
+}
+
 func TestCodeLocalFilesRequireInteractiveCodeAndReplaceRetainedToolBinding(t *testing.T) {
 	profile := routeTestProfile("code", true, "")
 	target := &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}

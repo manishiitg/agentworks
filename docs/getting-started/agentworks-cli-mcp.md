@@ -748,21 +748,26 @@ outside every shared folder. Read-only folders require no writable state. Writab
 writes inside the shared folder. Default receipt storage is beside the CLI config in
 `executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
 
-### Code website: choose where project files live
+### Code website: connect local files to the current chat
 
-Open a Code project and its **Files** view. **Files location** defaults to
-**Server**. Choose **My computer**, use **Connect computer** for the CLI setup
-commands, and select a connected computer and shared folder. The page shows
-Connected/Offline and Read only/Can edit, lets you browse text files, and offers
-**Ask Code** and guarded **Save to computer** for writable folders/accounts.
-Folder selection stays in this browser, scoped to your account, server workspace
-and Code project. It does not move the server project, its settings or chat history.
+Open a Code chat, then **Settings → General → Local files → Connect local files**.
+Follow the CLI setup commands and select a connected computer and shared folder.
+The connection takes over file access for this Code session only. The same chat,
+agent, model, terminal and server runtime remain in use; other Code chats keep
+their own file access. The binding stays in this browser, scoped to your account,
+server workspace and session.
 
-Code chat sends only the selected device and folder aliases. The backend checks
-ownership, live grants and connection status before admitting a local turn, and
-every file operation rechecks them. Tools are bound to that folder; changing the
-location or folder refreshes retained chat tools between turns. Offline folders
-stay selected and never substitute server files. An interrupted editor save keeps
+**Files** shows the selected connection, Connected/Offline and Read only/Can edit.
+It lets you browse text files, use **Ask Code** and **Save to computer** for writable
+folders/accounts. **Manage file connection** returns to Settings. Disconnect local
+files in Settings to return this chat to server files; it does not stop the CLI.
+
+Code chat sends only the selected device and folder aliases as a context hint.
+Every file action validates live ownership, connection authorization and grants.
+Tools are bound to that folder; changing the binding refreshes retained chat
+tools between turns. Ordinary chat works before folder selection and while the
+computer is offline; local file actions fail without substituting server files.
+An interrupted editor save keeps
 its exact request ID and payload while this Files panel stays open, including
 disconnect/reconnect; use Retry save to reconcile it, or Reload to inspect the
 current file. Leaving the panel or refreshing the page discards that editor draft.
@@ -772,7 +777,7 @@ general chat, schedules and connector turns do not acquire local file tools.
 The Code terminal and browser still run on the server; the file executor cannot
 run laptop builds or tests. Requested file contents reach the server and LLM.
 
-In a Code chat with **My computer** selected, the server agent receives `list_local_devices`,
+In a Code chat with a local file connection selected, the server agent receives `list_local_devices`,
 `list_local_files`, `read_local_file` and, for writable accounts/turns,
 `write_local_file`. Specify `device_id`, `resource_id` (folder alias) and relative
 `path`; writes additionally require `content`, `expected_revision` and

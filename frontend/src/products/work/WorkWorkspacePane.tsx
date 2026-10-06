@@ -1,4 +1,5 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Settings } from 'lucide-react'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
@@ -139,7 +140,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           </WorkspaceToolbarGroup>}
           {isCode && viewsGroup}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
-            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
+            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} label={isCode && item.id === 'identity' ? 'Settings' : item.label} icon={isCode && item.id === 'identity' ? Settings : item.icon} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
         </WorkspaceToolbarFrame>
       </TooltipProvider>
@@ -254,13 +255,16 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const readOnly = Boolean(shared)
   const product = useProjectProduct()
   const noun = product.noun
-  const ask = useCallback((message: string) => sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId])
+  const ask = useCallback((message: string) => product.profileId === 'code'
+    ? sendWorkspacePaneMessageToChat({ tabId, message })
+    : sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId, tabId])
   const serverFiles = <FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" />
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
     [readOnly, projectId, workspacePath, product.profileId],
   )
   const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
+  const [openLocalFilesSettings, setOpenLocalFilesSettings] = useState(false)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   // The dashboard's only link to the chat beside it: a stable callback, so
@@ -336,8 +340,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={workspacePath} workspacePath={workspacePath} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
-        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><CodeServerTerminalNotice workspacePath={workspacePath} /><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} onManageConnection={() => { setOpenLocalFilesSettings(true); onViewChange('identity') }} /> : serverFiles}</Suspense>)}
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><CodeServerTerminalNotice sessionId={activeSessionId || ''} /><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           shared={Boolean(shared)}
@@ -348,6 +352,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectTemplates={projectTemplates}
           onInstallTemplate={onInstallTemplate}
           tabId={tabId}
+          openLocalFilesSettings={openLocalFilesSettings}
+          onLocalFilesSettingsOpened={() => setOpenLocalFilesSettings(false)}
           selectedSecrets={selectedSecrets}
           selectedGlobalSecrets={selectedGlobalSecrets}
           projectLLMConfig={projectLLMConfig}

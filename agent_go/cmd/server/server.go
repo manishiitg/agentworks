@@ -14212,7 +14212,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		if !codeLocalFileTurn(*req, resolvedProfile) || !req.CodeLocalFiles.valid() {
 			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("local files require an interactive Code chat"), invalidProfile: true}
 		}
-		if err := api.validateCodeLocalFiles(ctx, GetUserFromContext(ctx), req.CodeLocalFiles); err != nil {
+		if err := api.validateCodeLocalFiles(GetUserFromContext(ctx), req.CodeLocalFiles); err != nil {
 			return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 		}
 		resolvedProfile.CodeLocalFiles = req.CodeLocalFiles

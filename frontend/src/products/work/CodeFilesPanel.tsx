@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, Copy, Folder, Laptop, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
+import { SettingsCard } from '../../components/ui/SettingsCard'
 import { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { codeLocalFilesApi, localFileError, useCodeFilesPreference, writeCodeFilesPreference, type CodeLocalFileTarget, type LocalFile, type LocalFileDevice, type LocalFileEntry, type LocalFileReceipt } from './codeLocalFiles'
+import { codeLocalFilesApi, localFileError, useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference, type CodeLocalFileTarget, type LocalFile, type LocalFileDevice, type LocalFileEntry, type LocalFileReceipt } from './codeLocalFiles'
 
 function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
@@ -29,8 +30,8 @@ function ComputerSetup() {
   </details>
 }
 
-export function CodeServerTerminalNotice({ workspacePath }: { workspacePath: string }) {
-  const preference = useCodeFilesPreference(workspacePath)
+export function CodeServerTerminalNotice({ sessionId }: { sessionId: string }) {
+  const preference = useCodeFilesPreference(sessionId)
   return preference.location === 'computer' ? <p className="border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Server terminal · This terminal cannot run commands in your selected computer folder. The local connection supports files only.</p> : null
 }
 
@@ -99,63 +100,66 @@ function LocalFolderFiles({ target, writable, connected, guardHint, onAsk }: { t
   </div>
 }
 
-/** Code alone offers this source selection; Crew and other products keep their existing Files view. */
-export function CodeFilesPanel({ workspacePath, serverFiles, onAsk }: { workspacePath: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void> }) {
+/** The connection belongs to this Code session's files, not its runtime. */
+export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
+  const preference = useCodeFilesPreference(sessionId)
+  const { devices, error, checked } = useLocalFileDevices(preference.location === 'computer')
+  const [settingError, setSettingError] = useState<string | null>(null)
+  const selected = preference.location === 'computer' ? preference.target : undefined
+  const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
+  const selectedKey = selected ? JSON.stringify([selected.device_id, selected.resource_id]) : ''
+  const savePreference = (pref: Parameters<typeof writeCodeFilesPreference>[1]) => {
+    try { writeCodeFilesPreference(sessionId, pref); setSettingError(null) }
+    catch { setSettingError('This browser could not save the file connection.') }
+  }
+  return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local files" description="Connect a folder on your computer to this Code chat. Only file access changes; your chat, agent, model and server runtime stay the same.">
+    {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : preference.location === 'server' ?
+      <Button variant="outline" onClick={() => savePreference({ location: 'computer' })}>Connect local files</Button> : <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span role="status" className="text-xs text-muted-foreground">{resource ? 'Connected' : !selected ? 'Choose a folder' : checked ? 'Offline' : 'Checking…'}</span>
+          <Button size="sm" variant="outline" onClick={() => savePreference({ location: 'server' })}>Disconnect local files</Button>
+        </div>
+        <ComputerSetup />
+        <label className="block text-xs font-medium" htmlFor="code-local-folder">Computer and shared folder</label>
+        <select id="code-local-folder" aria-label="Computer and shared folder" value={selectedKey} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => {
+          if (!event.target.value) return
+          const [device_id, resource_id] = JSON.parse(event.target.value) as string[]
+          savePreference({ location: 'computer', target: { device_id, resource_id } })
+        }}>
+          <option value="">Choose a folder…</option>
+          {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
+          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.writable ? 'Can edit' : 'Read only'}</option>))}
+        </select>
+        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      </div>}
+    {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
+  </SettingsCard>
+}
+
+export function CodeFilesPanel({ sessionId, serverFiles, onAsk, onManageConnection }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void>; onManageConnection: () => void }) {
   const accountCanEdit = useAuthStore(state => state.user?.can_edit !== false && state.user?.role !== 'viewer')
   const accountID = useAuthStore(state => state.user?.id)
   const workspaceID = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const preference = useCodeFilesPreference(workspacePath)
-  const [devices, setDevices] = useState<LocalFileDevice[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [checked, setChecked] = useState(false)
-  const [setup, setSetup] = useState(false)
+  const preference = useCodeFilesPreference(sessionId)
+  const { devices, error, checked } = useLocalFileDevices(preference.location === 'computer')
   const knownFolders = useRef(new Map<string, LocalFileDevice['resources'][number]>())
-  useEffect(() => {
-    if (preference.location !== 'computer') return
-    let active = true
-    let loading = false
-    setDevices([]); setChecked(false)
-    const refresh = async () => {
-      if (loading) return
-      loading = true
-      try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } }
-      catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } }
-      finally { loading = false }
-    }
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 5000)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [preference.location, accountID, workspaceID])
   const selected = preference.location === 'computer' ? preference.target : undefined
-  const device = devices.find(item => item.device_id === selected?.device_id)
-  const resource = device?.resources.find(item => item.id === selected?.resource_id)
+  const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
   const selectedKey = selected ? JSON.stringify([selected.device_id, selected.resource_id]) : ''
-  const editorKey = JSON.stringify([accountID, workspaceID, selectedKey])
+  const editorKey = JSON.stringify([accountID, workspaceID, sessionId, selectedKey])
   if (resource) knownFolders.current.set(editorKey, resource)
   const knownResource = resource || knownFolders.current.get(editorKey)
-  const choose = (value: string) => {
-    const [device_id, resource_id] = JSON.parse(value) as string[]
-    writeCodeFilesPreference(workspacePath, { location: 'computer', target: { device_id, resource_id } })
-  }
   return <div className="flex h-full min-h-0 flex-col">
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <label className="text-xs font-medium" htmlFor="code-files-location">Files location</label>
-      <select id="code-files-location" aria-label="Files location" value={preference.location} className="rounded-md border border-border bg-background p-1 text-sm" onChange={event => { setChecked(false); writeCodeFilesPreference(workspacePath, event.target.value === 'computer' ? { location: 'computer' } : { location: 'server' }) }}>
-        <option value="server">Server</option><option value="computer">My computer</option>
-      </select>
-      {preference.location === 'computer' && <><span role="status" className="text-xs text-muted-foreground">{resource ? 'Connected' : checked ? 'Offline' : 'Checking…'}</span><Button size="sm" variant="ghost" onClick={() => setSetup(value => !value)}><Laptop className="mr-1 h-4 w-4" />Connect computer</Button></>}
+      <span className="min-w-0 flex-1 truncate text-xs font-medium">{preference.location === 'server' ? 'Server files' : selected ? `Local files · ${selected.device_id} / ${selected.resource_id}` : 'Local files'}</span>
+      {preference.location === 'computer' && <span role="status" className="text-xs text-muted-foreground">{resource ? 'Connected' : !selected ? 'Not connected' : checked ? 'Offline' : 'Checking…'}</span>}
+      <Button size="sm" variant="ghost" onClick={onManageConnection}>Manage file connection</Button>
     </div>
     {preference.location === 'server' ? <div className="min-h-0 flex-1">{serverFiles}</div> : <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-      {(setup || (!resource && checked && devices.length === 0)) && <ComputerSetup />}
-      <label className="text-xs font-medium" htmlFor="code-local-folder">Computer and shared folder</label>
-      <select id="code-local-folder" aria-label="Computer and shared folder" value={selectedKey} className="rounded-md border border-border bg-background p-2 text-sm" onChange={event => { if (event.target.value) choose(event.target.value) }}>
-        <option value="">Choose a folder…</option>
-        {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
-        {devices.flatMap(item => item.resources.map(folder => <option key={`${item.device_id}/${folder.id}`} value={JSON.stringify([item.device_id, folder.id])}>{item.device_id} / {folder.id} — {folder.writable ? 'Can edit' : 'Read only'}</option>))}
-      </select>
-      <p className="text-xs text-muted-foreground">This browser remembers your choice for this Code project. Chats and project settings remain on the server.</p>
+      {!selected && <p className="text-sm text-muted-foreground">Choose your computer and shared folder in Settings → General → Local files.</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {selected && !resource && checked && <p className="text-sm text-muted-foreground">Your selected folder is offline or no longer shared. Reconnect it on your computer to continue. Code will not switch to server files.</p>}
+      {selected && !resource && checked && <p className="text-sm text-muted-foreground">The local folder is offline or no longer shared. Reconnect it to use these files. Your Code chat can continue; local file actions will not switch to server files.</p>}
       {selected && knownResource && <LocalFolderFiles key={editorKey} target={selected} connected={Boolean(resource)} writable={knownResource.writable && accountCanEdit} guardHint={knownResource.guard.read_only_paths?.length || knownResource.guard.blocked_paths?.length || knownResource.guard.blocked_write_paths?.length ? 'Folder restrictions apply' : 'Protected files stay guarded'} onAsk={onAsk} />}
     </div>}
   </div>

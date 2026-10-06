@@ -65,11 +65,11 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatal("connect timeout")
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	if err = api.validateCodeLocalFiles(t.Context(), owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
+	if err = api.validateCodeLocalFiles(owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = api.validateCodeLocalFiles(t.Context(), owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "not-shared"}); err == nil {
-		t.Fatal("unshared Code folder admitted")
+	if _, err = api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "not-shared", Operation: "read", Path: "readme.md"}); wf.StatusCode(err) != 403 {
+		t.Fatal("unshared Code folder could read files")
 	}
 	request := localfiles.Request{ResourceID: "project", Operation: "read", Path: "readme.md"}
 	response, err := api.localDeviceCall(t.Context(), owner, "laptop", request)

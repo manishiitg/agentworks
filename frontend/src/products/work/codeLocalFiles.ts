@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -14,8 +14,8 @@ export interface LocalFileResponse { file?: LocalFile; entries?: LocalFileEntry[
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
-function preferenceKey(workspacePath: string) {
-  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', workspacePath])}`
+function preferenceKey(sessionId: string) {
+  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', sessionId])}`
 }
 function stored(key: string) { try { return localStorage.getItem(key) } catch { return null } }
 function parse(value: string | null): CodeFilesPreference {
@@ -28,9 +28,9 @@ function parse(value: string | null): CodeFilesPreference {
   } catch { /* Unknown preferences use server files. */ }
   return { location: 'server' }
 }
-export function readCodeFilesPreference(workspacePath: string) { return parse(stored(preferenceKey(workspacePath))) }
-export function writeCodeFilesPreference(workspacePath: string, pref: CodeFilesPreference) {
-  localStorage.setItem(preferenceKey(workspacePath), JSON.stringify(pref))
+export function readCodeFilesPreference(sessionId: string) { return parse(stored(preferenceKey(sessionId))) }
+export function writeCodeFilesPreference(sessionId: string, pref: CodeFilesPreference) {
+  localStorage.setItem(preferenceKey(sessionId), JSON.stringify(pref))
   window.dispatchEvent(new Event(changed))
 }
 function subscribe(listener: () => void) {
@@ -38,18 +38,17 @@ function subscribe(listener: () => void) {
   window.addEventListener('storage', listener)
   return () => { window.removeEventListener(changed, listener); window.removeEventListener('storage', listener) }
 }
-export function useCodeFilesPreference(workspacePath: string) {
+export function useCodeFilesPreference(sessionId: string) {
   const user = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const key = useMemo(() => preferenceKey(workspacePath), [workspacePath, user, workspace])
+  const key = useMemo(() => preferenceKey(sessionId), [sessionId, user, workspace])
   const raw = useSyncExternalStore(subscribe, () => stored(key), () => null)
   return useMemo(() => parse(raw), [raw])
 }
 /** The selection is context, never authority; the backend rechecks local grants. */
-export function codeLocalFilesForChat(workspacePath: string): CodeLocalFileTarget | undefined {
-  const pref = readCodeFilesPreference(workspacePath)
+export function codeLocalFilesForChat(sessionId: string): CodeLocalFileTarget | undefined {
+  const pref = readCodeFilesPreference(sessionId)
   if (pref.location === 'server') return undefined
-  if (!pref.target) throw new Error('Choose a connected computer and folder in Code → Files before sending a message.')
   return pref.target
 }
 export const codeLocalFilesApi = {
@@ -61,4 +60,29 @@ export function localFileError(cause: unknown) {
   const err = cause as { response?: { data?: { error?: { message?: string } | string } }; message?: string }
   const error = err.response?.data?.error
   return typeof error === 'string' ? error : error?.message || err.message || 'Could not access local files.'
+}
+
+export function useLocalFileDevices(enabled: boolean) {
+  const account = useAuthStore(state => state.user?.id)
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const [devices, setDevices] = useState<LocalFileDevice[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [checked, setChecked] = useState(false)
+  useEffect(() => {
+    setDevices([]); setChecked(false); setError(null)
+    if (!enabled) return
+    let active = true
+    let loading = false
+    const refresh = async () => {
+      if (loading) return
+      loading = true
+      try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } }
+      catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } }
+      finally { loading = false }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [enabled, account, workspace])
+  return { devices, error, checked }
 }

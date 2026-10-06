@@ -9,11 +9,11 @@ const transport = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: transport, getApiBaseUrl: () => 'https://code.example.test' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selector: (state: typeof account) => unknown) => selector(account), { getState: () => account }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
-import { CodeFilesPanel } from './CodeFilesPanel'
+import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
 import { codeLocalFilesForChat, readCodeFilesPreference, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const project = 'Chats/Code/projects/my-project'
+const session = 'code-session-1'
 const target = { device_id: 'laptop', resource_id: 'project' }
 let root: Root | undefined
 beforeEach(() => {
@@ -27,12 +27,15 @@ beforeEach(() => {
     : { file: { path: 'README.md', exists: true, content: 'Local source', revision: 'rev-1' } } }))
 })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
-async function render() {
+async function render(settings = false) {
   const host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)
   const ask = vi.fn(async () => {})
-  await act(async () => root?.render(<CodeFilesPanel workspacePath={project} serverFiles={<p>Server source</p>} onAsk={ask} />))
-  return { host, ask }
+  const manage = vi.fn()
+  const files = <CodeFilesPanel sessionId={session} serverFiles={<p>Server source</p>} onAsk={ask} onManageConnection={manage} />
+  await act(async () => root?.render(settings ? <CodeLocalFilesSettings sessionId={session} /> : files))
+  const showFiles = async () => { await act(async () => root?.render(files)) }
+  return { host, ask, manage, showFiles }
 }
 async function choose(host: HTMLElement, label: string, value: string) {
   await act(async () => {
@@ -46,15 +49,26 @@ async function click(host: HTMLElement, text: string) {
   await act(async () => button!.click())
 }
 
-it('defaults to server files and requires a folder selection before local chat', async () => {
-  const { host } = await render()
+it('keeps connection controls in Settings and links there from Files', async () => {
+  const { host, manage } = await render()
   expect(host.textContent).toContain('Server source'); expect(transport.get).not.toHaveBeenCalled()
-  await choose(host, 'Files location', 'computer')
-  expect(host.textContent).not.toContain('Server source')
-  expect(() => codeLocalFilesForChat(project)).toThrow('Choose a connected computer')
+  expect(host.querySelector('select')).toBeNull()
+  await click(host, 'Manage file connection')
+  expect(manage).toHaveBeenCalledOnce()
+})
+
+it('connects the current session in Settings and browses local files in Files', async () => {
+  const { host, showFiles } = await render(true)
+  await click(host, 'Connect local files')
+  expect(host.textContent).toContain('--scopes devices:connect')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
   await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
-  expect(host.textContent).toContain('Connected'); expect(host.textContent).toContain('Read only')
-  expect(codeLocalFilesForChat(project)).toEqual(target)
+  expect(host.textContent).toContain('Connected')
+  expect(codeLocalFilesForChat(session)).toEqual(target)
+  expect(codeLocalFilesForChat('another-chat-in-the-same-project')).toBeUndefined()
+  expect(transport.post).not.toHaveBeenCalled()
+  await showFiles()
+  expect(host.textContent).toContain('Read only')
   await click(host, 'README.md')
   expect(host.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Local source')
   expect(host.querySelector<HTMLTextAreaElement>('textarea')?.readOnly).toBe(true)
@@ -64,30 +78,40 @@ it('defaults to server files and requires a folder selection before local chat',
   await click(host, 'Folder'); expect(host.textContent).toContain('README.md')
 })
 
+it('disconnects only this session in Settings without a server runtime mutation', async () => {
+  writeCodeFilesPreference(session, { location: 'computer', target })
+  const { host, showFiles } = await render(true)
+  await click(host, 'Disconnect local files')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  expect(transport.post).not.toHaveBeenCalled()
+  await showFiles()
+  expect(host.textContent).toContain('Server source')
+})
+
 it('preserves offline selections without rendering server files or silently widening chat', async () => {
-  writeCodeFilesPreference(project, { location: 'computer', target })
+  writeCodeFilesPreference(session, { location: 'computer', target })
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render()
   expect(host.textContent).toContain('Offline')
-  expect(host.textContent).toContain('Code will not switch to server files')
-  expect(host.textContent).toContain('--scopes devices:connect')
+  expect(host.textContent).toContain('Your Code chat can continue')
+  expect(host.textContent).toContain('local file actions will not switch to server files')
   expect(host.textContent).not.toContain('Server source')
-  expect(codeLocalFilesForChat(project)).toEqual(target)
+  expect(codeLocalFilesForChat(session)).toEqual(target)
   expect(transport.post).not.toHaveBeenCalled()
 })
 
-it('isolates project choices by account, server workspace and project', () => {
-  writeCodeFilesPreference(project, { location: 'computer', target })
-  expect(codeLocalFilesForChat(`${project}-other`)).toBeUndefined()
-  account.user.id = 'bob'; expect(readCodeFilesPreference(project).location).toBe('server')
+it('isolates file connections by account, server workspace and session', () => {
+  writeCodeFilesPreference(session, { location: 'computer', target })
+  expect(codeLocalFilesForChat(`${session}-other`)).toBeUndefined()
+  account.user.id = 'bob'; expect(readCodeFilesPreference(session).location).toBe('server')
   account.user.id = 'alice'; workspace.activeWorkspaceId = 'other-server'
-  expect(codeLocalFilesForChat(project)).toBeUndefined()
-  workspace.activeWorkspaceId = 'hosted'; expect(codeLocalFilesForChat(project)).toEqual(target)
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  workspace.activeWorkspaceId = 'hosted'; expect(codeLocalFilesForChat(session)).toEqual(target)
 })
 
 it('reconciles uncertain saves with the identical request ID and revision', async () => {
   vi.useFakeTimers()
-  writeCodeFilesPreference(project, { location: 'computer', target })
+  writeCodeFilesPreference(session, { location: 'computer', target })
   transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, guard: {} }] }] } })
   const { host } = await render()
   await click(host, 'README.md')

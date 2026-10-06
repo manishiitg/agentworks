@@ -46,26 +46,15 @@ func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
 		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
 }
 func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
-	return fmt.Sprintf("\nCode project files are on the user's computer: device_id=%q, resource_id=%q. This is the selected source folder for this turn. Use list_local_files, read_local_file and write_local_file for project source; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. Native filesystem tools and the workspace terminal operate on the SERVER, not this computer. They cannot inspect, edit, build or test this local project. Chat history, project settings and skills remain server-hosted. If the device disconnects, report it and stop local file work; never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. This connection changes file access only. The same chat, agent, model, project settings and server runtime remain in use. Native filesystem tools, terminal and browser still operate on the SERVER and cannot access this local folder. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
-func (api *StreamingAPI) validateCodeLocalFiles(ctx context.Context, claims *UserClaims, target *codeLocalFileTarget) error {
+func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
 		return fmt.Errorf("local Code files require your website login and a valid folder selection")
 	}
-	for _, hello := range api.localDeviceList(claims) {
-		if hello.DeviceID != target.DeviceID {
-			continue
-		}
-		for _, resource := range hello.Resources {
-			if resource.ID != target.ResourceID {
-				continue
-			}
-			if value, ok := api.localDevices.Load(claims.UserID + "/" + target.DeviceID); ok && value.(*localDeviceConnection).authorized(ctx) {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("selected Code folder is offline, no longer shared or its connection was revoked; reconnect your computer or explicitly choose Server in Code Files")
+	// A selection hint grants no authority. File dispatch validates live device
+	// ownership, authorization and grants; offline devices must not block chat.
+	return nil
 }
 
 func (api *StreamingAPI) codeLocalFilePolicyKey(claims *UserClaims, target *codeLocalFileTarget, readOnly bool) string {
