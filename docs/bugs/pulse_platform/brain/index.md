@@ -10,5 +10,5 @@
 | [plans-contracts](plans-contracts/index.md) | 1 | 0 |
 | [pulse-governance](pulse-governance/index.md) | 1 | 0 |
 | [security-sandbox](security-sandbox/index.md) | 1 | 0 |
-| [skills](skills/index.md) | 1 | 1 |
+| [skills](skills/index.md) | 1 | 0 |
 | [step-execution](step-execution/index.md) | 1 | 0 |

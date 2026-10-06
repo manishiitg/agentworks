@@ -12445,6 +12445,9 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		return sb.String(), nil
 	}
 	scoped.InstallSkill = func(ctx context.Context, source string) (string, error) {
+		if folder, fromBrain := brainSkillFolder(source); fromBrain {
+			return installBrainSkill(ctx, wsURL, workspacePath, folder, productID)
+		}
 		result, err := skills.ImportToWorkspaceDir(ctx, wsURL, source, projectSkillsDir)
 		if err != nil {
 			return "", fmt.Errorf("failed to install skill: %w", err)
@@ -12480,15 +12483,24 @@ func (api *StreamingAPI) buildSkillCallbacksForProduct(productID string) *todo_c
 			return fmt.Errorf("choose a workspace to uninstall skills")
 		},
 		SearchSkills: func(ctx context.Context, query string) (string, error) {
+			// Company skills (Brain) first, then the public registry.
+			company := brainSkillSearch(ctx, query)
 			results, err := skills.FindSkills(ctx, query)
 			if err != nil {
+				if company != "" {
+					return company, nil
+				}
 				return "", fmt.Errorf("failed to search skills: %w", err)
 			}
 			if len(results) == 0 {
+				if company != "" {
+					return company, nil
+				}
 				return "No skills found matching your query.", nil
 			}
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("## Search Results (%d found)\n\n", len(results)))
+			sb.WriteString(company)
+			sb.WriteString(fmt.Sprintf("## Public registry results (%d found)\n\n", len(results)))
 			sb.WriteString("Install with: `install_skill` tool using the source value.\n\n")
 			for _, r := range results {
 				sb.WriteString(fmt.Sprintf("- **%s** (%s) — %s\n", r.Skill, r.Source, r.Installs))
@@ -12604,7 +12616,7 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 
 	if err := registerTool(
 		"search_skills",
-		"Search the public skills registry for installable skills. Use install_skill with a returned source value to install one.",
+		"Search company skills in Brain (your company's shared skills) and the public skills registry. Use install_skill with a returned source value to install one into this workspace.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -12628,13 +12640,13 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 
 	if err := registerTool(
 		"install_skill",
-		"Install a skill from the public skills registry using owner/repo@skill-name format. Use search_skills first to find valid sources.",
+		"Install a skill into this workspace: a company skill from Brain with source brain:<folder> (for example brain:Company/Skills/release-notes), or a public registry skill with owner/repo@skill-name. Use search_skills first to find valid sources.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"source": map[string]interface{}{
 					"type":        "string",
-					"description": "Skill source in owner/repo@skill-name format.",
+					"description": "Skill source: brain:<folder> for a company skill in Brain, or owner/repo@skill-name for the public registry.",
 				},
 			},
 			"required": []string{"source"},

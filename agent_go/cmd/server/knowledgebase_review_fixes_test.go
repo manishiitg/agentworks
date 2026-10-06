@@ -126,7 +126,8 @@ func TestKnowledgebaseToolsRequireBindingAndOAuthIsExplicit(t *testing.T) {
 	p.AccessOnly = true
 	knowledgeDispatchTest(t, s, p, "manage_knowledgebase_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "expected_manifest_version": project.Version, "request_id": "review-binding"})
 	tools, _, _ := createKnowledgebaseTools("admin", "initial-registration", workspace)
-	if len(tools) != 4 {
+	// browse, read, backup (status), skills (list/get) and access (inspect) for a read-bound project.
+	if len(tools) != 5 {
 		t.Fatalf("bound project has %d tools", len(tools))
 	}
 	scopes, ok := validMCPOAuthScopes("knowledgebase:read knowledgebase:write")

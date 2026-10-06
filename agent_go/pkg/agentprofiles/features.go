@@ -87,7 +87,7 @@ type featureDefinition struct {
 // the bundle layer does not fork their implementations.
 var featureCatalog = map[string]featureDefinition{
 	"knowledgebase": {
-		Tools: []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"},
+		Tools: []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access"},
 		// Bound project guidance is supplied dynamically by the runtime.
 		PromptExtension: "",
 	},

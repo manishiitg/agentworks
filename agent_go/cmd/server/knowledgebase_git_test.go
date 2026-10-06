@@ -75,7 +75,8 @@ func TestKnowledgebaseGitUsesSharedHandlersAndRootAuthority(t *testing.T) {
 	if _, err := knowledgebaseBackupExecutor(ctx, agentprofiles.ToolRuntimeContext{Product: "knowledgebase", UserID: "admin"}, map[string]any{"action": "commit", "message": "not an allowed chat action", "request_id": "bad"}); err == nil {
 		t.Fatal("chat accepted selected receipt actions")
 	}
-	if len(knowledgebase.ToolDefinitions()) != 5 {
+	// Six action tools: browse, read, update, backup (Git included), skills, access.
+	if len(knowledgebase.ToolDefinitions()) != 6 {
 		t.Fatal("Git added an extra MCP tool")
 	}
 	for _, def := range knowledgebase.ConnectionToolDefinitions(true) {

@@ -17,10 +17,11 @@ func TestProtectManagedCodingAgentProjectionWritesPreservesExistingDenies(t *tes
 		"Workflow/demo/planning",
 		"AGENTS.md",
 		"Chats/Work/projects/demo/AGENTS.md",
-		".agents",
-		"Chats/Work/projects/demo/.agents",
+		// PLAT-568: the CLI policy files are blocked, not the whole folders (skills/ stays installable).
+		".agents/rules",
+		"Chats/Work/projects/demo/.agents/rules",
 		"CLAUDE.md",
-		"Chats/Work/projects/demo/.claude",
+		"Chats/Work/projects/demo/.claude/settings.json",
 	} {
 		if !slices.Contains(blocked, want) {
 			t.Fatalf("managed write guard missing %q: %v", want, blocked)

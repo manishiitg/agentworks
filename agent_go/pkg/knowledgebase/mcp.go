@@ -21,6 +21,7 @@ var mcpSurface = []mcpTool{
 	{"read_knowledgebase", "Read an entry (whole, lines, or heading section) with action=read, or literal-search accessible content with action=search. Reads return a current version.", []mcpAction{{"read", "read_knowledgebase"}, {"search", "search_knowledgebase"}}},
 	{"update_knowledgebase", "Save live knowledge: create, update, delete, or create_folder. Migration actions preview/import/cutover/rollback explicitly migrate an owned workflow or Crew after preview. Use expected_version and stable request IDs; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}, {"migration_preview", "kb_migration_preview"}, {"migration_import", "kb_migration_import"}, {"migration_cutover", "kb_migration_cutover"}, {"migration_rollback", "kb_migration_rollback"}}},
 	{"backup_knowledgebase", "Inspect Git backup with action=status, prepare selected current versions/deletions with action=commit, then explicitly publish the owned receipt with action=push. Commit/push require distinct stable request IDs. Repository-wide Files Git operations use action=git with op (status, diff, log, branches, stage, commit, pull, push, checkout, stash); pull and checkout update live knowledge. Require root access and an unrestricted connection.", []mcpAction{{"status", "get_knowledgebase_backup_status"}, {"commit", "commit_knowledgebase"}, {"push", "push_knowledgebase"}, {"git", "kb_git"}}},
+	{"knowledgebase_skills", "Company skills in Brain. action=list finds skills you can read; action=get returns one skill's files to install into your own skills folder (write each file under <skills>/<name>/); action=publish uploads a skill package (SKILL.md plus references/, scripts/, assets) into a Brain folder, replacing its previous files. Publishing needs Editor on the folder; a skill with scripts needs Owner.", []mcpAction{{"list", "list_knowledgebase_skills"}, {"get", "get_knowledgebase_skill"}, {"publish", "publish_knowledgebase_skill"}}},
 	{"manage_knowledgebase_access", "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. Authorized builders and external authoring connections can inspect, bind, unbind and set Off/Read/Read & write/Folders access on owned workflow/Crew projects. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}, {"set_project_access", "kb_set_project_access"}}},
 }
 
@@ -185,6 +186,8 @@ func ToolActionMutates(tool, action string) bool {
 		return action == "commit" || action == "push" || action == "git"
 	case "manage_knowledgebase_access":
 		return action != "inspect" && action != "list" && action != "inspect_project"
+	case "knowledgebase_skills":
+		return action == "publish"
 	}
 	return false
 }
@@ -235,6 +238,9 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 	action := stringArg(args, "action")
 	if p.AccessOnly && tool != "manage_knowledgebase_access" || !p.AccessOnly && tool == "manage_knowledgebase_access" && action != "inspect" {
 		return nil, kbErr("FORBIDDEN", "Permission changes are restricted to the Brain access builder.")
+	}
+	if tool == "knowledgebase_skills" {
+		return s.skillsTool(ctx, p, args)
 	}
 	for _, definition := range mcpSurface {
 		if definition.name != tool {

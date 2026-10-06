@@ -264,6 +264,7 @@ var platformTools = map[string]verdict{
 	// Knowledgebase reads.
 	"browse_knowledgebase": allow,
 	"read_knowledgebase":   allow,
+	"knowledgebase_skills": allow,
 	// Orchestrator sub-steps run inside the same test run (their sessions
 	// are registered by the step controller).
 	"call_sub_agent":             allow,
@@ -288,6 +289,13 @@ func classify(ctx context.Context, call toolguard.Call) (verdict, string) {
 		}
 		if call.Tool == "agent_browser" {
 			return classifyBrowser(call.Args)
+		}
+		// Brain skills: listing and reading run; publishing would change company skills, so it does not.
+		if call.Tool == "knowledgebase_skills" {
+			if action, _ := call.Args["action"].(string); action == "publish" {
+				return stub, "publishing a Brain skill is a real write"
+			}
+			return allow, ""
 		}
 		switch v {
 		case redirect:

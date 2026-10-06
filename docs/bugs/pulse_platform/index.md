@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 70 | 11 |
-| [Brain](brain/index.md) | 17 | 3 |
+| [Brain](brain/index.md) | 17 | 2 |
 | [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 3 | 1 |
@@ -15,7 +15,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Crew](crew/index.md) | 18 | 6 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 172 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
-| [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
+| [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 20 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-591](ops/ci/plat-591.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
 | [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | open | P2 | [crew/functions](crew/functions/index.md) |
 | [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |
@@ -40,7 +41,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
-| [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | open | P2 | [brain/skills](brain/skills/index.md) |
+| [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | fixed on main | P2 | [brain/skills](brain/skills/index.md) |
 | [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-554](chat/reliability/plat-554.md) | Live context fill and plan-limit warning in the chat during a turn | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-553](chat/reliability/plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-552](schedules/stopping/plat-552.md) | Stopping a workflow did not stop its Codex step: the real Codex process kept running | fixed on main | - | [schedules/stopping](schedules/stopping/index.md) |
-| [PLAT-551](app/navigation/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [app/navigation](app/navigation/index.md) |

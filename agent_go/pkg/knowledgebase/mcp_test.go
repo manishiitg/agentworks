@@ -92,7 +92,7 @@ func TestMCPDiscoveryLimitsActionsByConnection(t *testing.T) {
 	for _, def := range ToolDefinitions() {
 		fullNames = append(fullNames, def.Name)
 	}
-	if !reflect.DeepEqual(fullNames, []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"}) {
+	if !reflect.DeepEqual(fullNames, []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access"}) {
 		t.Fatal("unexpected public surface", fullNames)
 	}
 	for _, writable := range []bool{false, true} {

@@ -104,4 +104,5 @@ chat:
       - read_knowledgebase
       - update_knowledgebase
       - backup_knowledgebase
+      - knowledgebase_skills
       - manage_knowledgebase_access

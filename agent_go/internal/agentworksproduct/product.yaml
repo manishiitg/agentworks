@@ -180,6 +180,7 @@ chat:
       - read_knowledgebase
       - update_knowledgebase
       - backup_knowledgebase
+      - knowledgebase_skills
       - manage_knowledgebase_access
       - add_step
       - manage_group
@@ -295,6 +296,7 @@ chat:
       - read_knowledgebase
       - update_knowledgebase
       - backup_knowledgebase
+      - knowledgebase_skills
       - manage_knowledgebase_access
       - agent_browser
       - execute_step

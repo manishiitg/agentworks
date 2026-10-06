@@ -19,8 +19,8 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 	if len(p.ToolPolicy.Enabled) != 2 || p.ToolPolicy.Enabled[0] != "manage_knowledgebase_access" || len(p.Runtime.BridgeTools) != 2 {
 		t.Fatalf("builder tools: %+v", p.ToolPolicy)
 	}
-	if len(m.Chat["mcp"].ExternalTools) != 5 {
-		t.Fatal("MVP must expose five action-based tools", m.Chat["mcp"].ExternalTools)
+	if len(m.Chat["mcp"].ExternalTools) != 6 {
+		t.Fatal("Brain must expose six action-based tools", m.Chat["mcp"].ExternalTools)
 	}
 	if m.UI.FilesPanel || m.UI.WorkflowPanel || m.UI.Secrets {
 		t.Fatal("access builder exposes general workspace capabilities")

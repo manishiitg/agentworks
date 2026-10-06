@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P2 |
 | Product | brain |
 | Area | skills |
@@ -35,3 +35,21 @@ Owner, 2026-10-06. Today the only shared skills are the installation's flat `ski
 - The old root `skills/` store stays on disk only as migration input (PLAT-581); importing its skills into a `Company/Skills` Brain folder is a candidate first step. `list_skills` / `install_skill` are now workspace-scoped; Brain skills add a company source to search and attach.
 - Owner rule for scripts (above).
 - Add the Relays section to the AgentWorks skill (`agent_go/pkg/agentworksclient/skills/agentworks/SKILL.md` has none) when this ships.
+
+## Built (2026-10-06, owner: "lets do full")
+
+- Brain stores any file type first ([PLAT-588](../files/plat-588.md)), so a skill's scripts and assets are stored as they are.
+- New Brain tool `knowledgebase_skills` (`pkg/knowledgebase/skills.go`), on the ordinary entry operations so roles, versions, request idempotency and Git backup apply:
+  - `list` (optional `folder_path` scope, `query`): every folder holding a `SKILL.md` the caller can read, with name/description from its front matter, version, updated by/at.
+  - `get` (`folder_path`): every file of the skill (`content`, or `content_base64` for binary) plus install instructions.
+  - `publish` (`folder_path`, `files[{path, content|content_base64}]`, `request_id`): creates missing subfolders, creates/updates files, removes files the new version dropped (a publish replaces the package). Editor on the folder; a skill with scripts (`scripts/` or a script extension) needs Owner. Each step has a request ID derived from the outer one, so a retried publish replays.
+- Everywhere Brain tools go: external MCP (catalog, instructions now "six tools"), platform agents via `ConnectionToolDefinitions` (publish only where the project may write), Goals builder/run tool lists, the knowledgebase feature, external builder, step test mode (`list`/`get` run, `publish` is stubbed), and the step execution policy that removes Brain tools.
+- Platform agents: `search_skills` lists company skills from Brain first, then the public registry; `install_skill(source="brain:<folder>")` copies a Brain skill into the current workflow/Crew/Code `skills/` through the caller's Brain access and the project's Brain mode (`cmd/server/brain_skills.go`). Re-install to update.
+- MCP clients: `get` returns the files and the client writes them under its own skills folder; the AgentWorks skill (`agentworksclient/skills/agentworks/SKILL.md`) and Brain's MCP prompt say how. No CLI needed.
+- Tests: `TestBrainSkillsPublishGetListAndRoles` (real service: Editor vs Owner for scripts, binary asset round trip, list, republish replaces, no grant sees nothing) and `TestBrainSkillSearchAndInstallIntoWorkspace` (server path: search finds it, install sends every file byte for byte to the workspace import). Tests that pinned five Brain tools now pin six.
+
+## Left
+
+- Not deployed; not tried live with a real agent or MCP client.
+- No app UI for skills (the Brain tab shows them as folders/files).
+- Old root `skills/` library content is not imported into Brain automatically; an Owner can publish the ones worth keeping.
