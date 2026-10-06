@@ -14,6 +14,10 @@
 
 ## Fix
 
+## Brain tab loading (2026-10-06)
+
+Owner on RTS: opening a folder looked dead and then filled at once, with many API calls. Every expand or collapse refetched the whole tree level by level (two calls per open folder, ~300 ms each). Now each folder's children are fetched once and cached; expanding fetches only that folder; a refresh fetches the root and every open folder in parallel (`1e707f896`).
+
 ## Left
 
 ## Why
