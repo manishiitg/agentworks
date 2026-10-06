@@ -148,3 +148,12 @@ func TestEntryAndFolderNamesRejectUnsafePaths(t *testing.T) {
 	create(t, s, admin, "Payments", "guide.md", "text", "valid")
 	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "Payments", "filename": "GUIDE.md", "type": "note", "title": "Title", "content": "text", "request_id": "case-file"}, "NAME_CONFLICT")
 }
+
+// A backup that is configured but has never published anything has no remote deletion to confirm: the deleted path is
+// free again (RTS 2026-10-06, a curator could not recreate notes at their topic paths while backup had never worked).
+func TestNeverPublishedBackupReleasesDeletedPath(t *testing.T) {
+	s, admin, _ := fixture(t, true)
+	entry := create(t, s, admin, "", "guide.md", "old", "create")
+	call(t, s, admin, "delete_knowledgebase", map[string]any{"entry_id": entry["entry_id"], "expected_version": entry["version"], "request_id": "delete"})
+	call(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "guide.md", "type": "note", "title": "Replacement", "content": "new", "request_id": "replace"})
+}

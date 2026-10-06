@@ -872,10 +872,12 @@ func (s *Service) deletionReusable(d Deletion) bool {
 		return false
 	}
 	st := s.backupState()
-	// A live-only installation has no remote deletion to confirm. Never use
-	// this exception after backup initialization or while receipts exist:
-	// removing the remote must not release paths with unpublished snapshots.
-	if destination.Remote == "" && !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {
+	// Nothing has ever been published (no remote, or a remote that never received a backup): there is no remote
+	// deletion to confirm, so the path is free again. A configured but never-working backup used to keep every deleted
+	// path locked forever (RTS 2026-10-06: a curator could not recreate notes at their topic paths). Never use this
+	// exception after backup initialization or while receipts exist: those may hold unpublished snapshots.
+	_ = destination
+	if !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {
 		// An unreadable/corrupt state is not evidence of a live-only store.
 		b, err := os.ReadFile(filepath.Join(s.private, "backup-state.json"))
 		if err != nil && !os.IsNotExist(err) || err == nil && json.Unmarshal(b, &st) != nil {

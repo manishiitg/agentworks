@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 75 | 12 |
-| [Brain](brain/index.md) | 19 | 3 |
+| [Brain](brain/index.md) | 20 | 3 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
 | [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | open | P2 | [brain/curation](brain/curation/index.md) |
 | [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | fixed on main | P2 | [crew/chat](crew/chat/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-582](goals/plans-contracts/plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-581](integrations/skills/plat-581.md) | Skills belong to each workspace, with step usage and scoped uninstall | fixed on main | P2 | [integrations/skills](integrations/skills/index.md) |
 | [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
