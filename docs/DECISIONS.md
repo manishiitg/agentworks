@@ -38,6 +38,15 @@ wants structural checks in Go, not left to the agent. This is a structural check
 what a step should do. Ticket: [PLAT-579](bugs/pulse_platform/goals/plans-contracts/plat-579.md).
 >>>>>>> e13a23dea (PLAT-579: refuse a step or run whose inputs cannot be read, before it starts)
 
+### 2026-10-06 — Extension screenshots stage inside their private browser scope
+
+Give every extension connection a sandbox-recognized managed session and put
+screenshot staging in its already-granted browser socket folder. The workspace
+checks the source against that connection and retains current destination write
+checks. Why: a persistent browser daemon's private Linux `/tmp` hides the old
+shared staging root, so a captured screenshot failed with ENOENT. Ticket:
+[PLAT-575](bugs/pulse_platform/browser/browser/plat-575.md).
+
 ### 2026-10-06 — Browser groups show only the project or workflow name
 
 Use the Code/Crew display name or workflow label without AgentWorks/deployment

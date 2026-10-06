@@ -340,6 +340,13 @@ disconnecting clears its cache; --clear affects only the selected tab.
 Status returns screenshot_write_paths from the trusted folder guard. Output
 must remain inside those paths; global /tmp/tool_output_folder paths stay denied.
 
+Extension screenshots stage inside the connection's sandbox-recognized private
+browser socket folder (`artifacts/`), which remains visible in the persistent
+browser daemon's original Linux mount namespace. The trusted workspace transfer
+checks that staging belongs to the current connection and publishes only into
+the calling session's allowed workspace output. No shared `/tmp` grant is added.
+See [PLAT-575](../bugs/pulse_platform/browser/browser/plat-575.md).
+
 #### Browser documentation
 
 `agent_browser skills list` and `skills get <name> [--full]` read the installed

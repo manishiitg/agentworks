@@ -301,7 +301,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	}
 	var artifactPlan *browserArtifactPlan
 	if opts.FolderGuard != nil && opts.FolderGuard.Enabled {
-		plan, err := prepareBrowserArtifact(command, values, b.Session(), b.Session())
+		plan, err := prepareBrowserArtifact(command, values, b.Session(), b.Session(), b.Session())
 		if err != nil {
 			return "", err
 		}

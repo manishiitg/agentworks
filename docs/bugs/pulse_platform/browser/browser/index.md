@@ -4,7 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-575](plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 |
+| [PLAT-575](plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 |
 | [PLAT-574](plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 |
 | [PLAT-573](plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 |
 | [PLAT-570](plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 |

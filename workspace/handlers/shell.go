@@ -368,7 +368,7 @@ func ExecuteShellCommand(c *gin.Context) {
 			})
 			return
 		}
-		if prepareErr := security.PrepareBrowserArtifactStaging(req.ArtifactTransfer.SourcePath); prepareErr != nil {
+		if prepareErr := security.PrepareBrowserArtifactStaging(req.ArtifactTransfer.SourcePath, req.FolderGuard.BrowserSession); prepareErr != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse[models.ExecuteShellResponse]{
 				Success: false,
 				Message: "Browser artifact staging failed",
@@ -519,6 +519,7 @@ func ExecuteShellCommand(c *gin.Context) {
 			req.FolderGuard.WritePaths,
 			req.FolderGuard.BlockedPaths,
 			req.FolderGuard.BlockedWritePaths,
+			req.FolderGuard.BrowserSession,
 		); transferErr != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse[models.ExecuteShellResponse]{
 				Success: false,

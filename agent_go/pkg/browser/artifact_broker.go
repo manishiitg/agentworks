@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 const browserArtifactStagingDirName = "agentworks-browser-artifacts"
@@ -72,7 +74,7 @@ var browserArtifactLeases = struct {
 	items map[string]browserArtifactLease
 }{items: make(map[string]browserArtifactLease)}
 
-func prepareBrowserArtifact(command string, args []string, ownerID, session string) (*browserArtifactPlan, error) {
+func prepareBrowserArtifact(command string, args []string, ownerID, session string, stagingSession ...string) (*browserArtifactPlan, error) {
 	command = strings.ToLower(strings.TrimSpace(command))
 	switch command {
 	case "screenshot":
@@ -81,7 +83,7 @@ func prepareBrowserArtifact(command string, args []string, ownerID, session stri
 			return nil, nil
 		}
 		requested := args[idx]
-		staged, err := newBrowserArtifactStagingPath(filepath.Ext(requested), ".png")
+		staged, err := newBrowserArtifactStagingPath(filepath.Ext(requested), ".png", stagingSession...)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +107,7 @@ func prepareBrowserArtifact(command string, args []string, ownerID, session stri
 			return nil, nil
 		}
 		requested := args[1]
-		staged, err := newBrowserArtifactStagingPath(".download", ".download")
+		staged, err := newBrowserArtifactStagingPath(".download", ".download", stagingSession...)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +138,7 @@ func prepareBrowserArtifact(command string, args []string, ownerID, session stri
 				return nil, nil
 			}
 			requested := args[1]
-			staged, err := newBrowserArtifactStagingPath(filepath.Ext(requested), ".webm")
+			staged, err := newBrowserArtifactStagingPath(filepath.Ext(requested), ".webm", stagingSession...)
 			if err != nil {
 				return nil, err
 			}
@@ -269,7 +271,7 @@ func screenshotOutputIndex(args []string) int {
 	return idx
 }
 
-func newBrowserArtifactStagingPath(extension, fallback string) (string, error) {
+func newBrowserArtifactStagingPath(extension, fallback string, stagingSession ...string) (string, error) {
 	extension = strings.ToLower(strings.TrimSpace(extension))
 	if extension == "" {
 		extension = fallback
@@ -282,6 +284,12 @@ func newBrowserArtifactStagingPath(extension, fallback string) (string, error) {
 		return "", fmt.Errorf("generate browser artifact id: %w", err)
 	}
 	dir := browserArtifactStagingDir()
+	if len(stagingSession) > 0 {
+		dir = browserconfig.ArtifactDirForSession(stagingSession[0])
+		if dir == "" {
+			return "", fmt.Errorf("browser artifact requires a managed staging session")
+		}
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("create browser artifact staging directory: %w", err)
 	}

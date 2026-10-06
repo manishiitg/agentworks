@@ -89,6 +89,16 @@ func SocketDirForSession(session string) string {
 	return filepath.Join(SocketRoot, "o", m[1][:1]+m[2])
 }
 
+// ArtifactDirForSession is inside the browser's already-granted socket folder.
+// Persistent daemons keep this mount after per-command private /tmp cleanup.
+// An unrecognized session cannot select another browser's staging directory.
+func ArtifactDirForSession(session string) string {
+	if !IsUserSession(session) {
+		return ""
+	}
+	return filepath.Join(SocketDirForSession(session), "artifacts")
+}
+
 // ProfilePathForSession returns the persistent Chrome profile directory this
 // session launches with, or "" when no shared profile is configured
 // (session-isolated/ephemeral mode, no --profile flag at all).

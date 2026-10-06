@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 16 | 3 |
-| [Browser and browser automation](browser/index.md) | 36 | 11 |
+| [Browser and browser automation](browser/index.md) | 36 | 10 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 18 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
@@ -30,7 +30,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | open | P2 | [brain/skills](brain/skills/index.md) |
-| [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |

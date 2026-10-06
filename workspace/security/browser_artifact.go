@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 const BrowserArtifactStagingDirName = "agentworks-browser-artifacts"
@@ -41,15 +43,37 @@ func browserStagingDirName(base string) string {
 	return base + "-" + qualified
 }
 
+// Legacy broker outputs retain their old root. Scoped outputs must belong to
+// the current request's trusted browser session, never a model-supplied path.
+func browserArtifactSourceRoot(source string, browserSession []string) (string, error) {
+	parent := filepath.Dir(filepath.Clean(source))
+	if parent == filepath.Clean(BrowserArtifactStagingDir()) {
+		return parent, nil
+	}
+	if len(browserSession) > 0 {
+		root := browserconfig.ArtifactDirForSession(browserSession[0])
+		if root != "" && parent == root {
+			if canonicalPath(root) != filepath.Join(canonicalPath(browserconfig.SocketDirForSession(browserSession[0])), "artifacts") {
+				return "", fmt.Errorf("browser artifact staging root escapes its browser session")
+			}
+			return root, nil
+		}
+	}
+	return "", fmt.Errorf("browser artifact source must be in managed staging for this browser session")
+}
+
 // PrepareBrowserArtifactStaging creates and validates the one shared staging
 // directory before a sandboxed browser command runs. It is used for both
 // immediate screenshots and the start half of a start/stop recording lease.
-func PrepareBrowserArtifactStaging(sourcePath string) error {
+func PrepareBrowserArtifactStaging(sourcePath string, browserSession ...string) error {
 	source, err := filepath.Abs(sourcePath)
 	if err != nil {
 		return fmt.Errorf("resolve browser artifact source: %w", err)
 	}
-	root := filepath.Clean(BrowserArtifactStagingDir())
+	root, err := browserArtifactSourceRoot(source, browserSession)
+	if err != nil {
+		return err
+	}
 	if filepath.Dir(filepath.Clean(source)) != root {
 		return fmt.Errorf("browser artifact source must be a direct child of managed staging directory")
 	}
@@ -73,7 +97,7 @@ func PrepareBrowserArtifactStaging(sourcePath string) error {
 // explicitly authorized by the current request's write guard. The copy runs in
 // the trusted workspace server because a persistent browser daemon cannot
 // safely inherit a different sandbox for every workflow step.
-func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, writePaths, blockedPaths, blockedWritePaths []string) error {
+func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, writePaths, blockedPaths, blockedWritePaths []string, browserSession ...string) error {
 	if strings.TrimSpace(sourcePath) == "" || strings.TrimSpace(destinationPath) == "" {
 		return fmt.Errorf("browser artifact source and destination are required")
 	}
@@ -81,7 +105,11 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	if err != nil {
 		return fmt.Errorf("resolve browser artifact source: %w", err)
 	}
-	stagingRoot := canonicalPath(BrowserArtifactStagingDir())
+	root, err := browserArtifactSourceRoot(source, browserSession)
+	if err != nil {
+		return err
+	}
+	stagingRoot := canonicalPath(root)
 	canonicalSource := canonicalPath(source)
 	if !pathWithin(canonicalSource, stagingRoot) || canonicalSource == stagingRoot {
 		return fmt.Errorf("browser artifact source must be under managed staging directory")
