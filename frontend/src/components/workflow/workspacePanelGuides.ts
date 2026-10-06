@@ -258,8 +258,8 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files. Shared knowledge is set up under Tools & secrets, in Brain.',
   }),
   'Integrations · Brain': surface => ({
-    purpose: `Shared knowledge for this ${surface === 'crew' ? 'Crew member' : 'workflow'}: off, read-only on the whole Brain, or read & write on named folders.`,
-    howTo: 'Pick Off, Read or Read & write. Read & write needs folders; each folder is read-only or read-write. Your folder roles still decide what is allowed.',
+    purpose: `Shared knowledge for this ${surface === 'crew' ? 'Crew member' : 'workflow'}: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off.`,
+    howTo: 'Read & write is the default: agents organize Brain themselves, and each step’s instructions say how it reads and writes. Choose Read only, Only chosen folders or Off to limit it. Your folder roles still decide what is allowed.',
   }),
   'Identity · Models': surface => ({
     purpose: `Choose the coding agent and model used by this ${surface === 'crew' ? 'Crew member' : 'workflow'}.`,

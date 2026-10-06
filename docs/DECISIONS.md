@@ -97,6 +97,18 @@ rest; when the disk has under 15 GB free it does this before delivering the new
 release. Why: a silently failing cleanup let 27 releases fill RTS and break a deploy.
 [PLAT-545](bugs/pulse_platform/performance/plat-545.md).
 
+### 2026-10-05 — Brain is open by default; agents organize it
+
+A project's Brain access is now Read & write by default (`brain_access` unset means
+`write`): its agents read and write wherever the person it runs as may, and decide
+the folder structure themselves; two workflows sharing Brain organize it between
+them. Each step's own Brain setting and the Builder's step instructions decide how
+that step reads and writes. Read only, Only chosen folders and Off remain as limits.
+Folder roles, the output-audience rule and per-entry history still apply. Accepted
+trade-off: an administrator's workflow can edit any folder; history and rollback are
+the safety net. This supersedes the "writing only through named folders" part of the
+entry below. [PLAT-543](bugs/pulse_platform/learnings-knowledge/plat-543.md).
+
 ### 2026-10-05 — A project's Brain access is Off, Read or Folders
 
 A workflow, Crew or Code project turns Brain on or off with one setting. Read is the

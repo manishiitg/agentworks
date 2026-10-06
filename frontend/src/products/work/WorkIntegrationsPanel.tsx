@@ -30,7 +30,7 @@ const INTEGRATION_TABS = PROJECT_INTEGRATION_SECTIONS
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
-    brain: `Help me set up Brain for this ${noun} project: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.`,
+    brain: `Help me set up Brain for this ${noun} project: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off. Explain what each choice lets its agents do before changing it.`,
     folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, set up Brain under Tools & secrets instead.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,

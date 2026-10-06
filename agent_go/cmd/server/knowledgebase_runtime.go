@@ -115,7 +115,7 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 	if err != nil || mode == "off" && !containsID(project.Owners, userID) {
 		return tools, executors, categories
 	}
-	canWrite := mode == "off" && containsID(project.Owners, userID)
+	canWrite := mode == "write" || mode == "off" && containsID(project.Owners, userID)
 	if mode == "folders" {
 		for _, binding := range project.Bindings {
 			if binding.Access == "write" {

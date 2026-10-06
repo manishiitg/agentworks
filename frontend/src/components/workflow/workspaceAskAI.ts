@@ -45,7 +45,7 @@ export type IntegrationTabId = 'apps' | 'brain' | 'folders' | 'secrets' | 'skill
 const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; summary: string; instructions?: string }> = {
   brain: {
     label: 'Integrations · Brain',
-    summary: "Help me set up Brain for this workflow: off, read-only on the whole Brain, or read & write on named folders. Explain what each choice lets its agents do before changing it.",
+    summary: "Help me set up Brain for this workflow: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off. Explain what each choice lets its agents do before changing it.",
   },
   folders: {
     label: 'Integrations · Folders & workflows',

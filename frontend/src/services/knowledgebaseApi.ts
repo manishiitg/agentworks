@@ -41,7 +41,7 @@ export function normalizeKnowledgeSearch(data: Page & { results?: Array<{ entry:
 export interface KnowledgeAccessProposal { id: string; arguments: Record<string, unknown>; expires_at: string }
 
 export interface KnowledgeBinding { alias: string; folder_id: string; access: 'read' | 'write' }
-export type BrainAccessMode = 'off' | 'read' | 'folders'
+export type BrainAccessMode = 'off' | 'read' | 'write' | 'folders'
 export interface KnowledgeProject { manifest_version: string; brain_access?: BrainAccessMode; shared_knowledgebase: KnowledgeBinding[] | null; can_manage: boolean }
 
 export const knowledgebaseApi = {

@@ -238,8 +238,9 @@ func TestKnowledgebaseProjectSetupUsesAuthenticatedToolBinding(t *testing.T) {
 	}
 }
 
-// Pins the owner decision for a project's Brain access: Off refuses everything, Read can only read, and Read still
-// stops at a folder that one of the project's output readers cannot read.
+// Pins the owner decisions for a project's Brain access: Off refuses everything, Read can only read, Read & write
+// lets the agents organize folders wherever the owner may write, and both stop at a folder that one of the project's
+// output readers cannot read. A step with no Brain access gets none in any mode.
 func TestBrainProjectAccessModes(t *testing.T) {
 	service, admin, workspace, folderID := knowledgeIntegrationFixture(t)
 	create := func(folder map[string]any, name string) string {
@@ -288,8 +289,9 @@ func TestBrainProjectAccessModes(t *testing.T) {
 		}
 	}
 
-	if _, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err == nil {
-		t.Fatal("a project with no Brain access read the Brain")
+	// Open by default: a project that never chose a mode can read (and write, below) within its owner's roles.
+	if out, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err != nil || !strings.Contains(out, "shared-marker") {
+		t.Fatalf("the open default could not read: %s %v", out, err)
 	}
 	setMode("read")
 	if out, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err != nil || !strings.Contains(out, "shared-marker") {
@@ -300,6 +302,25 @@ func TestBrainProjectAccessModes(t *testing.T) {
 	}
 	if _, err := read(run, map[string]any{"action": "read", "entry_id": private}); err == nil {
 		t.Fatal("read access reached a folder an output reader cannot read")
+	}
+	// A step with no Brain access gets none, even while the project is on Read.
+	step := "brain-modes-step-none"
+	common.SetSessionWorkflowPath(step, workspace)
+	common.SetSessionShellEnv(step, map[string]string{"SHARED_KB_STEP_ACCESS": "none"})
+	defer common.ClearSessionShellConfig(step)
+	if _, err := read(knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, step), "admin"), map[string]any{"action": "read", "entry_id": shared}); err == nil {
+		t.Fatal("a no-Brain step read the Brain in Read mode")
+	}
+	// Read & write: the agents organize folders themselves wherever the owner may write, still bounded by the audience.
+	setMode("write")
+	if _, err := update(run, map[string]any{"action": "create_folder", "folder_id": folderID, "name": "Agent notes", "request_id": "write-mode-folder"}); err != nil {
+		t.Fatal("read & write could not create a folder:", err)
+	}
+	if _, err := update(run, map[string]any{"action": "create", "folder_path": "Imported/Agent notes", "filename": "found.md", "title": "Found", "type": "note", "content": "written by the agent", "request_id": "write-mode-entry"}); err != nil {
+		t.Fatal("read & write could not write:", err)
+	}
+	if _, err := read(run, map[string]any{"action": "read", "entry_id": private}); err == nil {
+		t.Fatal("read & write reached a folder an output reader cannot read")
 	}
 	setMode("off")
 	if _, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err == nil {
