@@ -20,14 +20,18 @@ func TestServerFor(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, want := range map[string]string{
-		"Workflow/a":             "team",
-		"/Workflow/a/planning/x": "team",
-		"Workflow/ab":            "",
-		"Workflow":               "",
-		"":                       "",
+		"Workflow/a":                             "team",
+		"/Workflow/a/planning/x":                 "team",
+		filepath.Join(root, "Workflow/a/runs/1"): "team",
+		"Workflow/ab":                            "",
+		"Workflow":                               "",
+		"":                                       "",
 	} {
 		if got := ServerFor(root, path); got != want {
 			t.Errorf("ServerFor(%q) = %q, want %q", path, got, want)
 		}
+	}
+	if got, ok := LocalScratchDir(root, filepath.Join(root, "Workflow/a/runs/1")); !ok || got != filepath.Join(root, ScratchRelPath, "team/a/runs/1") {
+		t.Fatalf("absolute remote scratch = %q, %v", got, ok)
 	}
 }

@@ -264,6 +264,7 @@ func NewBaseAgent(
 			Offloading: enableContextOffloading, LargeOutputThreshold: largeOutputThreshold,
 		},
 		Coding: mcpagent.CodingRuntimeConfig{
+			AgentToolsMode:       common.EnforceRemoteWorkflowToolsMode(mcpSessionID, codingAgentWorkingDir, ""),
 			PersistentClaudeCode: codingAgentKeepAlive, PersistentCodex: codingAgentKeepAlive,
 			PersistentCursor: codingAgentKeepAlive, PersistentPi: codingAgentKeepAlive,
 			PersistentMuse:    codingAgentKeepAlive,
@@ -493,10 +494,15 @@ func (ba *BaseAgent) Observers() []mcpagent.AgentEventListener {
 	return append([]mcpagent.AgentEventListener(nil), ba.runtime.Observability.Observers...)
 }
 
+func (ba *BaseAgent) enforceRemoteWorkflowToolsMode() {
+	ba.runtime.Coding.AgentToolsMode = common.EnforceRemoteWorkflowToolsMode(ba.runtime.MCP.SessionID, ba.runtime.Workspace.CodingAgentWorkingDir, ba.runtime.Coding.AgentToolsMode)
+}
+
 func (ba *BaseAgent) finalizeDefinition(ctx context.Context) error {
 	if ba.finalized {
 		return nil
 	}
+	ba.enforceRemoteWorkflowToolsMode()
 	runtime := ba.runtime
 	runtime.ResumeHandle = ba.lastHandle
 	nextAgent, err := mcpagent.NewAgentFromDefinition(ctx, ba.definition, runtime)
@@ -532,6 +538,7 @@ func (ba *BaseAgent) replaceDefinition(ctx context.Context, nextDefinition mcpag
 	if !force && nextDefinition.Instructions == ba.definition.Instructions && len(nextDefinition.Skills) == len(ba.definition.Skills) {
 		return nil
 	}
+	ba.enforceRemoteWorkflowToolsMode()
 	nextRuntime := ba.runtime
 	nextRuntime.ResumeHandle = ba.lastHandle
 	nextAgent, err := mcpagent.NewAgentFromDefinition(ctx, nextDefinition, nextRuntime)

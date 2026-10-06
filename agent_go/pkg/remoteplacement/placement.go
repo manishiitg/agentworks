@@ -35,7 +35,7 @@ type file struct {
 // ServerFor returns the server id that owns workspacePath (a docs-relative
 // path inside a workflow), or "" when it is local.
 func ServerFor(docsRoot, workspacePath string) string {
-	rel := clean(workspacePath)
+	rel := workspaceRelativePath(docsRoot, workspacePath)
 	if rel == "" || strings.TrimSpace(docsRoot) == "" {
 		return ""
 	}
@@ -69,13 +69,23 @@ func LocalScratchDir(docsRoot, workspacePath string) (string, bool) {
 	if id == "" {
 		return "", false
 	}
-	rel := strings.TrimPrefix(clean(workspacePath), "Workflow/")
+	rel := strings.TrimPrefix(workspaceRelativePath(docsRoot, workspacePath), "Workflow/")
 	return filepath.Join(docsRoot, filepath.FromSlash(ScratchRelPath), id, filepath.FromSlash(rel)), true
 }
 
 // IsRemote reports whether workspacePath lives on a remote workspace server.
 func IsRemote(docsRoot, workspacePath string) bool {
 	return ServerFor(docsRoot, workspacePath) != ""
+}
+
+func workspaceRelativePath(docsRoot, workspacePath string) string {
+	p := strings.TrimSpace(workspacePath)
+	if filepath.IsAbs(p) {
+		if rel, err := filepath.Rel(docsRoot, p); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			p = rel
+		}
+	}
+	return clean(p)
 }
 
 func clean(p string) string {

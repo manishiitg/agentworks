@@ -105,7 +105,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			PersistentAgy:                     config.AgyPersistentInteractiveSession,
 			UserAnswersNativeQuestions:        config.CodingAgentUserAnswersNativeQuestions,
 			CursorBridgeTools:                 config.CursorBridgeToolsMode,
-			AgentToolsMode:                    config.CodingAgentToolsMode,
+			AgentToolsMode:                    common.EnforceRemoteWorkflowToolsMode(config.SessionID, config.CodingAgentWorkingDir, config.CodingAgentToolsMode),
 			ApprovalsMode:                     config.CodingAgentApprovalsMode,
 			BridgeRoutingInstructionsOverride: config.BridgeRoutingInstructionsOverride,
 			CLISecurityPolicy:                 config.CLISecurityPolicy,
@@ -746,6 +746,7 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
 	if w.finalized {
 		return false, errors.New("agent definition is already finalized")
 	}
+	w.enforceRemoteWorkflowToolsMode()
 	if !nativeAgentToolsRequested(w.runtime.Coding.AgentToolsMode) {
 		return false, nil
 	}
@@ -783,7 +784,17 @@ func nativeAgentToolsRequested(mode string) bool {
 func (w *LLMAgentWrapper) CodingAgentToolsMode() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if !w.finalized {
+		w.enforceRemoteWorkflowToolsMode()
+	}
 	return strings.TrimSpace(w.runtime.Coding.AgentToolsMode)
+}
+
+// Called under mu, including at finalization: workflow scope can be attached
+// after the bootstrap runtime was built, and confinement cannot re-enable
+// native tools for a workflow whose files live on another machine.
+func (w *LLMAgentWrapper) enforceRemoteWorkflowToolsMode() {
+	w.runtime.Coding.AgentToolsMode = common.EnforceRemoteWorkflowToolsMode(w.runtime.MCP.SessionID, w.runtime.Workspace.CodingAgentWorkingDir, w.runtime.Coding.AgentToolsMode)
 }
 
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the
@@ -908,6 +919,7 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		return errors.New("underlying agent is nil")
 	}
 
+	w.enforceRemoteWorkflowToolsMode()
 	runtime := w.runtime
 	runtime.ResumeHandle = w.lastResult.Handle
 	runtime.Observability.Observers = append([]mcpagent.AgentEventListener(nil), w.observers...)

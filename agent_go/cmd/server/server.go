@@ -4069,6 +4069,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if workflowNativeAgentTools {
 		agentToolsMode = "full"
 	}
+	agentToolsMode = common.EnforceRemoteWorkflowToolsMode(sessionID, req.SelectedFolder, agentToolsMode)
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
 	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
@@ -5740,6 +5741,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatWorkingFolder = workflowPhaseFolder
 		}
 		workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
+		profileAgentToolsMode = common.EnforceRemoteWorkflowToolsMode(sessionID, chatWorkingFolder, profileAgentToolsMode)
 		turnProfileID := ""
 		if resolvedProfile != nil {
 			turnProfileID = resolvedProfile.Definition.ID

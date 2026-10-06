@@ -15,6 +15,8 @@ import (
 // docs/core/remote_workspace_server_plan.html §10). Migrating a file removes
 // it from this list; adding one needs a reason: laptop-local state only.
 var docsRootAllowlist = map[string]bool{
+	// Placement is laptop-local routing metadata, never workflow data.
+	"pkg/common/remote_workflow_tools.go": true,
 	// Existing direct-disk callers inherited from main at rebase time. These
 	// still need migration for remote workflows; freezing the baseline here
 	// prevents unrelated main additions from hiding new branch regressions.
