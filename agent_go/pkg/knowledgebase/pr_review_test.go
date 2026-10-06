@@ -2,6 +2,7 @@ package knowledgebase
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -117,13 +118,30 @@ func TestRevokedFolderGrantCannotPublishPreparedReceipt(t *testing.T) {
 
 func TestEntryAndFolderNamesRejectUnsafePaths(t *testing.T) {
 	s, admin, _ := fixture(t, false)
-	invalid := []string{"", ".", "..", "../secret", "/absolute", "a/b", `a\b`, " space", "space ", "CON", "nul", "COM1", "LPT9", "a\x00b", strings.Repeat("x", 65)}
+	invalid := []string{"", ".", "..", "../secret", "/absolute", "a/b", `a\b`, " space", "space ", "CON", "nul", "COM1", "LPT9", "a\x00b", strings.Repeat("x", 129)}
 	for i, name := range invalid {
 		code(t, s, admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": name, "request_id": fmt.Sprintf("folder-%d", i)}, "INVALID_ARGUMENT")
 		code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": name + ".md", "type": "note", "title": "Title", "content": "text", "request_id": fmt.Sprintf("entry-%d", i)}, "INVALID_ARGUMENT")
 	}
-	for i, name := range []string{"guide", "guide.MD", "guide.txt"} {
+	// Any file type is allowed (owner, 2026-10-06), but not programs, by extension or by signature.
+	for i, name := range []string{"tool.exe", "lib.so", "app.DMG", ".hidden.md", "a..b.md", strings.Repeat("x", 126) + ".md"} {
 		code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": name, "type": "note", "title": "Title", "content": "text", "request_id": fmt.Sprintf("extension-%d", i)}, "INVALID_ARGUMENT")
+	}
+	code(t, s, admin, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "renamed.png", "type": "source", "title": "Program", "content_base64": base64.StdEncoding.EncodeToString([]byte("\x7fELF\x02\x01\x01\x00binary")), "request_id": "elf"}, "INVALID_ARGUMENT")
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
+	for i, name := range []string{"guide", "guide.txt", "deck.pptx", "logo.png"} {
+		args := map[string]any{"folder_path": "", "filename": name, "type": "source", "title": "Title", "request_id": fmt.Sprintf("ok-%d", i), "content": "text"}
+		if name == "logo.png" {
+			delete(args, "content")
+			args["content_base64"] = base64.StdEncoding.EncodeToString(png)
+		}
+		if _, err := s.Call(context.Background(), admin, "create_knowledgebase", args); err != nil {
+			t.Fatalf("%s must be accepted: %v", name, err)
+		}
+	}
+	read, err := s.Call(context.Background(), admin, "read_knowledgebase", map[string]any{"path": "logo.png"})
+	if err != nil || read.(map[string]any)["content_base64"] != base64.StdEncoding.EncodeToString(png) || read.(map[string]any)["binary"] != true {
+		t.Fatalf("a binary file must read back whole: %v %v", read, err)
 	}
 	folder(t, s, admin, "", "Payments")
 	code(t, s, admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "payments", "request_id": "case-folder"}, "NAME_CONFLICT")

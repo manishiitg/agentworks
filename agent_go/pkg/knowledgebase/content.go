@@ -139,6 +139,82 @@ func normalizeText(text string, limit int, label string) (string, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	return strings.ReplaceAll(text, "\r", "\n"), nil
 }
+
+// isText reports whether b is UTF-8 without binary control characters (tab, newline and carriage return allowed).
+func isText(b []byte) bool {
+	if !utf8.Valid(b) {
+		return false
+	}
+	for _, r := range string(b) {
+		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
+			return false
+		}
+	}
+	return true
+}
+
+// isExecutable recognises compiled programs by signature: ELF, Windows PE ("MZ"), Mach-O (32/64-bit, both byte orders)
+// and universal/fat Mach-O or Java class files (0xCAFEBABE).
+func isExecutable(b []byte) bool {
+	if len(b) < 4 {
+		return len(b) >= 2 && b[0] == 'M' && b[1] == 'Z'
+	}
+	head := string(b[:4])
+	switch head {
+	case "\x7fELF", "\xfe\xed\xfa\xce", "\xfe\xed\xfa\xcf", "\xce\xfa\xed\xfe", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe":
+		return true
+	}
+	return b[0] == 'M' && b[1] == 'Z'
+}
+
+// maxFileBytes caps one file of any type (decks, spreadsheets and images are larger than notes); text keeps its
+// 10 MiB limit because it is searched and read by line.
+const maxFileBytes = 50 << 20
+
+// fileBytes stores text normalized (LF line endings) and anything else exactly as given, marked binary.
+func fileBytes(raw []byte, label string) ([]byte, bool, error) {
+	if len(raw) > maxFileBytes {
+		return nil, false, kbErr("LIMIT_EXCEEDED", label+" exceeds its byte limit.")
+	}
+	if !isText(raw) {
+		if isExecutable(raw) {
+			return nil, false, badArg("%s is a program; Brain does not store executables.", label)
+		}
+		return raw, true, nil
+	}
+	text, err := normalizeText(string(raw), 10*1024*1024, label)
+	return []byte(text), false, err
+}
+
+// contentArg reads content (text) or content_base64 (any file). has is false when neither was supplied.
+func contentArg(a map[string]any) (data []byte, binary, has bool, err error) {
+	text, hasText := a["content"]
+	encoded, hasEncoded := a["content_base64"]
+	switch {
+	case hasText && hasEncoded:
+		return nil, false, true, badArg("Choose content or content_base64, never both.")
+	case hasText:
+		str, ok := text.(string)
+		if !ok {
+			return nil, false, true, badArg("content must be a string.")
+		}
+		str, err = normalizeText(str, 10*1024*1024, "Content")
+		return []byte(str), false, true, err
+	case hasEncoded:
+		str, ok := encoded.(string)
+		if !ok || len(str) > base64.StdEncoding.EncodedLen(maxFileBytes) {
+			return nil, false, true, badArg("content_base64 must be a base64 string of at most 50 MiB of data.")
+		}
+		raw, decodeErr := base64.StdEncoding.DecodeString(str)
+		if decodeErr != nil {
+			return nil, false, true, badArg("content_base64 is not valid base64.")
+		}
+		data, binary, err = fileBytes(raw, "Content")
+		return data, binary, true, err
+	}
+	return nil, false, false, nil
+}
+
 func tagsArg(v any) ([]string, error) {
 	switch ts := v.(type) {
 	case []string:
@@ -164,7 +240,7 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 	}
 	name := stringArg(a, "filename")
 	if !validName(name, true) {
-		return nil, nil, badArg("Invalid Markdown filename.")
+		return nil, nil, badArg("Invalid filename.")
 	}
 	ep := childPath(r.Path, name)
 	if err = validatePath(ep, true); err != nil {
@@ -178,13 +254,12 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 			return nil, nil, kbErr("PATH_PENDING_DELETION_BACKUP", "The deleted path is reserved until its backup is confirmed.")
 		}
 	}
-	content, ok := a["content"].(string)
-	if !ok {
-		return nil, nil, badArg("content must be a string.")
-	}
-	content, err = normalizeText(content, 10*1024*1024, "Content")
+	data, binary, hasData, err := contentArg(a)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !hasData {
+		return nil, nil, badArg("content or content_base64 is required.")
 	}
 	tags := []string{}
 	if v, has := a["tags"]; has {
@@ -202,14 +277,14 @@ func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange,
 		}
 	}
 	now := stamp()
-	e := Entry{ID: "entry_" + uuid.NewString(), FolderID: r.ID, FolderPath: r.Path, Path: ep, Filename: name, Type: stringArg(a, "type"), Title: stringArg(a, "title"), Description: description, Tags: tags, Sequence: 1, ContentSequence: 1, Fingerprint: digest([]byte(content)), CreatedAt: now, UpdatedAt: now, CreatedBy: p.IdentityID, UpdatedBy: p.IdentityID}
+	e := Entry{ID: "entry_" + uuid.NewString(), FolderID: r.ID, FolderPath: r.Path, Path: ep, Filename: name, Type: stringArg(a, "type"), Title: stringArg(a, "title"), Description: description, Tags: tags, Sequence: 1, ContentSequence: 1, Fingerprint: digest(data), CreatedAt: now, UpdatedAt: now, CreatedBy: p.IdentityID, UpdatedBy: p.IdentityID, Binary: binary}
 	if err = validateMetadata(&e); err != nil {
 		return nil, nil, err
 	}
 	e.Version = entryVersion(e)
 	r.Entries = append(r.Entries, e)
 	result := entryResult(e, true)
-	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: []byte(content)}, jsonChange(s.registryPath(r.Path), r)}, nil
+	return result, []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: data}, jsonChange(s.registryPath(r.Path), r)}, nil
 }
 func publicEntry(e Entry) map[string]any {
 	m := asMap(e)
@@ -248,20 +323,24 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 		return nil, nil, versionConflict(e)
 	}
 	_, hasDiff := a["diff"]
-	_, hasContent := a["content"]
+	_, hasText := a["content"]
+	_, hasEncoded := a["content_base64"]
+	hasContent := hasText || hasEncoded
 	if hasDiff && hasContent {
 		return nil, nil, badArg("Choose diff or content, never both.")
+	}
+	if hasDiff && e.Binary {
+		return nil, nil, badArg("A binary file cannot be patched; replace it with content_base64.")
 	}
 	old, err := s.entryContent(e)
 	if err != nil {
 		return nil, nil, err
 	}
-	content := string(old)
+	data, binary := old, e.Binary
 	if hasContent {
-		var ok bool
-		content, ok = a["content"].(string)
-		if !ok {
-			return nil, nil, badArg("content must be a string.")
+		data, binary, _, err = contentArg(a)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 	if hasDiff {
@@ -276,14 +355,15 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 		if err = validateDiffTarget(d, e); err != nil {
 			return nil, nil, err
 		}
-		content, err = handlers.ApplyDiffPatchDirect(content, d)
-		if err != nil {
+		content, patchErr := handlers.ApplyDiffPatchDirect(string(old), d)
+		if patchErr != nil {
 			return nil, nil, kbErr("PATCH_FAILED", "The patch could not be applied completely.")
 		}
-	}
-	content, err = normalizeText(content, 10*1024*1024, "Content")
-	if err != nil {
-		return nil, nil, err
+		content, err = normalizeText(content, 10*1024*1024, "Content")
+		if err != nil {
+			return nil, nil, err
+		}
+		data, binary = []byte(content), false
 	}
 	before := e
 	meta, hasMeta := a["metadata"]
@@ -326,7 +406,8 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 	if err = validateMetadata(&e); err != nil {
 		return nil, nil, err
 	}
-	newHash := digest([]byte(content))
+	e.Binary = binary
+	newHash := digest(data)
 	beforeJSON, _ := json.Marshal(before)
 	afterJSON, _ := json.Marshal(e)
 	changed := newHash != before.Fingerprint || string(beforeJSON) != string(afterJSON)
@@ -348,7 +429,7 @@ func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange,
 	}
 	changes := []fileChange{jsonChange(s.registryPath(r.Path), r)}
 	if newHash != before.Fingerprint {
-		changes = append([]fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: []byte(content)}}, changes...)
+		changes = append([]fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(e.Path)), Data: data}}, changes...)
 	}
 	return entryResult(e, true), changes, nil
 }
@@ -467,6 +548,19 @@ func (s *Service) readEntry(p Principal, a map[string]any) (any, error) {
 	b, err := s.entryContent(e)
 	if err != nil {
 		return nil, err
+	}
+	if e.Binary {
+		if _, has := a["start_line"]; has {
+			return nil, badArg("A binary file is read whole.")
+		}
+		if _, has := a["section"]; has {
+			return nil, badArg("A binary file is read whole.")
+		}
+		result := publicEntry(e)
+		result["entry"] = publicEntry(e)
+		result["content_base64"] = base64.StdEncoding.EncodeToString(b)
+		result["size"] = len(b)
+		return result, nil
 	}
 	content := string(b)
 	lines := contentLines(content)
@@ -789,6 +883,9 @@ func (s *Service) search(ctx context.Context, p Principal, a map[string]any) (an
 				continue
 			}
 			if tag := stringArg(a, "tag"); tag != "" && !contains(e.Tags, tag) {
+				continue
+			}
+			if e.Binary {
 				continue
 			}
 			b, e2 := s.entryContent(e)

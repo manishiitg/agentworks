@@ -109,7 +109,7 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
   return {
     files, loading, error, expandedFolders,
     selectedFile: selectedPath ? { name: selectedPath.split('/').pop() || selectedPath, path: selectedPath } : null,
-    fileContent: read?.content || '', loadingFileContent, showFileContent, setShowFileContent,
+    fileContent: read?.entry.binary ? '' : read?.content || '', loadingFileContent, showFileContent, setShowFileContent,
     openTabs, openFile, revealFolder,
     closeFile: path => {
       setOpenTabs(tabs => tabs.filter(tab => tab.path !== path))
@@ -117,6 +117,20 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
     },
     toggleFolder: path => { onFolder(path); setExpandedFolders(current => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next }) },
     refresh: () => setRefreshKey(value => value + 1),
-    contentHeader: read && <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{read.entry.type} · Updated {read.entry.updated_at ? new Date(read.entry.updated_at).toLocaleString() : 'recently'}{read.entry.updated_by && ` by ${read.entry.updated_by}`}</div>,
+    contentHeader: read && <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{read.entry.type} · Updated {read.entry.updated_at ? new Date(read.entry.updated_at).toLocaleString() : 'recently'}{read.entry.updated_by && ` by ${read.entry.updated_by}`}{read.entry.binary && read.content_base64 && <BinaryFilePreview name={read.entry.filename} base64={read.content_base64} size={read.size} />}</div>,
   }
+}
+
+const imageTypes: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+
+// Brain stores any file (images, PDFs, decks, spreadsheets): show images inline and offer every file as a download.
+function BinaryFilePreview({ name, base64, size }: { name: string; base64: string; size?: number }) {
+  const extension = name.split('.').pop()?.toLowerCase() || ''
+  const image = imageTypes[extension]
+  // SVG can carry script; it is only ever shown through <img>, which does not run it.
+  const href = `data:${image || 'application/octet-stream'};base64,${base64}`
+  return <div className="mt-2 space-y-2">
+    {image && <img src={href} alt={name} className="max-h-96 max-w-full rounded border border-border" />}
+    <a href={href} download={name} className="inline-block text-primary hover:underline">Download {name}{size ? ` (${Math.max(1, Math.round(size / 1024))} KB)` : ''}</a>
+  </div>
 }

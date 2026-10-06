@@ -52,6 +52,9 @@ type Entry struct {
 	UpdatedAt       string   `json:"updated_at"`
 	CreatedBy       string   `json:"created_by"`
 	UpdatedBy       string   `json:"updated_by"`
+	// Binary marks content that is not text (an image, a PDF, an archive). It is stored and read whole, as base64 over
+	// the tools; line and section reads, diffs and search apply to text only.
+	Binary bool `json:"binary,omitempty"`
 }
 type Deletion struct {
 	ID         string `json:"deletion_id"`

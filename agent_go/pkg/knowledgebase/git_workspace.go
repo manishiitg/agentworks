@@ -226,7 +226,7 @@ func (s *Service) RunGit(ctx context.Context, p Principal, a map[string]any, run
 			}
 			liveCount++
 			liveBytes += len(b)
-			if liveCount > 5000 || liveBytes > 50<<20 {
+			if liveCount > 5000 || liveBytes > 1<<30 {
 				return nil, kbErr("LIMIT_EXCEEDED", "Live knowledge exceeds the MVP Git workspace limit.")
 			}
 			name := filepath.Join(dir, filepath.FromSlash(e.Path))
@@ -513,8 +513,8 @@ func gitWorkspaceTree(ctx context.Context, dir, ref string) (map[string][]byte, 
 		}
 		parts := strings.SplitN(record, "\t", 2)
 		fields := strings.Fields(parts[0])
-		if len(parts) != 2 || len(fields) != 3 || fields[0] != "100644" || fields[1] != "blob" {
-			return nil, badArg("Git trees may contain only regular Markdown files.")
+		if len(parts) != 2 || len(fields) != 3 || (fields[0] != "100644" && fields[0] != "100755") || fields[1] != "blob" {
+			return nil, badArg("Git trees may contain only regular files.")
 		}
 		if err = validatePath(parts[1], true); err != nil {
 			return nil, err
@@ -524,20 +524,20 @@ func gitWorkspaceTree(ctx context.Context, dir, ref string) (map[string][]byte, 
 			return nil, err
 		}
 		n, err := strconv.ParseInt(size, 10, 64)
-		if err != nil || n < 0 || n > 10<<20 || int64(total)+n > 50<<20 || len(files) >= 5000 {
+		if err != nil || n < 0 || n > maxFileBytes || int64(total)+n > 1<<30 || len(files) >= 5000 {
 			return nil, kbErr("LIMIT_EXCEEDED", "Git tree exceeds the MVP import limit.")
 		}
 		raw, e := gitWorkspaceBytes(ctx, dir, "cat-file", "blob", fields[2])
 		if e != nil {
 			return nil, e
 		}
-		text, e := normalizeText(string(raw), 10<<20, "Git content")
+		text, _, e := fileBytes(raw, "Git content")
 		if e != nil {
 			return nil, e
 		}
-		files[parts[1]] = []byte(text)
+		files[parts[1]] = text
 		total += len(text)
-		if len(files) > 5000 || total > 50<<20 {
+		if len(files) > 5000 || total > 1<<30 {
 			return nil, kbErr("LIMIT_EXCEEDED", "Git tree exceeds the MVP import limit.")
 		}
 	}
@@ -568,7 +568,7 @@ func gitWorkspaceFiles(dir string) (map[string][]byte, error) {
 			return validatePath(rel, false)
 		}
 		if !de.Type().IsRegular() {
-			return badArg("Git knowledge must contain regular Markdown files.")
+			return badArg("Git knowledge must contain regular files.")
 		}
 		if err = validatePath(rel, true); err != nil {
 			return err
@@ -577,20 +577,20 @@ func gitWorkspaceFiles(dir string) (map[string][]byte, error) {
 		if err != nil {
 			return err
 		}
-		if info.Size() > 10<<20 {
+		if info.Size() > maxFileBytes {
 			return kbErr("LIMIT_EXCEEDED", "Git content exceeds its byte limit.")
 		}
 		b, err := os.ReadFile(name)
 		if err != nil {
 			return err
 		}
-		text, err := normalizeText(string(b), 10<<20, "Git content")
+		text, _, err := fileBytes(b, "Git content")
 		if err != nil {
 			return err
 		}
-		files[rel] = []byte(text)
+		files[rel] = text
 		total += len(text)
-		if len(files) > 5000 || total > 50<<20 {
+		if len(files) > 5000 || total > 1<<30 {
 			return kbErr("LIMIT_EXCEEDED", "Git tree exceeds the MVP import limit.")
 		}
 		return nil
@@ -673,6 +673,7 @@ func (s *Service) gitImportChanges(p Principal, regs []folderRegistry, files map
 					e.ContentSequence++
 				}
 				e.Fingerprint = digest(b)
+				e.Binary = !isText(b)
 				e.UpdatedAt = now
 				e.UpdatedBy = p.IdentityID
 				e.Version = entryVersion(e)

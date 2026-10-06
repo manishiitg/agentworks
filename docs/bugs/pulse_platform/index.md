@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
-| [Brain](brain/index.md) | 16 | 3 |
+| [Brain](brain/index.md) | 17 | 3 |
 | [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 3 | 1 |
@@ -30,6 +30,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-586](browser/browser/plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-585](browser/browser/plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-584](browser/browser/plat-584.md) | Direct CDP recording handoff still expects a fresh tab with the current CLI recorder | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-583](brain/files/plat-583.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |
 | [PLAT-583](browser/browser/plat-583.md) | Make transient Chrome setup error detection independent of exact message wording | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-582](goals/plans-contracts/plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-581](integrations/skills/plat-581.md) | Skills belong to each workspace, with step usage and scoped uninstall | fixed on main | P2 | [integrations/skills](integrations/skills/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-551](app/navigation/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-550](browser/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-549](browser/browser/plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
-| [PLAT-548](chat/reliability/plat-548.md) | An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored" | fixed on main | - | [chat/reliability](chat/reliability/index.md) |

@@ -14,26 +14,40 @@ import (
 
 var validStem = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$`)
 
+// validFileName allows any file type (owner, 2026-10-06: Brain does not limit files to Markdown): letters, digits,
+// spaces, dots, underscores, hyphens, plus and parentheses, starting with a letter or digit. No hidden files, no path
+// separators or control characters, nothing a Windows checkout cannot hold.
+var validFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,127}$`)
+
 func validName(name string, file bool) bool {
-	stem := name
 	if file {
-		if !strings.HasSuffix(name, ".md") {
+		if !validFileName.MatchString(name) || strings.HasSuffix(name, " ") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") || strings.Contains(name, " .") {
 			return false
 		}
-		stem = strings.TrimSuffix(name, ".md")
+		return !reservedWindowsName(strings.SplitN(name, ".", 2)[0]) && !executableExtension(name)
 	}
-	if !validStem.MatchString(stem) || strings.HasSuffix(stem, " ") {
+	if !validStem.MatchString(name) || strings.HasSuffix(name, " ") {
 		return false
 	}
-	u := strings.ToUpper(stem)
+	return !reservedWindowsName(name)
+}
+
+// Brain holds documents, media, data and source files of any kind, but not programs (owner, 2026-10-06: "just not
+// binary files"). Content is checked by signature too (isExecutable), so renaming a program does not get it in.
+var executableExtensions = map[string]bool{".exe": true, ".dll": true, ".so": true, ".dylib": true, ".bin": true, ".msi": true, ".com": true, ".scr": true, ".app": true, ".apk": true, ".dmg": true, ".jar": true, ".class": true, ".elf": true, ".o": true, ".a": true, ".pkg": true, ".deb": true, ".rpm": true}
+
+func executableExtension(name string) bool {
+	i := strings.LastIndex(name, ".")
+	return i >= 0 && executableExtensions[strings.ToLower(name[i:])]
+}
+
+func reservedWindowsName(stem string) bool {
+	u := strings.ToUpper(strings.TrimSpace(stem))
 	switch u {
 	case "CON", "NUL", "AUX", "PRN":
-		return false
+		return true
 	}
-	if len(u) == 4 && (strings.HasPrefix(u, "COM") || strings.HasPrefix(u, "LPT")) && u[3] >= '1' && u[3] <= '9' {
-		return false
-	}
-	return true
+	return len(u) == 4 && (strings.HasPrefix(u, "COM") || strings.HasPrefix(u, "LPT")) && u[3] >= '1' && u[3] <= '9'
 }
 func validatePath(p string, file bool) error {
 	if len(p) > 1024 || strings.HasPrefix(p, "/") || strings.Contains(p, "\\") {
