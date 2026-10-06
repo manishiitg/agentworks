@@ -10,6 +10,7 @@
 | [chat](chat/index.md) | 2 | 0 |
 | [curation](curation/index.md) | 1 | 1 |
 | [files](files/index.md) | 1 | 0 |
+| [general](general/index.md) | 1 | 0 |
 | [learnings-knowledge](learnings-knowledge/index.md) | 9 | 2 |
 | [plans-contracts](plans-contracts/index.md) | 1 | 0 |
 | [pulse-governance](pulse-governance/index.md) | 1 | 0 |

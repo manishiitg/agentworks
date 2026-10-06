@@ -7,13 +7,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
-| [Brain](brain/index.md) | 23 | 5 |
+| [Brain](brain/index.md) | 24 | 5 |
 | [Browser and browser automation](browser/index.md) | 43 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 177 | 37 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 22 | 4 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
+| [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
 | [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | open | P1 | [brain/storage](brain/storage/index.md) |
 | [PLAT-632](brain/access/plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 | [brain/access](brain/access/index.md) |
 | [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |
 | [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |
-| [PLAT-595](code/terminal/plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | deployed | P2 | [code/terminal](code/terminal/index.md) |
-| [PLAT-594](crew/frontend-chat/plat-594.md) | Show installed template setup progress and exclude optional checks from completion | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
