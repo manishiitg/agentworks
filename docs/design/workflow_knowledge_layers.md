@@ -90,3 +90,54 @@ history of a change belong in the plan changelog's `reason`, not in any layer.
    (changes 2–5). Pulse belongs to its dedicated session; coordinate before editing.
 5. Brain option B for Upwork: import shared notes, set Read, remove local copies.
 6. Retire dead places (change 6).
+
+## Implementation decisions (owner go, 2026-10-06: "implement the full redesign")
+
+Pulse is edited from the session doing this work (the dedicated Pulse session is not running).
+Deploys still need the owner's go per server.
+
+**1. Delivery.** At step execution the platform reads the description's `## Inputs` and `## Guides`
+sections and resolves every path they name under `learnings/`, `knowledgebase/`, `code/shared/`,
+`soul/`, `db/README.md`, and Brain references written `brain:<folder>/<note>`.
+- Naming a workflow path grants that step read access to it (Folder Guard), whatever its
+  `learnings_access` / `knowledgebase_access` says; naming never grants write.
+- Small references are attached to the step's system prompt under "Referenced guides" in the order
+  named: at most 4,000 characters per file and 12,000 in total; anything larger or over the total is
+  listed with its path and size and the instruction to read it. Brain notes are read through the
+  project's Brain access; when the project cannot read them the step prompt says so and the run log
+  records a warning (never a silent drop).
+- A named path that does not exist is reported in the step prompt and the plan edit response.
+
+**2. Budgets (triggers, never gates).** Measured deterministically by `get_plan_prompt_health` per step:
+- description over 3x the plan's median description size, with a floor of 12,000 characters;
+- dated or incident text in a description (ISO dates, "measured", "observed on", run ids);
+- 300+ characters repeated verbatim across steps;
+- a description without the layout sections.
+Any of these makes Architecture due with focus `prompt_design` for those steps. The measures are also
+recorded per Pulse pass as the success metric (below).
+
+**3. Consolidator.** Architecture with focus `prompt_design` (or `learning_quality` / `knowledge_design`)
+may apply a consolidation itself when:
+- the new tool `check_plan_no_loss` passes: every rule-bearing token of the old description and items
+  (identifiers, numbers, thresholds, file paths, VAR_ names, quoted literals) appears in the new
+  description, items, or a file the new text names in Inputs/Guides;
+- it then runs the step once (`execute_step`, test mode where available) and validation passes.
+If the run fails, it restores the previous step from the changelog `before_ref` and files the result.
+Anything beyond moving text (changing behaviour, rules, outputs, topology) stays a proposal for the owner.
+
+**4. Scheduling.** Plan Drift remains an exclusive prerequisite only for steps it has flagged. Architecture
+may not be deferred by Drift more than two Pulse passes in a row; on the third it runs, scoped away from
+the flagged steps. Over-budget steps (decision 2) make Architecture due regardless of elapsed time.
+
+**5. Repair routing.** Fixer (Technical) and builder-chat guidance: a technique goes to a skill reference
+named in the step's Guides; a rule or decision to the knowledge layer or the description's Rules; the
+evidence and history to the changelog `reason`. "Smallest complete repair" includes moving the text it
+touches. The edit-time nudges (PLAT-555) already apply to both.
+
+**6. Ownership cleanup.** Per workflow: per-step learnings folders that hold only metadata are removed;
+`graph.json` and `_freshness.json` are retired when stale; KB notes stop naming step descriptions as their
+authority. Brain option B as above.
+
+**Success metric.** Per workflow, recorded each Pulse pass and comparable over time: total and largest
+description size, steps over budget, dated-text count, duplicated text, Architecture runs and applied
+consolidations, and validation pass rate of consolidated steps before and after.
