@@ -59,6 +59,7 @@ keep each skill in its owning workspace, and support scoped uninstall.
   `TestWorkspaceSkillMigrationSkipsALinkedLegacySkill`. The runtime now logs when a skill's files cannot load.
 - Not changed: the marker `.workspace-skills-v1` sits in each workspace root (shows in file trees), and a reader
   viewing a workflow's skills can trigger the copy-in (a server-side write, idempotent).
+- Excellence 2026-10-06 13:07 (Vaibhav, workflow Skills tab; also abhisheks33537 at 12:43): "Request failed with status code 400". `GET /api/skills` refused the workspace path with "workspace_path is required and must identify the current workspace" (67 bytes); the route rejects any path `path.Clean` changes, most likely a trailing slash. The route now trims a trailing slash and the error names the value it got. Not verified live (the query string is not logged).
 - Shared skills across workspaces now come from Brain: [PLAT-576](../../brain/skills/plat-576.md).
 
 ## Left

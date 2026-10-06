@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"path"
@@ -47,10 +48,12 @@ func workspaceSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc 
 			http.Error(w, "read-only accounts cannot change workspace skills", http.StatusForbidden)
 			return
 		}
-		raw := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
+		// The panels send folder paths with a trailing slash ("Workflow/<name>/"); that names the same workspace. Every
+		// Skills tab answered 400 for it (Excellence 2026-10-06).
+		raw := strings.TrimSuffix(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 		clean := path.Clean(raw)
 		if raw == "" || clean != raw || strings.Contains(raw, "..") || path.IsAbs(raw) {
-			http.Error(w, "workspace_path is required and must identify the current workspace", 400)
+			http.Error(w, fmt.Sprintf("workspace_path %q must be the current workspace's relative path", raw), 400)
 			return
 		}
 		if crew, ok := resolveCrewPath(r.Context(), claims.UserID, clean); ok {
