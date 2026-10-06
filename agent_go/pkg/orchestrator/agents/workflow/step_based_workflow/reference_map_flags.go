@@ -34,7 +34,7 @@ const referenceMapFlagsFile = "reference_map_flags.json"
 // workflow whose files did not change is still re-evaluated once under the new
 // rules (PLAT-582 added old unreadable inputs; without this they were never seen
 // on an unchanged workflow).
-const referenceMapFlagsVersion = 2
+const referenceMapFlagsVersion = 3
 
 type referenceMapFlag struct {
 	FlaggedAt string   `json:"flagged_at"`
@@ -82,10 +82,14 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 		if state.Flags == nil {
 			state.Flags = map[string]referenceMapFlag{}
 		}
+		// Keys failing at the previous look. A problem flags when it starts
+		// failing; one that is fixed leaves the list, so it flags again if it
+		// comes back.
 		strictSeen := map[string]bool{}
 		for _, key := range state.StrictFlagged {
 			strictSeen[key] = true
 		}
+		var strictNow []string
 		var current []string
 		for _, issue := range report.Issues {
 			strict := graphStrictKinds[issue.Kind] && strings.HasPrefix(issue.Source, "step:")
@@ -95,11 +99,10 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 			key := issue.Kind + "|" + issue.Source + "|" + issue.Ref
 			current = append(current, key)
 			if strict {
+				strictNow = append(strictNow, key)
 				if strictSeen[key] {
 					continue
 				}
-				strictSeen[key] = true
-				state.StrictFlagged = append(state.StrictFlagged, key)
 			} else if !initialized || known[key] {
 				continue
 			}
@@ -111,6 +114,34 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 			}
 			state.Flags[owner] = flag
 		}
+		// A step edited out of the description layout (PLAT-629) flags its step,
+		// but only once the workflow is on the layout contract: before that every
+		// step is in the old format, and the contract upgrade converts them.
+		if workflowOnLayoutContract(root) {
+			if raw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "plan.json")); err == nil {
+				if descriptions, err := planStepDescriptionsFromPlanJSON(raw); err == nil {
+					for id, description := range descriptions {
+						missing := MissingDescriptionLayoutHeadings(description)
+						if len(missing) == 0 {
+							continue
+						}
+						key := "description_layout|step:" + id
+						strictNow = append(strictNow, key)
+						if strictSeen[key] {
+							continue
+						}
+						flag := state.Flags[id]
+						flag.FlaggedAt = now
+						if len(flag.Reasons) < 3 {
+							flag.Reasons = append(flag.Reasons, "the description lost the layout (missing "+strings.Join(missing, ", ")+")")
+						}
+						state.Flags[id] = flag
+					}
+				}
+			}
+		}
+		sort.Strings(strictNow)
+		state.StrictFlagged = strictNow
 		sort.Strings(current)
 		state.Baseline = current
 		state.Fingerprint = fp
@@ -172,7 +203,7 @@ func referenceMapFingerprint(root string) string {
 		files++
 		fmt.Fprintf(h, "%s|%d|%d;", path, info.Size(), info.ModTime().UnixNano())
 	}
-	for _, rel := range []string{"planning/plan.json", "planning/step_config.json", "evaluation/evaluation_plan.json", "soul/soul.md"} {
+	for _, rel := range []string{"workflow.json", "planning/plan.json", "planning/step_config.json", "evaluation/evaluation_plan.json", "soul/soul.md"} {
 		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
 			add(rel, info)
 		}
@@ -192,4 +223,51 @@ func referenceMapFingerprint(root string) string {
 		return ""
 	}
 	return fmt.Sprintf("%x", h.Sum64())
+}
+
+// workflowOnLayoutContract reports whether the workflow's workflow.json is at or
+// past the step description layout contract.
+func workflowOnLayoutContract(root string) bool {
+	raw, err := os.ReadFile(filepath.Join(root, "workflow.json"))
+	if err != nil {
+		return false
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(raw, &manifest) != nil {
+		return false
+	}
+	return contractVersionAtLeast(manifest.Version, StepDescriptionLayoutContractVersion)
+}
+
+func contractVersionAtLeast(version, minimum string) bool {
+	parse := func(v string) []int {
+		var out []int
+		for _, part := range strings.Split(strings.TrimSpace(v), ".") {
+			n := 0
+			for _, c := range part {
+				if c < '0' || c > '9' {
+					return nil
+				}
+				n = n*10 + int(c-'0')
+			}
+			out = append(out, n)
+		}
+		return out
+	}
+	a, b := parse(version), parse(minimum)
+	if a == nil || b == nil {
+		return false
+	}
+	for i := 0; i < len(b); i++ {
+		x := 0
+		if i < len(a) {
+			x = a[i]
+		}
+		if x != b[i] {
+			return x > b[i]
+		}
+	}
+	return true
 }

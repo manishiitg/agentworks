@@ -99,3 +99,50 @@ func TestFlagRulesChangeReevaluatesUnchangedWorkflow(t *testing.T) {
 		t.Fatalf("an older flag file must be re-evaluated under the current rules, got %#v", items)
 	}
 }
+
+// PLAT-629: after the layout upgrade a step whose description loses the layout
+// makes Workflow Review due, even when only the description changed; before the
+// upgrade it stays silent, and a fixed step that loses the layout again flags again.
+func TestLayoutRegressionFlagsWorkflowReviewAfterTheUpgrade(t *testing.T) {
+	layout := `## Goal\nG.\n## Inputs\nI.\n## Output\nO.\n## Done when\nD.`
+	plan := func(a string) string {
+		return `{"steps":[{"id":"step-a","type":"regular","description":"` + a + `"},{"id":"step-b","type":"regular","description":"` + layout + `"}]}`
+	}
+	planDriftCandidateWorkspace(t, "Workflow/layout", plan("Free text from before."), reviewedStepConfig)
+	root := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Workflow", "layout")
+	write := func(rel, body string) {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dueFor := func() []string {
+		items, err := CollectPlanDriftDueItems("Workflow/layout")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, item := range items {
+			if strings.Contains(item.Reason, "lost the layout") {
+				ids = append(ids, item.StepID)
+			}
+		}
+		return ids
+	}
+
+	write("workflow.json", `{"version":"1.0.45"}`)
+	if ids := dueFor(); len(ids) != 0 {
+		t.Fatalf("before the upgrade nothing flags: %v", ids)
+	}
+	write("workflow.json", `{"version":"1.0.46"}`)
+	write("planning/plan.json", plan(layout))
+	if ids := dueFor(); len(ids) != 0 {
+		t.Fatalf("a converted workflow is clean: %v", ids)
+	}
+	write("planning/plan.json", plan("Rewritten as free text again."))
+	if ids := dueFor(); len(ids) != 1 || ids[0] != "step-a" {
+		t.Fatalf("a description-only edit that loses the layout must flag its step: %v", ids)
+	}
+	if !contractVersionAtLeast("1.0.46", "1.0.46") || contractVersionAtLeast("1.0.45", "1.0.46") || !contractVersionAtLeast("1.1.0", "1.0.46") {
+		t.Fatal("contract version comparison")
+	}
+}

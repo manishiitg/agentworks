@@ -41,3 +41,13 @@ through a contract upgrade (2026-10-06).
   before or right after the deploy. Not deployed.
 - The Drift check runs only for steps already due; a description-only edit does not make a step due, and the Drift
   contract version was not bumped (that would re-flag every reviewed step).
+
+## Follow-up: description-only edits (2026-10-06)
+
+A description-only edit does not make a step due, so a step edited back to free text after the upgrade was not
+caught. The Go-side flags (`reference_map_flags.go`) now flag a step whose description lacks the layout headings,
+once, when it starts failing, and only when `workflow.json` is at 1.0.46 or later (before that the upgrade converts
+the steps). Workflow Review is then due for that step and fixes it (its `description_layout` check fails). The same
+change makes every flagged problem re-flag if it is fixed and later comes back, and the flag check now watches
+`workflow.json`. Test: `TestLayoutRegressionFlagsWorkflowReviewAfterTheUpgrade`.
+
