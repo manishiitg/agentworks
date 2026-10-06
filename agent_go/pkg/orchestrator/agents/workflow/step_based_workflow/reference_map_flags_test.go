@@ -106,7 +106,7 @@ func TestFlagRulesChangeReevaluatesUnchangedWorkflow(t *testing.T) {
 func TestLayoutRegressionFlagsWorkflowReviewAfterTheUpgrade(t *testing.T) {
 	layout := `## Goal\nG.\n## Inputs\nI.\n## Output\nO.\n## Done when\nD.`
 	plan := func(a string) string {
-		return `{"steps":[{"id":"step-a","type":"regular","description":"` + a + `"},{"id":"step-b","type":"regular","description":"` + layout + `"}]}`
+		return `{"steps":[{"id":"step-a","type":"message_sequence","description":"` + a + `","items":[{"id":"x","type":"user_message","message":"Do A."}]},{"id":"step-b","type":"message_sequence","description":"` + layout + `","items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
 	}
 	planDriftCandidateWorkspace(t, "Workflow/layout", plan("Free text from before."), reviewedStepConfig)
 	root := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Workflow", "layout")

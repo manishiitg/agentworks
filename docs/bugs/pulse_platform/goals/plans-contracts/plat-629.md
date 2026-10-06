@@ -51,3 +51,12 @@ the steps). Workflow Review is then due for that step and fixes it (its `descrip
 change makes every flagged problem re-flag if it is fixed and later comes back, and the flag check now watches
 `workflow.json`. Test: `TestLayoutRegressionFlagsWorkflowReviewAfterTheUpgrade`.
 
+## Agent steps only (2026-10-06)
+
+The sales outreach upgrade was refused because `step-route-workflow-mode`, a routing step with an empty description,
+lacked the headings. Owner: the layout is only for agent steps. The rule (`descriptionLayoutStepTypes`) now covers
+`message_sequence` and `orchestrator` (and legacy `todo_task`) only; scripted (`regular`), routing, branch,
+human_input and crew steps are left as they are. The same rule drives the stamp check, the Workflow Review
+`description_layout` check (other types pass with that note) and the layout flag. The upgrade instructions and
+`step-description.md` say so. Tests updated, including a routing step with an empty description.
+

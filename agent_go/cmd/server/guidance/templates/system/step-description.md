@@ -54,6 +54,10 @@ delegation instructions are also user messages, not description mutations.
 
 ### Use this section layout for the description
 
+This layout is for agent steps (message_sequence and orchestrator). Scripted, routing, branch, human-input and Crew
+steps are driven by code, routes, a question to a person or a Crew; keep their description short and do not force
+the sections on them.
+
 Write the description with these Markdown sections, in this order. Omit a section
 only when it has nothing to say; do not add other sections.
 

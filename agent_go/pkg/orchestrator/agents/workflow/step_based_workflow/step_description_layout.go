@@ -37,7 +37,18 @@ func MissingDescriptionLayoutHeadings(description string) []string {
 	return missing
 }
 
-// planStepDescriptionsFromPlanJSON returns every live plan step's description by
+// descriptionLayoutStepTypes are the agent steps, whose description is the task
+// an agent works from. Scripted, routing, branch, human-input and Crew steps are
+// driven by code, routes, a question to a person or a Crew, so the layout does
+// not apply to them (owner, 2026-10-06; a routing step with an empty description
+// blocked the 1.0.46 stamp).
+var descriptionLayoutStepTypes = map[string]bool{
+	string(StepTypeMessageSeq):     true,
+	string(StepTypeOrchestrator):   true,
+	string(StepTypeTodoTaskLegacy): true,
+}
+
+// planStepDescriptionsFromPlanJSON returns every live agent step's description by
 // id, recursing into predefined_routes sub-agent steps like planStepIDsFromPlanJSON.
 // orphan_steps are not live plan surface and are left out.
 func planStepDescriptionsFromPlanJSON(planContent []byte) (map[string]string, error) {
@@ -52,6 +63,7 @@ func planStepDescriptionsFromPlanJSON(planContent []byte) (map[string]string, er
 	walk = func(raw json.RawMessage) {
 		var step struct {
 			ID               string `json:"id"`
+			Type             string `json:"type"`
 			Description      string `json:"description"`
 			PredefinedRoutes []struct {
 				SubAgentStep json.RawMessage `json:"sub_agent_step"`
@@ -60,7 +72,7 @@ func planStepDescriptionsFromPlanJSON(planContent []byte) (map[string]string, er
 		if json.Unmarshal(raw, &step) != nil {
 			return
 		}
-		if id := strings.TrimSpace(step.ID); id != "" {
+		if id := strings.TrimSpace(step.ID); id != "" && descriptionLayoutStepTypes[strings.TrimSpace(step.Type)] {
 			out[id] = step.Description
 		}
 		for _, route := range step.PredefinedRoutes {
@@ -77,7 +89,12 @@ func planStepDescriptionsFromPlanJSON(planContent []byte) (map[string]string, er
 
 // checkDescriptionLayout is the Plan Drift check for one step's description.
 func checkDescriptionLayout(descriptions map[string]string, stepID string) StepDriftCheck {
-	missing := MissingDescriptionLayoutHeadings(descriptions[stepID])
+	description, agentStep := descriptions[stepID]
+	if !agentStep {
+		return StepDriftCheck{CheckID: descriptionLayoutDriftCheckID, Status: stepDriftCheckStatusPass,
+			Evidence: "The description layout applies to agent steps (message_sequence, orchestrator) only."}
+	}
+	missing := MissingDescriptionLayoutHeadings(description)
 	if len(missing) == 0 {
 		return StepDriftCheck{CheckID: descriptionLayoutDriftCheckID, Status: stepDriftCheckStatusPass,
 			Evidence: "The description carries the ## Goal, ## Inputs, ## Output and ## Done when layout headings."}
@@ -94,7 +111,7 @@ func formatLayoutHeadings(headings []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// validateStepDescriptionLayoutStamp refuses the 1.0.46 stamp while any plan step
+// validateStepDescriptionLayoutStamp refuses the 1.0.46 stamp while any agent step
 // (nested sub-agent steps included) lacks a required layout heading. Like the
 // other stamp gates it lives in the stamp executor, not only in the prompt.
 func validateStepDescriptionLayoutStamp(version, workflowDir string) error {

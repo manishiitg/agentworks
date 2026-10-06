@@ -440,14 +440,14 @@ If a script cannot be converted without a product decision (it needs a PRAGMA, A
 
 const upgradeStepDescriptionLayout = `WORKFLOW CONTRACT UPGRADE: STEP DESCRIPTIONS USE THE STANDARD LAYOUT.
 
-Do only this migration. Every plan step description (nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
+Do only this migration. Every agent step's description (type message_sequence or orchestrator, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
 ## Goal       — what the step achieves, in one to three sentences
 ## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
 ## Output     — what it produces and where; the shape stays in validation_schema
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op
 ## Guides     — the skill/learning references to use, named only, never copied
-Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Read that reference once before you start.
+Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Leave every other step type as it is: scripted (regular), routing, branch, human_input and crew steps are driven by code, routes, a question to a person or a Crew, and do not use the layout; an empty description on them is fine. Read that reference once before you start.
 
 THIS IS A TEXT REORGANIZATION. NEVER CHANGE BEHAVIOUR: do not change outputs, context_dependencies, context_output, validation_schema, items, routes, step type, or any other step field; only the description moves.
 

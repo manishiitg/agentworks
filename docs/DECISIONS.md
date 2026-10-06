@@ -33,6 +33,8 @@ Every plan step description must carry `## Goal`, `## Inputs`, `## Output` and `
 optional). Contract 1.0.46 converts existing workflows and Relays without behaviour change; the stamp is refused while
 any step lacks those headings, and Plan Drift checks due steps for them. Why: one layout keeps descriptions to WHAT,
 with rules in the knowledgebase and HOW in learnings. Ticket: [PLAT-629](bugs/pulse_platform/goals/plans-contracts/plat-629.md).
+The layout applies to agent steps only (message_sequence, orchestrator); scripted, routing, branch, human-input and
+Crew steps are left as they are (owner, 2026-10-06).
 
 ### 2026-10-06 — No Brain folder bindings; steps say how they use Brain
 
