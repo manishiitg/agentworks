@@ -94,6 +94,13 @@ precomputed `fail` as real evidence — do not re-derive it, and do not accept a
 `pass` at face value without confirming it against the check's own explicit
 scope (an empty rule set legitimately passes).
 
+The same state carries `reference_map` (PLAT-561): workflow-wide references
+that no longer resolve (dependencies no step produces or stages, removed step
+ids and step folders, missing files and eval routes) in steps, evals, KB
+notes, soul.md and guides. Breaks naming a due step or what it changed are
+dependents to fix or file in this review; `get_plan_prompt_health` has the
+full list.
+
 ### Workflow-level deletion audit (candidates with no real step_id)
 
 `plan_drift_candidates` may include one entry whose `step_id` is

@@ -15,7 +15,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) currentPlanPromptHealth(ctx context.C
 	if err != nil {
 		return PromptHealthReport{}, err
 	}
-	return BuildPromptHealthReport(plan.Steps), nil
+	report := BuildPromptHealthReport(plan.Steps)
+	// PLAT-561: open reference breaks travel with the prompt-health report.
+	if refs, refErr := CollectReferenceMap(hcpo.GetWorkspacePath()); refErr == nil && refs.Note != "" {
+		report.ReferenceMap = &refs
+	}
+	return report, nil
 }
 
 // PromptHealthStep is the compact, deterministic description-size record for
@@ -68,6 +73,9 @@ type PromptHealthReport struct {
 	DuplicatedBudgetChars    int      `json:"duplicated_300_chars"`
 	StepsWithoutLayout       int      `json:"steps_without_layout"`
 	ConsolidationDueSteps    []string `json:"consolidation_due_steps,omitempty"`
+	// ReferenceMap (PLAT-561) lists references that no longer resolve: steps,
+	// files, evals, notes and guides naming what was removed or moved.
+	ReferenceMap *ReferenceMapReport `json:"reference_map,omitempty"`
 }
 
 const (

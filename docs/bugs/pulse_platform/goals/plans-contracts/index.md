@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-561](plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 |
 | [PLAT-452](plat-452.md) | Remove the Builder/Pulse `run_in_background` tool | fixed on main | - |
 | [PLAT-432](plat-432.md) | Scripted routes are named tools | deployed | - |
 | [PLAT-359](plat-359.md) | Plan Drift fired on cosmetic-only plan edits | open | - |

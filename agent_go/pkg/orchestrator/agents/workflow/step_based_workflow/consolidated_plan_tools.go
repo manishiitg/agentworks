@@ -87,6 +87,10 @@ func (r *consolidatedPlanRegistrar) RegisterCustomToolWithTimeout(n, d string, s
 	if n == "review_plan" {
 		return nil
 	}
+	// PLAT-561: plan edits report the dependents of what they changed.
+	if referenceMapPlanEditTool(n) {
+		e = withReferenceMapNotes(r.workspace, e)
+	}
 	if !capturedPlanName(n) {
 		return r.DefinitionToolRegistrar.RegisterCustomToolWithTimeout(n, consolidatedPlanToolText(d), s, e, t, g)
 	}

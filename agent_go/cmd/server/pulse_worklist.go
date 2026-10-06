@@ -2786,7 +2786,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 							"required": []string{"step_id", "validation_after"},
 						},
 					},
-					"after_refs":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional agent-supplied post-change hashes, versions, or cursors paired positionally with before_refs."},
+					"after_refs": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional agent-supplied post-change hashes, versions, or cursors paired positionally with before_refs."},
 					"finding_dispositions": map[string]interface{}{
 						"type":        "array",
 						"description": "Per-finding outcome. Required for changed modules and whenever a reviewer returned trackable findings.",
@@ -3206,6 +3206,14 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 	if promptBudgetErr != nil {
 		promptBudgetErrText = promptBudgetErr.Error()
 	}
+	referenceMap, referenceMapErr := step_based_workflow.CollectReferenceMap(workspacePath)
+	referenceMapErrText := ""
+	if referenceMapErr != nil {
+		referenceMapErrText = referenceMapErr.Error()
+	}
+	// The full list is in get_plan_prompt_health; Pulse state carries counts
+	// and the first breaks.
+	referenceMap = referenceMap.Compact(40)
 	promptBudgetMetrics, metricsErr := getPulsePromptBudgetMetrics(ctx, workspacePath, 10)
 	if metricsErr != nil {
 		log.Printf("[PULSE] get_pulse_state(view=module): prompt budget metrics unavailable for %s: %v", workspacePath, metricsErr)
@@ -3282,10 +3290,13 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 			"error": promptBudgetErrText,
 		},
 		"architecture_budget_candidates_note": "PLAT-556 budget triggers, Go-precomputed like plan_drift_candidates. prompt_design_steps are over 3x the plan's median description (floor 12,000 chars), carry dated/incident text, share 300+ verbatim characters with another step, or lack ## Goal/Output/Done when; learning_settled_steps are learnings_access=read-write steps with 5+ successful runs on one description hash and no new learning in the latest detections. While this state (fingerprint) has not been reviewed, record_pulse_worklist makes architecture_review due with that focus (get_plan_prompt_health has per-step detail). Triggers, never gates: they block no run and no edit.",
-		"prompt_budget_metrics":      promptBudgetMetrics,
-		"prompt_budget_metrics_note": "PLAT-556 success metric, one row per Pulse pass, newest first: description size totals, steps over budget, dated text, duplicated text, missing layout, and cumulative Architecture runs and consolidations (kept, restored, validation before/after).",
-		"gate_mode":                      runMode,
-		"gate_mode_note":                 "The Gate-selected pass shape for the supplied pulse_run_id. Go records it but does not choose it; the following message sequence must follow it.",
+		"reference_map":                       referenceMap,
+		"reference_map_error":                 referenceMapErrText,
+		"reference_map_note":                  "PLAT-561, Go-precomputed on every read. Breaks are references that no longer resolve anywhere in the workflow (plan steps, step_config, evaluation plan, KB notes, soul.md, learnings guides): changes not carried through to dependents. They are evidence for plan_drift_review (and Engineer once roles merge): fix the dependents, or record why a reference is right. Info rows (outputs nothing reads, configs without a step) are not defects on their own. Truncated here to 40 rows; get_plan_prompt_health has the full list. Never a gate.",
+		"prompt_budget_metrics":               promptBudgetMetrics,
+		"prompt_budget_metrics_note":          "PLAT-556 success metric, one row per Pulse pass, newest first: description size totals, steps over budget, dated text, duplicated text, missing layout, and cumulative Architecture runs and consolidations (kept, restored, validation before/after).",
+		"gate_mode":                           runMode,
+		"gate_mode_note":                      "The Gate-selected pass shape for the supplied pulse_run_id. Go records it but does not choose it; the following message sequence must follow it.",
 	})
 	return string(payload), nil
 }

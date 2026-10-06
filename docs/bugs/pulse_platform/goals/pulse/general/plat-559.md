@@ -40,6 +40,10 @@ What is left for QA is the outside world changing (site changes, account restric
 
 ## Left
 
+- Edit-time dependency updates (change 1 above): the deterministic reference map is built in
+  [PLAT-561](../../plans-contracts/plat-561.md) (plan and file edits list dependents; prompt health and Pulse
+  carry open breaks). Left there: the AI pass for business-rule contradictions.
+
 ## Source
 
 Owner, 2026-10-06: "is the pulse design simplified", "i think every agent should be able to find and make fixes both", "anything else you think we should do to make this whole pulse thing better".

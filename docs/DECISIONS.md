@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Edits list their dependents; broken references are reported, never gated
+
+What: a deterministic reference map (steps, evals, KB notes, soul.md, guides, step_config) reports
+references that no longer resolve. Plan edits and Builder writes of notes, soul.md, the evaluation plan and
+learnings append the dependents and breaks of what changed; `get_plan_prompt_health` and Pulse state carry
+the open breaks. It blocks no edit and no run.
+Why: about a third of Upwork's Pulse issues were changes not carried through to dependents, which Plan Drift
+did not see. Ticket: [PLAT-561](bugs/pulse_platform/goals/plans-contracts/plat-561.md).
+
 ### 2026-10-06 — Every Pulse role finds and fixes; QA should find close to zero workflow bugs
 
 What: each Pulse role finds problems and fixes them in its own lane (failures; structure and quality;

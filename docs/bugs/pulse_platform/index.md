@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 2 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 166 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 167 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |
 | [PLAT-559](goals/pulse/general/plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-558](app/navigation/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-524](crew/browser/plat-524.md) | Account browser token and simultaneous Code/Crew connections | fixed on main | P2 | [crew/browser](crew/browser/index.md) |
 | [PLAT-523](browser/browser/plat-523.md) | Browser dead-session recovery can misclassify unrelated errors | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-522](browser/browser/plat-522.md) | Browser cleanup trusts persisted process IDs before signaling | open | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-521](browser/browser/plat-521.md) | Global browser capacity eviction stops unrelated sessions | open | P2 | [browser/browser](browser/browser/index.md) |

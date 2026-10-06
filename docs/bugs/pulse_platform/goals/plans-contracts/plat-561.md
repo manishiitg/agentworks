@@ -1,0 +1,89 @@
+[← goals / plans-contracts](index.md)
+
+# PLAT-561: Edit-time reference map: changes carried through to dependents
+
+| Field | Value |
+|---|---|
+| State | fixed on main |
+| Priority | P1 |
+| Product | goals |
+| Area | plans-contracts |
+| Summary | Deterministic reference map of steps, evals, notes, soul.md and guides; plan and file edits list dependents, prompt health and Pulse carry open breaks; reports only. |
+
+## What happened
+
+From [PLAT-559](../pulse/general/plat-559.md): about 32% of a 50-issue sample of Upwork's Pulse issues were
+changes not carried through to dependents: steps whose Inputs name removed producer steps, evals asserting
+moved paths, KB notes and guides teaching retired steps and files. Plan Drift misses these: description-only
+and non-plan edits do not flag it, and it checks only the changed step. Owner, 2026-10-06: "lets do it".
+
+## Fix
+
+A deterministic reference map, computed on read from the workflow on disk
+(`agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/reference_map.go`). It reads plan steps
+(ids, `context_output`, `context_dependencies`, the files their validation schemas declare, and the text of
+descriptions, items and routes), `step_config.json` (`additional_read_paths`, entries without a step), the
+evaluation plan (descriptions and `applies_to_routes`), KB notes, rules and context, `soul/soul.md`, and
+learnings `_global` guides and per-step SKILL.md files. Retired step ids are every id a plan changelog entry
+ever named that is no longer in the plan (parsed changelog files are cached by size and mtime).
+
+Checks (all deterministic):
+
+- **break**: a context dependency no step produces; one a step writes (validation_schema) but no
+  `context_output` lists, on a scripted/agent step (it resolves to the consumer's own folder; the
+  bid-verify "input file not found: job_brief.json" failure on Upwork was this); a step folder
+  (`$VAR_TARGET_RUN_PATH/<id>/`, `../<id>/<file>`) that is not in the plan; a retired step id named anywhere;
+  a workflow path (`code/`, `learnings/`, `knowledgebase/`, `soul/`, `db/`, `evaluation/`, `reports/`,
+  `variables/`) that does not exist; a bare file in `## Inputs`/`## Guides` (same section parser as
+  PLAT-556's referenced guides) that no step produces and no workflow file has; an eval's
+  `applies_to_routes` naming a missing routing step or route; a missing `additional_read_paths` entry.
+- **warn**: the unlisted dependency on a message_sequence step (it gets only the bare name); a file read
+  from a step folder that the step does not declare.
+- **info**: an output nothing reads; a step_config entry without a step.
+
+Where it reports (never a gate, never blocks an edit or a run):
+
+1. Plan edit responses (add/update/delete step, routes, `update_step_config`, `update_validation_schema`,
+   `change_step_type`, restore) append, when the edit changed plan.json or step_config.json, the
+   dependents of each edited step: consumers of its outputs (including outputs it had before the edit),
+   steps, evals, notes and guides naming it or its files, and open breaks involving it, plus workflow
+   totals. Wrapped once in the consolidated plan registrar, so Builder, Pulse and external clients get it.
+2. Builder writes with `diff_patch_workspace_file` to a KB note, soul.md, the evaluation plan or a learnings
+   markdown file inside the workflow append the breaks that file now carries
+   (`agent_go/cmd/server/reference_map_notes.go`). Native CLI edits and shell writes are not hooked; they
+   surface through 3.
+3. `get_plan_prompt_health` returns the full `reference_map`; `get_pulse_state(view=module)` carries
+   `reference_map` (counts plus the first 40 rows) with a note, and plan-drift-review.md tells Drift to treat
+   breaks naming a due step as dependents to fix or file.
+
+Evidence, a copy of the live Upwork workflow (2026-10-06, read-only source, copy in the session scratchpad):
+75 breaks, 7 warnings, 5 info, built in 100-180 ms. Real ones include: eval-bid reads
+`$VAR_TARGET_RUN_PATH/bid-approve/approval.json` (no such step); eval-bid, eval-search and eval-improve name
+retired steps (bid-read-and-draft, search-semantic-score, improve-report); scripted bid-record,
+bid-record-skip and bid-record-no-bid depend on `selected_job.json`, `draft.json`, `job_brief.json` and
+`verify.json`, which bid-pick-job and bid-submit write but do not list in `context_output`; 11 steps'
+`additional_read_paths` name `db/assets/market-study-access-restriction.json`, which does not exist;
+KB notes (flow-bidding, upwork-positioning, job-scoring-criteria) and seven `_global` references
+(selectors, behavioral-quirks, proposal-form, ...) still teach retired steps; flow-bidding.md names
+`db/proposals.json` and `db/connects_ledger.json` from before the database. On the Upwork plan at git
+6b06a5e (2026-08-08) the map reports search-save-jobs naming the removed search-semantic-score and
+search-detail-fetch, the known QA issue. A simulated rename of search-find-and-shortlist's `context_output`
+through the real update executor appended its five consumers, both evals, seven notes/guides and the new
+breaks to the edit response; a rejected delete appended nothing.
+
+Judgment calls: retired ids come from the changelog, not git or revisions (cheap, and every plan-mod is
+logged); notes named like a change log or history are not checked for retired step ids (they name old steps
+on purpose) but are checked for paths; a path without a file extension or trailing slash is treated as prose
+("soul/plan"); `../<x>/` counts as a step folder only with a file after it; DB tables named in descriptions
+are left to Plan Drift's existing `db_readme_contract` check rather than duplicated; Brain (`brain:`) notes
+are not checked here; no due rule was added: breaks are evidence for Drift, and code due rules come with
+PLAT-559's migration. One test (`reference_map_test.go`) pins the core cases.
+
+## Left
+
+- **AI pass (next):** business-rule contradictions need judgment: a KB note's rate ($50/hr) against soul.md
+  ($25-35), guidance teaching retired behaviour in prose, evals asserting old values or lengths. A short
+  model pass over the map's dependents of a change, reporting only.
+- Make plan_drift_review due on new breaks once PLAT-559's code due rules land.
+- Native CLI file edits and shell writes in Builder are not hooked (they show in prompt health and Pulse).
+- Not deployed.

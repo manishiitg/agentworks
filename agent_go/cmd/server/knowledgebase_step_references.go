@@ -27,7 +27,7 @@ func knowledgebaseReadReferencedNote(ctx context.Context, workspacePath, notePat
 	}
 	project, err := knowledgeProjectLoad(ctx, claims.UserID, workspacePath, false)
 	if err != nil {
-		return "", fmt.Errorf("project Brain access is unavailable: %v", err)
+		return "", fmt.Errorf("project Brain access is unavailable: %w", err)
 	}
 	mode := project.BrainMode()
 	policy := &knowledgebase.BindingPolicy{Audience: project.Audience}
