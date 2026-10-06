@@ -78,3 +78,24 @@ func TestOldUnreadableInputFlagsPlanDriftOnce(t *testing.T) {
 		t.Fatalf("an old unreadable input must make Plan Drift due for its step, got %#v", items)
 	}
 }
+
+// A flag file written under older rules is re-evaluated once even when the
+// workflow's files did not change, or a new rule never reaches it.
+func TestFlagRulesChangeReevaluatesUnchangedWorkflow(t *testing.T) {
+	plan := `{"steps":[
+	 {"type":"message_sequence","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
+	 {"type":"message_sequence","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
+	planDriftCandidateWorkspace(t, "Workflow/strict-version", plan, reviewedStepConfig)
+	root := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Workflow", "strict-version")
+	old := `{"fingerprint":"` + referenceMapFingerprint(root) + `","baseline_breaks":[]}`
+	if err := os.WriteFile(filepath.Join(root, PlanningFolderName, referenceMapFlagsFile), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	items, err := CollectPlanDriftDueItems("Workflow/strict-version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].StepID != "step-b" {
+		t.Fatalf("an older flag file must be re-evaluated under the current rules, got %#v", items)
+	}
+}

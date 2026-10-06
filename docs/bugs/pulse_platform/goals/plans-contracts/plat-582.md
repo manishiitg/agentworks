@@ -29,3 +29,10 @@ still only flag when new, so notes that mention history cannot keep Drift due fo
 
 - Prove it live: after a restart, the Upwork Pulse card should show Plan Drift due for `toptal-submit`; Run Drift
   check, and Drift (not a person) should add `toptal_selected.json` to `toptal-scan-draft`'s `context_output`.
+
+## Follow-up: unchanged workflows were never re-evaluated (2026-10-06)
+
+The first live check showed nothing on the Pulse card: the flag sync only recomputes when the workflow's files change,
+so on an unchanged workflow the new rule never ran. The flag file now carries a rules version
+(`referenceMapFlagsVersion`); an older file is re-evaluated once. One test pins it. On a copy of Upwork's current files
+and flag file the due list is exactly `toptal-submit` (`toptal_selected.json`).

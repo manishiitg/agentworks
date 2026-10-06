@@ -30,12 +30,19 @@ import (
 
 const referenceMapFlagsFile = "reference_map_flags.json"
 
+// referenceMapFlagsVersion changes whenever the flagging rules change, so a
+// workflow whose files did not change is still re-evaluated once under the new
+// rules (PLAT-582 added old unreadable inputs; without this they were never seen
+// on an unchanged workflow).
+const referenceMapFlagsVersion = 2
+
 type referenceMapFlag struct {
 	FlaggedAt string   `json:"flagged_at"`
 	Reasons   []string `json:"reasons"`
 }
 
 type referenceMapFlagState struct {
+	Version     int      `json:"version,omitempty"`
 	Fingerprint string   `json:"fingerprint"`
 	Baseline    []string `json:"baseline_breaks"`
 	// StrictFlagged holds the unreadable-input problems (GraphPreflight kinds)
@@ -62,7 +69,7 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 	if raw, err := os.ReadFile(statePath); err == nil && json.Unmarshal(raw, &state) == nil {
 		initialized = true
 	}
-	if fp := referenceMapFingerprint(root); fp != "" && (!initialized || fp != state.Fingerprint) {
+	if fp := referenceMapFingerprint(root); fp != "" && (!initialized || fp != state.Fingerprint || state.Version != referenceMapFlagsVersion) {
 		report, err := BuildReferenceMap(root)
 		if err != nil {
 			return nil
@@ -107,6 +114,7 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 		sort.Strings(current)
 		state.Baseline = current
 		state.Fingerprint = fp
+		state.Version = referenceMapFlagsVersion
 		saveReferenceMapFlags(statePath, state)
 	}
 
