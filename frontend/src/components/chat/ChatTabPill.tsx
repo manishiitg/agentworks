@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { MessageSquare, Pencil, X } from 'lucide-react'
-import type { ChatTab } from '../../stores/useChatStore'
+import { Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import { useChatStore, type ChatTab } from '../../stores/useChatStore'
+import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 
 export interface ChatTabPillProps {
-  tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'>
+  tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
   isActive: boolean
   canClose: boolean
   isBlank: boolean
@@ -20,8 +21,13 @@ export interface ChatTabPillProps {
 }
 
 const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
-const TAB_STATUS_DOT: Record<'busy' | 'completed' | 'ready', { cls: string; label: string }> = {
-  busy: { cls: 'bg-[hsl(var(--info))] animate-pulse', label: 'Busy' },
+// The state reads at a glance on a tab you are not looking at (owner 2026-10-06):
+// a spinner while working, amber when it waits for you, green when it finished
+// since you last looked, grey when idle.
+type TabStatus = 'waiting' | 'busy' | 'completed' | 'ready'
+const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
+  waiting: { cls: 'bg-[hsl(var(--warning))] animate-pulse', label: 'Needs your input' },
+  busy: { cls: 'bg-[hsl(var(--info))]', label: 'Working' },
   completed: { cls: 'bg-[hsl(var(--success))]', label: 'Completed — open to mark as seen' },
   ready: { cls: 'bg-muted-foreground/60', label: 'Ready' },
 }
@@ -32,9 +38,16 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false,
 }) => {
   const displayName = displayNameOverride ?? tab.name
-  const rawStatus: 'busy' | 'completed' | 'ready' = tab.isStreaming || tab.hasRunningBgAgents
-    ? 'busy'
-    : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
+  // The same signal as the activity monitor and the chat's own footer.
+  const needsInput = useChatStore(state => {
+    if (!tab.sessionId) return false
+    return runtimeNeedsUserInput(state.activeSessionsCache.find(session => session.session_id === tab.sessionId))
+  })
+  const rawStatus: TabStatus = needsInput
+    ? 'waiting'
+    : tab.isStreaming || tab.hasRunningBgAgents
+      ? 'busy'
+      : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
   const [status, setStatus] = useState(rawStatus)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(tab.name)
@@ -86,7 +99,9 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       }`}
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
-      {!isBlank && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} />}
+      {!isBlank && (status === 'busy'
+        ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img" />
+        : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       {isRenaming ? (
         <input
           ref={renameInputRef}

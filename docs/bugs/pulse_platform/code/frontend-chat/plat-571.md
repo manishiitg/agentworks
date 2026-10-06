@@ -99,4 +99,10 @@ tab-helper and quick-switcher tests pass.
   ⌥⇧T opens one (`workChatTabShortcut`, physical keys, so ⌥ works on a Mac). Active only while Code is on screen
   and never for a key Code's terminal already took. Shown for both systems in the start-card hint, the New tab
   tooltip and the shortcuts panel's new Code section. Pinned in `workChatTabSelection.test.ts`.
+- Owner: show on the tab whether a chat is working or idle, mainly for tabs not in focus. The shared `ChatTabPill`
+  (Code, Crew, workflows, Vault) shows a spinner while working, an amber pulsing dot when the session waits for the
+  user (`runtimeNeedsUserInput` from the active-sessions list, the same signal as the activity monitor and the chat
+  footer), green when finished since last seen, grey when idle. Hidden tabs keep updating: a running tab stays
+  subscribed. Test in `AgentWorksChatTabItem.test.tsx`. Unrelated, already failing on main: four workflow tests
+  (`WorkflowResponsiveLayout`, `WorkspacePanelGuideButton` x2, `workspaceToolbarPlacement`) expect older source text.
 
