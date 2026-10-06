@@ -96,6 +96,8 @@ export function KnowledgebaseSurface() {
       const state = await knowledgebaseApi.bootstrap(controller.signal)
       if (cancelled) return
       setBootstrap(state)
+      // Readers get Brain's files only: no chat (writers and Owners only, owner 2026-10-06).
+      if (state.can_write === false) return
       useModeStore.getState().setModeCategory('multi-agent')
       useAppStore.getState().setAgentMode('multi-agent')
       await waitForChatStoreHydration()
@@ -163,7 +165,9 @@ export function KnowledgebaseSurface() {
       </Suspense>
       <div className={showProviders || showSchedules || adminPage ? 'hidden' : 'flex h-full min-h-0 flex-col'}>
         <KnowledgebaseAccessConfirmation proposals={proposals} error={approvalError} busy={approving} onConfirm={confirmAccess} />
-        {error ? <div className="grid h-full place-items-center p-6"><div className="max-w-md text-center"><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-md border border-border px-4 py-2 text-sm">Retry</button></div></div> : !bootstrap ? <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening Brain…</div> : <div className="min-h-0 flex-1"><ProductWorkspaceShell
+        {!error && bootstrap?.can_write === false ? <div className="flex h-full min-h-0 flex-col" data-testid="knowledgebase-reader">
+          <KnowledgebaseWorkspacePane view="library" folder={folder} onFolder={setFolder} revision={revision} />
+        </div> : error ? <div className="grid h-full place-items-center p-6"><div className="max-w-md text-center"><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-md border border-border px-4 py-2 text-sm">Retry</button></div></div> : !bootstrap ? <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening Brain…</div> : <div className="min-h-0 flex-1"><ProductWorkspaceShell
           splitRef={containerRef} chatOpen={collapsed !== 'chat'} panelOpen={collapsed !== 'workspace'} splitRatio={ratio} mobilePane={mobilePane}
           onOpenChat={() => setCollapsed(null)} onOpenWorkspace={() => setCollapsed(null)}
           chatProps={{ 'aria-label': 'Access management chat' }} workspaceProps={{ 'aria-label': 'Brain workspace' }}

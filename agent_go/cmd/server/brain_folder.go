@@ -159,3 +159,20 @@ func syncBrainAfterFileTools(executors map[string]func(context.Context, map[stri
 		}
 	}
 }
+
+// brainChatAllowed reports whether this person may use the Brain chat: writers and Owners only; Readers use Brain's
+// files in the Brain tab (owner, 2026-10-06: "only brain writers and owners", "no chat, just files").
+func brainChatAllowed(r *http.Request) bool {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.UserID == "" {
+		return false
+	}
+	service, err := knowledgebaseService()
+	if err != nil {
+		return false
+	}
+	if err := knowledgebaseSyncIdentities(r.Context(), service); err != nil {
+		return false
+	}
+	return service.CanWriteSomewhere(knowledgebasePrincipal(r, claims))
+}

@@ -94,3 +94,13 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 // CanEditWholeBrain reports whether p is Owner of Brain's root: only they get Brain's raw folder, since a shell there
 // bypasses every folder role.
 func (s *Service) CanEditWholeBrain(p Principal) bool { return s.effectiveRaw(p, "") >= roleOwner }
+
+// CanWriteSomewhere reports whether p is Editor or Owner of at least one folder (administrators always are). Only
+// writers and Owners get the Brain chat and its folder; Readers see Brain's files in the Brain tab (owner, 2026-10-06).
+func (s *Service) CanWriteSomewhere(p Principal) bool {
+	if p.IsAdmin {
+		return true
+	}
+	var one int
+	return s.db.QueryRow(`SELECT 1 FROM grants WHERE identity_id=? AND role>=? LIMIT 1`, p.IdentityID, roleEditor).Scan(&one) == nil
+}

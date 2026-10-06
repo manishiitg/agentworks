@@ -21,3 +21,20 @@ func TestAdminInAudienceDoesNotNarrowProjectBrain(t *testing.T) {
 		t.Fatalf("an admin's project must read a folder the admin can read: %v", err)
 	}
 }
+
+// Only writers and Owners get the Brain chat; a Reader sees Brain's files only (owner, 2026-10-06).
+func TestOnlyWritersAndOwnersCanWriteSomewhere(t *testing.T) {
+	s, admin, priya := fixture(t, false)
+	folder(t, s, admin, "", "Company")
+	if !s.CanWriteSomewhere(admin) {
+		t.Fatal("an administrator can always write")
+	}
+	grant(t, s, admin, priya.IdentityID, "Company", "Reader", "reader")
+	if s.CanWriteSomewhere(priya) {
+		t.Fatal("a Reader must not get the Brain chat")
+	}
+	grant(t, s, admin, priya.IdentityID, "Company", "Editor", "editor")
+	if !s.CanWriteSomewhere(priya) {
+		t.Fatal("an Editor of one folder gets the Brain chat")
+	}
+}

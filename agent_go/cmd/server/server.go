@@ -6263,6 +6263,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					brainGrant := ""
 					var brainEnv map[string]string
 					if strings.EqualFold(resolvedProfile.Definition.ID, knowledgebaseproduct.ProfileID) {
+						if !brainChatAllowed(r) {
+							sendError("The Brain chat is for people who can edit Brain. You can read your folders in the Brain tab.", true)
+							return
+						}
 						if env, ok := brainShellGrant(r); ok {
 							brainGrant, brainEnv = brainFolderName+"/", env
 							guardWrite = append(guardWrite, brainGrant)

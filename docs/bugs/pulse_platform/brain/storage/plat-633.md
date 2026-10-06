@@ -41,3 +41,9 @@ Owner, 2026-10-06: "agent should get raw access to file system and it should use
 Deployed 8ae73b047: notes moved into `/data/video-studio/docs/Brain` (13 files, 0700; old folder kept as `live.moved-…`). Two problems in the owner's first Brain chat turn:
 - The shell ran as the owner's slot account (`slotctl: could not start … permission denied`): slot accounts cannot enter the app-only `Brain/`. Fixed: a command working in `Brain/` whose folder guard grants `Brain/` runs as the service account, still confined by Landlock (`isBrainFolderCommand`, test `TestOnlyGrantedBrainFolderCommandsRunAsTheService`).
 - `git init` failed in the server with no message. The error now includes git's exec error, and Brain sets up the repository at service start and logs `[BRAIN] Git folder ready|not ready`.
+
+## Readers see files only (2026-10-06)
+
+Owner: Brain's folder and chat are for "only brain writers and owners"; Readers get "no chat, just files". `bootstrap` reports `can_write` (Editor or Owner of any folder; administrators always); the server refuses Brain chat turns from anyone else; the Brain tab shows a Reader only the Files view (their folders, parents as path only), with no chat and no Access/Models/Secrets views. Test `TestOnlyWritersAndOwnersCanWriteSomewhere`. Not deployed.
+
+Next (agreed): a dedicated `brain` slot account owns `Brain/` (shared group with the service account) and runs Brain-folder commands; writers get the shell limited to their Editor/Owner folders; git for writers and Owners of the whole Brain.

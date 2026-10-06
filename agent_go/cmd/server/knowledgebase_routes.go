@@ -293,7 +293,7 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 			knowledgebaseHTTPError(w, err)
 			return
 		}
-		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "backup_configured": backupConfigured})
+		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "can_write": service.CanWriteSomewhere(knowledgebasePrincipal(r, claims)), "backup_configured": backupConfigured})
 		return
 	case "folders":
 		tool = "list_knowledgebase_folders"
