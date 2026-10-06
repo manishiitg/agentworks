@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-598](plat-598.md) | Integrations always opens its overview instead of restoring the last section | fixed on main | P2 |
 | [PLAT-590](plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 |
 | [PLAT-563](plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 |
 | [PLAT-558](plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 |

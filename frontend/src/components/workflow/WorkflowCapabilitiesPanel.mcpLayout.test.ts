@@ -74,7 +74,6 @@ describe('Workflow MCP panel layout', () => {
   it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills and Google apps', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
-    expect(panel).toContain("relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp'")
     // The section list (Tools & secrets, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
     const sections = readFileSync('src/components/integrations/integrationSections.ts', 'utf8')
     expect(panel).toContain('const MCP_TABS = PROJECT_INTEGRATION_SECTIONS')

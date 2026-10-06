@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Integrations always starts at its section overview
+
+Code, Crew, workflow and Relay Integrations open their overview on each entry and
+workspace change. Stop restoring the top-level last visited section so all available
+integration categories remain discoverable. Nested tab preferences remain unchanged.
+Ticket: [PLAT-598](bugs/pulse_platform/app/navigation/plat-598.md).
+
 ### 2026-10-06 — Folder deletion removes the workspace atomically before sandbox cleanup
 
 Rename a deleted folder into a fresh service-owned 0700 directory outside the

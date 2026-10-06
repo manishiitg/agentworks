@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-595](plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | fixed on main | P2 |
+| [PLAT-595](plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | deployed | P2 |

@@ -119,9 +119,9 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
   const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS
-  const [tab, setTab] = usePersistentTab<McpTab>(relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp', 'apps', mcpTabs.map(option => option.value))
+  const [tab, setTab] = useState<McpTab>('apps')
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
-  const [integrationMenu, setIntegrationMenu] = useState(false)
+  const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))

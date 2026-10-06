@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | code |
 | Area | terminal |
@@ -36,4 +36,10 @@ Windows/Linux native keyboard testing was not available locally.
 
 ## Left
 
-Deploy to Excellence and confirm the owner's reported terminal on that server.
+Confirm the owner's reported terminal interactively on Excellence; native Windows/Linux keyboard testing was not available locally.
+
+## Deployment evidence — 2026-10-06
+
+Excellence release `agents-2a169cf4-20261006121601` contains builder revision
+`2a169cf4b3`. Frontend build/catalog/bundle checks, public health checks, and
+the full slot self-test passed (156 passed, zero failed, 16 skipped).

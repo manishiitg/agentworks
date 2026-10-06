@@ -1,6 +1,5 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useRef, useState } from 'react'
-import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Server } from 'lucide-react'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
@@ -109,11 +108,11 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const visibleTabs = INTEGRATION_TABS.filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
-  const [tab, setTab] = usePersistentTab<WorkIntegrationTab>('agentworks.tab.crew-integrations', 'apps', INTEGRATION_TABS.map(option => option.value))
+  const [tab, setTab] = useState<WorkIntegrationTab>('apps')
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
-  const [integrationMenu, setIntegrationMenu] = useState(false)
+  const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
   const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value

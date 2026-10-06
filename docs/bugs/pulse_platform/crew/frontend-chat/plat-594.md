@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | crew |
 | Area | frontend-chat |
@@ -41,5 +41,11 @@ TypeScript compilation passes.
 
 ## Left
 
-Deploy the UI change to Excellence. Yami's missing setup decisions, access, and
+Yami's missing setup decisions, access, and
 first-result checks still require owner/agent verification.
+
+## Deployment evidence — 2026-10-06
+
+Excellence release `agents-2a169cf4-20261006121601` contains builder revision
+`2a169cf4b3`. Frontend build/catalog/bundle checks, public health checks, and
+the full slot self-test passed (156 passed, zero failed, 16 skipped).
