@@ -7,6 +7,7 @@
 | [evaluation](evaluation/index.md) | 16 | 2 |
 | [human-decisions](human-decisions/index.md) | 15 | 2 |
 | [learnings](learnings/index.md) | 16 | 3 |
+| [models](models/index.md) | 1 | 0 |
 | [plans-contracts](plans-contracts/index.md) | 24 | 4 |
 | [pulse](pulse/index.md) | 52 | 14 |
 | [steps](steps/index.md) | 53 | 12 |

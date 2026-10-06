@@ -44,14 +44,15 @@ const manifest = (): ProviderManifestEntry => ({
   model_selection_mode: 'fixed_tier', auth_description: '', runtime_command: 'claude', runtime_available: true,
   auth_configured: true, usable: true, requires_api_key: false, supports_dynamic_models: false, default_model_id: 'sonnet',
   default_tier_models: {
-    high: { provider: 'claude-code', model_id: 'opus' },
-    medium: { provider: 'claude-code', model_id: 'sonnet' },
-    low: { provider: 'claude-code', model_id: 'haiku' },
+    high: claude('opus', 'high'),
+    medium: claude('sonnet', 'medium'),
+    builder: claude('sonnet', 'medium'),
+    low: claude('haiku', 'low'),
   },
   models: [], capabilities: [],
 })
 
-const options: LLMOption[] = ['opus', 'sonnet', 'haiku'].flatMap(model => ['low', 'high'].map(effort => ({
+const options: LLMOption[] = ['opus', 'sonnet', 'haiku'].flatMap(model => ['low', 'medium', 'high'].map(effort => ({
   provider: 'claude-code', model, label: model.toUpperCase(), options: { reasoning_effort: effort }, section: 'published_model' as const,
 })))
 
@@ -112,6 +113,21 @@ describe('workflow role models', () => {
     } finally { await unmount() }
   })
 
+  it('shows the managed Builder effort beside chat and applies a new effort to all roles', async () => {
+    const { host, onChange, unmount } = await mount({ schema_version: 2, mode: 'provider_profile', provider: 'claude-code', connection_id: 'private-a' })
+    try {
+      expect(host.textContent).toContain('SONNET · Medium reasoning')
+      expect(host.querySelector('button[aria-label="Set reasoning effort to Medium"]')?.getAttribute('aria-pressed')).toBe('true')
+      expect(onChange).not.toHaveBeenCalled()
+      await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Set reasoning effort to High"]')!.click())
+      const next = onChange.mock.calls[0][0] as PresetLLMConfig
+      expect(next.mode).toBe('explicit')
+      for (const role of [next.builder_llm, next.pulse_llm, next.tiered_config?.tier_1, next.tiered_config?.tier_2, next.tiered_config?.tier_3]) {
+        expect(role).toMatchObject({ ...claude('sonnet', 'high'), connection_id: 'private-a' })
+      }
+    } finally { await unmount() }
+  })
+
   it('opens the per-role switch for differing roles and lists them compactly', async () => {
     const { host, onChange, unmount } = await mount(differing)
     try {
@@ -155,16 +171,16 @@ describe('workflow role models', () => {
     } finally { await unmount() }
   })
 
-  it('confirms inline before turning the switch off and applies the High reasoning setting to all roles', async () => {
+  it('confirms inline before turning the switch off and applies the Builder setting to all roles', async () => {
     const { host, onChange, unmount } = await mount(differing)
     try {
       await act(async () => switchEl(host).click())
       expect(onChange).not.toHaveBeenCalled()
-      expect(host.querySelector('[role="status"]')?.textContent).toContain('Every role will use Claude Code · OPUS · High')
+      expect(host.querySelector('[role="status"]')?.textContent).toContain('Every role will use Claude Code · SONNET · High')
       await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Use for all roles')!.click())
       const next = onChange.mock.calls[0][0] as PresetLLMConfig
-      expect(next.tiered_config?.tier_3).toMatchObject(claude('opus', 'high'))
-      expect(next.builder_llm).toMatchObject(claude('opus', 'high'))
+      expect(next.tiered_config?.tier_3).toMatchObject(claude('sonnet', 'high'))
+      expect(next.builder_llm).toMatchObject(claude('sonnet', 'high'))
     } finally { await unmount() }
   })
 

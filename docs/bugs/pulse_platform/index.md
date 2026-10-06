@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 176 | 37 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 177 | 37 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 22 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | fixed on main | P2 | [goals/models](goals/models/index.md) |
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-594](crew/frontend-chat/plat-594.md) | Show installed template setup progress and exclude optional checks from completion | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-593](goals/plans-contracts/plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-592](ops/ci/plat-592.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
-| [PLAT-591](crew/browser/plat-591.md) | Start browser fails for a Crew moved to the shared root | deployed | P2 | [crew/browser](crew/browser/index.md) |

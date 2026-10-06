@@ -2,12 +2,26 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
+
+// Canonical JSON treats nil/empty options alike and preserves all launch knobs.
+func workflowModelOptionsKey(options map[string]interface{}) string {
+	if len(options) == 0 {
+		options = map[string]interface{}{}
+	}
+	data, err := json.Marshal(options)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
 
 type workflowPolicyRefreshKey struct{}
 
@@ -16,35 +30,63 @@ type workflowPolicyRefreshKey struct{}
 // Do not publish the new key here: the reconnect path still needs the old key
 // to rebuild the definition and preserve the conversation with a handoff.
 func (api *StreamingAPI) workflowRetainedPolicyCompatible(ctx context.Context, session string, req QueryRequest) (bool, error) {
+	compatible, _, err := api.workflowRetainedCompatibility(ctx, session, req)
+	return compatible, err
+}
+
+// Runtime changes wait for the current turn; authority changes cannot retain
+// old permissions. Check authority first so runtime drift never masks it.
+func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, session string, req QueryRequest) (compatible, runtimeChanged bool, err error) {
 	if req.AgentProfileID != "" {
-		return api.agentProfileRetainedPolicyCompatible(ctx, session, req)
+		compatible, err := api.agentProfileRetainedPolicyCompatible(ctx, session, req)
+		return compatible, false, err
 	}
 	folder := req.SelectedFolder
+	active, _ := api.getActiveSession(session)
 	if !strings.HasPrefix(folder, "Workflow/") {
-		// Follow-ups often omit the folder and rely on session resumption.
-		// Resolve it from the session's last known workspace so a manifest
-		// provider change still trips the fingerprint compare below instead
-		// of silently reusing a stale retained runtime.
-		if active, ok := api.getActiveSession(session); ok && active != nil && strings.HasPrefix(active.WorkspacePath, "Workflow/") {
+		if active != nil && strings.HasPrefix(active.WorkspacePath, "Workflow/") {
 			folder = active.WorkspacePath
 		} else {
-			return true, nil
+			return true, false, nil
 		}
 	}
 	validated, err := api.revalidateExecutionPrincipal(ctx, req)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	access, err := api.conversationTargetAccess(validated, req)
 	if err != nil || access == WorkflowAccessNone {
 		if err == nil {
 			err = fmt.Errorf("workflow access denied")
 		}
-		return false, err
+		return false, false, err
 	}
 	manifest, found, err := ReadWorkflowManifest(validated, folder)
 	if err != nil {
-		return false, err
+		return false, false, err
+	}
+	workflowKind := ""
+	if found && manifest.Kind == "relay" {
+		workflowKind = "relay"
+	}
+	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind)
+	api.conversationMux.RLock()
+	previous, known := api.lastChatPolicyBySession[session]
+	api.conversationMux.RUnlock()
+	var runtime *ChatHistoryAgentRuntime
+	if known {
+		if previous != key {
+			return false, false, nil
+		}
+	} else {
+		var exists bool
+		runtime, exists, err = ReadChatHistoryRuntimeForSession(GetUserIDFromContext(validated), session, folder)
+		if err != nil {
+			return false, false, err
+		}
+		if !exists || runtime == nil || runtime.ChatPolicyKey != key {
+			return false, false, nil
+		}
 	}
 	if found && manifest.Capabilities.LLMConfig != nil {
 		selected, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
@@ -54,45 +96,30 @@ func (api *StreamingAPI) workflowRetainedPolicyCompatible(ctx context.Context, s
 			api.lastQueryMu.RUnlock()
 			if warm {
 				provider, model, connection := previousRequest.Provider, previousRequest.ModelID, previousRequest.ConnectionID
+				var previousOptions map[string]interface{}
 				if previousRequest.LLMConfig != nil {
 					connection = previousRequest.LLMConfig.Primary.ConnectionID
+					previousOptions = previousRequest.LLMConfig.Primary.Options
 				}
-				if provider != selected.Provider || model != selected.ModelID || connection != selected.ConnectionID {
-					return false, nil
+				if provider != selected.Provider || model != selected.ModelID || connection != selected.ConnectionID || workflowModelOptionsKey(previousOptions) != workflowModelOptionsKey(selected.Options) {
+					return false, true, nil
 				}
 			} else {
-				runtime, exists, readErr := ReadChatHistoryRuntimeForSession(GetUserIDFromContext(validated), session, folder)
-				if readErr != nil {
-					return false, readErr
+				if runtime == nil {
+					runtime, _, err = ReadChatHistoryRuntimeForSession(GetUserIDFromContext(validated), session, folder)
+					if err != nil {
+						return false, false, err
+					}
 				}
-				if !exists || runtime == nil || runtime.Provider != selected.Provider || runtime.ModelID != selected.ModelID {
-					return false, nil
-				}
-				// Cold restores cannot prove account identity from legacy snapshots.
-				if selected.ConnectionID != "" {
-					return false, nil
+				// Legacy snapshots cannot prove account/option identity. Rebuild
+				// once while preserving the native conversation.
+				if runtime == nil || runtime.Provider != selected.Provider || runtime.ModelID != selected.ModelID || selected.ConnectionID != "" || runtime.ModelOptionsKey == "" || runtime.ModelOptionsKey != workflowModelOptionsKey(selected.Options) {
+					return false, true, nil
 				}
 			}
 		}
 	}
-	active, _ := api.getActiveSession(session)
-	workflowKind := ""
-	if found && manifest.Kind == "relay" {
-		workflowKind = "relay"
-	}
-	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind)
-	api.conversationMux.RLock()
-	previous, known := api.lastChatPolicyBySession[session]
-	api.conversationMux.RUnlock()
-	if known {
-		return previous == key, nil
-	}
-	runtime, found, err := ReadChatHistoryRuntimeForSession(GetUserIDFromContext(validated), session, req.SelectedFolder)
-	if err != nil {
-		return false, err
-	}
-	// An unverified old native process must not retain stale permissions.
-	return found && runtime != nil && runtime.ChatPolicyKey == key, nil
+	return true, false, nil
 }
 
 // requestedProviderOf is the coding provider a request selects ("" when it names none).
@@ -200,15 +227,11 @@ func closeWorkflowPolicyCLI(session, provider, reason string) {
 
 // Synthetic notifications and explicit new turns must wait for their normal
 // lane; they cannot interrupt a foreground turn merely to try warm delivery.
-func (api *StreamingAPI) prepareWorkflowRetainedDelivery(ctx context.Context, session string, req QueryRequest, eligible bool) (bool, error) {
+func (api *StreamingAPI) prepareWorkflowRetainedDelivery(ctx context.Context, session string, req QueryRequest, eligible bool) (bool, bool, error) {
 	if !eligible || api.externalBuilderOwnsSession(session) {
-		return false, nil
+		return false, false, nil
 	}
-	compatible, err := api.workflowRetainedPolicyCompatible(ctx, session, req)
-	if err == nil && !compatible {
-		api.interruptWorkflowPolicySession(session, req.Provider)
-	}
-	return compatible, err
+	return api.workflowRetainedCompatibility(ctx, session, req)
 }
 
 // Live-input requests carry no fresh product configuration. Resolve it from

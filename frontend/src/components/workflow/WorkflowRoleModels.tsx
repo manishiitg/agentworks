@@ -49,7 +49,9 @@ export function WorkflowRoleModels({
   roles, values, defaults, pinned, readOnly, disabledTitle, available, renderPickers,
   onApplyAll, onUpdateRole, onResetRole, onUseDefaults, canUseDefaults,
 }: Props) {
-  const primaryKey = roles[0].key
+  // The single card represents the chat beside it, whose runtime is Builder.
+  const primaryRole = roles.find(role => role.key === 'builder_llm') ?? roles[0]
+  const primaryKey = primaryRole.key
   const primary = values[primaryKey]
   const differing = useMemo(() => pinned && roles.some(role => !sameConfig(values[role.key], primary)), [pinned, roles, values, primary])
   const [perRole, setPerRole] = useState(differing)
@@ -96,7 +98,7 @@ export function WorkflowRoleModels({
           {cardOpen && (
             <div className="space-y-2 border-t border-border px-4 py-3">
               {primary ? renderPickers(primary, onApplyAll) : <span className="text-xs text-muted-foreground">Select a provider first.</span>}
-              {!pinned && <p className="text-xs text-muted-foreground">Each role currently uses the provider's own default. Choosing here applies one model to every role.</p>}
+              {!pinned && <p className="text-xs text-muted-foreground">Showing the Builder chat default. Other roles use their provider defaults. Choosing here applies one model and effort to every role.</p>}
             </div>
           )}
         </section>
@@ -127,7 +129,7 @@ export function WorkflowRoleModels({
 
       {confirmingOff && (
         <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <span className="min-w-0 flex-1">Every role will use {summary} (the {roles[0].label} setting).</span>
+          <span className="min-w-0 flex-1">Every role will use {summary} (the {primaryRole.label} setting).</span>
           <Button type="button" size="xs" onClick={collapseToPrimary} disabled={readOnly}>Use for all roles</Button>
           <Button type="button" variant="outline" size="xs" onClick={() => setConfirmingOff(false)}>Keep separate</Button>
         </div>

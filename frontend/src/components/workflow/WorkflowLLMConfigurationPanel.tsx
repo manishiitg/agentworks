@@ -556,7 +556,7 @@ export default function WorkflowLLMConfigurationPanel({
 
   // The single Model card: one agent, model, effort and account for every role.
   const updateAllRoles = (next: AgentLLMConfig) => {
-    const primary = roleConfig(llmConfig, 'tier_1') ?? defaultForRole('tier_1')
+    const primary = roleConfig(llmConfig, 'builder_llm') ?? defaultForRole('builder_llm')
     const value: AgentLLMConfig = {
       ...next,
       connection_id: next.connection_id || (primary?.provider === next.provider ? primary?.connection_id : undefined),

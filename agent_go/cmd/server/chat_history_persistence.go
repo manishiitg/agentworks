@@ -57,7 +57,10 @@ type ChatHistorySession struct {
 // ChatHistoryAgentRuntime records enough information to reopen a previous chat
 // with its original runtime when that runtime supports native resume.
 type ChatHistoryAgentRuntime struct {
-	ChatPolicyKey string `json:"chat_policy_key,omitempty"`
+	// Fingerprint the options actually launched, so cold retained turns can
+	// detect effort changes without persisting arbitrary option values.
+	ModelOptionsKey string `json:"model_options_key,omitempty"`
+	ChatPolicyKey   string `json:"chat_policy_key,omitempty"`
 	// ChatPolicyRoleKey is the role part of ChatPolicyKey (mode, origin,
 	// capabilities) without definition/config drift. Only a role change may
 	// replace the native coding-agent session.

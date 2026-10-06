@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Workflow's single Model card represents Builder chat
+
+Show Builder's effective model and effort beside the chat, including managed
+provider defaults. Choosing there still applies the selection to all roles;
+collapsing per-role settings confirms Builder's value. Retained workflow turns
+compare the launched options as well as model/account, and queue runtime changes
+until the active turn finishes; changed authority still revokes immediately.
+Why: Timouthy's panel showed High execution effort while its Builder correctly
+launched with Medium. Ticket: [PLAT-631](bugs/pulse_platform/goals/models/plat-631.md).
+
 ### 2026-10-06 — Step descriptions use the standard layout (contract 1.0.46)
 
 Every plan step description must carry `## Goal`, `## Inputs`, `## Output` and `## Done when` (Rules and Guides

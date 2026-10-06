@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
 func TestWorkflowRetainedPolicyChecksCurrentPermissions(t *testing.T) {
@@ -88,7 +90,7 @@ func TestWorkflowExplicitNewTurnDoesNotInterruptForegroundForRetainedAdmission(t
 	canceled := false
 	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
 	for _, req := range []QueryRequest{{SelectedFolder: "Workflow/test", IsAutoNotification: true}, {SelectedFolder: "Workflow/test", DisableLiveInputDelivery: true}} {
-		compatible, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", req, false)
+		compatible, _, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", req, false)
 		if err != nil || compatible || canceled {
 			t.Fatal("explicit new turn attempted retained admission or canceled foreground", compatible, err, canceled)
 		}
@@ -151,8 +153,73 @@ func TestWorkflowBrowserFollowupCannotInterruptActiveExternalBuilder(t *testing.
 	canceled := false
 	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
 	api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{"chat": {id: "external-operation"}}
-	compatible, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
+	compatible, _, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
 	if err != nil || compatible || canceled {
 		t.Fatal("browser request could reconfigure MCP operation", compatible, err, canceled)
+	}
+}
+
+// An effort-only change must not send the next message to the old Medium CLI.
+// Drive the actual live-input HTTP handler through its rebuild/dispatch route.
+func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("LLM_CONFIG_LOCKED", "")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_edit":true}]}`)
+	ws, docs := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]},"capabilities":{"llm_config":{"mode":"explicit","builder_llm":{"provider":"claude-code","model_id":"claude-sonnet-5-5","options":{"reasoning_effort":"high"}}}}}`
+	query := QueryRequest{SelectedFolder: "Workflow/test", Provider: "claude-code", ModelID: "claude-sonnet-5-5", LLMConfig: &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "claude-sonnet-5-5", Options: map[string]interface{}{"reasoning_effort": "medium"}}}}
+	canceled := false
+	next := make(chan QueryRequest, 1)
+	api := &StreamingAPI{
+		internalChatSubmissionStore:   newTestChatSubmissionStore(),
+		conversationTurnQueueDraining: map[string]bool{"chat": true},
+		activeSessions:                map[string]*ActiveSessionInfo{"chat": {UserID: "owner", WorkspacePath: "Workflow/test"}},
+		lastQueryRequests:             map[string]QueryRequest{"chat": query},
+		lastChatPolicyBySession:       map[string]string{},
+		agentCancelFuncs:              map[string]context.CancelFunc{"chat": func() { canceled = true }},
+		internalQueryHandler: func(_ http.ResponseWriter, r *http.Request) {
+			var q QueryRequest
+			_ = json.NewDecoder(r.Body).Decode(&q)
+			next <- q
+		},
+	}
+	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", query, nil, false))
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	r := httptest.NewRequest(http.MethodPost, "/api/sessions/chat/live-input", strings.NewReader(`{"message":"continue"}`)).WithContext(ctx)
+	r = mux.SetURLVars(r, map[string]string{"session_id": "chat"})
+	w := httptest.NewRecorder()
+	api.handleLiveInputMessage(w, r)
+	if w.Code != http.StatusOK || canceled || !strings.Contains(w.Body.String(), "queued_for_turn") {
+		t.Fatalf("effort change must wait for current turn: status=%d canceled=%v body=%s", w.Code, canceled, w.Body.String())
+	}
+	// Use an idle receiver with no queued dispatch; the first API keeps its
+	// deliberately paused durable queue, proving the active turn was untouched.
+	api = &StreamingAPI{
+		internalChatSubmissionStore: newTestChatSubmissionStore(),
+		activeSessions:              api.activeSessions,
+		lastQueryRequests:           api.lastQueryRequests,
+		lastChatPolicyBySession:     api.lastChatPolicyBySession,
+		internalQueryHandler:        api.internalQueryHandler,
+	}
+	r = httptest.NewRequest(http.MethodPost, "/api/sessions/chat/live-input", strings.NewReader(`{"message":"continue when idle"}`)).WithContext(ctx)
+	r = mux.SetURLVars(r, map[string]string{"session_id": "chat"})
+	w = httptest.NewRecorder()
+	api.handleLiveInputMessage(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("idle refresh failed: %d %s", w.Code, w.Body.String())
+	}
+	select {
+	case q := <-next:
+		if !q.DisableLiveInputDelivery {
+			t.Fatal("continued on stale CLI")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no rebuilt turn dispatched")
+	}
+	query.LLMConfig.Primary.Options["reasoning_effort"] = "high"
+	api.lastQueryRequests["chat"] = query
+	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", query); err != nil || !compatible {
+		t.Fatalf("unchanged High effort should retain its CLI: compatible=%v err=%v", compatible, err)
 	}
 }

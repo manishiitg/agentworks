@@ -4141,10 +4141,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// so a stale target surfaces as "no live target" below and starts a
 	// normal new turn instead of hanging behind one.
 	retainedDeliveryEligible := preferRetainedDelivery && retainedProfileCompatible
-	retainedWorkflowCompatible, policyErr := api.prepareWorkflowRetainedDelivery(r.Context(), sessionID, req, retainedDeliveryEligible)
+	retainedWorkflowCompatible, runtimeChanged, policyErr := api.prepareWorkflowRetainedDelivery(r.Context(), sessionID, req, retainedDeliveryEligible)
 	if policyErr != nil {
 		http.Error(w, policyErr.Error(), http.StatusForbidden)
 		return
+	}
+	if retainedDeliveryEligible && !retainedWorkflowCompatible {
+		if runtimeChanged && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+			return
+		}
+		api.interruptWorkflowPolicySession(sessionID, req.Provider)
 	}
 	if retainedWorkflowCompatible {
 		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
@@ -4491,11 +4497,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 							// The manifest selects credentials as well as the model. Clear
 							// stale request account IDs when switching back to a server account.
 							req.ConnectionID = phaseLLM.ConnectionID
+							// Keep the retained-turn context equal to the actual launch,
+							// including effort; stale tab options must not describe it.
+							configCopy := orchestrator.LLMConfig{}
 							if req.LLMConfig != nil {
-								configCopy := *req.LLMConfig
-								configCopy.Primary.ConnectionID = phaseLLM.ConnectionID
-								req.LLMConfig = &configCopy
+								configCopy = *req.LLMConfig
 							}
+							configCopy.Primary.Provider = phaseLLM.Provider
+							configCopy.Primary.ModelID = phaseLLM.ModelID
+							configCopy.Primary.ConnectionID = phaseLLM.ConnectionID
+							configCopy.Primary.Options = maps.Clone(phaseLLM.Options)
+							req.LLMConfig = &configCopy
 							logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Using workshop LLM from manifest: %s/%s", finalProvider, finalModelID)
 						}
 					}
@@ -8624,6 +8636,7 @@ func (api *StreamingAPI) captureChatHistoryAgentRuntime(sessionID, provider, mod
 	}
 
 	if underlyingAgent != nil {
+		runtime.ModelOptionsKey = workflowModelOptionsKey(mcpagent.ReadAgentRuntimeInfo(underlyingAgent).LLMConfig.Options)
 		if handle := mcpagent.SnapshotAgentSession(underlyingAgent); handle != nil && !handle.Empty() {
 			runtime.AgentSessionHandle = handle
 			if handle.Provider.Provider != "" && runtime.Provider == "" {
@@ -10908,12 +10921,22 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		}
 	}
 	if policyKnown {
-		compatible, policyErr := api.workflowRetainedPolicyCompatible(r.Context(), sessionID, policyRequest)
+		compatible, runtimeChanged, policyErr := api.workflowRetainedCompatibility(r.Context(), sessionID, policyRequest)
 		if policyErr != nil {
 			http.Error(w, policyErr.Error(), http.StatusForbidden)
 			return
 		}
 		if !compatible {
+			if runtimeChanged {
+				queuedRequest := policyRequest
+				queuedRequest.Query = req.Message
+				queuedRequest.Message = ""
+				queuedRequest.TriggeredBy = "interactive"
+				queuedRequest.IsAutoNotification = false
+				if api.queueOccupiedConversationTurn(w, r, GetUserIDFromContext(r.Context()), sessionID, queuedRequest) {
+					return
+				}
+			}
 			api.interruptWorkflowPolicySession(sessionID, policyRequest.Provider)
 			r = r.WithContext(context.WithValue(r.Context(), workflowPolicyRefreshKey{}, true))
 			if api.startNextTurnFromLiveInput(w, r, sessionID, req.Message, nil) {
