@@ -17,6 +17,38 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Every Pulse role finds and fixes; QA should find close to zero workflow bugs
+
+What: each Pulse role finds problems and fixes them in its own lane (failures; structure and quality;
+goals), with a safety net instead of approval: the change is recorded in the changelog, text moves pass
+the no-loss check, one verification run, and an automatic restore if it fails. Only business rules and
+limits, goals, spending, external actions and deleting data wait for the owner. The target for QA
+(Technical) is close to zero workflow-caused bugs; what remains is the outside world changing.
+Why: on Upwork only about one in five Pulse issues was a bug in the plan as written; about a third were
+changes not carried through to dependent steps, evals and notes, a fifth were platform bugs, and the rest
+were notes or strategy filed as issues. Architecture's proposals never reached a workflow because finding
+and fixing were split.
+Being built: an edit-time reference map (every plan, KB, soul, eval and learnings change reports broken
+references and stale dependents to whoever made it) and a step test mode (external effects stubbed,
+fail closed) so a changed step is run once before the change counts as done. The structural part (three
+roles, code due rules instead of the gate turn, one work-item record) is a proposal awaiting the owner's
+decisions. Tickets: [PLAT-559](bugs/pulse_platform/goals/pulse/general/plat-559.md); design `design/pulse_simplified.md`.
+
+### 2026-10-06 — Stopping a run kills the coding CLI's whole process group
+
+What: a cancelled Codex, Claude or Cursor structured turn kills the CLI's process group, not only the
+process the platform started. Why: `codex` on PATH is an npm wrapper that starts the real binary as a
+child and cannot forward a hard kill; a stopped Upwork step kept driving the browser for 2.5 minutes and
+its call never returned. Agy (native binary) and Muse (exec launcher) need no change.
+Ticket: [PLAT-552](bugs/pulse_platform/schedules/stopping/plat-552.md).
+
+### 2026-10-06 — Compaction and live usage come from structured CLI data only
+
+What: the chat shows context compaction (start and end where the CLI records them; Codex and Agy end
+only; Cursor none) and a live context meter with a plan-limit warning at 90% (Codex, Claude), all from
+structured events or transcript records. Why: the owner's rule is no tmux pane scraping; the CLIs record
+these facts in their own structured data. Tickets: [PLAT-553](bugs/pulse_platform/chat/reliability/plat-553.md), [PLAT-554](bugs/pulse_platform/chat/reliability/plat-554.md).
+
 ### 2026-10-06 — Architecture may consolidate; Plan Drift may defer it at most twice
 - Architecture (focus prompt_design, learning_quality or knowledgebase_design) applies a pure text-moving
   consolidation itself when `check_plan_no_loss` passes and one run of the step passes validation; otherwise it restores
