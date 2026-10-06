@@ -15,6 +15,7 @@ func integrationDefinitions() []ToolDefinition {
 	defs = append(defs, ToolDefinition{Name: "kb_configure_backup", InputSchema: obj([]any{"remote_url", "username", "request_id"}, map[string]any{
 		"remote_url": map[string]any{"type": "string", "description": "Public HTTPS Git repository URL without embedded credentials. SSH requires deployment configuration."}, "branch": str(), "username": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
 		"pat":        map[string]any{"type": "string", "maxLength": 4096, "description": "Optional PAT for an HTTPS private repository. Stored encrypted by KB and never returned. Omit to retain it on reconfiguration; supply an empty string to remove it. In app chat enter it only in the secure setup field."},
+		"pat_secret": map[string]any{"type": "string", "maxLength": 128, "description": "Name of a platform secret that holds the PAT for an HTTPS private repository (for example BRAIN_GITHUB_PAT). The person adds the secret under Secrets first; the token never passes through chat. Empty removes the reference."},
 		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
 	}), Mutates: true})
 	for _, name := range []string{"kb_migration_preview", "kb_migration_import", "kb_migration_cutover", "kb_migration_rollback"} {

@@ -76,7 +76,7 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	return knowledgebase.Config{Root: root, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true"}, nil
+	return knowledgebase.Config{Root: root, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true", SecretResolver: knowledgebaseBackupSecret}, nil
 }
 
 func knowledgebaseService() (*knowledgebase.Service, error) {
@@ -86,7 +86,7 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 	}
 	knowledgebaseInstance.Lock()
 	defer knowledgebaseInstance.Unlock()
-	if knowledgebaseInstance.service == nil || knowledgebaseInstance.config != config {
+	if knowledgebaseInstance.service == nil || !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
 		if knowledgebaseInstance.service != nil {
 			_ = knowledgebaseInstance.service.Close()
 		}
@@ -353,4 +353,21 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 		return
 	}
 	knowledgebaseWriteJSON(w, map[string]any{"result": result})
+}
+
+// knowledgebaseBackupSecret reads a platform (global) secret for a backup destination that names one. Only the
+// administrator who sets backup up can name a secret, and only an unrestricted administrator can configure it.
+func knowledgebaseBackupSecret(name string) (string, bool) {
+	for _, secret := range getGlobalSecrets() {
+		if secret.Name == name {
+			return secret.Value, secret.Value != ""
+		}
+	}
+	return "", false
+}
+
+// sameKnowledgebaseConfig compares everything except the secret resolver (a function, always the same one).
+func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
+	return a.Root == b.Root && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
+		a.BackupBranch == b.BackupBranch && a.AllowPrivateBackup == b.AllowPrivateBackup && a.BackupEncryptionKey == b.BackupEncryptionKey
 }

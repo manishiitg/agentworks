@@ -16,6 +16,9 @@ type Config struct {
 	AllowPrivateBackup bool
 	// Host-derived AES key; never persisted in KB configuration or Git.
 	BackupEncryptionKey string `json:"-"`
+	// SecretResolver reads a platform (global) secret by name; backup credentials may reference one instead of
+	// holding a token of their own. Set by the server; nil means no secret can be referenced.
+	SecretResolver func(name string) (string, bool) `json:"-"`
 }
 
 type Cap struct {

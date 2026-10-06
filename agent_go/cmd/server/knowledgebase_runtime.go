@@ -64,9 +64,36 @@ func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.Tool
 	}
 	action, _ := args["action"].(string)
 	if knowledgebase.ToolActionMutates("manage_knowledgebase_access", action) {
+		if knowledgebaseChatActsDirectly(action, args) {
+			if pat, _ := args["pat"].(string); pat != "" {
+				return "", fmt.Errorf("a token must not be sent through chat: ask the person to add it under Secrets and pass its name as pat_secret")
+			}
+			if err := knowledgebase.ValidateToolArguments("manage_knowledgebase_access", args); err != nil {
+				return "", err
+			}
+			if claims := GetUserFromContext(ctx); claims == nil || claims.UserID != runtime.UserID || !knowledgeInteractiveAccess(claims) || !knowledgebaseProductAllowed(claims) {
+				return "", fmt.Errorf("interactive Brain access required")
+			}
+			return knowledgebaseExecute(ctx, runtime.UserID, true, "manage_knowledgebase_access", args)
+		}
 		return knowledgeProposeAccess(ctx, runtime.UserID, args)
 	}
 	return knowledgebaseExecute(ctx, runtime.UserID, true, "manage_knowledgebase_access", args)
+}
+
+// knowledgebaseChatActsDirectly says which Brain-chat changes run when the person asks for them, like any other
+// product's chat, instead of becoming a proposal they approve in a card (owner, 2026-10-06: the chat should be agentic).
+// The card stays for granting or revoking access and service accounts: note text is untrusted and must not be able to
+// widen access on its own. A Git token never passes through the chat: the person adds it under Secrets and backup
+// setup names that secret (pat_secret).
+func knowledgebaseChatActsDirectly(action string, args map[string]any) bool {
+	switch action {
+	case "bind_project", "unbind_project", "set_project_access":
+		return true
+	case "configure_backup":
+		return true
+	}
+	return false
 }
 
 // The Files AI actions use the existing product chat and a narrow Git tool.

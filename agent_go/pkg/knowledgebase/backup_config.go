@@ -16,7 +16,11 @@ type backupDestination struct {
 	Branch       string `json:"branch"`
 	Username     string `json:"username,omitempty"`
 	EncryptedPAT string `json:"encrypted_pat,omitempty"`
+	// PATSecret names a platform secret that holds the token; the token itself is never stored here.
+	PATSecret string `json:"pat_secret,omitempty"`
 }
+
+var backupSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 // Deployment configuration takes precedence. An app-configured destination is
 // private control state, separate from both live Markdown and the Git backup.
@@ -127,6 +131,25 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 	if pat != "" && !strings.HasPrefix(remote, "https://") {
 		return nil, nil, badArg("Use an HTTPS repository URL when supplying a PAT.")
 	}
+	patSecret, hasPATSecret := args["pat_secret"].(string)
+	patSecret = strings.TrimSpace(patSecret)
+	if patSecret != "" {
+		if !backupSecretName.MatchString(patSecret) {
+			return nil, nil, badArg("pat_secret must be the name of a platform secret, for example BRAIN_GITHUB_PAT.")
+		}
+		if pat != "" {
+			return nil, nil, badArg("Supply either pat or pat_secret, not both.")
+		}
+		if !strings.HasPrefix(remote, "https://") {
+			return nil, nil, badArg("Use an HTTPS repository URL when using a token secret.")
+		}
+		if s.cfg.SecretResolver == nil {
+			return nil, nil, badArg("Platform secrets are not available here; use a PAT instead.")
+		}
+		if _, found := s.cfg.SecretResolver(patSecret); !found {
+			return nil, nil, badArg("No platform secret named %s. Add it under Secrets first, then set up the backup again.", patSecret)
+		}
+	}
 	command := exec.CommandContext(ctx, "git", "check-ref-format", "refs/heads/"+branch)
 	command.Env = gitEnvironment()
 	if command.Run() != nil {
@@ -141,13 +164,14 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 		if current.Remote != remote || current.Branch != branch {
 			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "Backup is already configured; changing the destination requires operator reconciliation.")
 		}
-		if s.cfg.BackupRemote != "" && (hasPAT || current.Username != username) {
+		if s.cfg.BackupRemote != "" && (hasPAT || hasPATSecret || current.Username != username) {
 			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "Deployment-managed backup credentials must be configured by the operator.")
 		}
 		if !hasPAT && current.Username != "" && current.Username != username && current.EncryptedPAT != "" {
 			return nil, nil, badArg("Supply a PAT when changing its username, or an empty PAT to remove it.")
 		}
 		destination.EncryptedPAT = current.EncryptedPAT
+		destination.PATSecret = current.PATSecret
 	}
 	// Removing an environment remote must not allow replacing an old staging repo.
 	if current.Remote == "" {
@@ -155,8 +179,18 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 			return nil, nil, kbErr("BACKUP_REMOTE_CHANGED", "An existing backup requires operator reconciliation.")
 		}
 	}
+	if hasPATSecret {
+		// An empty name removes the reference; a name replaces any token this destination held itself.
+		destination.PATSecret = patSecret
+		if patSecret != "" {
+			destination.EncryptedPAT = ""
+		}
+	}
 	if hasPAT {
 		destination.EncryptedPAT = ""
+		if pat != "" {
+			destination.PATSecret = ""
+		}
 		if pat != "" {
 			destination.EncryptedPAT, err = s.encryptBackupPAT(destination, pat)
 			if err != nil {
@@ -164,5 +198,5 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 			}
 		}
 	}
-	return map[string]any{"configured": true, "remote_url": remote, "branch": branch, "username": username, "pat_configured": destination.EncryptedPAT != ""}, []fileChange{jsonChange(filepath.Join(s.private, "backup-destination.json"), destination)}, nil
+	return map[string]any{"configured": true, "remote_url": remote, "branch": branch, "username": username, "pat_configured": destination.EncryptedPAT != "" || destination.PATSecret != "", "pat_secret": destination.PATSecret}, []fileChange{jsonChange(filepath.Join(s.private, "backup-destination.json"), destination)}, nil
 }

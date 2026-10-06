@@ -60,7 +60,16 @@ func (s *Service) withBackupCredentials(ctx context.Context) (context.Context, e
 		return ctx, err
 	}
 	pat := ""
-	if d.EncryptedPAT != "" {
+	if d.PATSecret != "" {
+		value, found := "", false
+		if s.cfg.SecretResolver != nil {
+			value, found = s.cfg.SecretResolver(d.PATSecret)
+		}
+		if !found || value == "" {
+			return ctx, kbErr("BACKUP_SECRET_MISSING", "The backup token secret "+d.PATSecret+" is missing. Add it under Secrets, then retry.")
+		}
+		pat = value
+	} else if d.EncryptedPAT != "" {
 		pat, err = s.decryptBackupPAT(d)
 		if err != nil {
 			return ctx, err

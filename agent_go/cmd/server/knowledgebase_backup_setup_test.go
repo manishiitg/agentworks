@@ -5,106 +5,59 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-func TestKnowledgebaseBackupButtonFlowUsesFrozenAdminSetup(t *testing.T) {
+// Brain-chat backup setup runs when the person asks (no approval card), and a Git token never passes through the chat:
+// it is a platform secret the person adds under Secrets, and setup names it (owner, 2026-10-06).
+func TestKnowledgebaseChatBackupSetupIsDirectAndTokenIsASecret(t *testing.T) {
+	tokenTestSetup(t)
 	api, _ := knowledgebaseServerTest(t)
 	claims := &UserClaims{UserID: "admin", Username: "admin"}
 	ctx := context.WithValue(t.Context(), UserContextKey, claims)
-	bootstrap := func() bool {
+	configured := func() bool {
 		t.Helper()
-		r := httptest.NewRequest(http.MethodGet, "/api/knowledgebase/bootstrap", nil).WithContext(ctx)
 		w := httptest.NewRecorder()
-		api.handleKnowledgebaseViewer(w, r)
-		if w.Code != 200 {
-			t.Fatal(w.Code, w.Body)
-		}
+		api.handleKnowledgebaseViewer(w, httptest.NewRequest(http.MethodGet, "/api/knowledgebase/bootstrap", nil).WithContext(ctx))
 		var response struct {
 			Configured bool `json:"backup_configured"`
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-			t.Fatal(err)
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &response) != nil {
+			t.Fatal(w.Code, w.Body)
 		}
 		return response.Configured
 	}
-	if bootstrap() {
+	runtime := agentprofiles.ToolRuntimeContext{Product: "knowledgebase", UserID: "admin"}
+	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge.git", "branch": "main", "request_id": "direct-setup"}
+	if configured() {
 		t.Fatal("backup configured before setup")
 	}
-	args := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge.git", "branch": "main", "request_id": "setup"}
-	result, err := knowledgebaseAccessExecutor(ctx, agentprofiles.ToolRuntimeContext{Product: "knowledgebase", UserID: "admin"}, args)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := knowledgebaseAccessExecutor(ctx, runtime, args); err != nil || !configured() {
+		t.Fatalf("setup should run directly: %v configured=%v", err, configured())
 	}
-	var proposal struct {
-		ID string `json:"proposal_id"`
+	// A token pasted into chat is refused and never echoed.
+	const token = "chat-token-should-never-be-accepted"
+	if _, err := knowledgebaseAccessExecutor(ctx, runtime, map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge.git", "branch": "main", "request_id": "chat-pat", "pat": token}); err == nil || strings.Contains(err.Error(), token) {
+		t.Fatalf("a token sent through chat must be refused without echoing it: %v", err)
 	}
-	if json.Unmarshal([]byte(result), &proposal) != nil || proposal.ID == "" {
-		t.Fatal(result)
+	// Naming a secret that does not exist fails; naming one that does works and the token is never in the result.
+	named := map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/knowledge.git", "branch": "main", "request_id": "secret-setup", "pat_secret": "BRAIN_TEST_PAT"}
+	if _, err := knowledgebaseAccessExecutor(ctx, runtime, named); err == nil {
+		t.Fatal("a missing secret must be refused")
 	}
-	if bootstrap() {
-		t.Fatal("proposal applied before confirmation")
+	managedGlobalsMu.Lock()
+	if managedGlobals == nil {
+		managedGlobals = map[string]string{}
 	}
-	r := httptest.NewRequest(http.MethodPost, "/api/knowledgebase/access-proposals", strings.NewReader(`{"id":"`+proposal.ID+`","approve":true}`)).WithContext(ctx)
-	w := httptest.NewRecorder()
-	api.handleKnowledgebaseAccessProposals(w, r)
-	if w.Code != 200 || !bootstrap() {
-		t.Fatal("setup did not update bootstrap", w.Code, w.Body)
-	}
-}
-
-func TestKnowledgebaseBackupPATNeverAppearsInProposalResponses(t *testing.T) {
-	for _, source := range []string{"tool", "secure-field"} {
-		t.Run(source, func(t *testing.T) {
-			tokenTestSetup(t)
-			api, _ := knowledgebaseServerTest(t)
-			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
-			pat := "setup-test-only-secret"
-			args := map[string]any{"action": "configure_backup", "username": "kb-user", "remote_url": "https://github.com/org/knowledge.git", "request_id": "pat-setup"}
-			if source == "tool" {
-				args["pat"] = pat
-			}
-			result, err := knowledgebaseAccessExecutor(ctx, agentprofiles.ToolRuntimeContext{Product: "knowledgebase", UserID: "admin"}, args)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(result, pat) || strings.Contains(result, "encrypted_pat") {
-				t.Fatal("proposal response leaked PAT")
-			}
-			var proposal struct {
-				ID string `json:"proposal_id"`
-			}
-			if err := json.Unmarshal([]byte(result), &proposal); err != nil {
-				t.Fatal(err)
-			}
-			root := knowledgebaseIntegrationTestRoot(t)
-			raw, err := os.ReadFile(filepath.Join(root, "approval_"+proposal.ID+".json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(raw), pat) {
-				t.Fatal("proposal stored plaintext PAT")
-			}
-			w := httptest.NewRecorder()
-			api.handleKnowledgebaseAccessProposals(w, httptest.NewRequest(http.MethodGet, "/api/knowledgebase/access-proposals", nil).WithContext(ctx))
-			if w.Code != 200 || strings.Contains(w.Body.String(), pat) || strings.Contains(w.Body.String(), "encrypted_pat") {
-				t.Fatal("proposal list leaked PAT", w.Code)
-			}
-			body := map[string]any{"id": proposal.ID, "approve": true}
-			if source == "secure-field" {
-				body["pat"] = pat
-			}
-			encoded, _ := json.Marshal(body)
-			w = httptest.NewRecorder()
-			api.handleKnowledgebaseAccessProposals(w, httptest.NewRequest(http.MethodPost, "/api/knowledgebase/access-proposals", strings.NewReader(string(encoded))).WithContext(ctx))
-			if w.Code != 200 || strings.Contains(w.Body.String(), pat) || !strings.Contains(w.Body.String(), `"pat_configured":true`) {
-				t.Fatal("PAT setup failed or leaked", w.Code, w.Body)
-			}
-		})
+	managedGlobals["BRAIN_TEST_PAT"] = "secret-value-for-test"
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() { managedGlobalsMu.Lock(); delete(managedGlobals, "BRAIN_TEST_PAT"); managedGlobalsMu.Unlock() })
+	named["request_id"] = "secret-setup-2"
+	result, err := knowledgebaseAccessExecutor(ctx, runtime, named)
+	if err != nil || !strings.Contains(result, `"pat_secret":"BRAIN_TEST_PAT"`) || strings.Contains(result, "secret-value-for-test") {
+		t.Fatalf("secret setup failed or leaked: %v %s", err, result)
 	}
 }
