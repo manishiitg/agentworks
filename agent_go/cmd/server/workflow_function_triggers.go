@@ -423,13 +423,20 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		if run, lookupErr := s.existingWebhookRun(ctx, webhookDeliveryRunID(manifest.ID, sched.ID, deliveryID)); lookupErr == nil {
 			return sched.ID, internalTriggerDeliveryResult{RunID: run.RunID, DeliveryID: deliveryID, Duplicate: true, Status: string(run.State)}, nil
 		}
-		if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
-			return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Relay %q has no relay_output_step_id", manifest.Label)
+		if isPythonRelay(manifest) {
+			if err := validatePythonRelaySource(ctx, workspacePath); err != nil {
+				return sched.ID, internalTriggerDeliveryResult{}, err
+			}
+			payload["relay_runtime"] = "python"
+		} else {
+			if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
+				return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Relay %q has no relay_output_step_id", manifest.Label)
+			}
+			if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
+				return sched.ID, internalTriggerDeliveryResult{}, err
+			}
+			payload["relay_output_step_id"] = manifest.RelayOutputStepID
 		}
-		if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
-			return sched.ID, internalTriggerDeliveryResult{}, err
-		}
-		payload["relay_output_step_id"] = manifest.RelayOutputStepID
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

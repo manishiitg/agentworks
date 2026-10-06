@@ -1,94 +1,99 @@
-# Relay Builder
+---
+name: relay-builder
+description: Author, test and publish Python Relays with fresh platform agents, Python tools and authorized MCP calls.
+---
 
-Use the existing workflow plan tools to create and edit a Relay. Read the current `workflow.json` and `planning/plan.json` before changing an existing Relay. Keep `kind: relay` in the manifest, and set `relay_output_step_id` to the final authored agent.
+# Python Relay contract
 
-## Graph
+Read relay.py, workflow.json and variables/variables.json before editing. New Relays
+have kind: relay and relay_runtime: python. Keep source separate from workflow plans.
+The only entrypoint is async def run(INPUT, ctx). INPUT is the API caller's JSON object.
+Return a JSON serializable value (128 KiB limit); it becomes the final API response.
+The platform records relay_result.json and relay_trace.json under runs/iteration-N-hook.
 
-- `message_sequence` with `authored_prompt: true` is the agent node. Store the user's system prompt in `system_prompt` and ordered message templates in `items` as `user_message`. Select the execution model in the step's `execution_llm` configuration.
-- `regular` with `script_only: true` is the Python node. Save its `main.py` through the existing script path. For JSON handoff, set `context_output: result.json` and call the built-in `agentworks_output.set_output(value)` helper shown below. It persists structured data in the assigned output folder; the user need not manage files or install a package. Existing direct result.json writes under STEP_OUTPUT_DIR still work. Stdout is a log; context_output alone never collects it. Let serialization and write errors raise; a script failure stops the run.
-- `branch` is deterministic. Use `value_path` and `value_cases`; put model judgment in an earlier agent that returns JSON.
-- Give every nonterminal agent or script an explicit `next_step_id`. Every route must reach the designated output agent. Do not add loops, joins, orphan steps, human-input nodes, or nested route switches.
-
-## Inputs, outputs, and integrations
-
-Python structured output:
+## Authoring example
 
 ```python
-from agentworks_output import set_output
+import json
+from relay_sdk import tool
 
-# Perform the step's work, then publish JSON-compatible data.
-set_output({"text": extracted_text})
+@tool
+def lookup_customer(customer_id: str):
+    """Look up a customer in the explicitly configured external service."""
+    # Use the admitted secret and your API/database client here.
+    return {"id": customer_id, "tier": "standard"}
+
+async def run(INPUT, ctx):
+    extracted = await ctx.call_agent(
+        name="extract",
+        system_prompt="Extract invoice fields. Return JSON only.",
+        messages=["Invoice text: " + INPUT["text"], "Check the amounts and return the final JSON."],
+        model={"provider": "claude-code", "model_id": "sonnet"},
+        tools=[lookup_customer],
+        output_schema={"type": "object", "required": ["amount"],
+                       "properties": {"amount": {"type": "number"}}},
+    )
+    if extracted["amount"] > 1000:
+        extracted = await ctx.call_agent(
+            name="review",
+            system_prompt="Review the supplied invoice. Return JSON only.",
+            user_message=json.dumps(extracted),
+        )
+    return {"invoice": extracted}
 ```
 
-A later authored message uses `{{steps.extract_pdf_text.output.text}}`. The
-helper rejects values that cannot be represented as JSON (including NaN and
-Infinity), writes atomically, and propagates persistence errors. Multiple
-successful calls replace the value; the last call is the step's output. It is
-available through the shared sandboxed command runner in all products.
+The lookup_customer body above is an illustration, not a production implementation.
+Implement and test the requested service; do not leave placeholder responses in a Relay.
 
-- User messages and system prompts may reference `{{input}}` for the whole caller JSON object, `{{input.field}}` for a required field, and `{{steps.id.output.field}}` for an earlier output. `INPUT` is already the root object, so do not use `{{input.INPUT}}`. Missing paths fail the run. Each authored agent must produce valid JSON in `result.json`; the designated output agent's JSON is the API result.
-- Include required data explicitly in each user message. `context_dependencies` does not inject previous outputs into authored prompts. "Use the previous step output" alone supplies no data. Use a concrete template such as `Extract invoice fields. Source: {{input.filename}}. PDF text: {{steps.extract_pdf_text.output.text}}. Return only the JSON object.` Earlier scripts and agents must have saved result.json for these references. Inspect the rendered message and saved outputs during the sample run.
-- Preserve exact prompts provided by the user. When drafting prompts from requirements, define JSON fields, types and what missing values mean. Require a JSON-only final response: the runtime validates it and saves result.json automatically. An agent-created output file does not substitute for its final response. Commentary and code fences fail JSON validation.
-- Configure an existing function trigger with object `INPUT` for API calls. On a new Relay, declare `INPUT` in `variables/variables.json` with sample/default values in `variables[].value` before creating the trigger. Relays have no cron or calendar schedules. Inspect API runs with the existing execution tools.
-- Use Relay-selected MCP tools and per-step skills for execution. Google apps (Drive, Sheets, Calendar and Gmail) may be used through authorized connections with the required service grants; use `google_workspace_cli`. Plan creation does not need a Google connection. The platform `notify_user` tool is workflow-only and is unavailable to Relays. Do not configure Slack or WhatsApp connections, tools, chat routes or notifications.
-- Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
-- Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
+## Agent calls and tools
 
-## Agent tools: saved Python scripts
+- call_agent is keyword-only. system_prompt is text. Pass user_message or messages
+  (nonempty ordered text list), never both. Each call gets a new session. Messages inside
+  that call share context; separate calls do not. No resume_agent or checkpoint recovery.
+- model is provider:model_id or {provider, model_id, connection_id, options}; omitted
+  uses the configured Builder model. Use current supported provider/model names.
+- tools=[decorated_callable] executes that function in the live Relay Python process
+  when the model asks. Closures and async functions work. Return JSON serializable data.
+  Provide description/schema to @tool for complex inputs. Tool arguments are checked.
+- skills=["installed-name"] attaches explicitly named bundles from this Relay workspace.
+- mcp=[{"server":"exact connection","tools":["exact tool"]}] exposes selected tools
+  to the agent. Omit tools to select all tools on that explicitly named connection.
+  Resolve names/schemas using list_mcp_servers first. Live access/grants are rechecked.
+- await ctx.call_mcp(server="exact connection", tool="exact tool", arguments={...})
+  calls the shared platform MCP executor directly from Python with the run's authority.
+- ctx.vault("NAME") returns an admitted SECRET_NAME. Missing/deselected secrets fail.
+  Do not print or embed secrets in source, inputs, traces or returned JSON.
+- ctx.variables["NAME"] is a string from flat variables[].value. INPUT is per-call
+  data; Python does not use workflow group batching or template variables.
+- output_schema validates the final parsed JSON; invalid/missing JSON raises. There
+  are no automatic repair messages. Without it, JSON responses become Python values
+  and other responses stay text. Include JSON-only requirements in the authored prompts.
+- max_turns defaults to 20, range 1-100. Calls are serialized in MVP. Python can loop
+  and branch; no claim of parallel agents or crash resume.
 
-An agent that needs live data or an action during its turn (a customer lookup,
-a price check) gets a saved Python script it calls as a tool. Relays support
-only these script tools on agents; they do not support sub-agents. Prefer a
-script node in the graph when the work does not depend on the agent's
-reasoning.
+## Build, test and publish
 
-- Add the tool with `manage_step_route` on the agent: `route_id` and the
-  `sub_agent_step.id` are the same (`lookup-customer`), `type: regular`,
-  `script_only: true`, a clear `description` (the agent reads it to decide when
-  to call), and `script_parameters` (flat typed list) or
-  `script_parameters_schema` (one full JSON Schema), never both.
-- Write `code/lookup-customer/main.py` yourself. It reads its inputs from
-  `json.loads(os.environ["STEP_PARAMS_JSON"])` and returns its answer by writing
-  one JSON value to `os.path.join(os.environ["STEP_OUTPUT_DIR"], "route_result.json")`;
-  the agent receives exactly that JSON. A lookup that finds nothing returns e.g.
-  `{"found": false}` rather than failing.
-- A tool reaches the user's own systems with their client library and a secret
-  (for example a connection string in `SECRET_*`), or a file granted through
-  `additional_read_paths`.
-- The agent's authored system prompt is kept as written; the platform appends a
-  short list of its tools. Test the tool with `execute_step`, then the whole
-  Relay with `run_full_workflow`, and check the named tool call and its result.
-  A script is never rewritten at run time: a failing script fails the tool call
-  with its real error, which the agent sees. Publishing requires every tool's
-  saved `main.py`.
+Use workspace diff_patch/execute_shell_command to save source and helpers. Package
+installation uses the existing sandbox dependency mechanism; never install into a
+published snapshot. Preserve Python whitespace and literal escapes.
 
-## Validation boundaries
+Configure function triggers through manage_workflow_webhook with required object
+INPUT. Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
+Inspect get_relay_run(run_id="...") for completion/output/error and recorded calls.
+A failed run is terminal. Testing again creates a new invocation and may repeat effects;
+use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
+DB/KB/learnings closing turns, Pulse or migrations apply to Python Relays.
 
-- Relay agents accept authored `user_message` items only. Workflow
-  `prevalidation`, foreach, repair and scripted message items are unsupported.
-- Input/prior-output references must resolve before a turn starts. The final
-  response must parse as JSON before the runtime saves it and completes the
-  agent node. These checks do not enforce required fields or their types.
-- If the user requests more input or output checks, create an explicit Python
-  script node using the existing executor. Validate only the agreed contract
-  and raise on failure. Do not add a workflow prevalidation/repair loop or
-  promise that a successful JSON parse proves the data is correct.
+Use get_relay_releases and publish_relay when the user asks. Published source, helpers,
+skill files and configuration are immutable. Runtime secrets/connection permissions
+are resolved live. Public calls select a version or default to active; Builder tests
+always use draft. Report the actual returned version/hash, not an assumed deployment.
 
-## Custom chat commands
+Builder remains the shared scoped chat runtime with this product-owned prompt, skill
+and tool list. Vault/MCP tools retain their normal authorization. Brain is not an
+implicit Relay store or runtime; do not create workflow knowledgebase/database assets.
 
-Use `manage_custom_commands` when the user asks to create, edit or delete a
-saved chat command. Keep it in this Relay's workspace, set workflow mode for
-its command metadata, and use the user's instructions. Product commands are
-provided by product.yaml; do not replace them with goal or dashboard commands.
-
-## Published run boundaries
-
-- Anyone with visibility may execute a published Relay and poll their own API runs. Publishing and editing require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.
-- External products invoke published versions through API function triggers. Do not configure cron/calendar schedules or timed draft execution.
-- Scripts and agent tools must write generated files only into the assigned run folder. Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
-
-## Data handoff
-
-Use INPUT, variables and step outputs to pass data between steps. A user's own database or system is reached through a script tool or an MCP integration with attached secrets.
-
-Relays do not use variable groups. Configuration is flat (`variables[].value`); each call supplies its own INPUT and runs once. Do not call group tools or pass group_name/group_names. Node tests use a run_folder ID; use that same ID to debug/resume a saved node test. Preserve legacy values when consolidating an old draft; never edit frozen releases.
+MVP custom Python tools must not call `ctx.call_agent` or `ctx.call_mcp` inside
+the tool callback; nested calls fail immediately. Put those calls in `run`, or
+attach an MCP tool directly to the agent. Tools can call their authorized
+external services using ordinary Python clients.

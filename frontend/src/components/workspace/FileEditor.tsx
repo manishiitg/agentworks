@@ -93,9 +93,6 @@ export const FileEditor: React.FC<FileEditorProps> = ({
   }
 
   const language = getLanguage(filepath)
-  const displayValue = language === 'python'
-    ? formatPythonCode(value)
-    : value
 
   // Map theme to Monaco theme
   const getMonacoTheme = (theme: string): string => {
@@ -206,7 +203,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
       <Editor
         height={height}
         language={language}
-        value={displayValue}
+        value={value}
         theme={getMonacoTheme(theme)}
         onMount={handleEditorDidMount}
         options={{

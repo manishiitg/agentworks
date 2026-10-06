@@ -18,8 +18,8 @@ func externalRelayDefinitions(add func(string, string, bool, bool, map[string]an
 	id := map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
 	key := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
 	label := map[string]any{"type": "string", "minLength": 1, "maxLength": 80}
-	add("create_relay", "Create a Relay you own, with object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Build the draft graph with builder_chat; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "output_step_id": id, "function": id}, "label", "submission_id")
-	add("update_relay", "Rename a Relay or select its draft output agent. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
+	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Build the Python program with builder_chat; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
+	add("update_relay", "Rename a Relay. Python Relays return the value of run(INPUT, ctx); output_step_id applies only to older graph Relays. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
 	add("get_relay_releases", "Inspect a Relay's active and previous published versions.", false, true, nil)
 	add("publish_relay", "Publish the validated draft as an immutable Relay version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
 	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll get_relay_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
@@ -63,10 +63,6 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "invalid_arguments", "label cannot be blank")
 		return
 	}
-	output := externalArg(args, "output_step_id")
-	if output == "" {
-		output = "answer"
-	}
 	function := externalArg(args, "function")
 	if function == "" {
 		function = "process"
@@ -91,7 +87,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "storage_unavailable", err.Error())
 		return
 	}
-	fingerprint, _ := json.Marshal(map[string]string{"label": label, "output_step_id": output, "function": function})
+	fingerprint, _ := json.Marshal(map[string]string{"label": label, "function": function})
 	if _, err = store.db.ExecContext(r.Context(), `INSERT OR IGNORE INTO external_relay_creations(identity,payload) VALUES (?,?)`, identity, string(fingerprint)); err != nil {
 		externalError(w, 503, "storage_unavailable", err.Error())
 		return
@@ -121,9 +117,10 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	manifest = NewWorkflowManifest(label)
 	manifest.ID = workflowID
 	manifest.Kind = "relay"
+	manifest.RelayRuntime = "python"
 	manifest.CreatedBy = claims.UserID
 	manifest.Access = &WorkflowAccess{Owners: []string{claims.UserID}, Readers: []string{}}
-	manifest.RelayOutputStepID = output
+	manifest.RelayOutputStepID = ""
 	manifest.Capabilities.BrowserMode = "none"
 	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
 	manifest.Schedules = []WorkflowSchedule{{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(identity+"/function")).String(), Name: function, ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: function, Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
@@ -141,11 +138,15 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
+	if err = initializePythonRelayWorkspace(r.Context(), workspace); err != nil {
+		externalError(w, 503, "workspace_unavailable", err.Error())
+		return
+	}
 	if err = WriteWorkflowManifest(r.Context(), workspace, manifest); err != nil {
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
-	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder_chat to build the draft graph. Output agent ID: " + output + "; function: " + function + "."})
+	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder_chat to build relay.py. The returned value of run(INPUT, ctx) is the API result; function: " + function + "."})
 }
 
 func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, selected DiscoveredWorkflow) {
@@ -177,7 +178,12 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 			body["label"] = label
 		}
 		if output, ok := args["output_step_id"]; ok {
-			body["relay_output_step_id"] = output
+			if !isPythonRelay(selected.Manifest) {
+				body["relay_output_step_id"] = output
+			} else {
+				externalError(w, 400, "invalid_arguments", "Python Relays return run(INPUT, ctx); no output step can be selected")
+				return
+			}
 		}
 		externalRelayForwardJSON(w, forward, body, api.handleUpdateWorkflowManifest)
 	case "publish_relay":

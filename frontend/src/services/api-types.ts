@@ -3494,6 +3494,7 @@ export interface WorkflowManifest {
   schema_version: number
   id: string
   kind?: 'relay' | string
+  relay_runtime?: 'python' | string
   relay_output_step_id?: string
   version?: string
   label: string

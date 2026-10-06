@@ -65,6 +65,7 @@ const NO_DISABLED_PULSE_REVIEWERS: PulseReviewerModule[] = []
 const CostsPopup = lazy(() => import('../CostsPopup'))
 const ExecutionLogsPopup = lazy(() => import('../ExecutionLogsPopup'))
 const RelayExecutionLogsView = lazy(() => import('../RelayExecutionLogsView'))
+const RelayPythonView = lazy(() => import('../RelayPythonView'))
 const KnowledgeView = lazy(() => import('../KnowledgeView'))
 const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
@@ -306,6 +307,8 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   } = props
 
   const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const pythonRelay = useWorkflowManifestStore(state => relayMode && state.workflows.some(item => item.workspace_path === workspacePath && item.manifest.relay_runtime === 'python'))
+  const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const lastCanvasView = useWorkflowStore(state => state.lastCanvasView)
 
@@ -316,7 +319,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const kind: WorkspaceViewKind = embeddedPlanOnly ? 'canvas' : getWorkspaceView(effectiveView).kind
 
   // --- Toolbar data, loaded once for every view ---------------------------
-  const planData = usePlanData(workspacePath)
+  const planData = usePlanData(pythonRelay ? null : workspacePath)
   const { status } = useWorkflowExecution()
   const workspace = useWorkspaceState(workspacePath, selectedRunFolder)
   const plan = planData.plan
@@ -660,7 +663,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
             return
           }
           let content = response.data.content == null ? '' : String(response.data.content)
-          if (!response.data.is_image && !fullPath.toLowerCase().endsWith('.json')) {
+          if (!response.data.is_image && !/\.(json|py)$/i.test(fullPath)) {
             content = content.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
           }
           if (fullPath.toLowerCase().endsWith('.json')) {
@@ -720,12 +723,16 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     pulse,
   ])
 
-  const showToolbar = !hideToolbar && !(kind === 'canvas' && flowShell !== 'ready')
+  const showToolbar = !hideToolbar && (pythonRelay || !(kind === 'canvas' && flowShell !== 'ready'))
   const gridToolbar = sharedToolbar && showChatArea
   const isInspectorKind = kind === 'inspector' || kind === 'capability'
 
   let body: React.ReactNode
-  if (kind === 'canvas') {
+  if (kind === 'canvas' && pythonRelay) {
+    body = toolbarOnly ? null : <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Relay…</div>}>
+      <RelayPythonView workspacePath={workspacePath} relayID={relayID} onBuild={onCreatePlan || noop} />
+    </Suspense>
+  } else if (kind === 'canvas') {
     // The flow canvas handles `toolbarOnly` itself: its loading and error
     // screens still show in that mode, only the plan is skipped.
     body = (
@@ -773,6 +780,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           <div className={gridToolbar ? 'col-start-1 row-start-1 md:col-span-2' : ''}>
             <WorkflowToolbar
               relayMode={relayMode}
+              pythonRelay={pythonRelay}
               status={status}
               plan={plan || undefined}
               currentPhase={currentPhase}

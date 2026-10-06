@@ -84,7 +84,7 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 		t.Fatalf("retry: %+v", second)
 	}
 	manifest := first["manifest"].(map[string]any)
-	if manifest["kind"] != "relay" || manifest["relay_output_step_id"] != "answer" {
+	if manifest["kind"] != "relay" || manifest["relay_runtime"] != "python" || manifest["relay_output_step_id"] != nil {
 		t.Fatalf("manifest: %+v", manifest)
 	}
 	trigger, err := findWorkflowFunctionTriggerFromTest(t.Context(), id)

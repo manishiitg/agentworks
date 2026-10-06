@@ -188,11 +188,11 @@ func listRelayReleases(ctx context.Context, workspace string) ([]relayRelease, e
 }
 
 func relaySnapshotFile(relative string) bool {
-	if relative == "" || relative == "release.json" || relayRuntimeFile(relative) || strings.HasPrefix(relative, ".") {
+	if relative == "" || relative == "release.json" || strings.HasSuffix(relative, ".pyc") || relayRuntimeFile(relative) || strings.HasPrefix(relative, ".") {
 		return false
 	}
 	for _, part := range strings.Split(relative, "/") {
-		if strings.HasPrefix(part, ".") {
+		if strings.HasPrefix(part, ".") || part == "__pycache__" {
 			return false
 		}
 	}
@@ -200,7 +200,7 @@ func relaySnapshotFile(relative string) bool {
 }
 
 func relayRuntimeFile(relative string) bool {
-	if relative == "schedule-runs.json" {
+	if relative == "schedule-runs.json" || relative == ".webhook-sequence" {
 		return true
 	}
 	for _, prefix := range []string{"runs/", "relay_releases/", "chat/", "chats/", "chat_history/", "backup/", "publish/", "planning/revisions/", "planning/changelog/", "variables/changelog/", "knowledgebase/notes/", ".sandbox-cache/", "costs/", "db/", "config/", "webhooks/", "builder/", "session/", "sessions/", "logs/"} {
@@ -212,7 +212,7 @@ func relayRuntimeFile(relative string) bool {
 }
 
 // publishRelayRelease freezes a Relay in a nested workspace. The ordinary
-// executor then reads that workspace unchanged while the parent remains a draft.
+// runtime then reads that workspace unchanged while the parent remains a draft.
 func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, error) {
 	lockAny, _ := relayPublishLocks.LoadOrStore(workspace, &sync.Mutex{})
 	lock := lockAny.(*sync.Mutex)
@@ -237,12 +237,19 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	if err := json.Unmarshal([]byte(variableRaw), &variables); err != nil {
 		return nil, fmt.Errorf("invalid Relay configuration: %w", err)
 	}
-	plan, err := readPlanFromWorkspace(ctx, workspace)
-	if err != nil {
-		return nil, fmt.Errorf("read Relay graph: %w", err)
-	}
-	if err := stepworkflow.ValidateRelayPlanStructure(plan, manifest.RelayOutputStepID); err != nil {
-		return nil, err
+	var plan *stepworkflow.PlanningResponse
+	if isPythonRelay(manifest) {
+		if err := validatePythonRelaySource(ctx, workspace); err != nil {
+			return nil, err
+		}
+	} else {
+		plan, err = readPlanFromWorkspace(ctx, workspace)
+		if err != nil {
+			return nil, fmt.Errorf("read Relay graph: %w", err)
+		}
+		if err := stepworkflow.ValidateRelayPlanStructure(plan, manifest.RelayOutputStepID); err != nil {
+			return nil, err
+		}
 	}
 	functions := make([]string, 0)
 	for _, sched := range manifest.Schedules {
@@ -300,7 +307,11 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 		}
 		content[relative] = raw
 	}
-	for _, required := range []string{"workflow.json", "planning/plan.json", "variables/variables.json"} {
+	requiredFiles := []string{"workflow.json", "variables/variables.json", "planning/plan.json"}
+	if isPythonRelay(manifest) {
+		requiredFiles[2] = "relay.py"
+	}
+	for _, required := range requiredFiles {
 		if _, ok := content[required]; !ok {
 			return nil, fmt.Errorf("Relay needs %s before publishing", required)
 		}
@@ -308,14 +319,16 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	// Script nodes and the scripts agents call as tools (scripted routes,
 	// PLAT-441) both run saved code; a release must carry it.
 	var scripts []*stepworkflow.RegularPlanStep
-	for _, step := range plan.Steps {
-		if script, ok := step.(*stepworkflow.RegularPlanStep); ok && script.ScriptOnly {
-			scripts = append(scripts, script)
-		}
-		if agent, ok := step.(*stepworkflow.MessageSequencePlanStep); ok {
-			for _, route := range agent.PredefinedRoutes {
-				if script, ok := route.SubAgentStep.(*stepworkflow.RegularPlanStep); ok {
-					scripts = append(scripts, script)
+	if plan != nil {
+		for _, step := range plan.Steps {
+			if script, ok := step.(*stepworkflow.RegularPlanStep); ok && script.ScriptOnly {
+				scripts = append(scripts, script)
+			}
+			if agent, ok := step.(*stepworkflow.MessageSequencePlanStep); ok {
+				for _, route := range agent.PredefinedRoutes {
+					if script, ok := route.SubAgentStep.(*stepworkflow.RegularPlanStep); ok {
+						scripts = append(scripts, script)
+					}
 				}
 			}
 		}
@@ -389,8 +402,14 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	if err := writeFileToWorkspace(ctx, path.Join(destination, "release.json"), string(encoded)); err != nil {
 		return nil, err
 	}
-	if err := validateRelayOutputStep(ctx, destination, release.OutputStep); err != nil {
-		return nil, fmt.Errorf("verify published graph: %w", err)
+	if isPythonRelay(manifest) {
+		if err := validatePythonRelaySource(ctx, destination); err != nil {
+			return nil, fmt.Errorf("verify published program: %w", err)
+		}
+	} else {
+		if err := validateRelayOutputStep(ctx, destination, release.OutputStep); err != nil {
+			return nil, fmt.Errorf("verify published graph: %w", err)
+		}
 	}
 	if err := verifyRelayRelease(ctx, release, destination); err != nil {
 		return nil, err
@@ -426,7 +445,7 @@ func (api *StreamingAPI) registerRelayReleaseTools(registrar interface {
 	}, "relay_release_tools"); err != nil {
 		return err
 	}
-	return registrar.RegisterCustomTool("publish_relay", "Publish the current validated Relay graph and executable files as a new immutable API version. Returns the active version and content hash. Builder tests still use the draft; API calls use published versions.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	return registrar.RegisterCustomTool("publish_relay", "Publish the current validated Relay program and executable files as a new immutable API version. Returns the active version and content hash. Builder tests still use the draft; API calls use published versions.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 		if err != nil || !found || manifest.Kind != "relay" || workflowAccessForManifest(&UserClaims{UserID: userID}, manifest) != WorkflowAccessOwner && workflowAccessForManifest(&UserClaims{UserID: userID}, manifest) != WorkflowAccessWrite {
 			return "Relay write access required", nil

@@ -577,7 +577,7 @@ func TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &profile); err != nil {
 		t.Fatal(err)
 	}
-	if profile.ID != "relays" || len(profile.Commands) != 6 {
+	if profile.ID != "relays" || len(profile.Commands) != 5 {
 		t.Fatalf("wrong catalog: %+v", profile.Commands)
 	}
 	for _, command := range profile.Commands {

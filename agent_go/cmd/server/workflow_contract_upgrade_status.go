@@ -46,6 +46,9 @@ func workflowContractUpgradeDetails(upgrade workflowVersionUpgrade) string {
 func workflowContractUpgradeLists(manifest *WorkflowManifest) (pending, applied []workflowContractUpgradeListItem) {
 	pending = make([]workflowContractUpgradeListItem, 0)
 	applied = make([]workflowContractUpgradeListItem, 0)
+	if isPythonRelay(manifest) {
+		return pending, applied
+	}
 	current := workflowContractVersionForUpgrade(manifest)
 	currentRank, known := workflowContractVersionRank(current)
 	if !known {

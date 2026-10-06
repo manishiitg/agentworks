@@ -107,7 +107,7 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   )
 })
 
-const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = false }) => (
+const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolean }> = ({ relayMode = false, pythonRelay = false }) => (
   <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
     <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -120,9 +120,9 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = f
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
         {relayMode ? <>
           <li>• Add agents with your own system prompts and message templates</li>
-          <li>• Connect them with scripts and define the final JSON output</li>
+          <li>• {pythonRelay ? 'Write Python logic to call agents and return JSON' : 'Connect them with scripts and define the final JSON output'}</li>
           <li>• Run a test with sample JSON and inspect the result and logs</li>
-          <li>• Set up API triggers or schedules</li>
+          <li>• Set up API triggers and publish a version</li>
         </> : <>
           <li>• Build or change the workflow and its plan</li>
           <li>• Create a schedule, webhook, bot, dashboard, or database</li>
@@ -2472,7 +2472,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   onNewChat={onNewChat}
                   hideHeader
                   compact
-                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}
+                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} pythonRelay={activeWorkflowManifest?.relay_runtime === 'python'} />}
                   // Writers only: a reader of a shared workflow has no Builder chat to replace. The previous
                   // conversation stays in Previous chats (each Builder session keeps its own transcript file).
                   showNewChatAction={activeWorkflowAccess !== 'read'}

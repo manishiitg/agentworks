@@ -12,7 +12,7 @@ func TestBuilderPromptLoadsProductManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"planning/plan.json", "authored_prompt", "script_only", "value_path"} {
+	for _, required := range []string{"relay.py", "ctx.call_agent", "system_prompt", "output_schema"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay product prompt is missing %q", required)
 		}
@@ -32,7 +32,7 @@ func TestBuilderPromptRendersRelayVariableExamples(t *testing.T) {
 	if err := tmpl.Execute(&rendered, nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, variable := range []string{"{{input}}", "{{input.field}}", "{{steps.id.output.field}}"} {
+	for _, variable := range []string{"ctx.call_agent", "ctx.variables", "ctx.vault(name)"} {
 		if !strings.Contains(rendered.String(), variable) {
 			t.Fatalf("rendered Relay prompt is missing %q", variable)
 		}
@@ -44,10 +44,10 @@ func TestBuilderSurfaceIsRelaySpecific(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) == 0 || !BuilderAllowsTool("add_step") || !BuilderAllowsTool("manage_workflow_webhook") || !BuilderAllowsTool("google_workspace_cli") || !BuilderAllowsTool("list_gmail_connections") {
-		t.Fatal("Relay Builder is missing graph or trigger tools")
+	if len(tools) == 0 || !BuilderAllowsTool("test_relay") || !BuilderAllowsTool("manage_workflow_webhook") || !BuilderAllowsTool("google_workspace_cli") || !BuilderAllowsTool("list_gmail_connections") {
+		t.Fatal("Relay Builder is missing Python or trigger tools")
 	}
-	for _, excluded := range []string{"slack", "send_slack_message", "create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user", "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs"} {
+	for _, excluded := range []string{"create_plan", "add_step", "execute_step", "run_full_workflow", "manage_step_route", "get_contract_upgrades", "slack", "send_slack_message", "create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user", "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs"} {
 		if BuilderAllowsTool(excluded) {
 			t.Errorf("Relay Builder admits %s", excluded)
 		}
@@ -56,8 +56,8 @@ func TestBuilderSurfaceIsRelaySpecific(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if skill.Name != "relay-builder" || !strings.Contains(skill.Content, "authored_prompt") {
-		t.Fatal("Relay Builder skill is missing its graph contract")
+	if skill.Name != "relay-builder" || !strings.Contains(skill.Content, "async def run(INPUT, ctx)") {
+		t.Fatal("Relay Builder skill is missing its Python contract")
 	}
 	if key, err := BuilderDefinitionKey(); err != nil || key == "" {
 		t.Fatalf("Relay Builder definition key: %q, %v", key, err)
@@ -79,7 +79,7 @@ func TestRelayCommandCatalog(t *testing.T) {
 		}
 		commands[command.Name] = command.Prompt
 	}
-	for _, name := range []string{"design-graph", "test", "publish", "versions", "setup-api"} {
+	for _, name := range []string{"build-relay", "test", "publish", "versions", "setup-api"} {
 		if commands[name] == "" {
 			t.Errorf("missing Relay command %s", name)
 		}

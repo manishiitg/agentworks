@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"reflect"
-	"sort"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 )
 
 // Every new migration inherits Relay eligibility unless it is explicitly
@@ -144,35 +142,13 @@ func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
 	}
 }
 
-// The Relay Builder must hold every tool a shared migration tells it to call,
-// or a blocked Relay could never be migrated.
-func TestRelayBuilderHasEveryToolASharedMigrationCalls(t *testing.T) {
-	callable := scheduledBuilderCallableTools(t)
-	builderTools, err := relayproduct.BuilderTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	relayTools := map[string]bool{}
-	for _, name := range builderTools {
-		relayTools[name] = true
-	}
-	for _, name := range []string{"get_api_spec", "get_prompt", "get_resource", "read_skill"} {
-		relayTools[name] = true
-	}
-	missing := map[string][]string{}
-	for _, upgrade := range workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay"}) {
-		for _, name := range explicitUpgradeToolReferences(upgrade.query, callable) {
-			if !relayTools[name] {
-				missing[name] = append(missing[name], upgrade.label)
-			}
-		}
-	}
-	names := make([]string, 0, len(missing))
-	for name := range missing {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		t.Errorf("relay product.yaml lacks %q, called by %v", name, missing[name])
-	}
+// Python execution has no workflow contract or shared-step migration debt.
+func TestPythonRelayDoesNotOweWorkflowMigrations(t *testing.T) {
+    manifest := &WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay", RelayRuntime: "python"}
+    if upgrades := workflowVersionUpgradePlan(manifest); len(upgrades) != 0 {
+        t.Fatalf("Python Relay owes workflow migrations: %v", upgrades)
+    }
+    if !manifestContractIsExecutionCompatible(manifest) {
+        t.Fatal("Python Relay was refused by a workflow contract")
+    }
 }

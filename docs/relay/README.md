@@ -1,7 +1,7 @@
 # Relays
 
-A Relay is a fixed chain of agents you run from anywhere: JSON in, agents and
-scripts do the work, JSON out. You describe what you want in a Builder chat,
+A Relay is a Python program you call from your product: JSON in, agents and
+Python do the work, JSON out. You describe what you want in a Builder chat,
 test the draft, then publish versioned releases (`v1`, `v2`, …) that stay
 stable while you keep editing.
 
@@ -26,23 +26,27 @@ and the API refuses with 409 — keys are promises, not suggestions.
 | Lives in | Your editable workspace | A frozen, checksummed snapshot |
 | Changes when | You edit in the Builder | Never — publish mints a new one |
 | Runs via | Builder tests | API calls (active, or a pinned older one) |
-| On failure | You see it in chat and fix it | Fails visibly with the step and reason |
+| On failure | You see it in chat and fix it | Fails visibly with the call and reason |
 
-Publishing requires a valid graph: a final output agent producing JSON, at
-least one enabled function with a required object `INPUT`, and saved code for
-every script step. Only owners and editors can publish. Users with Relay visibility can invoke permitted API functions.
+New Relays use `relay.py` with `async def run(INPUT, ctx)`. Publishing requires
+valid Python with that entrypoint and at least one enabled function accepting
+a required object `INPUT`. The returned value is the JSON result. Only owners and editors can publish. Users with Relay visibility can invoke permitted API functions.
 
 ## What's inside a Relay
 
 <div class="sec-lanes">
-<div class="sec-lane"><h4>Agents</h4>Authored prompts that read the caller's JSON (<code>{{input}}</code>), use tools and skills, and must return valid JSON.</div>
-<div class="sec-lane"><h4>Scripts</h4>Strict Python steps with saved code. A script failure stops the run — no retries, no repairs.</div>
-<div class="sec-lane"><h4>Branches</h4>Deterministic routes on JSON values. Every route must reach the output agent; no loops or joins.</div>
+<div class="sec-lane"><h4>Agents</h4>Fresh <code>ctx.call_agent</code> calls with your system/user prompts, ordered messages, explicitly selected tools, skills and MCP. Optional output schemas validate JSON.</div>
+<div class="sec-lane"><h4>Scripts</h4>Your Python functions implement custom tools, transformations and service calls. Errors stop the run unless your program handles them.</div>
+<div class="sec-lane"><h4>Branches</h4>Ordinary Python conditions, loops and chaining. Pass agent results directly as values and return the desired JSON.</div>
 </div>
 
 External products invoke Relays through authenticated API function triggers.
-Cron/calendar schedules, Slack, WhatsApp, bot chats, and Pulse are not supported.
-Authorized Google apps remain available to agents.
+Cron/calendar schedules, bot chats and Pulse are not supported. Python and
+explicitly selected MCP tools can use authorized Google, Slack or other APIs.
+The right pane shows Source and Calls. There is no agent resume or automatic
+recovery in this MVP. Selected Vault secrets and provider connections remain
+live; published Python source stays frozen. Existing graph Relays retain their
+legacy runtime. See [the Python contract](../design/python_relays.md).
 
 ## API reference
 

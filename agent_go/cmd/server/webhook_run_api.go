@@ -163,6 +163,7 @@ type webhookRunResult struct {
 	FinishedAt       *time.Time             `json:"finished_at,omitempty"`
 	Steps            []webhookStepOutput    `json:"steps"`
 	Result           json.RawMessage        `json:"result,omitempty"`
+	Trace            json.RawMessage        `json:"trace,omitempty"`
 	Truncated        bool                   `json:"truncated,omitempty"`
 }
 
@@ -407,10 +408,61 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 	return result, nil
 }
 
+// Read only regular files, and bound memory even if authored Python wrote an
+// unexpectedly large trace or output. os.Root keeps traversal in this run.
+func readBoundedRelayRunFile(root *os.Root, name string, limit int64) ([]byte, error) {
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, fmt.Errorf("Relay run file %s is not a regular file within its size limit", name)
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) > limit {
+		return nil, fmt.Errorf("Relay run file %s exceeds its size limit", name)
+	}
+	return content, nil
+}
+
 // applyRelayResult projects the selected step's JSON output onto the existing
 // trigger result. The underlying workflow run and its logs remain unchanged.
 func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, workspacePath string, run schedulerstate.Run) {
-	if manifest == nil || manifest.Kind != "relay" || result == nil || !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
+	if manifest == nil || manifest.Kind != "relay" || result == nil {
+		return
+	}
+	if isPythonRelay(manifest) {
+		root, err := openWebhookRunRoot(workspacePath, run)
+		if err != nil {
+			if result.Terminal && result.Error == "" && !workflowRunStatusFailed(result.Status) {
+				result.Error, result.Status = "Relay result unavailable", "failed"
+			}
+			return
+		}
+		defer root.Close()
+		if trace, err := readBoundedRelayRunFile(root, "relay_trace.json", 2*1024*1024); err == nil && len(trace) <= 2*1024*1024 && json.Valid(trace) {
+			result.Trace = json.RawMessage(trace)
+		}
+		if !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
+			return
+		}
+		encoded, err := readBoundedRelayRunFile(root, "relay_result.json", 128*1024)
+		if err != nil || len(encoded) > 128*1024 || !json.Valid(encoded) {
+			result.Error, result.Status = "Relay completed without a valid JSON return value (maximum 128 KiB)", "failed"
+			return
+		}
+		result.Result = json.RawMessage(encoded)
+		return
+	}
+	if !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
 		return
 	}
 	outputStepID := strings.TrimSpace(manifest.RelayOutputStepID)

@@ -16,7 +16,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 175 | 37 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
-| [Relays](relays/index.md) | 20 | 4 |
+| [Relays](relays/index.md) | 21 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-611](relays/execution/plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-608](app/tools/plat-608.md) | product.yaml is the only tool registry; Brain tools renamed to brain_* | in progress | P1 | [app/tools](app/tools/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-571](code/frontend-chat/plat-571.md) | Code side-chat tabs | fixed on main | P1 | [code/frontend-chat](code/frontend-chat/index.md) |

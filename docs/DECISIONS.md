@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — New Relays are Python programs with fresh core agent calls
+
+Use `relay.py` with `async def run(INPUT, ctx)` for new Relays. Python owns the
+chain; `ctx.call_agent` reuses the shared core agent, exact authored prompts,
+ordered messages, explicit tools/skills/MCP and live account admission. Keep
+shared API triggers, publishing, access, sandbox, costs and execution inspection.
+No agent resume/recovery or JSON-plan migration in this MVP. Existing graph
+Relays retain their legacy runtime. Why: API products need ordinary code flow
+without the larger workflow plan/Goals contract.
+Ticket: [PLAT-611](bugs/pulse_platform/relays/execution/plat-611.md).
+
+
+
 ### 2026-10-06 — Brain tools are named brain_*; product.yaml is the tool registry
 The six Brain tools are `brain_browse`, `brain_read`, `brain_update`, `brain_backup`, `brain_skills` and
 `brain_access` (were `*_knowledgebase`, `knowledgebase_skills`, `manage_knowledgebase_access`). The old names are

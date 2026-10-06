@@ -47,7 +47,7 @@ export async function openWorkspaceFile(fullFilePath: string): Promise<void> {
     const raw = response.data.content ?? ''
     let content = typeof raw === 'string' ? raw : String(raw)
     // Images arrive as data URLs; everything else may carry escaped newlines.
-    if (!(response.data.is_image && content.startsWith('data:image/')) && content) {
+    if (!(response.data.is_image && content.startsWith('data:image/')) && content && !/\.py$/i.test(fullFilePath)) {
       // Detect JSON before unescaping: the \\n replacement corrupts JSON strings.
       const isJson = fullFilePath.toLowerCase().endsWith('.json') || isValidJSON(content)
       if (isJson) {

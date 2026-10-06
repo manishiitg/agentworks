@@ -35,6 +35,7 @@ type ScheduleContext struct {
 	WorkflowID    string
 	WorkflowLabel string
 	WorkflowKind  string
+	RelayRuntime  string
 	// RelayLegacyGroupName reads old release configuration without group execution.
 	RelayLegacyGroupName string
 	Schedule             WorkflowSchedule
@@ -589,6 +590,7 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		WorkflowID:    manifest.ID,
 		WorkflowLabel: manifest.Label,
 		WorkflowKind:  manifest.Kind,
+		RelayRuntime:  manifest.RelayRuntime,
 		Schedule:      sched,
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),

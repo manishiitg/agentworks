@@ -1,5 +1,10 @@
 # Relay Builder: graph, test, publish
 
+> Historical graph Relay documentation. New Relays use the [Python MVP](../design/python_relays.md)
+> (PLAT-611): Source/Calls, `test_relay`, fresh core agent calls and returned JSON.
+> The cases below describe the retained legacy graph runtime.
+
+
 ## User flow and current state
 
 The Relay Builder chat is the authoring surface. A user describes JSON input, agent prompts, Python scripts, decisions, and the desired JSON output. The Builder uses the shared plan and trigger tools to save `planning/plan.json`, step config, scripts, `variables/variables.json`, and `workflow.json`. The right Graph pane displays those saved nodes and edges. Shared `/api/live` plan notices refresh it while the chat is open.

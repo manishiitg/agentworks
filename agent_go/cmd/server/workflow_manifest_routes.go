@@ -85,7 +85,7 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 	currentVersion := workflowContractVersionForUpgrade(manifest)
 	pendingUpgrades := workflowVersionUpgradePlan(manifest)
 	pendingUpgradeItems, appliedUpgradeItems := workflowContractUpgradeLists(manifest)
-	upgradeRequired := !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1
+	upgradeRequired := !isPythonRelay(manifest) && (!manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1)
 	upgradeStatus := map[string]interface{}{
 		"required":         upgradeRequired,
 		"current_version":  currentVersion,
@@ -177,6 +177,9 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	// Build manifest
 	manifest := NewWorkflowManifest(req.Label)
 	manifest.Kind = strings.TrimSpace(req.Kind)
+	if manifest.Kind == "relay" {
+		manifest.RelayRuntime = "python"
+	}
 	manifest.Icon = strings.TrimSpace(req.Icon)
 	manifest.CreatedBy = GetUserIDFromContext(r.Context())
 	if manifest.CreatedBy != "" {
@@ -196,6 +199,13 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	if err := validateWorkflowSlackConnectionID(manifest.Capabilities.SlackConnectionID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if isPythonRelay(manifest) {
+		if err := initializePythonRelayWorkspace(r.Context(), req.WorkspacePath); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to initialize Relay: %v", err), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Write manifest
@@ -400,6 +410,10 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		manifest.Label = strings.TrimSpace(*req.Label)
 	}
 	if req.RelayOutputStepID != nil {
+		if isPythonRelay(manifest) && strings.TrimSpace(*req.RelayOutputStepID) != "" {
+			http.Error(w, "Python Relays return run(INPUT, ctx); no output step can be selected", http.StatusBadRequest)
+			return
+		}
 		manifest.RelayOutputStepID = strings.TrimSpace(*req.RelayOutputStepID)
 	}
 	if req.Icon != nil {

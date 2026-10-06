@@ -110,7 +110,7 @@ func capacityWaitOutlastsNextRun(wait *stepworkflow.WorkflowCapacityWait, nextRu
 // reused — iteration-0 is the live slot — so a record left by an earlier run in
 // the same folder would otherwise suspend a run that never hit a wall at all.
 func (s *SchedulerService) classifyCapacityWait(ctx context.Context, sctx *ScheduleContext, execErr error, runFolder string, runStartedAt time.Time) (*stepworkflow.WorkflowCapacityWait, bool) {
-	if execErr == nil || sctx == nil {
+	if execErr == nil || sctx == nil || sctx.RelayRuntime == "python" {
 		return nil, false
 	}
 	if !errors.Is(execErr, stepworkflow.ErrWorkflowWaitingForCapacity) {
@@ -450,7 +450,7 @@ const quotaExhaustedMarker = "[quota_exhausted]"
 // cache has nothing fresh the wait is recorded with no reset — honest, and it
 // waits for a person rather than waking on a guess.
 func (s *SchedulerService) turnLevelCapacityWait(ctx context.Context, sctx *ScheduleContext, execErr error, runFolder string, now time.Time) (*stepworkflow.WorkflowCapacityWait, bool) {
-	if execErr == nil || sctx == nil {
+	if execErr == nil || sctx == nil || sctx.RelayRuntime == "python" {
 		return nil, false
 	}
 	if !strings.Contains(execErr.Error(), quotaExhaustedMarker) {

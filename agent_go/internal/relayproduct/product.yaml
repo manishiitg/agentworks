@@ -5,10 +5,8 @@ dependencies: {}
 execution:
   platform_stores: false
 
-# Relay authoring reuses the workflow Builder runtime, graph canvas, triggers,
-# and executor. This manifest owns built-in chat prompts, skills, and tool
-# surfaces. An individual Relay's authored step prompts and selected runtime
-# integrations remain in its workflow.json and planning/plan.json.
+# Relay identity/configuration stays in workflow.json; relay.py owns execution.
+# This manifest owns Builder prompts, skills and tools.
 prompt:
   file: prompts/builder.md
   variables: {}
@@ -30,38 +28,14 @@ chat:
       - list_secrets
       - set_workflow_secret
       - delete_workflow_secret
-      - create_plan
-      - maintain_plan
-      - add_step
-      - update_step
-      - update_step_config
-      - delete_plan_steps
-      - change_step_type
-      - manage_step_route
-      - validate_plan_change
-      - execute_step
-      - query_step
-      - send_step_message
-      - stop_step
-      - stop_all_executions
-      - run_full_workflow
-      - list_executions
+      - test_relay
+      - get_relay_run
       - get_relay_releases
       - publish_relay
-      # Shared workflow contract migrations (PLAT-431): a Relay owes the
-      # runtime migrations (steps, scripts, code layout), never the goal-driven
-      # ones nor those for stores a Relay lacks (database, KB, learnings).
-      - get_contract_upgrades
-      - set_workflow_contract_version
-      - set_code_layout_version
-      - migrate_message_sequence_code_items
-      - migrate_orchestrator_step_type
-      - migrate_declared_execution_mode
-      - strip_declared_execution_mode
-      - get_step_prompts
       - manage_custom_commands
       - get_llm_config
       - manage_workflow_webhook
+      - call_mcp_tool
       - list_mcp_servers
       - search_mcp_catalog
       - add_mcp_server
@@ -91,17 +65,17 @@ profile:
   scope: global
   built_in: true
   commands:
-    - name: design-graph
-      description: Create or refine the agents, scripts and branches in this Relay
+    - name: build-relay
+      description: Create or refine this Relay Python program
       icon: git-branch
       prompt: |
-        Design or refine this Relay's graph using the relay-builder skill and registered plan tools. Read the current workflow.json and planning/plan.json first. Preserve user-authored prompts and per-step model choices. Define INPUT and the designated JSON output agent; validate the graph and describe saved changes. Ask for missing requirements before inventing behavior.
+        Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. Use async def run(INPUT, ctx), fresh ctx.call_agent calls, exact authored prompts, tools and explicit return JSON. Preserve user choices. Test with a supplied example before claiming it works.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output
       icon: check-circle
       prompt: |
-        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and flat configuration. Use the supplied sample input, or ask for required values; do not invent production inputs. Validate the graph, run_full_workflow with serialized variables.INPUT, wait for completion, then inspect the run and final result.json. Report the actual output or failed step and error. Do not publish.
+        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and flat configuration. Use the supplied sample input, or ask for required values; do not invent production inputs. Use test_relay with the sample INPUT object, then get_relay_run to inspect completion, relay_trace.json and returned JSON. Report the actual output or failing Python/agent call. Do not publish.
         {{context}}
     - name: publish
       description: Publish the draft as a versioned Relay API

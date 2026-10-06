@@ -15,6 +15,9 @@ import (
 type directWebhookExecutionKey struct{}
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
+	if isPythonRelay(manifest) {
+		return nil
+	}
 	if manifest == nil || !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
@@ -70,7 +73,14 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	if err := directWebhookPreflight(manifest); err != nil {
 		return "", "", err
 	}
-	if manifest.Kind == "relay" {
+	if isPythonRelay(manifest) {
+		if sctx.CapacityResumeRunID != "" {
+			return "", "", fmt.Errorf("Python Relays do not support execution recovery")
+		}
+		if err := validatePythonRelaySource(ctx, sctx.WorkspacePath); err != nil {
+			return "", "", err
+		}
+	} else if manifest.Kind == "relay" {
 		if err := validateRelayOutputStep(ctx, sctx.WorkspacePath, manifest.RelayOutputStepID); err != nil {
 			return "", "", err
 		}
@@ -93,6 +103,13 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 		state.LastSessionID = sessionID
 	})
 	if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, runFolder, sessionID); err != nil {
+		return sessionID, runFolder, err
+	}
+	if isPythonRelay(manifest) {
+		sctx.RelayRuntime = "python"
+		s.sessionLogf(sctx, sessionID, "[RELAY] Python execution (run=%s folder=%s)", runID, runFolder)
+		err := s.executePythonRelay(ctx, sctx, runID, runFolder, sessionID)
+		sctx.ProducedRunEvidence = true
 		return sessionID, runFolder, err
 	}
 	req := s.buildWorkshopRequest(ctx, sctx)

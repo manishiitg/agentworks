@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-611](plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 |
 | [PLAT-577](plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 |

@@ -133,6 +133,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
 				return fmt.Errorf("register Relay release tools: %w", err)
 			}
+			if err := api.registerPythonRelayBuilderTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
+				return fmt.Errorf("register Relay Python tools: %w", err)
+			}
 		}
 		if policy.allows("plan_authoring") {
 			if err := api.registerPlaybookSearchTool(definitionAgent, phaseWorkspacePath); err != nil {

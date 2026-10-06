@@ -95,6 +95,7 @@ const CAPABILITY_BUTTON_ATTRS: Partial<Record<WorkspaceViewId, { 'data-tour': st
 
 interface WorkflowToolbarProps {
   relayMode?: boolean
+  pythonRelay?: boolean
   status: WorkflowExecutionStatus
   plan?: PlanningResponse | null  // Plan data used by toolbar actions
   currentPhase?: string
@@ -121,6 +122,7 @@ interface WorkflowToolbarProps {
 
 export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   relayMode = false,
+  pythonRelay = false,
   status,
   workspacePath,
   presetQueryId,
@@ -402,7 +404,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               hideLabel
               hideToggleWhenOpen
               open
-              title={relayMode ? 'Relay views: Graph' : 'Views: Pulse, Needs you, Activity and Browser'}
+              title={relayMode ? `Relay views: ${pythonRelay ? 'Source and calls' : 'Graph'}` : 'Views: Pulse, Needs you, Activity and Browser'}
             >
               <div className="inline-flex items-center gap-0.5 px-0.5">
                 {!relayMode && <Tooltip>
@@ -445,7 +447,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                   }}
                 />}
                 {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? 'Graph' : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? (pythonRelay ? 'Relay' : 'Graph') : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
                 ))}
               </div>
             </WorkspaceToolbarGroup>

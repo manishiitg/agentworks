@@ -72,6 +72,9 @@ func manifestIsRelay(manifest *WorkflowManifest) bool {
 // Goals-only migration it skipped never blocks it. Callers still require
 // code_layout_version 1.
 func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
+	if isPythonRelay(manifest) {
+		return true
+	}
 	version := workflowContractVersionForUpgrade(manifest)
 	if workflowContractVersionIsExecutionCompatible(version) {
 		return true
@@ -450,6 +453,9 @@ func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
 // workflowVersionUpgradePlan is the ordered list of migrations a workflow owes.
 // A Relay owes only the shared ones (see goalsOnlyWorkflowUpgrades).
 func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
+	if isPythonRelay(manifest) {
+		return nil
+	}
 	plan := fullWorkflowVersionUpgradePlan(manifest)
 	if !manifestIsRelay(manifest) {
 		return plan

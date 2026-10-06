@@ -129,6 +129,7 @@ type WorkflowManifest struct {
 	// Kind distinguishes a Relay from a general workflow while reusing the
 	// same manifest, schedules, access rules, runner, and run history.
 	Kind                   string                                `json:"kind,omitempty"`
+	RelayRuntime           string                                `json:"relay_runtime,omitempty"`
 	RelayOutputStepID      string                                `json:"relay_output_step_id,omitempty"`
 	Version                string                                `json:"version,omitempty"`
 	ContractUpgradeHistory []WorkflowContractUpgradeHistoryEntry `json:"contract_upgrade_history,omitempty"`
@@ -1022,6 +1023,12 @@ func ValidateManifest(m *WorkflowManifest) error {
 	}
 	if m.Kind != "" && m.Kind != "relay" {
 		return fmt.Errorf("kind must be relay or omitted")
+	}
+	if m.RelayRuntime != "" && (m.Kind != "relay" || m.RelayRuntime != "python") {
+		return fmt.Errorf("relay_runtime must be python on a Relay")
+	}
+	if isPythonRelay(m) && m.RelayOutputStepID != "" {
+		return fmt.Errorf("Python Relays return run(INPUT, ctx); relay_output_step_id is not supported")
 	}
 	if m.Kind != "relay" && m.RelayOutputStepID != "" {
 		return fmt.Errorf("relay_output_step_id requires kind relay")

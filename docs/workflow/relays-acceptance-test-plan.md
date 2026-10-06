@@ -1,5 +1,10 @@
 # Relays acceptance test plan
 
+> Historical graph Relay documentation. New Relays use the [Python MVP](../design/python_relays.md)
+> (PLAT-611): Source/Calls, `test_relay`, fresh core agent calls and returned JSON.
+> The cases below describe the retained legacy graph runtime.
+
+
 Date: 2026-09-28. Run against the isolated `relays-preview` instance only: frontend `5181`, agent API `18841`, workspace API `18842`. Test Relays live in this instance's `Workflow/` directory. Do not use the separate AgentWorks instance.
 
 ## Pass criteria

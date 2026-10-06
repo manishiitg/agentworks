@@ -12,11 +12,11 @@ export function RelayIntro() {
       product="Relays"
       icon={<Workflow className="h-9 w-9 text-gray-600 dark:text-gray-200" />}
       title="Turn an idea into an API you can reuse"
-      description="Build a graph of agents, scripts and decisions in chat. Define its inputs and outputs, then call it from your website or product."
+      description="Build a Python program that calls agents and tools. Define its inputs and JSON response, then call it from your website or product."
       features={[
-        { title: 'Build in chat', description: 'Connect agents, Python scripts and branches. Set each agent’s prompts, tools and model, and view the graph beside chat.' },
-        { title: 'Test your draft', description: 'Run with sample inputs, inspect each step’s output and execution logs, and refine the graph in chat.' },
-        { title: 'Publish a version', description: 'Call a published version through the API while editing the next draft. Add triggers or schedules when needed.' },
+        { title: 'Build in chat', description: 'Write Python logic with agent calls, custom tools and branches. Set each agent’s prompts, skills, integrations and model.' },
+        { title: 'Test your draft', description: 'Run with sample JSON, inspect the source, recorded agent calls and returned result, and refine it in chat.' },
+        { title: 'Publish a version', description: 'Call a published version through API triggers while editing the next draft.' },
       ]}
       footer="Example: receive a support request → classify it → route it to an agent → return a JSON response."
       createTour="relay-create"
