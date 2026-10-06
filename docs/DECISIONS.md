@@ -17,6 +17,12 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Cmd/Ctrl+K is the only app-wide shortcut
+
+What: the Goals-era Ctrl/Cmd+1, 3, 6 and 7 are removed; Cmd/Ctrl+K opens the quick switcher everywhere, and the
+shortcuts panel (every product's account menu) lists it with the chat keys. Why: with many products those keys
+applied only to Goals and took the browser's tab keys. Ticket: [PLAT-617](bugs/pulse_platform/app/navigation/plat-617.md).
+
 ### 2026-10-06 — Private provider setup uses only its own credential source
 
 A private provider account's setup terminal uses that account HOME as both its

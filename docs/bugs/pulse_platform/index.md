@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 74 | 12 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 75 | 12 |
 | [Brain](brain/index.md) | 18 | 2 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | fixed on main | P2 | [crew/chat](crew/chat/index.md) |
 | [PLAT-615](coding-agents/accounts/plat-615.md) | Private provider setup linked user credentials to the shared server login | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
-| [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |

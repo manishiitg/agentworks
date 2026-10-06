@@ -9,7 +9,6 @@ import { UpdateProgressToast } from "./components/UpdateProgressToast";
 import { GlobalHumanFeedbackPrompt } from "./components/GlobalHumanFeedbackPrompt";
 import { resetSessionId } from "./services/api";
 import { AuthWrapper } from "./components/AuthWrapper";
-import { activateTab } from "./utils/activateTab";
 import { Loader2 } from "lucide-react";
 import { WorkflowLayout } from "./components/workflow";
 import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
@@ -22,7 +21,7 @@ import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
 import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
-import { useWorkflowTabRestore, isInteractiveWorkflowTab, isRecentExplicitReadOnlyWorkflowTab, workflowTabSortTimestamp } from "./hooks/useWorkflowTabRestore";
+import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ProductSurfaceSwitcher } from './components/ProductSurfaceSwitcher';
@@ -129,23 +128,17 @@ function App() {
   // App Store subscriptions for workspace and chat
   const {
     setSelectedPresetId,
-    workspaceMinimized,
-    setWorkspaceMinimized,
     setWorkspaceMinimizedForLayout,
     showWorkflowsOverview,
     setShowWorkflowsOverview,
     showSchedulesOverview,
-    setShowSchedulesOverview,
     adminPage
   } = useAppStore(useShallow(state => ({
     setSelectedPresetId: state.setSelectedPresetId,
-    workspaceMinimized: state.workspaceMinimized,
-    setWorkspaceMinimized: state.setWorkspaceMinimized,
     setWorkspaceMinimizedForLayout: state.setWorkspaceMinimizedForLayout,
     showWorkflowsOverview: state.showWorkflowsOverview,
     setShowWorkflowsOverview: state.setShowWorkflowsOverview,
     showSchedulesOverview: state.showSchedulesOverview,
-    setShowSchedulesOverview: state.setShowSchedulesOverview,
     adminPage: state.adminPage,
   })))
   const [hasOpenedWorkflowsOverview, setHasOpenedWorkflowsOverview] = useState(showWorkflowsOverview)
@@ -683,69 +676,11 @@ function App() {
     }
   }, [setSelectedPresetId, clearActivePreset, selectedModeCategory, applyPreset]);
 
-  // Minimize toggle functions
-  const toggleWorkspaceMinimize = useCallback(() => {
-    setWorkspaceMinimized(!workspaceMinimized)
-  }, [workspaceMinimized, setWorkspaceMinimized])
-
-  // After a Ctrl+1 mode switch, restore the most recently-accessed
-  // tab matching the new mode. Without this the activeTabId stays on
-  // whatever was selected before (often a tab in the *other* mode), so
-  // the workflow's chat panel doesn't pick up the running session and
-  // the user has to click the tab manually.
-  const restoreMostRecentWorkflowTab = useCallback(() => {
-    const chatStore = useChatStore.getState()
-    const currentTab = chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : null
-    if (
-      currentTab &&
-      currentTab.metadata?.mode === 'workflow' &&
-      (isInteractiveWorkflowTab(currentTab) || isRecentExplicitReadOnlyWorkflowTab(currentTab))
-    ) return
-    const candidates = Object.values(chatStore.chatTabs).filter(t =>
-      t.metadata?.mode === 'workflow' && isInteractiveWorkflowTab(t)
-    )
-    if (candidates.length === 0) return
-    const mostRecent = candidates.reduce((best, t) =>
-      workflowTabSortTimestamp(t) > workflowTabSortTimestamp(best) ? t : best
-    , candidates[0])
-    activateTab(mostRecent.tabId)
-  }, [])
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl/Cmd + 1 for Workflow mode
-      if ((event.ctrlKey || event.metaKey) && event.key === '1') {
-        event.preventDefault()
-        const { setModeCategory } = useModeStore.getState()
-        setModeCategory('workflow')
-        useLLMStore.getState().setShowLLMModal(false)
-        setShowWorkflowsOverview(false)
-        setShowSchedulesOverview(false)
-        restoreMostRecentWorkflowTab()
-        return
-      }
-      // Ctrl/Cmd + 3 for Activity view
-      if ((event.ctrlKey || event.metaKey) && event.key === '3') {
-        event.preventDefault()
-        useLLMStore.getState().setShowLLMModal(false)
-        setShowSchedulesOverview(false)
-        setShowWorkflowsOverview(true)
-        return
-      }
-      // Ctrl/Cmd + 6 for workspace minimize
-      if ((event.ctrlKey || event.metaKey) && event.key === '6') {
-        event.preventDefault()
-        toggleWorkspaceMinimize()
-        return
-      }
-      // Ctrl/Cmd + 7 for auto-scroll
-      if ((event.ctrlKey || event.metaKey) && event.key === '7') {
-        event.preventDefault()
-        const chatStore = useChatStore.getState()
-        chatStore.setAutoScroll(!chatStore.autoScroll)
-        return
-      }
-      // Ctrl/Cmd + K opens shared navigation from every product surface.
+      // Cmd/Ctrl+K opens shared navigation from every product surface. It is
+      // the one app-wide shortcut (owner 2026-10-06): the old number shortcuts
+      // were Goals-only and took the browser's own tab keys.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
@@ -756,7 +691,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [restoreMostRecentWorkflowTab, setShowWorkflowsOverview, setShowSchedulesOverview, toggleWorkspaceMinimize])
+  }, [])
 
   useEffect(() => {
     if (showWorkflowsOverview) {
