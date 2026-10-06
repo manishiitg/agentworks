@@ -1,6 +1,6 @@
 # Local and Server Agent Design
 
-**Status: selected direction; implementation pending. Updated 2026-10-06.**
+**Status: guarded public writes and the file executor implemented; broader local tool support remains future work. Updated 2026-10-06.**
 
 This document replaces the workspace-router proposal. Support two directions:
 
@@ -13,10 +13,35 @@ This document replaces the workspace-router proposal. Support two directions:
 Keep each workspace authoritative on its owning machine. Neither direction
 requires a synchronized filesystem or a second working copy.
 
-The router prototype and remote-workflow `mcp_only` enforcement still exist on
-the `remote-workflows-router` branch. Their removal is pending. This document
-does not claim that public MCP writes or the laptop connection are implemented.
-The [previous HTML proposal](remote_workspace_server_plan.html) is historical.
+The router prototype, placement/move APIs, special server authentication and
+remote-only `mcp_only` enforcement have been removed. Local → server uses the
+public MCP. Server → local has a dedicated `agentworks executor connect` command
+and an authenticated outbound WebSocket connection for file operations.
+The retired proposal remains available in Git history.
+
+Implemented now:
+
+- Public `write_file`, explicit optional `files:write` consent, persisted token
+  folder caps, workflow access checks, revision conflicts and durable receipts.
+- File-owning workspace service writes, including deployments where the agent
+  server does not share its filesystem. The internal service route is not exposed
+  through the general workspace proxy.
+- Managed document, diff, upload, move/delete and Builder writes share the same
+  cross-process serialization boundary. Unmanaged local editors or shell commands
+  do not participate in that lock; reads and writes remain individually atomic.
+- Executor login with `devices:connect`, owner-scoped device discovery and file
+  list/read/write tools for website chat agents, local guard enforcement,
+  heartbeat/reconnect, token revocation and pending-request failure on disconnect.
+- Local file writes retain private receipts across reconnects/restarts. The
+  server never blindly resends a write after a timeout or disconnect.
+
+The first executor is file-only. Shell/browser operations, workflow execution
+against laptop-owned plans, a website device-management panel, remote schedules,
+public history/restore APIs and history retention policies remain future work.
+Before-content history is capped at 128 KiB per write; full revisions are retained.
+Device connections currently live in one backend process. Deployments with
+multiple backend instances need routing affinity for device and chat requests.
+No production deployment or external LLM call is performed by this change.
 
 ## 1. Decisions and boundaries
 
@@ -79,7 +104,7 @@ Provider-native tools on the laptop still operate on laptop resources. Remote
 operations must name the server's MCP tools. This direction does not require a
 blanket shutdown of native tools for an otherwise local external agent.
 
-### Proposed `write_file` contract
+### `write_file` contract
 
 ```json
 {
@@ -94,7 +119,7 @@ blanket shutdown of native tools for an otherwise local external agent.
 }
 ```
 
-This is a proposed schema, not an available tool. The first slice creates or
+This tool is available to explicitly authorized connections. The first slice creates or
 replaces bounded UTF-8 source/document files. Use `expected_revision: missing`
 for creation. A successful response includes the resulting revision and audit
 receipt. Delete, move, patch and binary upload are separate future decisions.
@@ -114,7 +139,8 @@ policy**, with blocked/read-only/protected paths taking precedence.
 - Derive authoring-folder grants from the selected workflow and connection
   restrictions. Carry any legitimate execution-session narrowing as trusted
   server state. Define how folder caps are stored and issued before rollout;
-  generic public file-write folder caps do not exist today.
+  folder caps are persisted as `file_guard` on personal access tokens. OAuth write
+  consent defaults to the workflow's public authoring paths; tokens can narrow it.
 - Apply `WritePaths`, `BlockedPaths`, `BlockedWritePaths` and read-only grants
   using shared policy evaluation. Missing or unreadable required policy refuses
   the write.
@@ -141,8 +167,9 @@ read permission. It does not grant shell execution, plan writes or Vault access.
 ### Revisions, durability and retries
 
 The file-owning service must check the revision and replace the file under one
-shared serialization boundary. Use that boundary for MCP, browser editing and
-other writers; an MCP-only process mutex cannot protect against all writers.
+shared SQLite serialization boundary outside the documents root. MCP, browser
+editing, document patch/move/delete/upload and Builder file edits use it. Direct
+filesystem edits by other processes cannot be made transactional by this API.
 
 Stage and atomically replace the file while preserving appropriate file modes.
 Record caller, workflow, path, request ID, previous/resulting revision and
@@ -154,10 +181,15 @@ Retrying the same request ID and payload returns the recorded outcome. Reusing
 that ID with a different payload is rejected. A revision conflict requires
 rereading and reconciling; it must not turn into an unconditional overwrite.
 
-Reuse the Builder writer's policy, revision and history components. Its current
-implementation requires a bound Builder operation and local workspace mount;
-it is not a drop-in public writer. Public dispatch, permission issuance, shared
-write synchronization and deployments with separate service volumes need work.
+The shared `workflowfiles` editor owns guarded writes and durable receipts at
+`WORKSPACE_FILE_STATE_DIR`, or under configured `AGENTWORKS_STATE_ROOT`, with
+`.<docs-folder>-file-edits/` as the private sibling fallback. Records
+include authenticated user ID/name, connection ID, source, logical root, path,
+request ID, before-content up to 128 KiB and
+both revisions. Prepared records reconcile an interrupted atomic replacement.
+Builder's existing operation audit remains separate; its mounted file writer
+participates in the same serialization lock. Public writes always use the
+file-owning service and therefore support separate service volumes.
 
 ## 4. Server → local through a laptop executor
 
@@ -293,8 +325,10 @@ Neither direction promises that file contents never leave their storage host.
 5. **Complete device lifecycle.** Reconnect, outcome reconciliation, cancellation,
    revocation, website device status and schedule behavior before broader use.
 
-These are implementation steps, not completed work. No deployment is authorized
-or performed by updating this design document.
+Steps 1–2 and the file-only connection in step 4 are implemented. Automated tests
+exercise real MCP and WebSocket clients for steps 3–4; they do not call an external
+LLM. Reconnect/revocation/receipts are implemented; broader lifecycle and local
+shell/browser/workflow adapters in steps 4–5 remain future work.
 
 ## 7. Validation requirements
 

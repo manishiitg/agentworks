@@ -73,7 +73,7 @@ func Private(p string) bool {
 		if strings.HasPrefix(part, ".") && part != "." {
 			return true
 		}
-		if part == "builder" || part == "secrets" || part == "keys" {
+		if part == "builder" || part == "secrets" || part == "keys" || part == "db" || part == "credentials.json" || part == "token.json" || part == "tokens.json" || strings.HasSuffix(part, ".sqlite") || strings.HasSuffix(part, ".sqlite3") || strings.HasSuffix(part, ".db") || strings.HasSuffix(part, "-wal") || strings.HasSuffix(part, "-shm") {
 			return true
 		}
 		if part == "agents.md" || part == "agent.md" || part == "claude.md" || part == "gemini.md" {

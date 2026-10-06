@@ -93,3 +93,12 @@ it('explains Vault management separately from runtime tool access', async () => 
     expect(view.host.textContent).not.toContain('Use Vault MCP tools you are allowed to use')
   } finally { await view.cleanup() }
 })
+
+it('explains direct file write consent and the protected plan boundary', async () => {
+  const view = await mount(['workflows:read', 'files:read', 'files:write'], [])
+  try {
+    expect(view.host.textContent).toContain('Write workflow source and documentation with revision checks')
+    expect(view.host.textContent).toContain('Plans, configuration, databases and private files stay protected')
+    expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
+  } finally { await view.cleanup() }
+})

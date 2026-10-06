@@ -99,7 +99,6 @@ this is the complete map.
 - [OAuth Integration Guide](core/oauth.md)
 - [Designing a product.yaml](core/product_yaml_design_guide.md)
 - [Local and Server Agent Design](core/remote_workspace_server_plan.md)
-- [Previous workspace-router proposal](core/remote_workspace_server_plan.html) (superseded)
 - [Session And Tool Binding](core/session_and_tool_binding.md)
 - [Skills System](core/skills.md)
 - [Slack Connections (Per-Workflow Slack Apps)](core/slack_connections.md)

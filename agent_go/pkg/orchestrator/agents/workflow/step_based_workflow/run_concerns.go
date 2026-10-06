@@ -16,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 
 	_ "modernc.org/sqlite"
@@ -171,10 +170,6 @@ func runConcernsDBPath(workspacePath string) string {
 func openRunConcernsDB(ctx context.Context, workspacePath string, create bool) (*sql.DB, error) {
 	_ = ctx // busy_timeout is now DSN-embedded (see sqliteopen.DSN), not a runtime PRAGMA on ctx
 	dbPath := runConcernsDBPath(workspacePath)
-	// Remote workflows keep their DB on the server; never create a local one.
-	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), workspacePath) {
-		return nil, nil
-	}
 	if create {
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 			return nil, err

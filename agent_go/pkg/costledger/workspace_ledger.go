@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 )
 
 // WorkspaceCostsRelativePath is the path, relative to a workflow's own
@@ -38,12 +37,6 @@ const workspaceCostsPathPrefix = "Workflow/"
 func WorkspaceLedgerPath(workspacePath string) string {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
 	if workspacePath == "" || !strings.HasPrefix(workspacePath, workspaceCostsPathPrefix) {
-		return ""
-	}
-	// A workflow on a remote workspace server has no local folder; opening
-	// the ledger here would create a local split-brain copy. Its costs stay
-	// in the global ledger until the server grows a cost-store endpoint.
-	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), workspacePath) {
 		return ""
 	}
 	return filepath.Join(fsutil.WorkspaceDocsRoot(), workspacePath, WorkspaceCostsRelativePath)

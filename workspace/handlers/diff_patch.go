@@ -40,6 +40,11 @@ func DiffPatchDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -214,7 +219,7 @@ func DiffPatchDocument(c *gin.Context) {
 	}
 
 	// Write updated content back to file
-	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+	if err := writeFileAtomic(filePath, []byte(newContent), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to update document",

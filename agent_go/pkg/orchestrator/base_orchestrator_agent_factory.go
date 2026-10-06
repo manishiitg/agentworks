@@ -13,7 +13,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	baseevents "github.com/manishiitg/mcpagent/events"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -155,20 +154,6 @@ func resolveCodingAgentWorkingDir(workspacePath string) string {
 	trimmed := strings.TrimSpace(workspacePath)
 	if trimmed == "" {
 		return ""
-	}
-	docsRoot := fsutil.WorkspaceDocsRoot()
-	rel := trimmed
-	if filepath.IsAbs(trimmed) {
-		r, err := filepath.Rel(docsRoot, filepath.Clean(trimmed))
-		if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-			return filepath.Clean(trimmed) // outside workspace-docs: a user-attached folder
-		}
-		rel = r
-	}
-	// A workflow on a remote workspace server has no local folder; the CLI's
-	// local artifacts (bridge tool output) go to its local scratch area.
-	if scratch, ok := remoteplacement.LocalScratchDir(docsRoot, rel); ok {
-		return scratch
 	}
 	if filepath.IsAbs(trimmed) {
 		return filepath.Clean(trimmed)

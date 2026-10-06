@@ -41,6 +41,13 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
+	var guard *wf.FolderGuard
+	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
+		guard = claims.AccessToken.FileGuard
+	}
+	if req.Operation == "read" && !guard.Allows(p, false) || req.Operation != "read" && !guard.AllowsTraversal(p) {
+		return wf.Result{}, &externalUpstreamError{403, "file is outside folder grants"}
+	}
 	if externalPathPrivate(crewRoot, p) {
 		return wf.Result{}, &externalUpstreamError{403, "private path"}
 	}
@@ -50,7 +57,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return externalRemoteFileRequest(ctx, req, p)
+			result, err := externalRemoteFileRequest(ctx, req, p)
+			return externalGuardReadResult(result, err, guard)
 		}
 		return wf.Result{}, err
 	}
@@ -61,7 +69,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	root, err := base.OpenRoot(rootPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return externalRemoteFileRequest(ctx, req, p)
+			result, err := externalRemoteFileRequest(ctx, req, p)
+			return externalGuardReadResult(result, err, guard)
 		}
 		return wf.Result{}, err
 	}
@@ -78,7 +87,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		file, err := externalScopedFile(root, p)
 		return wf.Result{File: file}, err
 	case "list", "search":
-		return externalListFiles(ctx, root, p, req, crewRoot)
+		result, err := externalListFiles(ctx, root, p, req, crewRoot)
+		return externalGuardReadResult(result, err, guard)
 	default:
 		return wf.Result{}, &externalUpstreamError{400, "unsupported file operation"}
 	}
@@ -298,4 +308,18 @@ func externalRootUsesSharedKnowledge(root *os.Root) bool {
 		Mode string `json:"knowledgebase_mode"`
 	}
 	return json.Unmarshal(data, &m) != nil || strings.TrimSpace(string(data)) == "null" || m.Mode != ""
+}
+
+func externalGuardReadResult(result wf.Result, err error, guard *wf.FolderGuard) (wf.Result, error) {
+	if err != nil || guard == nil {
+		return result, err
+	}
+	visible := result.Entries[:0]
+	for _, entry := range result.Entries {
+		if guard.Allows(entry.Path, false) || entry.Type == "folder" && guard.AllowsTraversal(entry.Path) {
+			visible = append(visible, entry)
+		}
+	}
+	result.Entries = visible
+	return result, nil
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/gorilla/mux"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -181,11 +180,6 @@ func openReportHumanInputDB(ctx context.Context, workspacePath string, create bo
 	normalized, dbPath, err := reportHumanInputDBPath(workspacePath)
 	if err != nil {
 		return "", nil, err
-	}
-	// A workflow on a remote workspace server has no local db/db.sqlite;
-	// creating one here would split its state. Callers treat nil as "no DB".
-	if remoteplacement.IsRemote(getWorkspaceDocsAbsPath(), normalized) {
-		return normalized, nil, nil
 	}
 	if create {
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {

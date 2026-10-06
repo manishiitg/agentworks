@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
@@ -70,13 +68,6 @@ func defaultWorkflowCLIStateRoot() (string, error) {
 }
 
 func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string, error) {
-	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), folder) {
-		stateRoot, err := workflowCLIStateRoot()
-		if err != nil {
-			return "", fmt.Errorf("cannot isolate remote workflow CLI session: %w", err)
-		}
-		return cliruntime.PrepareForRemoteWorkflow(stateRoot, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(folder), session, provider, mode)
-	}
 	if !workflowCLIIsolationEnabledForMode(mode) {
 		return codingAgentWorkspaceWorkingDir(folder), nil
 	}
@@ -88,9 +79,6 @@ func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string
 const linkedProjectRuntimeSkillInstructions = "\nPlatform capability guidance: load current attached builder-reference and runtime-http-tools skills through the admitted read_skill/discovery tools or the runtime-provided skill paths. Do not search project/ for legacy generated .pi/.claude/.agents platform skill files; those can be stale or belong to another provider. Never guess a provider's skill folder. Inspect the current search_tools/get_api_spec catalog before saying a capability is unavailable. Vault administrators can manage encrypted shared secrets and copy project secrets with manage_global_secret(action=share); environment globals alone remain read-only. Current tool admission and backend authorization remain authoritative.\n"
 
 func workflowCLIWorkspaceInstructions(folder string) string {
-	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), folder) {
-		return fmt.Sprintf("\nWorkflow CLI runtime: the current directory contains this chat's private instructions, skills and CLI configuration. The workflow root %q lives on a remote workspace server and has no local project link. Use workspace bridge tools for workflow files, shell commands and databases. Keep generated CLI instructions and configuration in this private runtime.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
-	}
 	return fmt.Sprintf("\nWorkflow CLI runtime: the current directory holds this chat's mode-specific instructions, skills and CLI configuration. `project/` links to the authoritative workflow at %q. Native file tools use `project/<path>`; use `cd project && ...` for commands that need workflow-relative paths. Durable outputs belong under that link. Search and glob tools do not look inside the link unless you name it: always pass `project` (or `project/<folder>`) as the search path, because a search from the current directory finds none of the project's files. Workspace bridge tools already resolve to the real workflow and must not include the `project/` prefix. Keep generated CLI instructions/configuration in the private runtime, preserve the workflow's own instructions, and obey current Run/Builder permissions through linked paths.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
 }
 

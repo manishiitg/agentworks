@@ -100,6 +100,11 @@ var externalBuilderFileWriteMu sync.Mutex
 // normal Builder single-runner boundary prevents parallel Builder turns; a
 // browser's independent direct file editor should reread after a conflict.
 func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expected string) (wf.Result, error) {
+	release, lockErr := wf.LockWorkspace(ctx, getWorkspaceDocsAbsPath())
+	if lockErr != nil {
+		return wf.Result{}, lockErr
+	}
+	defer release()
 	if err := ctx.Err(); err != nil {
 		return wf.Result{}, err
 	}
@@ -252,6 +257,11 @@ func (api *StreamingAPI) externalBuilderFileCall(w http.ResponseWriter, r *http.
 }
 
 func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected string) (wf.Result, error) {
+	release, lockErr := wf.LockWorkspace(ctx, getWorkspaceDocsAbsPath())
+	if lockErr != nil {
+		return wf.Result{}, lockErr
+	}
+	defer release()
 	if err := ctx.Err(); err != nil {
 		return wf.Result{}, err
 	}

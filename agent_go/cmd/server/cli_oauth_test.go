@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -186,5 +187,49 @@ func TestCLIDeviceOAuthLocalOrigin(t *testing.T) {
 	api.handleCLIOAuthDevice(w, local)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "https://agentworks.example.com/oauth/cli") {
 		t.Fatal("public approval URL was overridden by local frontend", w.Code, w.Body)
+	}
+}
+
+func TestCLIExecutorScopesAreExplicitAndIndependent(t *testing.T) {
+	for _, test := range []struct {
+		scopes []string
+		valid  bool
+	}{{[]string{"devices:connect"}, true}, {[]string{"workflows:read", "files:read", "files:write", "devices:connect"}, true}, {[]string{"devices:connect", "devices:connect"}, false}, {[]string{"files:write", "devices:connect"}, false}, {[]string{"plan:write", "devices:connect"}, false}} {
+		_, valid := validCLIOAuthScopes(test.scopes)
+		if valid != test.valid {
+			t.Fatalf("scopes %v: %v", test.scopes, valid)
+		}
+	}
+	if scopes, valid := validMCPOAuthScopes(""); !valid || slices.Contains(scopes, "devices:connect") || slices.Contains(scopes, "files:write") {
+		t.Fatalf("default grants expanded: %v", scopes)
+	}
+	tokenTestSetup(t)
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	device, verify, err := store.CreateCLIDevice(t.Context(), "devices:connect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested, err := store.CLIDeviceRequest(t.Context(), verify)
+	if err != nil || len(requested) != 1 || requested[0] != "devices:connect" {
+		t.Fatalf("consent scopes %v %v", requested, err)
+	}
+	owner := &UserClaims{UserID: GetDefaultUserID(), Username: "owner"}
+	if err = store.DecideCLIDevice(t.Context(), verify, owner, true); err != nil {
+		t.Fatal(err)
+	}
+	grant, access, _, err := store.PollCLIDevice(t.Context(), device, "http://127.0.0.1/api/external/v1")
+	if err != nil || len(grant.Scopes) != 1 || grant.Scopes[0] != "devices:connect" {
+		t.Fatalf("issued scopes %v %v", grant.Scopes, err)
+	}
+	parsed, err := store.Authenticate(t.Context(), access)
+	if err != nil || !mcpOAuthTokenForGrant(parsed).Allows("devices:connect") {
+		t.Fatalf("grant auth %v", err)
+	}
+	if !cliOAuthAllowedPath("GET", "/api/external/v1/devices/connect") || cliOAuthAllowedPath("POST", "/api/devices/other/files") {
+		t.Fatal("executor credentials escaped their transport")
 	}
 }

@@ -395,6 +395,7 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
 
@@ -3102,6 +3103,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
 
 	// Plan and Step Config API routes
+	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
+	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
+	apiRouter.HandleFunc("/devices/{device_id}/files", api.handleLocalDevices).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
@@ -4069,7 +4073,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if workflowNativeAgentTools {
 		agentToolsMode = "full"
 	}
-	agentToolsMode = common.EnforceRemoteWorkflowToolsMode(sessionID, req.SelectedFolder, agentToolsMode)
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
 	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
@@ -5741,7 +5744,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatWorkingFolder = workflowPhaseFolder
 		}
 		workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-		profileAgentToolsMode = common.EnforceRemoteWorkflowToolsMode(sessionID, chatWorkingFolder, profileAgentToolsMode)
 		turnProfileID := ""
 		if resolvedProfile != nil {
 			turnProfileID = resolvedProfile.Definition.ID
@@ -6838,6 +6840,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder); err != nil {
 					logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register Work Dashboard tools: %v", err), true)
+					return
+				}
+			}
+			// Local folder grants belong to the owner's interactive website turn;
+			// scheduled, connector and unattended/background adapters need separate consent.
+			if req.BotPlatform == "" && strings.TrimSpace(req.TriggeredBy) == "" && req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn {
+				if err := api.registerLocalDeviceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly); err != nil {
+					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
 					return
 				}
 			}

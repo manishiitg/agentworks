@@ -85,7 +85,40 @@ func runServer(cmd *cobra.Command, args []string) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := newWorkspaceEngine(docsDir)
+	// Create Gin router
+	r := gin.Default()
+
+	// Gzip compression
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	// Add CORS middleware
+	r.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Workspace-Token")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
+	// Health check endpoint
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":        "healthy",
+			"service":       "planner-api",
+			"docs_dir":      docsDir,
+			"shell_sandbox": security.CurrentSandboxCapability(),
+		})
+	})
+	r.HEAD("/health", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	registerAPIRoutes(r)
 
 	// Start server
 	// Use net.Listen to support dynamic port allocation (port 0).
@@ -118,64 +151,6 @@ func runServer(cmd *cobra.Command, args []string) {
 }
 
 // registerAPIRoutes mounts every /api route behind the workspace token.
-// newWorkspaceEngine builds the HTTP engine. Middleware order matters:
-// CORS, then identity (server mode), then the workspace token check for every
-// /api request, then server authorization, then the remote router, then the
-// routes. The router forwards and aborts, so anything that must hold for
-// forwarded requests has to run before it.
-func newWorkspaceEngine(docsDir string) *gin.Engine {
-	r := gin.Default()
-
-	// Gzip compression
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
-
-	// Add CORS middleware
-	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Workspace-Token")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
-
-	// Server mode: per-user tokens on every /api request (no-op unless
-	// WORKSPACE_SERVER_USER_TOKENS_FILE is set).
-	r.Use(requireServerUserToken())
-	r.Use(requireWorkspaceAPITokenOnAPI())
-	if serverModeEnabled() {
-		r.Use((&serverAuthz{docsRoot: filepath.Clean(docsDir)}).middleware())
-	}
-
-	// Workflows placed on a remote workspace server are served from there.
-	// No-op without a placement file (see remotePlacementFile).
-	r.Use(newRemoteRouter(docsDir).middleware())
-
-	// Health check endpoint. A server does not reveal its docs root to
-	// anonymous callers; laptops read it from the authenticated whoami.
-	r.GET("/health", func(c *gin.Context) {
-		health := gin.H{
-			"status":        "healthy",
-			"service":       "planner-api",
-			"shell_sandbox": security.CurrentSandboxCapability(),
-		}
-		if !serverModeEnabled() {
-			health["docs_dir"] = docsDir
-		}
-		c.JSON(http.StatusOK, health)
-	})
-	r.HEAD("/health", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
-
-	registerAPIRoutes(r)
-	return r
-}
-
 func registerAPIRoutes(r *gin.Engine) {
 	// API routes. With WORKSPACE_API_TOKEN configured every route requires it:
 	// the service trusts X-User-ID, so only the agent server (which verifies
@@ -183,13 +158,6 @@ func registerAPIRoutes(r *gin.Engine) {
 	// receive the token. Empty-token mode stays for standalone use.
 	api := r.Group("/api", requireWorkspaceAPIToken())
 	{
-		// Transfers belong to the remote workflow move protocol. Keep the
-		// legacy /api/workspace backup routes removed on every engine.
-		if serverModeEnabled() {
-			api.POST("/remote/workflow/export", handlers.ExportRemoteWorkflow)
-			api.POST("/remote/workflow/import", handlers.ImportRemoteWorkflow)
-		}
-
 		// Search routes (separate paths to avoid conflicts)
 		api.GET("/search", handlers.SearchDocuments)
 
@@ -257,6 +225,7 @@ func registerAPIRoutes(r *gin.Engine) {
 			c.Status(http.StatusNoContent)
 		})
 		api.POST("/shared-assets", requireConfiguredWorkspaceAPIToken(), handlers.SharedAssets)
+		api.POST("/shared-file-write", requireConfiguredWorkspaceAPIToken(), handlers.SharedFileWrite)
 		api.POST("/documents", handlers.CreateDocument)
 		api.GET("/documents", handlers.ListDocuments)
 

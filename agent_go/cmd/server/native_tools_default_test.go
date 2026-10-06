@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 )
 
 // Owner decision 2026-09-29: native agent tools (hybrid) are on for every
@@ -101,37 +98,6 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 	// headless workflow executor ("workflow" mode) stays off.
 	if env.api.workflowChatNativeAgentTools(context.Background(), QueryRequest{AgentMode: "workflow", SelectedFolder: "Workflow/w"}, "s", false) {
 		t.Error("headless workflow executor got native tools")
-	}
-}
-
-func TestRemoteWorkflowTurnsAlwaysDecideMCPOnly(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	env.setWorkflowNativeTools(t, nil)
-	placement := filepath.Join(t.TempDir(), "placements.json")
-	t.Setenv(remoteplacement.FileEnv, placement)
-	if err := os.WriteFile(placement, []byte(`{"workflows":{"Workflow/w":"team"}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	for name, req := range map[string]QueryRequest{
-		"Builder":     {},
-		"schedule":    {TriggeredBy: "cron"},
-		"webhook":     {TriggeredBy: "webhook"},
-		"Pulse":       {PulseLifecycleTurn: true},
-		"Slack":       {BotPlatform: "slack"},
-		"step":        {ParentSessionID: "run-1"},
-		"Pulse child": {ParentSessionID: "run-1", SessionKind: "pulse_reviewer"},
-	} {
-		req.Query, req.AgentMode, req.SelectedFolder = "go", "workflow_phase", "Workflow/w"
-		if got := env.queryDecidedToolsMode(t, "alice", "remote-turn-"+name, req); got != "mcp_only" {
-			t.Errorf("%s decided %q", name, got)
-		}
-	}
-	// Moving back to local restores the existing native tools decision.
-	if err := os.WriteFile(placement, []byte(`{"workflows":{}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if got := env.queryDecidedToolsMode(t, "alice", "remote-turn-Builder", QueryRequest{Query: "go", AgentMode: "workflow_phase", SelectedFolder: "Workflow/w"}); got != "full" {
-		t.Fatalf("returned local workflow decided %q", got)
 	}
 }
 

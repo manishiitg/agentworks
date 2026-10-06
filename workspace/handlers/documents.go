@@ -97,6 +97,11 @@ func CreateDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Sanitize input filepath to ensure it's relative
 	docsDir := viper.GetString("docs-dir")
@@ -1053,6 +1058,11 @@ func UpdateDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1143,6 +1153,11 @@ func UpdateDocument(c *gin.Context) {
 
 // DeleteDocument handles DELETE /api/documents/*filepath
 func DeleteDocument(c *gin.Context) {
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 	filePathParam := c.Param("filepath")
 	confirm := c.Query("confirm")
 
@@ -1228,6 +1243,11 @@ func MoveDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1507,6 +1527,11 @@ func CreateFolder(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Sanitize input folder path to ensure it's relative
 	docsDir := viper.GetString("docs-dir")
@@ -1594,6 +1619,11 @@ func CopyFolder(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1791,6 +1821,11 @@ func CopyFolder(c *gin.Context) {
 
 // DeleteFolder handles DELETE /api/folders/*folderpath
 func DeleteFolder(c *gin.Context) {
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 	// Gin's wildcard route capture always includes the leading slash
 	// ("/Chats/SparkQuill/..." for a request to /api/folders/Chats/...) —
 	// HandleDocumentRequest strips this same leading slash from its own
@@ -1885,6 +1920,11 @@ func DeleteFolder(c *gin.Context) {
 
 // DeleteAllFilesInFolder handles DELETE /api/folders/*folderpath/files
 func DeleteAllFilesInFolder(c *gin.Context, folderPathParam string, confirm bool) {
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 	if !confirm {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 			Success: false,
@@ -2020,6 +2060,11 @@ func UploadFile(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Get the uploaded file
 	file, header, err := c.Request.FormFile("file")

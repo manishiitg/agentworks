@@ -274,10 +274,9 @@ func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 			t.Fatal("PAT escaped external API", path, w.Code)
 		}
 	}
-	// v1 exposes no mutations at all: a write call is an unknown tool,
-	// not a scope decision.
+	// Direct writes are available only with explicitly granted files:write.
 	denied := request("POST", "/api/external/v1/call", `{"name":"write_file","arguments":{}}`, created.Token)
-	if denied.Code != 404 || !strings.Contains(denied.Body.String(), "unknown_tool") {
+	if denied.Code != 403 || !strings.Contains(denied.Body.String(), "insufficient_scope") {
 		t.Fatal(denied.Code, denied.Body)
 	}
 	query := httptest.NewRequest("GET", "/api/external/v1/tools?token="+created.Token, nil)

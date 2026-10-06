@@ -121,8 +121,9 @@ and clears the local credentials.
 
 CLI grants run in full run mode —
 `workflows:read`, `files:read`, and `runs:execute` — over all currently and
-future accessible workflows. Write permissions
-(`files:write`, `plan:write`, `builder:chat`) are not issued in v1. Every
+future accessible workflows. Additional authoring scopes are optional: `files:write` permits guarded source
+and documentation edits, and `builder:chat` delegates authoring to the workflow's
+Builder. Direct `plan:write` is never issued. Every
 call checks the grant scopes and the user's current workflow
 access. CLI grants cannot call account management, the general query endpoint,
 or the workspace proxy; only the external tool, asset-content, skill, and
@@ -133,7 +134,7 @@ Precisely, a token authorizes: reading the account's workflows, files,
 plans, runs, guidance, and knowledge; starting, steering, observing, and
 stopping executions; triggering the workflow's saved schedules (which run
 with their owner-configured definition); and the workflow's own outbound
-actions (Slack routes, user notifications). It never authorizes authoring
+actions (Slack routes, user notifications). The default grant never authorizes authoring
 (plans, configs, files, workflows), account management, or account-wide
 service shells — `google_workspace_cli` stays out of the external catalog
 and token-backed chat sessions for exactly this reason. Slack and WhatsApp
@@ -632,7 +633,7 @@ AGENTS.md-style prompt files and the .claude, .agents, .codex, .cursor,
 .gemini, and .pi tool directories, including the skills beneath them. Skills
 stay readable through the knowledge tools, which serve the skill catalog;
 learnings and ordinary documents are readable in their workflow's workspace.
-Nothing is writable: run tools execute; they never author plans, files, or
+Default read/run connections cannot author plans, files, or
 configuration.
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`. CLI exit
@@ -671,3 +672,134 @@ Example read-only check:
 Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `manage_vault_access` operation `list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
 
 The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Those runtime restrictions remain unchanged. The explicitly authorized `call_vault_mcp_tool` management operation instead uses the same administrator setup authority as the Vault builder, independently of group/regex grants, to resolve real resource IDs before configuring restrictions. It is limited to active Vault connections and approved tools, rechecks the current administrator on every request, and the gateway validates schemas and audits calls as the actual user. Upstream mutations require an explicit user request. Private connections belonging to other people and secret values are excluded.
+
+
+## Guarded public file writes
+
+Request optional authoring permission explicitly; existing connections keep their
+original scopes:
+
+```sh
+agentworks login --server https://your-agentworks.example \
+  --scopes workflows:read,files:read,files:write
+agentworks files read --workflow invoices --path docs/readme.md
+```
+
+Call `write_file` through MCP `call_tool`, or `agentworks files write --input edit.json`:
+
+```json
+{
+  "workflow_id": "invoices",
+  "path": "docs/readme.md",
+  "content": "Updated documentation\n",
+  "expected_revision": "revision-from-read_file-or-missing",
+  "request_id": "unique-id-for-this-write"
+}
+```
+
+The caller needs current account/workflow edit rights. Plans, `workflow.json`,
+runtime run records, databases, private files and shared Brain content cannot be
+edited this way. Use their typed tools. Writes accept UTF-8 text up to 2 MiB.
+Reusing the same request ID and arguments returns its durable receipt; different
+arguments fail. A stale revision fails; read and reconcile before submitting a
+new write. The workspace service retains private audit records outside documents.
+
+When issuing a personal access token through `POST /api/auth/access-tokens`, optionally
+include a persisted `file_guard` (paths relative to each selected workflow):
+
+```json
+{
+  "read_paths": ["."],
+  "write_paths": ["code", "docs"],
+  "read_only_paths": ["docs/reference"],
+  "blocked_write_paths": ["code/generated"],
+  "blocked_paths": ["docs/confidential"]
+}
+```
+
+A present guard with empty write paths denies all writes. An absent guard uses
+workflow access and the unconditional protected-path policy. A tool call cannot
+change these grants. Narrow read grants also apply to raw file reads/downloads;
+execution and typed tools retain their separately authorized scopes.
+
+## Server agents using local files
+
+The dedicated executor command opens an outbound authenticated connection to the
+AgentWorks server. It does not start a local model or a listening HTTP server.
+Use a separate CLI config to keep ordinary remote MCP credentials independent:
+
+```sh
+agentworks --config /absolute/path/private/executor.json login \
+  --server https://your-agentworks.example --scopes devices:connect
+agentworks --config /absolute/path/private/executor.json executor connect \
+  --device work-laptop \
+  --folder reference=/absolute/path/reference \
+  --write-folder project=/absolute/path/project \
+  --read-only generated --block secrets
+```
+
+`--folder` grants reads only. `--write-folder` allows guarded writes; protected
+plans/configuration/database/private paths remain blocked. `--block` and
+`--read-only` accept repeatable relative paths and apply to each shared folder.
+Aliases and relative grants are sent to the server; absolute local paths stay
+local. `--state-dir` can select private durable receipt storage, which must be
+outside every shared folder. Read-only folders require no writable state. Writable folders also need a writable private sibling
+`.<folder>-file-edits/` for a shared serialization lock; a read-only grant never
+writes inside the shared folder. Default receipt storage is beside the CLI config in
+`executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
+
+In a new website chat, the server agent receives `list_local_devices`,
+`list_local_files`, `read_local_file` and, for writable accounts/turns,
+`write_local_file`. Specify `device_id`, `resource_id` (folder alias) and relative
+`path`; writes additionally require `content`, `expected_revision` and
+`request_id`. File contents read by the agent reach the server and its LLM provider.
+Public MCP connections and shared bot-route identities do not receive these tools.
+
+The website backend also exposes owner-authenticated `GET /api/devices` and
+`POST /api/devices/{device_id}/files`. The latter accepts `operation` (`list`,
+`read`, `write`), `resource_id`, `path`, and the same write fields. Lists are
+single-directory and bounded to 200 entries; reads/writes are UTF-8 and bounded
+to 2 MiB. No shell/browser operation is implemented in this first executor.
+
+Ctrl-C stops sharing. Network loss or laptop sleep makes the device unavailable;
+there is no fallback to server files. The CLI reconnects with backoff and renewed
+credentials. Duplicate live device IDs are refused. Pending requests fail on
+disconnect, and write outcomes may be uncertain: reconnect, reuse the identical
+write request ID/payload to reconcile its receipt, then reread current content.
+Revoking the connection or disabling its account blocks dispatch immediately and
+closes idle sockets at the next heartbeat. Website chat tools are assembled at
+turn startup, so start a new turn after connecting a device.
+
+Device sockets are held by one backend process. Use a single backend or routing
+affinity so the website chat reaches the process holding its device connection.
+Schedules and local shell/browser tools are not part of this release. The old
+transparent workflow router, placement/move APIs and remote `mcp_only` override
+have been removed; local agents access server workflows through public MCP.
+
+
+### Attribution and plan changelogs
+
+Direct MCP file writes cannot edit `planning/*`, including its changelog. Their
+receipts record `identity.user_id`, `identity.username`, `identity.connection_id`
+and `identity.source=public_mcp`, together with the request ID and revisions.
+Local executor receipts record the same identity plus the device ID and source
+`server_local_executor`. Identity comes from server authentication, never tool
+arguments. Private records also retain the timestamp and capped before-content.
+
+MCP `builder_chat` requests use the normal typed plan tools. The existing
+`planning/changelog/*.json` entries preserve `origin.type=external_builder`,
+user ID/name, session ID, operation ID and `via_token=token:<connection ID>`, plus
+change reason, timestamp and before/after hashes. A separate Builder audit also
+links the typed mutation to its authenticated operation and connection. Token
+IDs in these records are identifiers, never secret token values.
+
+
+For container deployments with a read-only parent of the documents mount, set
+`WORKSPACE_FILE_STATE_DIR` to a writable private directory outside documents.
+Mount that state directory into both the workspace service and any agent service
+using the mounted Builder writer, and configure the corresponding path on each.
+Otherwise configured `AGENTWORKS_STATE_ROOT/file-edits/<root-hash>/` is used when
+available; the fallback is the private sibling `.<folder>-file-edits/`. Normal
+managed document editing shares this lock and therefore also requires the state
+location to be writable. Local executors honor the same state override for locks;
+`--state-dir` selects their separate durable receipt directory.

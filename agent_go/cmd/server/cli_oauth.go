@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -72,13 +73,33 @@ func (api *StreamingAPI) handleCLIOAuthDevice(w http.ResponseWriter, r *http.Req
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return
 	}
+	var request struct {
+		Scopes []string `json:"scopes"`
+	}
+	if r.Body != nil {
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&request); err != nil && err != io.EOF || err == nil && d.Decode(new(any)) != io.EOF {
+			mcpOAuthError(w, 400, "invalid_request")
+			return
+		}
+	}
+	scopes := request.Scopes
+	if len(scopes) > 0 {
+		var valid bool
+		scopes, valid = validCLIOAuthScopes(scopes)
+		if !valid {
+			mcpOAuthError(w, 400, "invalid_scope")
+			return
+		}
+	}
 	store, err := openMCPOAuthStore()
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return
 	}
 	defer store.Close()
-	device, verify, err := store.CreateCLIDevice(r.Context())
+	device, verify, err := store.CreateCLIDevice(r.Context(), scopes...)
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return
@@ -231,5 +252,34 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 }
 
 func cliOAuthAllowedPath(method, path string) bool {
-	return (method == http.MethodGet && path == "/api/external/v1/tools") || (method == http.MethodPost && path == "/api/external/v1/call") || ((method == http.MethodGet || method == http.MethodHead) && path == "/api/external/v1/files/content") || (method == http.MethodGet && (path == "/api/external/v1/skill.md" || path == "/api/external/v1/skill.zip" || path == "/api/external/v1/agentworks.plugin"))
+	return (method == http.MethodGet && path == "/api/external/v1/devices/connect") || (method == http.MethodGet && path == "/api/external/v1/tools") || (method == http.MethodPost && path == "/api/external/v1/call") || ((method == http.MethodGet || method == http.MethodHead) && path == "/api/external/v1/files/content") || (method == http.MethodGet && (path == "/api/external/v1/skill.md" || path == "/api/external/v1/skill.zip" || path == "/api/external/v1/agentworks.plugin"))
+}
+
+func validCLIOAuthScopes(requested []string) ([]string, bool) {
+	if len(requested) == 0 {
+		return append([]string(nil), mcpOAuthDefaultScopes...), true
+	}
+	device := false
+	ordinary := []string{}
+	for _, scope := range requested {
+		if scope == "devices:connect" {
+			if device {
+				return nil, false
+			}
+			device = true
+		} else {
+			ordinary = append(ordinary, scope)
+		}
+	}
+	if len(ordinary) > 0 {
+		var valid bool
+		ordinary, valid = validMCPOAuthScopes(strings.Join(ordinary, " "))
+		if !valid {
+			return nil, false
+		}
+	}
+	if device {
+		ordinary = append(ordinary, "devices:connect")
+	}
+	return ordinary, len(ordinary) > 0
 }

@@ -20,18 +20,10 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 	return prepare(stateRoot, workspaceRoot, user, workflow, "", session, provider, mode)
 }
 
-// PrepareForRemoteWorkflow prepares a private CLI runtime without requiring
-// the server-hosted workflow to exist on the laptop.
-func PrepareForRemoteWorkflow(stateRoot, workspaceRoot, user, workflow, session, provider, mode string) (string, error) {
-	return prepareWorkflow(stateRoot, workspaceRoot, user, workflow, "", session, provider, mode, true)
-}
-
-// prepare preserves the legacy digest used by moved local projects.
+// prepare is Prepare with an optional legacy digest input: a workspace-relative path whose resolved spelling replaces
+// the workflow's in the v1 digest, so a project that moved keeps the runtime folder, and with it the native CLI
+// session, it always had (PLAT-442 step 4).
 func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {
-	return prepareWorkflow(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode, false)
-}
-
-func prepareWorkflow(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string, remoteWorkflow bool) (string, error) {
 	if !filepath.IsAbs(stateRoot) || !filepath.IsAbs(workspaceRoot) || !filepath.IsAbs(workflow) {
 		return "", fmt.Errorf("CLI isolation requires absolute state, workspace and workflow paths")
 	}
@@ -48,8 +40,11 @@ func prepareWorkflow(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, 
 	if err != nil {
 		return "", err
 	}
-	lexicalWorkspace := filepath.Clean(workspaceRoot)
 	workspaceRoot, err = filepath.EvalSymlinks(workspaceRoot)
+	if err != nil {
+		return "", err
+	}
+	workflow, err = filepath.EvalSymlinks(workflow)
 	if err != nil {
 		return "", err
 	}
@@ -59,23 +54,9 @@ func prepareWorkflow(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, 
 	if err != nil {
 		return "", err
 	}
-	var physicalWorkflow string
-	if remoteWorkflow {
-		rel, relErr := filepath.Rel(lexicalWorkspace, filepath.Clean(workflow))
-		if relErr != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("workflow is outside the workspace root")
-		}
-		workflow = filepath.Join(workspaceRoot, rel)
-		physicalWorkflow = filepath.Join(physicalWorkspace, rel)
-	} else {
-		workflow, err = filepath.EvalSymlinks(workflow)
-		if err != nil {
-			return "", err
-		}
-		physicalWorkflow, err = pathidentity.Resolve(workflow)
-		if err != nil {
-			return "", err
-		}
+	physicalWorkflow, err := pathidentity.Resolve(workflow)
+	if err != nil {
+		return "", err
 	}
 	physicalState, err := pathidentity.Resolve(stateRoot)
 	if err != nil {
