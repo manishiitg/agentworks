@@ -111,9 +111,15 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only shared tabs. Tabs stay in the background by default; set active=true on a tab selection or other command only when visible activation is needed. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Tabs stay in the background by default; set active=true on a tab selection or other command only when visible activation is needed. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
 		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
+		owner := workflow
+		if owner == "" {
+			owner = agent
+		}
+		result["shared_tabs"] = b.ConversationTabs(owner)
+
 		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
 			result["screenshot_write_paths"] = opts.FolderGuard.WritePaths
 			result["working_directory"] = opts.WorkingDirectory
@@ -175,17 +181,18 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		return "", fmt.Errorf("CHROME_EXTENSION_ACCESS: a trusted chat identity is required")
 	}
 	active, _ := args["active"].(bool)
-	endpoint, release, err := b.AcquireForActive(ctx, owner, active)
+	client, release, err := b.AcquireClient(ctx, owner, active)
 	if err != nil {
 		return "", err
 	}
 	defer release()
+	endpoint := client.Endpoint()
 	opts, _, err := browserExecuteOptions(ctx, agent, workflow, getTimeoutForCommand(command))
 	if err != nil {
 		return "", err
 	}
 	if opts.FolderGuard != nil {
-		opts.FolderGuard.BrowserSession = b.Session()
+		opts.FolderGuard.BrowserSession = client.Session()
 		opts.FolderGuard.BrowserTransport = "extension"
 	}
 	values = stripRedundantTabCommandArg(command, values)
@@ -193,7 +200,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if err != nil {
 		return "", err
 	}
-	recordKey := browserArtifactLeaseKey(owner, b.Session(), "record")
+	recordKey := browserArtifactLeaseKey(owner, client.Session(), "record")
 	recording, isRecording := getBrowserArtifactLease(recordKey)
 	if command == "record" {
 		if err := validateExtensionRecording(values, isRecording); err != nil {
@@ -206,11 +213,11 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if command == "record" && len(values) == 1 && values[0] == "stop" {
 		// Stopping belongs to the recording lease, not the current page. A closed
 		// target must still let the encoder finish and release its state.
-		return e.executeExtensionCommand(ctx, b, opts, owner, endpoint, command, values, "", full)
+		return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, "", full)
 	}
 	createdFirstTab := false
 	firstTabLabel := ""
-	if b.Status().Tabs == 0 {
+	if client.Status().Tabs == 0 {
 		if command == "tab" && (len(values) == 0 || (len(values) == 1 && values[0] == "list")) {
 			return `{"success":true,"data":{"tabs":[]}}`, nil
 		}
@@ -246,7 +253,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if firstTabLabel != "" {
 			bootstrapURL = "about:blank"
 		}
-		bootstrapTarget, createErr := b.CreateTarget(createCtx, bootstrapURL)
+		bootstrapTarget, createErr := client.CreateTarget(createCtx, bootstrapURL)
 		cancel()
 		if createErr != nil {
 			return "", fmt.Errorf("Create project browser tab: %w", createErr)
@@ -258,14 +265,14 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 			defer func() {
 				closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
-				_ = b.CloseTarget(closeCtx, bootstrapTarget)
+				_ = client.CloseTarget(closeCtx, bootstrapTarget)
 			}()
 		}
 	}
 	// Let a fresh CLI attach to an explicitly shared tab before making its
 	// binding strict. Once pinned, a closed tab must fail instead of selecting
 	// another shared tab while retaining stale element references.
-	listed, bootstrapErr := e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", "--cdp", endpoint, "--json"}, opts)
+	listed, bootstrapErr := e.Client.ExecuteCommand(ctx, []string{"--session", client.Session(), "tab", "--cdp", endpoint, "--json"}, opts)
 	if bootstrapErr != nil {
 		return "", fmt.Errorf("Chrome connection failed: %s", strings.ReplaceAll(bootstrapErr.Error(), endpoint, "[private Chrome connection]"))
 	}
@@ -292,7 +299,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		}
 	}
 	if tab != "" && command != "tab" && selected.TabID != tab && selected.Label != tab && selected.TargetID != tab {
-		if _, err = e.Client.ExecuteCommand(ctx, []string{"--session", b.Session(), "tab", tab, "--cdp", endpoint, "--json"}, opts); err != nil {
+		if _, err = e.Client.ExecuteCommand(ctx, []string{"--session", client.Session(), "tab", tab, "--cdp", endpoint, "--json"}, opts); err != nil {
 			return "", fmt.Errorf("Chrome tab selection failed: %s", strings.ReplaceAll(err.Error(), endpoint, "[private Chrome connection]"))
 		}
 		selected = cdpTabInfo{}
@@ -319,17 +326,17 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		output, err := json.Marshal(map[string]interface{}{"success": true, "data": data})
 		return string(output), err
 	}
-	return e.executeExtensionCommand(ctx, b, opts, owner, endpoint, command, values, selected.TargetID, full)
+	return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, selected.TargetID, full)
 }
 
-func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string, full bool) (string, error) {
+func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, client *browserrelay.Client, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string, full bool) (string, error) {
 	values = normalizeAgentBrowserCommandArgs(command, values)
 	if (command == "screenshot" || command == "record") && (opts.FolderGuard == nil || !opts.FolderGuard.Enabled) {
 		return "", fmt.Errorf("Screenshot and recording files require a workspace folder guard")
 	}
 	var artifactPlan *browserArtifactPlan
 	if opts.FolderGuard != nil && opts.FolderGuard.Enabled {
-		plan, err := prepareBrowserArtifact(command, values, owner, b.Session(), b.Session())
+		plan, err := prepareBrowserArtifact(command, values, owner, client.Session(), client.Session())
 		if err != nil {
 			return "", err
 		}
@@ -352,10 +359,10 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 			}
 		}
 	}
-	cli := []string{"--session", b.Session(), command}
+	cli := []string{"--session", client.Session(), command}
 	cli = append(cli, values...)
 	cli = append(cli, "--cdp", endpoint, "--pin-tab", "--json")
-	recordingEpoch := b.RecordingEpoch()
+	recordingEpoch := client.RecordingEpoch()
 	output, err := e.Client.ExecuteCommand(ctx, cli, opts)
 	// Never expose the private relay capability through CLI diagnostics.
 	output = strings.ReplaceAll(rewriteBrowserArtifactOutput(output, artifactPlan), endpoint, "[private Chrome connection]")
@@ -377,7 +384,7 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 		}
 		if artifactPlan.DeleteLeaseOnSuccess {
 			lease, _ := getBrowserArtifactLease(artifactPlan.LeaseKey)
-			if lease.RecordingEpoch != b.RecordingEpoch() {
+			if lease.RecordingEpoch != client.RecordingEpoch() {
 				deleteBrowserArtifactLease(artifactPlan.LeaseKey)
 				_ = os.Remove(artifactPlan.StagedPath)
 				return "", fmt.Errorf("RECORDING_INTERRUPTED: the shared tab lost its debugger; the take was stopped and not published. Start a fresh recording")

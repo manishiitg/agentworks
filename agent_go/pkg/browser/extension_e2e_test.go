@@ -53,6 +53,17 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	common.SetSessionWorkingDir(session, workspace)
 	common.SetSessionFolderGuard(session, []string{workspace}, []string{workspace})
 	defer common.ClearSessionShellConfig(session)
+
+	sideSession := session + "-side"
+	common.BindSessionBrowserIsolationForProject(sideSession, "_users/alice/"+workspace)
+	common.SetSessionWorkingDir(sideSession, workspace)
+	common.SetSessionFolderGuard(sideSession, []string{workspace}, []string{workspace})
+	defer common.ClearSessionShellConfig(sideSession)
+	common.BindSessionBrowserIsolationForProject("code-delegate", "_users/alice/"+workspace)
+	common.CopySessionFolderGuard(session, "code-delegate")
+	defer common.ClearSessionShellConfig("code-delegate")
+	defer ReleaseExtensionConversation(context.Background(), sideSession)
+	defer ReleaseExtensionConversation(context.Background(), session)
 	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "code")
 	if err != nil {
 		t.Fatal(err)
@@ -166,19 +177,30 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 			http.Error(w, "not paired", 409)
 			return
 		}
-		endpoint, release, err := b.Acquire(r.Context())
+		owner := session
+		if r.URL.Query().Get("chat") == "two" {
+			owner = sideSession
+		}
+		private, release, err := b.AcquireClient(r.Context(), owner, false)
 		if err != nil {
 			http.Error(w, err.Error(), 409)
 			return
 		}
 		defer release()
-		json.NewEncoder(w).Encode(map[string]string{"url": endpoint, "session": b.Session()})
+		json.NewEncoder(w).Encode(map[string]string{"url": private.Endpoint(), "session": private.Session()})
+	})
+
+	mux.HandleFunc("/fixture/release-chat", func(w http.ResponseWriter, r *http.Request) {
+		ReleaseExtensionConversation(r.Context(), sideSession)
 	})
 	mux.HandleFunc("/fixture/tool", func(w http.ResponseWriter, r *http.Request) {
 		var args map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&args)
 		args["session"] = "main"
 		activeSession := session
+		if r.URL.Query().Get("chat") == "two" {
+			activeSession = sideSession
+		}
 		if r.URL.Query().Get("project") == "crew" {
 			activeSession = crewSession
 		}
@@ -189,6 +211,10 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 				activeSession = "workflow-step-two"
 			}
 			rootSession = workflowSession
+		}
+		if r.URL.Query().Get("chat") == "delegate" {
+			activeSession = "code-delegate"
+			rootSession = session
 		}
 		ctx := context.WithValue(r.Context(), common.WorkflowSessionIDKey, rootSession)
 		ctx = context.WithValue(ctx, common.ChatSessionIDKey, activeSession)
@@ -205,6 +231,9 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	})
 	mux.HandleFunc("/fixture/video", func(w http.ResponseWriter, r *http.Request) {
 		video := filepath.Join(root, evidence, "recording.webm")
+		if r.URL.Query().Get("chat") == "two" {
+			video = filepath.Join(root, evidence, "side-recording.webm")
+		}
 		// Decode the video, not only its container header/size.
 		if output, err := exec.Command("ffmpeg", "-v", "error", "-xerror", "-i", video, "-frames:v", "1", "-f", "null", "-").CombinedOutput(); err != nil {
 			http.Error(w, "Invalid video: "+string(output), 500)

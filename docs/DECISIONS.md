@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Code extension browsing isolates each root conversation
+
+Keep one account token and one project extension connection, but give each Code
+chat private CDP/native reference state and its own tabs and recording lease.
+Serialize complete tool actions at the project gate; delegates inherit the root,
+and Crew/workflow retain their existing controller handoff. Preserve tab ownership
+through server reconnect within the same browser session. Stop/clear revokes only
+that Code chat. Why: multiple Code tabs otherwise hit the first chat's sticky
+controller or risk acting through another chat's cached references.
+Ticket: [PLAT-624](bugs/pulse_platform/browser/browser/plat-624.md).
+
 ### 2026-10-06 — Code accepts its admitted private Claude login
 
 The query authentication preflight accepts the selected, admitted Claude
@@ -25,6 +36,7 @@ the service login or copies private account environment into default provider
 keys. Why: Code admitted a valid private account, then incorrectly demanded a
 deployment token. An unsigned private account directs its owner to Providers.
 Ticket: [PLAT-625](bugs/pulse_platform/coding-agents/accounts/plat-625.md).
+
 
 ### 2026-10-06 — Cmd/Ctrl+K is the only app-wide shortcut
 

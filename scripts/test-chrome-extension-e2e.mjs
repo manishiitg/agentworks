@@ -222,12 +222,41 @@ try {
   const tabs = await cli('tab'); assert.doesNotMatch(JSON.stringify(tabs), /Unshared private/); console.log('PASS unshared-tab exclusion');
   await popup.evaluate(id => chrome.tabs.ungroup(id), privateTabId);
   await cli('screenshot', 'Chats/Code/projects/extension-e2e/evidence/screenshot.png'); const image = await fetch(`${base}/fixture/image`); assert.equal(image.status, 200); assert.ok((await image.arrayBuffer()).byteLength > 1000); console.log('PASS screenshot through workspace artifact broker');
+
+  const sideTool = async (command,...args) => {
+    const response=await fetch(`${base}/fixture/tool?chat=two`,{method:'POST',body:JSON.stringify({command,args})});
+    const text=await response.text(); assert.equal(response.status,200,text);
+    const value=JSON.parse(text);assert.equal(value.success,true,text);return value.data;
+  };
+  // Save A's references before B creates a different native client/ref cache.
+  const beforeSide = await cli('snapshot','-i');
+  const firstName = Object.entries(beforeSide.refs).find(([,r])=>r.name?.trim()==='Name')[0];
+  assert.deepEqual((await sideTool('tab')).tabs,[],'second Code chat starts without the primary chat targets');
+  await sideTool('open',`${base}/fixture?side-chat=1`);
+  const sidePage=browser.pages().find(p=>p.url().includes('side-chat=1'));assert.ok(sidePage);
+  await sideTool('snapshot','-i');
+  await sideTool('fill','#name','Side chat');await sideTool('click','#save');
+  await cli('fill',`@${firstName}`,'Primary chat');await cli('click','#save');
+  assert.equal(await page.locator('#result').textContent(),'Saved Primary chat','A cached ref remains on A after B snapshots');
+  assert.equal(await sidePage.locator('#result').textContent(),'Saved Side chat','A cannot overwrite B');
+  const sideTargets=await sideTool('tab');assert.equal(sideTargets.tabs.length,1);
+  assert.doesNotMatch(JSON.stringify(await cli('tab')),/side-chat=1/);
+  const foreignTarget=await fetch(`${base}/fixture/tool?chat=two`,{method:'POST',body:JSON.stringify({command:'tab',args:['tab-'+tabId]})});
+  const foreignReply=await foreignTarget.text();
+  assert.ok(foreignTarget.status===409 || JSON.parse(foreignReply).success===false,'B cannot select A physical target: '+foreignReply);
+  const delegated=await fetch(`${base}/fixture/tool?chat=delegate`,{method:'POST',body:JSON.stringify({command:'get',args:['text','#result']})});
+  assert.equal(delegated.status,200);assert.match(await delegated.text(),/Saved Primary chat/,'Code delegate inherits A rather than another private chat');
+  assert.equal(await activeTab(),privateTabId,'interleaved chats keep the user foreground tab');
+  console.log('PASS two Code chats isolate tabs, selection and saved snapshot references');
   const recordedTarget = (await cli('tab')).tabs.find(t => t.active).tabId;
   const beforeRecordingTabs = (await cli('tab')).tabs.map(t => t.tabId);
   await cli('record', 'start', 'Chats/Code/projects/extension-e2e/evidence/recording.webm', '--fps', '10');
   assert.deepEqual((await cli('tab')).tabs.map(t => t.tabId), beforeRecordingTabs, 'recording uses the existing signed-in tab');
   const switchWhileRecording = await fetch(`${base}/fixture/tool`, {method:'POST',body:JSON.stringify({command:'tab',args:['new',`${base}/private`]})});
   assert.equal(switchWhileRecording.status,409); assert.match(await switchWhileRecording.text(), /RECORDING_CONTEXT_ACTIVE/);
+  await sideTool('record','start','Chats/Code/projects/extension-e2e/evidence/side-recording.webm','--fps','10');
+  await sideTool('open',`${base}/fixture?side-recording-isolation=1`);
+  await sideTool('snapshot','-i');
   await cli('open', `${base}/fixture?recording=1`);
   await cli('fill', '#name', 'Recorded customer'); await cli('click', '#save');
   await page.locator('#result').filter({hasText:'Saved Recorded customer'}).waitFor();
@@ -240,6 +269,17 @@ try {
   assert.equal((await cli('tab')).tabs.find(t => t.active).tabId,recordedTarget);
   assert.equal(await activeTab(),privateTabId,'recording never activates a background shared tab');
   console.log('PASS record start → navigate → interact → record stop publishes a nonempty decodable WebM from the same shared tab');
+  const sideRecording=await sideTool('record','stop');assert.ok(sideRecording.frames>0);
+  const sideVideo=await fetch(`${base}/fixture/video?chat=two`);assert.equal(sideVideo.status,200,await sideVideo.clone().text());
+  assert.ok((await sideVideo.arrayBuffer()).byteLength>1000,'B has its own decodable recording');
+  console.log('PASS two Code chats record separate targets concurrently and publish separate videos');
+  assert.equal((await fetch(`${base}/fixture/release-chat`,{method:'POST'})).status,200);
+  for(let i=0;i<50 && !sidePage.isClosed();i++)await new Promise(r=>setTimeout(r,100));
+  assert.equal(sidePage.isClosed(),true,'closing B closes only B agent-created tab');
+  assert.match(JSON.stringify(await cli('snapshot','-i')),/Save customer/);
+  assert.equal((await message({action:'state'})).connected,true,'closing B keeps the project connection');
+  console.log('PASS another Code chat can browse during A recording; closing B preserves A and the project connection');
+
   await cli('record', 'start', 'Chats/Code/projects/extension-e2e/evidence/interrupted.webm');
   await worker.evaluate(tabId => globalThis.fixtureTargetClosed(tabId), tabId);
   const interrupted = await fetch(`${base}/fixture/tool`, {method:'POST',body:JSON.stringify({command:'record',args:['stop']})});
@@ -327,15 +367,32 @@ try {
   console.log('PASS human Connect immediately reports connected, shares current website and makes it usable without Share');
   const until = async (read, check, label) => {for(let i=0;i<150;i++){const value=await read();if(check(value))return value;await new Promise(resolve=>setTimeout(resolve,100));}assert.fail(label);};
   const codeStatus=async()=> (await fetch(`${base}/fixture/code-status`)).json();
+  await sideTool('open',`${base}/fixture?side-server-resume=1`);
+  const sideBeforeResume=(await sideTool('tab')).tabs.map(t=>t.targetId);
+  const primaryBeforeResume=(await cli('tab')).tabs.map(t=>t.targetId);
   const oldStatus=await codeStatus();
   await privatePage.bringToFront();
   assert.equal((await fetch(`${base}/fixture/restart-relay`,{method:'POST'})).status,200);
-  await until(codeStatus,s=>s.connected && s.connection_id!==oldStatus.connection_id && s.tabs===1,'server restart did not resume shared tab');
+  await until(codeStatus,s=>s.connected && s.connection_id!==oldStatus.connection_id && s.tabs===2,'server restart did not resume shared tab');
   const resumed=await message({action:'state'});
-  assert.deepEqual(resumed.tabs.map(t=>t.id),[tabId]);
+  assert.equal(resumed.tabs.length,2);
+  assert.ok(resumed.tabs.some(t=>t.id===tabId));
   assert.equal(await activeTab(),privateTabId,'server resume does not focus or adopt private tab');
+  // B reconnects first; A's physical page must not be offered to B.
+  assert.deepEqual((await sideTool('tab')).tabs.map(t=>t.targetId),sideBeforeResume);
+  assert.deepEqual((await cli('tab')).tabs.map(t=>t.targetId),primaryBeforeResume);
   assert.match(JSON.stringify(await cli('snapshot','-i')),/Save customer/);
+  assert.doesNotMatch(JSON.stringify(await cli('tab')),/side-server-resume=1/);
+  console.log('PASS two Code chats retain ownership when B reconnects first after server restart');
   console.log('PASS server restart renews connection automatically and restores only explicitly shared session tab IDs');
+  // Close an idle chat after reconnect, before either native client reattaches.
+  const cleanupStatus=await codeStatus();
+  await fetch(`${base}/fixture/restart-relay`,{method:'POST'});
+  await until(codeStatus,s=>s.connected && s.connection_id!==cleanupStatus.connection_id && s.tabs===2,'cleanup restart did not restore project grants');
+  await fetch(`${base}/fixture/release-chat`,{method:'POST'});
+  await until(codeStatus,s=>s.connected && s.tabs===1,'unregistered idle chat tabs were not released');
+  assert.deepEqual((await cli('tab')).tabs.map(t=>t.targetId),primaryBeforeResume);
+  console.log('PASS closing a restored chat before its first command releases only its own agent-created tabs');
   await browser.close();
   browser=await chromium.launchPersistentContext(profile,{executablePath,headless:false,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
   const returningPopup=await browser.newPage();await returningPopup.goto(`chrome-extension://${id}/popup.html`);

@@ -587,6 +587,9 @@ func (api *StreamingAPI) cleanupBrowserSessions(sessionID string) {
 	// Give back this conversation's tab in a shared Crew/workflow browser even
 	// when another conversation opened (and is tracked for) that browser.
 	browser.ReleaseSessionTabOwner(sessionID, client)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	browser.ReleaseExtensionConversation(cleanupCtx, sessionID)
+	cleanupCancel()
 	if tracker.CountForChat(sessionID) == 0 {
 		return
 	}

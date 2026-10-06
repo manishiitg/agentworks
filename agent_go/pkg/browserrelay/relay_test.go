@@ -61,6 +61,9 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
+	if _, _, err := b.AcquireClient(context.Background(), "code-chat", false); err == nil || !strings.Contains(err.Error(), "CHROME_EXTENSION_UPDATE_REQUIRED") {
+		t.Fatal("old extension did not fail closed for Code multi-chat", err)
+	}
 	endpoint, release, err := b.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

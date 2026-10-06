@@ -1,7 +1,11 @@
 package browser
 
 import (
+	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -41,4 +45,18 @@ func validateExtensionRecording(args []string, active bool) error {
 		}
 	}
 	return nil
+}
+
+// ReleaseExtensionConversation tears down only this chat's native relay runtime
+// and unfinished recording. It never closes the user's Chrome process.
+func ReleaseExtensionConversation(ctx context.Context, owner string) {
+	for _, session := range browserrelay.Default.ReleaseConversation(ctx, owner, common.SandboxBrowserSession(owner)) {
+		clearSessionTabScope(session)
+		resetCDPSessionRuntime(session)
+		key := browserArtifactLeaseKey(owner, session, "record")
+		if lease, ok := getBrowserArtifactLease(key); ok && lease.Transfer != nil {
+			_ = os.Remove(lease.Transfer.SourcePath)
+		}
+		deleteBrowserArtifactLease(key)
+	}
 }

@@ -184,8 +184,10 @@ use the account token and explicit scope. A missing scope is allowed only when
 the credential identifies one project unambiguously.
 
 A live binding is private to `(account identity, server-derived browser workspace
-identity)`. Each project has its own private CDP capability, target/session maps,
-controller, diagnostics and groups. Several Code/Crew projects and workflows can connect from
+identity)`. Each project has its own target/session maps, diagnostics and groups.
+Code chats receive separate private CDP capabilities and native reference caches
+inside that project connection. Crew and workflow controllers remain root-scoped.
+Several Code/Crew projects and workflows can connect from
 one extension simultaneously. A local tab can be shared with only one project;
 sharing it into a second project is refused. A collaborator's run never inherits
 another person's Chrome. Reusing a token in another browser replaces only the
@@ -285,16 +287,34 @@ version and per-request elapsed milliseconds, with each completion keeping its
 own method identity even when requests overlap. Tracking:
 [PLAT-599](../bugs/pulse_platform/browser/browser/plat-599.md).
 
-Commands for a binding are serialized. The first action claims control for its
-trusted root chat/run identity; delegated agents inherit it. Another conversation
-is refused until the user explicitly re-pairs. This first release has one
-controlling conversation per connection, avoiding shared stale element refs.
+Commands for a binding are serialized. In Code, Browser Bridge 0.4.6 negotiates
+private chat clients: each trusted root conversation has its own native session,
+CDP capability, selected tabs, snapshot references and recording lease. Identical
+CDP request IDs are routed only to their client's socket, and disconnected
+clients' late replies are discarded. Delegates inherit their trusted root.
+Manually shared tabs are claimed by the first chat that attaches them; another
+chat creates its own tabs rather than borrowing those targets. The physical
+project group and stable account token remain shared. A stopped or cleared chat
+revokes only its own capability, removes its native daemon and unfinished take,
+closes its agent-created tabs and unshares its manually shared tabs without
+closing the user's pages. Other chats and the project socket stay connected.
+At most 32 chat clients and 32 shared physical tabs are allowed per connection.
+Older extensions fail Code page commands with an explicit update requirement.
+Crew/workflow keep one trusted root controller; separate runs cannot take it over.
+
 The selected tab is pinned; closing it fails the next action instead of applying
-cached references to another shared tab. The CLI session/socket folder is derived
-from that binding and uses the existing workspace folder guard and artifact
-broker. A lost connection invalidates the CDP client. It does not restart
-Chrome, retry mutations or fall back to a managed browser. The user must pair
-again to recover. Choosing Workspace browser or direct connection in the app
+cached references to another tab. Each private CLI session/socket folder uses
+the existing workspace folder guard and artifact broker. Stable chat routing IDs
+are derived on the server from authenticated project and root conversation
+identities; they are routing labels, never capabilities. Fresh CDP capabilities
+and native sessions are generated on reconnect. Tab ownership and agent-created
+flags are stored only in trusted `chrome.storage.session`, alongside physical
+tab grants. Server/worker reconnect restores the same chat ownership regardless
+of which chat acts first; browser restart clears these tab grants. No page is
+adopted by URL, title, group or foreground state. A lost connection invalidates
+the CDP client; it does not restart Chrome, retry mutations or fall back to a
+managed browser. Tracking: [PLAT-624](../bugs/pulse_platform/browser/browser/plat-624.md).
+Choosing Workspace browser or direct connection in the app
 returns future calls to the ordinary browser; Stop in the extension leaves a disconnected selection so
 the next tool call explains that Chrome was stopped.
 
@@ -793,7 +813,8 @@ endpoint and argument form for the active session.
 ## Shared CDP tab lifecycle
 
 This section describes configured direct CDP. The Code/Crew/workflow extension instead exposes
-only authorized targets, has one controlling root chat per binding and keeps tabs
+only authorized targets, isolates Code chats within the project binding, retains
+one root controller for Crew/workflow, and keeps tabs
 in the background unless a call sets `active=true`.
 
 One visible Chrome is shared safely by verifying and acting under a per-port
@@ -1403,7 +1424,7 @@ can access.
 - [Extension worker](../../extensions/agentworks-chrome/background.js): shared target authorization, debugger transport, groups and foreground permission.
 - [Extension popup](../../extensions/agentworks-chrome/popup.html): connection and explicit sharing controls.
 - [Extension management API](../../agent_go/cmd/server/browser_extension.go): pairing, stable codes and authenticated selection.
-- [Private relay](../../agent_go/pkg/browserrelay/relay.go) and [diagnostics](../../agent_go/pkg/browserrelay/diagnostics.go): capability transport, serialized controller ownership and per-target logs.
+- [Private relay](../../agent_go/pkg/browserrelay/relay.go) and [diagnostics](../../agent_go/pkg/browserrelay/diagnostics.go): capability transport, serialized actions, private Code chat clients and per-target logs.
 - [Extension executor](../../agent_go/pkg/browser/extension_executor.go): managed tool routing and guarded CLI execution.
 - [Browser workspace panel](../../frontend/src/components/workflow/BrowserWorkspacePanel.tsx) and [connection UI](../../frontend/src/components/workflow/ChromeExtensionConnection.tsx): explicit methods and selected extension experience.
 - [Browser toolbar status](../../frontend/src/hooks/useBrowserToolbarConnection.ts): read-only connection health without chat messages.

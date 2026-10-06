@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P2 |
 | Product | browser |
 | Area | browser |
@@ -35,28 +35,55 @@ element references and the one native CDP controller.
 
 ## Fix
 
-None implemented during this review. Do not remove the owner check or make all
-chats impersonate the primary: that would let one chat reuse another's selected
-tab and snapshot references.
+- Code uses a server-registered private client for each trusted root chat within
+  the authorized account/project binding. Each client gets a separate native CLI
+  session, CDP capability, selected targets, element-reference cache and recording
+  lease. The project tool gate still serializes complete actions.
+- Extension 0.4.6 routes requests/replies and flattened page events by client ID,
+  discards late disconnected-client replies, and verifies target/session ownership.
+  Manually shared tabs are claimed on first attach. Other chats create their own
+  tabs. The account code and project tab group remain shared.
+- Client IDs are stable server-derived routing labels; private capabilities and
+  native sessions are fresh on reconnect. Ownership/created flags survive network,
+  worker and server reconnect in trusted session storage, never browser restart.
+- Closing an idle Code side chat calls the authenticated Stop endpoint before
+  dismissing its UI; a working chat still must be stopped before closing.
+- Stop/clear releases only the chat capability and native runtime, discards its
+  unfinished recording, closes its agent-created tabs and unshares manual pages.
+  It leaves the other chats, account pairing and project socket live.
+- `status` distinguishes this chat's `shared_tabs` from `project_shared_tabs`.
+  Existing Crew/workflow root handoff, account authorization, background default,
+  screenshot guards and headless-limit exemptions remain enforced.
+- Older extensions refuse Code page actions with an explicit 0.4.6 reload message.
 
-The managed workspace-browser path already has per-conversation tab routing
-with selection and command execution under the shared browser automation lock.
-Direct CDP has its own conversation tab routing. Extension mode returns through
-its separate executor and does not reuse those protections.
+## Verification
 
-## Left
+- Real Chrome 154.0.4258.53 with the unpacked 0.4.6 extension, guarded workspace
+  shell and native agent-browser 0.38.2: PASS (43 s). Two Code chats kept their
+  own tabs, selection and saved references; foreign physical targets were refused.
+  A delegate retained its parent chat's client. Both chats recorded independent,
+  nonempty decodable WebMs concurrently; releasing B left A and the project live.
+  B reconnected first after server restart without receiving A's page. Closing a
+  restored chat before it re-registers its native client also released only its
+  own agent-created tabs.
+- Existing real-path checks passed: workflow step and paused cross-site iframe
+  handoff, Code/Crew/account separation, screenshots, interrupted-take rejection,
+  headless-limit exemption, background focus/explicit activation, delayed reply
+  rejection, failed-init recovery, browser restart and account reset.
+- `go test -race ./pkg/browserrelay`: PASS. Live sockets route identical request
+  IDs only to the originating private client and revoke one without stopping the
+  other; an older extension refuses Code page actions explicitly.
+- `go test ./pkg/browser ./pkg/browserrelay`: PASS.
+- Five server regressions covering project isolation, workflow runtime/HTTP
+  account binding and session ownership: PASS.
+- Frontend `tsc -b` and WorkSurface/chat-selection tests (12): PASS.
+- JavaScript syntax, embedded ZIP byte equality and ticket index/check: PASS.
 
-- Decide and implement safe multi-chat extension routing: separate conversation
-  tab/ref state within the authorized account/project grant, with serialized
-  tool actions and a defined lifetime for native CDP clients and recordings.
-- Preserve workflow step/delegate browser handoff, account isolation, opt-in
-  visible activation, screenshot grants and recording ownership.
-- Verify through a real extension and two Code chats: each navigates and takes
-  snapshots of its own tab, switching the UI does not move the other chat's
-  selection, and stale references cannot act on the other chat's page.
-- Expose which chat can control the connection, or make that availability clear
-  when the current chat cannot use it.
+## Rollout
 
-Until then, use one Code chat to control a given extension connection. Separate
-Code projects still have separate project browser bindings. Shared-file writes
-between Code chats are a different known limitation tracked in PLAT-571.
+Use Browser Bridge 0.4.6 with the updated server. The download ZIP is included.
+Local source checkouts are fast-forwarded after push; running servers need their
+normal restart/rebuild. RTS deployment is separate and has not been performed.
+
+Shared-file writes between Code chats are independent of browser tab isolation
+and remain tracked in PLAT-571.

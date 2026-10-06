@@ -49,6 +49,8 @@ type Binding struct {
 	mu                                 sync.Mutex
 	key, capability, endpoint, session string
 	owner                              string
+	clients                            map[string]*Client
+	chatClients                        bool
 	profile                            string
 	tabTitles                          []string
 	label                              string
@@ -306,6 +308,9 @@ func (b *Binding) CloseTarget(ctx context.Context, targetID string) error {
 	return err
 }
 func (b *Binding) targetCommand(ctx context.Context, targetURL, targetID string) (string, error) {
+	return b.targetCommandFor(ctx, targetURL, targetID, "")
+}
+func (b *Binding) targetCommandFor(ctx context.Context, targetURL, targetID, clientID string) (string, error) {
 	request := secret()
 	result := make(chan envelope, 1)
 	b.mu.Lock()
@@ -315,7 +320,7 @@ func (b *Binding) targetCommand(ctx context.Context, targetURL, targetID string)
 	}
 	b.newTabRequest, b.newTabResult = request, result
 	b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	err := b.extension.WriteJSON(envelope{Type: "target-command", RequestID: request, URL: targetURL, TargetID: targetID, Active: b.active})
+	err := b.extension.WriteJSON(envelope{Type: "target-command", ClientID: clientID, RequestID: request, URL: targetURL, TargetID: targetID, Active: b.active})
 	b.mu.Unlock()
 	defer func() {
 		b.mu.Lock()
@@ -447,6 +452,18 @@ func (b *Binding) closeWithReason(reason string) {
 		b.cdp.Close()
 		b.cdp = nil
 	}
+	for _, client := range b.clients {
+		select {
+		case <-client.ready:
+		default:
+			close(client.ready)
+		}
+		if client.cdp != nil {
+			client.cdp.Close()
+			client.cdp = nil
+		}
+	}
+	b.clients = nil
 	b.tabs = 0
 	b.tabTitles = nil
 	b.diagnostics = nil
@@ -469,6 +486,8 @@ func (m *Manager) Close() {
 
 type envelope struct {
 	Type        string          `json:"type"`
+	ClientID    string          `json:"client_id,omitempty"`
+	Features    []string        `json:"features,omitempty"`
 	Token       string          `json:"token,omitempty"`
 	Scope       string          `json:"scope,omitempty"`
 	Resume      bool            `json:"resume,omitempty"`
@@ -614,6 +633,11 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
 	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	for _, feature := range hello.Features {
+		if feature == "chat-clients" {
+			b.chatClients = true
+		}
+	}
 	b.mu.Lock()
 	m.bindings[b.key] = b
 	m.mu.Unlock()
@@ -652,6 +676,12 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			err = conn.WriteJSON(envelope{Type: "pong", Projects: projects})
 		case "tabs":
+			if e.ClientID != "" {
+				if client := b.clients[e.ClientID]; client != nil && e.Tabs >= 0 && e.Tabs <= 32 {
+					client.tabs = e.Tabs
+				}
+				break
+			}
 			if e.Tabs >= 0 && e.Tabs <= 32 {
 				b.tabs = e.Tabs
 				b.tabTitles = nil
@@ -663,6 +693,15 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 						title = title[:512]
 					}
 					b.tabTitles = append(b.tabTitles, title)
+				}
+			}
+		case "client-ready":
+			if client := b.clients[e.ClientID]; client != nil && e.Tabs >= 0 && e.Tabs <= 32 {
+				client.tabs = e.Tabs
+				select {
+				case <-client.ready:
+				default:
+					close(client.ready)
 				}
 			}
 		case "target-result":
@@ -682,9 +721,20 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 			}
 		case "cdp":
 			b.collectDiagnostics(e.Message)
-			if b.cdp != nil && len(e.Message) > 0 {
-				b.cdp.SetWriteDeadline(time.Now().Add(10 * time.Second))
-				err = b.cdp.WriteMessage(websocket.TextMessage, e.Message)
+			cdp := b.cdp
+			if e.ClientID != "" {
+				cdp = nil
+				if client := b.clients[e.ClientID]; client != nil {
+					cdp = client.cdp
+					if interruptedRecording(e.Message) {
+						client.recordingInterruptions++
+					}
+				}
+			}
+			if cdp != nil && len(e.Message) > 0 {
+				cdp.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				// A closed chat client must not tear down the project socket.
+				_ = cdp.WriteMessage(websocket.TextMessage, e.Message)
 			}
 		case "stop":
 			b.mu.Unlock()
@@ -711,9 +761,22 @@ func (m *Manager) serveCDP(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	var b *Binding
+	var client *Client
 	for _, candidate := range m.bindings {
+		candidate.mu.Lock()
 		if candidate.capability == cap {
 			b = candidate
+			candidate.mu.Unlock()
+			break
+		}
+		for _, c := range candidate.clients {
+			if c.capability == cap {
+				b, client = candidate, c
+				break
+			}
+		}
+		candidate.mu.Unlock()
+		if b != nil {
 			break
 		}
 	}
@@ -723,7 +786,11 @@ func (m *Manager) serveCDP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.mu.Lock()
-	if b.extension == nil || time.Now().After(b.expires) || b.cdp != nil {
+	cdp, clientID := b.cdp, ""
+	if client != nil {
+		cdp, clientID = client.cdp, client.id
+	}
+	if b.extension == nil || time.Now().After(b.expires) || cdp != nil || client != nil && b.clients[clientID] != client {
 		b.mu.Unlock()
 		http.Error(w, "Chrome disconnected or already controlled", 409)
 		return
@@ -733,19 +800,29 @@ func (m *Manager) serveCDP(w http.ResponseWriter, r *http.Request) {
 		b.mu.Unlock()
 		return
 	}
-	b.cdp = conn
+	if client == nil {
+		b.cdp = conn
+	} else {
+		client.cdp = conn
+	}
 	b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	err = b.extension.WriteJSON(envelope{Type: "client-connected"})
+	err = b.extension.WriteJSON(envelope{Type: "client-connected", ClientID: clientID})
 	b.mu.Unlock()
 	defer func() {
 		conn.Close()
 		b.mu.Lock()
-		if b.cdp == conn {
-			b.cdp = nil
+		current := b.cdp == conn
+		if client != nil {
+			current = client.cdp == conn && b.clients[clientID] == client
 		}
-		if b.extension != nil {
+		if current && client == nil {
+			b.cdp = nil
+		} else if current {
+			client.cdp = nil
+		}
+		if current && b.extension != nil {
 			b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			b.extension.WriteJSON(envelope{Type: "client-disconnected"})
+			b.extension.WriteJSON(envelope{Type: "client-disconnected", ClientID: clientID})
 		}
 		b.mu.Unlock()
 	}()
@@ -762,12 +839,12 @@ func (m *Manager) serveCDP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.mu.Lock()
-		if b.extension == nil || time.Now().After(b.expires) {
+		if b.extension == nil || time.Now().After(b.expires) || client != nil && b.clients[clientID] != client {
 			b.mu.Unlock()
 			return
 		}
 		b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		err = b.extension.WriteJSON(envelope{Type: "cdp", Message: data, Active: b.active})
+		err = b.extension.WriteJSON(envelope{Type: "cdp", ClientID: clientID, Message: data, Active: b.active})
 		b.mu.Unlock()
 		if err != nil {
 			return

@@ -555,8 +555,21 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       useChatStore.getState().addToast('This chat is still working. Stop it first, then close the tab.', 'error')
       return
     }
-    void closeTab(closingTabId, side).then(() => {
+    void (async () => {
+      // Idle side chats still retain browser clients and warm coding sessions.
+      // Stop this chat before dismissing it so its resources cannot outlive it.
+      if (side && closing?.sessionId) {
+        try {
+          await agentApi.stopSession(closing.sessionId)
+        } catch (cause) {
+          const status = (cause as { response?: { status?: number } })?.response?.status
+          if (status !== 404) throw cause
+        }
+      }
+      await closeTab(closingTabId, side)
       if (activeTabId === closingTabId) activateTab(canonicalTabId)
+    })().catch(() => {
+      useChatStore.getState().addToast('Could not stop this chat. Try closing it again.', 'error')
     })
   }
   const renameSideChat = async (tab: ChatTab, name: string) => {
