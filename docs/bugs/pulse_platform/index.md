@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 77 | 12 |
 | [Brain](brain/index.md) | 20 | 3 |
-| [Browser and browser automation](browser/index.md) | 42 | 11 |
+| [Browser and browser automation](browser/index.md) | 43 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 69 | 17 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | in progress | P1 | [sandbox/environment](sandbox/environment/index.md) |
 | [PLAT-621](app/navigation/plat-621.md) | Shortcut hint on new chats | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-587](browser/browser/plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-586](browser/browser/plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-585](browser/browser/plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
-| [PLAT-584](browser/browser/plat-584.md) | Direct CDP recording handoff still expects a fresh tab with the current CLI recorder | open | P2 | [browser/browser](browser/browser/index.md) |
