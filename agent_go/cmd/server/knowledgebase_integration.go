@@ -226,6 +226,18 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	case "write":
 		policy.Bindings, policy.WriteAll = nil, true
 	}
+	// In the open modes a binding alias is only a shortcut to that folder, not a limit (migrated projects' prompts
+	// still name their alias).
+	if alias, _ := args["binding_alias"].(string); alias != "" && (policy.ReadAll || policy.WriteAll) {
+		if args["folder_id"] == nil && args["folder_path"] == nil && args["entry_id"] == nil && args["path"] == nil {
+			for _, b := range project.Bindings {
+				if b.Alias == alias {
+					args["folder_id"] = b.FolderID
+				}
+			}
+		}
+		delete(args, "binding_alias")
+	}
 	if alias, _ := args["binding_alias"].(string); alias != "" && !policy.ReadAll && !policy.WriteAll {
 		policy.Bindings = nil
 		for _, b := range project.Bindings {
@@ -569,7 +581,9 @@ func knowledgebaseSetProjectAccess(project *knowledgeProject, args map[string]an
 	if mode != "off" && mode != "read" && mode != "write" && mode != "folders" {
 		return nil, &knowledgebase.Error{Code: "INVALID_ARGUMENT", Message: "mode must be off, read, write or folders."}
 	}
-	if project.Shared && mode != "folders" {
+	// A migrated project keeps writing its own knowledge in Brain: it may be open (write) or limited to its folders,
+	// but not off or read-only until the migration is rolled back.
+	if project.Shared && mode != "folders" && mode != "write" {
 		return nil, fmt.Errorf("this project's knowledge lives in Brain; roll back the migration before turning Brain access off or read-only")
 	}
 	if (mode == "read" || mode == "write") && len(project.Audience) == 0 {

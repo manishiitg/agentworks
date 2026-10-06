@@ -544,8 +544,11 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 		}
 		return r, nil
 	}
-	if project.Version != r.ManifestVersion {
-		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "Project changed since migration preview."}
+	// Only the knowledge configuration must match the preview. The cutover requires schedules to be paused first, and
+	// pausing them edits the manifest, so comparing the whole manifest made the documented order impossible (RTS
+	// 2026-10-06). Concurrent edits are still caught by the save below, which checks the current version.
+	if project.Version != r.ManifestVersion && !knowledgeConfigMatches(project, r.Original) {
+		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "The project's knowledge configuration changed since the migration preview."}
 	}
 	_, _, hash, err := knowledgeMigrationInventory(project)
 	if err != nil || hash != r.SourceHash {
@@ -559,6 +562,7 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 	if err := knowledgeMigrationCheckScripts(project); err != nil {
 		return nil, err
 	}
+	expectedVersion := project.Version
 	bindings := append(append([]knowledgebase.Binding{}, project.Bindings...), r.Binding)
 	if err := knowledgebase.ValidateBindings(bindings, project.Reserved); err != nil {
 		return nil, err
@@ -592,7 +596,7 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 	if len(consumers) != 0 {
 		return nil, fmt.Errorf("rebind legacy consumers before cutover: %v", consumers)
 	}
-	if err := knowledgeProjectSave(project, r.ManifestVersion); err != nil {
+	if err := knowledgeProjectSave(project, expectedVersion); err != nil {
 		return nil, err
 	}
 	r.State = "ACTIVE"
@@ -697,4 +701,17 @@ func knowledgeSyncDirectory(path string) error {
 	}
 	defer f.Close()
 	return f.Sync()
+}
+
+// knowledgeConfigMatches reports whether the project's knowledge configuration is what the migration preview recorded.
+func knowledgeConfigMatches(project *knowledgeProject, original map[string]json.RawMessage) bool {
+	if len(original) == 0 {
+		return false
+	}
+	for key, value := range original {
+		if knowledgeHash(project.Raw[key]) != knowledgeHash(value) {
+			return false
+		}
+	}
+	return true
 }

@@ -72,6 +72,19 @@ func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	if retried.Files[0].EntryID != r.Files[0].EntryID {
 		t.Fatal("retry duplicated entry")
 	}
+	// Pausing schedules before cutover edits the manifest; that must not count as a change since the preview
+	// (it made the documented order impossible on RTS, 2026-10-06).
+	manifestPath := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), workspace, "workflow.json")
+	var manifest map[string]any
+	data, _ := os.ReadFile(manifestPath)
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest["schedules"] = []map[string]any{{"id": "nightly", "enabled": false}}
+	data, _ = json.Marshal(manifest)
+	if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
 	r = run("migration_cutover", "cutover")
 	if r.State != "ACTIVE" {
 		t.Fatal(r)
