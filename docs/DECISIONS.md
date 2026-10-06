@@ -17,6 +17,23 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Recover a closed debugger target only on the same granted tab
+
+Chrome `target_closed` can leave its physical tab alive. Retain that tab's
+logical root session and group while reattaching the exact authorized ID;
+restore domain subscriptions, never replay page actions. Human cancellation,
+closed/protected tabs, connection replacement and changed ownership still
+revoke access. Why: RTS discarded live tabs and subsequent agent commands
+returned NO_TABS. Ticket: [PLAT-569](bugs/pulse_platform/browser/browser/plat-569.md).
+
+### 2026-10-06 — Copy the account browser code without changing connections
+
+Expose copying separately from pairing and Reset. Copy returns the stable
+account token and this project's routing scope without selecting/reconnecting
+that project or changing Connected status. Reset alone rotates an existing
+credential. Why: retrieving a code should not interrupt Code/Crew/workflow work.
+Ticket: [PLAT-571](bugs/pulse_platform/browser/browser/plat-571.md).
+
 ### 2026-10-06 — Show the account browser without choosing it for every project
 
 Keep the explicit browser picker in Code, Crew and workflows. Show a green

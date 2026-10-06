@@ -14,6 +14,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
   const [status, setStatus] = useState(emptyStatus)
   const [loading, setLoading] = useState(!!workspacePath && !readOnly)
   const [pairing, setPairing] = useState('')
+  const [connectionCode, setConnectionCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [checkingError, setCheckingError] = useState('')
@@ -27,7 +28,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
 
   useEffect(() => {
     generation.current += 1; revision.current += 1; awaiting.current = null
-    setStatus(emptyStatus); setPairing(''); setBusy(false); setError(''); setCheckingError(''); setCopied(false); setManual(false)
+    setStatus(emptyStatus); setPairing(''); setConnectionCode(''); setBusy(false); setError(''); setCheckingError(''); setCopied(false); setManual(false)
     setLoading(!!workspacePath && !readOnly)
     if (!workspacePath || readOnly) return
     let alive = true
@@ -68,22 +69,25 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
     try {
       await api.post('/api/browser/extension', { action: 'disconnect' }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
       if (generation.current !== turn) return false
-      awaiting.current = null; setStatus(emptyStatus); setPairing(''); setCopied(false); setManual(false)
+      awaiting.current = null; setStatus(emptyStatus); setPairing(''); setConnectionCode(''); setCopied(false); setManual(false)
       return true
     } catch { if (generation.current === turn) setError('Could not disconnect. Your current browser is still selected.'); return false }
     finally { if (generation.current === turn) setBusy(false) }
   }
-  const copy = async (reset = false) => {
+  const copy = async (reset = false, copyOnly = false) => {
     const turn = generation.current
     revision.current += 1; setBusy(true); setError(''); setCopied(false)
     try {
-      const { data } = await api.post<{ token: string; scope: string }>('/api/browser/extension', { action: reset ? 'reset' : 'pair' }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
+      const { data } = await api.post<{ token: string; scope: string }>('/api/browser/extension', { action: reset ? 'reset' : copyOnly ? 'copy' : 'pair' }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
       if (generation.current !== turn) return
       const url = new URL('/api/browser/extension/connect', base)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       const value = JSON.stringify({ url: url.href, token: data.token, scope: data.scope, brand: getRuntimeAppName(runtimeBrandingConfig()) || 'AgentWorks' })
-      awaiting.current = { previous: status.connection_id || '' }
-      setPairing(value)
+      setConnectionCode(value)
+      if (!copyOnly) {
+        awaiting.current = { previous: status.connection_id || '' }
+        setPairing(value)
+      }
       if (reset) setStatus(current => ({ ...current, connected: false, tabs: 0 }))
       try {
         await navigator.clipboard.writeText(value)
@@ -94,12 +98,12 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
     } catch { if (generation.current === turn) setError('Could not create the connection. Please try again.') }
     finally { if (generation.current === turn) setBusy(false) }
   }
-  return { status, loading, pairing, busy, error: error || checkingError, copied, manual, setManual, copy, connect, disconnect, download }
+  return { status, loading, pairing, connectionCode, busy, error: error || checkingError, copied, manual, setManual, copy, connect, disconnect, download }
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
 export function ChromeExtensionConnection({ connection }: { connection: ChromeExtensionController }) {
-  const { status, pairing, busy, error, copied, manual, setManual, copy, connect, download } = connection
+  const { status, pairing, connectionCode, busy, error, copied, manual, setManual, copy, connect, download } = connection
   const [installBrowser, setInstallBrowser] = useState(navigator.userAgent.includes('Edg') ? 'edge' : 'chrome')
   const [reconnect, setReconnect] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -161,6 +165,9 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer hover:text-foreground">Connection code options</summary>
       <div className="mt-2 space-y-2">
+        <p>Copy your existing code to connect another browser. Copying keeps the same token and leaves current connections running.</p>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => { void copy(false, true) }}>{copied ? <Check /> : <Copy />}{copied && !pairing ? 'Copied connection code' : 'Copy connection code'}</Button>
+        {manual && connectionCode && !pairing && <textarea aria-label="Existing browser connection code" readOnly value={connectionCode} rows={3} className="w-full resize-none rounded-md border border-border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed" onFocus={event => event.target.select()} />}
         <p>Reset invalidates all saved copies of your account token and disconnects every Code, Crew and workflow browser connection.</p>
         {resetting ? <div className="flex flex-wrap gap-2"><Button size="sm" variant="destructive" disabled={busy} onClick={() => { void copy(true); setResetting(false); setReconnect(true) }}>Reset all connections</Button><Button size="sm" variant="ghost" onClick={() => setResetting(false)}>Cancel</Button></div> : <Button size="sm" variant="outline" disabled={busy} onClick={() => setResetting(true)}><RefreshCw />Reset connection code</Button>}
       </div>

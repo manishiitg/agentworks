@@ -32,7 +32,14 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     expect(host.textContent).toContain('Connected · 0 shared tabs')
     expect(host.querySelector('option[value="extension"]')?.textContent).toContain('Connected')
     expect(host.textContent).not.toContain('Install the extension')
-    expect(host.textContent).not.toContain('Copy connection')
+    const copy = [...host.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!
+    mocks.post.mockResolvedValue({ data: { token: 'stable-account-token', scope: 'crew-one' } })
+    await act(async () => copy.click())
+    expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'copy' }, expect.anything())
+    expect(JSON.parse(clipboard.mock.calls[0][0]).token).toBe('stable-account-token')
+    expect(host.textContent).toContain('Connected · 0 shared tabs')
+    expect(host.textContent).not.toContain('Waiting for your browser')
+    expect(host.textContent).not.toContain('Install the extension')
   } finally {
     await act(async () => root.unmount())
     vi.unstubAllGlobals()

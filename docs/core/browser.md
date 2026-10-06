@@ -3,7 +3,7 @@
 This is the single browser design and implementation guide for our products.
 It consolidates the former core browser, workflow authoring, live browser and
 Chrome/Edge extension designs, including extension installation and deployment.
-The extension policy is current through PLAT-530 (2026-10-05); other browser
+The extension policy includes PLAT-569–571 (2026-10-06); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
@@ -157,7 +157,7 @@ The authenticated Code/Crew/workflow Browser settings picker exposes My Chrome o
 extension and shows account availability separately from this project's connection.
 Choosing it explicitly reuses a live account browser through the authenticated
 `connect` action; the response contains status, never a pairing credential.
-Copy connection registers the server-derived project and returns one
+Pairing registers the server-derived project and returns one
 persistent random token for the account plus that project's routing scope. The
 full JSON differs by scope even though the token is identical across projects.
 Only registered scopes can connect; scope is metadata, not authorization.
@@ -165,6 +165,13 @@ Product access, project ownership and write access are checked on management,
 every connection and every heartbeat. Workflow pairing requires AgentWorks product
 access, an existing workflow root manifest and owner/editor access; Relay manifests
 are excluded. Each collaborator pairs their own account browser.
+
+**Connection code options → Copy connection code** retrieves the same account
+token and this project's routing scope without selecting the project, requesting
+a new connection or putting a connected panel into Waiting. Copying does not
+rotate the token; **Reset connection code** is a separate confirmed action.
+Pasting the code into another browser still replaces that project's binding.
+Tracking: [PLAT-571](../bugs/pulse_platform/browser/browser/plat-571.md).
 
 The private credential survives server restarts in the existing 0600 file.
 Account Reset rotates it and closes all of that account's live connections;
@@ -215,6 +222,18 @@ existing groups, and cannot detach a tab belonging to another project. A browser
 restart or extension reload clears session grants: the connection returns ready
 with zero tabs, and the agent can create its own first tab. Sharing an existing
 page again remains optional. Reconnection never brings tabs into focus.
+
+Extension 0.4.2 distinguishes physical-tab closure from Chrome debugger
+`target_closed`. If the explicitly granted physical tab still exists with a safe
+URL and the same live project owner, bounded recovery reattaches that exact ID,
+keeps the logical root session and group, and restores domain subscriptions.
+Following commands wait for recovery; page actions are never replayed. Child
+sessions from the old target are discarded. Human cancellation, actual tab
+closure, unsupported URLs and stopped/replaced connections revoke access.
+Recovery never creates a replacement blank tab or infers a grant from a group.
+Group and recovery diagnostics contain lifecycle metadata only. The real local
+Chrome regression passes; verification of the original RTS profile is pending.
+Tracking: [PLAT-569](../bugs/pulse_platform/browser/browser/plat-569.md).
 
 Disconnect in the popup removes that project's remembered pairing before
 stopping its debugger/socket; Disconnect all removes all remembered pairings.

@@ -75,7 +75,7 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 				return
 			}
 			browserrelay.Default.RequestProjectConnection(user, scope)
-		case "pair", "reset":
+		case "pair", "copy", "reset":
 			var token string
 			var err error
 			if req.Action == "reset" {

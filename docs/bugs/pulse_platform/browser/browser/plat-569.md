@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | browser |
 | Area | browser |
-| Summary | The connected extension drops its shared-tab/session mapping during agent use; the physical Chrome tab remains open. Cause and fix are not yet established. |
+| Summary | The connected extension drops its shared-tab/session mapping during agent use; the physical Chrome tab remains open. Chrome target closure discarded still-live tab authority. Extension 0.4.2 reattaches the same authorized physical tab; RTS verification remains pending. |
 
 ## What happened
 
@@ -78,14 +78,54 @@ contained only connection_paired: no agent browser command had run since reload.
 That page was closed and removed. Crew setup screenshots are evidence for
 PLAT-570, not a reproduced debugger detach.
 
-No server deployment/restart or tab grant changes were made. Cause and recovery
-fix remain unproven; passing isolated tests do not resolve the RTS failure.
+## Confirmed lifecycle boundary and recovery
+
+The instrumented RTS retry on 2026-10-06 establishes the removal path:
+
+- 07:26:10 UTC: an agent-created tab receives Chrome `target_closed` after
+  Network.enable. The extension then logs `tab_unshared/debugger_detached`;
+  following domain commands fail with `not_shared`.
+- 07:31:06 UTC: the next tab receives the same detach while the socket remains
+  paired. This is not an authentication/token failure.
+- Read-only queries of the installed Chrome 154.0.8037.98 confirm both tab IDs
+  still exist, complete, neither frozen nor discarded; one is grouped and one
+  was ungrouped by the old removal handler.
+- After the owner reconnects, 07:39:44–45 UTC: Page.navigate succeeds on the
+  same tab, followed by child detach, `target_closed` and unshare. There is no
+  initiating close-target or session-detach command for that tab.
+- 07:41:27 UTC: a newly created tab suffers the same boundary after attach.
+
+This confirms that debugger target closure is not physical-tab closure. The
+underlying reason Chrome closes its target in this existing profile remains
+unestablished; group creation and navigation are possible triggers, not proved
+causes. Extension 0.4.2 additionally logs tab creation and group start/success/
+failure to distinguish them without logging URLs or page contents.
+
+For `target_closed` only, retain the explicitly granted tab ID, logical root
+session and project group. Query that exact surviving HTTP(S)/about:blank tab
+and reattach its debugger with bounded attempts. Reapply successful domain-enable
+and auto-attach settings; discard obsolete child sessions. Following commands
+wait for recovery. Never replay page actions. A closed/protected tab, explicit
+cancellation, stopped/replaced connection or changed owner revokes access.
+No new blank tab or grant inferred from URL, title or group is used.
+
+The real tool → guarded workspace → agent-browser 0.38.2 → relay → Chrome
+154.0.8037.98 E2E passed: detach the real debugger transport, inject the observed
+Chrome lifecycle reason in a fixture-only worker, then read the same tab through
+the same agent session. The snapshot and physical tab/group survive, focus stays
+on the private user tab, and cancellation during recovery never restores access.
+The existing full suite also passes agent-created tabs joining an existing group,
+simultaneous Code/Crew isolated groups and workflow-step reuse. The fixture hook
+is excluded from the shipped extension. This exercises the failure boundary;
+it does not reproduce the original Chrome trigger in the owner's profile.
+
+No production server restart/deployment was performed for this recovery change.
 
 ## Left
 
-Deploy the negotiated server diagnostics and capture the reason and initiating
-path on the next actual agent browser retry. Reproduce
-against the actual extension/runtime combination and pin the cause with a real
-browser regression. Preserve revocation on human cancellation and do not restore
-unrelated tabs or blindly retry page actions. Then verify the fix on RTS and
-update this ticket's state with the evidence.
+Reload extension 0.4.2 in the owner's existing browser and verify concurrent
+Code/Crew new-tab creation and navigation on RTS. Deploy the updated relay to
+capture group and recovery events in server logs (the local extension ring works
+with the previous relay). Establish Chrome's original closure trigger if it
+persists. Keep this issue in progress until the actual RTS retry is verified.
+The separate screenshot staging failure is tracked in [PLAT-572](plat-572.md).

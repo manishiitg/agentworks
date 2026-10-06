@@ -1,7 +1,7 @@
 import { chromium } from '../packages/playwright/node_modules/playwright/index.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -10,7 +10,18 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = process.env.CHROME_EXTENSION_E2E_URL;
 const profile = await mkdtemp(path.join(tmpdir(), 'agentworks-extension-e2e-'));
 const executablePath = process.env.CHROME_EXTENSION_E2E_CHROME || chromium.executablePath();
-const extension = path.join(root, 'extensions/agentworks-chrome');
+const extension = path.join(profile, 'extension');
+await cp(path.join(root, 'extensions/agentworks-chrome'), extension, {recursive:true});
+const backgroundFile = path.join(extension, 'background.js');
+await writeFile(backgroundFile, await readFile(backgroundFile, 'utf8') + `
+// Fixture only: exercise real Chrome transport teardown with the observed reason.
+globalThis.fixtureTargetClosed = async (tabId, cancel = false) => {
+  const owner = tabOwners.get(tabId);
+  await chrome.debugger.detach({tabId});
+  owner.onDetach(tabId, 'target_closed');
+  if (cancel) owner.onDetach(tabId, 'canceled_by_user');
+};
+`);
 const run = promisify(execFile);
 const evidence = process.env.CHROME_EXTENSION_E2E_EVIDENCE || '/tmp/agentworks-chrome-extension-ui';
 await mkdir(evidence, {recursive:true});
@@ -92,8 +103,28 @@ try {
   await popup.evaluate(({groupId, tabId}) => chrome.tabs.group({groupId, tabIds:[tabId]}), {groupId:grouping.groupId, tabId:privateTabId});
   await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   const response = await fetch(`${base}/fixture/cdp`); assert.equal(response.status, 200); connection = await response.json();
-  const snapshot = await cli('snapshot', '-i'); console.log('PASS shared-page snapshot');
   const activeTab = () => popup.evaluate(async () => (await chrome.tabs.query({active:true, currentWindow:true}))[0].id);
+  const snapshot = await cli('snapshot', '-i'); console.log('PASS shared-page snapshot');
+  // Reproduce the real RTS boundary: debugger target closes, physical tab stays.
+  // Detach Chrome's actual transport, then deliver its observed reason through
+  // the fixture worker. No test hook is shipped in the extension package.
+  await worker.evaluate(tabId => globalThis.fixtureTargetClosed(tabId), tabId);
+  const restoredSnapshot = await cli('snapshot', '-i');
+  assert.match(JSON.stringify(restoredSnapshot), /Save customer/);
+  assert.equal((await message({action:'state'})).tabs[0].id, tabId);
+  assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), grouping.groupId, 'debugger recovery preserves the existing project group');
+  assert.equal((await message({action:'state'})).diagnostics.some(r => r.event === 'target_recovered' && r.tab_id === tabId), true);
+  assert.equal(await activeTab(), privateTabId, 'recovery does not steal foreground focus');
+  console.log('PASS real debugger reattachment retains the same tab, logical session and snapshot without copying a token');
+  const revokedTab = await popup.evaluate(() => chrome.tabs.create({url:'about:blank', active:false}));
+  await message({action:'share', tabId:revokedTab.id});
+  await worker.evaluate(tabId => globalThis.fixtureTargetClosed(tabId, true), revokedTab.id);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const afterCancellation = await message({action:'state'});
+  assert.equal(afterCancellation.tabs.some(t => t.id === revokedTab.id), false);
+  assert.equal(afterCancellation.diagnostics.some(r => r.event === 'target_recovered' && r.tab_id === revokedTab.id), false);
+  await popup.evaluate(id => chrome.tabs.remove(id), revokedTab.id);
+  console.log('PASS human cancellation during recovery revokes the tab and never reattaches it');
   assert.equal(await activeTab(), privateTabId, 'snapshot preserves the user active tab');
   assert.match(JSON.stringify(snapshot), /Name/); assert.match(JSON.stringify(snapshot), /Save customer/);
   const refs = snapshot.refs || {};

@@ -5,4 +5,4 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [automation](automation/index.md) | 14 | 5 |
-| [browser](browser/index.md) | 19 | 6 |
+| [browser](browser/index.md) | 21 | 7 |

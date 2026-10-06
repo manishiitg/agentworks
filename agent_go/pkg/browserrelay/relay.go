@@ -492,7 +492,7 @@ type envelope struct {
 // log arbitrary message strings, CDP parameters, page URLs or credentials.
 func logExtensionDiagnostic(scope, connection string, e envelope) {
 	switch e.Event {
-	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached":
+	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached", "tab_created", "tab_grouping_started", "tab_grouped", "tab_grouping_failed", "target_recovery_started", "target_recovered", "target_recovery_failed":
 	default:
 		return
 	}

@@ -130,6 +130,8 @@ let serverDiagnostics = false;
 const shared = new Map();
 const sessions = new Map();
 const groups = new Map();
+const recoveries = new Map();
+const sessionSettings = new Map();
 const diagnostics = [];
 let lastMethod = '';
 let queue = Promise.resolve();
@@ -183,6 +185,7 @@ async function groupSharedTab(tabId, connection = socket) {
   const tab = await chrome.tabs.get(tabId);
   if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
   const title = `${brand} · ${workspace.split('/').pop()}`;
+  diagnostic('tab_grouping_started', tabId);
   let groupId;
   try { groupId = await chrome.tabs.group({ ...(groups.has(tab.windowId) ? { groupId: groups.get(tab.windowId) } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
   catch { if (socket !== connection || !shared.has(tabId)) throw new Error('Connection stopped'); groupId = await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tabId] }); }
@@ -192,6 +195,7 @@ async function groupSharedTab(tabId, connection = socket) {
   }
   groups.set(tab.windowId, groupId);
   await chrome.tabGroups.update(groupId, { title, color: 'blue' });
+  diagnostic('tab_grouped', tabId);
 }
 async function share(tabId) {
   if (socket?.readyState !== WebSocket.OPEN || !workspace) throw new Error('Connect to a workspace first');
@@ -203,7 +207,7 @@ async function share(tabId) {
     // Attach immediately: if Chrome rejects access, do not advertise authority.
     await attach(tab);
     shared.set(tabId, tab);
-    try { await groupSharedTab(tabId, connection); } catch (e) { if (socket !== connection || !workspace) throw e; error = 'Tab shared, but its group could not be created.'; }
+    try { await groupSharedTab(tabId, connection); } catch (e) { diagnostic('tab_grouping_failed', tabId); if (socket !== connection || !workspace) throw e; error = 'Tab shared, but its group could not be created.'; }
     await announce(tab);
     await announceTabs();
   }
@@ -211,6 +215,8 @@ async function share(tabId) {
 }
 async function unshare(tabId, reason = 'requested_unshare') {
   if (!shared.has(tabId)) return;
+  const recovery = recoveries.get(tabId); if (recovery) recovery.cancelled = true;
+  recoveries.delete(tabId); sessionSettings.delete(tabId);
   diagnostic('tab_unshared', tabId, reason);
   shared.delete(tabId);
   for (const [id, debuggee] of sessions) if (debuggee.tabId === tabId) {
@@ -227,6 +233,8 @@ async function stop(reason = '') {
   const previous = socket; socket = null; workspace = ''; brand = 'AgentWorks'; error = reason;
   clearInterval(heartbeat); discover = false; autoAttach = false;
   serverDiagnostics = false;
+  for (const recovery of recoveries.values()) recovery.cancelled = true;
+  recoveries.clear(); sessionSettings.clear();
   if (previous) { if (previous.readyState === WebSocket.OPEN) previous.send(JSON.stringify({ type: 'stop' })); previous.close(); }
   const ids = [...tabOwners].filter(([, owner]) => owner === api).map(([id]) => id), previousGroups = new Map(groups); shared.clear(); sessions.clear(); groups.clear();
   await Promise.allSettled(ids.map(async tabId => {
@@ -235,6 +243,47 @@ async function stop(reason = '') {
     try { const tab = await chrome.tabs.get(tabId); if (previousGroups.get(tab.windowId) === tab.groupId) await chrome.tabs.ungroup(tabId); } catch {}
   }));
   updateBadge();
+}
+// Chrome can close a renderer's debugging target while its physical tab stays
+// open. Keep the explicit grant and logical root session only for that same tab.
+// Cancellation, closed tabs and stopped/project-replaced connections revoke it.
+async function restoreTarget(tabId, recovery) {
+  const allowed = () => !recovery.cancelled && socket === recovery.connection && workspace && shared.has(tabId) && tabOwners.get(tabId) === api;
+  diagnostic('target_recovery_started', tabId);
+  for (const delay of [0, 250, 500, 1000]) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    if (!allowed()) return;
+    let tab;
+    try { tab = await chrome.tabs.get(tabId); safeURL(tab.pendingUrl || tab.url || 'about:blank'); }
+    catch { break; }
+    if (!allowed()) return;
+    // Only child sessions are tied to the dead renderer. The platform's root
+    // session/target IDs describe the authorized physical tab and remain stable.
+    for (const [id, source] of sessions) if (source.tabId === tabId && source.sessionId) {
+      sessions.delete(id); event('Target.detachedFromTarget', {sessionId:id});
+    }
+    let attached = false;
+    try {
+      await chrome.debugger.attach({tabId}, '1.3'); attached = true;
+      if (!allowed()) throw new Error('Connection stopped');
+      for (const [method, params] of sessionSettings.get(tabId) || []) {
+        await chrome.debugger.sendCommand({tabId}, method, params);
+        if (!allowed()) throw new Error('Connection stopped');
+      }
+      if (!allowed()) throw new Error('Connection stopped');
+      shared.set(tabId, tab);
+      event('Target.targetInfoChanged', {targetInfo:target(tab)});
+      diagnostic('target_recovered', tabId);
+      await announceTabs();
+      return;
+    } catch {
+      // Never detach a tab already claimed by a different project.
+      if (attached && (!tabOwners.has(tabId) || tabOwners.get(tabId) === api)) {
+        try { await chrome.debugger.detach({tabId}); } catch {}
+      }
+    }
+  }
+  if (allowed()) { diagnostic('target_recovery_failed', tabId); await unshare(tabId, 'debugger_detached'); }
 }
 function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, diagnostics: [...diagnostics], tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
 async function connect(raw) {
@@ -300,7 +349,8 @@ async function command(message, active = false) {
         if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
         const tab = await chrome.tabs.create({ url: safeURL(params.url || 'about:blank'), active });
-        try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); await announceTabs(); return { targetId: `tab-${tab.id}` }; }
+        diagnostic('tab_created', tab.id);
+        try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { diagnostic('tab_grouping_failed', tab.id); if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); await announceTabs(); return { targetId: `tab-${tab.id}` }; }
         catch (e) { await chrome.tabs.remove(tab.id); throw e; }
       }
       case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id, 'target_close'); await chrome.tabs.remove(tab.id); return { success: true }; }
@@ -310,6 +360,11 @@ async function command(message, active = false) {
   }
   const source = sessions.get(sessionId);
   if (!source || !shared.has(source.tabId)) throw new Error('Session is not shared with this workspace');
+  const recovery = recoveries.get(source.tabId);
+  if (recovery) {
+    await recovery.promise;
+    if (socket !== recovery.connection || !shared.has(source.tabId) || sessions.get(sessionId) !== source) throw new Error('Session is not shared with this workspace');
+  }
   // agent-browser also sends Page.bringToFront during logical tab selection.
   if (method === 'Page.bringToFront' && !active) return {};
   const domain = method.split('.')[0];
@@ -318,7 +373,12 @@ async function command(message, active = false) {
   if (['DOM.setFileInputFiles', 'Page.setDownloadBehavior', 'Page.addScriptToEvaluateOnNewDocument', 'Runtime.addBinding'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
   if (method === 'Page.navigate') safeURL(params.url);
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
-  return await chrome.debugger.sendCommand(source, method, params) || {};
+  const result = await chrome.debugger.sendCommand(source, method, params) || {};
+  if (!source.sessionId && ['Page.enable', 'Runtime.enable', 'Network.enable', 'DOM.enable', 'Accessibility.enable', 'Log.enable', 'Console.enable', 'CSS.enable', 'Performance.enable', 'Target.setAutoAttach'].includes(method)) {
+    if (!sessionSettings.has(source.tabId)) sessionSettings.set(source.tabId, new Map());
+    sessionSettings.get(source.tabId).set(method, params);
+  } else if (!source.sessionId && method.endsWith('.disable')) sessionSettings.get(source.tabId)?.delete(method.replace(/\.disable$/, '.enable'));
+  return result;
 }
 async function handleCDP(message, connection, active) {
   if (socket !== connection || !workspace) return;
@@ -334,7 +394,14 @@ async function handleCDP(message, connection, active) {
     scope: '', profile: '', connect, state, share, unshare, stop,
     async newtab() { const result = await command({ method:'Target.createTarget', params:{url:'about:blank'} }); const tab = await tabForTarget(result.targetId); await chrome.tabs.update(tab.id,{active:true}); },
     async group() { for (const id of [...shared.keys()]) await groupSharedTab(id); },
-    onDetach(tabId, reason) { diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user'].includes(reason) ? reason : 'other'); void unshare(tabId, 'debugger_detached'); },
+    onDetach(tabId, reason) {
+      diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user'].includes(reason) ? reason : 'other');
+      if (reason !== 'target_closed') { void unshare(tabId, 'debugger_detached'); return; }
+      if (!shared.has(tabId) || recoveries.has(tabId)) return;
+      const recovery = {connection:socket, cancelled:false, promise:null};
+      recoveries.set(tabId, recovery);
+      recovery.promise = restoreTarget(tabId, recovery).finally(() => { if (recoveries.get(tabId) === recovery) recoveries.delete(tabId); });
+    },
     onRemoved(tabId) { void unshare(tabId, 'tab_closed'); },
     onEvent(source,method,params) {
       if (!shared.has(source.tabId)) return;

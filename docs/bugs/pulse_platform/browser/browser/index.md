@@ -4,6 +4,8 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-572](plat-572.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 |
+| [PLAT-571](plat-571.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 |
 | [PLAT-570](plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 |
 | [PLAT-569](plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | in progress | P1 |
 | [PLAT-550](plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 |

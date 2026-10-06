@@ -87,6 +87,16 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 	if !crewStatus.AccountConnected || crewStatus.Connected || browserrelay.Default.Status("bob", crewCode.Scope).AccountConnected {
 		t.Fatal("account availability leaked or pretended Crew was connected")
 	}
+	copyRequest := httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"copy"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}))
+	copyResponse := httptest.NewRecorder()
+	api.handleBrowserExtension(copyResponse, copyRequest)
+	var copied struct{ Token, Scope string }
+	if err := json.Unmarshal(copyResponse.Body.Bytes(), &copied); err != nil || copyResponse.Code != 200 || copied.Token != result.Token || copied.Scope != crewCode.Scope {
+		t.Fatal("Copy code rotated the account token or returned a different scope")
+	}
+	if browserrelay.Default.Status("alice", crewCode.Scope).Selected || !browserrelay.Default.Status("alice", result.Scope).Connected {
+		t.Fatal("Copy code changed browser selection or disconnected Code")
+	}
 	r := httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"connect"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}))
 	w := httptest.NewRecorder()
 	api.handleBrowserExtension(w, r)
