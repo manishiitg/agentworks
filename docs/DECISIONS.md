@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Automatic workflow tab restoration stays in the selected product
+
+Goals and Relays share workflow mode, but a saved chat may restore only inside
+its selected product and preset. Unknown manifest ownership waits for the catalog;
+explicit tab navigation still follows the chosen tab. Why: selecting Relays
+reopened a saved Goal Builder and returned Rakesh on Confida to Goals.
+Ticket: [PLAT-607](bugs/pulse_platform/app/navigation/plat-607.md).
+
 ### 2026-10-06 — Extension CDP requests do not wait for unrelated renderer replies
 
 Serialize agent tool calls by their existing project/conversation gate, but

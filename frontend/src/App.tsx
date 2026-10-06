@@ -22,7 +22,7 @@ import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
 import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
-import { normalizeEventViewMode, waitForChatStoreHydration, type ChatTab } from "./stores/useChatStore";
+import { useWorkflowTabRestore, isInteractiveWorkflowTab, isRecentExplicitReadOnlyWorkflowTab, workflowTabSortTimestamp } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ProductSurfaceSwitcher } from './components/ProductSurfaceSwitcher';
@@ -77,22 +77,6 @@ const WORKSPACE_COLLAPSING_POPUP_SELECTOR = [
   '[class~="fixed"][class~="inset-0"]'
 ].join(',')
 const WORKSPACE_COLLAPSE_IGNORE_SELECTOR = '[data-workspace-collapse-ignore="true"]'
-const READ_ONLY_WORKFLOW_RESTORE_SELECTION_WINDOW_MS = 60 * 1000
-
-const workflowTabSortTimestamp = (tab: ChatTab) => tab.lastAccessedAt ?? tab.createdAt ?? 0
-
-const isInteractiveWorkflowTab = (tab: ChatTab | null | undefined): tab is ChatTab =>
-  !!tab && tab.metadata?.mode === 'workflow' && tab.metadata?.isViewOnly !== true
-
-const isRecentExplicitReadOnlyWorkflowTab = (tab: ChatTab | null | undefined): tab is ChatTab => {
-  const restoredAt = tab?.metadata?.readOnlyRestoredAt
-  return !!tab &&
-    tab.metadata?.mode === 'workflow' &&
-    tab.metadata?.isViewOnly === true &&
-    typeof restoredAt === 'number' &&
-    Date.now() - restoredAt <= READ_ONLY_WORKFLOW_RESTORE_SELECTION_WINDOW_MS
-}
-
 const hasOpenWorkspaceCollapsingPopup = () => {
   if (typeof document === 'undefined') return false
 
@@ -611,104 +595,7 @@ function App() {
     }
   }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview])
 
-  // Ensure a chat tab is selected after restore (fix for page reload issue)
-  // This ensures that when tabs are restored from localStorage, we select the first tab of the current mode
-  // if activeTabId is null or invalid or belongs to a different mode
-  useEffect(() => {
-    if (!hasCompletedInitialSetup || (productSurface !== 'agentworks' && productSurface !== 'relays') || selectedModeCategory !== 'workflow') return
-
-    let cancelled = false
-
-    const ensureActiveTab = async () => {
-      await waitForChatStoreHydration()
-      if (cancelled) return
-
-      // When switching back to workflow mode, restore the active workflow execution tab and
-      // ensure the chat panel is visible — otherwise activeTabId stays on whatever mode the
-      // user came from (e.g. multi-agent) and the ChatArea inside WorkflowLayout shows wrong content.
-      if (selectedModeCategory === 'workflow') {
-        const chatStore = useChatStore.getState()
-        const workflowStore = useWorkflowStore.getState()
-        const activeTabId = chatStore.activeTabId
-        const activeTab = activeTabId ? chatStore.getTab(activeTabId) : null
-        const activePresetId = useGlobalPresetStore.getState().activePresetIds.workflow
-
-        const activeTabMatchesPreset = activeTab &&
-          activeTab.metadata?.mode === 'workflow' &&
-          activeTab.metadata?.presetQueryId === activePresetId
-        const explicitReadOnlyActiveTab = activeTabMatchesPreset && isRecentExplicitReadOnlyWorkflowTab(activeTab)
-          ? activeTab
-          : null
-        // Tab must match workflow mode and the active preset. Read-only Schedule/Bot
-        // tabs only stay active immediately after an explicit open action.
-        const hasValidActiveTab = activeTabMatchesPreset &&
-          (isInteractiveWorkflowTab(activeTab) || !!explicitReadOnlyActiveTab)
-
-        // Prefer the workflow tab the user last had active for this preset.
-        let workflowTabs = Object.values(chatStore.chatTabs)
-          .filter(tab => isInteractiveWorkflowTab(tab) && (tab.sessionId || tab.isStreaming))
-          .sort((a, b) => workflowTabSortTimestamp(b) - workflowTabSortTimestamp(a))
-
-        if (activePresetId) {
-          const presetTabs = workflowTabs.filter(tab => tab.metadata?.presetQueryId === activePresetId)
-          if (presetTabs.length > 0) workflowTabs = presetTabs
-        }
-
-        const rememberedWorkflowTab = workflowStore.activeWorkflowTabId
-          ? chatStore.getTab(workflowStore.activeWorkflowTabId)
-          : null
-        const rememberedWorkflowTabMatchesPreset = rememberedWorkflowTab &&
-          isInteractiveWorkflowTab(rememberedWorkflowTab) &&
-          rememberedWorkflowTab.metadata?.presetQueryId === activePresetId
-        const builderTab = workflowTabs.find(tab => tab.metadata?.phaseId === 'workflow-builder')
-        const streamingTab = workflowTabs.find(tab => chatStore.getTabStreamingStatus(tab.tabId) || tab.isStreaming)
-        const activeWorkflowViewMode = normalizeEventViewMode(
-          activeTab?.metadata?.mode === 'workflow'
-            ? activeTab.viewMode
-            : chatStore.eventViewModePreference
-        )
-        const targetWorkflowTab = explicitReadOnlyActiveTab || (
-          activeWorkflowViewMode === 'terminal'
-            ? streamingTab ||
-              (hasValidActiveTab ? activeTab : null) ||
-              (rememberedWorkflowTabMatchesPreset ? rememberedWorkflowTab : null) ||
-              builderTab ||
-              workflowTabs[0]
-            : builderTab ||
-              (hasValidActiveTab ? activeTab : null) ||
-              (rememberedWorkflowTabMatchesPreset ? rememberedWorkflowTab : null) ||
-              streamingTab ||
-              workflowTabs[0]
-        )
-
-        if (targetWorkflowTab) {
-          if (!hasValidActiveTab || activeTabId !== targetWorkflowTab.tabId) {
-            activateTab(targetWorkflowTab.tabId)
-          }
-
-          const shouldShowWorkflowChat =
-            workflowStore.showChatArea ||
-            targetWorkflowTab.metadata?.phaseId === 'workflow-builder'
-
-          if (shouldShowWorkflowChat) {
-            workflowStore.setShowChatArea(true)
-          }
-        } else {
-          // No active workflow tabs - clear activeTabId so WorkflowLayout's ChatArea
-          // doesn't display content from another mode
-          useChatStore.setState({ activeTabId: null })
-        }
-        return
-      }
-
-    }
-
-    void ensureActiveTab()
-
-    return () => {
-      cancelled = true
-    }
-  }, [hasCompletedInitialSetup, productSurface, selectedModeCategory])
+  useWorkflowTabRestore(hasCompletedInitialSetup, productSurface, selectedModeCategory)
 
   // Restore active presets after stores are initialized
   const hasRestoredPresetRef = useRef(false)
