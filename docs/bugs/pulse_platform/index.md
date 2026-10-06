@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 15 | 2 |
-| [Browser and browser automation](browser/index.md) | 31 | 10 |
+| [Browser and browser automation](browser/index.md) | 32 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
 | [Code](code/index.md) | 2 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-569](browser/browser/plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | open | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-568](sandbox/skills/plat-568.md) | Custom skills can be installed again; only our policy files are protected | fixed on main | P2 | [sandbox/skills](sandbox/skills/index.md) |
 | [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-532](browser/browser/plat-532.md) | Remember browser extension connections when users return | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-531](crew/frontend-chat/plat-531.md) | Switching from a workflow to Crew (or Code) shows "Opening workspace…" every time, slow on RTS | fixed on main | - | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-530](browser/browser/plat-530.md) | Workflow extension rollout and immediate current-tab sharing | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-529](app/tests/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [app/tests](app/tests/index.md) |
