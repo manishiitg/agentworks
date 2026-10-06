@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 2 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 165 | 34 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 166 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-559](goals/pulse/general/plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-558](app/navigation/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-557](brain/learnings-knowledge/plat-557.md) | Brain restricted folders (private folders inside shared ones) | open | P3 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-556](goals/pulse/fixer/plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | in progress | P1 | [goals/pulse/fixer](goals/pulse/fixer/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-522](browser/browser/plat-522.md) | Browser cleanup trusts persisted process IDs before signaling | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-521](browser/browser/plat-521.md) | Global browser capacity eviction stops unrelated sessions | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-520](browser/browser/plat-520.md) | Shared direct-CDP callers can select other owners’ tabs | open | P1 | [browser/browser](browser/browser/index.md) |
-| [PLAT-519](integrations/mcp/plat-519.md) | an MCP tool named like a platform tool stops the chat from starting | fixed on main | P1 | [integrations/mcp](integrations/mcp/index.md) |

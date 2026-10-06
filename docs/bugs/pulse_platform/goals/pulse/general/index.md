@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-559](plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 |
 | [PLAT-315](plat-315.md) | Pulse slash command resolves the open chat workflow | deployed | - |
 | [PLAT-311](plat-311.md) | Goal metric groups and linked supporting measurements | deployed | - |
 | [PLAT-239](plat-239.md) | `changed_unverified`'s contradictory `next_check` requirement: already resolved independently | closed | - |
