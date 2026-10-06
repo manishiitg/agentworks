@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-591](plat-591.md) | Start browser fails for a Crew moved to the shared root | fixed on main | P2 |
 | [PLAT-524](plat-524.md) | Account browser token and simultaneous Code/Crew connections | fixed on main | P2 |

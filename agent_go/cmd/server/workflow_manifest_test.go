@@ -440,8 +440,9 @@ func TestReadWorkflowManifestPrunesRetiredExecutionDefaultsFields(t *testing.T) 
 }
 
 func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
-	const workspacePath = "_users/user-1/Chats/Work/projects/prodissue-362d6e05"
-	manifestJSON := `{
+	for _, workspacePath := range []string{"_users/user-1/Chats/Work/projects/prodissue-362d6e05", "Chats/Work/projects/prodissue-362d6e05", "Crew/prodissue-362d6e05"} {
+		t.Run(workspacePath, func(t *testing.T) {
+			manifestJSON := `{
   "schema_version": 1,
   "id": "362d6e05-94ea-5d89-9799-bd957367fe75",
   "label": "prodissue",
@@ -452,23 +453,25 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
   "crew_extension": {"future": true}
 }`
 
-	workspace := &mockWorkspaceAPI{files: map[string]string{
-		workspacePath + "/workflow.json": manifestJSON,
-	}}
-	server := httptest.NewServer(workspace)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
+			workspace := &mockWorkspaceAPI{files: map[string]string{
+				workspacePath + "/workflow.json": manifestJSON,
+			}}
+			server := httptest.NewServer(workspace)
+			defer server.Close()
+			t.Setenv("WORKSPACE_API_URL", server.URL)
 
-	_, found, err := ReadWorkflowManifest(context.Background(), workspacePath)
-	if err != nil || !found {
-		t.Fatalf("ReadWorkflowManifest() found=%v err=%v", found, err)
-	}
+			_, found, err := ReadWorkflowManifest(context.Background(), workspacePath)
+			if err != nil || !found {
+				t.Fatalf("ReadWorkflowManifest() found=%v err=%v", found, err)
+			}
 
-	workspace.mu.Lock()
-	persistedJSON := workspace.files[workspacePath+"/workflow.json"]
-	workspace.mu.Unlock()
-	if persistedJSON != manifestJSON {
-		t.Fatalf("Crew runtime manifest was rewritten:\n%s", persistedJSON)
+			workspace.mu.Lock()
+			persistedJSON := workspace.files[workspacePath+"/workflow.json"]
+			workspace.mu.Unlock()
+			if persistedJSON != manifestJSON {
+				t.Fatalf("Crew runtime manifest was rewritten:\n%s", persistedJSON)
+			}
+		})
 	}
 }
 

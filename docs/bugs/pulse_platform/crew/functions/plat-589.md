@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P2 |
 | Product | crew |
 | Area | functions |
@@ -51,18 +51,41 @@ background-agent footer can independently remain while the call watcher waits.
 
 ## Fix
 
-No implementation or server data changes in this investigation.
+The writer was identified: at `08:51:56Z`, `ReadWorkflowManifest` treated
+`Crew/aq-ae5e5fac` as an AgentWorks workflow and pruned its `triggers` and
+`identity`. Its protection recognized only `Chats/Work/projects/...`, not the
+new shared Crew root. The manifest changelog records that removal at the exact
+start of the call. The same destructive read was reproduced locally.
+
+- Recognize Crew runtime paths through `workspaceref.AnyCrewProject`, keeping
+  product-owned manifests read-only under both old and new path formats.
+- After three consecutive run-lookup failures (normal polling: about 20 seconds
+  from the first failed lookup), fail the call with the actual error and release
+  its notification watcher. Successful reads reset the retry count.
+- `get_function_call` reports lookup errors instead of returning a stale status.
+  Existing binding/caller authorization and revocation checks remain in place.
+- A combined regression drives a same-owner private Code ask through its tool,
+  durable trigger/run record, Crew runtime read, function supervisor and caller
+  notification registry. It verifies the answer and saved completion, and that
+  both success and binding revocation settle the background watcher. The model
+  answer is supplied by the test; this is not a live model end-to-end check.
+- Extended the existing manifest-preservation regression to shared Crew roots.
+  Relevant existing function, trigger, authorization and browser tests pass.
+  Restoring the old recognizer reproduces the lost trigger and missing answer.
+
+### Existing Excellence call recovered
+
+The owner registry, source and target IDs, successful saved run and destructive
+manifest changelog were checked before restoring this call's single missing
+binding. No task was reissued and no other binding was changed. Backup:
+`/srv/agents/state/repairs/plat-589/aq-workflow-before-20261006T093348Z.json`.
+The existing supervisor picked up the saved answer: call status became
+`completed`, with a result, at `2026-10-06T09:33:58.045295892Z`.
 
 ## Left
 
-- Identify the writer that removed the internal trigger binding; preserve
-  server-managed bindings across ordinary runtime-manifest updates.
-- Reconcile a call with its exact saved terminal run while preserving current
-  caller authorization and revocation rules. Do not bypass access checks just
-  because an old run exists.
-- Handle permanent lookup failures explicitly rather than silently returning
-  a stale running status; bound retries for transient failures and report them.
-- Verify the real Code-to-Crew path: one ask, main-chat answer, result delivered
-  to Code, background watcher settled. Cover a missing binding regression.
-- If monitor absence persists during a genuinely running background Crew
-  turn, capture the header activity response and selected session at that time.
+- Deploy the fix to Excellence so future Crew runtime reads preserve bindings.
+- Monitor absence was not independently reproduced. The stale call/watcher
+  issue is fixed and the existing call is recovered; if the monitor is absent
+  during future live background work, capture the header response and selected
+  session then.

@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -1544,8 +1545,8 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 }
 
 func isCrewRuntimeManifestWorkspace(workspacePath string) bool {
-	normalized := "/" + strings.ToLower(strings.Trim(strings.ReplaceAll(strings.TrimSpace(workspacePath), "\\", "/"), "/")) + "/"
-	return strings.Contains(normalized, "/chats/work/projects/")
+	_, _, crew := workspaceref.MustParse(workspacePath).AnyCrewProject()
+	return crew
 }
 
 func workflowLabelFromWorkspacePath(workspacePath string) string {

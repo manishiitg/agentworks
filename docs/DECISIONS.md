@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Crew runtime reads preserve product fields; failed call lookups settle visibly
+
+Recognize both shared and legacy Crew paths before applying workflow migrations.
+Use a moved Crew's current directory for browser execution, retaining its legacy
+browser identity for cookies and tabs. Report call lookup failures and settle the
+watcher after three consecutive failed polls; a successful poll resets retries.
+Why: manifest pruning removed a completed call's binding, while a retained browser
+key pointed Start at a deleted folder. Tickets: [PLAT-589](bugs/pulse_platform/crew/functions/plat-589.md),
+[PLAT-591](bugs/pulse_platform/crew/browser/plat-591.md).
+
 ### 2026-10-06 — Record the existing shared extension tab, with separate event receivers
 
 Use record start/stop for video only, on the selected granted tab without a new

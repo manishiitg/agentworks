@@ -969,6 +969,7 @@ func (api *StreamingAPI) superviseCrewFunctionCall(call *crewFunctionCall, timeo
 	started := time.Now()
 	hardCap := crewFunctionHardCap(timeout)
 	lastSign := started
+	lookupFailures := 0
 	ticker := time.NewTicker(call.poll)
 	defer ticker.Stop()
 	for {
@@ -983,6 +984,7 @@ func (api *StreamingAPI) superviseCrewFunctionCall(call *crewFunctionCall, timeo
 		call.mu.Unlock()
 		state, err := api.readTriggerTargetRun(ctx, call.UserID, call.caller, call.target, call.TriggerID, runID)
 		if err == nil {
+			lookupFailures = 0
 			call.mu.Lock()
 			if !call.terminalLocked() && triggerTargetRunIsRunning(call.TargetKind, state.Status) {
 				call.Status = "running"
@@ -994,6 +996,17 @@ func (api *StreamingAPI) superviseCrewFunctionCall(call *crewFunctionCall, timeo
 				}
 			} else if at := api.crewFunctionLastEventAt(crewTargetRunSessionID(state)); at.After(lastSign) {
 				lastSign = at
+			}
+		} else {
+			lookupFailures++
+			if lookupFailures == 1 {
+				log.Printf("[CREW_FUNCTION] call %s cannot read run %s: %v", call.ID, runID, err)
+			}
+			// A short outage gets retries, but a missing/revoked binding must
+			// not leave the caller and its notification watcher running forever.
+			if lookupFailures >= 3 {
+				call.settle("failed", nil, fmt.Sprintf("cannot check the target run after %d attempts: %v", lookupFailures, err))
+				return
 			}
 		}
 		now := time.Now()
@@ -1582,12 +1595,14 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		call.mu.Lock()
 		terminal, runID := call.terminalLocked(), call.RunID
 		call.mu.Unlock()
-		if !terminal && call.TargetKind == triggerCallerCrew {
-			if state, stateErr := api.readTriggerTargetRun(ctx, userID, call.caller, call.target, call.TriggerID, runID); stateErr == nil {
-				out["run_status"] = state.Status
-				if activity := api.crewFunctionActivity(crewTargetRunSessionID(state)); activity != nil {
-					out["recent_activity"] = activity
-				}
+		if !terminal && call.TargetKind == triggerCallerCrew && runID != "" {
+			state, stateErr := api.readTriggerTargetRun(ctx, userID, call.caller, call.target, call.TriggerID, runID)
+			if stateErr != nil {
+				return "", fmt.Errorf("cannot check function call %s: %w", call.ID, stateErr)
+			}
+			out["run_status"] = state.Status
+			if activity := api.crewFunctionActivity(crewTargetRunSessionID(state)); activity != nil {
+				out["recent_activity"] = activity
 			}
 		}
 		return jsonOut(out)

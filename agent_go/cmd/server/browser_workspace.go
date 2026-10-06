@@ -99,7 +99,12 @@ func (api *StreamingAPI) browserWorkspaceAccess(r *http.Request, workspace, prof
 		if api.crewBrowserAccess(claims, workspace) == WorkflowAccessNone {
 			return "", fmt.Errorf("Project access required")
 		}
-		return browserProjectKey(claims.UserID, workspace), nil
+		// The browser key may retain a migrated Crew's old path to keep its
+		// cookies. Execution and folder grants must use the current directory.
+		if ref, ok := resolveCrewPath(r.Context(), claims.UserID, workspace); ok {
+			return ref.Path(), nil
+		}
+		return agentProfileRuntimeWorkspace(claims.UserID, workspace), nil
 	}
 	if strings.HasPrefix(normalizeConversationWorkspace(workspace), "Workflow/") {
 		level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspace)

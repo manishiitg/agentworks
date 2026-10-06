@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-589](plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | open | P2 |
+| [PLAT-589](plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | fixed on main | P2 |
