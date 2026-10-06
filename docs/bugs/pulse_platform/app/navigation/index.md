@@ -4,7 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-607](plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | fixed on main | P2 |
+| [PLAT-607](plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 |
 | [PLAT-598](plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 |
 | [PLAT-590](plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 |
 | [PLAT-563](plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 |

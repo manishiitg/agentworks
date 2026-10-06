@@ -26,7 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
+| [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-606](code/sandbox/plat-606.md) | Code CLI shell made read-only by turn admission | fixed on main | P1 | [code/sandbox](code/sandbox/index.md) |
 | [PLAT-605](goals/steps/plat-605.md) | Failed run record has no error or failed step | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |

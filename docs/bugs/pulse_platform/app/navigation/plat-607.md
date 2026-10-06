@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | app |
 | Area | navigation |
-| Summary | Product-scoped automatic workflow tab restoration; Confida deployment pending. |
+| Summary | Goals/Relays automatic chat restoration stays in the chosen product; deployed on Confida. |
 
 ## What happened
 
@@ -43,8 +43,19 @@ This is a separate tab-restoration path from the handler/mode fix in
 - 36 navigation and restoration tests across nine files passed. Targeted lint,
   TypeScript, full frontend build, release asset checks and bundle budget passed.
 
+## Deployment
+
+- Fix commit `3c33e6af3c6ad40780adb14cba9681ae05e4dd76` is on `origin/main`.
+- Deployed 2026-10-06 to Confida as `confida-3c33e6af-20261006131824`,
+  from shared build `3c33e6af-20261006111314`.
+- Verified the live source revision and product filter, public index referencing
+  the release asset, and public frontend JS hash matching the release file.
+- Public health returned 200; deployed configuration checks passed. Full slot
+  self-test: 77 passed, 0 failed, 35 skipped.
+
 ## Left
 
-Push to main and deploy Confida, then verify
-live release assets and deployment self-tests. Rakesh's personal browser
-confirmation is not available in this session.
+No implementation or Confida deployment work remains. Rakesh should reload
+once to load the new frontend. His personal authenticated browser was not
+available; behavioral verification used the real sidebar/restoration regression
+above, and live verification checked the deployed assets and health.
