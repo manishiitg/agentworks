@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -122,6 +124,8 @@ func skillLocations(dir, name string) []string {
 	return found
 }
 
+var errLegacySkillLink = errors.New("legacy skill contains a link")
+
 // A one-time compatibility migration copies only saved attachments, including
 // step attachments, with binary assets intact. The old store is never an
 // inventory or runtime fallback. Keep it on disk for other, unmigrated projects.
@@ -158,16 +162,22 @@ func migrateWorkspaceSkills(docs, workspace, dir string, manifest, steps map[str
 			if info, err := os.Stat(filepath.Join(source, "SKILL.md")); err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			// Validate the entire source tree before copying: copyDir follows file links.
+			// Validate the entire source tree before copying: copyDir follows file links. A legacy skill that holds a
+			// link is skipped, not fatal: failing here failed every skill call for the workspace, including the
+			// runtime's, on every call, and the step silently ran without its skills.
 			if err := filepath.WalkDir(source, func(_ string, entry os.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}
 				if entry.Type()&os.ModeSymlink != 0 {
-					return fmt.Errorf("legacy skill contains a link")
+					return errLegacySkillLink
 				}
 				return nil
 			}); err != nil {
+				if errors.Is(err, errLegacySkillLink) {
+					log.Printf("[SKILLS] Not migrating legacy skill %q into %s: it contains a link", name, workspace)
+					break
+				}
 				return err
 			}
 			target := filepath.Join(dir, "skills")

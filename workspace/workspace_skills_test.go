@@ -166,3 +166,51 @@ func TestWorkspaceSkillsRefuseEscapesAndManagedUninstall(t *testing.T) {
 		t.Fatal("a workspace link wrote another user's files")
 	}
 }
+
+// A legacy skill holding a link is skipped, not fatal: an error here failed every skill call for the workspace,
+// the runtime's included, on every call, so steps silently ran without any of their skills.
+func TestWorkspaceSkillMigrationSkipsALinkedLegacySkill(t *testing.T) {
+	docs := t.TempDir()
+	old := viper.GetString("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", old) })
+	write := func(rel, data string) {
+		t.Helper()
+		dest := filepath.Join(docs, rel)
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dest, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Workflow/w/workflow.json", `{"capabilities":{"selected_skills":["good","linked"]}}`)
+	write("skills/good/SKILL.md", "---\nname: good\ndescription: d\n---\nBody.\n")
+	write("skills/linked/SKILL.md", "---\nname: linked\ndescription: d\n---\nBody.\n")
+	if err := os.Symlink("/etc/hostname", filepath.Join(docs, "skills/linked/escape")); err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/list", handleWorkspaceSkillList)
+	server := httptest.NewServer(router)
+	defer server.Close()
+	resp, err := http.Post(server.URL+"/list", "application/json", strings.NewReader(`{"workspace_path":"Workflow/w"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("one linked legacy skill must not fail the workspace: %d %s", resp.StatusCode, body)
+	}
+	if _, err := os.Stat(filepath.Join(docs, "Workflow/w/skills/good/SKILL.md")); err != nil {
+		t.Fatalf("the clean skill was not migrated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(docs, "Workflow/w/skills/linked")); !os.IsNotExist(err) {
+		t.Fatalf("the linked skill must not be copied: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(docs, "Workflow/w/.workspace-skills-v1")); err != nil {
+		t.Fatalf("the migration must complete: %v", err)
+	}
+}

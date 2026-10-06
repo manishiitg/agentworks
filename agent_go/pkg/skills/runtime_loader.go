@@ -203,6 +203,7 @@ func loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, folderName strin
 		Files []llmtypes.SkillFile `json:"files"`
 	}
 	if err := workspaceSkillOperation(context.Background(), workspaceAPIURL, "files", workspacePath, folderName, &result); err != nil {
+		log.Printf("[SKILLS] Could not load skill %q files from %s: %v", folderName, workspacePath, err)
 		return nil
 	}
 	return result.Files

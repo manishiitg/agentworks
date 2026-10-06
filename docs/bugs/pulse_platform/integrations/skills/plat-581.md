@@ -50,6 +50,17 @@ keep each skill in its owning workspace, and support scoped uninstall.
 - All backend packages compile; frontend build-mode type checks and 14 panel/shared
   contract checks pass. Modified frontend lint has no errors.
 
+## Review follow-up (2026-10-06)
+
+- A legacy skill holding a symlink made the migration return an error, which failed every skill call for that
+  workspace (list, files, the runtime's loading) on every call, because the marker was never written; the runtime
+  turned the error into "no files" without logging, so steps silently ran without their skills. Now that skill is
+  skipped and logged, the rest migrate and the marker is written. Pinned by
+  `TestWorkspaceSkillMigrationSkipsALinkedLegacySkill`. The runtime now logs when a skill's files cannot load.
+- Not changed: the marker `.workspace-skills-v1` sits in each workspace root (shows in file trees), and a reader
+  viewing a workflow's skills can trigger the copy-in (a server-side write, idempotent).
+- Shared skills across workspaces now come from Brain: [PLAT-576](../../brain/skills/plat-576.md).
+
 ## Left
 
 Deployment has not been run. Backend and workspace services must be restarted

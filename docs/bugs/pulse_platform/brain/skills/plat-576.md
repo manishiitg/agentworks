@@ -18,7 +18,7 @@
 
 ## Why
 
-Owner, 2026-10-06. Today the only shared skills are the installation's flat `skills/` library: everyone sees all of it, anyone whose workflow installs a skill changes it for everyone, and there are no versions or backup. Code projects keep private `skills/` folders that cannot be shared. `list_skills` lists that library; `search_skills` searches the public internet registry. Another agent is removing the global skills library; Brain takes over as the owner of global (company) skills. Workflow learnings (`learnings/_global`) and step-specific skills are out of scope.
+Owner, 2026-10-06. Today the only shared skills are the installation's flat `skills/` library: everyone sees all of it, anyone whose workflow installs a skill changes it for everyone, and there are no versions or backup. Code projects keep private `skills/` folders that cannot be shared. `list_skills` lists that library; `search_skills` searches the public internet registry. The global skills library was removed by [PLAT-581](../../integrations/skills/plat-581.md) (2026-10-06): skills now belong only to each workflow, Crew and Code project. Owner: global skills are replaced by Brain. Until this is built, a skill can only be shared by installing it into each workspace. Workflow learnings (`learnings/_global`) and step-specific skills are out of scope.
 
 ## Design (agreed in discussion, not built)
 
@@ -32,6 +32,6 @@ Owner, 2026-10-06. Today the only shared skills are the installation's flat `ski
 ## Open
 
 - Whether Brain entries can hold a skill's non-markdown files (scripts, assets) as they are; check before building.
-- Coordinate with the agent removing the global skills library: where existing library skills go (a `Company/Skills` folder) and what `list_skills` / `install_skill` do after.
+- The old root `skills/` store stays on disk only as migration input (PLAT-581); importing its skills into a `Company/Skills` Brain folder is a candidate first step. `list_skills` / `install_skill` are now workspace-scoped; Brain skills add a company source to search and attach.
 - Owner rule for scripts (above).
 - Add the Relays section to the AgentWorks skill (`agent_go/pkg/agentworksclient/skills/agentworks/SKILL.md` has none) when this ships.
