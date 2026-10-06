@@ -4,7 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-609](plat-609.md) | Remove an attached Crew template from its setup row above chat | fixed on main | P2 |
+| [PLAT-609](plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 |
 | [PLAT-594](plat-594.md) | Show installed template setup progress and exclude optional checks from completion | deployed | P2 |
 | [PLAT-531](plat-531.md) | Switching from a workflow to Crew (or Code) shows "Opening workspace…" every time, slow on RTS | fixed on main | - |
 | [PLAT-515](plat-515.md) | Many template "Setup pending" rows took over the Crew chat | fixed on main | - |

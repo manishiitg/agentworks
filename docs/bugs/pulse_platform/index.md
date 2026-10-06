@@ -26,7 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | fixed on main | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
+| [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-608](app/tools/plat-608.md) | product.yaml is the only tool registry; Brain tools renamed to brain_* | in progress | P1 | [app/tools](app/tools/index.md) |
 | [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-606](code/sandbox/plat-606.md) | Code CLI shell made read-only by turn admission | fixed on main | P1 | [code/sandbox](code/sandbox/index.md) |

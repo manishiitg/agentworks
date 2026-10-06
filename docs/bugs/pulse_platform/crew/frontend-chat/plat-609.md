@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | crew |
 | Area | frontend-chat |
-| Summary | One-click template removal from its chat setup row; Confida deployment pending. |
+| Summary | One-click template removal from its chat setup row; deployed on Confida. |
 
 ## What happened
 
@@ -43,7 +43,20 @@ show a setup row above the chat, but that row offered no removal action.
   TypeScript, targeted lint (including WorkSurface), full frontend build, release
   asset validation and bundle budget passed.
 
+## Deployment
+
+- Fix commit `aaaedbeb32a724093dc173c1ad799002a27e277c` is on `origin/main`.
+- Deployed 2026-10-06 to Confida as `confida-aaaedbeb-20261006134215`,
+  from shared build `aaaedbeb-20261006113603`.
+- Verified source revision and removal callback, and hashes of the public main
+  and current Crew JS assets against the release files. The Crew bundle
+  referenced by the current entry contains the Remove action.
+- Public health returned 200; deployed configuration checks passed. Full slot
+  self-test: 77 passed, 0 failed, 35 skipped.
+- Behavioral verification used the real React row/removal helpers above;
+  an authenticated production browser session was not available.
+
 ## Left
 
-Push to main, deploy Confida and verify live assets
-and deployment self-tests.
+No implementation or Confida deployment work remains. Refresh once to load the
+new frontend, then use Remove on an attached template's row above the chat.
