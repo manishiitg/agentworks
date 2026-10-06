@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"path/filepath"
@@ -887,6 +888,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 	}
 	if activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "schedules") {
 		if err := api.registerWorkScheduleTools(registrar, resolved.Definition.ID, userID, workspacePath, readOnly); err != nil {
+			return err
+		}
+	}
+	// Brain's Organize schedule is a product schedule (no project): the chat manages the person's own copy (PLAT-618).
+	if !readOnly && resolved.Definition.ID == knowledgebaseproduct.ProfileID && len(resolved.Definition.Schedules) > 0 {
+		if err := api.registerBrainScheduleTool(registrar, userID); err != nil {
 			return err
 		}
 	}

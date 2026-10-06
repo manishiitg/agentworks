@@ -12,7 +12,7 @@ profile:
     - id: knowledgebase.git
   tool_policy:
     mode: allowlist
-    enabled: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
+    enabled: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
   # Curator command (PLAT-618): /organize tidies a folder (by products, teams or entities; Timeline and entity
   # views always kept) and merges duplicates, with the person's own folder roles.
   commands:
@@ -22,7 +22,7 @@ profile:
       file: commands/organize.md
   runtime:
     transport: structured
-    bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
+    bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
     api_transport: {mode: disabled}
     agent_tools: {mode: mcp_only}
     workspace: {mode: fixed, root: Chats/Knowledgebase}
@@ -91,6 +91,22 @@ profile:
       voice: disabled
       live_input: disabled
       warm_session: disabled
+  ui_panels:
+    schedules: true
+  # Organize Brain on a cadence (PLAT-618). Off until a person turns it on; each person can set their own cadence
+  # (cadence_hours override in their schedule state). Runs in its own conversation as that person, so it can only
+  # change folders they can edit.
+  schedules:
+    - id: organize
+      name: Organize Brain
+      description: Tidies Brain the way /organize does (structure, duplicates, timeline, indexes) and posts a summary.
+      enabled: false
+      isolated: true
+      cadence_hours: 168
+      quiet_minutes: 10
+      max_deferral_hours: 12
+      messages:
+        - "This is the scheduled Organize Brain run, in its own history; no one is attending. Organize the whole Brain (only folders this person can edit), following \"Organizing Brain\" in your instructions. Then reply with the report those instructions describe, briefly."
   built_in: true
 branding: {icon: book-open, favicon: ""}
 ui:
@@ -103,7 +119,7 @@ workflows: {enabled: [], selected_skills: [], browser_mode: ""}
 chat:
   builder:
     prompt: {file: prompts/access-builder.md}
-    tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
+    tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills, brain_schedule]
   mcp:
     prompt: {file: prompts/mcp.md}
     external_tools:

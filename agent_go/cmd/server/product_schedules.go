@@ -67,6 +67,9 @@ func isolatedForRunDestination(value string) (bool, error) {
 type productScheduleUserState struct {
 	// Enabled overrides the product's default when set.
 	Enabled *bool `json:"enabled,omitempty"`
+	// CadenceHours overrides a cadence schedule's interval for this person (for example Organize Brain every 72h
+	// instead of weekly, PLAT-618). Ignored for cron and one-time schedules.
+	CadenceHours *int `json:"cadence_hours,omitempty"`
 	// ActivatedAt is the persisted first-seen baseline for legacy/built-in
 	// cron definitions that predate Schedule.CreatedAt.
 	ActivatedAt string `json:"activated_at,omitempty"`
@@ -121,6 +124,9 @@ func (j productScheduleJob) Effective() productschedule.Schedule {
 	s := j.Schedule
 	if j.State.Enabled != nil {
 		s.Enabled = *j.State.Enabled
+	}
+	if j.State.CadenceHours != nil && *j.State.CadenceHours > 0 && s.CadenceHours > 0 {
+		s.CadenceHours = *j.State.CadenceHours
 	}
 	return s
 }
@@ -516,6 +522,29 @@ func (s *ProductScheduleService) SetEnabled(ctx context.Context, userID, jobID s
 	}
 	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Enabled = &enabled
+	}); err != nil {
+		return job, err
+	}
+	return s.Job(ctx, userID, jobID)
+}
+
+// Cadence limits for a person's override: at least every hour, at most every 90 days.
+const minScheduleCadenceHours, maxScheduleCadenceHours = 1, 24 * 90
+
+// SetCadence sets one person's interval for a cadence schedule (PLAT-618).
+func (s *ProductScheduleService) SetCadence(ctx context.Context, userID, jobID string, hours int) (productScheduleJob, error) {
+	job, err := s.Job(ctx, userID, jobID)
+	if err != nil {
+		return job, err
+	}
+	if job.Schedule.CadenceHours <= 0 {
+		return job, fmt.Errorf("schedule %q does not run on a cadence", jobID)
+	}
+	if hours < minScheduleCadenceHours || hours > maxScheduleCadenceHours {
+		return job, fmt.Errorf("cadence must be between %d and %d hours", minScheduleCadenceHours, maxScheduleCadenceHours)
+	}
+	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+		st.CadenceHours = &hours
 	}); err != nil {
 		return job, err
 	}

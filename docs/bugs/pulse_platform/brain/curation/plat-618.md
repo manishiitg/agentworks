@@ -46,3 +46,12 @@ Schedules that run /organize weekly or every N days.
 
 1. Apply changes directly with the summary, or propose first for the first few runs?
 2. Who may schedule it: Editors, or only folder Owners and admins (merging deletes the other copies)?
+
+## Part B done (schedules)
+
+- Built-in Brain schedule `organize` ("Organize Brain"): isolated (its own history), weekly (`cadence_hours: 168`), **off by default**; each person turns it on for themselves and it runs as them, so it only changes folders they can edit.
+- Per-person cadence: `cadence_hours` override in the person's schedule state (1h to 90 days); `POST /api/scheduler/jobs/{id}/cadence`; the Brain chat's `brain_schedule` tool (status, enable, disable, set_cadence, run_now). The Brain tab's Schedules view lists it.
+- The organize procedure lives in the Brain prompt, so `/organize` and the scheduled run follow the same rules.
+- Pinned by `TestOrganizeBrainScheduleCadenceIsPerPerson`. Not deployed.
+
+Still open: owner check of a real scheduled run (apply directly vs propose first).
