@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P0 |
 | Product | sandbox |
 | Area | confinement |
@@ -26,4 +26,13 @@ code can read other users' workspaces.
 Run the trigger through the same sandboxed executor as `execute_shell_command` (folder guard, Landlock/Seatbelt, slot
 account), cap concurrent triggers per user, or disable the tool on multi-user servers until it is. Live proof: a
 trigger that tries to read `/etc/passwd` or another user's workspace on Excellence is refused.
+
+## Resolution (2026-10-06): the tool is removed
+
+Owner: "we should not even have it". It had no recorded use locally (no `auto-notify-` executions in the logs or
+chats); completion notices already resume a chat when a step, run, background agent or function call finishes, and Code
+and Crew have durable one-time schedules for "check back later". `trigger_and_auto_notify`, its prompt section, its
+product allowlist entries and its doc are removed, so no model-written Python is started on the host. A sandboxed
+version was built and verified first (another workflow's file refused), then dropped in favour of removal.
+Left: deploy; on servers confirm the tool no longer appears in a Builder or Crew chat.
 

@@ -6698,18 +6698,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			// Code-first asynchronous waits are available only in ordinary Builder
-			// chat and writable Crew chat. Workflow-phase agents already have their
-			// own execution lifecycle, and read-only Crew runs must not gain a new
-			// process/write path.
-			canTriggerAutoNotify := triggerAutoNotifyAvailable(resolvedProfile, currentUserID, req.SelectedFolder, isWorkflowPhase, crewReadOnly, toolGate)
-			if canTriggerAutoNotify {
-				if err := api.registerBackgroundCodeTools(llmAgent, req, sessionID, currentUserID); err != nil {
-					logfWithContext(queryLogCtx, "[BACKGROUND CODE] Failed to register tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register background code tools: %v", err), true)
-					return
-				}
-			}
 			isToolBackedChat := !isWorkflowPhase
 			isAgentWorksChat := isToolBackedChat && resolvedProfile == nil
 			if isToolBackedChat {
@@ -6944,17 +6932,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			promptCtx := promptContext{
 				// The CLI that actually runs: a workflow's manifest LLM replaces the
 				// requested one (the log named the request's CLI, not Muse/Codex).
-				Provider:                 finalProvider,
-				HasProfile:               resolvedProfile != nil,
-				IsWorkflowPhase:          isWorkflowPhase,
-				CrewReadOnly:             crewReaderCLI,
-				MemoryReadOnly:           currentUserIsReadOnly,
-				HasTriggerAutoNotifyTool: canTriggerAutoNotify,
-				ShellRoot:                shellRoot,
-				PerUserChatsFolder:       perUserChatsFolder,
-				WorkflowPhaseFolder:      workflowPhaseFolder,
-				ProfileWorkspace:         agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
-				CapabilitySection:        buildLLMCapabilityPromptSection(r.Context()),
+				Provider:            finalProvider,
+				HasProfile:          resolvedProfile != nil,
+				IsWorkflowPhase:     isWorkflowPhase,
+				CrewReadOnly:        crewReaderCLI,
+				MemoryReadOnly:      currentUserIsReadOnly,
+				ShellRoot:           shellRoot,
+				PerUserChatsFolder:  perUserChatsFolder,
+				WorkflowPhaseFolder: workflowPhaseFolder,
+				ProfileWorkspace:    agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
+				CapabilitySection:   buildLLMCapabilityPromptSection(r.Context()),
 				// Capability details are loaded through this tool, so do not
 				// advertise its pointer merely because auth setup is admitted.
 				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),

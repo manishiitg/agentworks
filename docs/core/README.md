@@ -12,7 +12,6 @@ These docs describe platform subsystems that cut across workflow and multi-agent
 ## Files
 
 - `azure_foundry_integration.md`
-- [Trigger and auto notify](background_code_auto_notification.md): code-defined asynchronous triggers for Builder and Crew chats.
 - `bot_connector_system.md`
 - [Combined bot connector guide and review](bot_connectors_combined.md): current architecture, configuration, Slack setup, lifecycle, and verified documentation gaps.
 - `browser.md`

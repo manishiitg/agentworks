@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — No code-defined wait tool: trigger_and_auto_notify is removed
+
+What: the Builder and Crew tool that ran model-written Python for up to 24h and resumed the chat when it ended is
+removed. Chats are resumed by completion notices for steps, runs, background agents and function calls; Code and Crew
+use durable one-time schedules to check back later. Why: it ran unconfined on the server host (PLAT-601), waits were
+lost on restart or tab close, and it had no recorded use. Ticket: [PLAT-601](bugs/pulse_platform/sandbox/confinement/plat-601.md).
+
 ### 2026-10-06 — Automatic workflow tab restoration stays in the selected product
 
 Goals and Relays share workflow mode, but a saved chat may restore only inside

@@ -17,7 +17,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 20 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 14 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 7 | 1 |
@@ -32,7 +32,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-603](chat/reliability/plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-602](chat/reliability/plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | open | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
+| [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | fixed on main | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
 | [PLAT-600](brain/builder/plat-600.md) | CLI Builder refused its own Brain project tools | fixed on main | P1 | [brain/builder](brain/builder/index.md) |
 | [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |

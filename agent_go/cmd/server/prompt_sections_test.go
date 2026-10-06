@@ -211,22 +211,6 @@ func TestProductFeatureInstructionsAreAdditiveNamedSections(t *testing.T) {
 	}
 }
 
-func TestTriggerAutoNotifyGuidanceFollowsToolAvailability(t *testing.T) {
-	section := sectionByName(t, "trigger-auto-notify")
-	if section.Applies(promptContext{}) {
-		t.Fatal("a chat without the tool must not receive its guidance")
-	}
-	if !section.Applies(promptContext{HasTriggerAutoNotifyTool: true}) {
-		t.Fatal("a chat with the tool must receive its guidance")
-	}
-	text := section.Build(promptContext{HasTriggerAutoNotifyTool: true})
-	for _, required := range []string{"trigger_and_auto_notify", "plain Python", "[AUTO-NOTIFICATION]", "end the turn"} {
-		if !strings.Contains(text, required) {
-			t.Fatalf("trigger guidance missing %q", required)
-		}
-	}
-}
-
 // The general reference must not leak back into shared workflow assembly.
 // Detailed Builder guidance lives in mode-scoped reference skills.
 func TestWorkspaceReferenceIsNotASharedSection(t *testing.T) {

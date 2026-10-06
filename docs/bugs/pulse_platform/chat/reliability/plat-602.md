@@ -22,3 +22,7 @@ completion is delivered nowhere.
 Cancel the session's background work when the registry is cleared, or keep the registry and deliver on reopen.
 Live proof: start a trigger, close the tab mid-turn, check `ps` and the chat.
 
+Update 2026-10-06: `trigger_and_auto_notify` is removed ([PLAT-601](../../sandbox/confinement/plat-601.md)), so the
+orphaned 24h trigger process no longer exists. Still to check: whether clearing the registry on tab close without
+cancelling leaves other background work (run_in_background, sub-agents) running with its notice lost.
+

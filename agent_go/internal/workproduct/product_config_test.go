@@ -165,7 +165,6 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"validate_report_html":              false,
 		"preview_report":                    false,
 		"run_in_background":                 false,
-		"trigger_and_auto_notify":           false,
 		"query_agent":                       false,
 		"list_agents":                       false,
 		"terminate_agent":                   false,

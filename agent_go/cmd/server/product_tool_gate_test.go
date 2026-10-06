@@ -100,17 +100,17 @@ func TestProductToolGateAllowlistFiltersUnlistedTools(t *testing.T) {
 
 func TestProductToolGateAllowsDoesNotRecordRegistration(t *testing.T) {
 	gate := newProductToolGate(profileWithPolicy("work", agentprofiles.ToolPolicy{
-		Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"trigger_and_auto_notify"},
+		Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"example_tool"},
 	}))
-	if !gate.Allows("trigger_and_auto_notify") || gate.Allows("unlisted") {
+	if !gate.Allows("example_tool") || gate.Allows("unlisted") {
 		t.Fatal("policy preview disagrees with allowlist")
 	}
 	registered, filtered := gate.summary()
 	if len(registered) != 0 || len(filtered) != 0 {
 		t.Fatalf("policy preview changed registration log: registered=%v filtered=%v", registered, filtered)
 	}
-	gate.DenyReaderTools("trigger_and_auto_notify")
-	if gate.Allows("trigger_and_auto_notify") {
+	gate.DenyReaderTools("example_tool")
+	if gate.Allows("example_tool") {
 		t.Fatal("policy preview ignored read-only denial")
 	}
 }

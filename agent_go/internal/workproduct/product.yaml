@@ -78,7 +78,6 @@ profile:
     enabled:
       - get_file_link
       - get_report_link
-      - trigger_and_auto_notify
     # Populated by features above. Not enabled, deliberately: workflow
     # schedule/route tools,
     # pulse/improvement tools, workflow-step orchestration, media-generation tools,
@@ -219,7 +218,6 @@ instruction_sections:
   - workspace-map
   - project-memory
   - product-features
-  - trigger-auto-notify
   - llm-capability
   - workflow-context
   - work-folders
