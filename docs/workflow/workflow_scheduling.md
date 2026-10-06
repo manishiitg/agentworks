@@ -10,12 +10,12 @@ The current system is fully file-backed:
 
 There is no DB-backed workflow scheduler architecture anymore.
 
-Server workflow note: in the planned server-hosted workflow model, a server
-workflow's schedule files live on the server, but the server does not run the
-coding agent. Each schedule is pinned to one user's laptop; that laptop claims a
-server-side lease, runs the scheduled messages locally, and writes run
-history/Pulse/report artifacts back through the server API. See
-[Server-Hosted Workflows, Local Agents](../core/remote_workspace_server_plan.html).
+Remote execution design: local agents access server workflows through the public
+MCP; scheduling remains an operation of the service that owns the workflow. For
+the proposed server-agent/local-files direction, local tool execution requires
+an online laptop executor. Device selection, missed-run handling and duplicate
+execution prevention are still design decisions, not implemented scheduling
+guarantees. See [Local and Server Agent Design](../core/remote_workspace_server_plan.md).
 
 ## Source Of Truth
 

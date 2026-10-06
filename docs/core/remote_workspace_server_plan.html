@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Server-Hosted Workflows, Local Agents · Runloop</title>
+<title>Superseded: Server-Hosted Workflows, Local Agents · Runloop</title>
 <style>
   :root{
     --bg:#f7f7f5;--surface:#fff;--surface-2:#fbfbfa;--code:#f3f2ee;
@@ -73,6 +73,7 @@
 <body>
 <button class="theme" onclick="var h=document.documentElement,t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t)">◐ Theme</button>
 <div class="wrap">
+  <div class="note warn"><b>Superseded on 2026-10-06.</b> The current design uses the public MCP for local → server and an internal laptop executor connection for server → local. Read <a href="remote_workspace_server_plan.md">Local and Server Agent Design</a>. This page preserves the previous router proposal and its historical status; router code removal is pending.</div>
   <div class="eyebrow">Design · First slice built, reviewed and hardened · branch remote-workflows-router · 2026-09-28</div>
   <h1>Server-Hosted Workflows, Local Agents</h1>
   <p class="sub">A workflow lives either on your laptop or on a shared server — never both. Agents always run on the laptop, so they use your own LLM login and your own browser. Several users can drive the same server workflow, each from their own laptop.</p>
