@@ -70,6 +70,13 @@ Everything else belongs somewhere else: execution phases in `items[]`, reusable
 procedures in skills and learnings, domain facts and decisions in the
 knowledgebase, platform mechanics nowhere (the runtime supplies them).
 
+Naming a path in Inputs or Guides delivers it: a workflow path under
+`learnings/`, `knowledgebase/`, `code/shared/`, `soul/` or `db/README.md`
+becomes readable for that step (never writable) whatever its learnings and
+knowledgebase access, and small files (up to 4,000 characters, 12,000 in total)
+are attached to its prompt; name Brain notes as `brain:<folder>/<note>`. A named
+path that does not exist is reported to the step and in the plan edit response.
+
 A description holds no history. Dated observations ("measured on 2026-08-10…"),
 incident narratives and "this exists because…" explanations go to the
 knowledgebase as a decision or to the learnings as a verified technique, or are

@@ -75,6 +75,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 		writePaths = append(writePaths, writableExternalKBNotesPaths(baseWorkspacePath)...)
 	}
 	readPaths = appendAdditionalWorkflowReadPaths(readPaths, baseWorkspacePath, skillStepConfig)
+	readPaths = appendDescriptionReferenceReadPaths(readPaths, baseWorkspacePath, step.GetDescription())
 	readPaths = common.DeduplicateStrings(readPaths)
 
 	// Add skill folder paths to read paths (skills are read-only)

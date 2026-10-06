@@ -1325,6 +1325,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, planStep)
 	dbAccess := hcpo.resolveDBAccess(stepConfig)
 	readPaths, writePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, stepConfig)
+	if planStep != nil {
+		// PLAT-556: what the description names under Inputs/Guides is readable.
+		readPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(readPaths, hcpo.GetWorkspacePath(), planStep.GetDescription()))
+	}
 	stepEnvOutputPathOverride := ""
 	if override, ok := ctx.Value(messageSequenceFolderGuardOverrideKey{}).(*messageSequenceFolderGuardOverride); ok && override != nil {
 		readPaths = append([]string{}, override.ReadPaths...)

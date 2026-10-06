@@ -4987,6 +4987,7 @@ func createUpdateMessageSequenceStepExecutor(workspacePath string, logger logger
 		if _, descriptionProvided := args["description"]; descriptionProvided && updatedStep != nil {
 			planMedian := planMedianOtherStepDescriptionLen(plan.Steps, partialUpdate.ExistingStepID)
 			sizeNudge = stepDescriptionSizeNudge(descriptionBeforeLen, len(updatedStep.GetDescription()), planMedian)
+			sizeNudge += descriptionReferencesEditNotice(workspacePath, updatedStep.GetDescription())
 		}
 		logger.Info(fmt.Sprintf("✅ Updated message_sequence step '%s' in plan%s", partialUpdate.ExistingStepID, upgradeNotice))
 		return fmt.Sprintf("Successfully updated message_sequence step '%s' in the plan%s%s%s", partialUpdate.ExistingStepID, upgradeNotice, dependentReviewNotice, sizeNudge), nil
@@ -5431,6 +5432,7 @@ func createUpdateOrchestratorStepExecutor(workspacePath string, logger loggerv2.
 		if descriptionProvided {
 			planMedian := planMedianOtherStepDescriptionLen(plan.Steps, partialUpdate.ExistingStepID)
 			sizeNudge = stepDescriptionSizeNudge(descriptionBeforeLen, len(updatedOrchestratorStep.GetDescription()), planMedian)
+			sizeNudge += descriptionReferencesEditNotice(workspacePath, updatedOrchestratorStep.GetDescription())
 		}
 		logger.Info(fmt.Sprintf("✅ Updated todo task step '%s' in plan", partialUpdate.ExistingStepID))
 		return fmt.Sprintf("Successfully updated todo task step '%s' in the plan%s%s", partialUpdate.ExistingStepID, dependentReviewNotice, sizeNudge), nil
@@ -6426,6 +6428,7 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		if stepType == "message_sequence" || stepType == "orchestrator" || stepType == "todo_task" {
 			planMedian := planMedianOtherStepDescriptionLen(oldPlan.Steps, typedStep.GetID())
 			setupNotice += stepDescriptionSizeNudge(0, len(typedStep.GetDescription()), planMedian)
+			setupNotice += descriptionReferencesEditNotice(workspacePath, typedStep.GetDescription())
 		}
 
 		logger.Info(fmt.Sprintf("✅ Added %s step '%s' (ID: %s) to plan", displayStepType, typedStep.GetTitle(), typedStep.GetID()))

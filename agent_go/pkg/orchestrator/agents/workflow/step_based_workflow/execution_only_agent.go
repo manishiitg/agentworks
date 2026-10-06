@@ -138,7 +138,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) Execute(ctx context.Context, template
 	systemPrompt := hctpeoa.executionOnlySystemPromptProcessor(templateVars)
 	userMessage := hctpeoa.executionOnlyUserMessageProcessor(templateVars)
 	if authored, ok := templateVars["AuthoredSystemPrompt"]; ok {
-		systemPrompt = authored
+		systemPrompt = appendReferencedGuides(authored, templateVars)
 		userMessage = templateVars["AuthoredUserMessage"]
 	}
 
@@ -338,7 +338,17 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		panic(fmt.Sprintf("execution-only system prompt template execution failed (missing variable?): %v", err))
 	}
 
-	return result.String()
+	return appendReferencedGuides(result.String(), templateVars)
+}
+
+// appendReferencedGuides adds the PLAT-556 "Referenced guides" block (what the
+// description's Inputs/Guides name) to a step's system prompt.
+func appendReferencedGuides(systemPrompt string, templateVars map[string]string) string {
+	guides := strings.TrimSpace(templateVars["ReferencedGuides"])
+	if guides == "" {
+		return systemPrompt
+	}
+	return strings.TrimRight(systemPrompt, "\n") + "\n\n" + guides + "\n"
 }
 
 func renderAgentDelegationGuidance(templateVars map[string]string) string {

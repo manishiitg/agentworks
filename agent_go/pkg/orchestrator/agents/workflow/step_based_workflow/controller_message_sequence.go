@@ -56,6 +56,9 @@ type messageSequenceSession struct {
 	// the shared executor. Never serialized: it holds live runtime hooks.
 	delegation   *messageSequenceDelegation
 	scriptedPlan *PlanningResponse
+	// referencedGuides is the PLAT-556 "Referenced guides" block, built once
+	// per sequence so every turn carries the same system prompt.
+	referencedGuides *string
 }
 
 type messageSequenceRuntime struct {
@@ -1028,6 +1031,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 		readPaths, writePaths = delegation.ReadPaths, delegation.WritePaths
 	} else {
 		readPaths, writePaths = hcpo.setupMessageSequenceFolderGuard(stepPath, step.GetID(), getAgentConfigs(step), writeAccess)
+		// PLAT-556: what the description names under Inputs/Guides is readable (never writable).
+		readPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(readPaths, hcpo.GetWorkspacePath(), step.GetDescription()))
 	}
 	runtime, agentCtx, err := hcpo.getMessageSequenceRuntime(ctx, step, stepPath, session, readPaths, writePaths)
 	if err != nil {
@@ -1076,6 +1081,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 	} else {
 		templateVars = hcpo.buildMessageSequenceTemplateVars(step, item, stepIndex, stepPath, message, readPaths, writePaths, writeAccess)
 	}
+	if session.referencedGuides == nil {
+		guides := hcpo.referencedGuidesForStep(ctx, step.GetID(), step.GetDescription())
+		session.referencedGuides = &guides
+	}
+	templateVars["ReferencedGuides"] = *session.referencedGuides
 	common.SetSessionShellEnv(runtime.SessionID, map[string]string{"SHARED_KB_STEP_ACCESS": messageSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)})
 	if step.AuthoredPrompt {
 		systemPrompt, promptErr := hcpo.renderAuthoredPrompt(ctx, step.SystemPrompt)

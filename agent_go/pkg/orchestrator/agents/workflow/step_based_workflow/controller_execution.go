@@ -1357,6 +1357,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		narrowKBAccess := resolveKnowledgebaseAccess(narrowAgentCfg, hcpo.UseKnowledgebase())
 		narrowLearningsAccess := hcpo.resolveExecutionLearningsAccess(narrowAgentCfg, step)
 		narrowRead, narrowWrite := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, narrowKBAccess, narrowLearningsAccess, hcpo.resolveDBAccess(narrowAgentCfg), narrowAgentCfg)
+		narrowRead = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(narrowRead, hcpo.GetWorkspacePath(), step.GetDescription()))
 		var prevRead, prevWrite []string
 		if prevCfg := common.GetSessionShellConfig(sessionID); prevCfg != nil {
 			prevRead = prevCfg.ReadPaths
@@ -1489,6 +1490,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		learningsAccess := hcpo.resolveExecutionLearningsAccess(agentConfigs, step)
 		dbAccess := hcpo.resolveDBAccess(agentConfigs)
 		folderGuardReadPaths, folderGuardWritePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, agentConfigs)
+		// PLAT-556: what the description names under Inputs/Guides is readable (never writable).
+		folderGuardReadPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(folderGuardReadPaths, hcpo.GetWorkspacePath(), step.GetDescription()))
 
 		// Learn code mode: add code/ subdir to write paths so LLM can write main.py there
 		if isScriptedMode {
@@ -1604,6 +1607,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			"ScriptedParameterSchema":   formatScriptParameterContract(scriptedParameterDefinitions(step)),
 			"ScriptedVarMapping":        buildScriptedVarMappingForPrompt(isCodeExecutionMode || isScriptedMode, hcpo.variablesManifest),
 			"GroupName":                 hcpo.currentGroupName,
+			"ReferencedGuides":          hcpo.referencedGuidesForStep(ctx, step.GetID(), step.GetDescription()),
 		}
 		applySharedKBPrompt(hcpo.GetWorkspacePath(), templateVars)
 		if scriptedDelegation, ok := scriptedDelegationFromContext(ctx); ok {
