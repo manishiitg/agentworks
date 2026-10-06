@@ -1,6 +1,6 @@
 [← brain / files](index.md)
 
-# PLAT-583: Brain stores any file type, not only Markdown
+# PLAT-588: Brain stores any file type, not only Markdown
 
 | Field | Value |
 |---|---|

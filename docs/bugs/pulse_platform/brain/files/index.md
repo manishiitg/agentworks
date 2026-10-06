@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-583](plat-583.md) | Brain stores any file type, not only Markdown | fixed on main | P2 |
+| [PLAT-588](plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 |
