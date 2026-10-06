@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 74 | 12 |
 | [Brain](brain/index.md) | 18 | 2 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 22 | 8 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 21 | 5 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-613](chat/reliability/plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-611](relays/execution/plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | fixed on main | P2 | [brain/skills](brain/skills/index.md) |
 | [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |

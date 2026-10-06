@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — AGY warmup publishes its ready terminal before live input
+
+An AGY launch-only resume emits a captured terminal frame before returning its
+idle session handle. A failed capture fails warmup. Why: retained Session turns
+use structured progress, so waiting for the normal adapter stream left Confida's
+working chat with a “not started” terminal. Warmup sends no user prompt.
+Ticket: [PLAT-612](bugs/pulse_platform/chat/reliability/plat-612.md).
+
 ### 2026-10-06 — New Relays are Python programs with fresh core agent calls
 
 Use `relay.py` with `async def run(INPUT, ctx)` for new Relays. Python owns the
