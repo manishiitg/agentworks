@@ -46,3 +46,31 @@ describe('isWorkIntegrationTabEnabled', () => {
     expect(isWorkIntegrationTabEnabled('cli', new Set())).toBe(true)
   })
 })
+
+describe('local-connected Code sessions', () => {
+  it('blocks Dashboard and Automation even without a loaded feature list', () => {
+    const serverPanels = new Set(['dashboard', 'database', 'schedules', 'triggers', 'bots', 'files', 'costs', 'mcp', 'skills', 'secrets'])
+    for (const panels of [undefined, serverPanels]) {
+      for (const view of ['dashboard', 'database', 'schedules'] as const) {
+        expect(isWorkWorkspaceViewEnabled(view, panels, true)).toBe(false)
+        expect(isWorkWorkspaceViewEnabled(view, panels, false)).toBe(true)
+      }
+      for (const view of ['files', 'shell', 'identity', 'costs', 'mcp'] as const) {
+        expect(isWorkWorkspaceViewEnabled(view, panels, true)).toBe(true)
+      }
+    }
+  })
+
+  it('blocks built-in channel sections while retaining coding integrations', () => {
+    const panels = new Set(['bots', 'mcp', 'skills', 'secrets', 'folders'])
+    for (const tab of ['slack', 'whatsapp', 'gmail'] as const) {
+      expect(isWorkIntegrationTabEnabled(tab, undefined, true)).toBe(false)
+      expect(isWorkIntegrationTabEnabled(tab, panels, true)).toBe(false)
+      expect(isWorkIntegrationTabEnabled(tab, panels, false)).toBe(true)
+    }
+    for (const tab of ['apps', 'skills', 'secrets', 'folders'] as const) {
+      expect(isWorkIntegrationTabEnabled(tab, panels, true)).toBe(true)
+    }
+    expect(isWorkWorkspaceViewEnabled('mcp', new Set(['bots']), true)).toBe(false)
+  })
+})

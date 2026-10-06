@@ -33,6 +33,7 @@ import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, remov
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
+import { useCodeFilesPreference } from './codeLocalFiles'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -925,12 +926,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
+  const filePreference = useCodeFilesPreference(activeSessionId || '')
+  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer' && Boolean(filePreference.target)
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView) => {
-    setWorkspaceView(view)
-    writeWorkWorkspaceView(selected?.id, product.profileId, view)
-  }, [selected?.id, product.profileId])
+    const allowedView = isWorkWorkspaceViewEnabled(view, undefined, localCodeSession) ? view : 'files'
+    setWorkspaceView(allowedView)
+    writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
+  }, [selected?.id, product.profileId, localCodeSession])
 
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
@@ -943,7 +947,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
-    if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
+    if (!isWorkWorkspaceViewEnabled(panel, workspacePanels, localCodeSession)) return
+    if (localCodeSession && (view === 'bots' || view === 'email')) return
     if (selected?.shared && !sharedPanels.has(panel) && !(panel === 'shell' && showShell)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
@@ -951,7 +956,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
     setPanelOpen(true)
     selectWorkspaceView(panel)
-  }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
+  }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels, localCodeSession])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -966,11 +971,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     getView: () => workPresentationView(workspaceView),
     openView: openWorkPresentationView,
     refreshView: () => setWorkspaceViewRefresh(value => value + 1),
-    isViewSupported: (view) => view in WORK_UI_PRESENTATION_VIEWS,
+    isViewSupported: (view) => view in WORK_UI_PRESENTATION_VIEWS &&
+      isWorkWorkspaceViewEnabled(WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView], workspacePanels, localCodeSession) &&
+      !(localCodeSession && (view === 'bots' || view === 'email')),
     labelForView: (view) => WORK_UI_LABELS[view as WorkUIPresentationView] ?? view,
     actorLabel: product.noun,
     getTarget: (view) => view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
-  }), [openWorkPresentationView, product.noun, workspaceView])
+  }), [openWorkPresentationView, product.noun, workspaceView, workspacePanels, localCodeSession])
   useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)
 
   useEffect(() => {
@@ -1099,13 +1106,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files')
       return
     }
-    if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
+    if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels, localCodeSession)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
       if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, localCodeSession])
 
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
@@ -1275,7 +1282,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               mobilePreview={reportPreviewPreference === 'mobile'}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
+              toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>

@@ -757,6 +757,13 @@ agent, model, terminal and server runtime remain in use; other Code chats keep
 their own file access. The binding stays in this browser, scoped to your account,
 server workspace and session.
 
+In local mode, **Dashboard**, **Automation** (schedules and webhook triggers),
+and built-in **Slack**, **WhatsApp** and **Google apps** are unavailable in this
+chat. Their agent tools are disabled as well; going offline does not restore
+them. Coding tools/MCPs, skills, secrets, models and usage remain available with
+their existing permissions. Other Code chats and existing server schedules or
+channel connections are unchanged and do not inherit this local binding.
+
 **Files** shows the selected connection, Connected/Offline and Read only/Can edit.
 It lets you browse text files, use **Ask Code** and **Save to computer** for writable
 folders/accounts. **Manage file connection** returns to Settings. Disconnect local

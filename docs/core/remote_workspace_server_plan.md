@@ -41,6 +41,13 @@ Implemented now:
   Files shows live status, text browsing, Ask Code and guarded saves. Local file
   tools are bound to the selected alias; binding changes refresh retained tools
   between turns without replacing the conversation.
+- Local-connected Code sessions disable Dashboard/managed database, Automation
+  (schedules and webhook triggers), and built-in Slack, WhatsApp and Gmail/Google
+  integrations. UI entry points and per-turn feature tools are narrowed together,
+  including offline bindings. Coding MCP tools, skills, secrets, models and costs
+  remain available under their normal grants. Existing server project schedules,
+  triggers and account connections are not deleted or paused; they never inherit
+  the browser session's local-folder binding. Disconnect restores server mode.
 
 The first executor is file-only. Shell/browser operations, workflow execution
 against laptop-owned plans, a general device-management panel, remote schedules,

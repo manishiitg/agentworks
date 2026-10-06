@@ -28,6 +28,7 @@ import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
+import { useCodeFilesPreference } from './codeLocalFiles'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
@@ -78,11 +79,13 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
   return count
 }
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
   const product = useProjectProduct()
   const isCode = product.profileId === 'code'
+  const filePreference = useCodeFilesPreference(sessionId)
+  const localCodeSession = isCode && filePreference.location === 'computer' && Boolean(filePreference.target)
   const hasSuggestions = !isCode
   // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
   // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
@@ -95,6 +98,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   const visibleViews = (readOnly
     ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
     : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
+    .filter(item => isWorkWorkspaceViewEnabled(item.id, undefined, localCodeSession))
     .filter(item => item.id !== 'suggestions' || hasSuggestions)
   const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions, view)
   const visibleOps = (readOnly
@@ -108,7 +112,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   // rest see who has access); Crews have no Share view.
   const visibleSetup = (readOnly
     ? []
-    : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
+    : SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels, localCodeSession)))
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
   // A Code hides the "Use in AI apps" integration tab (CODE_HIDDEN_INTEGRATION_TABS).
@@ -267,6 +271,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [openLocalFilesSettings, setOpenLocalFilesSettings] = useState(false)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  const filePreference = useCodeFilesPreference(activeSessionId || '')
+  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer' && Boolean(filePreference.target)
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
@@ -317,7 +323,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     }
   }
 
-  if (!isWorkWorkspaceViewEnabled(view, enabledPanels)) {
+  if (!isWorkWorkspaceViewEnabled(view, undefined, localCodeSession)) {
+    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">Dashboard and Automation are unavailable while this Code chat uses local files.</div>
+  }
+  if (!isWorkWorkspaceViewEnabled(view, enabledPanels, localCodeSession)) {
     return <div className="grid h-full place-items-center bg-background text-sm text-muted-foreground">No workspace view is enabled for this product.</div>
   }
 

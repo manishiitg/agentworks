@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -45,8 +47,73 @@ func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
 		req.BotPlatform == "" && (strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
 		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
 }
+
+// Narrow this turn's resolved copy; the server project and its existing
+// schedules/connections remain unchanged. Offline bindings keep the policy.
+func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool, []string) {
+	if profile == nil || profile.ID != "code" {
+		return nil, nil
+	}
+	blockedFeatures := map[string]bool{"dashboard": true, "database": true, "schedules": true, "triggers": true, "bots": true}
+	// Include Slack variants already narrowed out by Code's DM-only option,
+	// so another registrar cannot redeclare a broader channel capability.
+	blockedTools := map[string]bool{
+		"get_report_link": true, "slack": true, "send_slack_message": true,
+		"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
+	}
+	blockedSkills, retainedSkills := map[string]bool{}, map[string]bool{}
+	features := make([]agentprofiles.ResolvedFeature, 0, len(profile.ResolvedFeatures))
+	for _, feature := range profile.ResolvedFeatures {
+		if blockedFeatures[feature.ID] {
+			for _, tool := range feature.Tools {
+				blockedTools[tool] = true
+			}
+			for _, skill := range feature.Skills {
+				if strings.HasPrefix(skill, "code-") {
+					blockedSkills[skill] = true
+				}
+			}
+			continue
+		}
+		features = append(features, feature)
+		for _, skill := range feature.Skills {
+			retainedSkills[skill] = true
+		}
+	}
+	for skill := range retainedSkills {
+		delete(blockedSkills, skill)
+	}
+	profile.ResolvedFeatures = features
+	profile.Features = append([]agentprofiles.FeatureBinding(nil), profile.Features...)
+	disabled := false
+	for i := range profile.Features {
+		if blockedFeatures[profile.Features[i].ID] {
+			profile.Features[i].Enabled = &disabled
+		}
+	}
+	profile.Skills = withoutCodeLocalValues(profile.Skills, blockedSkills)
+	profile.ToolPolicy.Enabled = withoutCodeLocalValues(profile.ToolPolicy.Enabled, blockedTools)
+	names := make([]string, 0, len(blockedTools))
+	for name := range blockedTools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	profile.Runtime.Capabilities.WhatsApp = agentprofiles.CapabilityDisabled
+	return blockedSkills, names
+}
+
+func withoutCodeLocalValues(values []string, blocked map[string]bool) []string {
+	kept := make([]string, 0, len(values))
+	for _, value := range values {
+		if !blocked[value] {
+			kept = append(kept, value)
+		}
+	}
+	return kept
+}
+
 func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. This connection changes file access only. The same chat, agent, model, project settings and server runtime remain in use. Native filesystem tools, terminal and browser still operate on the SERVER and cannot access this local folder. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Coding tools, skills and secrets remain available under their own grants. Native filesystem tools, terminal and browser still operate on the SERVER and cannot access this local folder. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {

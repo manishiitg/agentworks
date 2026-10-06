@@ -86,6 +86,11 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 		return gate
 	}
 	gate.profileID = resolved.Definition.ID
+	if resolved.Definition.ID == "code" && resolved.CodeLocalFiles != nil {
+		// Removed feature tools stay denied even if another registration path
+		// or an explicit factory attempts to declare their names again.
+		gate.DenyReaderTools(resolved.CodeLocalDisabledTools...)
+	}
 	policy := resolved.Definition.ToolPolicy
 	if !policy.IsAllowlist() {
 		return gate

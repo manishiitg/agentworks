@@ -130,7 +130,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
           {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
           {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.writable ? 'Can edit' : 'Read only'}</option>))}
         </select>
-        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
+        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. Dashboard, Automation, Slack, WhatsApp and Google apps are unavailable in this mode. Tools, skills and secrets stay available. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>}
     {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}

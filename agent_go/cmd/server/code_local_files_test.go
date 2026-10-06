@@ -1,6 +1,124 @@
 package server
 
-import "testing"
+import (
+	"context"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+)
+
+func TestCodeLocalFilesDisableServerProductFeaturesAndTools(t *testing.T) {
+	serverProfile := codeproduct.BuiltinAgentProfile()
+	localProfile := serverProfile
+	blockedSkills, blockedTools := restrictCodeLocalFeatures(&localProfile)
+	for _, feature := range []string{"dashboard", "database", "schedules", "triggers", "bots"} {
+		if agentprofiles.HasFeature(localProfile, feature) || !agentprofiles.HasFeature(serverProfile, feature) {
+			t.Fatalf("local feature %s was not narrowed independently", feature)
+		}
+	}
+	for _, feature := range []string{"files", "terminal", "browser", "mcp", "skills", "secrets", "models", "costs"} {
+		if !agentprofiles.HasFeature(localProfile, feature) {
+			t.Fatalf("coding feature %s was removed", feature)
+		}
+	}
+	if !blockedSkills["code-dashboard"] || !blockedSkills["code-schedules-and-bots"] {
+		t.Fatalf("disabled feature guidance retained: %v", blockedSkills)
+	}
+	if !reflect.DeepEqual(codeproduct.BuiltinAgentProfile(), serverProfile) {
+		t.Fatal("local policy mutated the reusable Code profile")
+	}
+	resolved := &resolvedAgentProfile{Definition: localProfile, CodeLocalFiles: &codeLocalFileTarget{DeviceID: "offline-laptop", ResourceID: "project"}, CodeLocalDisabledTools: blockedTools}
+	gate := newProductToolGate(resolved)
+	for _, tool := range []string{"create_project_schedule", "create_project_trigger", "preview_report", "query_workflow_db", "get_report_link", "google_workspace_cli", "configure_slack_bot", "slack", "list_gmail_connections", "manage_gmail_trigger"} {
+		gate.Declare(tool) // Another registration path must not restore it.
+		if gate.Admit(tool) || !profileDisablesVirtualTool(resolved, tool) {
+			t.Fatalf("disabled local-mode tool %s was admitted", tool)
+		}
+	}
+	for _, tool := range []string{"manage_my_mcp_servers", "list_skills", "update_project_skill_selection", "list_secrets"} {
+		if !gate.Allows(tool) {
+			t.Fatalf("coding tool %s was disabled", tool)
+		}
+	}
+}
+
+func TestCodeLocalFilesUIActionsCannotOpenDisabledViews(t *testing.T) {
+	api := &StreamingAPI{}
+	reg := &recordingRegistrar{}
+	if err := api.registerOpenWorkWorkspaceViewTool(reg, "owner", "local-code", "Chats/Code/projects/demo", true); err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := reg.tools["list_ui_capabilities"].exec(context.Background(), map[string]interface{}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range []string{"report", "database", "workshop", "schedules", "bots", "email"} {
+		if strings.Contains(capabilities, `"id":"`+view+`"`) {
+			t.Fatalf("disabled view %s advertised", view)
+		}
+		out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": view, "action": "open"})
+		if err != nil || !strings.Contains(out, "unsupported_view") {
+			t.Fatalf("disabled view %s accepted: %s %v", view, out, err)
+		}
+	}
+	if !strings.Contains(capabilities, `"id":"files"`) || !strings.Contains(capabilities, `"id":"mcp"`) {
+		t.Fatal("local UI lost coding views")
+	}
+	if !validUIViewForContract(codeUIControlContract, "report") {
+		t.Fatal("local UI policy mutated the normal Code contract")
+	}
+}
+
+func TestCodeLocalFilesResolveNarrowsSavedSessionAndDisconnectRestoresFeatures(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	const root = "_users/alice/Chats/Code/projects/site"
+	manifest := `{"schema_version":1,"product":"code","id":"site","title":"Site","session_id":"code:site"}`
+	env.mock.mu.Lock()
+	env.mock.files[root+"/product.json"] = manifest
+	env.mock.files[root+"/workflow.json"] = `{"capabilities":{}}`
+	env.mock.mu.Unlock()
+	registry := agentprofiles.NewRegistry()
+	profile := codeproduct.BuiltinAgentProfile()
+	profile.Product = codeproduct.ProfileID
+	if err := registry.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	env.api.agentProfiles = registry
+	for _, local := range []bool{true, false} {
+		req := QueryRequest{
+			AgentMode: "multi-agent", AgentProfileID: codeproduct.ProfileID,
+			AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site",
+			AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"},
+			SelectedSkills:      []string{"code-dashboard", "code-schedules-and-bots"},
+		}
+		if local {
+			req.CodeLocalFiles = &codeLocalFileTarget{DeviceID: "offline-laptop", ResourceID: "project"}
+		}
+		resolved, err := env.api.resolveAgentProfileForQuery(context.Background(), &req, "alice", "code:site")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, feature := range []string{"dashboard", "schedules", "triggers", "bots"} {
+			if agentprofiles.HasFeature(resolved.Definition, feature) == local {
+				t.Fatalf("feature %s available=%v local=%v", feature, agentprofiles.HasFeature(resolved.Definition, feature), local)
+			}
+		}
+		if local && (strings.Contains(strings.Join(req.SelectedSkills, ","), "code-dashboard") || strings.Contains(strings.Join(req.SelectedSkills, ","), "code-schedules-and-bots")) {
+			t.Fatal("saved session retained disabled feature instructions")
+		}
+		if agentProfileToolsMode(resolved) != "full" || req.SelectedFolder != "Chats/Code/projects/site" {
+			t.Fatal("feature restrictions changed the server runtime")
+		}
+	}
+	env.mock.mu.Lock()
+	defer env.mock.mu.Unlock()
+	if env.mock.files[root+"/product.json"] != manifest {
+		t.Fatal("local session changed the server project configuration")
+	}
+}
 
 func TestCodeLocalFilesOfflineSelectionDoesNotBlockOrdinaryChat(t *testing.T) {
 	api := &StreamingAPI{}
