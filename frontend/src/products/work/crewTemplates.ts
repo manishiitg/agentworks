@@ -246,7 +246,11 @@ export function parseCrewTemplateSetupState(content: string, template: CrewTempl
     const canonical = JSON.parse(template.files[template.setupPath]) as CrewTemplateSetupState
     if (!Array.isArray(canonical.checks) || canonical.checks.length !== ids.size || canonical.checks.some(check => !ids.has(check.id))) return null
     if (raw.completed_steps.some(id => typeof id !== 'string' || !ids.has(id))) return null
-    return raw as CrewTemplateSetupState
+    // The installed template defines which checks are required. A progress
+    // edit cannot turn a required check into an optional one.
+    return { ...raw, checks: raw.checks.map(check => ({
+      ...check, optional: canonical.checks.find(item => item.id === check.id)?.optional === true,
+    })) } as CrewTemplateSetupState
   } catch {
     return null
   }

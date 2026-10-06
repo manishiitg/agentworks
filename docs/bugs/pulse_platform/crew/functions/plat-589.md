@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | crew |
 | Area | functions |
@@ -84,8 +84,13 @@ The existing supervisor picked up the saved answer: call status became
 
 ## Left
 
-- Deploy the fix to Excellence so future Crew runtime reads preserve bindings.
 - Monitor absence was not independently reproduced. The stale call/watcher
   issue is fixed and the existing call is recovered; if the monitor is absent
   during future live background work, capture the header response and selected
   session then.
+
+## Deployment evidence — 2026-10-06
+
+Excellence release `agents-99dc2842-20261006115535` records builder revision
+`99dc284251`, which contains this fix. Public and agent health checks passed;
+slot self-test completed with 156 passed, zero failed, 16 skipped.

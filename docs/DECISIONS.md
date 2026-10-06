@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Template setup counts required checks; terminal keyboard paste uses browser events
+
+Template installation and verified setup remain separate. Show saved required-check
+progress and the checks still needed; optional extras do not block completion.
+Take required/optional definitions from the installed template, preserving saved
+progress without automatically certifying setup. Terminal paste shortcuts bypass
+xterm control-key translation and use the browser paste event, avoiding clipboard
+read permissions and duplicate transfer paths. Tickets:
+[PLAT-594](bugs/pulse_platform/crew/frontend-chat/plat-594.md),
+[PLAT-595](bugs/pulse_platform/code/terminal/plat-595.md).
+
 ### 2026-10-06 — Old plan changes are not reviewed one by one; the current workflow is checked instead
 
 What: an old-format plan change (no `change_id`) more than 30 days old leaves the plan change backlog; it is not

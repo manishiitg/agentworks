@@ -18,7 +18,7 @@ describe('WorkTemplateSetup', () => {
 
   it('shows one pending action, starts chat, and reflects agent-saved completion', async () => {
     const initial = parseCrewTemplateSetupState(crewTemplates[0].files['TEMPLATE_SETUP.json'], crewTemplates[0])!
-    let saved = initial
+    let saved = { ...initial, completed_steps: ['identity', 'skill'] }
     getPlannerFileContent.mockImplementation(async () => ({ data: { content: JSON.stringify(saved) } }))
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -29,18 +29,22 @@ describe('WorkTemplateSetup', () => {
       root.render(<WorkTemplateSetup template={crewTemplates[0]} workspacePath="Chats/Work/projects/finance" onStartSetup={onStartSetup} />)
     })
     expect(container.textContent).toContain('Setup pending')
+    expect(container.textContent).toContain('2/6 required checks complete')
+    expect(container.textContent).toContain('What remains?')
     expect(container.textContent).not.toContain('Mark complete')
     expect(container.querySelectorAll('button')).toHaveLength(2)
 
     await act(async () => {
-      (Array.from(container!.querySelectorAll('button')).find(button => button.textContent === 'Set up in chat') as HTMLButtonElement).click()
+      (Array.from(container!.querySelectorAll('button')).find(button => button.textContent === 'Continue setup') as HTMLButtonElement).click()
     })
     expect(onStartSetup).toHaveBeenCalledOnce()
     expect(updatePlannerFile).not.toHaveBeenCalled()
 
-    saved = { ...initial, completed_steps: initial.checks.map(check => check.id) }
+    saved = { ...initial, completed_steps: initial.checks.filter(check => !check.optional).map(check => check.id) }
     await act(async () => { (container!.querySelector('[aria-label="Refresh setup status"]') as HTMLButtonElement).click() })
     expect(container.textContent).toContain('Setup complete')
+    expect(container.textContent).not.toContain('What remains?')
+    expect(updatePlannerFile).not.toHaveBeenCalled()
     await act(async () => { root.unmount() })
   })
 
@@ -109,5 +113,15 @@ describe('WorkTemplateSetup', () => {
     saved.completed_steps = saved.checks.map((check: { id: string }) => check.id)
     expect(saved.checks.length).toBeGreaterThanOrEqual(5)
     expect(parseCrewTemplateSetupState(JSON.stringify(saved), template)).toBeNull()
+  })
+
+  it('keeps required checks required when a saved checklist edits optional flags', () => {
+    const template = crewTemplates[0]
+    const saved = JSON.parse(template.files[template.setupPath])
+    saved.checks.forEach((check: { optional?: boolean }) => { check.optional = true })
+    const parsed = parseCrewTemplateSetupState(JSON.stringify(saved), template)!
+    expect(parsed.checks.filter(check => !check.optional).map(check => check.id)).toEqual([
+      'identity', 'skill', 'data_source', 'period_currency', 'metrics', 'first_brief',
+    ])
   })
 })

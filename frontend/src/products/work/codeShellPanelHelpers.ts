@@ -138,7 +138,7 @@ export function shellShortcutLabel(action: ShellAction, isMac: boolean): string 
   switch (action) {
     case 'search': return `${mod}F`
     case 'copy': return `${shiftMod}C`
-    case 'paste': return `${shiftMod}V`
+    case 'paste': return `${mod}V`
     case 'clear': return `${shiftMod}K`
     case 'larger': return `${mod}=`
     case 'smaller': return `${mod}-`

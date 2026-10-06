@@ -41,6 +41,22 @@ describe('native terminal interaction', () => {
     expect(send).toHaveBeenCalledTimes(3)
   })
 
+  it('allows browser keyboard paste without sending Ctrl+V or reading the clipboard', () => {
+    term = new Terminal({ cols: 40, rows: 5 })
+    const mount = document.createElement('div'); document.body.append(mount); term.open(mount)
+    installInteractiveXtermKeys(term)
+    const data: string[] = []; term.onData(value => data.push(value))
+    for (const modifiers of [{ ctrlKey: true }, { ctrlKey: true, shiftKey: true }, { metaKey: true }]) {
+      const key = new KeyboardEvent('keydown', { key: 'v', keyCode: 86, bubbles: true, cancelable: true, ...modifiers })
+      term.textarea!.dispatchEvent(key)
+      expect(key.defaultPrevented).toBe(false)
+    }
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', 'first\nπ second')
+    term.textarea!.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+    expect(data).toEqual(['first\rπ second'])
+  })
+
   it('lets tmux handle paste mode and surfaces send failures', () => {
     const send = vi.fn(); const socket = { readyState: WebSocket.OPEN, send } as unknown as WebSocket
     expect(sendTerminalPaste(socket, true, 'first\nsecond')).toBe(true)

@@ -1,11 +1,21 @@
 import type { IDisposable, Terminal } from '@xterm/xterm'
 import { copyToClipboard } from './textUtils'
 
+export function isTerminalPasteShortcut(event: KeyboardEvent): boolean {
+  if (event.altKey) return false
+  const key = event.key.toLowerCase()
+  return (key === 'v' && (event.ctrlKey !== event.metaKey))
+    || (key === 'insert' && event.shiftKey && !event.ctrlKey && !event.metaKey)
+}
+
 // Preserve native terminal modes, including the alternate screen, application
 // cursor keys and bracketed paste. Only copying a selection is browser-owned.
 export function installInteractiveXtermKeys(term: Terminal): IDisposable {
   term.attachCustomKeyEventHandler(event => {
     if (event.type !== 'keydown') return true
+    // Returning false skips xterm's control-key translation without cancelling
+    // the browser's paste event. No clipboard read permission is needed.
+    if (isTerminalPasteShortcut(event)) return false
     const copy = (event.metaKey || event.ctrlKey) && !event.altKey
       && event.key.toLowerCase() === 'c' && term.hasSelection()
     if (!copy) return true // Ctrl+C without a selection interrupts the CLI.

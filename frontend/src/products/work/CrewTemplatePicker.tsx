@@ -38,11 +38,11 @@ export function CrewTemplatePicker({ projectTemplates, onInstallTemplate, onErro
     <SettingsCard
       icon={<Fingerprint aria-hidden="true" className="h-4 w-4 text-primary" />}
       title="Crew templates"
-      description="Add reusable skills and setup to this Crew. Its name, role, purpose, files, and existing template progress are preserved."
+      description="Install reusable skills and setup checklists. Installation starts setup; complete the required checks in chat. Existing files and progress are preserved."
     >
       {projectTemplates.length ? <div className="space-y-2">{projectTemplates.map(installed => {
         const template = crewTemplates.find(item => item.id === installed.id && item.version === installed.version)
-        return <div key={installed.id} className="rounded-md border border-border p-2"><p className="text-sm font-semibold text-foreground">{template?.icon} {template?.name || installed.id}</p><p className="text-xs text-muted-foreground">{template ? `${crewTemplateBrowsePath(template)} · ` : ''}Version {installed.version} · setup status in chat</p></div>
+        return <div key={installed.id} className="rounded-md border border-border p-2"><p className="text-sm font-semibold text-foreground">{template?.icon} {template?.name || installed.id}</p><p className="text-xs text-muted-foreground">{template ? `${crewTemplateBrowsePath(template)} · ` : ''}Installed · Version {installed.version} · Check setup progress in chat</p></div>
       })}</div> : <p className="text-xs text-muted-foreground">No templates installed yet.</p>}
       <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
         <Input aria-label="Search Crew templates" placeholder="Search templates" value={search} onChange={event => setSearch(event.target.value)} />

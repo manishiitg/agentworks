@@ -67,7 +67,11 @@ export function WorkTemplateSetup({ template, workspacePath, chatReady = true, o
     return () => window.clearInterval(timer)
   }, [refresh])
 
-  const complete = Boolean(setup && setup.checks.every(check => setup.completed_steps.includes(check.id)))
+  const required = setup?.checks.filter(check => !check.optional) || []
+  const pending = required.filter(check => !setup?.completed_steps.includes(check.id))
+  const complete = Boolean(setup && pending.length === 0)
+  const completedCount = required.length - pending.length
+  const status = error && !setup ? 'Setup needs attention' : !setup ? 'Loading setup…' : complete ? 'Setup complete' : `Setup pending · ${completedCount}/${required.length} required checks complete`
   const start = async () => {
     if (sending) return
     setSending(true)
@@ -85,14 +89,20 @@ export function WorkTemplateSetup({ template, workspacePath, chatReady = true, o
     <section className="shrink-0 border-b border-border bg-muted/30 px-4 py-2.5" aria-label={`${template.name} setup status`}>
       <div className="mx-auto flex max-w-2xl items-center gap-2">
         {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Sparkles className="h-4 w-4 shrink-0 text-primary" />}
-        <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{template.name} · {error && !setup ? 'Setup needs attention' : complete ? 'Setup complete' : 'Setup pending'}</span>
+        <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{template.name} · {status}</span>
         <button type="button" onClick={() => { void refresh() }} disabled={loading} aria-label="Refresh setup status" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
         <button type="button" onClick={() => { void start() }} disabled={sending || !chatReady} className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : !chatReady ? 'Opening chat…' : complete ? 'Review in chat' : 'Set up in chat'}
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : !chatReady ? 'Opening chat…' : complete ? 'Review in chat' : setup?.completed_steps.length ? 'Continue setup' : 'Set up in chat'}
         </button>
       </div>
+      {setup && !complete ? <details className="mx-auto mt-1 max-w-2xl text-xs text-muted-foreground">
+        <summary className="cursor-pointer hover:text-foreground">What remains?</summary>
+        <p className="mt-1">Template installed. Setup needs these verified checks:</p>
+        <ul className="mt-1 list-disc pl-4">{pending.map(check => <li key={check.id}>{check.title}</li>)}</ul>
+        {setup.checks.some(check => check.optional) ? <p className="mt-1">Optional delivery, schedules, or other extras do not block setup completion.</p> : null}
+      </details> : null}
       {error ? <p className="mx-auto mt-1 flex max-w-2xl items-center gap-1 text-xs text-destructive"><CircleAlert className="h-3.5 w-3.5" />{error}</p> : null}
     </section>
   )

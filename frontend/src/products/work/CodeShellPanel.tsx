@@ -9,6 +9,7 @@ import '@xterm/xterm/css/xterm.css'
 import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, MoreHorizontal, Palette, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useTheme } from '../../hooks/useTheme'
+import { isTerminalPasteShortcut } from '../../utils/interactiveXterm'
 import { RAW_XTERM_FONT_FAMILY, RAW_XTERM_FONT_SIZE, RAW_XTERM_THEMES } from '../../components/TerminalCenter'
 import { SHELL_THEME_KEY, SHELL_THEME_LABELS, nextShellTheme, readShellTheme, shellTheme, type ShellThemeName } from './codeShellTheme'
 import {
@@ -176,10 +177,9 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
 
     term.attachCustomKeyEventHandler(event => {
       if (event.type !== 'keydown') return true
+      if (isTerminalPasteShortcut(event)) return false
       const action = shellShortcut(event, IS_MAC)
       if (!action) return true
-      // Paste on a Mac (⌘V) is the browser's own paste event, which xterm already handles.
-      if (action === 'paste' && IS_MAC) return true
       event.preventDefault()
       actionRef.current(action)
       return false

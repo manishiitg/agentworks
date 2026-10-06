@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | crew |
 | Area | browser |
@@ -37,4 +37,11 @@ Existing browser authorization and moved-reference checks pass.
 
 ## Left
 
-Deploy to Excellence and verify Ashutosh's next browser Start.
+Verify Ashutosh's next browser Start on Excellence. The real Chrome regression
+passed locally; his next interactive server Start has not been observed.
+
+## Deployment evidence — 2026-10-06
+
+Excellence release `agents-99dc2842-20261006115535` records builder revision
+`99dc284251`, which contains this fix. Public and agent health checks passed;
+slot self-test completed with 156 passed, zero failed, 16 skipped.

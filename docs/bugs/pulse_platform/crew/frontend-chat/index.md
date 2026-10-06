@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-594](plat-594.md) | Show installed template setup progress and exclude optional checks from completion | fixed on main | P2 |
 | [PLAT-531](plat-531.md) | Switching from a workflow to Crew (or Code) shows "Opening workspace…" every time, slow on RTS | fixed on main | - |
 | [PLAT-515](plat-515.md) | Many template "Setup pending" rows took over the Crew chat | fixed on main | - |
 | [PLAT-434](plat-434.md) | Code and Crew pages could not connect their panel on multi-user servers ("project's browser is disconnected") | fixed on main | - |
