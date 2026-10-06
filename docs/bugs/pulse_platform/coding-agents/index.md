@@ -4,7 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [accounts](accounts/index.md) | 1 | 0 |
+| [accounts](accounts/index.md) | 2 | 1 |
 | [agents](agents/index.md) | 3 | 0 |
 | [claude](claude/index.md) | 4 | 0 |
 | [codex](codex/index.md) | 7 | 1 |

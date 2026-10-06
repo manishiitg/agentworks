@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-623](plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 |
 | [PLAT-615](plat-615.md) | Private provider setup linked user credentials to the shared server login | deployed | P1 |

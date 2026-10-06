@@ -79,7 +79,9 @@ health and the Linux slot self-test passed (156 checks; zero failures).
 
 ## Account setup follow-up
 
-The affected private Cursor login needs its owner to sign in again. The Codex
-API-key connection keeps its stored key. A valid shared Claude login requires an
+The affected private Cursor login needs its owner to sign in again. A later audit found Ankita's Codex key already in shared auth despite the
+private link removal; its shared file and runtime links were subsequently
+removed. That exposure and required owner key rotation are tracked in
+[PLAT-623](plat-623.md). A valid shared Claude login requires an
 admin sign-in; keep it unavailable to creators until then. Existing historical
 provider/account metadata in chat replies is not rewritten.
