@@ -106,3 +106,7 @@ tab-helper and quick-switcher tests pass.
   subscribed. Test in `AgentWorksChatTabItem.test.tsx`. Unrelated, already failing on main: four workflow tests
   (`WorkflowResponsiveLayout`, `WorkspacePanelGuideButton` x2, `workspaceToolbarPlacement`) expect older source text.
 
+
+## New-chat button restyled (2026-10-06, after the RTS check)
+
+Owner on RTS: the outlined "New tab" pill "doesn't seem nice". It is now styled like the tabs: no border or fill, muted until hover, tab height; it reads "+ New chat" while only the main chat exists and becomes a browser-style "+" once side chats are open. Tooltip and shortcut unchanged. Not deployed.
