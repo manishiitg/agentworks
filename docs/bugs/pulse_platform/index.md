@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 19 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 172 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 173 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 20 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-593](goals/plans-contracts/plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-592](ops/ci/plat-592.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
 | [PLAT-591](crew/browser/plat-591.md) | Start browser fails for a Crew moved to the shared root | fixed on main | P2 | [crew/browser](crew/browser/index.md) |
 | [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-556](goals/pulse/fixer/plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | in progress | P1 | [goals/pulse/fixer](goals/pulse/fixer/index.md) |
 | [PLAT-555](goals/steps/scripted/plat-555.md) | Step descriptions grow into manuals: give them a fixed layout (Goal, Inputs, Output, Rules, Done when, Guides) | open | - | [goals/steps/scripted](goals/steps/scripted/index.md) |
 | [PLAT-554](chat/reliability/plat-554.md) | Live context fill and plan-limit warning in the chat during a turn | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-553](chat/reliability/plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |

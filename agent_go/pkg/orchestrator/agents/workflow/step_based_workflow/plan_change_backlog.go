@@ -59,6 +59,7 @@ type UnreviewedPlanChange struct {
 // PlanChangeBacklog is the summary handed to Pulse Gate.
 type PlanChangeBacklog struct {
 	UnreviewedCount                int                    `json:"unreviewed_count"`
+	SupersededLegacyCount          int                    `json:"superseded_legacy_count,omitempty"`
 	DependencyCoverageFailureCount int                    `json:"dependency_coverage_failure_count"`
 	OldestAt                       string                 `json:"oldest_at,omitempty"`
 	NewestAt                       string                 `json:"newest_at,omitempty"`
@@ -82,6 +83,16 @@ type PlanChangeDependencyIntake struct {
 // maxListedPlanChanges caps the listed entries. The count is always exact; the
 // list is a prompt for a decision, and planning/changelog/ holds the full record.
 const maxListedPlanChanges = 12
+
+// legacyPlanChangeHorizon: an old-format change (no change_id) older than this
+// is left out of the backlog. Tracing a months-old diff one by one is wasted
+// work once the steps it touched have changed again; what matters is whether
+// anything is broken now, which the reference map checks on the current state
+// and flags to Plan Drift (PLAT-561/565/579). Nothing is stamped, so the
+// changelog keeps the full history (PLAT-593).
+const legacyPlanChangeHorizon = 30 * 24 * time.Hour
+
+var planChangeBacklogNow = time.Now
 
 func workflowAbsPath(workspacePath string, parts ...string) string {
 	all := append([]string{fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/"))}, parts...)
@@ -109,6 +120,7 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 		change UnreviewedPlanChange
 	}
 	var pending []dated
+	superseded := 0
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
 			continue
@@ -143,6 +155,10 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 				continue
 			}
 			ts, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(e.Timestamp))
+			if parseErr == nil && strings.TrimSpace(e.ChangeID) == "" && planChangeBacklogNow().Sub(ts) > legacyPlanChangeHorizon {
+				superseded++
+				continue
+			}
 			if parseErr != nil {
 				// Undateable but still unreviewed: keep it, sorted last, rather than
 				// dropping an outstanding change because its timestamp is malformed.
@@ -161,9 +177,10 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 	sort.Slice(pending, func(i, j int) bool { return pending[i].at.After(pending[j].at) })
 
 	backlog := &PlanChangeBacklog{
-		UnreviewedCount: len(pending),
-		NewestAt:        pending[0].change.At,
-		OldestAt:        pending[len(pending)-1].change.At,
+		UnreviewedCount:       len(pending),
+		SupersededLegacyCount: superseded,
+		NewestAt:              pending[0].change.At,
+		OldestAt:              pending[len(pending)-1].change.At,
 	}
 	for _, p := range pending {
 		if len(p.change.DependencyCoverageProblems) > 0 {
@@ -179,6 +196,9 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 	backlog.Note = fmt.Sprintf(
 		"%d plan-mod change(s) lack a complete structured dependency review, so their knock-on effects across downstream steps, validation, evaluation, reporting, database contracts, and learnings/knowledge may not have been reconciled. Evidence, not a verdict: many changes have no blast radius at all. The reviewer must return an evidence-backed disposition for every surface before mark_changelog_artifact_reviewed can close an entry — read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/plan-change-impact.md\"}]) is the procedure. Entries stay listed until closure, so deferring loses nothing.",
 		len(pending))
+	if superseded > 0 {
+		backlog.Note += fmt.Sprintf(" %d older old-format change(s) (no change_id, more than 30 days old) are not listed: the reference map checks the current workflow for anything they could have broken.", superseded)
+	}
 	if len(pending) > len(backlog.Changes) {
 		backlog.Note += fmt.Sprintf(" Showing the %d most recent; the rest are in planning/changelog/.", len(backlog.Changes))
 	}

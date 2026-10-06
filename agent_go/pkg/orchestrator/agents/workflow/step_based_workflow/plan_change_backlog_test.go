@@ -5,12 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func changelogWorkspace(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	// The fixtures are dated July 2026; read them as recent (PLAT-593 horizon).
+	planChangeBacklogNow = func() time.Time { return time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { planChangeBacklogNow = time.Now })
 	dir := filepath.Join(root, "Workflow", "testing", PlanningFolderName, "changelog")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -247,5 +251,22 @@ func TestWrongStepTypeRefusalNamesTheRightTool(t *testing.T) {
 		if got := updateToolForStepType(stepType); got != want {
 			t.Fatalf("step type %q maps to %q, want %q", stepType, got, want)
 		}
+	}
+}
+
+// An old-format change more than 30 days old is left out: the reference map
+// checks the current workflow instead. A recent one and any change with a
+// change_id stay (PLAT-593).
+func TestOldLegacyPlanChangesLeaveTheBacklog(t *testing.T) {
+	ws := changelogWorkspace(t, map[string]string{"changelog-a.json": `{"entries":[
+ {"timestamp":"2026-05-01T09:00:00Z","tool":"update_validation_schema","reason":"old legacy","step_ids":["step-a"],"changes":[{"step_id":"step-a","field":"validation_schema"}]},
+ {"timestamp":"2026-07-20T09:00:00Z","tool":"update_validation_schema","reason":"recent legacy","step_ids":["step-b"],"changes":[{"step_id":"step-b","field":"validation_schema"}]}
+]}`})
+	got := CollectPlanChangeBacklog(ws)
+	if got == nil || got.UnreviewedCount != 1 || got.SupersededLegacyCount != 1 || got.Changes[0].Reason != "recent legacy" {
+		t.Fatalf("backlog = %#v, want only the recent legacy change and one superseded", got)
+	}
+	if !strings.Contains(got.Note, "reference map") {
+		t.Fatalf("note must say why older changes are not listed: %q", got.Note)
 	}
 }

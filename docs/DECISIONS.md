@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Old plan changes are not reviewed one by one; the current workflow is checked instead
+
+What: an old-format plan change (no `change_id`) more than 30 days old leaves the plan change backlog; it is not
+stamped, and the changelog keeps it. Why: Upwork had 193 such July and August changes that Pulse kept working through;
+the steps they touched have changed since, and the reference map already checks the current workflow for anything
+broken and flags Plan Drift. Ticket: [PLAT-593](bugs/pulse_platform/goals/plans-contracts/plat-593.md).
+
 ### 2026-10-06 — Crew runtime reads preserve product fields; failed call lookups settle visibly
 
 Recognize both shared and legacy Crew paths before applying workflow migrations.
