@@ -31,4 +31,11 @@ Fast Refresh export-pattern rule excluded; its two diagnostics in
 
 ## Left
 
-Deploy to Confida and verify the current public assets contain both labels.
+Deployment is reserved for the user. On 2026-10-06 the user instructed the agent
+not to deploy. Both pending deployment attempts were stopped while waiting for
+active chats, and the deployment follow-up was deleted. Confida still runs
+builder source `15cefc0a3af868bc34567be8cbe59ba5ee006f2c`; this wording change
+has not been activated there. The tested source is on main at
+`41639cff2f8171df125d06b8639e680cbb443722`.
+
+After the user deploys, verify the current public assets contain both labels.
