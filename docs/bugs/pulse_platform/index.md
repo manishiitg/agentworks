@@ -27,7 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
-| [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | open | P2 | [brain/curation](brain/curation/index.md) |
+| [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | in progress | P2 | [brain/curation](brain/curation/index.md) |
 | [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | deployed | P2 | [crew/chat](crew/chat/index.md) |
 | [PLAT-615](coding-agents/accounts/plat-615.md) | Private provider setup linked user credentials to the shared server login | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |

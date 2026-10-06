@@ -141,13 +141,19 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	}
 }
 
-func TestKnowledgebaseBuilderOnlyAdmitsAccessAndGitTools(t *testing.T) {
+func TestKnowledgebaseBuilderAdmitsOnlyBrainTools(t *testing.T) {
 	api, service := knowledgebaseServerTest(t)
 	p := knowledgebaseproduct.BuiltinAgentProfile()
 	gate := newProductToolGate(&resolvedAgentProfile{Definition: p})
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "brain_browse", "brain_read", "brain_update", "query_database", "agent_browser"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "query_database", "agent_browser"} {
 		if gate.Admit(name) {
 			t.Fatalf("builder admitted %s", name)
+		}
+	}
+	// The curator (PLAT-618) edits content with the person's own roles; no shell, files, database or browser.
+	for _, name := range []string{"brain_browse", "brain_read", "brain_update", "brain_skills"} {
+		if !gate.Admit(name) {
+			t.Fatalf("builder cannot curate with %s", name)
 		}
 	}
 	if !gate.Admit("brain_access") || !gate.Admit("brain_backup") {

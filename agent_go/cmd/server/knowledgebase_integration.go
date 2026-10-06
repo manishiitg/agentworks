@@ -214,6 +214,10 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	if workspace == "" {
 		workspace = cfg.WorkingDir
 	}
+	// The person's own Brain chat acts with their own folder roles, exactly like their MCP connection (PLAT-618).
+	if isBrainChatWorkspace(userID, workspace) {
+		return nil
+	}
 	kind, _ := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown {
 		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow, Crew or Code session is required."}

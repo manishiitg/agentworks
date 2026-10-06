@@ -133,28 +133,40 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 	if len(sessionIDs) > 1 && sessionIDs[1] != "" {
 		workspace = sessionIDs[1]
 	}
-	project, err := knowledgeProjectLoad(context.Background(), userID, workspace, false)
-	mode := ""
-	if err == nil {
-		mode = project.BrainMode()
-	}
-	// An owner's tool pool exists while Brain is off so a Builder session can turn it on or bind a folder and use it
-	// at once; the runtime policy refuses every call while it is off, and it is what limits "read" to reading.
-	if err != nil || mode == "off" && !containsID(project.Owners, userID) {
-		return tools, executors, categories
-	}
-	canWrite := mode == "write" || mode == "off" && containsID(project.Owners, userID)
-	if mode == "folders" {
-		for _, binding := range project.Bindings {
-			if binding.Access == "write" {
-				canWrite = true
+	var defs []knowledgebase.ToolDefinition
+	if isBrainChatWorkspace(userID, workspace) {
+		// The Brain chat curates with the person's own folder roles, like an MCP connection (PLAT-618). Its access and
+		// Git tools come from the product's own factories, so only the content tools are added here.
+		for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
+			if def.Name != knowledgebase.ToolAccess && def.Name != knowledgebase.ToolBackup {
+				defs = append(defs, def)
 			}
 		}
+	} else {
+		project, err := knowledgeProjectLoad(context.Background(), userID, workspace, false)
+		mode := ""
+		if err == nil {
+			mode = project.BrainMode()
+		}
+		// An owner's tool pool exists while Brain is off so a Builder session can turn it on or bind a folder and use it
+		// at once; the runtime policy refuses every call while it is off, and it is what limits "read" to reading.
+		if err != nil || mode == "off" && !containsID(project.Owners, userID) {
+			return tools, executors, categories
+		}
+		canWrite := mode == "write" || mode == "off" && containsID(project.Owners, userID)
+		if mode == "folders" {
+			for _, binding := range project.Bindings {
+				if binding.Access == "write" {
+					canWrite = true
+				}
+			}
+		}
+		if cfg := common.GetSessionShellConfig(sessionIDs[0]); cfg != nil && (cfg.ReadOnlyAccess || cfg.CrewReader || cfg.Env["SHARED_KB_STEP_ACCESS"] == "read" || cfg.Env["SHARED_KB_STEP_ACCESS"] == "none" || cfg.Env["WORKFLOW_KB_ACCESS"] == "none") {
+			canWrite = false
+		}
+		defs = knowledgebase.ConnectionToolDefinitions(canWrite)
 	}
-	if cfg := common.GetSessionShellConfig(sessionIDs[0]); cfg != nil && (cfg.ReadOnlyAccess || cfg.CrewReader || cfg.Env["SHARED_KB_STEP_ACCESS"] == "read" || cfg.Env["SHARED_KB_STEP_ACCESS"] == "none" || cfg.Env["WORKFLOW_KB_ACCESS"] == "none") {
-		canWrite = false
-	}
-	for _, def := range knowledgebase.ConnectionToolDefinitions(canWrite) {
+	for _, def := range defs {
 		def := def
 		encoded, _ := json.Marshal(def.InputSchema)
 		params := new(llmtypes.Parameters)
@@ -246,4 +258,14 @@ func knowledgebaseCallerLine(userID string) string {
 		return "The person you are talking with is an administrator: do not ask them to confirm it, and go straight to the details you need."
 	}
 	return "The person you are talking with is not an administrator: tell them administrator-only steps (backup setup, service accounts) need an administrator."
+}
+
+// isBrainChatWorkspace reports whether a session runs in the person's own Brain chat (server-set session state, never a
+// tool argument): Chats/Knowledgebase, logical or under the person's own chats folder.
+func isBrainChatWorkspace(userID, workspace string) bool {
+	workspace = strings.Trim(strings.TrimSpace(workspace), "/")
+	if workspace == "" {
+		return false
+	}
+	return workspace == "Chats/Knowledgebase" || workspace == strings.Trim(agentProfileRuntimeWorkspace(userID, "Chats/Knowledgebase"), "/")
 }

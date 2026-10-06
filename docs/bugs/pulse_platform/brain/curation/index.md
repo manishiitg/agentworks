@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-618](plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | open | P2 |
+| [PLAT-618](plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | in progress | P2 |

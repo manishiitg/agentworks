@@ -16,7 +16,11 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 	if p.Product != ProfileID || p.Scope != agentprofiles.ProfileScopeProject || p.Runtime.AgentTools.Mode != "mcp_only" || p.Runtime.Workspace.Root != "Chats/Knowledgebase" {
 		t.Fatalf("invalid product runtime: %+v", p.Runtime)
 	}
-	if len(p.ToolPolicy.Enabled) != 4 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 4 {
+	// The curator commands ship with the product and resolve their prompts (PLAT-618).
+	if len(p.Commands) != 2 || p.Commands[0].Name != "organize" || p.Commands[1].Name != "dedupe" {
+		t.Fatalf("curator commands: %+v", p.Commands)
+	}
+	if len(p.ToolPolicy.Enabled) != 8 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 8 {
 		t.Fatalf("builder tools: %+v", p.ToolPolicy)
 	}
 	if len(m.Chat["mcp"].ExternalTools) != 6 {

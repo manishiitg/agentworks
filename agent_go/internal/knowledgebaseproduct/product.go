@@ -13,7 +13,7 @@ import (
 
 const ProfileID = "knowledgebase"
 
-//go:embed product.yaml prompts/*.md
+//go:embed product.yaml prompts/*.md commands/*.md
 var files embed.FS
 
 var once sync.Once

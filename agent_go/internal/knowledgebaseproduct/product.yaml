@@ -12,10 +12,21 @@ profile:
     - id: knowledgebase.git
   tool_policy:
     mode: allowlist
-    enabled: [brain_access, brain_backup, list_secrets, manage_global_secret]
+    enabled: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
+  # Curator commands (PLAT-618): /organize tidies a folder toward its readme or the default layout; /dedupe merges
+  # duplicates. Both run with the person's own folder roles.
+  commands:
+    - name: organize
+      description: Organize a Brain folder (default layout, indexes, timeline) or the whole Brain
+      icon: brain
+      file: commands/organize.md
+    - name: dedupe
+      description: Find and merge duplicate notes in a Brain folder
+      icon: brain
+      file: commands/dedupe.md
   runtime:
     transport: structured
-    bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret]
+    bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
     api_transport: {mode: disabled}
     agent_tools: {mode: mcp_only}
     workspace: {mode: fixed, root: Chats/Knowledgebase}
@@ -96,7 +107,7 @@ workflows: {enabled: [], selected_skills: [], browser_mode: ""}
 chat:
   builder:
     prompt: {file: prompts/access-builder.md}
-    tools: [brain_access, brain_backup, list_secrets, manage_global_secret]
+    tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
   mcp:
     prompt: {file: prompts/mcp.md}
     external_tools:
