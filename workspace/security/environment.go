@@ -149,6 +149,10 @@ func buildNativeEnvironment() []string {
 		"MULTI_USER_",
 		// Per-deployment global secrets (GLOBAL_SECRET_<NAME>) belong to workflows that declare them.
 		"GLOBAL_SECRET_",
+		// Sign-in configuration (who may sign in, providers) and the gateway's settings are the server's, not a
+		// shell's: AUTH_ALLOWED_EMAILS listed every allowed person in each user's Code terminal (Excellence 2026-10-06).
+		"AUTH_",
+		"GATEWAY_",
 	}
 
 	// Exact env var names to block
@@ -167,6 +171,15 @@ func buildNativeEnvironment() []string {
 		// passwords): a shell holding either could sign in as anyone.
 		"ACCESS_PASSWORD": true,
 		"AUTH_USERS":      true,
+		// Other people's account ids, the service's SSH agent and systemd bookkeeping.
+		"AGENTWORKS_SLOT_CLI_USERS": true,
+		"SSH_AUTH_SOCK":             true,
+		"MEMORY_PRESSURE_WRITE":     true,
+		"MEMORY_PRESSURE_WATCH":     true,
+		"NOTIFY_SOCKET":             true,
+		"INVOCATION_ID":             true,
+		"JOURNAL_STREAM":            true,
+		"SYSTEMD_EXEC_PID":          true,
 	}
 
 	var env []string

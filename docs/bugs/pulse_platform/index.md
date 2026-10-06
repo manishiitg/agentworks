@@ -17,7 +17,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 21 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 13 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 7 | 1 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | in progress | P1 | [sandbox/environment](sandbox/environment/index.md) |
 | [PLAT-621](app/navigation/plat-621.md) | Shortcut hint on new chats | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-620](app/integrations/plat-620.md) | Name Connected and Available tabs explicitly as MCPs | fixed on main | P2 | [app/integrations](app/integrations/index.md) |
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-585](browser/browser/plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-584](browser/browser/plat-584.md) | Direct CDP recording handoff still expects a fresh tab with the current CLI recorder | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-583](browser/browser/plat-583.md) | Make transient Chrome setup error detection independent of exact message wording | open | P3 | [browser/browser](browser/browser/index.md) |
-| [PLAT-582](goals/plans-contracts/plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
