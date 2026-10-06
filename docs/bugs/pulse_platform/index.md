@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 16 | 3 |
-| [Browser and browser automation](browser/index.md) | 36 | 10 |
+| [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
@@ -26,6 +26,11 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-587](browser/browser/plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-586](browser/browser/plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-585](browser/browser/plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
+| [PLAT-584](browser/browser/plat-584.md) | Direct CDP recording handoff still expects a fresh tab with the current CLI recorder | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-583](browser/browser/plat-583.md) | Make transient Chrome setup error detection independent of exact message wording | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-582](goals/plans-contracts/plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-581](integrations/skills/plat-581.md) | Skills belong to each workspace, with step usage and scoped uninstall | fixed on main | P2 | [integrations/skills](integrations/skills/index.md) |
 | [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
@@ -61,8 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-550](browser/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-549](browser/browser/plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-548](chat/reliability/plat-548.md) | An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored" | fixed on main | - | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-547](brain/learnings-knowledge/plat-547.md) | Brain refused every OAuth MCP connection as "expired or revoked" | fixed on main | P1 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
-| [PLAT-546](browser/browser/plat-546.md) | Workflow steps fall back to local CDP instead of the selected extension | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-545](ops/performance/plat-545.md) | old release copies were never pruned and filled the RTS disk | fixed on main | P1 | [ops/performance](ops/performance/index.md) |
-| [PLAT-544](app/activity/plat-544.md) | Plan reload leaves variables, connections and open details stale | fixed on main | P2 | [app/activity](app/activity/index.md) |
-| [PLAT-543](brain/learnings-knowledge/plat-543.md) | Brain access setting for projects (Off, Read, Folders) | fixed on main | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |

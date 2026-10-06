@@ -129,6 +129,7 @@ let autoAttach = false;
 let serverDiagnostics = false;
 const shared = new Map();
 const sessions = new Map();
+let attachmentSequence = 0;
 const groups = new Map();
 const recoveries = new Map();
 const sessionSettings = new Map();
@@ -234,6 +235,7 @@ async function unshare(tabId, reason = 'requested_unshare') {
   diagnostic('tab_unshared', tabId, reason);
   shared.delete(tabId);
   for (const [id, debuggee] of sessions) if (debuggee.tabId === tabId) {
+    if (debuggee.capturing) event('Inspector.detached',{reason:'recording_target_unshared'},id);
     sessions.delete(id); event('Target.detachedFromTarget', { sessionId: id, targetId: `tab-${tabId}` });
   }
   try { const tab = await chrome.tabs.get(tabId); if (groups.get(tab.windowId) === tab.groupId) await chrome.tabs.ungroup(tabId); } catch {}
@@ -357,6 +359,12 @@ async function connect(raw) {
         queue = queue.then(() => handleCDP(e.message, ws, e.active === true)).catch(() => {});
       } else if (e.type === 'client-disconnected') {
         discover = false; autoAttach = false;
+        // Logical clients cannot retain subscriptions or a screencast after
+        // their CDP socket closes. Keep the human's physical sharing grant.
+        for (const [id, source] of sessions) if (source.logical) {
+          sessions.delete(id);
+          if (source.capturing) void chrome.debugger.sendCommand({tabId:source.tabId}, 'Page.stopScreencast').catch(()=>{});
+        }
       }
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('Cannot connect to the platform')); };
@@ -375,8 +383,24 @@ async function command(message, active = false) {
       case 'Target.getTargetInfo': return { targetInfo: target(await tabForTarget(params.targetId)) };
       case 'Target.setDiscoverTargets': discover = !!params.discover; if (discover) for (const tab of shared.values()) event('Target.targetCreated', { targetInfo: target(tab) }); return {};
       case 'Target.setAutoAttach': autoAttach = !!params.autoAttach; if (autoAttach) for (const tab of shared.values()) { const id = await attach(tab); event('Target.attachedToTarget', { sessionId: id, targetInfo: target(tab), waitingForDebugger: false }); } return {};
-      case 'Target.attachToTarget': { const tab = await tabForTarget(params.targetId); return { sessionId: await attach(tab) }; }
-      case 'Target.detachFromTarget': { const src = sessions.get(params.sessionId); if (!src) throw new Error('Session is not shared'); diagnostic('session_detach_requested', src.tabId); sessions.delete(params.sessionId); await chrome.debugger.detach(src); return {}; }
+      case 'Target.attachToTarget': {
+        const tab = await tabForTarget(params.targetId); await attach(tab);
+        if ([...sessions.values()].filter(s => s.tabId === tab.id && s.logical).length >= 16) throw new Error('Too many sessions on this shared tab');
+        // A recorder needs a distinct flattened session: sharing the main ID
+        // lets its private event receiver consume navigation events instead of
+        // the automation client. Both logical sessions retain the same grant.
+        const id = `attached-${tab.id}-${++attachmentSequence}`;
+        sessions.set(id,{tabId:tab.id,logical:true});
+        return {sessionId:id};
+      }
+      case 'Target.detachFromTarget': {
+        const src = sessions.get(params.sessionId); if (!src) throw new Error('Session is not shared');
+        diagnostic('session_detach_requested', src.tabId); sessions.delete(params.sessionId);
+        if (src.logical) {
+          if (src.capturing) await chrome.debugger.sendCommand({tabId:src.tabId},'Page.stopScreencast');
+        } else await chrome.debugger.detach({tabId:src.tabId,...(src.sessionId ? {sessionId:src.sessionId} : {})});
+        return {};
+      }
       case 'Target.createTarget': {
         if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
@@ -399,13 +423,24 @@ async function command(message, active = false) {
   }
   // agent-browser also sends Page.bringToFront during logical tab selection.
   if (method === 'Page.bringToFront' && !active) return {};
+  // The recorder requests target metadata through its page session. Resolve
+  // only that session's already-granted root; never reveal another target.
+  if (method === 'Target.getTargetInfo' && !source.sessionId) {
+    const tab = shared.get(source.tabId);
+    if (params.targetId && params.targetId !== target(tab).targetId) throw new Error('Target is not shared with this session');
+    return {targetInfo: target(tab)};
+  }
   const domain = method.split('.')[0];
   const allowed = new Set(['Accessibility', 'DOM', 'DOMSnapshot', 'Runtime', 'Page', 'Input', 'CSS', 'Log', 'Console', 'Performance']);
   if (!allowed.has(domain) && !['Network.enable', 'Network.disable', 'Network.getResponseBody', 'Network.setCacheDisabled', 'Network.emulateNetworkConditions', 'Network.setUserAgentOverride', 'Target.setAutoAttach', 'Target.detachFromTarget'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
   if (['DOM.setFileInputFiles', 'Page.setDownloadBehavior', 'Page.addScriptToEvaluateOnNewDocument', 'Runtime.addBinding'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
   if (method === 'Page.navigate') safeURL(params.url);
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
-  const result = await (setupMethods.has(method) && !source.sessionId ? sendSetupCommand(source, method, params) : chrome.debugger.sendCommand(source, method, params)) || {};
+  if (method === 'Page.startScreencast' && [...sessions.values()].some(s => s.tabId === source.tabId && s.capturing && s !== source)) throw new Error('This shared tab is already recording');
+  const debuggee = {tabId:source.tabId,...(source.sessionId ? {sessionId:source.sessionId} : {})};
+  const result = await (setupMethods.has(method) && !source.sessionId ? sendSetupCommand(debuggee, method, params) : chrome.debugger.sendCommand(debuggee, method, params)) || {};
+  if (method === 'Page.startScreencast') source.capturing = true;
+  if (method === 'Page.stopScreencast') source.capturing = false;
   if (!source.sessionId && setupMethods.has(method)) {
     if (!sessionSettings.has(source.tabId)) sessionSettings.set(source.tabId, new Map());
     sessionSettings.get(source.tabId).set(method, params);
@@ -428,6 +463,12 @@ async function handleCDP(message, connection, active) {
     async group() { for (const id of [...shared.keys()]) await groupSharedTab(id); },
     onDetach(tabId, reason) {
       diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user'].includes(reason) ? reason : 'other');
+      // Recovery restores automation subscriptions, never a recording take.
+      // Tell its private receiver to fail rather than repeat an old frame.
+      for (const [id, source] of sessions) if (source.tabId === tabId && source.capturing) {
+        event('Inspector.detached',{reason:'recording_target_detached'},id);
+        source.capturing = false;
+      }
       if (reason !== 'target_closed') { void unshare(tabId, 'debugger_detached'); return; }
       if (!shared.has(tabId) || recoveries.has(tabId)) return;
       const recovery = {connection:socket, cancelled:false, promise:null};
@@ -440,7 +481,15 @@ async function handleCDP(message, connection, active) {
       const id = source.sessionId || `session-${source.tabId}`;
       if (method === 'Target.attachedToTarget') { diagnostic('child_attached', source.tabId); sessions.set(params.sessionId,{tabId:source.tabId,sessionId:params.sessionId}); }
       if (method === 'Target.detachedFromTarget') { diagnostic('child_detached', source.tabId); sessions.delete(params.sessionId); }
-      event(method,params || {},id);
+      if (!source.sessionId) {
+        // Chrome supplies one physical debugger session per tab. Fan out page
+        // lifecycle events to distinct logical clients, but send video frames
+        // only to the session that started capture.
+        for (const [logicalId, dst] of sessions) if (dst.tabId === source.tabId && !dst.sessionId) {
+          if (method === 'Page.screencastFrame' && !dst.capturing) continue;
+          event(method,params || {},logicalId);
+        }
+      } else event(method,params || {},id);
     },
     onUpdated(tabId,change,tab) {
       if (!shared.has(tabId)) return;

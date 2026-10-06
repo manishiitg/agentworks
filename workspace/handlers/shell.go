@@ -307,7 +307,11 @@ func ExecuteShellCommand(c *gin.Context) {
 	configureShellCommandProcessGroup(cmd)
 
 	// Check browser session limits for agent-browser commands (both direct and via code exec)
-	if browserLimitMsg := CheckBrowserSessionLimit(req.Command, req.ExtraEnv); browserLimitMsg != "" {
+	browserTransport := ""
+	if req.FolderGuard != nil && req.FolderGuard.Enabled {
+		browserTransport = req.FolderGuard.BrowserTransport
+	}
+	if browserLimitMsg := CheckBrowserSessionLimit(req.Command, req.ExtraEnv, browserTransport); browserLimitMsg != "" {
 		c.JSON(http.StatusOK, models.APIResponse[models.ExecuteShellResponse]{
 			Success: true,
 			Message: "Command executed successfully",

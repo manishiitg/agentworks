@@ -169,7 +169,9 @@ are excluded. Each collaborator pairs their own account browser.
 **Connection code options → Copy connection code** retrieves the same account
 token and this project's routing scope without selecting the project, requesting
 a new connection or putting a connected panel into Waiting. Copying does not
-rotate the token; **Reset connection code** is a separate confirmed action.
+rotate the token; it registers/persists this authorized project on the account
+code through PairForProfile. It is intentionally not a read-only request.
+**Reset connection code** is a separate confirmed action.
 Pasting the code into another browser still replaces that project's binding.
 Tracking: [PLAT-574](../bugs/pulse_platform/browser/browser/plat-574.md).
 
@@ -305,8 +307,12 @@ not share other tabs, including tabs dragged into a group. Stop/unshare removes
 our shared tabs from our managed groups without touching unrelated groups.
 The relay reads names from authorized project/workflow manifests and sends them
 as display-only metadata, separately from physical paths/scopes used to authorize
-access. Heartbeats update names of existing managed groups after a project rename;
-this does not move or share tabs. Missing names/older servers fall back to the
+access. Each connection resolves its selected name once before the websocket
+reader starts. One background worker caches other/new project names and refreshes
+names every five minutes. Heartbeats copy cached values, never run name lookups;
+rename updates appear on the next heartbeat after refresh, or on reconnect.
+Live access checks still run on every heartbeat. This does not move or share tabs.
+Tracking: [PLAT-586](../bugs/pulse_platform/browser/browser/plat-586.md). Missing names/older servers fall back to the
 unprefixed folder basename. The copied connection still retains its legacy brand
 field for compatibility with old extension packages, but 0.4.3 group titles ignore
 it. Tracking: [PLAT-573](../bugs/pulse_platform/browser/browser/plat-573.md).
@@ -346,6 +352,32 @@ browser daemon's original Linux mount namespace. The trusted workspace transfer
 checks that staging belongs to the current connection and publishes only into
 the calling session's allowed workspace output. No shared `/tmp` grant is added.
 See [PLAT-575](../bugs/pulse_platform/browser/browser/plat-575.md).
+The trusted folder guard also marks the extension transport. Relay commands do
+not consume headless per-chat/global session limits despite their managed
+sandbox session names; ordinary headless commands retain those limits.
+See [PLAT-585](../bugs/pulse_platform/browser/browser/plat-585.md).
+
+#### Extension video recording
+
+Extension 0.4.4 supports `record start <workspace-path.webm|.mp4> [url] [--fps 1-60]`
+and `record stop`, using agent-browser 0.38.2 and ffmpeg on the workspace host.
+It captures the existing selected shared tab, retaining login/page state without
+creating a recording context or changing focus. Stop before selecting, creating
+or closing another tab; inline actions cannot switch away during a take.
+The owner/session lease holds the exact private staged source and granted target;
+stop publishes that video under the caller's current destination write grants.
+Recordings have no microphone/desktop audio. Cursor overlays, contact sheets,
+restart and bundled capture/HAR remain unsupported on this connection.
+
+The recorder has a distinct logical flattened session on the same physical
+Chrome debugger. Lifecycle events go to both automation and recorder sessions;
+video frames go only to the capture session. Otherwise the recorder's private
+receiver would swallow navigation events and make `open` time out. Detaching
+the logical recording session leaves the shared tab/debugger attached. Target
+metadata requests cannot read another session's target, and a debugger loss
+interrupts the take rather than resuming from a stale frame. A changed browser
+connection cannot resume a prior recording lease. Stop before disconnecting.
+Tracking: [PLAT-587](../bugs/pulse_platform/browser/browser/plat-587.md).
 
 #### Browser documentation
 
@@ -361,7 +393,8 @@ still require the selected extension and fail closed when it is offline.
 The attached `agent-browser` skill and
 `read_skill(skills=[{"name":"builder-reference","path":"references/browser-usage.md"}])`
 provide the platform adapter guidance. Upstream examples do not enable extension
-network/HAR, recording, trace, profiler, transfer or teaching capabilities.
+network/HAR, trace, profiler, transfer or teaching capabilities; video recording
+uses only the explicit extension contract above.
 
 #### Connection status and lifecycle
 

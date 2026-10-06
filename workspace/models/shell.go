@@ -67,6 +67,9 @@ type FolderGuardConfig struct {
 	// the model). The sandbox then grants only that browser's socket folder
 	// and profile instead of every browser's.
 	BrowserSession string `json:"browser_session,omitempty"`
+	// Backend-owned transport metadata, not a public shell/tool argument.
+	// Extension relay clients do not launch a headless browser on this host.
+	BrowserTransport string `json:"browser_transport,omitempty"`
 }
 
 // IsPathBlocked checks if a path is in the blocked paths list

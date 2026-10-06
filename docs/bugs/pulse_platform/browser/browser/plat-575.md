@@ -48,6 +48,12 @@ Chrome tabs and project routing scopes do not change.
   debugger recovery and cancellation checks also pass.
 - Existing workspace artifact validation and transfer tests pass.
 
+## Review follow-up
+
+[PLAT-585](plat-585.md) fixes the capacity regression caused by the new managed
+session name: the tracker now uses trusted extension transport metadata rather
+than the old prefix. Real Chrome qualification runs with headless slots full.
+
 ## Left
 
 Deploy the agent/backend and workspace build together to RTS, then verify one

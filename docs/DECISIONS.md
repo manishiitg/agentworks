@@ -17,6 +17,30 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Record the existing shared extension tab, with separate event receivers
+
+Use record start/stop for video only, on the selected granted tab without a new
+context or foreground activation. Give the recorder its own logical flattened
+session so it cannot consume automation's navigation events. Publish only after
+stop and an uninterrupted-take check, using the current workspace write grants;
+debugger loss fails the take instead of resuming it. Why: evidence must cover the
+signed-in page actually driven by the agent. Ticket: [PLAT-587](bugs/pulse_platform/browser/browser/plat-587.md).
+
+### 2026-10-06 — Browser display names refresh outside the CDP message reader
+
+Cache project names per connection and resolve missing/changed entries on one
+background worker. Refresh names every five minutes and send cached values on
+heartbeats; reconnect refreshes the selected name immediately. Keep access
+checks live. Why: metadata reads must not delay command replies.
+Ticket: [PLAT-586](bugs/pulse_platform/browser/browser/plat-586.md).
+
+### 2026-10-06 — Headless capacity excludes the trusted extension transport
+
+Classify relay commands using backend-supplied transport metadata, independently
+of sandbox session names. Keep ordinary headless per-chat/global limits. Why:
+managed private staging names must not make a user's own Chrome consume or evict
+server browser slots. Ticket: [PLAT-585](bugs/pulse_platform/browser/browser/plat-585.md).
+
 ### 2026-10-06 — Workflow problems are fixed by the agents; an old unreadable input still makes Plan Drift due
 
 What: an input a step cannot read (the strict graph kinds) flags its step for Plan Drift once even when it predates the
@@ -66,7 +90,7 @@ shared staging root, so a captured screenshot failed with ENOENT. Ticket:
 
 Use the Code/Crew display name or workflow label without AgentWorks/deployment
 branding. Update group names after project renames without moving tabs or changing
-grants. Display metadata stays separate from the physical workspace/scope used
+grants; PLAT-586 now refreshes that metadata in a background cache. Display metadata stays separate from the physical workspace/scope used
 for authorization. Why: browser groups should match the names people choose in
 the app. Ticket: [PLAT-573](bugs/pulse_platform/browser/browser/plat-573.md).
 
@@ -86,7 +110,8 @@ returned NO_TABS. Ticket: [PLAT-569](bugs/pulse_platform/browser/browser/plat-56
 Expose copying separately from pairing and Reset. Copy returns the stable
 account token and this project's routing scope without selecting/reconnecting
 that project or changing Connected status. Reset alone rotates an existing
-credential. Why: retrieving a code should not interrupt Code/Crew/workflow work.
+credential. Copy intentionally registers/persists the authorized current project
+on the account credential. Why: retrieving a code should not interrupt Code/Crew/workflow work.
 Ticket: [PLAT-574](bugs/pulse_platform/browser/browser/plat-574.md).
 
 

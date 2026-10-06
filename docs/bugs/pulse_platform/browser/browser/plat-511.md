@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P3 |
 | Product | browser |
 | Area | browser |
-| Summary | open. |
+| Summary | Native Unix IPC fixture restores stale-state and blank-footage qualification; the handler suite passes. |
 
-State: open. Date: 2026-10-05. Priority: P3. Area: browser test harness.
+State: fixed on main. Date: 2026-10-05. Priority: P3. Area: browser test harness.
 
 ## Evidence
 
@@ -24,13 +24,19 @@ from the worktree's starting commit `f1326779b`; the Chrome extension change is
 not required to reproduce it. Other browser/debug-log handler checks pass.
 No user-visible recording failure has been established by this fixture result.
 
+## Fix
+
+Replace the fake executable with a real Unix socket speaking the native daemon
+request/response protocol, including matching response IDs and HAR export.
+The test retains the real websocket frame stream and ffmpeg encoder, stale
+capture reconciliation, fresh output directories, blank-footage rejection and
+missing-browser cleanup. It asserts capture commands traverse the IPC fixture.
+This is a protocol fixture, not a claim that a real Chrome supplied the blank
+frames. Real shared-page Chrome recording is qualified separately by PLAT-587.
+
+Verification: the complete workspace handler suite passes on macOS, with ffmpeg
+available and this test actually executed.
+
 ## Remaining
 
-Update this stale-state qualification to exercise the actual native browser IPC
-or a real isolated browser recording path, retaining its stale-state and blank
-visual-evidence assertions. Rerun the complete handler suite. No recording
-implementation or fixture change is bundled with PLAT-510.
-
-## Register notes
-
-[PLAT-511](plat-511.md), P3, open. Existing capture fixture fails with `browser IPC unavailable`, reproduced unchanged; real browser IPC qualification remains.
+None for this fixture regression. Production recording implementation is unchanged.

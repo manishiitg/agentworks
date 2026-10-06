@@ -4,6 +4,11 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-587](plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 |
+| [PLAT-586](plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 |
+| [PLAT-585](plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 |
+| [PLAT-584](plat-584.md) | Direct CDP recording handoff still expects a fresh tab with the current CLI recorder | open | P2 |
+| [PLAT-583](plat-583.md) | Make transient Chrome setup error detection independent of exact message wording | open | P3 |
 | [PLAT-575](plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 |
 | [PLAT-574](plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 |
 | [PLAT-573](plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 |
@@ -21,7 +26,7 @@
 | [PLAT-517](plat-517.md) | Consolidate browser design into one guide | fixed on main | P3 |
 | [PLAT-516](plat-516.md) | Code browser setup, notices and background control | fixed on main | P2 |
 | [PLAT-513](plat-513.md) | Code browser extension setup, clear status and stable connections | fixed on main | P2 |
-| [PLAT-511](plat-511.md) | Recording stale-state test lacks the native browser IPC fixture | open | P3 |
+| [PLAT-511](plat-511.md) | Recording stale-state test lacks the native browser IPC fixture | fixed on main | P3 |
 | [PLAT-510](plat-510.md) | Connect personal Chrome through an extension CDP bridge | fixed on main | P2 |
 | [PLAT-414](plat-414.md) | Stop browser finds nothing; a crashed tab stays stuck; tall screenshots kill Chrome | closed | - |
 | [PLAT-393](plat-393.md) | Browser teaching restart, compact chrome and tab restoration | fixed on main | P1 |

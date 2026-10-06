@@ -86,6 +86,16 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		common.BindSessionBrowserIsolationForWorkflow(step, workflowWorkspace)
 		defer common.ClearSessionShellConfig(step)
 	}
+	// Saturate headless capacity before running the actual extension path. Relay
+	// commands must neither be rejected nor evict this occupied native slot.
+	oldPerChat, oldGlobal := workspacehandlers.MaxBrowserSessionsPerChat, workspacehandlers.MaxBrowserSessionsGlobal
+	workspacehandlers.MaxBrowserSessionsPerChat, workspacehandlers.MaxBrowserSessionsGlobal = 1, 1
+	defer func() {
+		workspacehandlers.MaxBrowserSessionsPerChat, workspacehandlers.MaxBrowserSessionsGlobal = oldPerChat, oldGlobal
+	}()
+	nativeEnv := map[string]string{"MCP_SESSION_ID": session}
+	workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-native open about:blank", nativeEnv)
+	defer workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-native close", nativeEnv)
 	router := gin.New()
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
 	shell := httptest.NewServer(router)
@@ -188,6 +198,18 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		}
 		w.Write([]byte(output))
 	})
+	mux.HandleFunc("/fixture/interrupted-video", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(root, evidence, "interrupted.webm"))
+	})
+	mux.HandleFunc("/fixture/video", func(w http.ResponseWriter, r *http.Request) {
+		video := filepath.Join(root, evidence, "recording.webm")
+		// Decode the video, not only its container header/size.
+		if output, err := exec.Command("ffmpeg", "-v", "error", "-xerror", "-i", video, "-frames:v", "1", "-f", "null", "-").CombinedOutput(); err != nil {
+			http.Error(w, "Invalid video: "+string(output), 500)
+			return
+		}
+		http.ServeFile(w, r, video)
+	})
 	mux.HandleFunc("/fixture/image", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(root, evidence, "screenshot.png"))
 	})
@@ -213,6 +235,9 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
+	if msg := workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-second open about:blank", nativeEnv); msg == "" {
+		t.Fatal("extension evicted the native capacity slot")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

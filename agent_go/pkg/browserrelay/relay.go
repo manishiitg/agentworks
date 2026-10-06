@@ -61,6 +61,7 @@ type Binding struct {
 	gate                               chan struct{}
 	newTabRequest                      string
 	newTabResult                       chan envelope
+	recordingInterruptions             uint64
 }
 type Manager struct {
 	mu              sync.Mutex
@@ -564,15 +565,9 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		return
 	}
 	available := m.availableProjects(hello.Token, authorize)
-	names := func(projects []projectGrant) []projectGrant {
-		if displayName != nil {
-			for i := range projects {
-				projects[i].Name = displayName(g.User, projects[i].Label, projects[i].ProfileID)
-			}
-		}
-		return projects
-	}
-	available = names(available)
+	names := newProjectNames(g, displayName)
+	defer names.close()
+	available = names.cached(available)
 	var name string
 	for _, p := range available {
 		if p.Scope == g.Scope {
@@ -639,7 +634,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 
 		var projects []projectGrant
 		if e.Type == "ping" {
-			projects = names(m.availableProjects(hello.Token, authorize))
+			projects = names.cached(m.availableProjects(hello.Token, authorize))
 		}
 		b.mu.Lock()
 		switch e.Type {

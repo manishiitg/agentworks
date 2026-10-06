@@ -34,6 +34,12 @@ The real Chrome E2E verifies exact Code, Crew and workflow group names, adding a
 second tab to an existing group, separate Code/Crew groups, and group retention
 through debugger recovery. Focused relay/server checks pass.
 
+## Review follow-up
+
+[PLAT-586](plat-586.md) removes synchronous manifest reads from the heartbeat
+reader. Names refresh in the background every five minutes or on reconnect;
+heartbeats deliver cached values while authorization remains live.
+
 ## Left
 
 Deploy the server build to RTS to deliver friendly names. The installed extension

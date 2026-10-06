@@ -20,7 +20,15 @@ or connect to Chrome. You can also read this attached platform guide through
 and the attached `agent-browser` skill through
 `read_skill(skills=[{"name":"agent-browser"}])`. Documentation reads do not
 prove a browser is connected; keep the live-status check before page actions.
-Network/HAR, trace, profiler, local upload/download transfer, recording and teaching are not
+Extension 0.4.4 supports `record start <project-workspace>/evidence/video.webm`
+(or `.mp4`), an optional HTTP(S) URL and `--fps 1-60`, then `record stop`.
+It records the existing selected shared tab, retaining login and page state;
+stop before selecting/creating another tab. The workspace must provide
+agent-browser 0.38.2 and ffmpeg with the matching encoder. Output uses the same
+workspace grants and private staging as screenshots. There is no microphone or
+desktop audio, cursor overlay, contact sheet, restart or bundled capture/HAR.
+A debugger loss interrupts that take; do not present it as verified evidence.
+Network/HAR, trace, profiler, local upload/download transfer and teaching are not
 available through this connection. This status overrides local-port setup advice
 below, including on deployments where local operator CDP is disabled.
 

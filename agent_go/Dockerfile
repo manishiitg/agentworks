@@ -88,6 +88,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     ripgrep \
     sqlite3 \
+    ffmpeg \
     python3 \
     python3-pip \
     python3-venv \

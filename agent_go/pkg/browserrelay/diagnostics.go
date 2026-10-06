@@ -22,6 +22,7 @@ func (b *Binding) collectDiagnostics(raw json.RawMessage) {
 		Method    string `json:"method"`
 		SessionID string `json:"sessionId"`
 		Params    struct {
+			Reason    string `json:"reason"`
 			Type      string `json:"type"`
 			SessionID string `json:"sessionId"`
 			TargetID  string `json:"targetId"`
@@ -41,9 +42,22 @@ func (b *Binding) collectDiagnostics(raw json.RawMessage) {
 	if json.Unmarshal(raw, &event) != nil {
 		return
 	}
+	// These reasons are emitted by our adapter only for a live capture session.
+	// The CLI treats Inspector.detached as a graceful stop; the platform must
+	// distinguish that interrupted take before publishing its artifact.
+	if event.Method == "Inspector.detached" && (event.Params.Reason == "recording_target_detached" || event.Params.Reason == "recording_target_unshared") {
+		b.recordingInterruptions++
+	}
 	target := b.childTargets[event.SessionID]
 	if target == "" && strings.HasPrefix(event.SessionID, "session-") {
 		target = "tab-" + strings.TrimPrefix(event.SessionID, "session-")
+	}
+	if target == "" && strings.HasPrefix(event.SessionID, "attached-") {
+		// The extension owns this namespace: attached-<shared tab id>-<counter>.
+		id, _, ok := strings.Cut(strings.TrimPrefix(event.SessionID, "attached-"), "-")
+		if ok {
+			target = "tab-" + id
+		}
 	}
 	if event.Method == "Target.attachedToTarget" && target != "" {
 		if b.childTargets == nil {
@@ -114,6 +128,12 @@ func (b *Binding) collectDiagnostics(raw json.RawMessage) {
 	} else {
 		logs.Errors = appendDiagnostic(logs.Errors, entry)
 	}
+}
+
+func (b *Binding) RecordingEpoch() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.recordingInterruptions
 }
 
 func appendDiagnostic(entries []diagnostic, entry diagnostic) []diagnostic {

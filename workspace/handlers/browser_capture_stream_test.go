@@ -7,12 +7,14 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -131,16 +133,53 @@ func TestUserCaptureStaleStateStartsFreshAndRejectsBlankEvidence(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg required")
 	}
-	root, socket, bin := t.TempDir(), t.TempDir(), t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix native IPC fixture")
+	}
+	root := t.TempDir()
+	// macOS Unix socket names are limited to 104 bytes; use a short real socket.
+	socket, err := os.MkdirTemp("/tmp", "capture-ipc-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(socket)
 	old := viper.GetString("docs-dir")
 	viper.Set("docs-dir", root)
 	defer viper.Set("docs-dir", old)
 	t.Setenv("AGENT_BROWSER_SOCKET_DIR", socket)
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "")
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	const session = "user-0123456789abcdef--browser"
 	os.MkdirAll(filepath.Join(root, "Workflow", "one"), 0700)
-	os.WriteFile(filepath.Join(bin, "agent-browser"), []byte("#!/bin/sh\nprintf '{\"success\":true}'\n"), 0700)
+	listener, err := net.Listen("unix", filepath.Join(socket, session+".sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	// Exercise the native daemon protocol actually used by runCaptureCommand,
+	// together with the real websocket stream and ffmpeg encoder below.
+	var ipcCalls atomic.Int32
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			func() {
+				defer conn.Close()
+				var request map[string]any
+				if json.NewDecoder(conn).Decode(&request) != nil {
+					return
+				}
+				ipcCalls.Add(1)
+				if request["action"] == "har_stop" {
+					if path, ok := request["path"].(string); ok && path != os.DevNull {
+						_ = os.WriteFile(path, []byte(`{"log":{"version":"1.2","entries":[]}}`), 0600)
+					}
+				}
+				_ = json.NewEncoder(conn).Encode(map[string]any{"id": request["id"], "success": true, "data": map[string]any{"messages": []any{}}})
+			}()
+		}
+	}()
 	port, _, closeServer := captureTestServer(t, true)
 	defer closeServer()
 	os.WriteFile(filepath.Join(socket, session+".stream"), []byte(strconv.Itoa(port)), 0600)
@@ -192,5 +231,8 @@ func TestUserCaptureStaleStateStartsFreshAndRejectsBlankEvidence(t *testing.T) {
 	interrupted := call("status")
 	if interrupted.Recording || interrupted.Validation != "failed" {
 		t.Fatal("missing browser left capture stuck")
+	}
+	if ipcCalls.Load() < 8 {
+		t.Fatalf("capture bypassed native IPC: %d calls", ipcCalls.Load())
 	}
 }

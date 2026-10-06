@@ -22,6 +22,9 @@ Add authenticated `copy` alongside `pair` and `reset`. It returns the existing
 account token and server-derived project scope with the same product/owner/write
 checks. Unlike pairing, it does not select the project or request an extension
 connection. Reset remains the only action that rotates an existing token.
+Copy intentionally uses PairForProfile to register/persist the current authorized
+project on the account code. It is not read-only; it skips only the connection
+request and never rotates the existing token.
 The settings footer offers Copy connection code and a manual-copy fallback;
 copying leaves the current Connected state intact.
 

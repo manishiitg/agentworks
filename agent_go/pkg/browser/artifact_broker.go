@@ -61,6 +61,9 @@ type browserArtifactPlan struct {
 type browserArtifactLease struct {
 	Transfer      *ArtifactTransfer
 	RequestedPath string
+	// Extension recordings remain on this granted target for the entire take.
+	TargetID       string
+	RecordingEpoch uint64
 }
 
 type browserUploadPlan struct {

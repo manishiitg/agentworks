@@ -54,7 +54,7 @@ var commandRegex = regexp.MustCompile(`agent-browser\s+.*?(?:--session\s+\S+\s+)
 // CheckBrowserSessionLimit checks if an agent-browser shell command would exceed session limits.
 // Returns an error string if the limit is exceeded, empty string if OK.
 // Also tracks the session for future limit checks.
-func CheckBrowserSessionLimit(command string, extraEnv map[string]string) string {
+func CheckBrowserSessionLimit(command string, extraEnv map[string]string, browserTransport ...string) string {
 	// Only intercept agent-browser commands
 	if !strings.Contains(command, "agent-browser") {
 		return ""
@@ -66,7 +66,10 @@ func CheckBrowserSessionLimit(command string, extraEnv map[string]string) string
 		return "" // No session flag — can't track
 	}
 	browserSession := sessionMatch[1]
-	if strings.HasPrefix(browserSession, "ext-") && strings.Contains(command, "--cdp ") {
+	extension := len(browserTransport) > 0 && browserTransport[0] == "extension"
+	// Keep old clients compatible, but new relay sessions are classified by
+	// trusted transport metadata independently of their sandbox session name.
+	if (extension || strings.HasPrefix(browserSession, "ext-")) && strings.Contains(command, "--cdp ") {
 		return "" // Paired user Chrome is governed by its relay lease, not headless limits.
 	}
 

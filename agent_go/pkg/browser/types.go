@@ -9,6 +9,9 @@ type FolderGuardConfig struct {
 	BlockedWritePaths []string `json:"blocked_write_paths,omitempty"`
 	// BrowserSession scopes the sandbox to this session's own managed browser.
 	BrowserSession string `json:"browser_session,omitempty"`
+	// BrowserTransport is set by the backend, never by tool arguments. A paired
+	// extension uses a relay lease and does not consume headless capacity.
+	BrowserTransport string `json:"browser_transport,omitempty"`
 }
 
 // ShellExecuteRequest represents the request body for workspace-api /api/execute
