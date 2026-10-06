@@ -270,6 +270,21 @@ The extension's public WebSocket route is a narrow exception to ordinary JWT
 and gateway auth: its own reusable private credential and subsequent live socket are
 the authorization boundary. Adjacent management routes remain authenticated.
 
+Agent tool calls for a binding are serialized. Extension 0.4.5 dispatches CDP
+requests concurrently within a call, as CDP expects. A stalled renderer's
+`Runtime.evaluate` must not block `Target.*`, another tab or recording frame
+acknowledgements; replies from a disconnected logical client are discarded
+instead of reaching a new client that reuses its request IDs; callers await actions whose results they depend on. A failed
+native initialization releases its connection rather than leaving later calls
+blocked by HTTP 409. RTS configures `AGENT_BROWSER_CLI_DIR` to the managed
+installation, including only its tools/package in read-only sandbox grants.
+Deployment runs `agent-browser --version` inside the restricted path and checks
+it matches the qualified host version (at least 0.38.2). Pairing credentials and
+physical tab grants remain unchanged. Diagnostics include sanitized extension
+version and per-request elapsed milliseconds, with each completion keeping its
+own method identity even when requests overlap. Tracking:
+[PLAT-599](../bugs/pulse_platform/browser/browser/plat-599.md).
+
 Commands for a binding are serialized. The first action claims control for its
 trusted root chat/run identity; delegated agents inherit it. Another conversation
 is refused until the user explicitly re-pairs. This first release has one

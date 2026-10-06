@@ -231,6 +231,10 @@ test -x "$remote_release/bin/video-studio-landlock-runner"
 # This is stronger than checking the host sysctl: it proves that the scoped
 # AppArmor exception and the fallback itself both work for this release.
 "$remote_release/bin/workspace-security.test" -test.run TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy -test.v
+# Qualify the sandbox's CLI, not merely the host PATH (PLAT-599).
+AGENTWORKS_BROWSER_CLI_CHECK=1 AGENT_BROWSER_CLI_DIR="$tools_dir/bin" \
+  AGENTWORKS_LANDLOCK_RUNNER="$remote_release/bin/video-studio-landlock-runner" \
+  "$remote_release/bin/workspace-security.test" -test.run '^TestConfiguredBrowserCLIInSandbox$' -test.v
 
 # The normal release step retains MCP_API_URL, so correct it before that
 # idempotent merge instead of trusting an older, Docker-only value.

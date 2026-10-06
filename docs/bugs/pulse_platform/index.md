@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 72 | 11 |
 | [Brain](brain/index.md) | 17 | 2 |
-| [Browser and browser automation](browser/index.md) | 41 | 11 |
+| [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 4 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |
 | [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
 | [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |
-| [PLAT-559](goals/pulse/general/plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 | [goals/pulse/general](goals/pulse/general/index.md) |

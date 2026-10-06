@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-599](plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 |
 | [PLAT-587](plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 |
 | [PLAT-586](plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 |
 | [PLAT-585](plat-585.md) | Extension browser sessions consume headless browser capacity after screenshot scope change | fixed on main | P1 |

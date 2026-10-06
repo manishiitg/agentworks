@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Extension CDP requests do not wait for unrelated renderer replies
+
+Serialize agent tool calls by their existing project/conversation gate, but
+allow concurrent CDP requests inside a call. A pending renderer probe must not
+block browser-level controls, another tab or recording acknowledgements. RTS
+sandbox shells explicitly use the deployment-managed browser CLI and grant its
+installed tooling read-only; the service home remains inaccessible. Qualify
+that restricted path during deployment, not just the service's PATH. Why: a
+stalled probe blocked controls for 115 seconds, and sanitized PATH selected
+0.37.0 instead of the installed 0.38.2, retaining a failed client and producing
+later HTTP 409 conflicts. Ticket: [PLAT-599](bugs/pulse_platform/browser/browser/plat-599.md).
+
+
 ### 2026-10-06 — Integrations always starts at its section overview
 
 Code, Crew, workflow and Relay Integrations open their overview on each entry and

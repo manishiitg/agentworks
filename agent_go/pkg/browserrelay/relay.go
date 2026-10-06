@@ -489,6 +489,8 @@ type envelope struct {
 	Method      string          `json:"method,omitempty"`
 	TabID       int64           `json:"tab_id,omitempty"`
 	Diagnostics bool            `json:"diagnostics,omitempty"`
+	Version     string          `json:"version,omitempty"`
+	DurationMS  int64           `json:"duration_ms,omitempty"`
 }
 
 // Extension diagnostics are deliberately limited to protocol metadata. Never
@@ -520,7 +522,15 @@ func logExtensionDiagnostic(scope, connection string, e envelope) {
 			return
 		}
 	}
-	log.Printf("[CHROME_EXTENSION] scope=%q connection=%q event=%s tab_id=%d reason=%s last_method=%s request_id=%s", scope, connection, e.Event, e.TabID, e.Reason, e.Method, e.RequestID)
+	if len(e.Version) > 20 || e.DurationMS < 0 || e.DurationMS > 24*60*60*1000 {
+		return
+	}
+	for _, c := range e.Version {
+		if c != '.' && (c < '0' || c > '9') {
+			return
+		}
+	}
+	log.Printf("[CHROME_EXTENSION] scope=%q connection=%q event=%s tab_id=%d reason=%s last_method=%s request_id=%s version=%s duration_ms=%d", scope, connection, e.Event, e.TabID, e.Reason, e.Method, e.RequestID, e.Version, e.DurationMS)
 }
 
 // ServeExtension authenticates in the first frame. No app JWT is given to the

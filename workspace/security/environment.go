@@ -59,7 +59,7 @@ func buildDockerEnvironment() []string {
 	browserExecutable := configuredBrowserExecutable()
 	env := []string{
 		// Essential shell variables
-		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"PATH=" + browserCLIPath("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
 		"HOME=" + sandboxSharedHome,
 		"USER=agent",
 		"SHELL=/bin/sh",
@@ -92,7 +92,27 @@ func buildDockerEnvironment() []string {
 		// - Any other secrets from parent process
 	}
 
+	if dir := configuredBrowserCLIDir(); dir != "" {
+		env = append(env, "AGENT_BROWSER_CLI_DIR="+dir)
+	}
 	return env
+}
+
+// This path comes only from deployment configuration, never a shell request.
+// Docker-mode sanitization must not silently select an older system CLI.
+func configuredBrowserCLIDir() string {
+	dir := strings.TrimSpace(os.Getenv("AGENT_BROWSER_CLI_DIR"))
+	if !filepath.IsAbs(dir) || filepath.Clean(dir) == string(filepath.Separator) {
+		return ""
+	}
+	return filepath.Clean(dir)
+}
+
+func browserCLIPath(existing string) string {
+	if dir := configuredBrowserCLIDir(); dir != "" {
+		return dir + string(os.PathListSeparator) + existing
+	}
+	return existing
 }
 
 func configuredBrowserExecutable() string {
@@ -223,7 +243,7 @@ func buildNativePath(existing string) string {
 	add("/usr/sbin")
 	add("/sbin")
 
-	return strings.Join(parts, ":")
+	return browserCLIPath(strings.Join(parts, ":"))
 }
 
 func splitPath(pathValue string) []string {

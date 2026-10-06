@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AgentWorks Browser Bridge",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Connect shared Chrome or Edge tabs to your AgentWorks Code projects, Crews and workflows.",
   "minimum_chrome_version": "125",
   "permissions": [

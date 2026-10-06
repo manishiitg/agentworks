@@ -243,6 +243,18 @@ func landlockSystemReadPaths() []string {
 			paths = append(paths, filepath.Dir(resolved))
 		}
 	}
+	// Only the configured browser CLI and its installed package are executable/
+	// readable here. Do not grant the service home or inherit its complete PATH.
+	if dir := configuredBrowserCLIDir(); dir != "" {
+		paths = append(paths, dir)
+		if binary, err := filepath.EvalSymlinks(filepath.Join(dir, "agent-browser")); err == nil {
+			packageDir := filepath.Dir(binary)
+			if filepath.Base(packageDir) == "bin" && filepath.Base(filepath.Dir(packageDir)) == "agent-browser" {
+				packageDir = filepath.Dir(packageDir)
+			}
+			paths = append(paths, packageDir)
+		}
+	}
 	// A deployment can install its own CLI tools outside the standard system
 	// dirs above (Dominion: /srv/dominion/tools/bin, on PATH for every
 	// service). Without an explicit grant here, a landlocked step gets

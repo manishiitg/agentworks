@@ -15,6 +15,20 @@ await cp(path.join(root, 'extensions/agentworks-chrome'), extension, {recursive:
 const backgroundFile = path.join(extension, 'background.js');
 await writeFile(backgroundFile, await readFile(backgroundFile, 'utf8') + `
 // Fixture only: exercise real Chrome transport teardown with the observed reason.
+// Hold only the read-only native liveness probe at Chrome's transport boundary.
+const fixtureSendCommand = chrome.debugger.sendCommand.bind(chrome.debugger);
+let fixtureHeldTab = 0, fixtureHeldProbes = [];
+chrome.debugger.sendCommand = (source, method, params) => {
+  if (source.tabId === fixtureHeldTab && method === 'Runtime.evaluate' && params?.expression === '1')
+    return new Promise(resolve => fixtureHeldProbes.push(resolve));
+  return fixtureSendCommand(source, method, params);
+};
+globalThis.fixtureHoldRenderer = tabId => { fixtureHeldTab = tabId; };
+globalThis.fixtureHeldCount = () => fixtureHeldProbes.length;
+globalThis.fixtureReleaseRenderer = () => {
+  fixtureHeldTab = 0;
+  for (const resolve of fixtureHeldProbes.splice(0)) resolve({result:{type:'number',value:1}});
+};
 globalThis.fixtureTargetClosed = async (tabId, cancel = false) => {
   const owner = tabOwners.get(tabId);
   await chrome.debugger.detach({tabId});
@@ -104,6 +118,58 @@ try {
   await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   const response = await fetch(`${base}/fixture/cdp`); assert.equal(response.status, 200); connection = await response.json();
   const activeTab = () => popup.evaluate(async () => (await chrome.tabs.query({active:true, currentWindow:true}))[0].id);
+  // A blocked renderer must not block Target.* or another request's reply.
+  // Exercise the actual extension/relay socket before the native CLI owns it.
+  await worker.evaluate(tabId => globalThis.fixtureHoldRenderer(tabId), tabId);
+  const wire = new WebSocket(connection.url), replies = new Map();
+  wire.addEventListener('message', event => { const data=JSON.parse(event.data); if(data.id)replies.get(data.id)?.(data); });
+  await new Promise((resolve,reject) => {wire.addEventListener('open',resolve,{once:true});wire.addEventListener('error',reject,{once:true});});
+  const request=(id,method,params={},sessionId)=>new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error(method+' blocked behind the renderer')),2000);
+    replies.set(id,data=>{clearTimeout(timer);replies.delete(id);resolve(data);});
+    wire.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));
+  });
+  const attached=await request(1,'Target.attachToTarget',{targetId:'tab-'+tabId,flatten:true});
+  const heldProbe=request(2,'Runtime.evaluate',{expression:'1',returnByValue:true},attached.result.sessionId);
+  assert.deepEqual((await request(3,'Target.activateTarget',{targetId:'tab-'+tabId})).result,{});
+  const extraTarget=(await request(4,'Target.createTarget',{url:'about:blank'})).result.targetId;
+  assert.equal(await activeTab(),privateTabId,'stalled renderer never forces foreground activation');
+  await request(5,'Target.closeTarget',{targetId:extraTarget});
+  await worker.evaluate(()=>globalThis.fixtureReleaseRenderer());
+  assert.equal((await heldProbe).result.result.value,1);
+  // Old client replies must not collide with a reconnect's reused request IDs.
+  await worker.evaluate(tabId=>globalThis.fixtureHoldRenderer(tabId),tabId);
+  wire.send(JSON.stringify({id:99,method:'Runtime.evaluate',params:{expression:'1',returnByValue:true},sessionId:attached.result.sessionId}));
+  for(let i=0;i<30 && !await worker.evaluate(()=>globalThis.fixtureHeldCount());i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(await worker.evaluate(()=>globalThis.fixtureHeldCount()),1);
+  const closedWire=new Promise(resolve=>wire.addEventListener('close',resolve,{once:true}));wire.close();await closedWire;
+  const nextWire=new WebSocket(connection.url),nextReplies=[];
+  nextWire.addEventListener('message',e=>nextReplies.push(JSON.parse(e.data)));
+  await new Promise((resolve,reject)=>{nextWire.addEventListener('open',resolve,{once:true});nextWire.addEventListener('error',reject,{once:true});});
+  nextWire.send(JSON.stringify({id:99,method:'Browser.getVersion'}));
+  for(let i=0;i<100 && !nextReplies.some(r=>r.id===99);i++)await new Promise(r=>setTimeout(r,10));
+  assert.match(nextReplies.find(r=>r.id===99)?.result?.product,/Chrome/);
+  await worker.evaluate(()=>globalThis.fixtureReleaseRenderer());
+  await new Promise(r=>setTimeout(r,100));
+  assert.equal(nextReplies.filter(r=>r.id===99).length,1,'late old-client reply must not enter the new CDP client');
+  const closedNextWire=new Promise(resolve=>nextWire.addEventListener('close',resolve,{once:true}));nextWire.close();await closedNextWire;
+  console.log('PASS late renderer reply cannot be delivered to a reconnected client reusing its request ID');
+  console.log('PASS pending renderer probe does not block activation, background tab creation or close');
+  // Native initialization fails cleanly and must release its CDP connection.
+  // The next ordinary command must work without a new token or HTTP 409.
+  await worker.evaluate(tabId=>globalThis.fixtureHoldRenderer(tabId),tabId);
+  const stalled=await fetch(`${base}/fixture/tool`,{method:'POST',body:JSON.stringify({command:'tab',args:['list']})});
+  assert.equal(stalled.status,409);
+  const stallError=await stalled.text();
+  assert.match(stallError,/not responding and did not recover after activation/);
+  assert.doesNotMatch(stallError,/activateTarget timed out|HTTP error: 409/);
+  await worker.evaluate(()=>globalThis.fixtureReleaseRenderer());
+  const recoveredTabs=await cli('tab');assert.equal(recoveredTabs.tabs.length,1);
+  const retryTab=await cli('tab','new',`${base}/fixture?bootstrap-retry=1`);
+  await cli('tab',recoveredTabs.tabs[0].tabId);
+  await cli('tab','close',retryTab.tabId);
+  assert.equal((await message({action:'state'})).tabs.some(t=>t.id===tabId),true,'failed initialization keeps the human sharing grant');
+  console.log('PASS failed native initialization releases CDP; tab list and tab new recover without re-pairing');
   const snapshot = await cli('snapshot', '-i'); console.log('PASS shared-page snapshot');
   // Reproduce the real RTS boundary: debugger target closes, physical tab stays.
   // Detach Chrome's actual transport, then deliver its observed reason through

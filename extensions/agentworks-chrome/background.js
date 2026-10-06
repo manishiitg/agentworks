@@ -137,6 +137,7 @@ const setupMethods = new Set(['Page.enable', 'Runtime.enable', 'Network.enable',
 const diagnostics = [];
 let lastMethod = '';
 let queue = Promise.resolve();
+let clientEpoch = 0;
 
 function safeURL(raw) {
   const u = new URL(raw);
@@ -144,8 +145,8 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
-function diagnostic(event, tabId = 0, reason = '', requestId = '', method = lastMethod) {
-  const record = { event, tab_id: tabId, reason, method, request_id: requestId, at: Date.now() };
+function diagnostic(event, tabId = 0, reason = '', requestId = '', method = lastMethod, durationMs = 0) {
+  const record = { event, tab_id: tabId, reason, method, request_id: requestId, duration_ms:durationMs, version:chrome.runtime.getManifest().version, at: Date.now() };
   diagnostics.push(record); if (diagnostics.length > 256) diagnostics.shift();
   // Fixed lifecycle metadata only: never send CDP arguments, page URLs or tokens.
   console.info('[CHROME_EXTENSION]', JSON.stringify(record));
@@ -340,7 +341,7 @@ async function connect(raw) {
         clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; projectName = displayName(e.name); error = '';
         serverDiagnostics = e.diagnostics === true;
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
-        diagnostic('connection_paired');
+        diagnostic('connection_paired', 0, '', '', '', 0);
         updateBadge(); resolve(state());
       } else if (e.type === 'connect-project') {
         const previousScope=selectedScope;
@@ -355,9 +356,14 @@ async function connect(raw) {
       } else if (e.type === 'error') {
         clearTimeout(timer); reject(new Error(e.workspace)); revoke();void stop(e.workspace);
       } else if (e.type === 'cdp') {
-        // CDP events are asynchronous; requests execute in arrival order.
-        queue = queue.then(() => handleCDP(e.message, ws, e.active === true)).catch(() => {});
+        // CDP permits concurrent requests. A stalled renderer evaluation must
+        // not block browser-level controls, other tabs or screencast acks.
+        // The caller awaits actions that depend on a previous response.
+        void handleCDP(e.message, ws, e.active === true);
+      } else if (e.type === 'client-connected') {
+        clientEpoch++;
       } else if (e.type === 'client-disconnected') {
+        clientEpoch++;
         discover = false; autoAttach = false;
         // Logical clients cannot retain subscriptions or a screencast after
         // their CDP socket closes. Keep the human's physical sharing grant.
@@ -452,9 +458,10 @@ async function handleCDP(message, connection, active) {
   if (!message || typeof message.id !== 'number' || typeof message.method !== 'string') return;
   lastMethod = /^[A-Za-z]+\.[A-Za-z]+$/.test(message.method) && message.method.length <= 80 ? message.method : '';
   const tabId = sessions.get(message.sessionId)?.tabId || 0, requestId = Number.isSafeInteger(message.id) && message.id >= 0 ? String(message.id) : '';
-  diagnostic('command_started', tabId, '', requestId);
-  try { const result = await command(message, active); diagnostic('command_succeeded', tabId, '', requestId); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
-  catch (e) { diagnostic('command_failed', tabId, /detached/i.test(e.message) ? 'detached' : /not shared/i.test(e.message) ? 'not_shared' : 'other', requestId); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
+  const started = Date.now(), method = lastMethod, epoch = clientEpoch;
+  diagnostic('command_started', tabId, '', requestId, method);
+  try { const result = await command(message, active); diagnostic('command_succeeded', tabId, '', requestId, method, Date.now()-started); if (socket === connection && workspace && clientEpoch === epoch) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
+  catch (e) { diagnostic('command_failed', tabId, /detached/i.test(e.message) ? 'detached' : /not shared/i.test(e.message) ? 'not_shared' : 'other', requestId, method, Date.now()-started); if (socket === connection && workspace && clientEpoch === epoch) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
 }
 
   const api = {

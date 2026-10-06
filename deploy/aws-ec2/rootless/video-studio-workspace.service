@@ -9,6 +9,7 @@ EnvironmentFile=%h/video-studio/.env
 Environment=HOME=%h
 Environment=PATH=%h/video-studio/slots/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=AGENT_BROWSER_CDP_ENABLED=false
+Environment=AGENT_BROWSER_CLI_DIR=%h/.local/bin
 Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock
 WorkingDirectory=%h/video-studio/current
 ExecStart=%h/video-studio/current/bin/video-studio-workspace server --port 8080 --docs-dir /data/video-studio/docs
