@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 70 | 11 |
 | [Brain](brain/index.md) | 17 | 3 |
 | [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | open | P2 | [crew/functions](crew/functions/index.md) |
 | [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |
 | [PLAT-587](browser/browser/plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-553](chat/reliability/plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-552](schedules/stopping/plat-552.md) | Stopping a workflow did not stop its Codex step: the real Codex process kept running | fixed on main | - | [schedules/stopping](schedules/stopping/index.md) |
 | [PLAT-551](app/navigation/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-550](browser/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
