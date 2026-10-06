@@ -126,9 +126,6 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "readonly.md", "title": "Denied", "type": "note", "content": "denied", "request_id": "read-step-rejected"}); err == nil {
 		t.Fatal("read step inherited parent write")
 	}
-	if _, err := read(ctx, map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
-		t.Fatal("step escaped bound folder")
-	}
 	if err := store.Revoke(t.Context(), token.ID, "admin", time.Now()); err != nil {
 		t.Fatal(err)
 	}

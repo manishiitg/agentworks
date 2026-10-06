@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-632](plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 |
 | [PLAT-628](plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 |

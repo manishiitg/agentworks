@@ -45,6 +45,18 @@ func (p *knowledgeProject) BrainMode() string {
 	return "write"
 }
 
+// knowledgeAudienceAdmins lists the audience members who are enabled administrators: Brain treats them as Owner of every
+// folder, so they never narrow what a project may use.
+func knowledgeAudienceAdmins(audience []string) []string {
+	var admins []string
+	for _, id := range audience {
+		if acc := userAccessForClaims(&UserClaims{UserID: id}); acc.Admin && !acc.Disabled {
+			admins = append(admins, id)
+		}
+	}
+	return admins
+}
+
 func knowledgeHash(v any) string {
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
@@ -220,7 +232,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Brain access is off for this project."}
 	}
 	originalModeHash := knowledgeHash(mode)
-	policy := &knowledgebase.BindingPolicy{Audience: project.Audience, ReadAll: mode == "read", WriteAll: mode == "write"}
+	policy := &knowledgebase.BindingPolicy{Audience: project.Audience, Admins: knowledgeAudienceAdmins(project.Audience), ReadAll: mode == "read", WriteAll: mode == "write"}
 	delete(args, "binding_alias") // folder bindings were removed (PLAT-628); a stale alias selects nothing
 	if cfg.ReadOnlyAccess || cfg.CrewReader || cfg.Env["SHARED_KB_STEP_ACCESS"] == "read" {
 		if policy.WriteAll {

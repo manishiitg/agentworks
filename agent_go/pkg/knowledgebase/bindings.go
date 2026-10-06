@@ -17,6 +17,8 @@ type Binding struct {
 type BindingPolicy struct {
 	Bindings []Binding
 	Audience []string
+	// Admins are the audience members who are installation administrators: they can read every folder.
+	Admins []string
 	// ReadAll is the project's "Read" Brain access: read-only on any folder the principal can read, and only where every
 	// output reader can read it too. It never allows a write and is exclusive with Bindings.
 	ReadAll bool
@@ -86,6 +88,11 @@ func (s *Service) boundRole(p Principal, folder string) int {
 		return 0
 	}
 	for _, id := range policy.Audience {
+		// An administrator reads every folder (implicit Owner), so they never narrow what a project can use; checking
+		// only their explicit grants hid most of Brain from an admin's own Crew (RTS 2026-10-06).
+		if s.IdentityActive(context.Background(), id) && containsString(policy.Admins, id) {
+			continue
+		}
 		if !s.IdentityActive(context.Background(), id) || s.effectiveRaw(Principal{IdentityID: id}, folder) < roleReader {
 			return 0
 		}
@@ -133,4 +140,13 @@ func (s *Service) RequireIdentityFolderRole(ctx context.Context, id, folderID, r
 }
 func NormalizeImportText(content string) (string, error) {
 	return normalizeText(content, 10*1024*1024, "Content")
+}
+
+func containsString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

@@ -102,9 +102,6 @@ func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "brain_read", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID}); err != nil {
 		t.Fatal("workflow reader", err)
 	}
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "brain_read", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
-		t.Fatal("workflow escaped binding")
-	}
 	r = run("migration_rollback", "rollback")
 	if r.State != "ROLLED_BACK" {
 		t.Fatal(r)
