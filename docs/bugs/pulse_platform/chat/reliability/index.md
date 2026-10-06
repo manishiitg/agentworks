@@ -5,7 +5,7 @@
 | Ticket | Title | State | Priority |
 |---|---|---|---|
 | [PLAT-613](plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 |
-| [PLAT-612](plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | fixed on main | P2 |
+| [PLAT-612](plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | deployed | P2 |
 | [PLAT-604](plat-604.md) | Lost auto-notifications are never reported | open | P2 |
 | [PLAT-603](plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 |
 | [PLAT-602](plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 |

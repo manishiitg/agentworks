@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | chat |
 | Area | reliability |
@@ -45,8 +45,20 @@ Verification: the adapter regression uses a real retained tmux pane, calls
 native identity and empty response. It fails on the previous code (“live session
 without its terminal frame”) and passes with the fix. The full AGY package tests,
 provider lint and application's existing main-terminal HTTP tests pass.
+The same real-tmux adapter regression also passed as the `confida` service
+account on the production Linux host; its disposable pane and test binary were
+removed afterwards. No live user session was used for this test.
+
+Deployed on Confida as `confida-15cefc0a-20261006142014` from shared build
+`15cefc0a-20261006121420`. The running release's `SOURCE_REVISIONS` confirms
+application `15cefc0a3af868bc34567be8cbe59ba5ee006f2c` and provider
+`2a1f7dff8f053f9bf17aa17f16a8209c38fb5e69`; the shipped provider source contains
+the launch-only terminal seed. Release asset checks passed, public health
+returned 200, and slot self-tests reported 77 passed, zero failed, 35 skipped.
+Activation waited for idle (`drain: agent idle, restarting`).
 
 ## Left
 
-Build and release on Confida, then verify the deployed revision. Keep the forty-minute delay investigation open
-in PLAT-613; this terminal fix does not prove that latency is resolved.
+User refresh/reproduction of the resumed AGY terminal after deployment. Keep
+the forty-minute delay investigation open in PLAT-613; this terminal fix does
+not prove that latency is resolved.

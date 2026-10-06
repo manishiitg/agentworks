@@ -28,7 +28,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|---|---|
 | [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |
 | [PLAT-613](chat/reliability/plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | deployed | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-611](relays/execution/plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
