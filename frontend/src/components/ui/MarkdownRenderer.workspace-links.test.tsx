@@ -101,3 +101,30 @@ it('leaves external links outside the workspace-link callbacks', async () => {
     await act(async () => root.unmount())
   }
 })
+
+it('opens an absolute disk path under workspace-docs as a workspace file', async () => {
+  const resolve = vi.fn((filepath: string, displayPath: string) => ({ filepath, displayPath }))
+  const open = vi.fn(() => true)
+  const container = document.createElement('div')
+  const root = createRoot(container)
+
+  try {
+    await act(async () => root.render(
+      <MarkdownRenderer
+        content="[View test receipt](/Users/me/ai-work/mcp-agent-builder-go/workspace-docs/Workflow/upwork/runs/test-1/test_mode.json)"
+        onWorkspaceLinkResolve={resolve}
+        onWorkspaceLinkClick={open}
+      />,
+    ))
+
+    const anchor = container.querySelector<HTMLAnchorElement>('a')
+    expect(anchor).not.toBeNull()
+    await act(async () => anchor?.click())
+    expect(open).toHaveBeenCalledWith(
+      'Workflow/upwork/runs/test-1/test_mode.json',
+      expect.any(String),
+    )
+  } finally {
+    await act(async () => root.unmount())
+  }
+})

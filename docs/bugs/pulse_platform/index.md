@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 15 | 2 |
 | [Browser and browser automation](browser/index.md) | 33 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 18 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-571](code/frontend-chat/plat-571.md) | Code side-chat tabs (parked) | open | P3 | [code/frontend-chat](code/frontend-chat/index.md) |
 | [PLAT-570](browser/browser/plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-569](browser/browser/plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | in progress | P1 | [browser/browser](browser/browser/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-535](integrations/mcp/plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-534](crew/scheduler-runs/plat-534.md) | One-time schedules for Crew and Code ("check the deploy in 3 hours") | fixed on main | - | [crew/scheduler-runs](crew/scheduler-runs/index.md) |
 | [PLAT-533](integrations/mcp/plat-533.md) | the external MCP returns stored webhook secrets in workflow manifests | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
-| [PLAT-532](browser/browser/plat-532.md) | Remember browser extension connections when users return | fixed on main | P2 | [browser/browser](browser/browser/index.md) |

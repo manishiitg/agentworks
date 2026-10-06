@@ -669,6 +669,16 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       return { filepath, displayPath: getWorkspaceDisplayPath(filepath) }
     }
 
+    // Agents often print the absolute disk path of a workspace file
+    // (/Users/me/.../workspace-docs/Workflow/x/test_mode.json). Open it as the
+    // workspace file it is instead of showing dead text; access is still decided
+    // by the workspace API when the file is opened.
+    const absoluteDocsPath = /^\/(?:[^?#]*\/)?workspace-docs\/([^?#]+)/.exec(safeDecodeURIComponent(href.trim()))
+    if (absoluteDocsPath) {
+      const filepath = absoluteDocsPath[1]
+      return { filepath, displayPath: getWorkspaceDisplayPath(filepath) }
+    }
+
     const strippedHref = safeDecodeURIComponent(stripLinkFragmentAndQuery(href).trim()).replace(/^\/+/, '')
     if (!strippedHref || strippedHref.startsWith('#') || strippedHref.startsWith('//') || hasExplicitUrlProtocol(strippedHref)) {
       const sameOriginPath = sameOriginUrl

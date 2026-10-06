@@ -5,3 +5,4 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [reliability](reliability/index.md) | 17 | 5 |
+| [rendering](rendering/index.md) | 1 | 0 |
