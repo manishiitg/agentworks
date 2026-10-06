@@ -28,6 +28,21 @@ The subsequent user retry with the latest extension worked, but did not remove
 this server configuration discrepancy. The original renderer delay's trigger
 was not established; the bridge must remain responsive while it occurs.
 
+The local Upwork `daily-bid` run then failed during job discovery on 2026-10-06.
+At 16:19:10 IST, `Page.navigate` started and Chrome attached a child target;
+navigation never completed, and later snapshots and tab lists timed out. Edge
+still had **0.4.3 loaded**, even though the unpacked folder contained 0.4.5.
+The local native CLI was already 0.38.2, so this was separate from the RTS PATH
+mismatch. A paused child needs `Runtime.runIfWaitingForDebugger`; putting that
+request behind pending navigation creates a circular wait. The child event
+and blocked queue support this explanation for the old-build failure, without
+establishing the exact state of the original child frame after the fact.
+
+Reloaded the existing Edge install to 0.4.5 and confirmed its version in the
+extensions UI and relay diagnostics. The live Upwork retry then completed
+navigation in about 2.4 seconds and the following page read in under a second.
+The relay recorded child resume requests completing alongside navigation.
+
 ## Fix
 
 - Extension 0.4.5 dispatches CDP requests concurrently. The trusted server tool
@@ -51,6 +66,12 @@ was not established; the bridge must remain responsive while it occurs.
   old-client replies are discarded when a new client reuses request IDs.
 - The same E2E covers Code/Crew/workflow isolation, ownership, screenshots,
   successful/interrupted recording, debugger recovery and reconnects.
+- A workflow regression navigates to a real cross-site iframe under Chrome
+  site isolation, verifies Chrome attached it paused and its script resumed,
+  then takes a snapshot and lists tabs from a different workflow step.
+  This passed in Chrome 154. Restoring serialized dispatch locally reproduced
+  the existing held-renderer control failure, but the simple cross-site fixture
+  still passed; it does not reproduce the original Upwork navigation stall.
 - Deployment preflight exercised with real agent-browser 0.38.2 in a
   Linux Landlock sandbox; the restricted version matches the managed install.
 - Linux Landlock regression: managed package selected with restrictive PATH,
@@ -58,7 +79,9 @@ was not established; the bridge must remain responsive while it occurs.
 
 ## Left
 
-Deploy the server change to RTS and reload extension 0.4.5. The production
-renderer delay itself is not reproduced from page contents; no site crash or
-user DevTools interaction was assumed. No RTS services were restarted or
-production projects changed while investigating this ticket.
+Deploy the server change to RTS and reload its extension to 0.4.5. The local
+Edge install has been reloaded. The production renderer delay itself is not
+reproduced from page contents; no site crash or user DevTools interaction was
+assumed. No RTS services were restarted or production projects changed while
+investigating this ticket. The full Upwork bidding run was not started for
+diagnosis.

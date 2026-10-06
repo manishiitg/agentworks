@@ -18,6 +18,11 @@ await writeFile(backgroundFile, await readFile(backgroundFile, 'utf8') + `
 // Hold only the read-only native liveness probe at Chrome's transport boundary.
 const fixtureSendCommand = chrome.debugger.sendCommand.bind(chrome.debugger);
 let fixtureHeldTab = 0, fixtureHeldProbes = [];
+let fixturePausedChildCount = 0;
+chrome.debugger.onEvent.addListener((source, method, params) => {
+  if (method === 'Target.attachedToTarget' && params.waitingForDebugger && params.targetInfo?.type === 'iframe') fixturePausedChildCount++;
+});
+globalThis.fixturePausedChildren = () => fixturePausedChildCount;
 chrome.debugger.sendCommand = (source, method, params) => {
   if (source.tabId === fixtureHeldTab && method === 'Runtime.evaluate' && params?.expression === '1')
     return new Promise(resolve => fixtureHeldProbes.push(resolve));
@@ -51,7 +56,7 @@ async function tool(payload) {
 }
     const crewTool=async command=>{const r=await fetch(`${base}/fixture/tool?project=crew`,{method:'POST',body:JSON.stringify(command)});const text=await r.text();assert.equal(r.status,200,text);return JSON.parse(text)};
 try {
-  browser = await chromium.launchPersistentContext(profile, { executablePath, headless: false, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  browser = await chromium.launchPersistentContext(profile, { executablePath, headless: false, args: ['--site-per-process', `--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
   console.log(`Chrome ${browser.browser().version()}`);
   let [worker] = browser.serviceWorkers(); if (!worker) worker = await browser.waitForEvent('serviceworker');
   const id = worker.url().split('/')[2];
@@ -98,6 +103,17 @@ try {
     await workflowTool({command:'click',args:['#save']},'two');
     const result=await workflowTool({command:'get',args:['text','#result']},'two');
     assert.match(JSON.stringify(result),/Saved Workflow step/);
+    // Upwork navigation stalled while a cross-site child awaited debugger resume.
+    // Exercise that real Chrome pause, then read the page from a different step.
+    const pausedBefore=await worker.evaluate(() => globalThis.fixturePausedChildren());
+    await workflowTool({command:'open',args:[`${base}/fixture/frames`]});
+    const framePage=browser.pages().find(p=>p.url()===`${base}/fixture/frames`);
+    assert.ok(framePage,'workflow navigation retained its shared tab');
+    await framePage.frameLocator('iframe').locator('#state').filter({hasText:'Child resumed'}).waitFor({timeout:10000});
+    assert.ok(await worker.evaluate(() => globalThis.fixturePausedChildren())>pausedBefore,'Chrome attached a paused cross-site iframe');
+    assert.match(JSON.stringify(await workflowTool({command:'snapshot',args:[]},'two')),/Parent loaded/);
+    assert.match(JSON.stringify(await workflowTool({command:'tab',args:['list']},'two')),/fixture\/frames/);
+    console.log('PASS workflow navigation resumes a real paused cross-site iframe; subsequent step snapshot and tab list complete');
     assert.deepEqual((await cli('tab')).tabs,[],'workflow step target is absent from Code');
     assert.equal((await message({action:'state'})).selectedScope,process.env.CHROME_EXTENSION_E2E_SCOPE);
     await popup.locator('#project').selectOption(process.env.CHROME_EXTENSION_E2E_WORKFLOW_SCOPE);

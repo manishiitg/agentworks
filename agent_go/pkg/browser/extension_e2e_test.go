@@ -3,6 +3,8 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -217,6 +219,19 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		http.SetCookie(w, &http.Cookie{Name: "fixture_login", Value: "retained", Path: "/"})
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(`<!doctype html><title>Shared fixture</title><h1>Chrome bridge fixture</h1><label>Name <input id="name"></label><button id="save" onclick="document.querySelector('#result').textContent='Saved '+document.querySelector('#name').value">Save customer</button><p id="result">Ready</p>`))
+	})
+	mux.HandleFunc("/fixture/frames", func(w http.ResponseWriter, r *http.Request) {
+		_, port, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<!doctype html><title>Cross-site fixture</title><h1>Parent loaded</h1><iframe src="http://localhost:%s/fixture/child"></iframe>`, port)
+	})
+	mux.HandleFunc("/fixture/child", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<!doctype html><title>Child fixture</title><h1 id="state">Waiting</h1><script>document.querySelector('#state').textContent='Child resumed';</script>`))
 	})
 	mux.HandleFunc("/private", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<title>Unshared private tab</title><h1>Do not expose this tab</h1>`))
