@@ -202,3 +202,19 @@ func knowledgebaseToolForClaims(claims *UserClaims, tool externalTool) externalT
 	}
 	return tool
 }
+
+// knowledgebaseCallerLine states who is chatting and whether they are an administrator, for the Brain chat's prompt.
+// The server still decides every request; this only stops the model asking a person to confirm what it can be told.
+func knowledgebaseCallerLine(userID string) string {
+	rec := directoryUserFor(userID, "", "")
+	if rec == nil {
+		if !IsMultiUserMode() {
+			return "The person you are talking with is an administrator (single-user install)."
+		}
+		return "The person you are talking with has no account record, so treat them as a non-administrator."
+	}
+	if acc := accessForRecord(rec); acc.Admin && !acc.Disabled {
+		return "The person you are talking with is an administrator: do not ask them to confirm it, and go straight to the details you need."
+	}
+	return "The person you are talking with is not an administrator: tell them administrator-only steps (backup setup, service accounts) need an administrator."
+}

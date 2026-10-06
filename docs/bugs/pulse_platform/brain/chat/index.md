@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-566](plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 |
 | [PLAT-560](plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 |

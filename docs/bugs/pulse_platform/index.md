@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
-| [Brain](brain/index.md) | 14 | 2 |
+| [Brain](brain/index.md) | 15 | 2 |
 | [Browser and browser automation](browser/index.md) | 31 | 10 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
 | [Code](code/index.md) | 2 | 0 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
 | [PLAT-565](goals/plans-contracts/plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-564](vault/local/plat-564.md) | Local Vault fails to start: configuration key left in the old state folder | fixed on main | P0 | [vault/local](vault/local/index.md) |
 | [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-529](app/tests/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [app/tests](app/tests/index.md) |
 | [PLAT-528](app/chat/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [app/chat](app/chat/index.md) |
 | [PLAT-527](app/chat/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [app/chat](app/chat/index.md) |
-| [PLAT-526](app/navigation/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [app/navigation](app/navigation/index.md) |

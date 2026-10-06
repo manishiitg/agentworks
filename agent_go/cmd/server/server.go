@@ -2176,6 +2176,13 @@ func runServer(cmd *cobra.Command, args []string) {
 		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor, knowledgebaseBackupExecutor); err != nil {
 			log.Fatalf("Failed to register Brain runtime: %v", err)
 		}
+		// The chat is told the caller's own role: without it the model could not tell an administrator from anyone else
+		// and asked the owner whether they were one before it would set up backup (RTS, 2026-10-06).
+		if err := profileRegistry.RegisterPromptVariables(knowledgebaseproduct.ProfileID, func(_ context.Context, rt agentprofiles.RuntimeContext) (map[string]string, error) {
+			return map[string]string{"CALLER": knowledgebaseCallerLine(rt.UserID)}, nil
+		}); err != nil {
+			log.Fatalf("Failed to register Brain prompt variables: %v", err)
+		}
 	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
