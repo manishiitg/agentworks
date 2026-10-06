@@ -55,3 +55,9 @@ Schedules that run /organize weekly or every N days.
 - Pinned by `TestOrganizeBrainScheduleCadenceIsPerPerson`. Not deployed.
 
 Still open: owner check of a real scheduled run (apply directly vs propose first).
+
+## Owner changes (2026-10-06, later)
+
+- "it depends on what user sets in schedule msg": each person sets their own schedule message (`brain_schedule set_message`; empty restores the default); a run does what its message says, including apply directly vs only propose. Pinned in `TestOrganizeBrainScheduleCadenceIsPerPerson`.
+- "keep schedules in chat only always for brain": Organize Brain is no longer isolated; it runs in the person's Brain chat and is managed from that chat.
+- "organize should suggest modes, but it's up to the user": /organize no longer defaults to by-products. It uses what the person says or what the folder's readme records; otherwise it suggests two or three fitting ways (products, teams, entities, timeline, or their own), the person picks, and the choice is recorded in that folder's readme. A scheduled run with nothing chosen only does safe work (exact duplicates, Timeline) and ends with the suggestions.

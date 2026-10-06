@@ -22,14 +22,20 @@ func TestOrganizeBrainScheduleCadenceIsPerPerson(t *testing.T) {
 	ctx := context.Background()
 	id := productScheduleJobID(knowledgebaseproduct.ProfileID, "organize")
 	job, err := svc.Job(ctx, "u1", id)
-	if err != nil || job.Effective().Enabled || job.Effective().CadenceHours != 168 || !job.Schedule.Isolated {
-		t.Fatalf("Organize Brain must be an isolated weekly schedule, off by default: %+v %v", job.Effective(), err)
+	if err != nil || job.Effective().Enabled || job.Effective().CadenceHours != 168 || job.Schedule.Isolated {
+		t.Fatalf("Organize Brain must be a weekly in-chat schedule, off by default: %+v %v", job.Effective(), err)
 	}
 	if job, err = svc.SetCadence(ctx, "u1", id, 72); err != nil || job.Effective().CadenceHours != 72 {
 		t.Fatalf("every 3 days: %+v %v", job.Effective(), err)
 	}
 	if other, _ := svc.Job(ctx, "u2", id); other.Effective().CadenceHours != 168 {
 		t.Fatalf("another person's cadence must not change: %d", other.Effective().CadenceHours)
+	}
+	if job, err = svc.SetMessage(ctx, "u1", id, "only propose changes"); err != nil || len(job.Effective().Messages) != 1 || job.Effective().Messages[0] != "only propose changes" {
+		t.Fatalf("a person's own message: %+v %v", job.Effective().Messages, err)
+	}
+	if job, _ = svc.SetMessage(ctx, "u1", id, ""); job.Effective().Messages[0] == "only propose changes" {
+		t.Fatal("an empty message must restore the default")
 	}
 	if _, err := svc.SetCadence(ctx, "u1", id, 0); err == nil {
 		t.Fatal("a zero cadence must be refused")

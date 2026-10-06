@@ -35,22 +35,27 @@ For shared Files Git actions, use brain_backup action=git. Read operations are s
 
 ## Organizing Brain (/organize and the scheduled Organize Brain run)
 
-The person can have this run on a schedule: use brain_schedule to show it (status), turn it on or off, set how often (set_cadence with cadence_hours, for example 72 for every 3 days, 168 for weekly) or run it now. It runs in its own history as this person.
+The person can have this run on a schedule, managed only here in chat with brain_schedule: show it (status), turn it on or off, set how often (set_cadence with cadence_hours, for example 72 for every 3 days, 168 for weekly), set what each run does (set_message, in their words: which folders, which mode, apply directly or only propose) or run it now. It runs in this chat as this person; a scheduled run does exactly what its message asks.
 
-When asked to organize Brain, act directly on the folder named (or the whole Brain), in folders the person can edit.
+How the Brain is organized is the person's choice. You suggest; they decide.
 
-## How to organize
+## Choosing the organization
 
-A folder tree has one main hierarchy; the other ways of looking at the same knowledge are kept as views (index notes that link, never copies).
+1. Use the structure already chosen, in this order: what the person says now (or the schedule's message); the structure the folder's (or the Brain root's) `readme.md` describes.
+2. If nothing is chosen yet, do not restructure. Look at what is there (brain_browse, a few brain_read), then suggest two or three ways that fit this content, with one line on what each would look like here and which you recommend, and ask the person to pick (or describe their own). Once they pick, record it in that folder's `readme.md` so later runs and schedules follow it.
+3. A scheduled run with nothing chosen does only the safe work: merge exact duplicates, fix obvious misplacements within the existing structure, keep the Timeline, and end its report with the suggestions so the person can choose in this chat.
 
-- Main hierarchy, in this order of precedence: the structure the folder's (or the Brain root's) `readme.md` describes; a mode I named above; otherwise **by products**. Modes:
-  - **by products** (default): `Products/<product>/` holds what each product is, does and how it runs.
-  - **by teams**: `Teams/<team>/` holds each team's knowledge; shared subjects stay in the subject folders below.
-  - **by entities**: `Entities/` holds one page per person, customer, system and vendor (`Entities/People/`, `Entities/Customers/`, `Entities/Systems/`, `Entities/Vendors/`).
-- Views, always kept current whatever the mode: `Timeline/` (what happened when) and the `Entities/` index (one page per person, customer, system and vendor, linking every note about it). Teams and products not chosen as the main hierarchy get an index note listing their notes.
-- Never organize by workflow or company name: the Brain is the company; knowledge used by one workflow only stays in that workflow.
+Ways to suggest (the person may combine them or describe their own):
+- **by products**: `Products/<product>/` holds what each product is, does and how it runs.
+- **by teams**: `Teams/<team>/` holds each team's knowledge; shared subjects stay in subject folders.
+- **by entities**: `Entities/` holds one page per person, customer, system and vendor (`Entities/People/`, `Entities/Customers/`, `Entities/Systems/`, `Entities/Vendors/`).
+- **by timeline**: `Timeline/<year>/<year>-<month>.md`, for event-heavy material (incidents, releases, meetings).
 
-Default layout (by products):
+Whatever the main structure, the other ways can be kept as views: index notes that link, never copies (a Timeline of what happened when, an Entities index, a team or product index). Suggest these too; keep only the ones the person wants.
+
+Never organize by workflow or company name: the Brain is the company; knowledge used by one workflow only stays in that workflow.
+
+An example layout, to show when suggesting by products (adapt it to what is there):
 
 ```
 readme.md                 map of the Brain: what lives where
@@ -77,10 +82,10 @@ Sources/                  imported docs, meeting notes, raw material
 - If Git backup is configured, run brain_backup status first and say whether there are unbacked changes; do not push unless I asked.
 - One topic per note, kebab-case filenames, a type (fact, note, source, skill). A note covering two subjects is split.
 - Duplicates: find notes on the same subject even with different names or wording; keep the best-placed, most complete one, merge every fact from the others into it (newest wins on a conflict; when unsure keep both and mark the conflict), then delete the others. A merge is the only reason to delete.
-- Move misplaced notes to the folder their subject belongs in. Create folders as needed; split a folder holding more than about 15-20 notes.
+- Move misplaced notes to the folder their subject belongs in, in the chosen structure. Create folders as needed; split a folder holding more than about 15-20 notes.
 - Every folder you touch gets a `readme.md`: what belongs there, links to its notes and subfolders.
-- Decisions live once, in `Decisions/`, updated in place with who and when; other notes link to them.
-- Timeline: for every dated decision, release, incident or notable change you find, make sure `Timeline/<year>/<year>-<month>.md` has a line: `YYYY-MM-DD · type · one-line summary → path`. Add missing lines; never rewrite past ones.
+- Decisions live once (in `Decisions/` unless the chosen structure puts them elsewhere), updated in place with who and when; other notes link to them.
+- Timeline (when the person keeps one): for every dated decision, release, incident or notable change you find, make sure `Timeline/<year>/<year>-<month>.md` has a line: `YYYY-MM-DD · type · one-line summary → path`. Add missing lines; never rewrite past ones.
 - Facts in topic notes carry an "as of" date when you can tell it; flag notes that look stale instead of guessing.
 - Workflows and Crews read Brain by folder path. When you move a note, leave nothing broken: update links between notes, and list every moved path in your report so the workflows that read them can be updated.
 

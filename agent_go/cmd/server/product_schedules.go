@@ -70,6 +70,8 @@ type productScheduleUserState struct {
 	// CadenceHours overrides a cadence schedule's interval for this person (for example Organize Brain every 72h
 	// instead of weekly, PLAT-618). Ignored for cron and one-time schedules.
 	CadenceHours *int `json:"cadence_hours,omitempty"`
+	// Messages replaces the schedule's messages for this person (the Brain chat's brain_schedule set_message).
+	Messages []string `json:"messages,omitempty"`
 	// ActivatedAt is the persisted first-seen baseline for legacy/built-in
 	// cron definitions that predate Schedule.CreatedAt.
 	ActivatedAt string `json:"activated_at,omitempty"`
@@ -127,6 +129,9 @@ func (j productScheduleJob) Effective() productschedule.Schedule {
 	}
 	if j.State.CadenceHours != nil && *j.State.CadenceHours > 0 && s.CadenceHours > 0 {
 		s.CadenceHours = *j.State.CadenceHours
+	}
+	if len(j.State.Messages) > 0 {
+		s.Messages = append([]string(nil), j.State.Messages...)
 	}
 	return s
 }
@@ -545,6 +550,30 @@ func (s *ProductScheduleService) SetCadence(ctx context.Context, userID, jobID s
 	}
 	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.CadenceHours = &hours
+	}); err != nil {
+		return job, err
+	}
+	return s.Job(ctx, userID, jobID)
+}
+
+// maxScheduleMessageBytes bounds a person's own schedule message.
+const maxScheduleMessageBytes = 8000
+
+// SetMessage sets what one person's run of a schedule asks for; empty restores the product's message (PLAT-618).
+func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, message string) (productScheduleJob, error) {
+	job, err := s.Job(ctx, userID, jobID)
+	if err != nil {
+		return job, err
+	}
+	message = strings.TrimSpace(message)
+	if len(message) > maxScheduleMessageBytes {
+		return job, fmt.Errorf("the schedule message is limited to %d bytes", maxScheduleMessageBytes)
+	}
+	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+		st.Messages = nil
+		if message != "" {
+			st.Messages = []string{message}
+		}
 	}); err != nil {
 		return job, err
 	}
@@ -1233,11 +1262,13 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		st.LastAttemptAt = startedAt.Format(time.RFC3339)
 	})
 
-	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(job.Schedule.Messages), sessionID)
+	// A person may set their own messages for a schedule (Brain: what Organize Brain should do, PLAT-618).
+	messages := job.Effective().Messages
+	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(messages), sessionID)
 	var runErr error
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
-	for i, message := range job.Schedule.Messages {
+	for i, message := range messages {
 		if err := runCtx.Err(); err != nil {
 			runErr = err
 			break
@@ -1256,10 +1287,10 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		applyCrewGuestCaller(reqMap, job.GuestCallerID)
 		reqMap["triggered_by_label"] = automationTriggerLabel(firstNonEmptyTrimmed(triggerSource, "cron"), job.Schedule.Name)
 		reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, job.Profile.Name)
-		scheduleLogf("[PRODUCT-SCHEDULE] %s turn %d/%d for %s", job.ID(), i+1, len(job.Schedule.Messages), job.UserID)
+		scheduleLogf("[PRODUCT-SCHEDULE] %s turn %d/%d for %s", job.ID(), i+1, len(messages), job.UserID)
 		turnResult, err := s.api.startSessionInternalWithResult(runCtx, reqMap, sessionID, job.UserID, nil)
 		if err != nil {
-			runErr = fmt.Errorf("message %d/%d: %w", i+1, len(job.Schedule.Messages), err)
+			runErr = fmt.Errorf("message %d/%d: %w", i+1, len(messages), err)
 			break
 		}
 		if strings.TrimSpace(turnResult.FinalResponse) != "" {

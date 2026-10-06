@@ -10,7 +10,7 @@ import (
 )
 
 // brainScheduleToolName lets the Brain chat manage the person's Organize Brain schedule (PLAT-618): see it, turn it on
-// or off, set how often it runs, or run it now. It acts only on the caller's own schedule state.
+// or off, set how often it runs and what it asks for, or run it now. Brain schedules always run in the Brain chat. It acts only on the caller's own schedule state.
 const brainScheduleToolName = "brain_schedule"
 
 func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegistrar, userID string) error {
@@ -21,13 +21,14 @@ func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegis
 	params := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"action":        map[string]interface{}{"type": "string", "enum": []string{"status", "enable", "disable", "set_cadence", "run_now"}},
+			"action":        map[string]interface{}{"type": "string", "enum": []string{"status", "enable", "disable", "set_cadence", "set_message", "run_now"}},
+			"message":       map[string]interface{}{"type": "string", "description": "For set_message: what each scheduled run should do, in the person's words (for example \"organize Engineering by teams and merge duplicates\" or \"only propose changes, do not apply them\"). Empty restores the default."},
 			"cadence_hours": map[string]interface{}{"type": "integer", "minimum": minScheduleCadenceHours, "maximum": maxScheduleCadenceHours, "description": "For set_cadence: hours between runs, for example 72 for every 3 days or 168 for weekly."},
 		},
 		"required":             []string{"action"},
 		"additionalProperties": false,
 	}
-	description := "Manage this person's Organize Brain schedule (it runs the Organizing Brain procedure in its own history, as this person). action=status shows whether it is on, how often it runs and when it last ran; enable/disable turn it on or off; set_cadence sets how often (cadence_hours); run_now starts a run at once."
+	description := "Manage this person's Organize Brain schedule. It runs in this Brain chat, as this person, and sends the schedule's message (default: organize the whole Brain following \"Organizing Brain\"). action=status shows whether it is on, how often, the message and the last run; enable/disable turn it on or off; set_cadence sets how often (cadence_hours); set_message sets what each run should do (scope, mode, apply or only propose); run_now starts a run at once."
 	return registrar.RegisterCustomTool(brainScheduleToolName, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		claims := GetUserFromContext(ctx)
 		if claims == nil || claims.UserID != userID {
@@ -48,6 +49,9 @@ func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegis
 				return "", fmt.Errorf("set_cadence needs cadence_hours")
 			}
 			job, err = ps.SetCadence(ctx, userID, jobID, int(hours))
+		case "set_message":
+			message, _ := args["message"].(string)
+			job, err = ps.SetMessage(ctx, userID, jobID, message)
 		case "run_now":
 			session, runErr := ps.Trigger(ctx, userID, jobID)
 			if runErr != nil {
@@ -61,7 +65,7 @@ func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegis
 			return "", err
 		}
 		effective := job.Effective()
-		out, _ := json.Marshal(map[string]any{"enabled": effective.Enabled, "cadence_hours": effective.CadenceHours, "last_run_at": job.State.LastRunAt, "last_status": job.State.LastStatus, "run_count": job.State.RunCount})
+		out, _ := json.Marshal(map[string]any{"enabled": effective.Enabled, "cadence_hours": effective.CadenceHours, "messages": effective.Messages, "last_run_at": job.State.LastRunAt, "last_status": job.State.LastStatus, "run_count": job.State.RunCount})
 		return string(out), nil
 	}, "knowledgebase")
 }
