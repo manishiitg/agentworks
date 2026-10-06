@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-591](plat-591.md) | Go tests failing on main | open | P2 |
+| [PLAT-592](plat-592.md) | Go tests failing on main | open | P2 |

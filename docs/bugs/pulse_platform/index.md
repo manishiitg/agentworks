@@ -26,8 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-592](ops/ci/plat-592.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
 | [PLAT-591](crew/browser/plat-591.md) | Start browser fails for a Crew moved to the shared root | fixed on main | P2 | [crew/browser](crew/browser/index.md) |
-| [PLAT-591](ops/ci/plat-591.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
 | [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | fixed on main | P2 | [crew/functions](crew/functions/index.md) |
 | [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |

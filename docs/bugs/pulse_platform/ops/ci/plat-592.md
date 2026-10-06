@@ -1,6 +1,6 @@
 [← ops / ci](index.md)
 
-# PLAT-591: Go tests failing on main
+# PLAT-592: Go tests failing on main
 
 | Field | Value |
 |---|---|
