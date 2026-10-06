@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, CircleAlert, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { responseContent } from '../../utils/plannerFiles'
 import { parseCrewTemplateSetupState, type CrewTemplate, type CrewTemplateSetupState } from './crewTemplates'
@@ -24,15 +24,18 @@ function migrateSetupState(content: string | undefined, template: CrewTemplate):
   return { ...initial, completed_steps: [...new Set(completed)] }
 }
 
-export function WorkTemplateSetup({ template, workspacePath, chatReady = true, onStartSetup }: {
+export function WorkTemplateSetup({ template, workspacePath, chatReady = true, onStartSetup, onRemove }: {
   template: CrewTemplate
   workspacePath: string
   chatReady?: boolean
   onStartSetup: () => Promise<void>
+  onRemove?: () => Promise<void>
 }) {
   const [setup, setSetup] = useState<CrewTemplateSetupState | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [removeError, setRemoveError] = useState('')
   const [error, setError] = useState('')
 
   const refresh = useCallback(async () => {
@@ -85,17 +88,36 @@ export function WorkTemplateSetup({ template, workspacePath, chatReady = true, o
     }
   }
 
+  const remove = async () => {
+    if (removing || !onRemove) return
+    setRemoving(true)
+    setRemoveError('')
+    try {
+      await onRemove()
+    } catch (cause) {
+      setRemoveError(cause instanceof Error ? cause.message : 'Could not remove this template. Try again.')
+    } finally {
+      setRemoving(false)
+    }
+  }
+
   return (
     <section className="shrink-0 border-b border-border bg-muted/30 px-4 py-2.5" aria-label={`${template.name} setup status`}>
       <div className="mx-auto flex max-w-2xl items-center gap-2">
         {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Sparkles className="h-4 w-4 shrink-0 text-primary" />}
         <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{template.name} · {status}</span>
-        <button type="button" onClick={() => { void refresh() }} disabled={loading} aria-label="Refresh setup status" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
+        <button type="button" onClick={() => { void refresh() }} disabled={loading || removing} aria-label="Refresh setup status" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
-        <button type="button" onClick={() => { void start() }} disabled={sending || !chatReady} className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button type="button" onClick={() => { void start() }} disabled={sending || removing || !chatReady} className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : !chatReady ? 'Opening chat…' : complete ? 'Review in chat' : setup?.completed_steps.length ? 'Continue setup' : 'Set up in chat'}
         </button>
+        {onRemove ? <button type="button" onClick={() => { void remove() }} disabled={removing || sending}
+          aria-label={`Remove ${template.name} template`} title="Remove this template. Existing files and chats are kept."
+          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50">
+          {removing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+          {removing ? 'Removing…' : 'Remove'}
+        </button> : null}
       </div>
       {setup && !complete ? <details className="mx-auto mt-1 max-w-2xl text-xs text-muted-foreground">
         <summary className="cursor-pointer hover:text-foreground">What remains?</summary>
@@ -103,7 +125,7 @@ export function WorkTemplateSetup({ template, workspacePath, chatReady = true, o
         <ul className="mt-1 list-disc pl-4">{pending.map(check => <li key={check.id}>{check.title}</li>)}</ul>
         {setup.checks.some(check => check.optional) ? <p className="mt-1">Optional delivery, schedules, or other extras do not block setup completion.</p> : null}
       </details> : null}
-      {error ? <p className="mx-auto mt-1 flex max-w-2xl items-center gap-1 text-xs text-destructive"><CircleAlert className="h-3.5 w-3.5" />{error}</p> : null}
+      {removeError || error ? <p className="mx-auto mt-1 flex max-w-2xl items-center gap-1 text-xs text-destructive"><CircleAlert className="h-3.5 w-3.5" />{removeError || error}</p> : null}
     </section>
   )
 }

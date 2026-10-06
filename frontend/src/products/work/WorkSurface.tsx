@@ -27,7 +27,7 @@ import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
@@ -218,10 +218,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     return session
   }, [product, setSelectedId, updateSessions])
 
-  const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
-    const session = sessions.find(item => item.id === projectId)
-    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    const updated = await installWorkSessionTemplate(session, templateId)
+  const applyTemplateUpdate = useCallback((projectId: string, updated: WorkSession) => {
     updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     for (const tab of Object.values(useChatStore.getState().chatTabs)) {
       if (!belongsToWorkProject(tab, projectId)) continue
@@ -229,8 +226,23 @@ function useWorkSessions(product: ProjectProductConfig) {
       useChatStore.getState().setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
     }
     markWorkProjectRuntimeDirty(projectId)
+  }, [updateSessions])
+
+  const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
+    const session = sessions.find(item => item.id === projectId)
+    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    const updated = await installWorkSessionTemplate(session, templateId)
+    applyTemplateUpdate(projectId, updated)
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions, applyTemplateUpdate])
+
+  const removeTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
+    const session = sessions.find(item => item.id === projectId)
+    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    const updated = await removeWorkSessionTemplate(session, templateId)
+    applyTemplateUpdate(projectId, updated)
+    return updated
+  }, [product, sessions, applyTemplateUpdate])
 
   const remove = useCallback(async (projectId: string) => {
     const project = sessions.find(item => item.id === projectId)
@@ -313,6 +325,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     select: setSelectedId,
     create,
     installTemplate,
+    removeTemplate,
     remove,
     updateLLMConfig,
     updateNativeAgentTools,
@@ -696,7 +709,7 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, installTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
@@ -1163,6 +1176,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       template={template}
                       workspacePath={selected.workspacePath}
                       chatReady={Boolean(tabId)}
+                      onRemove={async () => {
+                        await removeTemplate(selected.id, template.id)
+                        useChatStore.getState().addToast(`${template.name} removed.`, 'success')
+                      }}
                       onStartSetup={async () => {
                         setChatOpen(true)
                         await sendWorkspacePaneMessageToChat({ profileId: product.profileId, conversationKey: selected.id, message: `Help me set up the ${template.name} template in this ${product.noun}. Read ${template.setupPath} and ${template.setupGuidePath} in this project's files. Work through the pending checks, ask me for missing decisions or access, and add a check ID to completed_steps only after you verify it. Preserve the checklist and earlier progress. Keep this ${product.noun}'s identity and other templates intact. Tell me what remains and when setup is complete.` })

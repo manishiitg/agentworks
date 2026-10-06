@@ -491,6 +491,69 @@ export async function addProductProjectTemplate<P extends string>(
   return { ...project, templates, updatedAt }
 }
 
+const pendingTemplateRemovals = new Map<string, Promise<void>>()
+
+/** Serialize clicks on different template rows so their manifest updates cannot undo each other. */
+export function removeProductProjectTemplate<P extends string>(
+  project: ProductProject<P>,
+  templateId: string,
+  templateSkills: (id: string) => readonly string[],
+  commitLabel: string,
+  runtimeManifestName: string,
+): Promise<ProductProject<P>> {
+  const previous = pendingTemplateRemovals.get(project.workspacePath) ?? Promise.resolve()
+  const removal = previous.then(() => removeProductProjectTemplateNow(project, templateId, templateSkills, commitLabel, runtimeManifestName))
+  const settled = removal.then(() => {}, () => {})
+  pendingTemplateRemovals.set(project.workspacePath, settled)
+  void settled.then(() => {
+    if (pendingTemplateRemovals.get(project.workspacePath) === settled) pendingTemplateRemovals.delete(project.workspacePath)
+  })
+  return removal
+}
+
+/** Detach a template without deleting any project files or changing its identity. */
+async function removeProductProjectTemplateNow<P extends string>(
+  project: ProductProject<P>,
+  templateId: string,
+  templateSkills: (id: string) => readonly string[],
+  commitLabel: string,
+  runtimeManifestName: string,
+): Promise<ProductProject<P>> {
+  if (project.shared) throw new Error('Only the project owner can remove templates.')
+  const path = `${project.workspacePath}/product.json`
+  const document = responseContent(await agentApi.getPlannerFileContent(path))
+  if (!document) throw new Error('Project configuration was not found.')
+  const manifest = JSON.parse(document.content) as ProductManifest & Record<string, unknown>
+  const templates = parseProductTemplates(manifest)
+  const remaining = templates.filter(item => item.id !== templateId)
+  const runtimePath = `${project.workspacePath}/${runtimeManifestName}`
+  const runtimeDocument = responseContent(await agentApi.getPlannerFileContent(runtimePath))
+  if (!runtimeDocument) throw new Error('Project runtime configuration was not found.')
+  const runtime = JSON.parse(runtimeDocument.content) as ProductManifest & Record<string, unknown>
+  const currentSkills = manifestStringList(runtime, 'selected_skills')
+  // Read both manifests before writing, so a read failure leaves the attachment intact.
+  // Preserve skills another attached template needs and all unrelated capabilities.
+  const retainedSkills = new Set(remaining.flatMap(item => [...templateSkills(item.id)]))
+  const removedSkills = new Set(templateSkills(templateId).filter(skill => !retainedSkills.has(skill)))
+  const selectedSkills = templates.some(item => item.id === templateId)
+    ? currentSkills.filter(skill => !removedSkills.has(skill))
+    : currentSkills
+  const updatedAt = new Date().toISOString()
+  if (selectedSkills.length !== currentSkills.length) {
+    runtime.capabilities = { ...(runtime.capabilities as Record<string, unknown>), selected_skills: selectedSkills }
+    runtime.updated_at = updatedAt
+    await agentApi.updatePlannerFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, `${commitLabel} skills`)
+  }
+  // Remove the receipt last: a failed write keeps the row visible for an idempotent retry.
+  if (remaining.length !== templates.length) {
+    manifest.templates = remaining
+    delete manifest.template
+    manifest.updated_at = updatedAt
+    await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
+  }
+  return { ...project, templates: remaining, selectedSkills, updatedAt }
+}
+
 export async function updateProductProjectLLMConfig<P extends string>(
   project: ProductProject<P>,
   llmConfig: PresetLLMConfig,

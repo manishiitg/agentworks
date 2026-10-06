@@ -1,11 +1,11 @@
-import { addProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
+import { addProductProjectTemplate, removeProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
 import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
-import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
+import { crewTemplates, getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<ProjectProductId>
 
@@ -123,10 +123,8 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
     const path = `${session.workspacePath}/${relativePath}`
     try {
       const existing = responseContent(await agentApi.getPlannerFileContent(path))
-      if (existing) {
-        if (existing.content !== content) throw new Error(`Cannot install ${template.name}: ${relativePath} already exists with different content.`)
-        continue
-      }
+      // Reattaching a removed template preserves edited skills and setup progress.
+      if (existing) continue
     } catch (cause) {
       const status = (cause as { response?: { status?: number } })?.response?.status
       if (status !== 404) throw cause
@@ -136,6 +134,15 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
   const selectedSkills = [...new Set([...session.selectedSkills, ...template.selectedSkills])]
   const withSkill = await updateProductProjectSelections(session, { selectedSkills }, `Select ${template.name} skill`, 'workflow.json')
   return addProductProjectTemplate(withSkill, { id: template.id, version: template.version }, `Install ${template.name} in Crew ${session.title}`)
+}
+
+export async function removeWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
+  if (session.shared) throw new Error('Only the Crew owner can remove templates.')
+  if (session.product !== 'work') throw new Error('This project does not support Crew templates.')
+  const template = getCrewTemplate(templateId)
+  return removeProductProjectTemplate(session, templateId,
+    id => crewTemplates.find(item => item.id === id)?.selectedSkills ?? [],
+    `Remove ${template.name} from Crew ${session.title}`, 'workflow.json')
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {

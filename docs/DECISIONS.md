@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Crew template removal detaches the receipt and skill, preserving work
+
+Remove an attached template directly from its setup row above chat. Deselect
+its skill unless another attached template needs it, and preserve Crew identity,
+files, chats and setup progress. Reattachment reuses existing files without
+overwriting edits. Why: the owner needs an easy way to undo adding a template.
+Ticket: [PLAT-609](bugs/pulse_platform/crew/frontend-chat/plat-609.md).
+
 ### 2026-10-06 — No code-defined wait tool: trigger_and_auto_notify is removed
 
 What: the Builder and Crew tool that ran model-written Python for up to 24h and resumed the chat when it ended is
