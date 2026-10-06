@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-601](plat-601.md) | Auto-notify trigger code runs unconfined on the host | open | P0 |
 | [PLAT-394](plat-394.md) | Seatbelt for every coding CLI on a Mac; `full_unconfined` removed | open | P1 |
 | [PLAT-383](plat-383.md) | Absolute host grants reached server sandboxes with no root check | fixed on main | P1 |
 | [PLAT-374](plat-374.md) | A blocked file sent agent shells to a weaker sandbox, as the service account | fixed on main | P0 |

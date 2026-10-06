@@ -11,3 +11,7 @@
 | [routing](routing/index.md) | 7 | 0 |
 | [scripted](scripted/index.md) | 8 | 1 |
 | [tools](tools/index.md) | 6 | 1 |
+
+| Ticket | Title | State | Priority |
+|---|---|---|---|
+| [PLAT-605](plat-605.md) | Failed run record has no error or failed step | open | P2 |

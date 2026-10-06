@@ -5,7 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [access](access/index.md) | 9 | 5 |
-| [confinement](confinement/index.md) | 9 | 1 |
+| [confinement](confinement/index.md) | 10 | 2 |
 | [general](general/index.md) | 5 | 1 |
 | [paths](paths/index.md) | 13 | 2 |
 | [secrets](secrets/index.md) | 9 | 2 |

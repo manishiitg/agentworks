@@ -4,6 +4,9 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-604](plat-604.md) | Lost auto-notifications are never reported | open | P2 |
+| [PLAT-603](plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 |
+| [PLAT-602](plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 |
 | [PLAT-554](plat-554.md) | Live context fill and plan-limit warning in the chat during a turn | fixed on main | P2 |
 | [PLAT-553](plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 |
 | [PLAT-548](plat-548.md) | An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored" | fixed on main | - |

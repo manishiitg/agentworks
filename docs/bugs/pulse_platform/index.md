@@ -9,15 +9,15 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 72 | 11 |
 | [Brain](brain/index.md) | 18 | 2 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 22 | 8 |
 | [Code](code/index.md) | 4 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 20 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 173 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 174 | 36 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 20 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 7 | 1 |
@@ -26,6 +26,11 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-605](goals/steps/plat-605.md) | Failed run record has no error or failed step | open | P2 | [goals/steps](goals/steps/index.md) |
+| [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-603](chat/reliability/plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-602](chat/reliability/plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | open | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
 | [PLAT-600](brain/builder/plat-600.md) | CLI Builder refused its own Brain project tools | fixed on main | P1 | [brain/builder](brain/builder/index.md) |
 | [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
@@ -61,8 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-568](sandbox/skills/plat-568.md) | Custom skills can be installed again; only our policy files are protected | fixed on main | P2 | [sandbox/skills](sandbox/skills/index.md) |
 | [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
-| [PLAT-565](goals/plans-contracts/plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
-| [PLAT-564](vault/local/plat-564.md) | Local Vault fails to start: configuration key left in the old state folder | fixed on main | P0 | [vault/local](vault/local/index.md) |
-| [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
-| [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
