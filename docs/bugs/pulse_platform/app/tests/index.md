@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-626](plat-626.md) | Record existing main CI failures outside Relay landing regression | open | P2 |
 | [PLAT-529](plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 |
 | [PLAT-494](plat-494.md) | The launcher's `npm install` blocked every start when node_modules was half-installed | fixed on main | - |
 | [PLAT-481](plat-481.md) | The frontend test suite is red on main (release and DMG builds fail) | fixed on main | - |

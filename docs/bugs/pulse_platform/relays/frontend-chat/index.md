@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-627](plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 |
 | [PLAT-409](plat-409.md) | Ctrl+K omitted Relays | fixed on main | - |
 | [PLAT-398](plat-398.md) | Relay output and workflow toolbar clarity | closed | - |
 | [PLAT-378](plat-378.md) | Relay commands and private system prompt inspection | fixed on main | - |

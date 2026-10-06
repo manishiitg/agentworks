@@ -46,3 +46,10 @@ fixed callback writes using the child agent guard instead of the parent invocati
 Recovery, resume-agent and per-release Python
 environments are explicitly outside this MVP. External MCP/Google operations
 require live authorized connections and are not all exercised by these checks.
+
+## Shared suite follow-up
+
+The initial focused checks missed the shared landing JSX assertion. That
+regression is fixed in [PLAT-627](../frontend-chat/plat-627.md). The current main
+Relay backend and relevant frontend checks pass; unrelated main suite failures
+are tracked in [PLAT-626](../../app/tests/plat-626.md).

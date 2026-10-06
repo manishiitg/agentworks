@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 77 | 12 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 78 | 13 |
 | [Brain](brain/index.md) | 20 | 3 |
 | [Browser and browser automation](browser/index.md) | 43 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
@@ -16,7 +16,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 175 | 37 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
-| [Relays](relays/index.md) | 21 | 4 |
+| [Relays](relays/index.md) | 22 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
+| [PLAT-626](app/tests/plat-626.md) | Record existing main CI failures outside Relay landing regression | open | P2 | [app/tests](app/tests/index.md) |
 | [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | deployed | P2 | [crew/functions](crew/functions/index.md) |
 | [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |
-| [PLAT-587](browser/browser/plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-586](browser/browser/plat-586.md) | Project-name lookups block the extension heartbeat message loop | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
