@@ -83,3 +83,6 @@ tab-helper and quick-switcher tests pass.
   chat, after checking whether Code projects are git repositories.
 - The cap is enforced in the UI only; the server accepts any suffixed key.
 
+## RTS test notes
+
+- 2026-10-06: deployed to RTS (`016e738`) for the owner's test. Owner: make the "+" more prominent; it is now a primary-coloured "New tab" pill (label avoids "New chat", which replaces the primary conversation).
