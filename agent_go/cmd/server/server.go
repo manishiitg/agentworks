@@ -5798,6 +5798,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
 			}
 		}
+		// Goals workflow chats have no profile, so nothing enforced their product.yaml lists; measure them first
+		// (PLAT-608 step 4): the gate logs what each Builder/Run session registers and what the list would drop.
+		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
+			mode := "run"
+			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
+				mode = "builder"
+			}
+			toolGate.Shadow("goals-"+mode, agentworksproduct.ChatTools(mode))
+		}
 		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())

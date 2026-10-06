@@ -44,9 +44,33 @@ type productToolGate struct {
 	// must not mutate, whatever the prompt says.
 	readerDenied map[string]struct{}
 
+	// shadow is the product.yaml list a chat would be held to once it enforces (PLAT-608 step 4). It filters
+	// nothing; a registered tool outside it is recorded in wouldFilter and logged, so the list can be completed from
+	// live sessions before the gate is switched to allowlist.
+	shadow      map[string]struct{}
+	wouldFilter []string
+
 	mu         sync.Mutex
 	registered []string
 	filtered   []string
+}
+
+// Shadow names the chat surface and the product.yaml list it is measured against, without filtering anything.
+func (g *productToolGate) Shadow(surface string, names []string) {
+	if g == nil || g.enforcing() {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.profileID == "" {
+		g.profileID = surface
+	}
+	g.shadow = make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			g.shadow[name] = struct{}{}
+		}
+	}
 }
 
 // newProductToolGate builds a gate for a resolved profile. A nil profile, or a
@@ -200,6 +224,11 @@ func (g *productToolGate) Admit(name string) bool {
 		return false
 	}
 	g.registered = append(g.registered, trimmed)
+	if g.shadow != nil {
+		if _, listed := g.shadow[trimmed]; !listed {
+			g.wouldFilter = append(g.wouldFilter, trimmed)
+		}
+	}
 	return true
 }
 
@@ -232,6 +261,14 @@ func (g *productToolGate) logSurface(sessionID string) {
 	if len(filtered) > 0 {
 		log.Printf("[PRODUCT_TOOL_GATE] profile=%s session=%s filtered=%d: %s",
 			g.profileID, sessionID, len(filtered), strings.Join(filtered, " "))
+	}
+	g.mu.Lock()
+	wouldFilter := uniqueSortedToolNames(g.wouldFilter)
+	shadowed := g.shadow != nil
+	g.mu.Unlock()
+	if shadowed {
+		log.Printf("[PRODUCT_TOOL_GATE] profile=%s session=%s would_filter=%d: %s",
+			g.profileID, sessionID, len(wouldFilter), strings.Join(wouldFilter, " "))
 	}
 }
 
