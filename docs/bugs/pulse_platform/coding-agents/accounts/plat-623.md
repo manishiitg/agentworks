@@ -61,6 +61,25 @@ These are actual server API, CLI login-status and filesystem checks. No paid
 model request was issued for verification. The Linux confinement regression and
 private-account admission tests for the underlying fix are recorded in PLAT-615.
 
+## Wider exposure audit, October 6
+
+The seven affected Code runtime homes map to six users: Utkarsh
+(`ubarnwal0802@gmail.com`, two workspaces), Vishwas (`vishwascharan11@gmail.com`),
+Abhishek (`abhisheks33537@gmail.com`), Manish (`manish@excellencetechnologies.in`),
+Nitish (`nitish000000kushwaha@gmail.com`) and Vaibhav
+(`vaibhavpatel122003@gmail.com`). Three additional isolated runtime homes were
+also linked. These runtimes could reach Ankita's shared key; this does not prove
+provider usage or exposure of those users' own private credentials.
+
+All five current private provider connections were checked against live auth
+files in the service HOME, state runtimes, project runtimes and slot state.
+No current private key/token remained in another owner's live auth file, and
+no private account credential-file symlinks remained. Private Codex/Claude
+source files and rightful account runtime links remain available to Ankita.
+Deleted accounts and older rotated logs limit historical attribution; this is
+an audit of the current registry and available server evidence, not a claim
+that no earlier account was ever exposed. Credential values were not recorded.
+
 ## Left
 
 Ankita must revoke the exposed old key with its provider, generate a replacement,

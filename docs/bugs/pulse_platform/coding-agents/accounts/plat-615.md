@@ -85,3 +85,19 @@ removed. That exposure and required owner key rotation are tracked in
 [PLAT-623](plat-623.md). A valid shared Claude login requires an
 admin sign-in; keep it unavailable to creators until then. Existing historical
 provider/account metadata in chat replies is not rewritten.
+
+## Wider account audit, October 6
+
+The other affected private Claude account was Utkarsh's deleted `Utkarsh`
+connection. His private Cursor `aaaa` account also had links to the shared Cursor
+login; those links were detached and its current status is signed out. The
+shared Cursor identity is Aayush's, so the link proves private/shared isolation
+was broken, not that Utkarsh's own Cursor credential was exposed. He needs to
+sign in to his own account again. Abhicodes' private Cursor account is signed
+out with no remaining credential links; available evidence does not establish
+that his credential was exposed. Shared Muse login was configured by the admin,
+and no private Muse accounts remain in the registry.
+
+Vaibhav's independent private Claude login passed an actual isolated CLI model
+verification. A separate Code token-preflight error still blocked his Hosati
+chat and is fixed in [PLAT-625](plat-625.md).

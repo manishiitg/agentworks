@@ -189,14 +189,15 @@ func isSingleProductServerDeployment() bool {
 }
 
 // claudeCodeTokenMissingForSingleProductDeployment reports whether handleQuery
-// must refuse this request: an active product profile resolves to the
+// requires explicit authentication: an active product profile resolves to the
 // claude-code provider with no configured token, and either (a) this server
 // is a dedicated single-product deployment (see
 // isSingleProductServerDeployment -- the default safety net every product
 // gets for free on such a deployment, no manifest change needed), or (b) the
 // profile itself declares Runtime.RequireProviderToken (product.yaml opt-in
 // for a profile that must never rely on an ambient CLI login regardless of
-// deployment context).
+// deployment context). The query preflight may also accept an admitted
+// account's own isolated login; this predicate never inspects ambient CLI auth.
 func claudeCodeTokenMissingForSingleProductDeployment(resolvedProfile *resolvedAgentProfile, finalProvider string) bool {
 	if resolvedProfile == nil || !strings.EqualFold(finalProvider, "claude-code") {
 		return false
@@ -3940,6 +3941,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// The FINAL account of the turn: a workflow chat that does not override
 	// the manifest runs on the workflow's saved model and account.
 	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
+	var admittedQueryAccount *storedProviderConnection
 	if turnProvider != "" {
 		admitID := turnConnectionID
 		if admitID == "" {
@@ -3947,7 +3949,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// here too, so a retained CLI relaunch or live input is covered.
 			admitID = serverDefaultConnectionID(turnProvider)
 		}
-		if _, accountErr := api.admitProviderAccount(r.Context(), accountScope, turnProvider, admitID); accountErr != nil {
+		var accountErr error
+		admittedQueryAccount, accountErr = api.admitProviderAccount(r.Context(), accountScope, turnProvider, admitID)
+		if accountErr != nil {
 			http.Error(w, accountErr.Error(), http.StatusForbidden)
 			return
 		}
@@ -4371,17 +4375,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		finalModelID = req.ModelID
 	}
 
-	// A dedicated single-product server deployment (Video Studio, Dominion,
-	// SparkQuill) resolving to the claude-code provider with no configured
-	// token must refuse loudly here, before the CLI process is ever spawned.
-	// Left unchecked, provider initialization falls back to "the CLI's own
-	// saved login": on a fresh HOME that hangs on an unattended interactive
-	// login screen nobody can answer; on a HOME shared with a prior `claude
-	// login` it silently authenticates as -- and bills -- that account
-	// instead. The desktop app (AGENT_PRODUCTS unset) is deliberately exempt:
-	// using the operator's own logged-in CLI there is correct, not a bug.
-	if claudeCodeTokenMissingForSingleProductDeployment(resolvedProfile, finalProvider) {
-		http.Error(w, "No Claude Code token configured for this deployment. Set CLAUDE_CODE_OAUTH_TOKEN before starting the service.", http.StatusBadRequest)
+	// Refuse ambient server login where a product requires scoped authentication.
+	// A selected account already admitted above may supply its own token or
+	// private CLI login. Do not layer its environment into shared/default keys.
+	if authErr := claudeCodeQueryAuthenticationError(resolvedProfile, finalProvider, admittedQueryAccount); authErr != nil {
+		http.Error(w, authErr.Error(), http.StatusBadRequest)
 		return
 	}
 

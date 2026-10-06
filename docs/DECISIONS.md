@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Code accepts its admitted private Claude login
+
+The query authentication preflight accepts the selected, admitted Claude
+account's own stored token or isolated CLI credential file. It never consults
+the service login or copies private account environment into default provider
+keys. Why: Code admitted a valid private account, then incorrectly demanded a
+deployment token. An unsigned private account directs its owner to Providers.
+Ticket: [PLAT-625](bugs/pulse_platform/coding-agents/accounts/plat-625.md).
+
 ### 2026-10-06 — Cmd/Ctrl+K is the only app-wide shortcut
 
 What: the Goals-era Ctrl/Cmd+1, 3, 6 and 7 are removed; Cmd/Ctrl+K opens the quick switcher everywhere, and the
