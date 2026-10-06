@@ -27,6 +27,7 @@ type Service struct {
 	cfg           Config
 	db            *sql.DB
 	live, private string
+	disk          diskState
 }
 type folderRegistry struct {
 	ID        string     `json:"id"`
@@ -107,7 +108,13 @@ func New(cfg Config) (*Service, error) {
 		return nil, err
 	}
 	cfg.Root = root
-	s := &Service{cfg: cfg, live: filepath.Join(root, "live"), private: filepath.Join(root, "private")}
+	live := filepath.Join(root, "live")
+	if cfg.LiveRoot != "" {
+		if live, err = filepath.Abs(cfg.LiveRoot); err != nil {
+			return nil, err
+		}
+	}
+	s := &Service{cfg: cfg, live: live, private: filepath.Join(root, "private")}
 	for _, p := range []string{root, s.live, s.private, filepath.Join(s.private, "requests"), filepath.Join(s.private, "receipts")} {
 		if err := os.MkdirAll(p, 0700); err != nil {
 			return nil, err
@@ -340,6 +347,9 @@ func (s *Service) registries() ([]folderRegistry, error) {
 			return errors.New("unexpected symbolic link in knowledgebase")
 		}
 		if d.IsDir() {
+			if p != s.live && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir // .git and other tools' folders are not Brain folders
+			}
 			return nil
 		}
 		if d.Name() != ".kb-registry.json" {
@@ -417,6 +427,8 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 	if err = s.recover(); err != nil {
 		return nil, err
 	}
+	// Pick up edits made directly in Brain's folder first; a file Brain cannot take stays on disk and is retried.
+	_ = s.syncDiskLocked("disk")
 	if !s.IdentityActive(ctx, p.IdentityID) {
 		return nil, kbErr("FORBIDDEN", "This identity is disabled or unavailable.")
 	}
@@ -445,6 +457,7 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 		if err = s.transact(changes); err != nil {
 			return nil, err
 		}
+		s.noteOwnWrite()
 	}
 	return result, nil
 }

@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
-| [Brain](brain/index.md) | 22 | 4 |
+| [Brain](brain/index.md) | 23 | 5 |
 | [Browser and browser automation](browser/index.md) | 43 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | open | P1 | [brain/storage](brain/storage/index.md) |
 | [PLAT-632](brain/access/plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 | [brain/access](brain/access/index.md) |
 | [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |
 | [PLAT-595](code/terminal/plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | deployed | P2 | [code/terminal](code/terminal/index.md) |
 | [PLAT-594](crew/frontend-chat/plat-594.md) | Show installed template setup progress and exclude optional checks from completion | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
-| [PLAT-593](goals/plans-contracts/plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 | [goals/plans-contracts](goals/plans-contracts/index.md) |

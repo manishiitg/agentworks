@@ -8,7 +8,9 @@ import (
 )
 
 type Config struct {
-	Root           string
+	Root string
+	// LiveRoot is the folder holding Brain's notes as plain files (a Git working folder); default <Root>/live.
+	LiveRoot       string
 	OrganizationID string
 	BackupRemote   string
 	BackupBranch   string
