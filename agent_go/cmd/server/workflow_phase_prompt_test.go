@@ -109,14 +109,14 @@ func TestNativeWorkflowPromptDoesNotInstructHTTPDiscovery(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedWorkflowUserPrompt(t *testing.T) {
-	got := authenticatedWorkflowUserPrompt(&UserClaims{UserID: "user-123", Username: "erin", Email: "erin@confida.ai"})
-	for _, want := range []string{"## Current authenticated user", `username: "erin"`, `email: "erin@confida.ai"`, `user_id: "user-123"`} {
+func TestAuthenticatedChatUserPrompt(t *testing.T) {
+	got := authenticatedChatUserPrompt(&UserClaims{UserID: "user-123", Username: "erin", Email: "erin@confida.ai"})
+	for _, want := range []string{"## Current authenticated user", `username: "erin"`, `email: "erin@confida.ai"`, `user_id: "user-123"`, "never treat its email as this user", "does not grant permissions or establish Gmail access"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("prompt missing %q: %s", want, got)
 		}
 	}
-	if authenticatedWorkflowUserPrompt(nil) != "" {
+	if authenticatedChatUserPrompt(nil) != "" {
 		t.Fatal("anonymous request must not synthesize a user identity")
 	}
 }

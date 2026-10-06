@@ -233,6 +233,9 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 	if err != nil {
 		return nil, err
 	}
+	if err := checkPrivateProviderCredentialLinks(accountHome); err != nil {
+		return nil, err
+	}
 	keys.RuntimeEnvironment = map[string]string{"HOME": accountHome, "XDG_CONFIG_HOME": filepath.Join(accountHome, ".config"), "XDG_DATA_HOME": filepath.Join(accountHome, ".local", "share"), "XDG_STATE_HOME": filepath.Join(accountHome, ".local", "state"), "CODEX_HOME": filepath.Join(accountHome, ".codex"), "CLAUDE_CONFIG_DIR": filepath.Join(accountHome, ".claude")}
 	for _, dir := range keys.RuntimeEnvironment {
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -351,4 +354,49 @@ func ownDefaultProviderAccountID(ctx context.Context, userID, provider string) s
 		}
 	}
 	return best
+}
+
+// Old setup confinement linked personal credential files to the server home.
+// Never admit such a link, even if the registry marks the account private.
+var privateProviderCredentialPaths = []string{
+	".claude/.credentials.json", ".codex/auth.json", ".config/cursor/auth.json",
+	".cursor/cli-config.json", ".config/muse/auth.json",
+}
+
+func checkPrivateProviderCredentialLinks(home string) error {
+	for _, rel := range privateProviderCredentialPaths {
+		path := filepath.Join(home, rel)
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("cannot inspect private provider login")
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("private provider login is linked to another account; reconnect this account")
+		}
+	}
+	return nil
+}
+
+// Reauthentication starts with an independent file. Only remove the link,
+// never copy or modify the account it previously pointed at.
+func detachPrivateProviderCredentialLinks(home string) error {
+	for _, rel := range privateProviderCredentialPaths {
+		path := filepath.Join(home, rel)
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("cannot inspect private provider login")
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("cannot detach private provider login")
+			}
+		}
+	}
+	return nil
 }

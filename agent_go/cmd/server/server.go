@@ -6957,6 +6957,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				WorkflowPhaseFolder: workflowPhaseFolder,
 				ProfileWorkspace:    agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
 				CapabilitySection:   buildLLMCapabilityPromptSection(r.Context()),
+				AuthenticatedUser:   authenticatedChatUserPrompt(GetUserFromContext(r.Context())),
 				// Capability details are loaded through this tool, so do not
 				// advertise its pointer merely because auth setup is admitted.
 				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),
@@ -7315,7 +7316,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// The phase composer is shared with the assembled-prompt regression tests.
 				var phaseAdditions []string
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					if userPrompt := authenticatedWorkflowUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
+					if userPrompt := authenticatedChatUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
 						phaseAdditions = append(phaseAdditions, userPrompt)
 					}
 					if notificationPrompt := buildWorkflowNotificationInstructionsPrompt(req.NotificationRunSummaryInstructions, req.NotificationPulseSummaryInstructions); notificationPrompt != "" {

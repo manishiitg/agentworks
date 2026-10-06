@@ -45,6 +45,12 @@ servers, and available secrets.
 
 ## Gmail and Google Workspace
 
+- Determine the mailbox from `list_gmail_connections` and a successful scoped
+  account check. A Claude/Codex/other provider login or billing email is not the
+  AgentWorks user or a Gmail connection. The signed-in app email also does not
+  prove Gmail consent. If no connection is returned, say no account is connected;
+  ask which account the user wants to connect without suggesting a provider email.
+
 - Gmail is a shared account connection shown in **Setup > Bots**, not an MCP
   server. Incoming email is a Gmail trigger with a unique receiving address. Check `list_gmail_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.

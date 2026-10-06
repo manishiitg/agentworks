@@ -145,3 +145,5 @@ transparent to a connection's stored request and to this tool; don't try to
 detect or reason about which backend a deployment uses when managing
 scopes. `google_workspace_cli` (Drive/Sheets/Docs/Slides/Calendar) always
 uses `gog`, regardless of that setting.
+
+A provider login or billing email is not a Gmail connection or the signed-in AgentWorks user. The app login email also does not establish mailbox consent. Identify usable mailboxes through `list_gmail_connections` and verified scoped account checks. An empty list means no connected account; ask which account the user wants to connect without guessing from provider metadata.

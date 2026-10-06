@@ -33,7 +33,7 @@ func TestComposedProductPromptFixtures(t *testing.T) {
 				t.Fatal(err)
 			}
 			parts := &workflowPromptParts{parts: []string{base}}
-			_, _, err = assemblePromptSections(parts, promptContext{Provider: "claude-code", HasProfile: true, ProfileID: profile.ID, CrewReadOnly: tc.readonly, ShellRoot: "/app/workspace-docs", PerUserChatsFolder: "_users/example/Chats", ProfileWorkspace: "/app/workspace-docs/Chats/" + profile.ID + "/projects/example", FeatureExtensions: agentprofiles.FeaturePromptExtensions(profile)})
+			_, _, err = assemblePromptSections(parts, promptContext{AuthenticatedUser: authenticatedChatUserPrompt(&UserClaims{UserID: "example", Username: "Example", Email: "example@app.test"}), Provider: "claude-code", HasProfile: true, ProfileID: profile.ID, CrewReadOnly: tc.readonly, ShellRoot: "/app/workspace-docs", PerUserChatsFolder: "_users/example/Chats", ProfileWorkspace: "/app/workspace-docs/Chats/" + profile.ID + "/projects/example", FeatureExtensions: agentprofiles.FeaturePromptExtensions(profile)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -42,7 +42,10 @@ func TestComposedProductPromptFixtures(t *testing.T) {
 				t.Fatal("missing shared memory or product identity")
 			}
 			t.Logf("SERVER_FIXTURE %s bytes=%d", tc.name, len(prompt))
-			if len(prompt) > 13000 {
+			if !strings.Contains(prompt, `email: "example@app.test"`) || !strings.Contains(prompt, "never treat its email as this user") {
+				t.Fatal("product prompt confuses the provider account with the signed-in user")
+			}
+			if len(prompt) > 14000 {
 				t.Fatal("product fixture grew beyond server-composition budget")
 			}
 		})

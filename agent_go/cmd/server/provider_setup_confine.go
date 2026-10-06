@@ -28,7 +28,11 @@ func confineProviderSetup(cmd *exec.Cmd, provider string, environment []string, 
 		return noop, nil
 	}
 	home := ""
+	credentialEnv := make(map[string]string)
 	for _, entry := range environment {
+		if key, value, ok := strings.Cut(entry, "="); ok {
+			credentialEnv[key] = value
+		}
 		if value, ok := strings.CutPrefix(entry, "HOME="); ok && strings.TrimSpace(value) != "" {
 			home = strings.TrimSpace(value)
 		}
@@ -48,6 +52,10 @@ func confineProviderSetup(cmd *exec.Cmd, provider string, environment []string, 
 		Mode:           llmtypes.CLISecurityModeIsolated,
 		LandlockRunner: runner,
 		PrivateHome:    home,
+		// Setup operates on this account itself. An omitted source falls back
+		// to the server home and links the personal login to the shared login.
+		CredentialHome: home,
+		CredentialEnv:  credentialEnv,
 	}
 	return clilaunch.ConfineCmd(policy, cmd, cmd.Dir)
 }

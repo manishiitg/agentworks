@@ -727,6 +727,13 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
 			return
 		}
+		if request.Action == "authenticate" {
+			home, homeErr := providerConnectionHome(record.ID)
+			if homeErr != nil || detachPrivateProviderCredentialLinks(home) != nil {
+				http.Error(w, "cannot prepare independent provider login", http.StatusInternalServerError)
+				return
+			}
+		}
 		keys, err := providerConnectionRuntimeKeys(*record)
 		if err != nil {
 			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)

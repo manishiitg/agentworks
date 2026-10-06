@@ -11,8 +11,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
-| [Crew](crew/index.md) | 21 | 5 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 68 | 16 |
+| [Crew](crew/index.md) | 22 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 175 | 37 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-615](coding-agents/accounts/plat-615.md) | Private provider setup linked user credentials to the shared server login | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
+| [PLAT-614](crew/chat/plat-614.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | fixed on main | P2 | [crew/chat](crew/chat/index.md) |
 | [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |
 | [PLAT-613](chat/reliability/plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | deployed | P2 | [chat/reliability](chat/reliability/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
-| [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | fixed on main | P2 | [brain/skills](brain/skills/index.md) |
-| [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 | [browser/browser](browser/browser/index.md) |

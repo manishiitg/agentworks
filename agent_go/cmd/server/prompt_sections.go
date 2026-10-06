@@ -76,6 +76,7 @@ type promptContext struct {
 
 	// Prebuilt text for sections whose construction needs a request context or
 	// other state the registry deliberately does not carry.
+	AuthenticatedUser              string
 	CapabilitySection              string
 	WorkflowMode                   string
 	WorkflowUIAvailable            bool
@@ -110,6 +111,12 @@ This project runs on a server that other people's projects share. Keep to your o
 // promptSections is the assembly order. Order is the slice order — previously
 // it was "wherever the if happened to sit".
 var promptSections = []promptSection{
+	{
+		Name: "authenticated-user",
+		// Workflow Builder/Run append this identity through phaseAdditions.
+		Applies: func(c promptContext) bool { return !c.IsWorkflowPhase && strings.TrimSpace(c.AuthenticatedUser) != "" },
+		Build:   func(c promptContext) string { return c.AuthenticatedUser },
+	},
 	{
 		// Compact folder listing with absolute paths and access levels. One of
 		// three variants; every session gets exactly one.

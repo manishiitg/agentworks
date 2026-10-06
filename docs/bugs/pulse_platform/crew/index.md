@@ -5,6 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [browser](browser/index.md) | 2 | 0 |
+| [chat](chat/index.md) | 1 | 0 |
 | [chat-reliability](chat-reliability/index.md) | 1 | 0 |
 | [coding-agent-bridge](coding-agent-bridge/index.md) | 1 | 0 |
 | [frontend-chat](frontend-chat/index.md) | 5 | 0 |

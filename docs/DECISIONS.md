@@ -17,6 +17,23 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Private provider setup uses only its own credential source
+
+A private provider account's setup terminal uses that account HOME as both its
+runtime home and credential source. Never import or refresh the server's login
+there. Refuse existing credential symlinks on private account admission; explicit
+reconnect detaches the link without copying another account's credentials.
+Why: private Claude sign-in on Excellence overwrote the shared server login.
+Ticket: [PLAT-615](bugs/pulse_platform/coding-agents/accounts/plat-615.md).
+
+### 2026-10-06 — Product chats distinguish the app user from provider identity
+
+Supply the authenticated AgentWorks user to product prompts, as workflow chats
+already do. A provider login or billing email identifies neither the app user
+nor a connected mailbox. Gmail skills require verified scoped account evidence.
+Why: a Crew suggested the Claude account email despite no Gmail connections.
+Ticket: [PLAT-614](bugs/pulse_platform/crew/chat/plat-614.md).
+
 ### 2026-10-06 — AGY warmup publishes its ready terminal before live input
 
 An AGY launch-only resume emits a captured terminal frame before returning its
