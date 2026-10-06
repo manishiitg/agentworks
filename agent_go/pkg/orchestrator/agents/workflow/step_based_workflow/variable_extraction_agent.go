@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -310,7 +311,7 @@ func getUpdateVariableSchema() string {
 }
 
 // createUpdateVariableExecutor creates an executor function for update_variable tool
-func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
+func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, relay ...bool) func(context.Context, map[string]interface{}) (string, error) {
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
 		// Extract action
 		actionRaw, ok := args["action"].(string)
@@ -323,6 +324,29 @@ func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, 
 		manifest, err := readVariablesFromFile(ctx, workspacePath, readFile)
 		if err != nil {
 			return "", fmt.Errorf("failed to read variables: %w", err)
+		}
+
+		if len(relay) > 0 && relay[0] {
+			values, err := ResolveRelayVariableValues(manifest, "")
+			if err != nil {
+				return "", err
+			}
+			declared := make(map[string]bool, len(manifest.Variables))
+			for i := range manifest.Variables {
+				manifest.Variables[i].Value = values[manifest.Variables[i].Name]
+				declared[manifest.Variables[i].Name] = true
+			}
+			var recovered []string
+			for name := range values {
+				if !declared[name] {
+					recovered = append(recovered, name)
+				}
+			}
+			sort.Strings(recovered)
+			for _, name := range recovered {
+				manifest.Variables = append(manifest.Variables, Variable{Name: name, Value: values[name]})
+			}
+			manifest.Groups = nil
 		}
 
 		switch action {

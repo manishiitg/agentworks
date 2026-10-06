@@ -1329,16 +1329,17 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       return
     }
 
-    const preferredGroupId = selectedGroupIds[0]
+    const preferredGroupId = relayMode ? null : (selectedGroupIds[0]
       || variablesManifest?.groups?.find(group => group.enabled !== false)?.name
-      || null
+      || null)
 
     const builderGroupRunFolder = preferredGroupId
       ? buildGroupFolderPath(preferredGroupId, 'iteration-0', variablesManifest)
       : null
 
-    const fallbackBuilderRunFolder =
-      (builderGroupRunFolder && availableRunFolders.has(builderGroupRunFolder) && builderGroupRunFolder)
+    const fallbackBuilderRunFolder = relayMode
+      ? workspaceState.run_folders[0]?.name ?? null
+      : (builderGroupRunFolder && availableRunFolders.has(builderGroupRunFolder) && builderGroupRunFolder)
       || (availableRunFolders.has('iteration-0') ? 'iteration-0' : null)
       || workspaceState.run_folders.find(folder => folder.name.startsWith('iteration-0/'))?.name
       || null
@@ -1348,6 +1349,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     }
   }, [
     isBuilderWorkspace,
+    relayMode,
     workspaceState?.run_folders,
     workspaceState?.active_executions,
     selectedRunFolder,
@@ -1427,8 +1429,8 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     setSelectedTrigger(current => current?.workspace === workspacePath && current.id === id ? null : { workspace: workspacePath, id })
   }, [workspacePath])
   const triggerFlow = React.useMemo(() => appendTriggerCards(nodes, edges, triggers.jobs, {
-    selectedID: selectedTriggerJob?.id, loading: triggers.loading, error: triggers.error, onSelect: selectTrigger, onSettings: openTriggerSettings, onRefresh: triggers.refresh,
-  }), [nodes, edges, triggers.jobs, triggers.loading, triggers.error, triggers.refresh, selectedTriggerJob?.id, selectTrigger, openTriggerSettings])
+    relayMode, selectedID: selectedTriggerJob?.id, loading: triggers.loading, error: triggers.error, onSelect: selectTrigger, onSettings: openTriggerSettings, onRefresh: triggers.refresh,
+  }), [relayMode, nodes, edges, triggers.jobs, triggers.loading, triggers.error, triggers.refresh, selectedTriggerJob?.id, selectTrigger, openTriggerSettings])
   const focusTriggers = useCallback(() => {
     const surface = reactFlowWrapper.current?.querySelector('.react-flow')
     const targets = new Set(triggerFlow.edges.filter(edge => edge.source.startsWith('workflow-trigger-')).map(edge => edge.target))
@@ -1836,6 +1838,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     changes,  // Pass changes to highlight modified nodes
     workspacePath,  // Pass workspace path for file opening
     selectedRunFolder: selectedRunFolder ?? undefined,  // Pass selected run folder for file opening (convert null to undefined)
+    relayMode,
     variablesManifest,  // Pass variables manifest for Variables node
     onOpenVariablesSidebar: handleOpenVariablesSidebar,  // Callback for opening variables sidebar
     isLoadingVariables,  // Whether variables are loading
@@ -2636,6 +2639,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             onClose={() => setShowVariablesSidebar(false)}
             onUpdate={handleVariablesUpdate}
             showChatArea={showChatArea}
+            relayMode={relayMode}
           />
         )}
       </div>}

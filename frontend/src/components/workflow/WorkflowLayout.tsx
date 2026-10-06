@@ -1153,7 +1153,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
 
     const selectionKey = selectedRunFolder && selectedRunFolder !== 'new' && workspacePath
-      ? `${workspacePath}::${selectedRunFolder}::${(selectedGroupIds ?? []).slice().sort().join(',')}`
+      ? `${workspacePath}::${selectedRunFolder}::${relayMode ? '' : (selectedGroupIds ?? []).slice().sort().join(',')}`
       : null
 
     if (!selectionKey) {
@@ -1223,7 +1223,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         newExpandedFolders.add(iterationFolder)
 
         // If we have selected groups, expand all of them
-        if (selectedGroupIds && selectedGroupIds.length > 0 && variablesManifest?.groups) {
+        if (!relayMode && selectedGroupIds && selectedGroupIds.length > 0 && variablesManifest?.groups) {
           selectedGroupIds.forEach(groupId => {
             // Find the group to get its name
             const group = variablesManifest.groups?.find(g => g.name === groupId)
@@ -1258,7 +1258,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         logger.error('WorkflowLayout', 'Failed to fetch files for auto-expansion:', error)
       })
     }
-  }, [selectedRunFolder, selectedGroupIds, workspacePath, variablesManifest, fetchFiles, setExpandedFolders, workspaceMinimized])
+  }, [relayMode, selectedRunFolder, selectedGroupIds, workspacePath, variablesManifest, fetchFiles, setExpandedFolders, workspaceMinimized])
 
   // Callback ref that gets called when ChatArea mounts/unmounts
   const chatAreaCallbackRef = useCallback((node: ChatAreaRef | null) => {

@@ -40,7 +40,12 @@ func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleCon
 	if sctx.Schedule.Webhook != nil {
 		opts.WebhookStepID = sctx.Schedule.Webhook.StepID
 	}
-	opts.EnabledGroupNames = sctx.Schedule.GroupNames
+	if sctx.WorkflowKind == "relay" {
+		opts.EnabledGroupNames = nil
+		opts.RelayLegacyGroupName = sctx.RelayLegacyGroupName
+	} else {
+		opts.EnabledGroupNames = sctx.Schedule.GroupNames
+	}
 	opts.WebhookInputFile = webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)
 	opts.WebhookVariables = sctx.WebhookInput.Variables
 	// Keep the serialized options for setup; hidden delivery values travel only

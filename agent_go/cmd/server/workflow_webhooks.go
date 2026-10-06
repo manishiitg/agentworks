@@ -469,7 +469,11 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 	hooks := []workflowWebhookResponse{}
 	for _, sched := range manifest.Schedules {
 		if sched.ScheduleType == "webhook" {
-			hooks = append(hooks, workflowWebhookDTO(sched))
+			dto := workflowWebhookDTO(sched)
+			if manifest.Kind == "relay" {
+				dto.GroupNames = nil
+			}
+			hooks = append(hooks, dto)
 		}
 	}
 	routes, routeErr := workflowWebhookRoutes(r.Context(), path)
@@ -488,8 +492,10 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 			for _, v := range vars.Variables {
 				variableNames = append(variableNames, v.Name)
 			}
-			for _, g := range vars.Groups {
-				groups = append(groups, g.Name)
+			if manifest.Kind != "relay" {
+				for _, g := range vars.Groups {
+					groups = append(groups, g.Name)
+				}
 			}
 		}
 	}
@@ -523,20 +529,19 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		return
 	}
 	groups := normalizeScheduleGroupNames(req.GroupNames)
-	var err error
-	if req.Enabled {
-		groups, err = validateScheduleGroupNamesForWorkspace(r.Context(), req.WorkspacePath, groups)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-	}
 	workflowWebhookConfigMu.Lock()
 	defer workflowWebhookConfigMu.Unlock()
 	manifest, found, err := ReadWorkflowManifest(r.Context(), req.WorkspacePath)
 	if err != nil || !found {
 		http.Error(w, "workflow not found", 404)
 		return
+	}
+	if manifest.Kind != "relay" && req.Enabled {
+		groups, err = validateScheduleGroupNamesForWorkspace(r.Context(), req.WorkspacePath, groups)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
 	}
 	id := mux.Vars(r)["id"]
 	index := -1
@@ -567,6 +572,15 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		}
 		if caller == nil {
 			caller = manifest.Schedules[index].Caller
+		}
+	}
+	if manifest.Kind == "relay" {
+		if len(groups) != 0 {
+			http.Error(w, "Relays do not accept group_names; configure variables directly", 400)
+			return
+		}
+		if index >= 0 {
+			groups = manifest.Schedules[index].GroupNames
 		}
 	}
 	function := isFunctionTriggerKind(effectiveKind)

@@ -7,7 +7,7 @@ import { formatLocalScheduleTime } from '../../scheduler/scheduleRuns/helpers'
 import { WebhookEndpoint } from '../../scheduler/scheduleRuns/WebhookEndpoint'
 
 export const WorkflowTriggerNode = memo(({ data }: NodeProps) => {
-  const { job, routeSummary, active, onSelect, onSettings } = data as WorkflowTriggerNodeData
+  const { job, routeSummary, active, onSelect, onSettings, relayMode } = data as WorkflowTriggerNodeData
   if (!job) return null
   const webhook = job.schedule_type === 'webhook'
   const gmail = job.kind === 'gmail'
@@ -32,7 +32,7 @@ export const WorkflowTriggerNode = memo(({ data }: NodeProps) => {
       <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
       <div className="min-w-0"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Starts</p><p className="line-clamp-2 text-xs" title={routeSummary?.label}>{routeSummary?.label}</p></div>
     </div>
-    {!!job.group_names?.length && <p className="mt-1 truncate px-1 text-[10px] text-muted-foreground" title={job.group_names.join(', ')}>Access: {job.group_names.join(', ')}</p>}
+    {!relayMode && !!job.group_names?.length && <p className="mt-1 truncate px-1 text-[10px] text-muted-foreground" title={job.group_names.join(', ')}>Access: {job.group_names.join(', ')}</p>}
     <div className="mt-auto flex items-center gap-2 border-t border-border/70 pt-2">
       <button type="button" onClick={onSelect} disabled={!routeSummary?.canTrace} aria-pressed={!!active} className="rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:text-muted-foreground disabled:opacity-50">{active ? 'Clear path' : 'View path'}</button>
       <button type="button" onClick={() => onSettings?.(webhook ? 'webhooks' : 'schedules')} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Open settings for ${job.name}`} title={`Open ${webhook ? 'webhooks' : 'schedules'}`}><Settings className="h-4 w-4" /></button>

@@ -68,7 +68,7 @@ func TestRelayResultReadsSavedRunOutput(t *testing.T) {
 	workspace := "Workflow/relay"
 	runFolder := "iteration-1-hook"
 	runRoot := filepath.Join(docs, workspace, "runs", runFolder)
-	if err := os.MkdirAll(filepath.Join(runRoot, "default", "execution", "answer"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(runRoot, "execution", "answer"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(runRoot, ".webhook-run-id"), []byte("run-1"), 0600); err != nil {
@@ -76,11 +76,14 @@ func TestRelayResultReadsSavedRunOutput(t *testing.T) {
 	}
 	for i := 0; i < 18; i++ {
 		name := fmt.Sprintf("a%02d.txt", i)
-		if err := os.WriteFile(filepath.Join(runRoot, "default", "execution", "answer", name), []byte(strings.Repeat("x", 116508)), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(runRoot, "execution", "answer", name), []byte(strings.Repeat("x", 116508)), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(runRoot, "default", "execution", "answer", "result.json"), []byte(`{"ok":true}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(runRoot, "execution", "answer", "result.json"), []byte(`{"ok":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runRoot, "webhook_progress.json"), []byte(`{"answer:":{"step_id":"answer","status":"completed"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	finished := time.Now()
@@ -91,6 +94,9 @@ func TestRelayResultReadsSavedRunOutput(t *testing.T) {
 	}
 	if len(result.Steps) == 0 || result.Steps[0].Outputs["result.json"] != nil {
 		t.Fatal("test fixture should exceed the generic inline output limit")
+	}
+	if result.Steps[0].Group != "" || len(result.Progress) != 1 || result.Progress[0].Group != "" || result.Progress[0].StepID != "answer" {
+		t.Fatalf("group-free outputs/progress missing: %+v", result)
 	}
 	manifest := NewWorkflowManifest("Relay")
 	manifest.Kind = "relay"
@@ -147,6 +153,11 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	manifest.Schedules = []WorkflowSchedule{function}
 	if err := ValidateManifest(manifest); err != nil {
 		t.Fatalf("single-group Relay rejected: %v", err)
+	}
+	function.GroupNames = nil
+	manifest.Schedules = []WorkflowSchedule{function}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("group-free Relay rejected: %v", err)
 	}
 	manifest.Schedules = nil
 	manifest.Kind = "other"
@@ -226,7 +237,7 @@ func TestRelayManifestUpdateRejectsInvalidGroupsAsBadRequest(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
 	response := httptest.NewRecorder()
 	(&StreamingAPI{}).handleUpdateWorkflowManifest(response, req)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "exactly one variable group") {
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "at most one configuration group") {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
 }

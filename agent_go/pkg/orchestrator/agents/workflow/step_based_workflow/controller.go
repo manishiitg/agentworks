@@ -63,6 +63,7 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion      atomic.Int32
 	platformStoresDisabled atomic.Bool
+	relayExecution         atomic.Bool
 	// testRun is the active test-mode execution (PLAT-562), nil otherwise.
 	// Every tool session this controller sets up while it is set belongs to
 	// the test run.
@@ -221,13 +222,9 @@ func NewStepBasedWorkflowOrchestrator(
 
 	// Generate session ID for MCP connection sharing across all agents in this workflow
 	// This MUST be set before creating any agents to ensure connection reuse
-	// NOTE: We always run with groups, so include group name in sessionID format
-	// If group name is not available yet (will be set later in batch execution), use "default-group" placeholder
-	// The sessionID will be overridden in batch_execution.go when the actual group name is known
-	groupName := "default-group" // Placeholder - will be overridden in batch execution with actual group name
-	workflowSessionID := fmt.Sprintf("session-group-%s-%d", groupName, time.Now().UnixNano())
+	workflowSessionID := fmt.Sprintf("session-workflow-%d", time.Now().UnixNano())
 	baseOrchestrator.SetMCPSessionID(workflowSessionID)
-	logger.Info(fmt.Sprintf("🔗 Set MCP session ID for workflow: %s (will be overridden with actual group name in batch execution)", workflowSessionID))
+	logger.Info(fmt.Sprintf("🔗 Set MCP session ID for workflow: %s", workflowSessionID))
 
 	hcpo := &StepBasedWorkflowOrchestrator{
 		BaseOrchestrator: baseOrchestrator,
@@ -719,7 +716,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	// Load runtime variable values if provided and switch to templated objective
 	// If a specific group is selected via execution options, use that group's values
 	var variableValues map[string]string
-	if hcpo.executionOptions != nil && len(hcpo.executionOptions.EnabledGroupNames) > 0 && hcpo.variablesManifest != nil {
+	if hcpo.isRelayExecution() {
+		variableValues, err = hcpo.relayVariableValues()
+		if err != nil {
+			return "", err
+		}
+	} else if hcpo.executionOptions != nil && len(hcpo.executionOptions.EnabledGroupNames) > 0 && hcpo.variablesManifest != nil {
 		// Specific group(s) selected - use the first group's values (for single group execution)
 		requestedGroupName := hcpo.executionOptions.EnabledGroupNames[0]
 
@@ -809,6 +811,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 
 	// Pin this execution to its loaded plan; builder reads cannot replace it.
 	ctx = withExecutionPlan(ctx, existingPlan)
+	if hcpo.isRelayExecution() {
+		return hcpo.runRelayExecution(ctx, breakdownSteps)
+	}
 
 	// Note: Learning integration phase removed - execution agent now auto-discovers learning files and scripts
 

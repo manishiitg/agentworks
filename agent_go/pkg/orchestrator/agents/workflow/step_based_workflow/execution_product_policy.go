@@ -17,9 +17,14 @@ import (
 // loadCodeLayout applies it at every plan-read/direct-execution entry point,
 // including immutable Relay release workspaces.
 func (hcpo *StepBasedWorkflowOrchestrator) configureExecutionProduct(kind string) error {
+	hcpo.relayExecution.Store(strings.TrimSpace(kind) == "relay")
 	enabled, err := platformStoresForProduct(kind)
 	hcpo.platformStoresDisabled.Store(!enabled)
 	return err
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) isRelayExecution() bool {
+	return hcpo.relayExecution.Load()
 }
 
 func platformStoresForProduct(kind string) (bool, error) {

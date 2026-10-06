@@ -126,7 +126,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	manifest.RelayOutputStepID = output
 	manifest.Capabilities.BrowserMode = "none"
 	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
-	manifest.Schedules = []WorkflowSchedule{{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(identity+"/function")).String(), Name: function, ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: function, Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	manifest.Schedules = []WorkflowSchedule{{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(identity+"/function")).String(), Name: function, ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: function, Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
 	if err = ValidateManifest(manifest); err != nil {
 		externalError(w, 400, "invalid_relay", err.Error())
 		return
@@ -137,7 +137,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	if err = writeFileToWorkspace(r.Context(), path.Join(workspace, "variables/variables.json"), `{"variables":[{"name":"INPUT","type":"object"}],"groups":[{"name":"default","enabled":true,"values":{"INPUT":"{}"}}]}`); err != nil {
+	if err = writeFileToWorkspace(r.Context(), path.Join(workspace, "variables/variables.json"), `{"variables":[{"name":"INPUT","type":"object","value":"{}"}]}`); err != nil {
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}

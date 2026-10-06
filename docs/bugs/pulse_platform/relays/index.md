@@ -5,6 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [coding-agent-bridge](coding-agent-bridge/index.md) | 3 | 1 |
+| [execution](execution/index.md) | 1 | 0 |
 | [frontend-chat](frontend-chat/index.md) | 4 | 0 |
 | [integrations](integrations/index.md) | 2 | 1 |
 | [mcp](mcp/index.md) | 2 | 1 |

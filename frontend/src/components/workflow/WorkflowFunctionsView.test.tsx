@@ -66,6 +66,7 @@ it('shows the durable Relay endpoint without the continuing ask function', async
   expect(host.textContent).toContain('External API request')
   expect(host.textContent).toContain('/api/relays/relay-1/runs')
   expect(host.querySelector('[data-testid="relay-release-status"]')?.textContent).toContain('Published v1')
+  expect(host.querySelector('[data-testid="workflow-function-review_pr"]')?.textContent).not.toContain('groups default')
 })
 
 it('keeps reader API instructions visible while restricting authoring actions', async () => {

@@ -768,7 +768,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
         const executionStrategy: string = ExecutionStrategy.START_FROM_BEGINNING_NO_HUMAN
         // Resolve the specific group folder path for phases that need context
         // Uses utility function to consolidate logic
-        const resolvedRunFolder = resolveGroupFolderPath({
+        const activePreset = useGlobalPresetStore.getState().getActivePreset('workflow')
+        const relayMode = useProductSurfaceStore.getState().productSurface === 'relays'
+          || activePreset?.workflowKind === 'relay'
+        const resolvedRunFolder = relayMode ? state.selectedRunFolder ?? undefined : resolveGroupFolderPath({
           currentRunningGroupId: state.currentRunningGroupId,
           selectedRunFolder: state.selectedRunFolder,
           selectedGroupIds: state.selectedGroupIds,
@@ -790,9 +793,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
         // Prefer explicit group selection from the UI, but fall back to enabled groups
         // from the manifest so workflow builder chat still works before the user has
         // manually clicked a group selector in the canvas.
-        if (state.selectedGroupIds.length > 0) {
+        if (!relayMode && state.selectedGroupIds.length > 0) {
           options.enabled_group_names = state.selectedGroupIds
-        } else {
+        } else if (!relayMode) {
           const enabledManifestGroupIds = (state.variablesManifest?.groups || [])
             .filter(group => group.enabled)
             .map(group => group.name)
@@ -803,8 +806,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
         }
 
         // Read feature toggles from preset and include when disabled (backend defaults to enabled)
-        const presetStore = useGlobalPresetStore.getState()
-        const activePreset = presetStore.getActivePreset('workflow')
         const presetLLMConfig = activePreset?.llmConfig
 
         if (presetLLMConfig?.use_knowledgebase === false) {

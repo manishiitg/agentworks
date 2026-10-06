@@ -1230,8 +1230,8 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
 			return fmt.Errorf("schedules[%d]: Relays support API function triggers only; cron and calendar schedules are not supported", i)
 		}
-		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) != 1 {
-			return fmt.Errorf("schedules[%d]: a Relay trigger must select exactly one variable group", i)
+		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) > 1 {
+			return fmt.Errorf("schedules[%d]: a legacy Relay trigger may bind at most one configuration group", i)
 		}
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)
@@ -1245,7 +1245,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 		// group_names required for workflow/workshop modes, not for multi-agent
 		// or a PulseReviewOnly schedule (PLAT-115) — the latter never runs the
 		// workflow, so it has no group to run.
-		if sched.Mode != "multi-agent" && !sched.PulseReviewOnly && len(normalizeScheduleGroupNames(sched.GroupNames)) == 0 {
+		if m.Kind != "relay" && sched.Mode != "multi-agent" && !sched.PulseReviewOnly && len(normalizeScheduleGroupNames(sched.GroupNames)) == 0 {
 			return fmt.Errorf("schedules[%d].group_names is required", i)
 		}
 		if err := validateScheduleRuntimePolicy(sched); err != nil {

@@ -214,6 +214,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				if refreshErr != nil {
 					log.Printf("[WORKFLOW_PHASE] Warning: Failed to reload manifest: %v", refreshErr)
 				} else if refreshFound {
+					if refreshManifest.Kind == "relay" {
+						workshopSession.UpdateEnabledGroupNames(ctx, nil)
+					}
 					caps := refreshManifest.Capabilities
 					selectedServers = caps.SelectedServers
 					configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))

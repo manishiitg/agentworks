@@ -3035,7 +3035,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
       // Validate execution groups for workflow mode
       const executionPhaseId = currentTab?.metadata?.phaseId
-      const requiresGroupValidation = executionPhaseId !== 'evaluation-execution' && executionPhaseId !== 'report-execution'
+      const requiresGroupValidation = activePreset?.workflowKind !== 'relay' && requestPayload.agent_profile_id !== 'relays'
+        && executionPhaseId !== 'evaluation-execution' && executionPhaseId !== 'report-execution'
 
       if (submitAgentMode === 'workflow' && requestPayload.execution_options && !isWorkflowPhaseChat && requiresGroupValidation) {
         const validationError = validateExecutionGroups(requestPayload.execution_options)

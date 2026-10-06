@@ -1117,7 +1117,16 @@ func (iwm *InteractiveWorkshopManager) refreshVariablesManifest(ctx context.Cont
 	})
 	if err == nil && manifest != nil {
 		iwm.controller.variablesManifest = manifest
-		if values, groupName, ok := ResolveWorkshopVariableValues(manifest, iwm.controller.enabledGroupNames); ok {
+		if iwm.controller.isRelayExecution() {
+			values, resolveErr := iwm.controller.relayVariableValues()
+			if resolveErr != nil {
+				iwm.controller.GetLogger().Warn(fmt.Sprintf("Relay configuration needs migration: %v", resolveErr))
+				values = nil
+			}
+			iwm.controller.variableValues = values
+			iwm.controller.enabledGroupNames = nil
+			SyncExactVariablesToWorkspaceEnv(iwm.controller.BaseOrchestrator, values)
+		} else if values, groupName, ok := ResolveWorkshopVariableValues(manifest, iwm.controller.enabledGroupNames); ok {
 			iwm.controller.variableValues = values
 			iwm.controller.enabledGroupNames = []string{groupName}
 			SyncExactVariablesToWorkspaceEnv(iwm.controller.BaseOrchestrator, values)
@@ -1981,6 +1990,9 @@ func registerGetCostSummaryTool(iwm *InteractiveWorkshopManager, mcpAgent Defini
 }
 
 func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent DefinitionRegistrar, logger loggerv2.Logger) {
+	if iwm.controller.isRelayExecution() {
+		mcpAgent = relayDefinitionRegistrar{DefinitionRegistrar: mcpAgent}
+	}
 	capture := newConsolidatedPlanRegistrar(mcpAgent, iwm.controller.GetWorkspacePath(), func(ctx context.Context, p string) (string, error) { return iwm.controller.ReadWorkspaceFile(ctx, p) })
 	mcpAgent = consolidatedWorkshopRegistrar{mcpAgent, capture}
 	defer func() {
@@ -2056,7 +2068,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			groupName, _ := groupNameRaw.(string)
 
 			// Fallback to session-level group from toolbar selection
-			if groupName == "" && len(iwm.controller.enabledGroupNames) > 0 {
+			if !iwm.controller.isRelayExecution() && groupName == "" && len(iwm.controller.enabledGroupNames) > 0 {
 				groupName = iwm.controller.enabledGroupNames[0]
 			}
 
@@ -2064,7 +2076,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			// with no user-visible variables may omit group_name and supply only a
 			// run folder; this preserves a stable execution scope without forcing a
 			// user to choose workflow machinery.
-			if groupName == "" {
+			if !iwm.controller.isRelayExecution() && groupName == "" {
 				iwm.refreshVariablesManifest(ctx)
 				if iwm.controller.variablesManifest != nil && len(iwm.controller.variablesManifest.Groups) > 0 {
 					// Auto-select the first available group.
@@ -2098,6 +2110,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			runFolder := fmt.Sprintf("%s/%s", iteration, groupFolderName)
+			if iwm.controller.isRelayExecution() {
+				runFolder, _ = args["run_folder"].(string)
+				if runFolder == "" {
+					runFolder = "relay-" + workflowExecutionIDToken()
+				}
+				if err := validateRelayWorkshopRunFolder(runFolder); err != nil {
+					return "", err
+				}
+				iteration = runFolder
+				if _, err := iwm.controller.relayVariableValues(); err != nil {
+					return "", err
+				}
+			}
 
 			// Optional orchestrator instructions for inner steps
 			instructions, _ := args["instructions"].(string)
@@ -2172,6 +2197,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				execOpts.RealRunFolder = runFolder
 				execOpts.TestSourceRun, _ = args["source_run"].(string)
 				execOpts.RunFolder = fmt.Sprintf("%s/%s", execOpts.TestRunID, groupFolderName)
+				if iwm.controller.isRelayExecution() {
+					execOpts.RunFolder = execOpts.TestRunID
+				}
 				execOpts.AllowScriptRepair = false
 			}
 
@@ -2210,6 +2238,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
 				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
 			}
+			if iwm.controller.isRelayExecution() {
+				for _, snap := range iwm.stepRegistry.ListSnapshots() {
+					if snap.Status == WorkshopStepRunning {
+						return fmt.Sprintf("Step %q was not started: execution %q is running in this Builder. Wait for it to finish before starting another step test.", stepID, snap.ID), nil
+					}
+				}
+			}
+
 			// Pulse runs alongside the workflow's own schedules; it must not run
 			// a step the workflow is running right now, or the step acts twice.
 			if check := iwm.pulseStepBusyCheck(); check != nil {
@@ -2376,6 +2412,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 							"iteration":  iteration,
 							"group_name": groupName,
 						}
+						if iwm.controller.isRelayExecution() {
+							delete(execMeta, "group_name")
+							execMeta["run_folder"] = execOpts.RunFolder
+						}
 						if isLockCode {
 							execMeta["lock_code"] = "true"
 						}
@@ -2476,7 +2516,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				displayGroupName = groupName
 			}
 			runFolderNotice := fmt.Sprintf("\nrun_folder: %q", runFolder)
-			if displayGroupName == "" {
+			if displayGroupName == "" && !iwm.controller.isRelayExecution() {
 				runFolderNotice += " (no group resolved — this workspace may have no defined variable groups)"
 			}
 			return fmt.Sprintf("Step %q started in background.\nexecution_id: %q%s\nYou will be automatically notified when it completes. End the current agent turn now instead of polling. Use query_step(step_id=%q) only if the user explicitly requests a live status check. Use send_step_message(execution_id=%q, message=...) only for a necessary live correction while an agent turn is active.", stepID, execID, runFolderNotice, stepID, execID), nil
@@ -2560,6 +2600,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				var matches []WorkshopStepSnapshot
 				exec, found, matches = iwm.stepRegistry.LatestSnapshotForStep(stepID)
 				if !found {
+					if iwm.controller.isRelayExecution() {
+						return fmt.Sprintf("No tracked execution found for step %q. Start it with execute_step(step_id=%q).", stepID, stepID), nil
+					}
 					return fmt.Sprintf("No tracked execution found for step %q. Start it with execute_step(step_id=%q, group_name=...).", stepID, stepID), nil
 				}
 				execID = exec.ID
@@ -2761,7 +2804,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				iteration = value
 			}
-			if groupName == "" {
+			if groupName == "" && !iwm.controller.isRelayExecution() {
 				return "group_name is required (e.g., 'group-1'). Read variables/variables.json to see available groups.", nil
 			}
 
@@ -2783,6 +2826,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			runFolder := fmt.Sprintf("%s/%s", iteration, groupFolderName)
+			if iwm.controller.isRelayExecution() {
+				runFolder, _ = args["run_folder"].(string)
+				if runFolder == "" {
+					runFolder = iwm.controller.selectedRunFolder
+				}
+				if err := validateRelayWorkshopRunFolder(runFolder); err != nil {
+					return "", err
+				}
+			}
 			iwm.controller.SetSelectedRunFolder(runFolder)
 
 			// Resolve step ID
@@ -3828,7 +3880,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				func(ctx context.Context, path string, content string) error {
 					return iwm.controller.WriteWorkspaceFile(ctx, path, content)
-				})
+				}, iwm.controller.isRelayExecution())
 			result, execErr := executor(ctx, args)
 			if execErr == nil {
 				iwm.refreshVariablesManifest(ctx)

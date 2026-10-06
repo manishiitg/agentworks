@@ -11,12 +11,12 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 36 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 18 | 5 |
 | [Code](code/index.md) | 3 | 1 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 17 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 170 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
-| [Relays](relays/index.md) | 19 | 4 |
+| [Relays](relays/index.md) | 20 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
+| [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | open | P2 | [brain/skills](brain/skills/index.md) |
 | [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |
 | [PLAT-540](app/navigation/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-539](chat/reliability/plat-539.md) | A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn | fixed on main | - | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-538](brain/learnings-knowledge/plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | open | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
-| [PLAT-537](relays/mcp/plat-537.md) | `TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration` fails on main | open | P3 | [relays/mcp](relays/mcp/index.md) |

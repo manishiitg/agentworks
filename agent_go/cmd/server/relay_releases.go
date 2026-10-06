@@ -223,6 +223,20 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	if err != nil || !found || manifest.Kind != "relay" {
 		return nil, errors.New("Relay manifest not found")
 	}
+	if err := ValidateManifest(manifest); err != nil {
+		return nil, err
+	}
+	variableRaw, exists, err := readFileFromWorkspace(ctx, path.Join(workspace, "variables/variables.json"))
+	if err != nil {
+		return nil, fmt.Errorf("Relay configuration unavailable: %w", err)
+	}
+	if !exists {
+		return nil, errors.New("Relay configuration unavailable: variables/variables.json not found")
+	}
+	var variables stepworkflow.VariablesManifest
+	if err := json.Unmarshal([]byte(variableRaw), &variables); err != nil {
+		return nil, fmt.Errorf("invalid Relay configuration: %w", err)
+	}
 	plan, err := readPlanFromWorkspace(ctx, workspace)
 	if err != nil {
 		return nil, fmt.Errorf("read Relay graph: %w", err)
@@ -233,6 +247,13 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	functions := make([]string, 0)
 	for _, sched := range manifest.Schedules {
 		if sched.IsFunctionTrigger() && sched.Enabled {
+			legacy := ""
+			if groups := normalizeScheduleGroupNames(sched.GroupNames); len(groups) == 1 {
+				legacy = groups[0]
+			}
+			if _, err := stepworkflow.ResolveRelayVariableValues(&variables, legacy); err != nil {
+				return nil, fmt.Errorf("function %q configuration: %w", sched.Function.Name, err)
+			}
 			inputOK := false
 			for _, input := range sched.Function.Inputs {
 				if input.Name == "INPUT" && workflowFunctionInputType(input) == "object" && input.Required {

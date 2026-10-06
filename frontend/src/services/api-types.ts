@@ -2191,7 +2191,7 @@ export type ExecutionStrategyType = typeof ExecutionStrategy[keyof typeof Execut
 // Variable Groups API types
 export interface Variable {
   name: string;
-  value?: string;  // Used in single-group mode
+  value?: string;  // Relay configuration or workflow single-group default
   description: string;
 }
 

@@ -246,7 +246,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 			return nil, err
 		}
 		resume.WebhookInput = &input
-		if input.Group != "" {
+		if input.Group != "" && manifest.Kind != "relay" {
 			resume.Schedule.GroupNames = []string{input.Group}
 		}
 		stepID, routes := resolvedWebhookExecutionTarget(*sched, &input)

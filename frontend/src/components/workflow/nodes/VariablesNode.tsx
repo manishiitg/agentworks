@@ -6,6 +6,7 @@ import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 
 export interface VariablesNodeData extends Record<string, unknown> {
   manifest: VariablesManifest | null
+  relayMode?: boolean
   onOpenSidebar?: () => void
   isLoading?: boolean
 }
@@ -44,7 +45,7 @@ const hasMultipleGroups = (manifest: VariablesManifest | null): boolean => {
 }
 
 export const VariablesNode = memo(({ data, selected }: VariablesNodeProps) => {
-  const { manifest, onOpenSidebar, isLoading } = data
+  const { manifest, onOpenSidebar, isLoading, relayMode } = data
   const currentRunningGroupId = useWorkflowStore(state => state.currentRunningGroupId)
   const selectedGroupIds = useWorkflowStore(state => state.selectedGroupIds) // Selected group IDs from checkboxes
   
@@ -67,6 +68,29 @@ export const VariablesNode = memo(({ data, selected }: VariablesNodeProps) => {
       onOpenSidebar()
     }
   }, [onOpenSidebar])
+
+  if (relayMode) {
+    const configuration = (manifest?.variables ?? []).filter(variable => variable.name !== 'INPUT')
+    return (
+      <div className={`min-w-[220px] max-w-[300px] rounded-lg border-2 bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-600 shadow-sm cursor-pointer ${selected ? 'ring-2 ring-purple-500/50' : ''}`} onClick={handleClick}>
+        <Handle type="target" position={Position.Left} className="!bg-purple-400" />
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-purple-200 dark:border-purple-700">
+          <Variable className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+          <span className="text-sm font-medium">Inputs & configuration</span>
+          {isLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
+        </div>
+        <div className="space-y-1 px-3 py-2 text-xs">
+          {(manifest?.groups?.length ?? 0) > 1
+            ? <p className="text-destructive">Legacy groups need configuration migration</p>
+            : <p className="text-muted-foreground">One input object per run</p>}
+          {configuration.slice(0, 3).map(variable => <p key={variable.name} className="truncate font-mono">{variable.name}</p>)}
+          {configuration.length > 3 && <p className="text-muted-foreground">+{configuration.length - 3} configuration values</p>}
+          <p className="text-muted-foreground">Click to edit configuration and sample input</p>
+        </div>
+        <Handle type="source" position={Position.Right} className="!bg-purple-400" />
+      </div>
+    )
+  }
 
   // No variables and no groups yet
   if (!manifest || (variableCount === 0 && groupCount === 0)) {

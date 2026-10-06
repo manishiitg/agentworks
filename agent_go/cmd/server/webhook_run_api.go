@@ -147,7 +147,7 @@ type webhookArtifact struct {
 }
 type webhookStepOutput struct {
 	StepID    string                 `json:"step_id"`
-	Group     string                 `json:"group"`
+	Group     string                 `json:"group,omitempty"`
 	Outputs   map[string]interface{} `json:"outputs"`
 	Artifacts []webhookArtifact      `json:"artifacts"`
 }
@@ -173,7 +173,7 @@ func webhookOutputPath(p string) bool {
 		return false
 	}
 	parts := strings.Split(p, "/")
-	if len(parts) < 4 || parts[1] != "execution" {
+	if !(len(parts) >= 3 && parts[0] == "execution") && !(len(parts) >= 4 && parts[1] == "execution") {
 		return false
 	}
 	for _, part := range parts {
@@ -188,6 +188,11 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 	indexes := map[string]int{}
 	count, total := 0, 0
 	truncated := false
+	// A group-free delivery records progress at the run root. This also
+	// disambiguates a Relay step called "execution" from a legacy group
+	// with that same name, while old run folders remain readable.
+	_, progressErr := root.Lstat("webhook_progress.json")
+	groupFree := progressErr == nil
 	err := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
@@ -217,14 +222,18 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 			return fs.SkipAll
 		}
 		parts := strings.Split(p, "/")
-		key := parts[0] + "/" + parts[2]
+		group, stepIndex := "", 1
+		if parts[0] != "execution" || !groupFree && len(parts) >= 4 && parts[1] == "execution" {
+			group, stepIndex = parts[0], 2
+		}
+		key := group + "/" + parts[stepIndex]
 		idx, ok := indexes[key]
 		if !ok {
 			idx = len(result)
 			indexes[key] = idx
-			result = append(result, webhookStepOutput{StepID: parts[2], Group: parts[0], Outputs: map[string]interface{}{}, Artifacts: []webhookArtifact{}})
+			result = append(result, webhookStepOutput{StepID: parts[stepIndex], Group: group, Outputs: map[string]interface{}{}, Artifacts: []webhookArtifact{}})
 		}
-		name := strings.Join(parts[3:], "/")
+		name := strings.Join(parts[stepIndex+1:], "/")
 		result[idx].Artifacts = append(result[idx].Artifacts, webhookArtifact{Name: name, Path: p, Size: info.Size()})
 		if info.Size() <= 128*1024 && total+int(info.Size()) <= 2*1024*1024 {
 			ext := strings.ToLower(path.Ext(p))

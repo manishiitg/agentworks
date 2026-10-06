@@ -35,12 +35,12 @@ func newExternalRelayFixture(t *testing.T) *externalRelayFixture {
 	m.CreatedBy = "owner"
 	m.RelayOutputStepID = "answer"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Editors: []string{"outsider"}, Readers: []string{"reader"}}
-	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
 	raw, _ := json.Marshal(m)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		"Workflow/invoices/workflow.json":            string(raw),
 		"Workflow/invoices/planning/plan.json":       `{"steps":[{"type":"message_sequence","id":"answer","title":"Answer","description":"Reply","authored_prompt":true,"system_prompt":"Return JSON v1","next_step_id":"end","items":[{"id":"turn","type":"user_message","message":"{{input.name}}"}]}]}`,
-		"Workflow/invoices/variables/variables.json": `{"variables":[{"name":"INPUT","type":"object"}],"groups":[{"name":"default","enabled":true}]}`,
+		"Workflow/invoices/variables/variables.json": `{"variables":[{"name":"INPUT","type":"object","value":"{}"}]}`,
 	}}
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
@@ -87,8 +87,9 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 	if manifest["kind"] != "relay" || manifest["relay_output_step_id"] != "answer" {
 		t.Fatalf("manifest: %+v", manifest)
 	}
-	if _, err := findWorkflowFunctionTriggerFromTest(t.Context(), id); err != nil {
-		t.Fatal(err)
+	trigger, err := findWorkflowFunctionTriggerFromTest(t.Context(), id)
+	if err != nil || len(trigger.GroupNames) != 0 {
+		t.Fatalf("Relay creation retained groups: %+v %v", trigger, err)
 	}
 	f.relayCall(t, writer, "create_relay", map[string]any{"label": "Different", "submission_id": "create-hello"}, 409)
 	_, bounded := f.token(t, "owner", relayConsentScopes, false)

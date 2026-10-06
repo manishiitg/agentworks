@@ -37,8 +37,11 @@ type ExecutionOptions struct {
 	TriggerContextFile string            `json:"-"` // Server-owned, read-only channel context for this invocation.
 	WebhookStepID      string            `json:"-"` // Saved direct webhook step; resolved against the loaded plan.
 	WebhookVariables   map[string]string `json:"-"`
-	WebhookInputFile   string            `json:"-"`                             // Internal API delivery file; cannot be supplied by tool JSON.
-	SelectedRunFolder  string            `json:"selected_run_folder,omitempty"` // Current run slot (iteration-0) for full workflow runs
+	// Read-only compatibility for a frozen pre-group-free Relay trigger. This
+	// selects configuration values only, never an execution group or batch.
+	RelayLegacyGroupName string `json:"-"`
+	WebhookInputFile     string `json:"-"`                             // Internal API delivery file; cannot be supplied by tool JSON.
+	SelectedRunFolder    string `json:"selected_run_folder,omitempty"` // Current run slot (iteration-0) for full workflow runs
 	// Trusted scheduled-run identity. These fields are server-owned and never
 	// decoded from public tool/API JSON.
 	RunKind           string    `json:"-"`

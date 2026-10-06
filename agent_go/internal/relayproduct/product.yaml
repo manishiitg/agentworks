@@ -101,7 +101,7 @@ profile:
       description: Test the draft with sample inputs and inspect its JSON output
       icon: check-circle
       prompt: |
-        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and variable groups. Use the supplied sample input, or ask for required values; do not invent production inputs. Validate the graph, run_full_workflow with the configured group_name and serialized variables.INPUT, wait for completion, then inspect the run and final result.json. Report the actual output or failed step and error. Do not publish.
+        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and flat configuration. Use the supplied sample input, or ask for required values; do not invent production inputs. Validate the graph, run_full_workflow with serialized variables.INPUT, wait for completion, then inspect the run and final result.json. Report the actual output or failed step and error. Do not publish.
         {{context}}
     - name: publish
       description: Publish the draft as a versioned Relay API
@@ -119,7 +119,7 @@ profile:
       description: Configure JSON inputs and an API trigger for this Relay
       icon: terminal
       prompt: |
-        Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and a default variable group if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
+        Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and flat configuration values in variables[].value if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
         {{context}}
 
 branding:

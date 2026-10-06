@@ -41,6 +41,14 @@ func TestRelayCapacityResumeRestoresPublishedInputAndCheckpoint(t *testing.T) {
 	if resume == nil || resume.WorkspacePath != release || resume.CapacityResumeRunID != run.RunID || resume.CapacityResumeRunFolder != run.RunFolder || resume.CapacityResumeFromStep != 3 || resume.WebhookInput.Group != input.Group || resume.WebhookInput.Variables["INPUT"] != input.Variables["INPUT"] {
 		t.Fatalf("changed resume identity/input: %+v", resume)
 	}
+	if len(resume.Schedule.GroupNames) != 0 || resume.RelayLegacyGroupName != "original-group" {
+		t.Fatalf("legacy configuration became group execution: %+v", resume)
+	}
+	request := s.buildWorkshopRequest(context.Background(), resume)
+	opts, err := configureDirectWebhookRequest(request, resume, run.RunFolder)
+	if err != nil || len(opts.EnabledGroupNames) != 0 || opts.RelayLegacyGroupName != "original-group" || opts.WebhookVariables["INPUT"] != input.Variables["INPUT"] {
+		t.Fatalf("resume options lost group-free binding: %+v %v", opts, err)
+	}
 	m.Schedules[0].Enabled = false
 	raw, _ = json.Marshal(m)
 	mock.mu.Lock()

@@ -63,6 +63,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	releaseGroupSession := func() {}
 	defer func() { releaseGroupSession() }()
 
+	if err := hcpo.loadCodeLayout(ctx); err != nil {
+		return "", err
+	}
+	if hcpo.isRelayExecution() && opts == nil {
+		opts = &WorkshopExecuteOptions{}
+	}
+
 	// 1. Apply per-call overrides (group name, run_folder, human_input)
 	if opts != nil {
 		// Backward compat: map deprecated GroupID to GroupName
@@ -102,7 +109,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	// 1b. Ensure variable values are loaded (same as normal workflow's Execute method).
 	// If group_name was passed, applyWorkshopExecuteOptions already loaded group values.
 	// Otherwise, fall back to LoadVariableValues (reads from variables.json).
-	if hcpo.variableValues == nil {
+	if hcpo.isRelayExecution() {
+		_, manifest, err := hcpo.variableManager.checkExistingVariables(ctx, hcpo.GetWorkspacePath()+"/variables/variables.json")
+		if err != nil {
+			return "", fmt.Errorf("load Relay configuration: %w", err)
+		}
+		hcpo.variablesManifest = manifest
+		values, err := hcpo.relayVariableValues()
+		if err != nil {
+			return "", err
+		}
+		hcpo.variableValues = values
+		SyncExactVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, values)
+	} else if hcpo.variableValues == nil {
 		if hcpo.variablesManifest != nil && len(hcpo.variablesManifest.Groups) == 1 {
 			// Single group — merge group overrides on top of manifest defaults
 			g := hcpo.variablesManifest.Groups[0]
@@ -371,6 +390,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 // the group's variable values. If only RunFolder is set, it uses that directly.
 func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx context.Context, opts *WorkshopExecuteOptions) (func(), error) {
 	releaseGroupSession := func() {}
+	if hcpo.isRelayExecution() {
+		if opts.GroupName != "" || opts.GroupID != "" {
+			return releaseGroupSession, fmt.Errorf("Relays do not accept variable groups")
+		}
+		if opts.RunFolder == "" {
+			opts.RunFolder = "relay-" + workflowExecutionIDToken()
+		}
+		if err := validateRelayWorkshopRunFolder(opts.RunFolder); err != nil {
+			return releaseGroupSession, err
+		}
+		hcpo.currentGroupName = ""
+		hcpo.enabledGroupNames = nil
+		hcpo.SetSelectedRunFolder(opts.RunFolder)
+		return releaseGroupSession, nil
+	}
 
 	// Backward compat: map deprecated GroupID to GroupName
 	if opts.GroupName == "" && opts.GroupID != "" {

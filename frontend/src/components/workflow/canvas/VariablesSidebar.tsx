@@ -5,6 +5,7 @@ import type { VariablesManifest, VariableGroup } from '../../../services/api-typ
 
 interface VariablesSidebarProps {
   workspacePath: string | null
+  relayMode?: boolean
   onClose: () => void
   onUpdate?: (manifest: VariablesManifest) => void
   showChatArea?: boolean  // When true, use lower z-index so ChatArea appears on top
@@ -18,13 +19,15 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
   workspacePath,
   onClose,
   onUpdate,
-  showChatArea = false
+  showChatArea = false,
+  relayMode = false
 }) => {
   const [manifest, setManifest] = useState<VariablesManifest | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+  const [migrationBlocked, setMigrationBlocked] = useState(false)
 
   // Load variable groups
   useEffect(() => {
@@ -36,23 +39,43 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
     const loadVariables = async () => {
       setIsLoading(true)
       setError(null)
+      setMigrationBlocked(false)
       try {
         const response = await agentApi.getVariableGroups(workspacePath)
+        if (!response.success) throw new Error(response.error || 'Failed to load variables')
         if (response.success && response.manifest) {
-          setManifest(response.manifest)
+          if (relayMode && (response.manifest.groups?.length ?? 0) > 1) {
+            setManifest(response.manifest)
+            setMigrationBlocked(true)
+            setError('This legacy Relay has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
+          } else if (relayMode) {
+            const normalized = { ...response.manifest, variables: (response.manifest.variables ?? []).map(variable => ({ ...variable })) }
+            for (const [name, value] of Object.entries(response.manifest.groups?.[0]?.values ?? {})) {
+              const existing = normalized.variables.find(variable => variable.name === name)
+              if (existing) existing.value = value
+              else normalized.variables.push({ name, value, description: '' })
+            }
+            delete normalized.groups
+            setManifest(normalized)
+          } else {
+            setManifest(response.manifest)
+          }
         } else {
           setManifest(null)
         }
       } catch (err) {
         console.error('[VariablesSidebar] Failed to load variables:', err)
-        setError('Failed to load variables')
+        const responseMessage = (err as { response?: { data?: unknown } })?.response?.data
+        setError(typeof responseMessage === 'string' ? responseMessage : err instanceof Error ? err.message : 'Failed to load variables')
+        // Never overwrite legacy configuration after an ambiguous or failed read.
+        if (relayMode) setMigrationBlocked(true)
       } finally {
         setIsLoading(false)
       }
     }
 
     loadVariables()
-  }, [workspacePath])
+  }, [workspacePath, relayMode])
 
   // Get groups (handling single-group backward compatibility)
   const getGroups = useCallback((): VariableGroup[] => {
@@ -178,9 +201,21 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
     setHasChanges(true)
   }, [manifest])
 
+  const handleSampleInput = useCallback((value: string) => {
+    const current = manifest ?? { objective: '', extraction_date: new Date().toISOString(), variables: [] }
+    const variables = current.variables ?? []
+    setManifest({
+      ...current,
+      variables: variables.some(variable => variable.name === 'INPUT')
+        ? variables.map(variable => variable.name === 'INPUT' ? { ...variable, value } : variable)
+        : [...variables, { name: 'INPUT', description: 'Sample input for Builder test runs', value }],
+    })
+    setHasChanges(true)
+  }, [manifest])
+
   // Save changes
   const handleSave = useCallback(async () => {
-    if (!manifest || !workspacePath || !hasChanges) return
+    if (!manifest || !workspacePath || !hasChanges || migrationBlocked) return
     
     setIsSaving(true)
     setError(null)
@@ -206,7 +241,7 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
     } finally {
       setIsSaving(false)
     }
-  }, [manifest, workspacePath, hasChanges, onUpdate])
+  }, [manifest, workspacePath, hasChanges, onUpdate, migrationBlocked])
 
 
   // Count enabled groups
@@ -218,8 +253,8 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-foreground">Variables</h2>
-          {isMultiGroup && (
+          <h2 className="text-base font-semibold text-foreground">{relayMode ? 'Inputs & configuration' : 'Variables'}</h2>
+          {!relayMode && isMultiGroup && (
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
               {enabledCount}/{groups.length} groups enabled
             </span>
@@ -263,6 +298,39 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : relayMode ? (
+        <div className="flex-1 overflow-y-auto space-y-6 p-4">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Sample input</h3>
+            <p className="text-xs text-muted-foreground">JSON INPUT for testing in Builder chat. API calls supply their own input for each run.</p>
+            <textarea
+              aria-label="Sample INPUT JSON"
+              disabled={migrationBlocked}
+              value={manifest?.variables?.find(variable => variable.name === 'INPUT')?.value ?? ''}
+              onChange={event => handleSampleInput(event.target.value)}
+              placeholder={'{ "example": "value" }'}
+              rows={6}
+              className="w-full rounded border border-border bg-muted/30 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </section>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Configuration</h3>
+            <p className="text-xs text-muted-foreground">Reusable values for this Relay. Ask the Builder to add or change configuration variables. Manage credentials in Secrets.</p>
+            {(manifest?.variables ?? []).filter(variable => variable.name !== 'INPUT').map(variable => (
+              <label key={variable.name} className="block space-y-1 text-xs">
+                <span className="font-mono font-medium">{variable.name}</span>
+                {variable.description && <span className="block text-muted-foreground">{variable.description}</span>}
+                <input
+                  aria-label={variable.name}
+                  disabled={migrationBlocked}
+                  value={variable.value ?? ''}
+                  onChange={event => handleUpdateValue(variable.name, event.target.value)}
+                  className="w-full rounded border border-border bg-muted/30 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </label>
+            ))}
+          </section>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto flex flex-col">

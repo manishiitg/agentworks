@@ -22,7 +22,8 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 	if err := api.registerCrewBuilderTools(reg, userID, workspace); err != nil {
 		return err
 	}
-	return reg.RegisterCustomTool("manage_workflow_webhook", "Create and manage inbound route webhooks directly in Builder chat. First list to discover valid steps, routes and groups. Set step_id and route_selections={} to run only a saved step directly, without Builder. For immutable raw payloads, payload_mappings can map a scalar source field to an allowed group, route on a routing/branch step, or standalone step. Fixed and mapped route selections are merged before execution. The platform generates/encrypts the secret; the UI displays existing triggers but has no creation form. Create/update require a complete name, enabled, auth_mode, route_selections and group_names configuration. Create/rotation returns a one-time secret: provide it only to the requesting user or their explicitly requested secret store, never shell logs. Bearer is for CI POSTs; github verifies signed GitHub webhooks. action=test sends an authenticated internal delivery through the receiver and executes the route; use only when the user requested testing. It does not verify public DNS/gateway connectivity. Configure input_mode=raw (default, native event JSON) or envelope (group/variables/payload), and allowed_variables for declared non-secret string overrides. group_names bounds caller group selection. Each trigger accepts up to four concurrent deliveries; every delivery receives its own immutable iteration-N-hook folder. A fifth concurrent delivery gets HTTP 503 with Retry-After: 30 and may be retried with the same delivery ID. action=status with id and run_id reads step progress, outputs and artifact links without revealing the trigger secret. Retains 10 finished hook folders plus active runs. All calls enforce current workflow permissions.", map[string]interface{}{
+	description := "Create and manage inbound route webhooks directly in Builder chat. First list to discover valid steps, routes and groups. Set step_id and route_selections={} to run only a saved step directly, without Builder. For immutable raw payloads, payload_mappings can map a scalar source field to an allowed group, route on a routing/branch step, or standalone step. Fixed and mapped route selections are merged before execution. The platform generates/encrypts the secret; the UI displays existing triggers but has no creation form. Create/update require a complete name, enabled, auth_mode, route_selections and group_names configuration. Create/rotation returns a one-time secret: provide it only to the requesting user or their explicitly requested secret store, never shell logs. Bearer is for CI POSTs; github verifies signed GitHub webhooks. action=test sends an authenticated internal delivery through the receiver and executes the route; use only when the user requested testing. It does not verify public DNS/gateway connectivity. Configure input_mode=raw (default, native event JSON) or envelope (group/variables/payload), and allowed_variables for declared non-secret string overrides. group_names bounds caller group selection. Each trigger accepts up to four concurrent deliveries; every delivery receives its own immutable iteration-N-hook folder. A fifth concurrent delivery gets HTTP 503 with Retry-After: 30 and may be retried with the same delivery ID. action=status with id and run_id reads step progress, outputs and artifact links without revealing the trigger secret. Retains 10 finished hook folders plus active runs. All calls enforce current workflow permissions."
+	params := map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":      map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete", "test", "status"}},
 			"payload":     map[string]interface{}{"type": "object", "description": "JSON test event. test executes the saved route and can have external effects."},
@@ -39,19 +40,26 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 				"description": map[string]interface{}{"type": "string", "description": "What the function does, for callers."},
 				"inputs": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"name"}, "properties": map[string]interface{}{
 					"name":        map[string]interface{}{"type": "string", "description": "A declared, non-secret workflow variable (from list.declared_variables)."},
-					"type":        map[string]interface{}{"type": "string", "enum": []string{"string", "integer", "number", "boolean"}},
+					"type":        map[string]interface{}{"type": "string", "enum": []string{"string", "integer", "number", "boolean", "object"}},
 					"required":    map[string]interface{}{"type": "boolean"},
 					"description": map[string]interface{}{"type": "string"},
 					"enum":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
 				}}},
 				"allowed_callers": map[string]interface{}{"type": "array", "description": "Optional: only these Crews/workflows may call; omit for anyone who can run this workflow.", "items": triggerCallerToolSchema(triggerCallerCrew, triggerCallerWorkflow)},
 			}},
-			"caller":            triggerCallerToolSchema(triggerCallerCrew, triggerCallerWorkflow),
-			"step_id":           map[string]interface{}{"type": "string", "description": "Optional single-step target from list.steps; requires empty route_selections. Empty selects route/full workflow; omission preserves an existing target on update. Only this step runs; prior outputs must not be assumed."},
-			"route_selections":  map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Map routing step IDs to saved route IDs, obtained from list."},
-			"payload_mappings":  webhookPayloadMappingsSchema(),
-			"group_names":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+			"caller":           triggerCallerToolSchema(triggerCallerCrew, triggerCallerWorkflow),
+			"step_id":          map[string]interface{}{"type": "string", "description": "Optional single-step target from list.steps; requires empty route_selections. Empty selects route/full workflow; omission preserves an existing target on update. Only this step runs; prior outputs must not be assumed."},
+			"route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Map routing step IDs to saved route IDs, obtained from list."},
+			"payload_mappings": webhookPayloadMappingsSchema(),
+			"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}}, "rotate_secret": map[string]interface{}{"type": "boolean"},
+		}}
+	if manifest, found, err := ReadWorkflowManifest(context.Background(), workspace); err == nil && found && manifest.Kind == "relay" {
+		description = "Create and manage this Relay's authenticated API function triggers. First list to discover declared variables and saved routes. Create/update require name, enabled, kind=function, route_selections and function with a required object INPUT argument. Relays execute once per call using configuration values and caller inputs; there are no variable groups. Omit group_names. action=test executes the draft; action=status reads durable run results. All calls enforce current permissions."
+		properties := params["properties"].(map[string]interface{})
+		delete(properties, "group_names")
+		properties["kind"] = map[string]interface{}{"type": "string", "enum": []string{triggerKindFunction}}
+	}
+	return reg.RegisterCustomTool("manage_workflow_webhook", description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
 		if userAccessForClaims(&UserClaims{UserID: userID}).Disabled {
 			return "", fmt.Errorf("Access denied: disabled account")
@@ -79,6 +87,16 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 			}
 			if isFunctionTriggerKind(kind) {
 				required = []string{"name", "enabled", "route_selections", "group_names", "function"}
+			}
+			manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+			if err != nil || !found {
+				return "", fmt.Errorf("Workflow manifest unavailable")
+			}
+			if manifest.Kind == "relay" {
+				required = []string{"name", "enabled", "route_selections", "function"}
+				if value, supplied := args["group_names"]; supplied {
+					payload["group_names"] = value
+				}
 			}
 			for _, key := range required {
 				v, ok := args[key]

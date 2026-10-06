@@ -7260,9 +7260,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				// Build GroupInfo and extra template vars for the interactive-workshop system prompt
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
-					if groupInfo != "" {
-						phaseTemplateVars["GroupInfo"] = groupInfo
+					if !relayChat {
+						groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
+						if groupInfo != "" {
+							phaseTemplateVars["GroupInfo"] = groupInfo
+						}
 					}
 					phaseTemplateVars["RunFolder"] = phaseRunFolder
 					phaseTemplateVars["UseKnowledgebase"] = "true"                 // default; overridden by preset below if needed
@@ -11672,6 +11674,9 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		if mErr != nil {
 			return nil, fmt.Errorf("failed to read workflow manifest from %s: %w", workspacePath, mErr)
 		} else if found {
+			if manifest.Kind == "relay" {
+				cfg.EnabledGroupNames = nil
+			}
 			caps := manifest.Capabilities
 			log.Printf("[WORKSHOP] Loaded config from manifest at %s", workspacePath)
 
@@ -11955,10 +11960,12 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					}
 					sb.WriteString(fmt.Sprintf("- **Run Count**: %d\n", state.RunCount))
 				}
-				if len(sched.GroupNames) > 0 {
-					sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
-				} else {
-					sb.WriteString("- **Groups**: all\n")
+				if manifest.Kind != "relay" {
+					if len(sched.GroupNames) > 0 {
+						sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
+					} else {
+						sb.WriteString("- **Groups**: all\n")
+					}
 				}
 				sb.WriteString(fmt.Sprintf("- **Pulse**: %s\n- **Pulse reason**: %s\n", manifest.EffectivePulseMode(sched), sched.PulseModeReason))
 				if len(sched.RouteSelections) > 0 {
@@ -12020,11 +12027,14 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
+			if manifest.Kind == "relay" {
+				return "", fmt.Errorf("Relays support API function triggers only")
+			}
 			// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it
 			// has no group to validate — the same reason the manual "Run Pulse
 			// now" trigger's synthetic schedule (manualWorkflowPulseScheduleID)
 			// carries no GroupNames either.
-			if !pulseReviewOnly {
+			if manifest.Kind != "relay" && !pulseReviewOnly {
 				groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 				if err != nil {
 					return "", err
@@ -12115,6 +12125,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
+			if manifest.Kind == "relay" {
+				return "", fmt.Errorf("Relays support API function triggers only")
+			}
 			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 			if err != nil {
 				return "", err
@@ -12197,7 +12210,10 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if timezone != "" {
 				sched.Timezone = timezone
 			}
-			if setGroupNames {
+			if manifest.Kind == "relay" && setGroupNames && len(normalizeScheduleGroupNames(groupNames)) > 0 {
+				return "", fmt.Errorf("Relays do not accept group_names; configure variables directly")
+			}
+			if manifest.Kind != "relay" && setGroupNames {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 				if err != nil {
 					return "", err
@@ -12311,7 +12327,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			}
 			// PLAT-115: a PulseReviewOnly schedule carries no GroupNames — same
 			// reason CreateSchedule skips the group-name requirement for it.
-			if !sched.PulseReviewOnly {
+			if manifest.Kind != "relay" && !sched.PulseReviewOnly {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
 				if err != nil {
 					return "", err

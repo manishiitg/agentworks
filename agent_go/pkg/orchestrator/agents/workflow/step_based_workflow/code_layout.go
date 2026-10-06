@@ -25,6 +25,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 		if strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(err.Error(), "404") {
 			hcpo.codeLayoutVersion.Store(0)
 			hcpo.platformStoresDisabled.Store(false)
+			hcpo.relayExecution.Store(false)
 			return nil
 		}
 		return fmt.Errorf("read code layout: %w", err)
@@ -90,6 +91,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 		}
 		env["WORKFLOW_KB_ACCESS"] = KBAccessNone
 		env[workflowDBAccessEnv] = DBAccessNone
+	}
+	if hcpo.isRelayExecution() {
+		delete(env, "VAR_GROUP_NAME")
 	}
 	delete(env, "WORKFLOW_TRIGGER_INPUT_FILE")
 	delete(env, "WORKFLOW_TRIGGER_CONTEXT_FILE")

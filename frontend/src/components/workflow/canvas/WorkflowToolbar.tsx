@@ -318,6 +318,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   // Restore selectedGroupIds from execution state when page refreshes during execution
   // This handles the case where execution is running but selectedGroupIds was lost on page refresh
   useEffect(() => {
+    if (relayMode) return
     if (isExecutionRunning && selectedGroupIds.length === 0 && currentRunningGroupId) {
       // If execution is running but no groups are selected, restore from currentRunningGroupId
       console.log('[WorkflowToolbar] Restoring selectedGroupIds from currentRunningGroupId:', currentRunningGroupId)
@@ -343,7 +344,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
         }
       }
     }
-  }, [isExecutionRunning, selectedGroupIds.length, currentRunningGroupId, variablesManifest, selectedRunFolder, setSelectedGroupIds])
+  }, [relayMode, isExecutionRunning, selectedGroupIds.length, currentRunningGroupId, variablesManifest, selectedRunFolder, setSelectedGroupIds])
 
   // selectedGroupIds is already included in the batched selector above
   

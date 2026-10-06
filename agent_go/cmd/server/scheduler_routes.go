@@ -690,10 +690,14 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			http.Error(w, "workflow manifest not found at "+req.WorkspacePath, http.StatusBadRequest)
 			return
 		}
+		if manifest.Kind == "relay" && len(normalizeScheduleGroupNames(req.GroupNames)) > 0 {
+			http.Error(w, "Relays do not accept group_names; configure variables directly", http.StatusBadRequest)
+			return
+		}
 		// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it has
 		// no group to validate against — the same reason the chat-facing
 		// create_workflow_schedule tool path skips this validation too.
-		if !req.PulseReviewOnly {
+		if manifest.Kind != "relay" && !req.PulseReviewOnly {
 			req.GroupNames, err = validateScheduleGroupNamesForWorkspace(r.Context(), req.WorkspacePath, req.GroupNames)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -867,7 +871,11 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.TriggerPayload != nil {
 			sched.TriggerPayload = req.TriggerPayload
 		}
-		if req.GroupNames != nil {
+		if manifest.Kind == "relay" && len(normalizeScheduleGroupNames(req.GroupNames)) > 0 {
+			http.Error(w, "Relays do not accept group_names; configure variables directly", http.StatusBadRequest)
+			return
+		}
+		if manifest.Kind != "relay" && req.GroupNames != nil {
 			validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, req.GroupNames)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -972,12 +980,14 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, sched.GroupNames)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		if manifest.Kind != "relay" {
+			validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, sched.GroupNames)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			sched.GroupNames = validGroupNames
 		}
-		sched.GroupNames = validGroupNames
 		if err := validateScheduleRequest(scheduleTypeOrDefault(sched.ScheduleType), sched.CronExpression, sched.CalendarItems); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

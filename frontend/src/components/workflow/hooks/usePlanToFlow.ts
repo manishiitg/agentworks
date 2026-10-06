@@ -150,6 +150,7 @@ export interface WorkflowArtifactNodeData extends Record<string, unknown> {
 }
 
 export interface WorkflowTriggerNodeData extends Record<string, unknown> {
+  relayMode?: boolean
   id: string
   title: string
   job?: ScheduledJob
@@ -180,6 +181,7 @@ interface UsePlanToFlowOptions {
   completedStepIndices?: number[]  // 0-based indices of completed steps (from steps_done.json)
   workspacePath?: string | null  // Workspace path for file opening
   selectedRunFolder?: string  // Selected iteration folder for file opening
+  relayMode?: boolean  // Relays show configuration without execution groups
   variablesManifest?: VariablesManifest | null  // Variables manifest for Variables node
   onOpenVariablesSidebar?: () => void  // Callback for opening variables sidebar
   isLoadingVariables?: boolean  // Whether variables are being loaded
@@ -1848,6 +1850,7 @@ export function usePlanToFlow(
     changes = null,
     completedStepIndices = [],
     variablesManifest = null,
+    relayMode = false,
     onOpenVariablesSidebar,
     isLoadingVariables = false,
     layoutDirection = 'TB',
@@ -1999,6 +2002,7 @@ export function usePlanToFlow(
       position: { x: 0, y: 0 },
       data: {
         manifest: variablesManifest,
+        relayMode,
         onOpenSidebar: onOpenVariablesSidebar,
         isLoading: isLoadingVariables
       } as VariablesNodeData
@@ -2537,7 +2541,7 @@ export function usePlanToFlow(
     lastComputedFlowRef.current = layoutedResult
     return layoutedResult
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabled, plan, showDependencyEdges, changes, presetUseCodeExecutionMode, presetLLMConfig, availableLLMs, completedStepIndices, options.workspacePath, options.selectedRunFolder, variablesManifest, onOpenVariablesSidebar, isLoadingVariables, layoutDirection])
+  }, [disabled, plan, showDependencyEdges, changes, presetUseCodeExecutionMode, presetLLMConfig, availableLLMs, completedStepIndices, options.workspacePath, options.selectedRunFolder, variablesManifest, relayMode, onOpenVariablesSidebar, isLoadingVariables, layoutDirection])
 }
 
 export default usePlanToFlow

@@ -57,3 +57,14 @@ Update the table and evidence as each case runs. Preserve failing run IDs and th
 ### 2026-10-01 review regression verification
 
 The current policy permits execution by visible readers and retains Owner/Write for publish and edits. R8's unauthorized caller means a caller with no Relay access, an insufficient token scope, or a revoked function caller. Backend regressions cover each boundary, reader acceptance/polling, owner credential resolution, release path aliases, durable capacity wait restoration and claims, and release costs in the draft totals. Frontend regressions cover visible reader API instructions and unavailable version errors. These automated checks supplement the earlier live preview evidence; process-crash recovery remains deferred.
+
+### 2026-10-06 — Group-free execution (PLAT-577)
+
+An isolated workspace HTTP server and real sandboxed Python verified flat config,
+per-invocation INPUT, a two-step chain, failure at step 2 and explicit resume
+without replaying step 1. A separate call returned a different greeting in its
+own run folder; Builder node execution also required no group. Server regressions
+cover legacy frozen releases, configuration saves and capacity-resume bindings.
+TypeScript and seven frontend sidebar/function checks passed. No browser or live
+model test was performed in this pass. The previous schedules/groups evidence
+above is historical; current Relays use API function triggers and flat config.

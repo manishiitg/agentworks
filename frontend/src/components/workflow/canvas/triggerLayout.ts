@@ -28,7 +28,7 @@ export function triggerRouteSummary(job: ScheduledJob, nodes: WorkflowNode[]) {
 // Presentation nodes are added after saved plan positions are restored. They
 // never become editable steps or persisted custom layout positions.
 export function appendTriggerCards(nodes: WorkflowNode[], edges: WorkflowEdge[], jobs: ScheduledJob[], options: {
-  loading: boolean; error?: string; selectedID?: string; onSelect: (id: string) => void; onSettings: (kind: 'schedules' | 'webhooks') => void; onRefresh: () => void
+  relayMode?: boolean; loading: boolean; error?: string; selectedID?: string; onSelect: (id: string) => void; onSettings: (kind: 'schedules' | 'webhooks') => void; onRefresh: () => void
 }) {
   const start = nodes.find(node => node.id === 'start')
   if (!start) return { nodes, edges }
@@ -43,7 +43,7 @@ export function appendTriggerCards(nodes: WorkflowNode[], edges: WorkflowEdge[],
     // These fixed-size presentation nodes are not stored in useNodesState.
     // Preserve their measured size so reconciliation retains handle bounds.
     measured: { width: TRIGGER_CARD_WIDTH, height: TRIGGER_CARD_HEIGHT },
-    data: { id: triggerNodeID(job.id), title: job.name, job, routeSummary: triggerRouteSummary(job, nodes), active: options.selectedID === job.id, onSelect: () => options.onSelect(job.id), onSettings: options.onSettings },
+    data: { relayMode: options.relayMode, id: triggerNodeID(job.id), title: job.name, job, routeSummary: triggerRouteSummary(job, nodes), active: options.selectedID === job.id, onSelect: () => options.onSelect(job.id), onSettings: options.onSettings },
   }))
   cards.unshift({ id: 'workflow-trigger-heading', type: 'workflow-trigger-heading', draggable: false, selectable: false,
     position: { x: left, y: top - 90 }, width: columns * (TRIGGER_CARD_WIDTH + 24) - 24, height: 64,

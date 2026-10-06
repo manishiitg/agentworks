@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -307,61 +304,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runBatchExecution(
 			}
 		}
 
-		// Apply execution context (sets orchestrator state, including selectedRunFolder)
-		// This MUST be done before setting session ID so that Downloads path override uses correct run folder
-		execManager.ApplyExecutionContext(groupSetup)
-		hcpo.GetLogger().Info(fmt.Sprintf("🔍 [DEBUG] After ApplyExecutionContext - selectedRunFolder: '%s', runFolder: '%s'", hcpo.selectedRunFolder, runFolder))
-
-		// CRITICAL FIX: Generate a unique session ID for each workflow group
-		// This ensures each group gets its own stateful MCP connections.
-		// with the correct Downloads path. Without this, all groups share the same session ID
-		// and reuse connections created with the first group's Downloads path.
-		//
-		// IMPORTANT: Agents within the SAME group share connections (this is correct behavior).
-		// The session ID change ensures each GROUP gets its own isolated connections.
-		groupSessionID := fmt.Sprintf("session-group-%s-%d", group.Name, time.Now().UnixNano())
-		hcpo.sessionID = groupSessionID
-		hcpo.BaseOrchestrator.SetMCPSessionID(groupSessionID)
-		virtualtools.InheritSessionNotificationDestination(previousSessionID, groupSessionID)
-		hcpo.GetLogger().Info(fmt.Sprintf("🔗 Generated unique MCP session ID for group %s: %s (run folder: %s)", group.Name, groupSessionID, hcpo.selectedRunFolder))
-		if pc := virtualtools.GetParentChat(previousSessionID); pc != nil && pc.SessionID != "" {
-			pcCopy := *pc
-			if pcCopy.GroupName == "" {
-				pcCopy.GroupName = group.Name
-			}
-			virtualtools.RegisterParentChat(groupSessionID, &pcCopy)
-			hcpo.GetLogger().Info(fmt.Sprintf("🔗 Registered parent chat for group session %s from previous session %s", groupSessionID, previousSessionID))
-		}
-		// Track group session under HTTP session so stop handler can close it immediately
-		if hcpo.httpSessionID != "" {
-			mcpagent.RegisterHTTPSession(hcpo.httpSessionID, groupSessionID)
-			// Inherit folder guard from parent HTTP session so sub-agents running
-			// under this group session ID cannot bypass write restrictions (e.g.,
-			// planning/ is read-only in workflow-builder mode).
-			common.CopySessionFolderGuard(hcpo.httpSessionID, groupSessionID)
-		}
-
-		// Close MCP session after this group completes to free resources (browser profiles, etc.)
-		// Use defer to ensure cleanup even if execution fails.
-		// IMPORTANT: Mark as stopped BEFORE closing to prevent in-flight tool calls
-		// (from code-exec agents still running in Docker) from resurrecting connections
-		// via broken pipe handlers or mcpcache fallback.
-		// Also resolve the browser session ID so we can mark it as stopped too.
-		// The actual stateful MCP connection lives under this ID, not the group session ID.
-		browserSessionID := hcpo.resolveWorkshopBrowserSessionID(group.Name)
-		hcpo.bindWorkshopBrowserSession(groupSessionID, browserSessionID)
-		cdpPorts := hcpo.cdpPortsForCleanup()
-		browser.AcquireCDPTabOwnerLease(browserSessionID, cdpPorts)
-		defer func() {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔗 Closing MCP session for group %s: %s (browser=%s)", group.Name, groupSessionID, browserSessionID))
-			virtualtools.UnregisterParentChat(groupSessionID)
-			virtualtools.DeleteSessionNotificationDestination(groupSessionID)
-			mcpagent.MarkSessionsStopped([]string{groupSessionID, browserSessionID})
-			mcpagent.CloseSession(groupSessionID)
-			mcpagent.CloseSession(browserSessionID)
-			browser.ReleaseCDPTabOwnerLease(browserSessionID, cdpPorts, browser.NewClient(getWorkspaceAPIURL()), browser.DefaultCDPTabCleanupDelay)
-		}()
-
 		// Update batch context for the current group
 		hcpo.currentGroupName = group.Name
 		hcpo.currentGroupIdx = groupIndex
@@ -378,31 +320,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runBatchExecution(
 
 		groupStartTime := time.Now()
 
-		// Load the freshly initialized progress (created by ApplyCleanup)
-		progress, err := hcpo.loadStepProgress(ctx)
-		if err != nil {
-			// If loading fails, create in-memory progress
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to load progress for group %s, using in-memory: %v", group.Name, err))
-			progress = &StepProgress{
-				CompletedStepIndices:    make([]int, 0),
-				TotalSteps:              len(breakdownSteps),
-				LastUpdated:             time.Now(),
-				RoutingEvaluationCounts: make(RoutingEvaluationCount),
-			}
-		}
-
-		// Run execution phase for this group
-		err = hcpo.runExecutionPhase(ctx, breakdownSteps, iteration, progress, groupSetup.StartFromStep, groupSetup.Context, nil)
-		persistenceErr := error(nil)
-		if cab, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
-			flushCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-			persistenceErr = cab.WaitForTokenPersistence(flushCtx)
-			cancel()
-			if persistenceErr != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("Workflow execution finished, but cost persistence did not: %v", persistenceErr))
-				hcpo.recordRunPersistenceError(context.Background(), "cost_usage", persistenceErr)
-			}
-		}
+		err = hcpo.executePreparedRun(ctx, breakdownSteps, iteration, groupSetup)
 
 		groupDuration := time.Since(groupStartTime)
 		remainingGroups := totalGroups - groupIndex - 1

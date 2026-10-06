@@ -184,6 +184,7 @@ func workflowFunctions(manifest *WorkflowManifest) []crewFunction {
 			// The authored Relay output is JSON chosen by its author. A future
 			// output-schema field can narrow this for specific integrations.
 			resultSchema = nil
+			sched.GroupNames = nil
 		}
 		out = append(out, crewFunction{
 			Name:         sched.Function.Name,
@@ -395,7 +396,11 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if manifest.Kind != "relay" && !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, sched.Function.Name)
 	}
-	variables, group, err := workflowFunctionArgs(*sched, call.Args)
+	argumentSchedule := *sched
+	if manifest.Kind == "relay" {
+		argumentSchedule.GroupNames = nil
+	}
+	variables, group, err := workflowFunctionArgs(argumentSchedule, call.Args)
 	if err != nil {
 		return sched.ID, internalTriggerDeliveryResult{}, err
 	}

@@ -717,6 +717,11 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 
 	controller.SetWorkspacePath(cfg.WorkspacePath)
+	// Product policy must be loaded before the Builder registers execution tools.
+	if err := controller.loadCodeLayout(ctx); err != nil {
+		cancelFunc()
+		return nil, fmt.Errorf("load workshop product: %w", err)
+	}
 	if cfg.BrowserRuntime != nil {
 		mode, ports := cfg.BrowserRuntime.Snapshot()
 		controller.SetBrowserMode(mode)
@@ -780,7 +785,16 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 		// Auto-set variable values from the enabled group selected in the toolbar.
 		// This ensures execute_step always uses the correct group values without
 		// requiring the agent to pass a group name on each call.
-		if merged, groupName, ok := ResolveWorkshopVariableValues(existingManifest, cfg.EnabledGroupNames); ok {
+		if controller.isRelayExecution() {
+			values, err := controller.relayVariableValues()
+			if err != nil {
+				logger.Warn(fmt.Sprintf("[WORKSHOP] Relay configuration needs migration: %v", err))
+			} else {
+				controller.variableValues = values
+				SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, values)
+			}
+			controller.enabledGroupNames = nil
+		} else if merged, groupName, ok := ResolveWorkshopVariableValues(existingManifest, cfg.EnabledGroupNames); ok {
 			controller.variableValues = merged
 			SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, merged)
 			controller.enabledGroupNames = []string{groupName}
@@ -993,6 +1007,19 @@ func (s *WorkshopChatSession) UpdateEnabledGroupNames(ctx context.Context, enabl
 		s.controller.variablesManifest = manifest
 	}
 
+	if s.controller.isRelayExecution() {
+		s.controller.variablesManifest = manifest
+		s.controller.enabledGroupNames = nil
+		values, resolveErr := s.controller.relayVariableValues()
+		if resolveErr != nil {
+			s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Relay configuration needs migration: %v", resolveErr))
+			values = nil
+		}
+		s.controller.variableValues = values
+		SyncExactVariablesToWorkspaceEnv(s.controller.BaseOrchestrator, values)
+		return
+	}
+
 	// Re-resolve variable values from the selected group
 	if manifest != nil && len(enabledGroupNames) > 0 {
 		groupName := enabledGroupNames[0]
@@ -1041,6 +1068,9 @@ func RegisterWorkshopChatTools(
 		cancelAllServerAgents:  session.cancelAllServerAgents,
 		listServerAgents:       session.listServerAgents,
 		workshopModeOverride:   session.workshopModeOverride,
+	}
+	if session.controller.isRelayExecution() {
+		mcpAgent = relayDefinitionRegistrar{DefinitionRegistrar: mcpAgent}
 	}
 	registerWorkshopAgentTools(iwm, mcpAgent, session.config.WorkspacePath, logger)
 }
@@ -1662,6 +1692,9 @@ func RegisterRunFullWorkflowTool(
 	if session.config != nil {
 		mcpAgent = GuardScheduleTools(mcpAgent, session.config.ScheduleCollisionCheck)
 	}
+	if session.controller.isRelayExecution() {
+		mcpAgent = relayToolRegistrar{DefinitionToolRegistrar: mcpAgent}
+	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
 		"Execute the complete workflow: load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains human_input steps on the selected path, you MUST provide a response for each one. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
@@ -1715,10 +1748,13 @@ func RegisterRunFullWorkflowTool(
 			if g, ok := args["group_name"].(string); ok && g != "" {
 				groupName = g
 			}
-			if groupName == "" {
-				return "group_name is required. Read variables.json to see available groups.", nil
+			var enabledGroupNames []string
+			if !session.controller.isRelayExecution() {
+				if groupName == "" {
+					return "group_name is required. Read variables.json to see available groups.", nil
+				}
+				enabledGroupNames = []string{groupName}
 			}
-			enabledGroupNames := []string{groupName}
 
 			// Parse human_inputs strictly. The old assertion silently discarded
 			// alternate decoded map shapes and non-string values, allowing a run
@@ -1764,7 +1800,11 @@ func RegisterRunFullWorkflowTool(
 
 			if cfg.WebhookInvocation != nil {
 				var bindingErr error
-				routeSelections, bindingErr = cfg.WebhookInvocation.RoutesForGroup(groupName)
+				if session.controller.isRelayExecution() {
+					routeSelections = cfg.WebhookInvocation.RouteSelections
+				} else {
+					routeSelections, bindingErr = cfg.WebhookInvocation.RoutesForGroup(groupName)
+				}
 				if bindingErr != nil {
 					return "", bindingErr
 				}
@@ -1803,6 +1843,12 @@ func RegisterRunFullWorkflowTool(
 				var legacyRoutingSteps []string
 				validationSteps := plan.Steps
 				variableValues := workflowRunValidationVariableValues(ctx, session, groupName)
+				if session.controller.isRelayExecution() {
+					variableValues, err = session.controller.relayVariableValues()
+					if err != nil {
+						return "", err
+					}
+				}
 				if cfg.WebhookInvocation != nil {
 					if variableValues == nil {
 						variableValues = map[string]string{}
@@ -1839,15 +1885,24 @@ func RegisterRunFullWorkflowTool(
 			}
 
 			if cfg.WebhookInvocation != nil {
-				if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(iteration) {
+				if session.controller.isRelayExecution() {
+					if err := validateRelayWorkshopRunFolder(iteration); err != nil {
+						return "", err
+					}
+				} else if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(iteration) {
 					return "webhook run folder unavailable", nil
 				}
-				if err := cfg.WebhookInvocation.ClaimGroup(groupName); err != nil {
-					return err.Error(), nil
+				if !session.controller.isRelayExecution() {
+					if err := cfg.WebhookInvocation.ClaimGroup(groupName); err != nil {
+						return err.Error(), nil
+					}
 				}
 			}
 
 			execToken := workflowExecutionIDToken()
+			if session.controller.isRelayExecution() && cfg.WebhookInvocation == nil {
+				iteration = "relay-" + execToken
+			}
 			execID := fmt.Sprintf("workflow-full-%s", execToken)
 			if cfg.ScheduleInvocation != nil && cfg.ScheduleInvocation.Next != nil {
 				next, err := cfg.ScheduleInvocation.Next(ctx, execID)
@@ -2026,7 +2081,13 @@ func RegisterRunFullWorkflowTool(
 					workflowController.SetSecrets(cfg.Secrets)
 				}
 				if cfg.WorkspaceEnvRef != nil {
-					workflowController.SetWorkspaceEnvRef(cfg.WorkspaceEnvRef)
+					if session.controller.isRelayExecution() {
+						// A background test owns its inputs; Builder edits or another
+						// invocation must not replace its live environment map.
+						workflowController.SetWorkspaceEnvRef(session.controller.snapshotWorkspaceEnv())
+					} else {
+						workflowController.SetWorkspaceEnvRef(cfg.WorkspaceEnvRef)
+					}
 				}
 				if skills := session.controller.GetSelectedSkills(); len(skills) > 0 {
 					workflowController.SetSelectedSkills(skills)
@@ -2100,7 +2161,9 @@ func RegisterRunFullWorkflowTool(
 				groupInfo = fmt.Sprintf("\nGroup: %s", enabledGroupNames[0])
 			}
 			iterInfo := "\nIteration: new (auto-created)"
-			if iteration != "" {
+			if session.controller.isRelayExecution() {
+				iterInfo = fmt.Sprintf("\nrun_folder: %q", iteration)
+			} else if iteration != "" {
 				iterInfo = fmt.Sprintf("\nIteration: %s (reusing)", iteration)
 			}
 			return fmt.Sprintf("Full workflow execution started.\nexecution_id: %q\nStrategy: %s%s%s\nAll steps will be executed end-to-end. Use send_step_message(execution_id=%q, message=...) for a live correction while a child-agent turn is active.\nYou will be automatically notified when it completes.", execID, strategy, groupInfo, iterInfo, execID), nil

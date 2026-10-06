@@ -35,9 +35,11 @@ type ScheduleContext struct {
 	WorkflowID    string
 	WorkflowLabel string
 	WorkflowKind  string
-	Schedule      WorkflowSchedule
-	WebhookInput  *WorkflowWebhookDelivery
-	Capabilities  WorkflowCapabilities
+	// RelayLegacyGroupName reads old release configuration without group execution.
+	RelayLegacyGroupName string
+	Schedule             WorkflowSchedule
+	WebhookInput         *WorkflowWebhookDelivery
+	Capabilities         WorkflowCapabilities
 	// OwnerUserID is the workflow's authenticated execution identity. It is
 	// normally WorkflowManifest.CreatedBy (or the first recorded owner), and
 	// is the explicit local owner for an ownerless legacy workflow only in
@@ -592,6 +594,10 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
 	}
 	if manifest.Kind == "relay" {
+		if groups := normalizeScheduleGroupNames(sched.GroupNames); len(groups) == 1 {
+			sctx.RelayLegacyGroupName = groups[0]
+		}
+		sctx.Schedule.GroupNames = nil
 		sctx.Capabilities.SlackConnectionID = ""
 		notifications := WorkflowNotificationConfig{}
 		if sctx.Capabilities.Notifications != nil {
@@ -1317,7 +1323,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		if err := webhookDeliveryStartError(*sched, input); err != nil {
 			return "", err
 		}
-		if input.Group != "" {
+		if input.Group != "" && manifest.Kind != "relay" {
 			sctx.Schedule.GroupNames = []string{input.Group}
 		}
 		resolvedStepID, resolvedRoutes := resolvedWebhookExecutionTarget(*sched, input)
@@ -1798,6 +1804,7 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	freshCtx.WebhookInput = sctx.WebhookInput
 	if sctx.WebhookInput != nil {
 		freshCtx.Schedule.GroupNames = sctx.Schedule.GroupNames
+		freshCtx.RelayLegacyGroupName = sctx.RelayLegacyGroupName
 		freshCtx.Schedule.RouteSelections = sctx.Schedule.RouteSelections
 		freshCtx.Schedule.Webhook = sctx.Schedule.Webhook
 	}
@@ -4490,7 +4497,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		execOpts["capacity_account_key"] = accountKey
 		execOpts["pace_threshold_percent"] = threshold
 	}
-	if len(sctx.Schedule.GroupNames) > 0 {
+	if sctx.WorkflowKind != "relay" && len(sctx.Schedule.GroupNames) > 0 {
 		execOpts["enabled_group_names"] = sctx.Schedule.GroupNames
 	}
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {

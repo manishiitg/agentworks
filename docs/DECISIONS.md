@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Relays execute once per invocation, without variable groups
+
+Use flat `variables[].value` for reusable configuration and per-call INPUT for
+API data. A Relay owns one run folder and uses the shared workflow step executor,
+without group batching or iteration-0 rotation. Builder node tests identify the
+run by ID. Legacy published group bindings resolve configuration read-only;
+ambiguous drafts require explicit consolidation. Why: Relays are API agent/script
+chains, and groups add selection and fan-out that callers do not need.
+Ticket: [PLAT-577](bugs/pulse_platform/relays/execution/plat-577.md).
+
 ### 2026-10-06 — Browser groups show only the project or workflow name
 
 Use the Code/Crew display name or workflow label without AgentWorks/deployment
@@ -43,6 +53,7 @@ account token and this project's routing scope without selecting/reconnecting
 that project or changing Connected status. Reset alone rotates an existing
 credential. Why: retrieving a code should not interrupt Code/Crew/workflow work.
 Ticket: [PLAT-574](bugs/pulse_platform/browser/browser/plat-574.md).
+
 
 ### 2026-10-06 — Show the account browser without choosing it for every project
 
