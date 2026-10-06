@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | in progress |
 | Priority | P1 |
 | Product | browser |
 | Area | browser |
@@ -45,8 +45,8 @@ platform connection from usable shared-tab authority.
 
 ## Investigation and validation limits
 
-The extension's `chrome.debugger.onDetach` handler currently discards Chrome's
-reason and calls `unshare`, which deletes all sessions for the tab and advertises
+Before instrumentation, the extension's `chrome.debugger.onDetach` handler discarded Chrome's
+reason and called `unshare`, which deletes all sessions for the tab and advertises
 `Target.targetDestroyed`. Other removal paths are explicit unshare/close,
 `tabs.onRemoved`, and a URL rejected by the `tabs.onUpdated` handler. Existing
 RTS logs do not distinguish these paths. None is yet proved to be the cause.
@@ -59,15 +59,32 @@ No debugger-detach event was observed in those runs. The user's installed
 Chrome is 154.0.8037.98; the fresh fixture profile does not reproduce the user's
 existing browser state or the Linux server runtime.
 
-Temporary command logging and navigation probes were removed after investigation.
-No production fix, deployment, restart, or changes to the user's tab grants were
-made. This ticket remains open; the passing isolated test does not resolve the
-reported RTS failure.
+The initial temporary probes were removed. Extension 0.4.1 now adds bounded
+metadata logging for debugger detach reasons, initiating unshare paths,
+commands and child sessions. The relay negotiates and validates the optional
+diagnostic channel, retaining compatibility with older servers. Credentials,
+URLs, page contents and CDP parameters are excluded.
+
+The full tool/sandbox/relay E2E passes with Chrome for Testing **154.0.8037.98**
+and agent-browser 0.38.2. A second standalone test starts that Chrome without
+Playwright or a remote-debugging port and retains one shared tab through four
+snapshot/URL checkpoints and idle intervals on the actual dev `/intro` route.
+Neither reproduces the loss. Relay transport and logging validation tests pass.
+
+The user's existing unpacked extension folder was updated to 0.4.1, preserving
+0.4.0 originals outside the folder. A temporary extension diagnostics page
+verified the loaded version, a connected Code socket and zero tabs. Its ring
+contained only connection_paired: no agent browser command had run since reload.
+That page was closed and removed. Crew setup screenshots are evidence for
+PLAT-570, not a reproduced debugger detach.
+
+No server deployment/restart or tab grant changes were made. Cause and recovery
+fix remain unproven; passing isolated tests do not resolve the RTS failure.
 
 ## Left
 
-Capture the reason and initiating path for the tab removal, with bounded metadata
-rather than raw CDP commands, page contents or pairing credentials. Reproduce
+Deploy the negotiated server diagnostics and capture the reason and initiating
+path on the next actual agent browser retry. Reproduce
 against the actual extension/runtime combination and pin the cause with a real
 browser regression. Preserve revocation on human cancellation and do not restore
 unrelated tabs or blindly retry page actions. Then verify the fix on RTS and

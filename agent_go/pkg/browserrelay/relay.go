@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -35,12 +36,13 @@ type projectGrant struct {
 	ProfileID string `json:"profile_id"`
 }
 type Status struct {
-	Selected     bool     `json:"selected"`
-	Connected    bool     `json:"connected"`
-	Workspace    string   `json:"workspace,omitempty"`
-	Tabs         int      `json:"tabs"`
-	ConnectionID string   `json:"connection_id,omitempty"`
-	TabTitles    []string `json:"tab_titles,omitempty"`
+	Selected         bool     `json:"selected"`
+	Connected        bool     `json:"connected"`
+	AccountConnected bool     `json:"account_connected"`
+	Workspace        string   `json:"workspace,omitempty"`
+	Tabs             int      `json:"tabs"`
+	ConnectionID     string   `json:"connection_id,omitempty"`
+	TabTitles        []string `json:"tab_titles,omitempty"`
 }
 type Binding struct {
 	mu                                 sync.Mutex
@@ -344,11 +346,19 @@ func (m *Manager) Lookup(user, scope string) *Binding {
 	return m.bindings[key(user, scope)]
 }
 func (m *Manager) Status(user, scope string) Status {
-	b := m.Lookup(user, scope)
-	if b == nil {
-		return Status{}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	status := Status{}
+	if b := m.bindings[key(user, scope)]; b != nil {
+		status = b.Status()
 	}
-	return b.Status()
+	for bindingKey, b := range m.bindings {
+		if strings.HasPrefix(bindingKey, user+"\x00") && b.Status().Connected {
+			status.AccountConnected = true
+			break
+		}
+	}
+	return status
 }
 func (b *Binding) Status() Status {
 	b.mu.Lock()
@@ -456,21 +466,58 @@ func (m *Manager) Close() {
 }
 
 type envelope struct {
-	Type      string          `json:"type"`
-	Token     string          `json:"token,omitempty"`
-	Scope     string          `json:"scope,omitempty"`
-	Resume    bool            `json:"resume,omitempty"`
-	ProfileID string          `json:"profile_id,omitempty"`
-	Projects  []projectGrant  `json:"projects,omitempty"`
-	Workspace string          `json:"workspace,omitempty"`
-	Tabs      int             `json:"tabs,omitempty"`
-	TabTitles []string        `json:"tab_titles,omitempty"`
-	Message   json.RawMessage `json:"message,omitempty"`
-	RequestID string          `json:"request_id,omitempty"`
-	URL       string          `json:"url,omitempty"`
-	TargetID  string          `json:"target_id,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	Active    bool            `json:"active,omitempty"`
+	Type        string          `json:"type"`
+	Token       string          `json:"token,omitempty"`
+	Scope       string          `json:"scope,omitempty"`
+	Resume      bool            `json:"resume,omitempty"`
+	ProfileID   string          `json:"profile_id,omitempty"`
+	Projects    []projectGrant  `json:"projects,omitempty"`
+	Workspace   string          `json:"workspace,omitempty"`
+	Tabs        int             `json:"tabs,omitempty"`
+	TabTitles   []string        `json:"tab_titles,omitempty"`
+	Message     json.RawMessage `json:"message,omitempty"`
+	RequestID   string          `json:"request_id,omitempty"`
+	URL         string          `json:"url,omitempty"`
+	TargetID    string          `json:"target_id,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	Active      bool            `json:"active,omitempty"`
+	Event       string          `json:"event,omitempty"`
+	Reason      string          `json:"reason,omitempty"`
+	Method      string          `json:"method,omitempty"`
+	TabID       int64           `json:"tab_id,omitempty"`
+	Diagnostics bool            `json:"diagnostics,omitempty"`
+}
+
+// Extension diagnostics are deliberately limited to protocol metadata. Never
+// log arbitrary message strings, CDP parameters, page URLs or credentials.
+func logExtensionDiagnostic(scope, connection string, e envelope) {
+	switch e.Event {
+	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached":
+	default:
+		return
+	}
+	switch e.Reason {
+	case "", "target_closed", "canceled_by_user", "requested_unshare", "target_close", "debugger_detached", "tab_closed", "unsupported_url", "detached", "not_shared", "other":
+	default:
+		return
+	}
+	if e.TabID < 0 || e.TabID > 1<<53 || len(e.Method) > 80 {
+		return
+	}
+	for _, c := range e.Method {
+		if c != '.' && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+			return
+		}
+	}
+	if len(e.RequestID) > 16 {
+		return
+	}
+	for _, c := range e.RequestID {
+		if c < '0' || c > '9' {
+			return
+		}
+	}
+	log.Printf("[CHROME_EXTENSION] scope=%q connection=%q event=%s tab_id=%d reason=%s last_method=%s request_id=%s", scope, connection, e.Event, e.TabID, e.Reason, e.Method, e.RequestID)
 }
 
 // ServeExtension authenticates in the first frame. No app JWT is given to the
@@ -547,11 +594,12 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		old.closeWithReason("Connected from another browser")
 	}
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
 	b.mu.Unlock()
 	if err != nil {
 		return
 	}
+	diagnosticWindow, diagnosticCount := time.Now(), 0
 	for {
 		deadline := time.Now().Add(75 * time.Second)
 		if deadline.After(b.expires) {
@@ -596,6 +644,14 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 				case b.newTabResult <- e:
 				default:
 				}
+			}
+		case "diagnostic":
+			if time.Since(diagnosticWindow) >= time.Minute {
+				diagnosticWindow, diagnosticCount = time.Now(), 0
+			}
+			if diagnosticCount < 4096 {
+				logExtensionDiagnostic(g.Scope, b.session, e)
+				diagnosticCount++
 			}
 		case "cdp":
 			b.collectDiagnostics(e.Message)

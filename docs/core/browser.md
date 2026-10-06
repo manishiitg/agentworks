@@ -116,9 +116,10 @@ Tracking: [PLAT-542](../bugs/pulse_platform/app/navigation/plat-542.md).
 5. Ask the agent to browse. It creates and chooses its own project tabs and
    groups them automatically. No first-tab sharing step is required. To use an
    already-open page, optionally choose the project and **Share this tab** in the extension.
-6. For another owned project, choose **Copy connection** there to register it.
-   Its token is the same. The server asks the already-paired browser to connect
-   that project automatically; no paste or project-picker action is required.
+6. In another supported project, the browser picker shows **Connected to your
+   account** beside My Chrome or Edge when your account browser is online.
+   Choose that option to register and connect this project; no token copy/paste
+   is required. Opening the picker alone does not change the project's browser.
    Each agent receives only its own project tabs. The picker is for optional
    manual sharing; automatic connection preserves its current selection.
 7. Ask the existing chat to work in Chrome. `agent_browser(command="status")`
@@ -153,7 +154,10 @@ or rejected explicitly.
 ### Pairing and ownership
 
 The authenticated Code/Crew/workflow Browser settings picker exposes My Chrome or Edge ·
-extension. Copy connection registers the server-derived project and returns one
+extension and shows account availability separately from this project's connection.
+Choosing it explicitly reuses a live account browser through the authenticated
+`connect` action; the response contains status, never a pairing credential.
+Copy connection registers the server-derived project and returns one
 persistent random token for the account plus that project's routing scope. The
 full JSON differs by scope even though the token is identical across projects.
 Only registered scopes can connect; scope is metadata, not authorization.
@@ -293,6 +297,16 @@ action. Inline tab selection reuses the current tab without the CLI's
 ref-clearing switch; changed tabs still require a fresh snapshot.
 
 #### Tab diagnostics and artifacts
+
+Extension 0.4.1 retains a bounded ring of 256 protocol metadata records per
+project: command start/success/failure, debugger detach reason, explicit unshare
+path, and child-session lifecycle. The platform negotiates optional forwarding
+in its `paired` response; older servers receive no new message type. The relay
+logs validated metadata under `[CHROME_EXTENSION]`, with at most 4096 messages
+per connection per minute. It excludes credentials, URLs, page contents and CDP
+parameters. Last method is context, not proof that a command caused a detach.
+Human revocation still removes the grant; logging adds no automatic reattachment.
+Investigation: [PLAT-569](../bugs/pulse_platform/browser/browser/plat-569.md).
 
 Console/errors read bounded per-target relay caches (100 entries per kind,
 2048 bytes per text), including child sessions. Removing a shared target or

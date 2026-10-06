@@ -67,6 +67,14 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			return
 		}
 		switch req.Action {
+		case "connect":
+			// The owner explicitly chose the extension for this project. Reuse
+			// the account browser without returning or copying its credential.
+			if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
+				http.Error(w, "Cannot start Chrome bridge", 503)
+				return
+			}
+			browserrelay.Default.RequestProjectConnection(user, scope)
 		case "pair", "reset":
 			var token string
 			var err error

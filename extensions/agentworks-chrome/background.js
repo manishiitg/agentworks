@@ -126,9 +126,12 @@ let error = '';
 let heartbeat;
 let discover = false;
 let autoAttach = false;
+let serverDiagnostics = false;
 const shared = new Map();
 const sessions = new Map();
 const groups = new Map();
+const diagnostics = [];
+let lastMethod = '';
 let queue = Promise.resolve();
 
 function safeURL(raw) {
@@ -137,6 +140,14 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
+function diagnostic(event, tabId = 0, reason = '', requestId = '') {
+  const record = { event, tab_id: tabId, reason, method: lastMethod, request_id: requestId, at: Date.now() };
+  diagnostics.push(record); if (diagnostics.length > 256) diagnostics.shift();
+  // Fixed lifecycle metadata only: never send CDP arguments, page URLs or tokens.
+  console.info('[CHROME_EXTENSION]', JSON.stringify(record));
+  // Older platforms reject unknown envelope types, so negotiate this channel.
+  if (serverDiagnostics) send({ type: 'diagnostic', ...record });
+}
 function announceTabs() { send({ type: 'tabs', tabs: shared.size, tab_titles: [...shared.values()].map(tab => tab.title || 'Untitled tab') }); if(savedPairings.has(api.scope)){savedTabs.set(api.scope,[...shared.keys()]);return saveRemembered();}return Promise.resolve(); }
 function event(method, params, sessionId) { send({ type: 'cdp', message: { method, params, ...(sessionId ? { sessionId } : {}) } }); }
 function target(tab) { return { targetId: `tab-${tab.id}`, type: 'page', title: tab.title || '', url: tab.url || 'about:blank', attached: sessions.has(`session-${tab.id}`), browserContextId: 'agentworks' }; }
@@ -155,6 +166,7 @@ async function attach(tab) {
     try { await chrome.debugger.attach({ tabId: tab.id }, '1.3'); } catch (e) { if (tabOwners.get(tab.id) === api) tabOwners.delete(tab.id); throw e; }
     if (socket !== connection || !workspace) { try { await chrome.debugger.detach({ tabId: tab.id }); } catch {} if (tabOwners.get(tab.id) === api) tabOwners.delete(tab.id); throw new Error('Chrome connection stopped'); }
     sessions.set(id, { tabId: tab.id });
+    diagnostic('debugger_attached', tab.id);
   }
   return id;
 }
@@ -197,8 +209,9 @@ async function share(tabId) {
   }
   return state();
 }
-async function unshare(tabId) {
+async function unshare(tabId, reason = 'requested_unshare') {
   if (!shared.has(tabId)) return;
+  diagnostic('tab_unshared', tabId, reason);
   shared.delete(tabId);
   for (const [id, debuggee] of sessions) if (debuggee.tabId === tabId) {
     sessions.delete(id); event('Target.detachedFromTarget', { sessionId: id, targetId: `tab-${tabId}` });
@@ -210,8 +223,10 @@ async function unshare(tabId) {
   await announceTabs();
 }
 async function stop(reason = '') {
+  if (socket) diagnostic('connection_stopped');
   const previous = socket; socket = null; workspace = ''; brand = 'AgentWorks'; error = reason;
   clearInterval(heartbeat); discover = false; autoAttach = false;
+  serverDiagnostics = false;
   if (previous) { if (previous.readyState === WebSocket.OPEN) previous.send(JSON.stringify({ type: 'stop' })); previous.close(); }
   const ids = [...tabOwners].filter(([, owner]) => owner === api).map(([id]) => id), previousGroups = new Map(groups); shared.clear(); sessions.clear(); groups.clear();
   await Promise.allSettled(ids.map(async tabId => {
@@ -221,7 +236,7 @@ async function stop(reason = '') {
   }));
   updateBadge();
 }
-function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
+function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, diagnostics: [...diagnostics], tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
 async function connect(raw) {
   const pairing = JSON.parse(raw);
   // Display metadata follows the app's runtime branding; it grants no access.
@@ -242,7 +257,9 @@ async function connect(raw) {
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
       if (e.type === 'paired') {
         clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; brand = displayBrand; error = '';
+        serverDiagnostics = e.diagnostics === true;
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
+        diagnostic('connection_paired');
         updateBadge(); resolve(state());
       } else if (e.type === 'connect-project') {
         const previousScope=selectedScope;
@@ -268,6 +285,7 @@ async function connect(raw) {
 
 async function command(message, active = false) {
   const { method, sessionId, params = {} } = message;
+  lastMethod = /^[A-Za-z]+\.[A-Za-z]+$/.test(method) && method.length <= 80 ? method : '';
   if (!sessionId) {
     switch (method) {
       case 'Browser.getVersion': return { protocolVersion: '1.3', product: navigator.userAgent.match(/Chrome\/[^ ]+/)?.[0] || 'Chrome/125.0.0.0', revision: '', userAgent: navigator.userAgent, jsVersion: '' };
@@ -277,7 +295,7 @@ async function command(message, active = false) {
       case 'Target.setDiscoverTargets': discover = !!params.discover; if (discover) for (const tab of shared.values()) event('Target.targetCreated', { targetInfo: target(tab) }); return {};
       case 'Target.setAutoAttach': autoAttach = !!params.autoAttach; if (autoAttach) for (const tab of shared.values()) { const id = await attach(tab); event('Target.attachedToTarget', { sessionId: id, targetInfo: target(tab), waitingForDebugger: false }); } return {};
       case 'Target.attachToTarget': { const tab = await tabForTarget(params.targetId); return { sessionId: await attach(tab) }; }
-      case 'Target.detachFromTarget': { const src = sessions.get(params.sessionId); if (!src) throw new Error('Session is not shared'); sessions.delete(params.sessionId); await chrome.debugger.detach(src); return {}; }
+      case 'Target.detachFromTarget': { const src = sessions.get(params.sessionId); if (!src) throw new Error('Session is not shared'); diagnostic('session_detach_requested', src.tabId); sessions.delete(params.sessionId); await chrome.debugger.detach(src); return {}; }
       case 'Target.createTarget': {
         if (!workspace || socket?.readyState !== WebSocket.OPEN) throw new Error('Connect first');
         if (shared.size >= 32) throw new Error('Shared tab limit reached');
@@ -285,7 +303,7 @@ async function command(message, active = false) {
         try { await attach(tab); shared.set(tab.id, tab); try { await groupSharedTab(tab.id); } catch (e) { if (!workspace || !shared.has(tab.id)) throw e; error = 'Tab shared, but its group could not be created.'; } await announce(tab); await announceTabs(); return { targetId: `tab-${tab.id}` }; }
         catch (e) { await chrome.tabs.remove(tab.id); throw e; }
       }
-      case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id); await chrome.tabs.remove(tab.id); return { success: true }; }
+      case 'Target.closeTarget': { const tab = await tabForTarget(params.targetId); await unshare(tab.id, 'target_close'); await chrome.tabs.remove(tab.id); return { success: true }; }
       case 'Target.activateTarget': { const tab = await tabForTarget(params.targetId); if (active) await chrome.tabs.update(tab.id, { active: true }); return {}; }
       default: throw new Error(`Unsupported browser operation: ${method}`);
     }
@@ -305,33 +323,38 @@ async function command(message, active = false) {
 async function handleCDP(message, connection, active) {
   if (socket !== connection || !workspace) return;
   if (!message || typeof message.id !== 'number' || typeof message.method !== 'string') return;
-  try { const result = await command(message, active); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
-  catch (e) { if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
+  lastMethod = /^[A-Za-z]+\.[A-Za-z]+$/.test(message.method) && message.method.length <= 80 ? message.method : '';
+  const tabId = sessions.get(message.sessionId)?.tabId || 0, requestId = Number.isSafeInteger(message.id) && message.id >= 0 ? String(message.id) : '';
+  diagnostic('command_started', tabId, '', requestId);
+  try { const result = await command(message, active); diagnostic('command_succeeded', tabId, '', requestId); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
+  catch (e) { diagnostic('command_failed', tabId, /detached/i.test(e.message) ? 'detached' : /not shared/i.test(e.message) ? 'not_shared' : 'other', requestId); if (socket === connection && workspace) send({ type: 'cdp', message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
 }
 
   const api = {
     scope: '', profile: '', connect, state, share, unshare, stop,
     async newtab() { const result = await command({ method:'Target.createTarget', params:{url:'about:blank'} }); const tab = await tabForTarget(result.targetId); await chrome.tabs.update(tab.id,{active:true}); },
     async group() { for (const id of [...shared.keys()]) await groupSharedTab(id); },
+    onDetach(tabId, reason) { diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user'].includes(reason) ? reason : 'other'); void unshare(tabId, 'debugger_detached'); },
+    onRemoved(tabId) { void unshare(tabId, 'tab_closed'); },
     onEvent(source,method,params) {
       if (!shared.has(source.tabId)) return;
       const id = source.sessionId || `session-${source.tabId}`;
-      if (method === 'Target.attachedToTarget') sessions.set(params.sessionId,{tabId:source.tabId,sessionId:params.sessionId});
-      if (method === 'Target.detachedFromTarget') sessions.delete(params.sessionId);
+      if (method === 'Target.attachedToTarget') { diagnostic('child_attached', source.tabId); sessions.set(params.sessionId,{tabId:source.tabId,sessionId:params.sessionId}); }
+      if (method === 'Target.detachedFromTarget') { diagnostic('child_detached', source.tabId); sessions.delete(params.sessionId); }
       event(method,params || {},id);
     },
     onUpdated(tabId,change,tab) {
       if (!shared.has(tabId)) return;
       try { safeURL(tab.pendingUrl || tab.url || 'about:blank'); shared.set(tabId,tab); if(change.url || change.title) {event('Target.targetInfoChanged',{targetInfo:target(tab)});announceTabs();} }
-      catch { void unshare(tabId); }
+      catch { void unshare(tabId, 'unsupported_url'); }
     }
   };
   return api;
 }
 
 chrome.debugger.onEvent.addListener((source,method,params)=>tabOwners.get(source.tabId)?.onEvent(source,method,params));
-chrome.debugger.onDetach.addListener(source=>{const c=tabOwners.get(source.tabId);if(c)void c.unshare(source.tabId);});
-chrome.tabs.onRemoved.addListener(tabId=>{const c=tabOwners.get(tabId);if(c)void c.unshare(tabId);});
+chrome.debugger.onDetach.addListener((source,reason)=>tabOwners.get(source.tabId)?.onDetach(source.tabId,reason));
+chrome.tabs.onRemoved.addListener(tabId=>tabOwners.get(tabId)?.onRemoved(tabId));
 chrome.tabs.onUpdated.addListener((tabId,change,tab)=>tabOwners.get(tabId)?.onUpdated(tabId,change,tab));
 chrome.runtime.onMessage.addListener((request,sender,respond)=>{
  if(sender.id !== chrome.runtime.id) return;

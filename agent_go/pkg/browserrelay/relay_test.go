@@ -1,8 +1,10 @@
 package browserrelay
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,6 +45,10 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	if err := extension.ReadJSON(&reply); err != nil || reply.Type != "paired" {
 		t.Fatalf("pair: %v %+v", err, reply)
 	}
+	if !reply.Diagnostics {
+		t.Fatal("server did not negotiate the optional diagnostics channel")
+	}
+	extension.WriteJSON(envelope{Type: "diagnostic", Event: "command_started", Method: "Page.navigate", TabID: 123, RequestID: "42"})
 	extension.WriteJSON(envelope{Type: "tabs", Tabs: 1})
 	if m.Lookup("bob", "project-one") != nil || m.Lookup("alice", "project-two") != nil {
 		t.Fatal("cross-account or cross-workspace lookup")
@@ -203,6 +209,29 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	binding := m.Lookup("alice", "project-one")
 	if remaining := time.Until(binding.expires); remaining <= 7*time.Hour || remaining > ConnectionLifetime {
 		t.Fatal("live authority lifetime changed", remaining)
+	}
+}
+
+func TestExtensionDiagnosticsExcludePayloadsAndInvalidFields(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	e := envelope{Type: "diagnostic", Event: "debugger_detached", Reason: "canceled_by_user", Method: "Page.navigate", TabID: 123, RequestID: "42", Token: "private-token", URL: "https://private.example/page", Error: "private-error", Message: json.RawMessage(`{"page":"private-content"}`)}
+	logExtensionDiagnostic("project-one", "ext-connection", e)
+	for _, expected := range []string{"debugger_detached", "canceled_by_user", "Page.navigate", "tab_id=123", "request_id=42"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("missing metadata %q: %s", expected, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "private-") || strings.Contains(output.String(), "private.example") {
+		t.Fatal("diagnostic logged a payload")
+	}
+	output.Reset()
+	e.Method = "Page.navigate\nprivate-token"
+	logExtensionDiagnostic("project-one", "ext-connection", e)
+	if output.Len() != 0 {
+		t.Fatal("invalid protocol metadata was logged")
 	}
 }
 

@@ -5,7 +5,7 @@ import { Button } from '../ui/Button'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
 
 export interface ChromeExtensionStatus {
-  selected: boolean; connected: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
+  selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
 }
 const emptyStatus: ChromeExtensionStatus = { selected: false, connected: false, tabs: 0 }
 
@@ -53,6 +53,15 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
     return () => { alive = false; window.clearInterval(timer) }
   }, [workspacePath, profileId, readOnly])
 
+  const connect = async () => {
+    const turn = generation.current
+    revision.current += 1; setBusy(true); setError('')
+    try {
+      const { data } = await api.post<ChromeExtensionStatus>('/api/browser/extension', { action: 'connect' }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
+      if (generation.current === turn) setStatus(data)
+    } catch { if (generation.current === turn) setError('Could not connect this project. Please try again.') }
+    finally { if (generation.current === turn) setBusy(false) }
+  }
   const disconnect = async () => {
     const turn = generation.current
     revision.current += 1; setBusy(true); setError('')
@@ -85,12 +94,12 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
     } catch { if (generation.current === turn) setError('Could not create the connection. Please try again.') }
     finally { if (generation.current === turn) setBusy(false) }
   }
-  return { status, loading, pairing, busy, error: error || checkingError, copied, manual, setManual, copy, disconnect, download }
+  return { status, loading, pairing, busy, error: error || checkingError, copied, manual, setManual, copy, connect, disconnect, download }
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
 export function ChromeExtensionConnection({ connection }: { connection: ChromeExtensionController }) {
-  const { status, pairing, busy, error, copied, manual, setManual, copy, download } = connection
+  const { status, pairing, busy, error, copied, manual, setManual, copy, connect, download } = connection
   const [installBrowser, setInstallBrowser] = useState(navigator.userAgent.includes('Edg') ? 'edge' : 'chrome')
   const [reconnect, setReconnect] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -107,7 +116,11 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
       </div>
       <p className="mt-1 break-words text-xs text-muted-foreground">{status.connected ? status.tabs > 0 ? `${status.tabs} shared ${status.tabs === 1 ? 'tab is' : 'tabs are'} ready for your agent.` : 'Your agent can create its own tabs. Sharing an already-open tab is optional.' : 'Browser actions are paused until you reconnect.'}</p>
     </div>}
-    {setup && <ol className="space-y-4">
+    {setup && status.account_connected && !reconnect && !pairing ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+      <p className="text-sm font-medium">Your browser is already connected</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">Use it for this project. Your agent will create its own tabs; other projects keep their tabs.</p>
+      <Button size="sm" disabled={busy} onClick={() => { void connect() }}>{busy && <Loader2 className="animate-spin" />}Use connected browser</Button>
+    </div> : setup && <ol className="space-y-4">
       <li className="flex gap-3">
         <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-xs font-medium text-muted-foreground">1</span>
         <div className="min-w-0 flex-1 space-y-2">

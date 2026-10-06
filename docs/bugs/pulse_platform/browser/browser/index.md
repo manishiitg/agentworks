@@ -4,7 +4,8 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-569](plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | open | P1 |
+| [PLAT-570](plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 |
+| [PLAT-569](plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | in progress | P1 |
 | [PLAT-550](plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 |
 | [PLAT-549](plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 |
 | [PLAT-546](plat-546.md) | Workflow steps fall back to local CDP instead of the selected extension | fixed on main | P2 |

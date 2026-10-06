@@ -81,6 +81,27 @@ func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
 	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "paired" {
 		t.Fatal("Code socket authorization", err, reply)
 	}
+	// Choosing Chrome in Crew reuses the live account browser without exposing
+	// or requiring another copy/paste of the credential.
+	crewStatus := browserrelay.Default.Status("alice", crewCode.Scope)
+	if !crewStatus.AccountConnected || crewStatus.Connected || browserrelay.Default.Status("bob", crewCode.Scope).AccountConnected {
+		t.Fatal("account availability leaked or pretended Crew was connected")
+	}
+	r := httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"connect"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}))
+	w := httptest.NewRecorder()
+	api.handleBrowserExtension(w, r)
+	if w.Code != 200 || strings.Contains(w.Body.String(), result.Token) || strings.Contains(w.Body.String(), `"token"`) {
+		t.Fatalf("connected Crew response returned a credential: %d", w.Code)
+	}
+	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "connect-project" || reply["scope"] != crewCode.Scope {
+		t.Fatal("Crew did not reuse Code's account browser", err, reply)
+	}
+	r = httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"connect"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "bob"}))
+	w = httptest.NewRecorder()
+	api.handleBrowserExtension(w, r)
+	if w.Code != 403 {
+		t.Fatal("Crew reader could connect the owner's browser")
+	}
 	connection.WriteJSON(map[string]string{"type": "ping"})
 	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "pong" {
 		t.Fatal("authorized heartbeat", err, reply)

@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Show the account browser without choosing it for every project
+
+Keep the explicit browser picker in Code, Crew and workflows. Show a green
+account connection indicator even when that project has not selected Chrome.
+Choosing Chrome reuses the live account connection without another token paste;
+opening the panel never changes browser mode or shares another project's tabs.
+Why: account pairing and project browser choice are separate user decisions.
+Ticket: [PLAT-570](bugs/pulse_platform/browser/browser/plat-570.md).
+
 ### 2026-10-06 — A new broken reference makes Plan Drift due, whoever wrote the file
 
 What: the Go side compares the workflow's broken references with those it saw last time; a new one flags its step

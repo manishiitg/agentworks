@@ -195,7 +195,11 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("node", filepath.Join(project, "scripts/test-chrome-extension-e2e.mjs"))
+	driver := "test-chrome-extension-e2e.mjs"
+	if os.Getenv("CHROME_EXTENSION_E2E_STANDALONE") == "1" {
+		driver = "test-chrome-extension-standalone.mjs"
+	}
+	cmd := exec.Command("node", filepath.Join(project, "scripts", driver))
 	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))

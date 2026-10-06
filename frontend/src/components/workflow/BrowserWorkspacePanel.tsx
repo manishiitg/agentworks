@@ -67,7 +67,11 @@ export function BrowserWorkspacePanel({
     return () => window.removeEventListener('keydown', escape)
   }, [settingsOpen])
   const changeChoice = async (next: BrowserChoice) => {
-    if (next === 'extension') { setExtensionSetup(true); return }
+    if (next === 'extension') {
+      setExtensionSetup(true)
+      if (connection.status.account_connected && !connection.status.connected) await connection.connect()
+      return
+    }
     if (connection.status.selected && !await connection.disconnect()) return
     setExtensionSetup(false); onBrowserModeChange(next)
   }
@@ -76,11 +80,11 @@ export function BrowserWorkspacePanel({
     <div className="space-y-2">
       {([
         {value:'headless', title:'Workspace browser', description:`A separate browser for this ${scopeNoun}. Watch and control it here.`, icon:Monitor},
-        ...(extensionAvailable ? [{value:'extension', title:'My Chrome or Edge', description:'Use your signed-in tabs with the AgentWorks extension.', icon:PlugZap}] : []),
+        ...(extensionAvailable ? [{value:'extension', title:'My Chrome or Edge', description:connection.status.account_connected ? `Your browser is connected. Use it for this ${scopeNoun} with separate tabs.` : 'Use your signed-in tabs with the AgentWorks extension.', icon:PlugZap}] : []),
         ...(isBrowserCDPEnabled() ? [{value:'cdp', title:'Chrome · direct connection', description:'Connect to Chrome running on this machine.', icon:Settings2}] : []),
       ] as const).map(option => <Button type="button" variant="ghost" key={option.value} disabled={connection.busy} onClick={() => { void changeChoice(option.value as BrowserChoice).then(() => setSettingsOpen(true)) }} className="flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-xl border border-border bg-muted/20 p-4 text-left font-normal transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
         <option.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.description}</span></span>
+        <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 text-sm font-medium">{option.title}{option.value === 'extension' && connection.status.account_connected && <span className="inline-flex items-center gap-1.5 text-[11px] font-normal text-emerald-600 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Connected to your account</span>}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.description}</span></span>
         <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </Button>)}
     </div>
@@ -155,6 +159,7 @@ export function BrowserWorkspacePanel({
             onBrowserChoiceChange={next => { void changeChoice(next) }}
             allowAutomatic={profileId !== 'code'}
             extensionAvailable={extensionAvailable}
+            extensionConnected={connection.status.account_connected}
             extensionContent={<ChromeExtensionConnection connection={connection} />}
             cdpPort={cdpPort}
             onCdpPortChange={onCdpPortChange}

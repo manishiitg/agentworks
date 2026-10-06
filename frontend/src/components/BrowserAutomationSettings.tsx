@@ -35,6 +35,7 @@ interface BrowserAutomationSettingsProps {
   onBrowserChoiceChange?: (choice: BrowserChoice) => void
   allowAutomatic?: boolean
   extensionAvailable?: boolean
+  extensionConnected?: boolean
   extensionContent?: React.ReactNode
   readOnly?: boolean
   scopeNoun?: 'workflow' | 'project'
@@ -89,7 +90,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   cdpError,
   cdpChecking,
   onCheckCdpConnection,
-  browserChoice, onBrowserChoiceChange, allowAutomatic = true, extensionAvailable = false, extensionContent,
+  browserChoice, onBrowserChoiceChange, allowAutomatic = true, extensionAvailable = false, extensionConnected = false, extensionContent,
   readOnly = false,
   scopeNoun = 'workflow',
 }) => {
@@ -128,9 +129,10 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
           }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
             {allowAutomatic && <option value="auto">Automatic (recommended)</option>}
             <option value="headless">Workspace browser</option>
-            {extensionAvailable && <option value="extension">My Chrome or Edge · extension</option>}
+            {extensionAvailable && <option value="extension">My Chrome or Edge · extension{extensionConnected ? ' · Connected' : ''}</option>}
             {cdpEnabled && <option value="cdp">Chrome · direct connection</option>}
           </select>
+          {extensionAvailable && extensionConnected && choice !== 'extension' && <p className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />My Chrome or Edge is connected to your account.</p>}
           {choice !== 'extension' && <p className="text-xs leading-relaxed text-muted-foreground">
             {choice === 'cdp' ? 'Connect directly to Chrome on this machine using the advanced settings below.' : choice === 'headless' ? `Uses a dedicated browser for this ${scopeNoun}. Sign in from its live view.` : cdpEnabled ? 'Uses your direct Chrome connection when available, otherwise starts a workspace browser.' : `Starts a browser for this ${scopeNoun} when your agent needs it.`}
           </p>}
