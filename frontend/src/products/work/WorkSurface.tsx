@@ -4,6 +4,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
+import { NewTabHint } from '../../components/chat/ShortcutHint'
 import { ProductIntro } from '../../components/ProductIntro'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
@@ -37,7 +38,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -422,8 +423,12 @@ function useWorkChatTab(
         const matching = findCanonicalWorkProjectTab(chatStore.chatTabs, target.id, conversation.session_id)
         if (matching) chatStore.setTabMetadata(matching.tabId, projectMetadata)
 
+        const previousActiveTabId = useChatStore.getState().activeTabId
         const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id)
         if (cancelled) return
+        // createChatTab activates the primary; keep a side chat the user picked (PLAT-571).
+        const keepActive = workTabToKeepActive(useChatStore.getState().chatTabs, previousActiveTabId, target.id, canonicalTabId)
+        if (keepActive) activateTab(keepActive)
         chatStore.renameTab(canonicalTabId, 'Chat')
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
         chatStore.setTabConfig(canonicalTabId, { selectedServers: savedServers, selectedSkills: savedSkills })
@@ -637,6 +642,7 @@ function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: P
         'Build, run, test and debug in the workspace terminal',
         'Call your Crews and workflows when it needs them',
       ]}
+      shortcutHint={<NewTabHint />}
     />
   }
   if (sharedBy) {
@@ -649,6 +655,7 @@ function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: P
         'Run its attached workflows when you ask',
       ]}
       footer="Your conversation stays private to you — the owner never sees it."
+      shortcutHint
     />
   }
   return <ProductChatLandingCard
@@ -659,6 +666,7 @@ function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: P
       'Work with project files, code, browser, terminal, and connected tools',
       'Create dashboards, schedules, webhooks, bots, or project memory',
     ]}
+    shortcutHint
   />
 }
 

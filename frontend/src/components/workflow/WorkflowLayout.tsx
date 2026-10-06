@@ -1,4 +1,5 @@
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
+import { ShortcutHint } from '../chat/ShortcutHint'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
@@ -129,6 +130,7 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolea
           <li>• Review a run, investigate a problem, or improve the workflow</li>
         </>}
       </ul>
+      <ShortcutHint />
     </div>
   </div>
 )

@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | code |
 | Area | frontend-chat |
-| Summary | Up to 3 extra full chats per Code project, renamable; the primary chat keeps Slack, WhatsApp, MCP, schedules and triggers |
+| Summary | Up to 4 extra full chats per Code project (5 in all), renamable; the primary chat keeps Slack, WhatsApp, MCP, schedules and triggers |
 
 ## What is wanted
 
@@ -86,3 +86,12 @@ tab-helper and quick-switcher tests pass.
 ## RTS test notes
 
 - 2026-10-06: deployed to RTS (`016e738`) for the owner's test. Owner: make the "+" more prominent; it is now a primary-coloured "New tab" pill (label avoids "New chat", which replaces the primary conversation).
+
+## Follow-ups (2026-10-06)
+
+- Owner: at most 5 tabs by default. `WORK_SIDE_CHAT_LIMIT` is 4 (the primary plus four side chats).
+- Owner: from a Crew, picking a Code side chat (Ctrl+K) opened the primary instead. Opening Code prepares the
+  primary chat, and `createChatTab` reusing its tab makes it active. `workTabToKeepActive` keeps a chat of the same
+  project the user had picked; switching inside Code was unaffected because the preparation does not re-run there.
+  Pinned in `workChatTabSelection.test.ts`. To check on RTS with the rest.
+- Owner, 2026-10-06 (RTS): "tabs seem to work well for now" in their testing.

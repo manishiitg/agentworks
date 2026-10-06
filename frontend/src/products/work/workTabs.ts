@@ -28,7 +28,8 @@ export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
 // running several agents on one repository locally. Each has its own server
 // conversation keyed `<projectId>:chat:<id>`; the primary chat (key = projectId)
 // keeps every channel, MCP call, schedule, trigger and Pulse message.
-export const WORK_SIDE_CHAT_LIMIT = 3
+// Five chats per project by default: the primary and up to four side chats.
+export const WORK_SIDE_CHAT_LIMIT = 4
 
 export function workSideChatKey(projectId: string, id: string): string {
   return `${projectId}:chat:${id}`
@@ -38,6 +39,22 @@ export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string):
   const key = tab?.metadata?.agentProfileConversationKey
   if (!tab || !key || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
   return projectId ? key.startsWith(`${projectId}:chat:`) : /:chat:[^:]+$/.test(key)
+}
+
+/**
+ * Preparing a project's primary chat reuses its tab, which makes that tab
+ * active. When the user had picked another chat of the same project (a side
+ * chat from Ctrl+K while in another product), that choice must survive.
+ */
+export function workTabToKeepActive(
+  tabs: Record<string, ChatTab>,
+  previousActiveTabId: string | null | undefined,
+  projectId: string,
+  canonicalTabId: string,
+): string | undefined {
+  const previous = previousActiveTabId ? tabs[previousActiveTabId] : undefined
+  if (!previous || previous.tabId === canonicalTabId || !belongsToWorkProject(previous, projectId)) return undefined
+  return previous.tabId
 }
 
 /** Find the local projection of the server-owned conversation for this project. */
