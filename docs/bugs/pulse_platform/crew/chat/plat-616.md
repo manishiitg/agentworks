@@ -1,6 +1,6 @@
 [← crew / chat](index.md)
 
-# PLAT-614: Distinguish shared provider account identity from the Crew user and Gmail mailbox
+# PLAT-616: Distinguish shared provider account identity from the Crew user and Gmail mailbox
 
 | Field | Value |
 |---|---|

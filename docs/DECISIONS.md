@@ -32,7 +32,7 @@ Supply the authenticated AgentWorks user to product prompts, as workflow chats
 already do. A provider login or billing email identifies neither the app user
 nor a connected mailbox. Gmail skills require verified scoped account evidence.
 Why: a Crew suggested the Claude account email despite no Gmail connections.
-Ticket: [PLAT-614](bugs/pulse_platform/crew/chat/plat-614.md).
+Ticket: [PLAT-616](bugs/pulse_platform/crew/chat/plat-616.md).
 
 ### 2026-10-06 — AGY warmup publishes its ready terminal before live input
 

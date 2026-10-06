@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-614](plat-614.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | fixed on main | P2 |
+| [PLAT-616](plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | fixed on main | P2 |
