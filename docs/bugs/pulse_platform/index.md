@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 72 | 12 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 72 | 11 |
 | [Brain](brain/index.md) | 17 | 2 |
 | [Browser and browser automation](browser/index.md) | 41 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
@@ -27,7 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | in progress | P2 | [app/workspaces](app/workspaces/index.md) |
+| [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |
 | [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |
 | [PLAT-595](code/terminal/plat-595.md) | Keyboard paste is intercepted or sent as a control key in Code terminals | deployed | P2 | [code/terminal](code/terminal/index.md) |
 | [PLAT-594](crew/frontend-chat/plat-594.md) | Show installed template setup progress and exclude optional checks from completion | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |

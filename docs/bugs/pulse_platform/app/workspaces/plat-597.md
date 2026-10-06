@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | deployed |
 | Priority | P2 |
 | Product | app |
 | Area | workspaces |
-| Summary | Folder deletion now removes the workspace atomically and reports any private sandbox files awaiting administrator cleanup; verified locally and through a real Linux service, deployment pending. |
+| Summary | Atomic workspace deletion and accurate cleanup warnings are deployed and verified on Excellence and Confida. |
 
 ## What happened
 
@@ -53,7 +53,23 @@ Verification:
 
 ## Left
 
-- Deploy to Excellence and Confida and verify the actual workflow API with a
-  disposable, explicitly owned regression workspace.
-- Historical partially deleted folders are not automatically removed or
-  recovered by this fix. Existing user files were not touched during testing.
+No remaining implementation/deployment work for the reported failure.
+Historical partially deleted folders are not automatically removed or recovered
+by this fix. Existing user files were not touched during testing.
+
+## Deployed verification — 2026-10-06
+
+Source commit `ebd8c2e28f445ba9aa55b5b36fab61c882634f90`; shared build
+`ebd8c2e2-20261006101726`.
+
+- Excellence: `agents-ebd8c2e2-20261006122226`.
+- Confida: `confida-ebd8c2e2-20261006122503`.
+- Both guarded deployments completed; running configuration checks and public
+  `/api/health` passed (200), including the full slot checks.
+- Both actual authenticated `/api/workflows/folder` APIs were exercised with
+  unique disposable workflows explicitly owned by an active administrator,
+  containing slot-owned 0700 private fixture directories. Both returned 200,
+  `success=true`, `cleanup_pending=true`, and the administrator-cleanup message;
+  original workspace paths were absent, remnants were isolated outside docs in
+  service-owned 0700 staging. Fixture remnants were removed afterward by the
+  operator. No bearer tokens or fixture credentials were printed or persisted.

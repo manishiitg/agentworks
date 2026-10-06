@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-597](plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | in progress | P2 |
+| [PLAT-597](plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 |
