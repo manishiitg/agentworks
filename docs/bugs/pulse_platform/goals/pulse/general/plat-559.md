@@ -14,6 +14,30 @@
 
 ## Fix
 
+## What Technical actually finds (Upwork, 2026-10-06)
+
+Owner: "if technical review is finding bugs, something is wrong ... ideally builder should write the perfect plan and drift should optimize; the technical reviewer should be finding zero bugs ideally."
+
+Upwork has 354 Pulse issues (322 workflow, 32 harness) and 227 fix attempts (187 by Technical). A random sample of 50 issues, classified by reading each description (rough):
+
+| Root cause | Share |
+|---|---|
+| Changes not carried through to dependent steps, evals and notes (inputs naming removed steps, evals checking old paths or lengths, KB vs soul.md rate conflict, stale guidance) | ~32% |
+| Platform bugs (`query_workflow_db` two response shapes, `run_full_workflow` dropping an override, snapshot overflow, eval trigger not firing for scheduled runs, platform DB detail leaking into steps) | ~20% |
+| Plan written wrong (schema pattern forcing a token the DB never holds, picked=false still running costly steps, report counting error rows as bids, missing `proposal_url`) | ~20% |
+| Not bugs: notes and record-keeping ("correcting the record", "checked and clean", "expected by design") | ~16% |
+| Not bugs: strategy and cost (zero proposals for 5 days, $52 per proposal, scan cadence, backup models) | ~12% |
+
+## Goal: Technical finds close to zero workflow bugs
+
+Measured per workflow: workflow-caused issues found by QA per week, by root cause. Three changes get there:
+
+1. **Edit-time dependency updates.** A plan edit lists its dependents (consumers of a changed output, evals that check it, notes and guides that state the same rule, soul.md for business rules) in the edit response, and the editor updates them in the same change. Drift's job is done at edit time, not discovered later by QA.
+2. **Platform problems become platform tickets**, filed once and fixed in the platform, never patched or worked around per workflow (proposal item 4).
+3. **The builder tests before saving.** A changed step runs once in test mode (proposal item 1) before the change counts as done, so authoring bugs surface at authoring time.
+Notes and strategy items stop being "issues": the single work-item record (proposal) keeps notes as notes and routes strategy to Product.
+What is left for QA is the outside world changing (site changes, account restrictions, external failures).
+
 ## Left
 
 ## Source

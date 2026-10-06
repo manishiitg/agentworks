@@ -82,6 +82,15 @@ Inputs, Output, Rules, Done when, Guides. Procedures move into skill references 
    workflow. The Engineer files it instead of patching.
 5. **Learn from reverts.** A reverted fix records why, so the next attempt does not repeat it.
 
+## Goal for QA: close to zero workflow bugs
+
+A sample of Upwork's Pulse issues (PLAT-559) shows only about one in five is a bug in the plan as written:
+~32% are changes not carried through to dependents, ~20% platform bugs, ~28% notes or strategy filed as issues.
+So: (1) plan edits list and update their dependents in the same change; (2) platform problems become one
+platform ticket and fix, never per-workflow patches; (3) the builder runs a changed step once in test mode
+before the change counts as done. The measure is workflow-caused issues found by QA per week; the target is
+close to zero, leaving QA with the outside world changing.
+
 ## Migration
 
 1. Map existing records into work items (open findings/issues -> open; pending decisions -> needs_owner;
