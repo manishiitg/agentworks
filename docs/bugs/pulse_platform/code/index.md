@@ -5,4 +5,5 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [browser](browser/index.md) | 1 | 0 |
-| [frontend-chat](frontend-chat/index.md) | 1 | 0 |
+| [chat](chat/index.md) | 0 | 0 |
+| [frontend-chat](frontend-chat/index.md) | 2 | 1 |

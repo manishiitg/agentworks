@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-571](plat-571.md) | Code side-chat tabs (parked) | open | P3 |
 | [PLAT-403](plat-403.md) | Code terminal: a shell as the person's own account, tabs, colours, copy and scrolling | fixed on main | P2 |
