@@ -117,7 +117,9 @@ names again and the producers list the files (`search-find-and-shortlist`, `bid-
 description tweak on `bid-pick-job` was kept. Code: the `dependency_not_staged` detail now says how to fix it, a new
 `relative_dependency_unresolved` break flags a scripted step whose `../` dependency its `main.py` does not resolve
 (checked: it flags the post-Drift plan and nothing on the repaired one), and the Drift guidance forbids the rewrite.
-Not yet run end to end: `bid-record` in test mode with `source_run=iteration-26-sched/daily-bid`.
+Verified 2026-10-06 in the owner's local app: `bid-record` in test mode, from a replay copy of the last real run with its
+files placed where the current plan expects them, resolved all six bare inputs and completed; 2 database writes went to
+the test copy, the real database was unchanged. The first real `daily-bid` run since the merge is still to come.
 
 
 ## Step-id dependencies (2026-10-06)

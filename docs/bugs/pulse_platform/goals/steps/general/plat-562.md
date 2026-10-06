@@ -73,3 +73,7 @@ complete of the ten newest real runs of the group (most populated step folders, 
 takes an optional `source_run` (`<iteration>/<group>`, validated: no `..`, no absolute path, no `test-` run, must have
 an `execution` folder). The receipt records `source_run`. One test pins the choice.
 
+Verified live 2026-10-06 (owner's local app): `bid-record` with `source_run=replay-iteration-26/daily-bid` succeeded;
+the receipt recorded the source and 2 database actions, both on the test copy; the real database and the live run
+folders were unchanged. A replay after a plan change needs a run whose files match the current plan.
+
