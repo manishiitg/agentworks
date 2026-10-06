@@ -13,6 +13,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -325,5 +326,48 @@ func TestBrainProjectAccessModes(t *testing.T) {
 	setMode("off")
 	if _, err := read(run, map[string]any{"action": "read", "entry_id": shared}); err == nil {
 		t.Fatal("turning Brain off did not stop reads")
+	}
+}
+
+// Pins the owner decision that Code projects get Brain like workflows and Crews: open by default, acting as their
+// owner. A Code project is private, so its owner is its whole audience.
+func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
+	service, admin, _, folderID := knowledgeIntegrationFixture(t)
+	root := os.Getenv("WORKSPACE_DOCS_PATH")
+	code := "_users/admin/" + workspaceref.CodeProjectsRoot + "/payments-code"
+	if err := os.MkdirAll(filepath.Join(root, code), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"workflow.json", "product.json"} {
+		if err := os.WriteFile(filepath.Join(root, code, file), []byte(`{"id":"code-payments","owner_id":"admin","product":"code"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project, err := knowledgeProjectLoad(t.Context(), "admin", code, true)
+	if err != nil {
+		t.Fatal("Code project refused:", err)
+	}
+	if project.BrainMode() != "write" || len(project.Audience) != 1 || project.Audience[0] != "admin" {
+		t.Fatalf("Code project: mode %q audience %v", project.BrainMode(), project.Audience)
+	}
+	seed, err := service.CallTool(t.Context(), admin, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "code.md", "title": "Code", "type": "note", "content": "code-marker", "request_id": "code-seed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := "brain-code"
+	common.SetSessionWorkingDir(session, code)
+	defer common.ClearSessionShellConfig(session)
+	_, executors, _ := createKnowledgebaseTools("admin", session, code)
+	read, ok := executors["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	update, writable := executors["update_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	if !ok || !writable {
+		t.Fatal("a Code session got no Brain tools")
+	}
+	run := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, session), "admin")
+	if out, err := read(run, map[string]any{"action": "read", "entry_id": knowledgeMap(seed)["entry_id"]}); err != nil || !strings.Contains(out, "code-marker") {
+		t.Fatalf("Code could not read Brain: %s %v", out, err)
+	}
+	if _, err := update(run, map[string]any{"action": "create", "folder_id": folderID, "filename": "from-code.md", "title": "From Code", "type": "note", "content": "written by Code", "request_id": "code-write"}); err != nil {
+		t.Fatal("Code could not write to Brain:", err)
 	}
 }

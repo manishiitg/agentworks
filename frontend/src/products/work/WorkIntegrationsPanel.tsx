@@ -45,7 +45,7 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
 // the shared MCP browser, scoped to this Code's private and permitted Vault connections;
 // the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
 // Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'brain'])
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
   view?: 'connected' | 'available'

@@ -56,8 +56,8 @@ func knowledgeHash(v any) string {
 
 func knowledgeProjectLoad(ctx context.Context, userID, workspace string, requireOwner bool) (*knowledgeProject, error) {
 	kind, root := common.ClassifySessionWorkspace(userID, workspace)
-	if kind == common.SessionWorkspaceUnknown || isCodeProjectPath(workspace) {
-		return nil, fmt.Errorf("an owned workflow or Crew workspace is required")
+	if kind == common.SessionWorkspaceUnknown {
+		return nil, fmt.Errorf("an owned workflow, Crew or Code workspace is required")
 	}
 	if kind == common.SessionWorkspaceCrewProject {
 		owner := userID
@@ -130,7 +130,8 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		}
 		p.Owners = []string{owner}
 		p.Audience = append([]string{}, p.Owners...)
-		if projectSharingEnabled() {
+		// A Code project is private to its owner, so its owner is its whole audience; a Crew can be shared.
+		if projectSharingEnabled() && !isCodeProjectPath(root) {
 			directory, err := loadUserDirectory()
 			if err != nil || directory == nil {
 				return nil, fmt.Errorf("Crew audience is unavailable")
@@ -162,6 +163,9 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProject) error {
 	if claims := GetUserFromContext(ctx); claims != nil {
 		product := "work"
+		if isCodeProjectPath(project.Workspace) {
+			product = "code"
+		}
 		if project.Kind == string(common.SessionWorkspaceWorkflow) {
 			product = "agentworks"
 			var kind string
@@ -182,6 +186,10 @@ func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProj
 		allowed := token.BuilderAccess() && token.AllowsWorkflow(project.ID)
 		if project.Kind != string(common.SessionWorkspaceWorkflow) {
 			allowed = token.Allows("crews:read") && token.Allows("crews:write") && token.AllowsCrew(project.ID)
+		}
+		// A Code project is private and has no connection scope: it is set up in the app or its own Code chat.
+		if isCodeProjectPath(project.Workspace) {
+			allowed = false
 		}
 		if !allowed {
 			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "This connection does not authorize this project."}
@@ -207,8 +215,8 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 		workspace = cfg.WorkingDir
 	}
 	kind, _ := common.ClassifySessionWorkspace(userID, workspace)
-	if kind == common.SessionWorkspaceUnknown || isCodeProjectPath(workspace) {
-		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A bound workflow or Crew session is required."}
+	if kind == common.SessionWorkspaceUnknown {
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow, Crew or Code session is required."}
 	}
 	project, err := knowledgeProjectLoad(ctx, userID, workspace, false)
 	if err != nil {
