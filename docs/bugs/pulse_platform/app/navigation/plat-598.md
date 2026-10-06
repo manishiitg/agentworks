@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | app |
 | Area | navigation |
@@ -36,4 +36,11 @@ and no authenticated backend; configuring connections was not exercised.
 
 ## Left
 
-Deploy to Excellence.
+No implementation or deployment work remains. The local browser check used a fixture; authenticated connection setup was outside this change.
+
+## Deployment evidence — 2026-10-06
+
+Excellence release `agents-4e94bdea-20261006122619` records builder revision
+`4e94bdea98`, containing this change and PLAT-589/591/594/595. Frontend build,
+catalog and bundle checks passed. Public health is 200; slot self-test passed
+with 156 passed, zero failed, 16 skipped.
