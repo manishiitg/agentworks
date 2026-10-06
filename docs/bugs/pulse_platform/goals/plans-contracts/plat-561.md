@@ -119,3 +119,11 @@ description tweak on `bid-pick-job` was kept. Code: the `dependency_not_staged` 
 (checked: it flags the post-Drift plan and nothing on the repaired one), and the Drift guidance forbids the rewrite.
 Not yet run end to end: `bid-record` in test mode with `source_run=iteration-26-sched/daily-bid`.
 
+
+## Step-id dependencies (2026-10-06)
+
+A scan of all local workflows reported three `dependency_unproduced` breaks on linkedin. Two were the map's mistake: a
+dependency may name an earlier step's id, which the platform expands to that step's `context_output` files
+(`ResolveDependencyPathCandidates`). The map now accepts that form and only breaks when the named step lists no
+`context_output` (`dependency_step_without_output`). One test pins it. Across the 18 local workflows the run-breaking
+dependency kinds are otherwise clean except Upwork's eval reading a deleted step folder.

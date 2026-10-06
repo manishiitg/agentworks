@@ -442,6 +442,15 @@ func (m *referenceMap) checkDependencies() {
 			if len(m.producer[dep]) > 0 {
 				continue
 			}
+			// A dependency naming an earlier step's id means that step's context_output
+			// files (ResolveDependencyPathCandidates), so it resolves when the step has one.
+			if p := m.steps[dep]; p != nil && p != s {
+				if len(p.outputs) == 0 {
+					m.add(RefMapIssue{Kind: "dependency_step_without_output", Severity: refSeverityBreak, Source: "step:" + s.id, Ref: dep,
+						Detail: fmt.Sprintf("context_dependencies names step %s, which lists no context_output, so there is nothing to read", dep)})
+				}
+				continue
+			}
 			if declarers := m.declarer[dep]; len(declarers) > 0 {
 				// Dependencies resolve only against a producer's context_output.
 				// A scripted/agent step then gets a path in its own folder

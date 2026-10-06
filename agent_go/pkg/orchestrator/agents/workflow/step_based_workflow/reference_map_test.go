@@ -70,3 +70,30 @@ func TestReferenceMapReportsChangesNotCarriedThrough(t *testing.T) {
 		t.Errorf("no-op edit got a note: %q", out)
 	}
 }
+
+// A dependency may name an earlier step's id, which resolves to that step's
+// context_output files. Only a step that outputs nothing is a break.
+func TestReferenceMapAcceptsStepIDDependencies(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "planning"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plan := `{"steps":[
+	 {"type":"regular","id":"step-a","description":"A.","context_output":"a.json"},
+	 {"type":"regular","id":"step-quiet","description":"Q."},
+	 {"type":"regular","id":"step-c","description":"C.","context_dependencies":["step-a","step-quiet"],"context_output":"c.json"}]}`
+	if err := os.WriteFile(filepath.Join(root, "planning", "plan.json"), []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := BuildReferenceMap(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, issue := range report.Issues {
+		got[issue.Kind+" "+issue.Ref] = true
+	}
+	if got["dependency_unproduced step-a"] || !got["dependency_step_without_output step-quiet"] {
+		t.Fatalf("step id dependencies: %v", got)
+	}
+}
