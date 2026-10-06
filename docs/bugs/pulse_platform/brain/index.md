@@ -4,6 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
+| [chat](chat/index.md) | 1 | 0 |
 | [learnings-knowledge](learnings-knowledge/index.md) | 9 | 2 |
 | [plans-contracts](plans-contracts/index.md) | 1 | 0 |
 | [pulse-governance](pulse-governance/index.md) | 1 | 0 |

@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 68 | 11 |
-| [Brain](brain/index.md) | 13 | 2 |
+| [Brain](brain/index.md) | 14 | 2 |
 | [Browser and browser automation](browser/index.md) | 31 | 10 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
 | [Code](code/index.md) | 2 | 0 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |
 | [PLAT-559](goals/pulse/general/plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-558](app/navigation/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-557](brain/learnings-knowledge/plat-557.md) | Brain restricted folders (private folders inside shared ones) | open | P3 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-523](browser/browser/plat-523.md) | Browser dead-session recovery can misclassify unrelated errors | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-522](browser/browser/plat-522.md) | Browser cleanup trusts persisted process IDs before signaling | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-521](browser/browser/plat-521.md) | Global browser capacity eviction stops unrelated sessions | open | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-520](browser/browser/plat-520.md) | Shared direct-CDP callers can select other owners’ tabs | open | P1 | [browser/browser](browser/browser/index.md) |
