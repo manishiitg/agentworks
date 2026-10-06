@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"unicode/utf8"
 )
 
 // InstalledSkillFile mirrors mcpagent's read_skill fallback payload without
@@ -52,49 +53,25 @@ func NewInstalledSkillReader(workspaceAPIURL, workspacePath string) func(string,
 				AvailableFiles: installedSkillFileNames(workspaceAPIURL, workspacePath, name),
 			}, nil
 		}
-
-		client := NewWorkspaceAPIClient(workspaceAPIURL)
-		for _, base := range skillSearchBases(workspacePath) {
-			content, err := client.ReadFile(path.Join(base, name, clean))
-			if err == nil {
-				return InstalledSkillFile{
-					Content:        content,
-					AvailableFiles: installedSkillFileNames(workspaceAPIURL, workspacePath, name),
-				}, nil
+		for _, file := range loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, name) {
+			if file.RelPath == clean {
+				if !utf8.Valid(file.Content) {
+					return InstalledSkillFile{}, fmt.Errorf("cannot read binary skill file as text")
+				}
+				return InstalledSkillFile{Content: string(file.Content), AvailableFiles: installedSkillFileNames(workspaceAPIURL, workspacePath, name)}, nil
 			}
 		}
+
 		return InstalledSkillFile{}, fmt.Errorf("file %q is not part of installed skill %q", clean, name)
 	}
-}
-
-// skillSearchBases is the same workspace-then-user order GetSkillIn uses.
-func skillSearchBases(workspacePath string) []string {
-	bases := make([]string, 0, 2)
-	if strings.TrimSpace(workspacePath) != "" {
-		bases = append(bases, path.Join(workspacePath, SkillsBasePath))
-	}
-	return append(bases, SkillsBasePath)
 }
 
 // installedSkillFileNames lists what else the agent could read. Best-effort:
 // an empty list is a weaker result, not a failed read.
 func installedSkillFileNames(workspaceAPIURL, workspacePath, name string) []string {
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	for _, base := range skillSearchBases(workspacePath) {
-		entries, err := client.ListFiles(path.Join(base, name))
-		if err != nil {
-			continue
-		}
-		names := make([]string, 0, len(entries))
-		for _, entry := range entries {
-			if entry.Type == "folder" {
-				continue
-			}
-			names = append(names, path.Base(entry.Filepath))
-		}
-		if len(names) > 0 {
-			return names
-		}
+	names := []string{SkillFileName}
+	for _, file := range loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, name) {
+		names = append(names, file.RelPath)
 	}
-	return nil
+	return names
 }

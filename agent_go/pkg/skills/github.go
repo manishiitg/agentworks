@@ -155,27 +155,13 @@ func ValidateGitHubSkill(workspaceAPIURL, gitHubURL, token string) (*ValidateSki
 		return &ValidateSkillResponse{Valid: false, Error: fmt.Sprintf("invalid %s: %v", SkillFileName, err), Files: fileNames}, nil
 	}
 
-	// Check if a skill with this name already exists
-	skillName := frontmatter.Name
-	if skillName == "" {
-		skillName = path.Base(info.Path)
-	}
-	skillName = sanitizeFolderName(skillName)
-	exists := false
-	if _, err := GetSkill(workspaceAPIURL, skillName); err == nil {
-		exists = true
-	}
+	// The authorized API checks for an existing install in its workspace.
 
-	return &ValidateSkillResponse{Valid: true, Frontmatter: frontmatter, Files: fileNames, Exists: exists}, nil
-}
-
-// ImportGitHubSkill imports a skill from a GitHub URL to the workspace
-func ImportGitHubSkill(workspaceAPIURL, gitHubURL, token string) (*ImportSkillResponse, error) {
-	return ImportGitHubSkillInto(workspaceAPIURL, gitHubURL, token, SkillsBasePath)
+	return &ValidateSkillResponse{Valid: true, Frontmatter: frontmatter, Files: fileNames, Exists: false}, nil
 }
 
 // ImportGitHubSkillInto is ImportGitHubSkill into basePath (a project's
-// skills folder) instead of the account-wide skills/ library.
+// canonical skills folder), never an account-wide store.
 func ImportGitHubSkillInto(workspaceAPIURL, gitHubURL, token, basePath string) (*ImportSkillResponse, error) {
 	validation, err := ValidateGitHubSkill(workspaceAPIURL, gitHubURL, token)
 	if err != nil {
@@ -197,49 +183,36 @@ func ImportGitHubSkillInto(workspaceAPIURL, gitHubURL, token, basePath string) (
 	}
 	skillName = sanitizeFolderName(skillName)
 
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	skillFolderPath := path.Join(basePath, skillName)
-
-	if err := client.CreateFolder(skillFolderPath); err != nil {
-		if !strings.Contains(err.Error(), "exists") {
-			return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to create folder: %v", err)}, nil
-		}
+	files := map[string][]byte{}
+	if err := collectGitHubSkillFiles(info, "", files); err != nil {
+		return &ImportSkillResponse{Success: false, Error: err.Error()}, nil
 	}
-
-	if err := downloadGitHubFolder(client, info, skillFolderPath); err != nil {
-		return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to download: %v", err)}, nil
+	workspacePath := strings.TrimSuffix(basePath, "/skills")
+	if err := InstallSkillFilesIn(workspaceAPIURL, workspacePath, skillName, files); err != nil {
+		return &ImportSkillResponse{Success: false, Error: err.Error()}, nil
 	}
 
 	return &ImportSkillResponse{Success: true, SkillName: skillName}, nil
 }
 
-func downloadGitHubFolder(client *WorkspaceAPIClient, info *GitHubURLInfo, destPath string) error {
+func collectGitHubSkillFiles(info *GitHubURLInfo, relative string, out map[string][]byte) error {
 	files, err := FetchGitHubFolderContents(info)
 	if err != nil {
 		return err
 	}
-
 	for _, file := range files {
-		destFilePath := path.Join(destPath, file.Name)
-
+		rel := path.Join(relative, file.Name)
 		if file.Type == "dir" {
-			if err := client.CreateFolder(destFilePath); err != nil {
-				if !strings.Contains(err.Error(), "exists") {
-					return fmt.Errorf("failed to create folder %s: %w", destFilePath, err)
-				}
-			}
-			subInfo := &GitHubURLInfo{Owner: info.Owner, Repo: info.Repo, Branch: info.Branch, Path: file.Path, Token: info.Token}
-			if err := downloadGitHubFolder(client, subInfo, destFilePath); err != nil {
+			sub := &GitHubURLInfo{Owner: info.Owner, Repo: info.Repo, Branch: info.Branch, Path: file.Path, Token: info.Token}
+			if err := collectGitHubSkillFiles(sub, rel, out); err != nil {
 				return err
 			}
 		} else if file.Type == "file" {
 			content, err := FetchGitHubFileContent(file.DownloadURL, info.Token)
 			if err != nil {
-				return fmt.Errorf("failed to download %s: %w", file.Name, err)
+				return err
 			}
-			if err := client.WriteFile(destFilePath, content); err != nil {
-				return fmt.Errorf("failed to write %s: %w", destFilePath, err)
-			}
+			out[rel] = []byte(content)
 		}
 	}
 	return nil
@@ -248,10 +221,9 @@ func downloadGitHubFolder(client *WorkspaceAPIClient, info *GitHubURLInfo, destP
 func sanitizeFolderName(name string) string {
 	name = strings.ReplaceAll(name, " ", "-")
 	reg := regexp.MustCompile(`[^a-zA-Z0-9\-_]`)
-	name = reg.ReplaceAllString(name, "")
-	name = strings.ToLower(name)
+	name = strings.ToLower(reg.ReplaceAllString(name, ""))
 	if name == "" {
-		name = "skill"
+		return "skill"
 	}
 	return name
 }

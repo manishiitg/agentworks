@@ -6,3 +6,4 @@
 |---|---|---|
 | [integrations](integrations/index.md) | 23 | 5 |
 | [mcp](mcp/index.md) | 4 | 0 |
+| [skills](skills/index.md) | 1 | 0 |

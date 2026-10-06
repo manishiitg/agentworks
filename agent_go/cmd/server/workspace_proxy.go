@@ -305,8 +305,7 @@ var workspaceProxyBodyPathFields = map[string]bool{
 // workspaceProxyServerOnlyBodyFields are request fields only the agent server
 // may set on the workspace API: a browser request carrying one is refused
 // outright, whatever path it names. target_dir points a skill install at a
-// project's private skills folder (a Code's); browsers install into the
-// shared library only.
+// workspace's skills folder; browsers go through the authorized skill API.
 var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true}
 
 // workspaceProxyServerOnlyRoutes are workspace routes whose JSON body is
@@ -318,6 +317,12 @@ var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": t
 // call; a browser never reaches them, not even an admin's.
 var workspaceProxyRefusedRoutes = map[string]bool{
 	"api/audit/code-admin/append": true,
+	"api/skills/cli/install":      true,
+	"api/skills/project/delete":   true,
+	"api/skills/workspace/list":   true,
+	"api/skills/workspace/delete": true,
+	"api/skills/workspace/import": true,
+	"api/skills/workspace/files":  true,
 	// Sandboxed interactive shells: the agent server authorizes the user and
 	// supplies the project's Folder Guard; a browser must never start one.
 	"api/shell/interactive/start":  true,

@@ -35,34 +35,10 @@ function questionsFor(topic: Exclude<IntegrationHowToTopic, 'Gmail'>, scopeNoun:
       },
     ]
     case 'Skills': return [
-      {
-        title: 'How do I give this work an installed skill?',
-        answer: scopeNoun === 'project'
-          ? <>Use <b>Search skills</b> and click the skill’s <b>+</b> button. It appears under <b>Skills for this project</b> once the selection saves.</>
-          : <>Use <b>Search skills</b>, find the skill under <b>Platform connected</b>, and click its add button. The Builder opens in chat to add it to this workflow; return here to check <b>This workflow</b>.</>,
-      },
-      {
-        title: 'How do I find out what a skill does?',
-        answer: <>Click the skill’s name to expand its description, source, and any tool or model hints. A skill is a set of task instructions; it does not sign in to an app account.</>,
-      },
-      {
-        title: 'How do I import a new skill?',
-        answer: <>Click <b>Import</b>, choose <b>GitHub URL</b> or <b>Upload Zip</b>, validate the skill, then import it. You can also use <b>Ask AI</b> beside the list to find and install one. After import, select it for this {scopeNoun}.</>,
-      },
-      {
-        title: 'How do I remove a skill from this work?',
-        answer: scopeNoun === 'project'
-          ? <>Click the selected skill’s checkmark or remove it from <b>Skills for this project</b>. The shared skill library stays intact.</>
-          : <>Click the selected skill’s checkmark under <b>This workflow</b>. This changes only the workflow’s selection and leaves the shared skill library intact.</>,
-      },
-      {
-        title: 'How do I delete a skill from the library?',
-        answer: <>Expand its row and click <b>Delete</b>, then confirm. This removes the shared library item, so use the selection checkmark instead if only this {scopeNoun} should stop using it.</>,
-      },
-      {
-        title: 'Why is a skill unavailable or missing?',
-        answer: <>Search by name or description, then click the header’s <b>Refresh Skills</b> icon. If the library has no matching skill, use <b>Import</b> or <b>Ask AI</b> to add it before selecting it here.</>,
-      },
+      { title: 'How do I add a skill?', answer: <>Ask the agent to find, install or create a skill in this {scopeNoun}. Skills belong to this workspace. Select an installed skill for the main chat, or ask the Builder to attach it to the steps that need it.</> },
+      { title: 'Where is a skill used?', answer: <>The list shows each skill’s folder and its main chat or step attachments. Steps use their own attachments; selecting a skill for the main chat does not attach it to steps.</> },
+      { title: 'How do I uninstall a skill?', answer: <>Expand the skill and click <b>Uninstall</b>. Confirm to remove its files and chat/step attachments from this workspace. Platform-managed skills cannot be uninstalled.</> },
+      { title: 'Why is a skill unavailable?', answer: <>An attachment whose files are missing stays visible. Refresh the list, ask the agent to reinstall it in this workspace, or remove the attachment.</> },
     ]
     case 'Slack': return [
       {

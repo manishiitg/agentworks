@@ -1,6 +1,7 @@
 package step_based_workflow
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -14,44 +15,25 @@ func TestBrowserAutomationSkillsAreFilesystemAttachable(t *testing.T) {
 	}
 
 	readPaths, writePaths := BuildSkillFolderGuardPaths(browserSkills)
-	want := []string{
-		"skills/agent-browser/", "skills/agent-browser",
-	}
 	if len(writePaths) != 0 {
-		t.Fatalf("expected no write folder guard paths for skills, got %v", writePaths)
+		t.Fatal("skills must remain read-only")
 	}
-	if len(readPaths) != len(want) {
-		t.Fatalf("expected read paths %v, got %v", want, readPaths)
-	}
-	for i := range want {
-		if readPaths[i] != want[i] {
-			t.Fatalf("expected read paths %v, got %v", want, readPaths)
+	for _, path := range []string{"skills/agent-browser/", ".agents/skills/agent-browser/", ".claude/skills/agent-browser/"} {
+		if !slices.Contains(readPaths, path) {
+			t.Fatalf("missing scoped read grant: %s", path)
 		}
 	}
+
 }
 
 func TestBrowserRuntimeSkillsDoNotFilterOtherSkills(t *testing.T) {
 	readPaths, _ := BuildSkillFolderGuardPaths([]string{"agent-browser", "custom-skill"})
-	want := []string{
-		"skills/agent-browser/", "skills/agent-browser",
-		"skills/custom-skill/", "skills/custom-skill",
-	}
-	if len(readPaths) != len(want) {
-		t.Fatalf("expected %v, got %v", want, readPaths)
-	}
-	for i := range want {
-		if readPaths[i] != want[i] {
-			t.Fatalf("expected %v, got %v", want, readPaths)
+	for _, path := range []string{"skills/agent-browser/", "skills/custom-skill/", ".agents/skills/custom-skill/"} {
+		if !slices.Contains(readPaths, path) {
+			t.Fatalf("missing scoped read grant: %s", path)
 		}
 	}
-}
 
-func TestSystemSkillsDoNotInstallStaleAgentBrowserSource(t *testing.T) {
-	for _, skill := range GetSystemSkills() {
-		if skill.Source == "vercel-labs/agent-browser@agent-browser" {
-			t.Fatalf("do not install stale external agent-browser skill source: %+v", skill)
-		}
-	}
 }
 
 // TestPhase5StepSkillsDoNotInheritFromOrchestrator locks in the hard-cut

@@ -3161,27 +3161,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// "running" forever and lock the UI.
 	api.startCodingTmuxRateLimitWatchdog()
 
-	// Sync system skills (currently skill-creator; see GetSystemSkills) in
-	// background. The agent-browser skill is builtin —
-	// served from code, never installed to the skills/ folder.
-	go func() {
-		syncCtx, syncCancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer syncCancel()
-		workspaceAPIURL := os.Getenv("WORKSPACE_API_URL")
-		if workspaceAPIURL == "" {
-			workspaceAPIURL = "http://127.0.0.1:8081"
-		}
-		installed, errs := todo_creation_human.SyncSystemSkills(syncCtx, workspaceAPIURL)
-		if len(errs) > 0 {
-			for _, e := range errs {
-				log.Printf("[SKILLS] %s", e)
-			}
-		}
-		if installed > 0 {
-			log.Printf("[SKILLS] ✅ Installed %d system skills on startup", installed)
-		}
-	}()
-
 	// Start server in a goroutine
 	go func() {
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -4002,13 +3981,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resolvedProfileSkills []*llmtypes.Skill
-	if resolvedProfile != nil {
-		identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
-		resolvedProfileSkills = skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, identitySkillNames)
-		resolvedProfileSkills = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, resolvedProfileSkills)
-		resolvedProfileSkills = append(resolvedProfileSkills, browserinstructions.ProjectMemorySkill(currentUserIsReadOnly))
-	}
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
 		api.lastAgentProfileKeyBySession = make(map[string]string)
@@ -6037,10 +6009,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// re-imported it from GitHub — an unauthenticated API call per
 			// message, on its way to being rate limited.
 			workspaceAPIURL := getWorkspaceAPIURL()
-			_, err := skills.GetSkill(workspaceAPIURL, "skill-creator")
+			_, err := skills.GetSkillIn(workspaceAPIURL, chatWorkingFolder, "skill-creator")
 			if err != nil {
 				log.Printf("[SKILL CREATOR] skill-creator not found, attempting import from GitHub...")
-				_, err := skills.ImportGitHubSkill(workspaceAPIURL, "https://github.com/anthropics/skills/tree/main/skills/skill-creator", "")
+				_, err := skills.ImportGitHubSkillInto(workspaceAPIURL, "https://github.com/anthropics/skills/tree/main/skills/skill-creator", "", strings.TrimSuffix(chatWorkingFolder, "/")+"/skills")
 				if err != nil {
 					log.Printf("[SKILL CREATOR] Warning: Failed to import skill-creator: %v", err)
 				} else {
@@ -6081,18 +6053,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Create Chats/ folder if it doesn't exist
 			if err := skills.CreateFolder("Chats"); err != nil {
 				log.Printf("[WORKSPACE] Warning: Could not create Chats/ folder: %v", err)
-			}
-
-			// Create skills/ folder if it doesn't exist
-			if err := skills.CreateFolder("skills"); err != nil {
-				log.Printf("[WORKSPACE] Warning: Could not create skills/ folder: %v", err)
-			} else {
-				// Create skills/custom/ folder for Skill Builder
-				if err := skills.CreateFolder("skills/custom"); err != nil {
-					log.Printf("[WORKSPACE] Warning: Could not create skills/custom/ folder: %v", err)
-				} else {
-					log.Printf("[WORKSPACE] Ensured skills/ and skills/custom/ folders exist")
-				}
 			}
 
 			// Create subagents/ folder if it doesn't exist
@@ -6343,7 +6303,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 					// Other workflows are readable only when attached to this chat
 					// (workflowReadOnlyFolders below), never the whole Workflow/ tree.
-					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}, additionalFolders...)
+					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "subagents/"}, additionalFolders...)
 					readPaths = append(readPaths, resolvedGrants.ReadOnlyExtra...)
 					readPaths = append(readPaths, workflowReadOnlyFolders...)
 					workspace.SetSessionFolderGuard(sessionID,
@@ -6373,7 +6333,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workspaceExecutors = wrapExecutorsWithReferenceMapNotes(workspaceExecutors, workflowPhaseFolder)
 				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := []string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}
+				readPaths := []string{perUserChatsWrite, perUserChatHistory, "subagents/"}
 				if workflowReadRoot != "" {
 					readPaths = append(readPaths, workflowReadRoot)
 				}
@@ -6429,7 +6389,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			applyCLILandlock(llmAgent, sessionID, finalProvider, chatWorkingDir, cliSecurityPolicy)
 
 			// Report the selected filesystem skills, not a restriction. Every
-			// branch above grants "skills/" wholesale, and this list is used
+			// branch above grants its workspace's skills, and this list is used
 			// nowhere else — the old wording ("only selected skills accessible")
 			// described a guard that is not applied, which sent me looking for a
 			// permission problem when a skill failed to attach.
@@ -6766,12 +6726,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if resolvedProfile != nil {
 					skillProductID = resolvedProfile.Definition.ID
 				}
-				// A Code's skills are private to it: installs and removals act on
-				// its own skills/ folder, never the shared library.
-				projectSkillsDir := ""
-				if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) && isActiveWorkProjectWorkspace(currentUserID, req.SelectedFolder) {
-					projectSkillsDir = strings.TrimSuffix(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), "/") + "/skills"
-				}
+				// Every product manages skills in its own workspace.
+				projectSkillsDir := strings.TrimSuffix(chatWorkingFolder, "/") + "/skills"
+
 				if err := api.registerMultiAgentSkillToolsIn(llmAgent, func(toolName string) bool {
 					return profileDisablesVirtualTool(resolvedProfile, toolName)
 				}, skillProductID, projectSkillsDir); err != nil {
@@ -6948,12 +6905,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// read_skill can also serve a skill installed in this workspace
 				// but not attached, so a router skill names the specialists and
 				// the agent asks by name instead of shelling out to a path.
-				if err := llmAgent.SetInstalledSkillResolver(installedSkillResolver(req.SelectedFolder)); err != nil {
+				if err := llmAgent.SetInstalledSkillResolver(installedSkillResolver(chatWorkingFolder)); err != nil {
 					logfWithContext(queryLogCtx, "[SKILLS] Failed to configure installed-skill resolver: %v", err)
 				}
-				attached := resolvedProfileSkills
-				if resolvedProfile == nil {
-					attached = skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, identitySkillNames)
+				attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), chatWorkingFolder, identitySkillNames)
+				if resolvedProfile != nil {
+					attached = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, attached)
+					attached = append(attached, browserinstructions.ProjectMemorySkill(currentUserIsReadOnly))
 				}
 				if len(attached) > 0 {
 					attachedNames := make([]string, 0, len(attached))
@@ -7018,7 +6976,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				} else {
 					// Workflow chats have no project profile to attach feature skills.
 					// Supply the same canonical reference guide before pointing to it.
-					referenceSkills := skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, []string{referenceSkillName})
+					referenceSkills := skills.LoadAttachableIn(getWorkspaceAPIURL(), chatWorkingFolder, []string{referenceSkillName})
 					if len(referenceSkills) == 0 {
 						sendError("Project reference guidance is unavailable", true)
 						return
@@ -11847,7 +11805,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	cfg.CrewRunner = crewRunnerForRun(ctx, api.productSchedules)
 
 	cfg.ScheduleCollisionCheck = api.scheduleCollisionCheck(cfg.WorkspacePath, sessionID, req.TriggeredBy)
-	cfg.SkillFuncs = api.buildSkillCallbacks()
+	cfg.SkillFuncs = projectSkillCallbacks(api.buildSkillCallbacks(), strings.TrimSuffix(cfg.WorkspacePath, "/")+"/skills", "")
 	cfg.LLMToolsFuncs = api.buildLLMToolsCallbacks()
 	cfg.ListAvailableSecrets = func(ctx context.Context) ([]string, error) {
 		nameSet := make(map[string]bool)
@@ -12465,10 +12423,27 @@ func skillSelectionHint(productID, skillNames string) string {
 }
 
 // projectSkillCallbacks points install, import and uninstall at one project's
-// skills folder; listing and search still see the shared library.
+// skills folder; listing and uninstall use that same workspace inventory.
 func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkillsDir, productID string) *todo_creation_human.SkillCallbacks {
 	wsURL := getWorkspaceAPIURL()
 	scoped := *base
+	workspacePath := strings.TrimSuffix(projectSkillsDir, "/skills")
+	scoped.ListSkills = func(ctx context.Context) (string, error) {
+		inventory, err := skills.DiscoverSkillsIn(wsURL, workspacePath)
+		if err != nil {
+			return "", err
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "## Skills in this workspace (%d)\n", len(inventory.Skills))
+		for _, skill := range inventory.Skills {
+			fmt.Fprintf(&sb, "- **%s** (folder %s, path %s): %s", skill.Frontmatter.Name, skill.FolderName, skill.FilePath, skill.Frontmatter.Description)
+			if len(skill.UsedBy) > 0 {
+				fmt.Fprintf(&sb, " — %s", strings.Join(skill.UsedBy, ", "))
+			}
+			sb.WriteString("\n")
+		}
+		return sb.String(), nil
+	}
 	scoped.InstallSkill = func(ctx context.Context, source string) (string, error) {
 		result, err := skills.ImportToWorkspaceDir(ctx, wsURL, source, projectSkillsDir)
 		if err != nil {
@@ -12490,53 +12465,19 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
 	}
 	scoped.DeleteSkill = func(ctx context.Context, folderName string) error {
-		return skills.DeleteProjectSkill(ctx, wsURL, projectSkillsDir, folderName)
+		return skills.UninstallSkillIn(ctx, wsURL, workspacePath, folderName)
 	}
 	return &scoped
 }
 
 func (api *StreamingAPI) buildSkillCallbacksForProduct(productID string) *todo_creation_human.SkillCallbacks {
-	wsURL := getWorkspaceAPIURL() // workspace container URL, not backend URL
 	return &todo_creation_human.SkillCallbacks{
-		ListSkills: func(ctx context.Context) (string, error) {
-			allSkills, err := skills.DiscoverSkills(wsURL)
-			if err != nil {
-				return "", fmt.Errorf("failed to discover skills: %w", err)
-			}
-			if len(allSkills) == 0 {
-				return "No skills found in the workspace. Use install_skill to add skills.", nil
-			}
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("## Skills (%d found)\n\n", len(allSkills)))
-			for _, sk := range allSkills {
-				sb.WriteString(fmt.Sprintf("### %s\n", sk.Frontmatter.Name))
-				sb.WriteString(fmt.Sprintf("- **Folder**: `%s`\n", sk.FolderName))
-				if sk.Frontmatter.Description != "" {
-					sb.WriteString(fmt.Sprintf("- **Description**: %s\n", sk.Frontmatter.Description))
-				}
-				if sk.SourceURL != "" {
-					sb.WriteString(fmt.Sprintf("- **Source**: %s\n", sk.SourceURL))
-				}
-				sb.WriteString("\n")
-			}
-			return sb.String(), nil
-		},
+		ListSkills: func(ctx context.Context) (string, error) { return "", fmt.Errorf("choose a workspace to list skills") },
 		ImportSkill: func(ctx context.Context, githubURL, token string) (string, error) {
-			resp, err := skills.ImportGitHubSkill(wsURL, githubURL, token)
-			if err != nil {
-				return "", fmt.Errorf("failed to import skill: %w", err)
-			}
-			if !resp.Success {
-				return fmt.Sprintf("Failed to import skill: %s", resp.Error), nil
-			}
-			return fmt.Sprintf("Successfully imported skill **%s**. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
+			return "", fmt.Errorf("choose a workspace to import skills")
 		},
 		DeleteSkill: func(ctx context.Context, folderName string) error {
-			err := skills.DeleteSkill(wsURL, folderName)
-			if err == nil {
-				_ = skills.RemoveFromLockFile(wsURL, folderName)
-			}
-			return err
+			return fmt.Errorf("choose a workspace to uninstall skills")
 		},
 		SearchSkills: func(ctx context.Context, query string) (string, error) {
 			results, err := skills.FindSkills(ctx, query)
@@ -12555,14 +12496,7 @@ func (api *StreamingAPI) buildSkillCallbacksForProduct(productID string) *todo_c
 			return sb.String(), nil
 		},
 		InstallSkill: func(ctx context.Context, source string) (string, error) {
-			result, err := skills.ImportToWorkspace(ctx, wsURL, source)
-			if err != nil {
-				return "", fmt.Errorf("failed to install skill: %w", err)
-			}
-			if len(result.InstalledSkills) == 0 {
-				return "No skills were installed. Check the source format (e.g., 'owner/repo@skill-name').", nil
-			}
-			return fmt.Sprintf("Successfully installed: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHint(productID, "These skills")), nil
+			return "", fmt.Errorf("choose a workspace to install skills")
 		},
 	}
 }
@@ -12579,8 +12513,7 @@ func (api *StreamingAPI) registerMultiAgentSkillTools(registrar interface {
 
 // registerMultiAgentSkillToolsIn registers the skill tools. A non-empty
 // projectSkillsDir (a private Code's docs-relative skills folder) makes
-// install, import and uninstall act on that folder only: the account-wide
-// library stays readable but is never written from the project.
+// list, install, import and uninstall act on that workspace only.
 func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
 }, disabled func(string) bool, activeProductID, projectSkillsDir string) error {

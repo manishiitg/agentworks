@@ -134,7 +134,7 @@ var featureCatalog = map[string]featureDefinition{
 		Skills:          []string{"work-skills"},
 		UIPanels:        []string{"skills"},
 		Capabilities:    map[string]CapabilityRequirement{"skill_selection": CapabilityPreferred},
-		PromptExtension: "Reusable skills are enabled. Read the attached `work-skills` skill before managing skills. Discover and select an existing skill when possible. When the user explicitly asks to preserve or improve a repeated procedure, the normal {{product}} agent may create or update a focused project-local skill under `skills/<skill-name>/SKILL.md`; never write {{product}}-authored skills into the account-wide `skills/custom/` library, and do not switch its identity to Skill Builder.",
+		PromptExtension: "Reusable skills are enabled. Read the attached `work-skills` skill before managing skills. Discover and select an existing skill when possible. When the user explicitly asks to preserve or improve a repeated procedure, the normal {{product}} agent may create or update a focused project-local skill under `skills/<skill-name>/SKILL.md`; keep {{product}}-authored skills inside the current workspace, and do not switch its identity to Skill Builder.",
 	},
 	"attached-folders": {
 		Dependencies:    []string{"files"},
@@ -474,7 +474,7 @@ func FeaturePromptExtensions(profile Profile) []string {
 		case "secrets":
 			rule = "Refer to credentials by name; never print secret values or store them in project files."
 		case "skills":
-			rule = "Create or change reusable skills only when explicitly requested, under project-local skills/<name>/SKILL.md; never write product-authored skills into the account-wide skills/custom/ library or change the agent's identity."
+			rule = "Create or change reusable skills only when explicitly requested, under project-local skills/<name>/SKILL.md; keep product-authored skills inside the current workspace and preserve the agent's identity."
 		case "mcp":
 			if feature.Options["scope"] == "personal" {
 				rule = "Personal MCP connections belong to this project and use its owner's login. Only the owner may connect; never create or authenticate a platform-wide connection."

@@ -14,7 +14,7 @@ Review this conversation and persist what is worth keeping as durable project kn
 Invoking this command is my explicit ask to preserve reusable procedures, so the normal "skills change only on explicit ask" bar is met for what follows:
 
 - Call `list_skills` first and inspect the names and descriptions of every existing project skill before choosing a destination.
-- For each genuinely reusable procedure in this conversation — test it with "When asked to do X, Crew should…" — create or update a focused project-local skill at `skills/<skill-name>/SKILL.md` with concise `name` and `description` frontmatter. Never write it into the account-wide `skills/custom/` library.
+- For each genuinely reusable procedure in this conversation — test it with "When asked to do X, Crew should…" — create or update a focused project-local skill at `skills/<skill-name>/SKILL.md` with concise `name` and `description` frontmatter. Keep skills inside the current workspace.
 - Update an existing skill only when the new knowledge has the same topic and would be loaded for the same kind of future request; create a separate, clearly named skill when the topic, trigger, or outcome differs. If an existing skill has become a catch-all, split the relevant material into focused skills. Link memory and skill entries rather than duplicating instructions.
 - Select each created or updated skill for this project with `update_project_skill_selection` so the runtime can load it.
 

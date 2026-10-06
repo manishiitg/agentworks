@@ -2,6 +2,7 @@ package step_based_workflow
 
 import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 // GetEffectiveSkills returns the skills explicitly enabled for this step.
@@ -37,8 +38,12 @@ func BuildSkillFolderGuardPaths(selectedSkills []string) (readPaths []string, wr
 	// Build list of allowed skill paths (read-only)
 	readPaths = make([]string, 0, len(selectedSkills)*2)
 	for _, skill := range selectedSkills {
-		readPaths = append(readPaths, "skills/"+skill+"/")
-		readPaths = append(readPaths, "skills/"+skill)
+		if _, err := skills.ValidateSkillName(skill); err != nil {
+			continue
+		}
+		for _, root := range skills.WorkspaceSkillDirectories {
+			readPaths = append(readPaths, root+"/"+skill+"/", root+"/"+skill)
+		}
 	}
 
 	// No write paths for skills - they are read-only

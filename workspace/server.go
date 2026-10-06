@@ -66,7 +66,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Create default workspace subdirectories.
 	// Root-level Chats/ and Downloads/ are kept for backwards compatibility with existing workspaces.
 	// New sessions write to _users/<userID>/Chats/ instead (per-user isolation).
-	defaultFolders := []string{"Chats", "Downloads", "Workflow", "skills",
+	defaultFolders := []string{"Chats", "Downloads", "Workflow",
 		workspaceref.PhysicalPath("default", "Chats"), workspaceref.PhysicalPath("default", "memories"), workspaceref.PhysicalPath("default", "chat_history")}
 	for _, folder := range defaultFolders {
 		path := filepath.Join(docsDir, folder)
@@ -75,8 +75,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Sync system skills on startup (installs missing required skills via npx)
-	go syncSystemSkillsOnStartup(docsDir)
+	// Skills are installed in their owning workspace, never a shared library.
 	handlers.StartWorkflowProcessSweeper(docsDir)
 
 	// Set Gin mode
@@ -205,8 +204,12 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.POST("/browser/cleanup", handlers.KillBrowserProcesses)
 
 		// Skills CLI routes (npx skills — runs inside container)
-		api.POST("/skills/cli/install", handleSkillInstall)
-		api.POST("/skills/project/delete", handleProjectSkillDelete)
+		api.POST("/skills/cli/install", requireWorkspaceAPIToken(), handleSkillInstall)
+		api.POST("/skills/project/delete", requireWorkspaceAPIToken(), handleProjectSkillDelete)
+		api.POST("/skills/workspace/list", requireWorkspaceAPIToken(), handleWorkspaceSkillList)
+		api.POST("/skills/workspace/delete", requireWorkspaceAPIToken(), handleWorkspaceSkillDelete)
+		api.POST("/skills/workspace/import", requireWorkspaceAPIToken(), handleWorkspaceSkillImport)
+		api.POST("/skills/workspace/files", requireWorkspaceAPIToken(), handleWorkspaceSkillFiles)
 		// Append-only Code admin audit log (agent server only; the proxy refuses it).
 		api.POST("/audit/code-admin/append", handlers.AppendCodeAdminAudit)
 		api.GET("/skills/cli/search", handleSkillSearch)

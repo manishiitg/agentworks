@@ -4,13 +4,14 @@ import { skillsApi } from '../../api/skills'
 import type { ValidateSkillResponse } from '../../types/skills'
 
 interface SkillImportDialogProps {
+  workspacePath: string
   onClose: () => void
   onSuccess: () => void
 }
 
 type ImportMethod = 'github' | 'zip'
 
-export default function SkillImportDialog({ onClose, onSuccess }: SkillImportDialogProps) {
+export default function SkillImportDialog({ workspacePath, onClose, onSuccess }: SkillImportDialogProps) {
   const [importMethod, setImportMethod] = useState<ImportMethod>('github')
   const [url, setUrl] = useState('')
   const [isPrivate, setIsPrivate] = useState(false)
@@ -80,8 +81,8 @@ export default function SkillImportDialog({ onClose, onSuccess }: SkillImportDia
 
     try {
       const result = importMethod === 'github'
-        ? await skillsApi.validateSkill({ github_url: url.trim(), ...(pat ? { github_token: pat } : {}) })
-        : await skillsApi.validateSkillZip(selectedFile!)
+        ? await skillsApi.validateSkill({ github_url: url.trim(), ...(pat ? { github_token: pat } : {}) }, workspacePath)
+        : await skillsApi.validateSkillZip(selectedFile!, workspacePath)
       setValidationResult(result)
       if (!result.valid) {
         setError(result.error || 'Invalid skill')
@@ -111,8 +112,8 @@ export default function SkillImportDialog({ onClose, onSuccess }: SkillImportDia
 
     try {
       const result = importMethod === 'github'
-        ? await skillsApi.importSkill({ github_url: url.trim(), ...(pat ? { github_token: pat } : {}) })
-        : await skillsApi.importSkillZip(selectedFile!)
+        ? await skillsApi.importSkill({ github_url: url.trim(), ...(pat ? { github_token: pat } : {}) }, workspacePath)
+        : await skillsApi.importSkillZip(selectedFile!, workspacePath)
       if (result.success) {
         onSuccess()
       } else {

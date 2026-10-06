@@ -43,37 +43,31 @@ func TestParseSkillFileDoesNotBlameFrontmatterForEmptyContent(t *testing.T) {
 	}
 }
 
-// A product may install its skills into its own project folder rather than the
-// user-level skills/ folder. The unscoped lookup only ever read the latter, so
-// those skills could never attach.
-func TestGetSkillInPrefersTheWorkspaceThenFallsBack(t *testing.T) {
-	const body = "---\nname: hyperframes\ndescription: router\n---\n\nBody text.\n"
-	var requested []string
+// A resolver never reads an account-level copy after workspace discovery.
+func TestGetSkillInUsesOnlyWorkspaceInventory(t *testing.T) {
+	const body = "---\nname: hyperframes\ndescription: router\n---\nBody text.\n"
+	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/api/documents/")
-		requested = append(requested, path)
-		if strings.Contains(path, "projects%2Fdemo") || strings.Contains(path, "projects/demo") {
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": true,
-				"data":    map[string]interface{}{"filepath": path, "content": body},
-			})
-			return
+		requests++
+		if r.URL.Path != "/api/skills/workspace/list" {
+			t.Errorf("unexpected global read: %s", r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true, "message": "File does not exist",
-			"error": "File not found", "data": map[string]interface{}{"filepath": "", "content": ""},
-		})
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["workspace_path"] != "Workflow/demo" {
+			t.Errorf("wrong workspace: %v", req)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"documents": []map[string]string{{"folder_name": "hyperframes", "file_path": ".agents/skills/hyperframes/SKILL.md", "document": body}}})
 	}))
 	defer server.Close()
-
-	skill, err := GetSkillIn(server.URL, "projects/demo", "hyperframes")
-	if err != nil {
-		t.Fatalf("workspace-scoped skill was not found: %v (tried %v)", err, requested)
+	skill, err := GetSkillIn(server.URL, "Workflow/demo", "hyperframes")
+	if err != nil || skill.FilePath != ".agents/skills/hyperframes/SKILL.md" {
+		t.Fatalf("scoped skill = %+v %v", skill, err)
 	}
-	// The path handed back drives the lazy-excerpt pointer, and the agent reads
-	// it relative to its own workspace root — an absolute-ish path would not
-	// resolve under its folder guard.
-	if skill.FilePath != "skills/hyperframes/SKILL.md" {
-		t.Fatalf("FilePath = %q, want the workspace-relative path", skill.FilePath)
+	if _, err := GetSkillIn(server.URL, "", "hyperframes"); err == nil {
+		t.Fatal("an unscoped read must be refused")
+	}
+	if requests != 1 {
+		t.Fatalf("unexpected fallback or unscoped request: %d", requests)
 	}
 }

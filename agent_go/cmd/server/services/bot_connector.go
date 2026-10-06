@@ -798,10 +798,12 @@ func (m *BotConversationManager) loadMCPServerNames() []string {
 
 // LoadAvailableCapabilities returns all available MCP servers and skills.
 // Used by the config API endpoint.
-func (m *BotConversationManager) LoadAvailableCapabilities() (servers []string, discoveredSkills []skills.Skill) {
+func (m *BotConversationManager) LoadAvailableCapabilities(workspacePath ...string) (servers []string, discoveredSkills []skills.Skill) {
 	servers = m.loadMCPServerNames()
-	if m.workspaceURL != "" {
-		discoveredSkills, _ = skills.DiscoverSkills(m.workspaceURL)
+	if m.workspaceURL != "" && len(workspacePath) > 0 && workspacePath[0] != "" {
+		if inventory, err := skills.DiscoverSkillsIn(m.workspaceURL, workspacePath[0]); err == nil {
+			discoveredSkills = inventory.Skills
+		}
 	}
 	return
 }
@@ -3375,7 +3377,7 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 
 	// Capabilities: prefer the user's saved multi-agent chat config
 	// (_users/<id>/multiagent-config.json) so bot sessions match the UI setup.
-	// Falls back to the previous defaults (no servers, auto-discover all skills)
+	// Falls back to no servers or implicit skill attachments
 	// when the user hasn't saved a config.
 	var savedCaps *MultiAgentChatCapabilities
 	if m.workspaceURL != "" && userID != "" {
@@ -3412,19 +3414,10 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 		}
 		log.Printf("[BOT_MANAGER] Loaded saved chat capabilities for user %s: skills=%d servers=%d", userID, len(savedCaps.SelectedSkills), len(savedCaps.SelectedServers))
 	} else {
-		// No saved config — previous defaults: no MCP servers, auto-discover all skills
-		// (agent still has workspace, delegation, and shell tools).
+		// A bot must not inherit every skill from an account-wide library.
 		req["servers"] = []string{}
-		var defaultSkills []string
-		if m.workspaceURL != "" {
-			discoveredSkills, err := skills.DiscoverSkills(m.workspaceURL)
-			if err == nil {
-				for _, s := range discoveredSkills {
-					defaultSkills = append(defaultSkills, s.FolderName)
-				}
-			}
-		}
-		req["selected_skills"] = defaultSkills
+		req["selected_skills"] = []string{}
+
 	}
 
 	// Load delegation tier config from workspace file — same source as multiagent chat.

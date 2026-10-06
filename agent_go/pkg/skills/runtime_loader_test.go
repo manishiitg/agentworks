@@ -23,9 +23,56 @@ import (
 func fakeWorkspaceServer(t *testing.T, files map[string]string, listings map[string][]DocumentEntry) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/skills/workspace/files", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		supporting := []struct {
+			RelPath string
+			Content []byte
+		}{}
+		for file, content := range files {
+			rel := strings.TrimPrefix(file, req["workspace_path"]+"/")
+			prefix := "skills/" + req["name"] + "/"
+			if strings.HasPrefix(rel, prefix) && !strings.HasSuffix(rel, "/SKILL.md") {
+				supporting = append(supporting, struct {
+					RelPath string
+					Content []byte
+				}{strings.TrimPrefix(rel, prefix), []byte(content)})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"files": supporting})
+	})
+	mux.HandleFunc("/api/skills/workspace/list", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		documents := []map[string]interface{}{}
+		for file, content := range files {
+			relative := strings.TrimPrefix(file, req["workspace_path"]+"/")
+			if strings.HasSuffix(relative, "/SKILL.md") && strings.HasPrefix(relative, "skills/") {
+				name := strings.TrimSuffix(strings.TrimPrefix(relative, "skills/"), "/SKILL.md")
+				documents = append(documents, map[string]interface{}{"folder_name": name, "file_path": relative, "document": content})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"documents": documents})
+	})
 	mux.HandleFunc("/api/documents", func(w http.ResponseWriter, r *http.Request) {
 		folder := r.URL.Query().Get("folder")
+		if _, ok := listings[folder]; !ok {
+			folder = strings.TrimPrefix(folder, "Workflow/test/")
+		}
 		children, ok := listings[folder]
+		if strings.HasPrefix(r.URL.Query().Get("folder"), "Workflow/test/") {
+			var prefix func([]DocumentEntry) []DocumentEntry
+			prefix = func(rows []DocumentEntry) []DocumentEntry {
+				out := append([]DocumentEntry(nil), rows...)
+				for i := range out {
+					out[i].Filepath = "Workflow/test/" + out[i].Filepath
+					out[i].Children = prefix(out[i].Children)
+				}
+				return out
+			}
+			children = prefix(children)
+		}
 		if !ok {
 			http.Error(w, "no listing fixture for "+folder, http.StatusNotFound)
 			return
@@ -45,6 +92,9 @@ func fakeWorkspaceServer(t *testing.T, files map[string]string, listings map[str
 	})
 	mux.HandleFunc("/api/documents/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/documents/")
+		if _, ok := files[path]; !ok {
+			path = strings.TrimPrefix(path, "Workflow/test/")
+		}
 		content, ok := files[path]
 		if !ok {
 			http.Error(w, "no file fixture for "+path, http.StatusNotFound)
@@ -81,7 +131,7 @@ func TestLoadAttachableBuildsSkillFromWorkspace(t *testing.T) {
 	srv := fakeWorkspaceServer(t, files, listings)
 	defer srv.Close()
 
-	got := LoadAttachable(srv.URL, []string{"pdf-extract"})
+	got := LoadAttachableIn(srv.URL, "Workflow/test", []string{"pdf-extract"})
 	if len(got) != 1 {
 		t.Fatalf("expected 1 skill loaded, got %d", len(got))
 	}
@@ -163,7 +213,7 @@ func TestLoadAttachableSkipsMissingSkills(t *testing.T) {
 	)
 	defer srv.Close()
 
-	got := LoadAttachable(srv.URL, []string{"real", "does-not-exist"})
+	got := LoadAttachableIn(srv.URL, "Workflow/test", []string{"real", "does-not-exist"})
 	if len(got) != 1 {
 		t.Fatalf("expected 1 skill (real, with missing skipped), got %d", len(got))
 	}

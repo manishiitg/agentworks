@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Skills belong to their product or workflow workspace
+
+Owner decision: remove the shared skills library. Discover and manage skills
+inside their owning workspace, including native CLI installs, and show main-chat
+and step attachments together. Keep each agent's attachments explicit. Uninstall
+removes that workspace's files and references; protect platform-managed skills.
+Migrate saved legacy attachments locally so existing work keeps working.
+Why: the library hid skills created by agents and skills used only by steps.
+Ticket: [PLAT-581](bugs/pulse_platform/integrations/skills/plat-581.md).
+
 ### 2026-10-06 — A step or run whose inputs cannot be read is refused before it starts
 
 What: the input and output graph is checked in Go before `execute_step`, `run_full_workflow` and a full workflow run.
@@ -71,6 +81,7 @@ account token and this project's routing scope without selecting/reconnecting
 that project or changing Connected status. Reset alone rotates an existing
 credential. Why: retrieving a code should not interrupt Code/Crew/workflow work.
 Ticket: [PLAT-574](bugs/pulse_platform/browser/browser/plat-574.md).
+
 
 
 ### 2026-10-06 — Show the account browser without choosing it for every project

@@ -693,9 +693,7 @@ func validateCrewCreationSkills(names []string) ([]string, error) {
 		if skills.IsBuiltinSkill(name) {
 			continue
 		}
-		if _, err := skills.GetSkill(getWorkspaceAPIURL(), name); err != nil {
-			return nil, fmt.Errorf("crew skill %q is not installed; install it first or drop it: %w", name, err)
-		}
+		return nil, fmt.Errorf("crew skill %q is not installed inside the new Crew; create it without this attachment, then install and select it there", name)
 	}
 	return checked, nil
 }

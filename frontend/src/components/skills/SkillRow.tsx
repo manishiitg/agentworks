@@ -5,7 +5,7 @@ import { READ_ONLY_TITLE } from '../../hooks/useCanWriteWorkflow'
 
 interface SkillRowProps {
   skill: Skill
-  /** Omitted when the shared library is read-only here (a private Code). */
+  /** Omitted for skills managed by the platform. */
   onDelete?: () => void
   // When provided (the workflow-panel embedding), the row also gets an
   // add/remove-from-workflow toggle -- kept as a separate control from the
@@ -21,7 +21,7 @@ interface SkillRowProps {
   selectionScopeLabel?: string
 }
 
-export default function SkillRow({ skill, onDelete, selected, onToggleSelect, onRequestAdd, readOnly = false, selectionScopeLabel = 'workflow' }: SkillRowProps) {
+export default function SkillRow({ skill, onDelete, selected, onToggleSelect, onRequestAdd, readOnly = false, selectionScopeLabel = 'main chat' }: SkillRowProps) {
   const [expanded, setExpanded] = useState(false)
   const { frontmatter, folder_name, source_url } = skill
   const actionVerb = selected ? 'Remove' : onRequestAdd ? 'Ask AI to add' : 'Add'
@@ -62,6 +62,11 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
         )}
       </div>
 
+      <div className="flex flex-wrap gap-x-2 gap-y-1 px-3 pb-2 text-xs text-muted-foreground">
+        <span className="font-mono">{skill.file_path}</span>
+        {skill.used_by?.map((label, index) => <span key={`${label}:${index}`}>{label}</span>)}
+        {skill.managed && <span>Managed by platform</span>}
+      </div>
       {expanded && (
         <div className="space-y-2.5 border-t border-gray-100 bg-gray-50 px-3 py-3 dark:border-gray-800 dark:bg-gray-900/40">
           <p className="text-xs text-gray-600 dark:text-gray-400">{frontmatter.description}</p>
@@ -115,7 +120,7 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete
+              Uninstall
             </button> : null}
           </div>
         </div>

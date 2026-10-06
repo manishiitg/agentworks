@@ -12,8 +12,8 @@ func TestWorkSkillSelectionToolPersistsInstalledSkill(t *testing.T) {
 	const workspacePath = "_users/user-1/Chats/Work/projects/release"
 	const manifestPath = workspacePath + "/workflow.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		manifestPath:                     `{"schema_version":1,"id":"release","capabilities":{"selected_skills":[],"selected_servers":["Linear"]}}`,
-		"skills/release-review/SKILL.md": "---\nname: release-review\ndescription: Review releases\n---\n\n# Release review\n",
+		manifestPath: `{"schema_version":1,"id":"release","capabilities":{"selected_skills":[],"selected_servers":["Linear"]}}`,
+		workspacePath + "/skills/release-review/SKILL.md": "---\nname: release-review\ndescription: Review releases\n---\n\n# Release review\n",
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
@@ -57,8 +57,8 @@ func TestWorkSkillSelectionToolPersistsInstalledSkill(t *testing.T) {
 func TestWorkSkillSelectionToolAcceptsProjectLocalSkill(t *testing.T) {
 	const workspacePath = "_users/user-1/Chats/Work/projects/finance"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		workspacePath + "/workflow.json":                 `{"schema_version":1,"id":"finance","capabilities":{"selected_skills":[]}}`,
-		workspacePath + "/skills/finance-analyst/SKILL.md": "---\nname: finance-analyst\ndescription: Analyze finance records\n---\n\n# Finance analyst\n",
+		workspacePath + "/workflow.json":                           `{"schema_version":1,"id":"finance","capabilities":{"selected_skills":[]}}`,
+		workspacePath + "/.agents/skills/finance-analyst/SKILL.md": "---\nname: finance-analyst\ndescription: Analyze finance records\n---\n\n# Finance analyst\n",
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()

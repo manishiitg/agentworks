@@ -10,7 +10,7 @@ import (
 func TestAgentProfileReadOnlyFolders(t *testing.T) {
 	workflowRO := []string{"Workflow/demo/planning/"}
 	got := agentProfileReadOnlyFolders(agentprofiles.SandboxPolicy{}, workflowRO)
-	if strings.Join(got, ",") != "skills/,subagents/,Workflow/demo/planning/" {
+	if strings.Join(got, ",") != "subagents/,Workflow/demo/planning/" {
 		t.Fatalf("default read-only set = %v", got)
 	}
 	got = agentProfileReadOnlyFolders(agentprofiles.SandboxPolicy{ReadOnly: []string{"Downloads", " reports/ ", ""}}, workflowRO)

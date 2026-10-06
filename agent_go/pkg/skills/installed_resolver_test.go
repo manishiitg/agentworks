@@ -11,6 +11,19 @@ import (
 func skillServer(t *testing.T, files map[string]string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/skills/workspace/list" {
+			var req map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			documents := []map[string]interface{}{}
+			for file, body := range files {
+				rel := strings.TrimPrefix(file, req["workspace_path"]+"/")
+				if rel != file && strings.HasSuffix(rel, "/SKILL.md") {
+					documents = append(documents, map[string]interface{}{"folder_name": strings.Split(rel, "/")[1], "file_path": rel, "document": body})
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"documents": documents})
+			return
+		}
 		requested := strings.TrimPrefix(r.URL.Path, "/api/documents/")
 		for path, body := range files {
 			if requested == path || requested == strings.ReplaceAll(path, "/", "%2F") {

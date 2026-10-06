@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
 // CLILockEntry matches one entry in skills-lock.json
@@ -22,24 +23,11 @@ type CLILockEntry struct {
 	ComputedHash string `json:"computedHash"`
 }
 
-// CLILockFile matches the skills-lock.json schema
-type CLILockFile struct {
-	Version int                     `json:"version"`
-	Skills  map[string]CLILockEntry `json:"skills"`
-}
-
 // CLIImportResult contains the results of a CLI import operation
 type CLIImportResult struct {
 	InstalledSkills []string                `json:"installed_skills"`
 	LockEntries     map[string]CLILockEntry `json:"lock_entries,omitempty"`
 	Errors          []string                `json:"errors,omitempty"`
-}
-
-// CLIUpdateInfo represents update availability for one skill
-type CLIUpdateInfo struct {
-	Name      string `json:"name"`
-	Source    string `json:"source"`
-	HasUpdate bool   `json:"has_update"`
 }
 
 // CLISearchResult represents a skill found via search
@@ -58,16 +46,13 @@ func IsAvailable() bool {
 	return true
 }
 
-// ImportToWorkspace installs skills via the workspace container's CLI.
-// Calls POST /api/skills/cli/install on the workspace API.
-func ImportToWorkspace(ctx context.Context, workspaceAPIURL, source string) (*CLIImportResult, error) {
-	return ImportToWorkspaceDir(ctx, workspaceAPIURL, source, "")
-}
-
-// ImportToWorkspaceDir is ImportToWorkspace into targetDir, a project's
+// ImportToWorkspaceDir installs into targetDir, a workspace's
 // skills folder (docs-relative, e.g. _users/<u>/Chats/Code/projects/<p>/skills),
-// instead of the account-wide skills/ library. Empty means the library.
+// A target workspace is required; there is no account-wide install.
 func ImportToWorkspaceDir(ctx context.Context, workspaceAPIURL, source, targetDir string) (*CLIImportResult, error) {
+	if strings.TrimSpace(targetDir) == "" {
+		return nil, fmt.Errorf("choose a workspace before installing skills")
+	}
 	payload := map[string]string{"source": source}
 	if targetDir = strings.Trim(strings.TrimSpace(targetDir), "/"); targetDir != "" {
 		payload["target_dir"] = targetDir
@@ -80,6 +65,7 @@ func ImportToWorkspaceDir(ctx context.Context, workspaceAPIURL, source, targetDi
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	wsauth.SetHeader(httpReq)
 
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(httpReq)
@@ -166,110 +152,6 @@ func FindSkills(ctx context.Context, query string) ([]CLISearchResult, error) {
 	return results, nil
 }
 
-// ReadLockFile reads skills-lock.json from the workspace
-func ReadLockFile(workspaceAPIURL string) (*CLILockFile, error) {
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	content, err := client.ReadFile("skills-lock.json")
-	if err != nil {
-		return nil, fmt.Errorf("lock file not found: %w", err)
-	}
-
-	var lockFile CLILockFile
-	if err := json.Unmarshal([]byte(content), &lockFile); err != nil {
-		return nil, fmt.Errorf("failed to parse lock file: %w", err)
-	}
-	return &lockFile, nil
-}
-
-// CheckUpdates checks which installed skills have updates available.
-func CheckUpdates(ctx context.Context, workspaceAPIURL string) ([]CLIUpdateInfo, error) {
-	lockFile, err := ReadLockFile(workspaceAPIURL)
-	if err != nil {
-		return nil, fmt.Errorf("no lock file found: %w", err)
-	}
-
-	if len(lockFile.Skills) == 0 {
-		return nil, nil
-	}
-
-	// Group by source, re-install to temp, compare hashes
-	sourceSkills := make(map[string][]string)
-	for name, entry := range lockFile.Skills {
-		sourceSkills[entry.Source] = append(sourceSkills[entry.Source], name)
-	}
-
-	var results []CLIUpdateInfo
-	for source, skillNames := range sourceSkills {
-		freshResult, fetchErr := ImportToWorkspace(ctx, workspaceAPIURL, source)
-
-		for _, name := range skillNames {
-			info := CLIUpdateInfo{Name: name, Source: source}
-			if fetchErr == nil {
-				oldEntry := lockFile.Skills[name]
-				if newEntry, ok := freshResult.LockEntries[name]; ok {
-					info.HasUpdate = newEntry.ComputedHash != oldEntry.ComputedHash
-				}
-			}
-			results = append(results, info)
-		}
-	}
-
-	return results, nil
-}
-
-// UpdateAll re-installs all skills tracked in skills-lock.json from their sources.
-func UpdateAll(ctx context.Context, workspaceAPIURL string) (*CLIImportResult, error) {
-	lockFile, err := ReadLockFile(workspaceAPIURL)
-	if err != nil {
-		return nil, fmt.Errorf("no lock file found: %w", err)
-	}
-
-	sources := make(map[string]bool)
-	for _, entry := range lockFile.Skills {
-		sources[entry.Source] = true
-	}
-
-	combined := &CLIImportResult{
-		LockEntries: make(map[string]CLILockEntry),
-	}
-
-	for source := range sources {
-		result, importErr := ImportToWorkspace(ctx, workspaceAPIURL, source)
-		if importErr != nil {
-			combined.Errors = append(combined.Errors, fmt.Sprintf("failed to update from %s: %v", source, importErr))
-			continue
-		}
-		combined.InstalledSkills = append(combined.InstalledSkills, result.InstalledSkills...)
-		for k, v := range result.LockEntries {
-			combined.LockEntries[k] = v
-		}
-	}
-
-	return combined, nil
-}
-
-// RemoveFromLockFile removes a skill entry from skills-lock.json
-func RemoveFromLockFile(workspaceAPIURL, skillName string) error {
-	lockFile, err := ReadLockFile(workspaceAPIURL)
-	if err != nil {
-		return nil
-	}
-
-	if _, exists := lockFile.Skills[skillName]; !exists {
-		return nil
-	}
-
-	delete(lockFile.Skills, skillName)
-
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	data, err := json.MarshalIndent(lockFile, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal lock file: %w", err)
-	}
-	return client.WriteFile("skills-lock.json", string(data))
-}
-
-// getWorkspaceAPIURLFromEnv returns the workspace API URL from environment
 func getWorkspaceAPIURLFromEnv() string {
 	if url := strings.TrimSpace(strings.TrimRight(getEnvOrDefault("WORKSPACE_API_URL", ""), "/")); url != "" {
 		return url

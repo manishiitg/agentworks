@@ -233,8 +233,7 @@ func writeCrewSpecFiles(ctx context.Context, root string, files map[string]strin
 
 func crewLocalSkillManifest(name string) string { return "skills/" + name + "/SKILL.md" }
 
-// checkCrewSkillsAvailable accepts built-in skills, account-level installed
-// skills, and project-local skills (skills/<name>/SKILL.md) either already in
+// checkCrewSkillsAvailable accepts built-in skills and project-local skills (skills/<name>/SKILL.md) either already in
 // the Crew or arriving in this same call. Unknown names fail before anything
 // is written.
 func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, incoming map[string]string) error {
@@ -250,9 +249,12 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 				continue
 			}
 		}
-		if _, err := skills.GetSkill(getWorkspaceAPIURL(), name); err != nil {
-			return fmt.Errorf("skill %q is not installed on this server or in the Crew; install it, ship it under files as %s, or drop it", name, crewLocalSkillManifest(name))
+		if root != "" {
+			if _, err := skills.GetSkillIn(getWorkspaceAPIURL(), root, name); err == nil {
+				continue
+			}
 		}
+		return fmt.Errorf("skill %q is not installed in this Crew; ship it under files as %s or install it in this Crew", name, crewLocalSkillManifest(name))
 	}
 	return nil
 }

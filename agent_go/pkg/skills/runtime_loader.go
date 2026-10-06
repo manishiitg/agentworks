@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"path"
@@ -195,67 +196,14 @@ func lazySkillBody(filePath, folderName, body string) string {
 		lazySkillExcerptLines, len(lines), filePath, path.Dir(filePath))
 }
 
-// loadSkillSupportingFilesIn walks <workspace>/skills/<folder>/ and returns
-// every non-SKILL.md file under it as a SkillFile. Binary files are
-// skipped — the workspace ReadFile API refuses to return them as
-// text, and the supporting-file payload is intended for text artifacts
-// (scripts, references, supporting markdown). When binary asset
-// support becomes necessary a parallel ReadBinaryFile API is the right
-// hook, not text-coercion here.
+// loadSkillSupportingFilesIn reads supporting files from the resolved workspace
+// skill folder. The service validates paths and preserves binary assets.
 func loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, folderName string) []llmtypes.SkillFile {
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	roots := make([]string, 0, 2)
-	if strings.TrimSpace(workspacePath) != "" {
-		roots = append(roots, path.Join(workspacePath, SkillsBasePath, folderName))
+	var result struct {
+		Files []llmtypes.SkillFile `json:"files"`
 	}
-	roots = append(roots, path.Join(SkillsBasePath, folderName))
-	for _, root := range roots {
-		entries, err := client.ListFiles(root)
-		if err == nil {
-			return collectSupportingFiles(client, root, "", entries)
-		}
+	if err := workspaceSkillOperation(context.Background(), workspaceAPIURL, "files", workspacePath, folderName, &result); err != nil {
+		return nil
 	}
-	return nil
-}
-
-func collectSupportingFiles(client *WorkspaceAPIClient, root, rel string, entries []DocumentEntry) []llmtypes.SkillFile {
-	var out []llmtypes.SkillFile
-	for _, entry := range entries {
-		// entry.Filepath is the absolute (workspace-rooted) path;
-		// derive the per-skill relative path by stripping the skill
-		// root prefix so adapters can reproduce the same layout on
-		// the provider side.
-		absPath := entry.Filepath
-		if !strings.HasPrefix(absPath, root+"/") && absPath != root {
-			continue
-		}
-		relPath := strings.TrimPrefix(absPath, root+"/")
-		if rel != "" {
-			relPath = path.Join(rel, path.Base(absPath))
-		}
-
-		if entry.Type == "folder" {
-			out = append(out, collectSupportingFiles(client, root, relPath, entry.Children)...)
-			continue
-		}
-		// Skip the SKILL.md itself — that's carried in Skill.Content,
-		// not as a supporting file. Adapters re-materialize it from
-		// the structured fields.
-		base := path.Base(relPath)
-		if strings.EqualFold(base, SkillFileName) {
-			continue
-		}
-		content, err := client.ReadFile(absPath)
-		if err != nil {
-			// Binary files and any other read failure: skip silently.
-			// Logging every skip would be noisy for the common case
-			// of imported skill bundles containing asset images.
-			continue
-		}
-		out = append(out, llmtypes.SkillFile{
-			RelPath: relPath,
-			Content: []byte(content),
-		})
-	}
-	return out
+	return result.Files
 }

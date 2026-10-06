@@ -845,11 +845,10 @@ func TestCreateCrewProjectAvoidsOccupiedPath(t *testing.T) {
 
 func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
-	mock.files["skills/reviewer/SKILL.md"] = "---\nname: reviewer\ndescription: test reviewer\n---\n# Reviewer\n"
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
 		Role: "Reviewer", Purpose: "Own release quality", Instructions: "Check the changelog first.",
-		Skills: []string{"reviewer"}, Servers: []string{"github"},
+		Skills: []string{"agent-browser"}, Servers: []string{"github"},
 		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
 	})
@@ -882,7 +881,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 			}
 		}
 	}
-	assertStringSet("selected_skills", "reviewer")
+	assertStringSet("selected_skills", "agent-browser")
 	assertStringSet("selected_servers", "github")
 	assertStringSet("selected_secrets", "SHARED_GH")
 	assertStringSet("selected_global_secret_names", "SHARED_GH")
@@ -890,7 +889,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
 		Role: "Reviewer", Purpose: "Own release quality", Instructions: "Check the changelog first.",
-		Skills: []string{"reviewer"}, Servers: []string{"github"},
+		Skills: []string{"agent-browser"}, Servers: []string{"github"},
 		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
 	}); err != nil {
@@ -901,7 +900,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 		t.Fatal(err)
 	}
 	caps, _ = runtime["capabilities"].(map[string]interface{})
-	assertStringSet("selected_skills", "reviewer")
+	assertStringSet("selected_skills", "agent-browser")
 	assertStringSet("selected_servers", "github")
 }
 

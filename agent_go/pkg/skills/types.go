@@ -16,6 +16,8 @@ type SkillFrontmatter struct {
 
 // Skill represents a complete skill with parsed content
 type Skill struct {
+	Managed     bool             `json:"managed,omitempty"`
+	UsedBy      []string         `json:"used_by,omitempty"`
 	Frontmatter SkillFrontmatter `json:"frontmatter"`
 	Content     string           `json:"content"`              // Markdown content after frontmatter
 	FolderName  string           `json:"folder_name"`          // Skill folder name
@@ -59,8 +61,9 @@ type UpdateSkillRequest struct {
 
 // ListSkillsResponse represents the response from listing skills
 type ListSkillsResponse struct {
-	Skills []Skill `json:"skills"`
-	Total  int     `json:"total"`
+	Skills []Skill             `json:"skills"`
+	Total  int                 `json:"total"`
+	Usage  map[string][]string `json:"usage,omitempty"`
 }
 
 // GitHubFileInfo represents a file in a GitHub repository

@@ -358,20 +358,25 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   skills={<SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
-                      selectedOnly
-                      emptySelectionText="No skills are used in this workflow yet. Ask the agent to add or create one."
+                      emptySelectionText="No skills are installed in this workflow yet. Ask the agent to add or create one."
                       headerAction={(
                         <AskAIButton
                           workspacePath={canWriteWorkflow ? workspacePath ?? null : null}
                           iconOnly
                           label="Install a skill"
                           message={relayMode
-                            ? 'Help me add a skill to this Relay. Ask which skill I want, find it in the shared library, then attach it to this Relay and verify the selection.'
-                            : 'Help me install a specific skill for this workflow. Ask which skill I want, then find it: search the local skills library first, then the web. Import it into the library, add it to this workflow, verify it works, and confirm briefly.'}
+                            ? 'Help me add a skill to this Relay. Ask which skill I want, install it in this Relay, then attach it to the chat or steps that need it and verify the selection.'
+                            : 'Help me install a specific skill for this workflow. Ask which skill I want, then find it: check skills installed in this workflow first, then search the web. Install it in this workflow, attach it to the chat or steps that need it, verify it works, and confirm briefly.'}
                         />
                       )}
                       workspacePath={workspacePath}
                       selectedSkills={capabilities.selected_skills}
+                      onBeforeUninstall={() => saveQueue.current}
+                      onUninstalled={async () => {
+                        await load()
+                        await useWorkflowManifestStore.getState().refreshWorkflows()
+                        await useWorkflowStore.getState().refreshWorkspaceView()
+                      }}
                       onToggleSkill={(folderName) => {
                         const selected_skills = capabilities.selected_skills.includes(folderName)
                           ? capabilities.selected_skills.filter(s => s !== folderName)
@@ -384,7 +389,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                         if (!workspacePath) return
                         void sendWorkspacePaneMessageToChat({
                           workspacePath,
-                          message: `Add the ${JSON.stringify(skill.frontmatter.name)} skill to this workflow (skill folder ${JSON.stringify(skill.folder_name)}). Check that it exists in the skills library first; if it does, add it to this workflow's selected skills and briefly confirm what it gives the workflow. If anything needs my input, ask me.`,
+                          message: `Add the ${JSON.stringify(skill.frontmatter.name)} skill to this workflow (skill folder ${JSON.stringify(skill.folder_name)}). Use the skill installed in this workflow. Attach it to the main chat or the steps that need it, and briefly confirm what it gives the workflow. If anything needs my input, ask me.`,
                         }).catch(err => {
                           useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open chat.', 'error')
                         })

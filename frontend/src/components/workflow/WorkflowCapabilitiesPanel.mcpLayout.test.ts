@@ -63,9 +63,9 @@ describe('Workflow MCP panel layout', () => {
     expect(views).not.toMatch(/id: 'skills'/)
     expect(host).not.toContain("case 'skills':")
     expect(skillsPanel).toContain('manageOwnScroll')
-    // Only the skills this workflow uses (no library), plus an Ask AI install button.
-    expect(skillsPanel).toContain('selectedOnly')
-    expect(panel).toContain('selectedOnly')
+    // One workspace inventory includes main chat, steps and native installs.
+    expect(skillsPanel).not.toContain('selectedOnly')
+    expect(skillsPanel).toContain('skillsApi.listSkills(workspacePath)')
     expect(panel).toContain('Install a skill')
   })
 

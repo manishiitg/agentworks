@@ -27,10 +27,10 @@ func TestCodeProjectSkillCallbacksStayInTheProject(t *testing.T) {
 			_ = json.Unmarshal(body, &req)
 			installTargets = append(installTargets, req["target_dir"])
 			_, _ = w.Write([]byte(`{"installed_skills":["demo"]}`))
-		case strings.HasSuffix(r.URL.Path, "/api/skills/project/delete"):
+		case strings.HasSuffix(r.URL.Path, "/api/skills/workspace/delete"):
 			var req map[string]string
 			_ = json.Unmarshal(body, &req)
-			deletedPaths = append(deletedPaths, req["target_dir"]+"|"+req["name"])
+			deletedPaths = append(deletedPaths, req["workspace_path"]+"/skills|"+req["name"])
 			_, _ = w.Write([]byte(`{"success":true}`))
 		case r.Method == http.MethodDelete:
 			// The generic file API follows links; a Code must never use it.
@@ -90,8 +90,8 @@ func TestWorkspaceProxyRefusesSkillInstallTargetDir(t *testing.T) {
 			}
 		}
 	}
-	if status := verdict("application/json", `{"source":"owner/repo@skill"}`); status != 0 {
-		t.Fatalf("a shared-library install was refused: %d", status)
+	if status := verdict("application/json", `{"source":"owner/repo@skill"}`); status != http.StatusForbidden {
+		t.Fatalf("unscoped installs must be refused: %d", status)
 	}
 }
 

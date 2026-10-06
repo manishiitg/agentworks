@@ -14,8 +14,12 @@ func TestWorkProfileCanAuthorCustomSkillsWithoutSkillBuilderIdentity(t *testing.
 	if grants.HasGrant("skill-creator") {
 		t.Fatal("Work profile must not enter the separate Skill Builder mode")
 	}
-	if len(grants.WriteFolders) != 1 || grants.WriteFolders[0] != "skills/custom/" {
-		t.Fatalf("Work custom-skill write folders = %v, want [skills/custom/]", grants.WriteFolders)
+	if len(grants.WriteFolders) != 0 {
+		t.Fatalf("skill authoring must use existing workspace permissions, got extra writes %v", grants.WriteFolders)
+	}
+	creator := resolveConditionalGrants(QueryRequest{SelectedSkills: []string{"skill-creator"}})
+	if len(creator.WriteFolders) != 0 {
+		t.Fatalf("Skill Builder must not grant shared-library writes: %v", creator.WriteFolders)
 	}
 	prompt := strings.Join(grants.PromptSections, "\n")
 	if !strings.Contains(prompt, "explicitly asks") || !strings.Contains(prompt, "normal Work identity") || !strings.Contains(prompt, "never store secrets") {

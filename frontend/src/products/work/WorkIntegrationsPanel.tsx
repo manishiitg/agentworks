@@ -1,5 +1,5 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Server } from 'lucide-react'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
@@ -121,13 +121,16 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
+  const pendingSkillSaves = useRef<Promise<void>>(Promise.resolve())
   const toggleSkill = async (folderName: string) => {
     const next = selectedSkills.includes(folderName)
       ? selectedSkills.filter((name) => name !== folderName)
       : [...selectedSkills, folderName]
     const store = useChatStore.getState()
+    const save = onSelectedSkillsChange(next)
+    pendingSkillSaves.current = Promise.all([pendingSkillSaves.current, save]).then(() => undefined, () => undefined)
     try {
-      await onSelectedSkillsChange(next)
+      await save
     } catch (cause) {
       store.addToast(cause instanceof Error ? cause.message : 'Could not save project skills.', 'error')
       return
@@ -182,13 +185,23 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             selectedGlobalSecrets={selectedGlobalSecrets} onGlobalSecretChange={onSelectedGlobalSecretsChange ? names => onSelectedGlobalSecretsChange(names ?? []) : undefined} /> : undefined}
           skills={(!enabledPanels || enabledPanels.has('skills')) ? (<SkillsManagerPanel
           compact
-          selectedOnly
           manageOwnScroll={false}
           workspacePath={workspacePath}
           selectedSkills={selectedSkills}
+          onBeforeUninstall={() => pendingSkillSaves.current}
+          onUninstalled={async name => {
+            const currentSelection = useChatStore.getState().chatTabs[tabId]?.config.selectedSkills || []
+            await onSelectedSkillsChange(currentSelection.filter(skill => skill !== name))
+            const store = useChatStore.getState()
+            for (const tab of Object.values(store.chatTabs)) {
+              if (tab.metadata?.agentProfileId !== product.profileId || tab.metadata?.agentProfileProjectId !== projectId) continue
+              store.setTabConfig(tab.tabId, { selectedSkills: (tab.config.selectedSkills || []).filter(skill => skill !== name) })
+              store.setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
+            }
+          }}
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
-          selectionScopeLabel="project"
-          emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
+          selectionScopeLabel="main chat"
+          emptySelectionText={`No skills are installed in this ${product.noun} yet. Ask the agent to add or create one.`}
         />) : undefined}
           vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}

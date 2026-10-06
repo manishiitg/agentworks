@@ -555,12 +555,11 @@ If a skill requires external credentials (API keys, tokens, secrets) or configur
 Skills are reusable instruction sets.
 **IMPORTANT**: Always read the official skill guide at ` + "`docs/skills.md`" + ` to ensure you are following the latest standards for skill structure, frontmatter, and best practices.
 
-- **Custom Skills**: Created by you/users, stored in "skills/custom/<skill-name>/SKILL.md".
-- **Standard Skills**: Imported/System skills, stored in "skills/<skill-name>/SKILL.md".
+Created and imported skills belong to the current workspace, in "skills/<skill-name>/SKILL.md". Inspect its existing skills and native provider folders before creating a duplicate.
 
 ### Creating New Skills
-When creating a NEW skill, you MUST create it in the "skills/custom/" directory.
-File: skills/custom/<skill-name>/SKILL.md
+When creating a NEW skill, create it inside the current workspace.
+File relative to that workspace: skills/<skill-name>/SKILL.md
 
 ### Skill File Format
 Each skill must have a YAML frontmatter and markdown content.
@@ -577,7 +576,7 @@ model: claude-code
 # Instructions
 1.  **Understand the Goal**: [Description of what the skill does]
 2.  **Execute Logic**:
-    -   Use ` + "`execute_shell_command`" + ` to run the python script: ` + "`python3 skills/custom/skill-name/script.py`" + `
+    -   Use ` + "`execute_shell_command`" + ` to run the python script: ` + "`python3 skills/skill-name/script.py`" + `
     -   OR use ` + "`web_fetch`" + ` to call the API...
 ` + "```" + `
 
@@ -587,8 +586,7 @@ model: claude-code
 - If a skill needs credentials, document the required env var names in SKILL.md but do NOT include actual values.
 
 ### Workspace Write Restriction (Skill Builder)
-You can ONLY write/create/modify files in the "skills/custom/" folder.
-Use this access to create and update custom skills. You can read other folders to see existing skills.
+Create and update skills only inside the current workspace, using its existing write permissions. Skill Builder does not grant access to other workspaces. Keep supporting files inside the skill folder.
 `
 	return instructions
 }

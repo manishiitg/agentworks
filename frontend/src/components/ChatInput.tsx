@@ -1607,7 +1607,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // console.log(DBG + ' showSkillPopup changed:', showSkillPopup)
     if (showSkillPopup) {
       setSkillsLoading(true)
-      skillsApi.listSkills()
+      skillsApi.listSkills(customCommandWorkspacePath || 'Chats')
         .then(res => {
           const raw = res.skills || []
           const seen = new Set<string>()
@@ -1622,7 +1622,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         .catch((err: unknown) => { console.error(DBG + ' skills load error:', err) })
         .finally(() => setSkillsLoading(false))
     }
-  }, [showSkillPopup])
+  }, [showSkillPopup, customCommandWorkspacePath])
 
   // Consolidated query selection logic — pasted attachments are prepended as
   // fenced blocks so the LLM sees them as distinct sections, separate from the
@@ -3758,6 +3758,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {/* Slash command dialogs */}
       {showSkillImport && (
         <SkillImportDialog
+          workspacePath={customCommandWorkspacePath || 'Chats'}
           onClose={() => closeDialog('skillImport')}
           onSuccess={() => closeDialog('skillImport')}
         />

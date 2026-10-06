@@ -289,11 +289,11 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Integrations · Skills': surface => ({
     purpose: `Skills are reusable instructions that teach this ${surface === 'crew' ? 'Crew member' : 'workflow'} how to perform a task. They do not connect an app account.`,
-    howTo: `Skills live in a shared library, while the selection here controls which ones this ${surface === 'crew' ? 'project' : 'workflow'} can use.`,
+    howTo: `Skills live in this ${surface === 'crew' ? 'project' : 'workflow'}. The list shows their main chat and step attachments; expand a skill to uninstall it here.`,
     steps: [
       `Review the selected skills for this ${surface === 'crew' ? 'project' : 'workflow'} and remove any it no longer needs.`,
-      'Search the library and select a skill to make its instructions available here.',
-      'If it is missing, use Import or Ask AI to add it to the library, then select it for this work.',
+      'Select a skill for the main chat, or ask the Builder to attach it to the steps that need it.',
+      'Ask AI to install or create a missing skill in this workspace.',
     ],
   }),
   'Integrations · Slack': surface => ({

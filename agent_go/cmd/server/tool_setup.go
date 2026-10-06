@@ -544,7 +544,7 @@ func workflowPhaseWriteFolders(workflowFolder string, additionalWriteFolders ...
 // wrapExecutorsWithChatModeFolderGuard wraps workspace tool executors to restrict chat mode writes.
 // The default writable folder is Downloads/ only — the per-user Chats folder is supplied by callers
 // via additionalWriteFolders so each session writes only to its own _users/<id>/Chats/ subtree.
-// Pass additionalWriteFolders to allow extra folders (e.g. "_users/<id>/Chats/", "skills/custom/").
+// Pass additionalWriteFolders to allow extra folders (e.g. "_users/<id>/Chats/").
 // Pass blockedWriteFolders to deny writes to specific paths within otherwise-allowed prefixes.
 // Reads remain allowed on blockedWriteFolders.
 func wrapExecutorsWithChatModeFolderGuard(executors map[string]func(ctx context.Context, args map[string]interface{}) (string, error), readOnlyFolders []string, blockedWriteFolders []string, additionalWriteFolders ...string) map[string]func(ctx context.Context, args map[string]interface{}) (string, error) {

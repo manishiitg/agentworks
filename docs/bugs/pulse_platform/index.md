@@ -14,7 +14,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 17 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 171 | 35 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 20 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 59 | 13 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-581](integrations/skills/plat-581.md) | Skills belong to each workspace, with step usage and scoped uninstall | fixed on main | P2 | [integrations/skills](integrations/skills/index.md) |
 | [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-544](app/activity/plat-544.md) | Plan reload leaves variables, connections and open details stale | fixed on main | P2 | [app/activity](app/activity/index.md) |
 | [PLAT-543](brain/learnings-knowledge/plat-543.md) | Brain access setting for projects (Off, Read, Folders) | fixed on main | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-542](app/navigation/plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
-| [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |

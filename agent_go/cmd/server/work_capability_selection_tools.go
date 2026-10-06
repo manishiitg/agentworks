@@ -20,7 +20,7 @@ func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionTool
 		return fmt.Errorf("Crew skill selection requires an active Crew project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectSkillSelectionTool, "Select or deselect one account-level or project-local skill for the active Crew project. For account-level skills, call list_skills first and pass the exact folder name; a project-local skill may be selected by its folder name under this Crew's skills/ directory. Selection is durable in workflow.json and causes matching skills to be attached automatically on later Crew turns. This does not install or uninstall a skill.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectSkillSelectionTool, "Select or deselect one skill installed in the active Crew workspace. Call list_skills first and pass the exact folder name, including skills installed in native provider folders. Selection is durable in workflow.json and causes matching skills to be attached automatically on later Crew turns. This does not install or uninstall a skill.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "skill"},
@@ -42,7 +42,7 @@ func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionTool
 		if action == "select" && !skills.IsBuiltinSkill(requested) {
 			installed, err := skills.GetSkillIn(getWorkspaceAPIURL(), workspacePath, requested)
 			if err != nil {
-				return "", fmt.Errorf("skill %q is not installed in this Crew or the account-level skills library; use an exact folder name", requested)
+				return "", fmt.Errorf("skill %q is not installed in this workspace; use an exact folder name", requested)
 			}
 			canonical = installed.FolderName
 		} else if selected, err := productSelectedSkills(ctx, "work", workspacePath); err == nil {

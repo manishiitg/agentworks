@@ -14,8 +14,8 @@ import (
 
 func TestSkillInstallTargetDir(t *testing.T) {
 	docs := t.TempDir()
-	if got, err := skillInstallTargetDir(docs, ""); err != nil || got != filepath.Join(docs, "skills") {
-		t.Fatalf("library target = %q %v", got, err)
+	if _, err := skillInstallTargetDir(docs, ""); err == nil {
+		t.Fatal("unscoped library installs must be refused")
 	}
 	ok := "_users/u1/Chats/Code/projects/app-1234abcd/skills"
 	if err := os.MkdirAll(filepath.Join(docs, filepath.Dir(ok)), 0o755); err != nil {
@@ -26,7 +26,7 @@ func TestSkillInstallTargetDir(t *testing.T) {
 	}
 	for _, bad := range []string{
 		"skills", "_users/u1/Chats/Code/projects/app/code", "_users/u1/Chats/Code/projects/../../x/skills",
-		"Workflow/w/skills", "_users/u1/Chats/Code/projects/app/skills/extra", "/etc/skills",
+		"_users/u1/Chats/Code/projects/app/skills/extra", "/etc/skills",
 		"_users/u1/Chats/Code/projects/missing-project/skills",
 	} {
 		if _, err := skillInstallTargetDir(docs, bad); err == nil {

@@ -858,7 +858,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			// Sub-agents inherit the parent's workspace, so resolve skills there
 			// first — otherwise a delegated agent silently loses every skill the
 			// product installs into its project.
-			if attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), parentReq.SelectedFolder, spec.Skills); len(attached) > 0 {
+			if attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), subAgentWorkspace, spec.Skills); len(attached) > 0 {
 				identitySkills = append(identitySkills, attached...)
 			}
 		}

@@ -48,7 +48,7 @@ type ConditionalWriteGrant struct {
 	Trigger func(req QueryRequest) bool
 
 	// WriteFolders are workspace-relative paths appended to the folder guard's
-	// write list when Trigger is true. Keep the trailing slash (e.g. "skills/custom/")
+	// write list when Trigger is true. Keep the trailing slash (e.g. "subagents/custom/")
 	// — the folder guard compares prefixes.
 	WriteFolders []string
 
@@ -75,10 +75,9 @@ var conditionalGrants = []ConditionalWriteGrant{
 		Trigger: func(req QueryRequest) bool {
 			return req.AgentProfileID == "work"
 		},
-		WriteFolders: []string{"skills/custom/"},
 		PromptSection: func() string {
 			return `## Custom skill authoring
-When the user explicitly asks to preserve or improve a reusable procedure, the Work agent may create or update a focused custom skill under skills/custom/<skill-name>/. Keep the normal Work identity. Inspect existing skills first, update rather than duplicate when appropriate, and never store secrets in a skill.`
+When the user explicitly asks to preserve or improve a reusable procedure, the Work agent may create or update a focused custom skill under skills/<skill-name>/ in the current workspace. Use the workspace's existing write permissions. Keep the normal Work identity. Inspect existing skills first, update rather than duplicate when appropriate, and never store secrets in a skill.`
 		},
 	},
 	{
@@ -91,7 +90,6 @@ When the user explicitly asks to preserve or improve a reusable procedure, the W
 			}
 			return false
 		},
-		WriteFolders:  []string{"skills/custom/"},
 		PromptSection: GetSkillBuilderInstructions,
 	},
 	{

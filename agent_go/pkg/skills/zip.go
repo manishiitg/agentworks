@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"path"
 	"strings"
 )
 
@@ -67,22 +66,13 @@ func ValidateZipSkill(workspaceAPIURL string, file multipart.File, header *multi
 		}
 	}
 
-	// Check if a skill with this name already exists
-	skillName := frontmatter.Name
-	if skillName == "" {
-		skillName = strings.TrimSuffix(header.Filename, ".zip")
-	}
-	skillName = sanitizeFolderName(skillName)
-	exists := false
-	if _, err := GetSkill(workspaceAPIURL, skillName); err == nil {
-		exists = true
-	}
+	// The authorized API checks for an existing install in its workspace.
 
-	return &ValidateSkillResponse{Valid: true, Frontmatter: frontmatter, Files: fileNames, Exists: exists}, nil
+	return &ValidateSkillResponse{Valid: true, Frontmatter: frontmatter, Files: fileNames, Exists: false}, nil
 }
 
-// ImportZipSkill validates and extracts a skill from an uploaded zip file to workspace
-func ImportZipSkill(workspaceAPIURL string, file multipart.File, header *multipart.FileHeader) (*ImportSkillResponse, error) {
+// ImportZipSkillInto imports files into one workspace.
+func ImportZipSkillInto(workspaceAPIURL string, file multipart.File, header *multipart.FileHeader, targetDir string) (*ImportSkillResponse, error) {
 	// Verify .zip extension
 	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
 		return &ImportSkillResponse{Success: false, Error: "file must be a .zip file"}, nil
@@ -130,15 +120,7 @@ func ImportZipSkill(workspaceAPIURL string, file multipart.File, header *multipa
 	}
 	skillName = sanitizeFolderName(skillName)
 
-	// Create workspace client and skill folder
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	skillFolderPath := path.Join(SkillsBasePath, skillName)
-
-	if err := client.CreateFolder(skillFolderPath); err != nil {
-		if !strings.Contains(err.Error(), "exists") {
-			return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to create folder: %v", err)}, nil
-		}
-	}
+	files := map[string][]byte{}
 
 	// Extract all files from the zip to the skill folder
 	for _, f := range zipReader.File {
@@ -159,18 +141,6 @@ func ImportZipSkill(workspaceAPIURL string, file multipart.File, header *multipa
 			return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("invalid path in zip: %s", f.Name)}, nil
 		}
 
-		destPath := path.Join(skillFolderPath, relPath)
-
-		// Create parent folder if needed
-		parentDir := path.Dir(destPath)
-		if parentDir != skillFolderPath {
-			if err := client.CreateFolder(parentDir); err != nil {
-				if !strings.Contains(err.Error(), "exists") {
-					return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to create folder %s: %v", parentDir, err)}, nil
-				}
-			}
-		}
-
 		// Read and write file content
 		fileRC, err := f.Open()
 		if err != nil {
@@ -182,9 +152,10 @@ func ImportZipSkill(workspaceAPIURL string, file multipart.File, header *multipa
 			return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to read %s: %v", f.Name, err)}, nil
 		}
 
-		if err := client.WriteFile(destPath, string(fileContent)); err != nil {
-			return &ImportSkillResponse{Success: false, Error: fmt.Sprintf("failed to write %s: %v", destPath, err)}, nil
-		}
+		files[relPath] = fileContent
+	}
+	if err := InstallSkillFilesIn(workspaceAPIURL, strings.TrimSuffix(targetDir, "/skills"), skillName, files); err != nil {
+		return &ImportSkillResponse{Success: false, Error: err.Error()}, nil
 	}
 
 	return &ImportSkillResponse{Success: true, SkillName: skillName}, nil

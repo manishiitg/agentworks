@@ -1,6 +1,6 @@
 ---
 name: work-skills
-description: Discover, install, import, create, select, and remove reusable skills in {{product}}. Use when the user asks to add a capability or manage the skills available to a project or account.
+description: Discover, install, import, create, select, and remove reusable skills in {{product}}. Use when the user asks to add a capability or manage the skills available in the current workspace.
 ---
 
 # {{product}} skills
@@ -24,7 +24,7 @@ description: Discover, install, import, create, select, and remove reusable skil
 - Use `list_skills` to inspect what is already installed before searching or
   creating another skill. Use `search_skills` to discover an existing skill.
 - Use `install_skill` for a discovered skill and `import_skill` for a supplied
-  skill source. Installation is account-level; selecting it for this project is
+  skill source. Installation stays in the current workspace; selecting it for an agent is
   a separate action. Call `update_project_skill_selection(action="select",
   skill="folder-name")` with the exact folder returned by `list_skills`.
   Use `action="deselect"` to remove only this project's selection. The same
@@ -32,8 +32,7 @@ description: Discover, install, import, create, select, and remove reusable skil
 - When the user explicitly asks to preserve or improve a repeatable procedure,
   create or update a focused custom skill inside this {{product}} project at
   `skills/<skill-name>/SKILL.md`. This is project-local durable knowledge, like
-  the root `MEMORY.md`; never write it into the account-wide `skills/custom/`
-  library. Inspect the names and descriptions of every existing project skill
+  the root `MEMORY.md`; keep skills scoped to this workspace. Inspect the names and descriptions of every existing project skill
   before choosing a destination, then select the skill for this project with
   `update_project_skill_selection` so the runtime can load it.
 - Update an existing skill only when the new knowledge has the same topic and
@@ -58,8 +57,9 @@ description: Discover, install, import, create, select, and remove reusable skil
 - Never store credentials or secret values in a skill. Document required secret
   names and use the Secrets system at runtime.
 - Before removing a skill, identify the exact installed name and explain that
-  `uninstall_skill` removes the account-level installation, not only this
-  project's selection.
+  `uninstall_skill` removes the current workspace's files and clears its
+  main-chat and workflow-step attachments. Identify affected agents first.
+  Other workspaces retain their own copies.
 - Load and follow a selected skill when its description matches the task. A
   skill does not grant filesystem, secret, network, MCP, or tool permissions
   beyond the current user and project.

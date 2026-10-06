@@ -20,6 +20,8 @@ type mockWorkspaceAPI struct {
 
 func (m *mockWorkspaceAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/api/skills/workspace/list":
+		m.handleWorkspaceSkills(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/documents":
 		m.handleListDocuments(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/documents/"):
@@ -304,4 +306,29 @@ func writeJSON(w http.ResponseWriter, status int, payload map[string]interface{}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (m *mockWorkspaceAPI) handleWorkspaceSkills(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkspacePath string `json:"workspace_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	documents := []map[string]interface{}{}
+	prefix := strings.TrimSuffix(body.WorkspacePath, "/") + "/"
+	for path, content := range m.files {
+		if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, "/SKILL.md") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
+		if len(parts) < 3 {
+			continue
+		}
+		documents = append(documents, map[string]interface{}{"folder_name": parts[len(parts)-2], "file_path": path, "document": content})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"documents": documents, "usage": map[string][]string{}})
 }

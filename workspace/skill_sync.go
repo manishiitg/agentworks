@@ -15,126 +15,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// systemSkill defines a skill that should be auto-installed on startup
-type systemSkill struct {
-	Source string // CLI source (owner/repo@skill)
-	Name   string // Expected skill folder name after install
-}
-
-// getSystemSkills returns the list of skills to auto-install on startup.
-// Add new required skills here.
-func getSystemSkills() []systemSkill {
-	return []systemSkill{
-		{Source: "anthropics/skills@skill-creator", Name: "skill-creator"},
-	}
-}
-
-// syncSystemSkillsOnStartup installs missing system skills directly to the filesystem.
-// Runs inside Docker where npx and the skills/ folder are directly accessible.
-func syncSystemSkillsOnStartup(docsDir string) {
-	skillsDir := filepath.Join(docsDir, "skills")
-
-	// Check if npx is available
-	npxPath, err := exec.LookPath("npx")
-	if err != nil {
-		fmt.Printf("⚠️  npx not found — skipping system skills sync\n")
-		return
-	}
-
-	var toInstall []systemSkill
-	for _, ss := range getSystemSkills() {
-		skillMdPath := filepath.Join(skillsDir, ss.Name, "SKILL.md")
-		if _, err := os.Stat(skillMdPath); err == nil {
-			continue // Already exists
-		}
-		toInstall = append(toInstall, ss)
-	}
-
-	if len(toInstall) == 0 {
-		fmt.Printf("✅ All %d system skills already installed\n", len(getSystemSkills()))
-		return
-	}
-
-	fmt.Printf("📦 Installing %d missing system skill(s)...\n", len(toInstall))
-
-	installed := 0
-	for _, ss := range toInstall {
-		if err := installSkillToDir(npxPath, ss.Source, skillsDir); err != nil {
-			fmt.Printf("⚠️  Failed to install %s: %v\n", ss.Name, err)
-			continue
-		}
-		// Verify it was installed
-		skillMdPath := filepath.Join(skillsDir, ss.Name, "SKILL.md")
-		if _, err := os.Stat(skillMdPath); err == nil {
-			installed++
-			fmt.Printf("  ✅ Installed %s\n", ss.Name)
-		}
-	}
-
-	fmt.Printf("📦 System skills sync complete: %d/%d installed\n", installed, len(toInstall))
-}
-
-// installSkillToDir runs npx skills add to install a skill directly into the target directory.
-func installSkillToDir(npxPath, source, skillsDir string) error {
-	// Parse source — handle owner/repo@skill-name format
-	cliSource := source
-	skillFilter := "*"
-	if atIdx := strings.LastIndex(source, "@"); atIdx > 0 {
-		beforeAt := source[:atIdx]
-		afterAt := source[atIdx+1:]
-		if strings.Contains(beforeAt, "/") && !strings.Contains(beforeAt, ":") && afterAt != "" {
-			cliSource = beforeAt
-			skillFilter = afterAt
-		}
-	}
-
-	// Create temp dir for CLI operations
-	tempDir, err := os.MkdirTemp("", "skills-sync-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Run npx skills add
-	cmd := exec.Command(npxPath, "skills", "add", cliSource,
-		"--agent", "universal",
-		"--skill", skillFilter,
-		"--copy",
-		"-y",
-	)
-	cmd.Dir = tempDir
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("npx skills add failed: %w\nOutput: %s", err, string(output))
-	}
-
-	// Copy from .agents/skills/ to target skillsDir
-	agentsSkillsDir := filepath.Join(tempDir, ".agents", "skills")
-	entries, err := os.ReadDir(agentsSkillsDir)
-	if err != nil {
-		return fmt.Errorf("no skills output found: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		srcDir := filepath.Join(agentsSkillsDir, entry.Name())
-		destDir := filepath.Join(skillsDir, entry.Name())
-
-		// Remove existing and copy fresh
-		os.RemoveAll(destDir)
-		if err := copyDir(srcDir, destDir); err != nil {
-			return fmt.Errorf("failed to copy skill %s: %w", entry.Name(), err)
-		}
-	}
-
-	return nil
-}
-
-// copyDir recursively copies a directory
 func copyDir(src, dst string) error {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
@@ -179,7 +59,7 @@ type skillInstallRequest struct {
 	Source string `json:"source"` // owner/repo@skill-name
 	// TargetDir, when set, installs into one project's skills folder
 	// (docs-relative _users/<user>/Chats/<Product>/projects/<project>/skills)
-	// instead of the account-wide skills/ library, e.g. a private Code.
+	// Skills are never installed in an account-wide store.
 	TargetDir string `json:"target_dir,omitempty"`
 }
 
@@ -196,11 +76,11 @@ func isProjectSkillsDir(target string) bool {
 }
 
 // skillInstallTargetDir resolves the folder an install writes to: the
-// account-wide library, or a validated project skills folder.
+// validated workspace skills folder.
 func skillInstallTargetDir(docsDir, target string) (string, error) {
 	target = strings.Trim(filepath.ToSlash(strings.TrimSpace(target)), "/")
 	if target == "" {
-		return filepath.Join(docsDir, "skills"), nil
+		return "", fmt.Errorf("target_dir is required; skills belong to a workspace")
 	}
 	return projectSkillsDir(docsDir, target)
 }
@@ -211,23 +91,24 @@ func skillInstallTargetDir(docsDir, target string) (string, error) {
 // (the sandbox allows it), and following one would install into, or delete
 // from, another user's tree.
 func projectSkillsDir(docsDir, target string) (string, error) {
-	target = strings.Trim(filepath.ToSlash(strings.TrimSpace(target)), "/")
-	if strings.Contains(target, "..") || !isProjectSkillsDir(target) {
-		return "", fmt.Errorf("target_dir must be a project's skills folder")
+	target = strings.TrimSpace(target)
+	if !strings.HasSuffix(target, "/skills") {
+		return "", fmt.Errorf("target_dir must be a workspace's skills folder")
 	}
-	dir := filepath.Join(docsDir, filepath.FromSlash(target))
-	project := filepath.Dir(dir)
-	if err := refuseSymlinkComponents(docsDir, project); err != nil {
+	workspace := strings.TrimSuffix(target, "/skills")
+	project, err := skillWorkspaceDir(docsDir, workspace)
+	if err != nil {
 		return "", err
 	}
-	if info, err := os.Lstat(project); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("target_dir's project does not exist")
+	dir := filepath.Join(project, "skills")
+	if err := refuseSymlinkComponents(docsDir, dir); err != nil {
+		return "", err
 	}
-	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
-		return "", fmt.Errorf("create project skills folder: %w", err)
+	if err := os.Mkdir(dir, 0755); err != nil && !os.IsExist(err) {
+		return "", err
 	}
-	if info, err := os.Lstat(dir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("target_dir must be a real folder, not a link")
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("skills must be a real folder")
 	}
 	return dir, nil
 }
@@ -426,15 +307,8 @@ func handleSkillInstall(c *gin.Context) {
 			}
 
 			srcDir := filepath.Join(agentsSkillsDir, entry.Name())
-			var copyErr error
-			if strings.TrimSpace(req.TargetDir) != "" {
-				// A project folder is writable by its agent: never follow a link.
-				copyErr = installSkillFolder(srcDir, skillsDir, entry.Name())
-			} else {
-				destDir := filepath.Join(skillsDir, entry.Name())
-				os.RemoveAll(destDir)
-				copyErr = copyDir(srcDir, destDir)
-			}
+			// A workspace is writable by its agent: never follow a link.
+			copyErr := installSkillFolder(srcDir, skillsDir, entry.Name())
 			if copyErr != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to copy %s: %v", entry.Name(), copyErr))
 				continue
@@ -451,10 +325,8 @@ func handleSkillInstall(c *gin.Context) {
 		}
 		if json.Unmarshal(lockData, &lockFile) == nil {
 			result.LockEntries = lockFile.Skills
-			// The account-wide lock file tracks the shared library only.
-			if strings.TrimSpace(req.TargetDir) == "" {
-				syncLockFile(docsDir, lockFile.Skills)
-			}
+			// Version metadata belongs to the same workspace as its files.
+			syncLockFile(filepath.Dir(skillsDir), lockFile.Skills)
 		}
 	}
 
@@ -559,6 +431,9 @@ func stripANSICodes(s string) string {
 // syncLockFile merges new entries into the workspace's skills-lock.json
 func syncLockFile(docsDir string, newEntries map[string]lockEntry) {
 	lockPath := filepath.Join(docsDir, "skills-lock.json")
+	if refuseSymlinkComponents(docsDir, lockPath) != nil {
+		return
+	}
 
 	existing := map[string]lockEntry{}
 	if data, err := os.ReadFile(lockPath); err == nil {
@@ -579,6 +454,5 @@ func syncLockFile(docsDir string, newEntries map[string]lockEntry) {
 		"version": 1,
 		"skills":  existing,
 	}
-	data, _ := json.MarshalIndent(lockFile, "", "  ")
-	os.WriteFile(lockPath, data, 0644)
+	_ = saveSkillConfig(docsDir, "skills-lock.json", lockFile)
 }

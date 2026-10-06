@@ -14,6 +14,8 @@ export interface Skill {
   folder_name: string;
   file_path: string;
   source_url?: string;
+  managed?: boolean;
+  used_by?: string[];
 }
 
 export interface ImportSkillRequest {
@@ -40,11 +42,8 @@ export interface ValidateSkillResponse {
   exists?: boolean;
 }
 
-export interface UpdateSkillRequest {
-  content: string;
-}
-
 export interface ListSkillsResponse {
   skills: Skill[];
   total: number;
+  usage?: Record<string, string[]>;
 }

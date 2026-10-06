@@ -1,10 +1,10 @@
 ## Skill Management — install skills and attach them to workflows
 
-Skills are reusable instruction sets (a `SKILL.md` plus optional bundled files) injected into step agents at runtime only when the step explicitly enables them. This doc covers the full lifecycle: find → install → select for workflow discovery → enable per step → remove. To *author* a new skill from scratch, use the `skill-creator` skill — do not hand-write `SKILL.md` content.
+Skills are reusable instruction sets (a `SKILL.md` plus optional bundled files) injected into step agents at runtime only when the step explicitly enables them. This doc covers the full lifecycle: find → install → attach to the main chat → enable per step → remove. To *author* a new skill from scratch, use the `skill-creator` skill (install `anthropics/skills@skill-creator` in this workspace first if missing) — do not hand-write `SKILL.md` content.
 
 ### Where skills live
 
-Skills live at the **workspace root**, `<workspace-root>/skills/<folder>/SKILL.md`, and are **shared across all workflows**. Do NOT create or reference skills inside a workflow folder (e.g. `Workflow/trading/skills/` does not exist). Custom/authored skills live under `<workspace-root>/skills/custom/<folder>/`.
+Skills belong to the **current product or workflow**, `<current-workspace>/skills/<folder>/SKILL.md`. There is no shared account skills library. `list_skills` also discovers skills installed by native agents in this workspace's `.skills/` and provider skill folders such as `.agents/skills` and `.claude/skills`. Installing in one workspace does not install in another.
 
 ### Lifecycle
 
@@ -14,7 +14,7 @@ Skills live at the **workspace root**, `<workspace-root>/skills/<folder>/SKILL.m
 2. **Install**
    - `install_skill(source)` — from the registry, source format `owner/repo@skill-name`.
    - `import_skill(github_url)` — from a GitHub folder URL.
-   - Both download into `<workspace-root>/skills/<folder>/`. If a folder exists but has no `SKILL.md`, reinstall it with the same method it was originally installed with — **never write `SKILL.md` by hand**.
+   - Both download into `<current-workspace>/skills/<folder>/`. If a folder exists but has no `SKILL.md`, reinstall it with the same method it was originally installed with — **never write `SKILL.md` by hand**.
 3. **Select for workflow/builder context**
    - `update_workflow_config(add_skills=["folder-name"])`. This records the skill as a selected workflow capability for workshop/builder discovery. Do NOT edit `workflow.json` manually.
 4. **Enable for specific runtime steps**
@@ -23,7 +23,7 @@ Skills live at the **workspace root**, `<workspace-root>/skills/<folder>/SKILL.m
 5. **Remove from the workflow**
    - `update_workflow_config(remove_skills=["folder-name"])`.
 6. **Uninstall**
-   - `uninstall_skill(folder_name)` — deletes the files from the workspace entirely.
+   - `uninstall_skill(folder_name)` — deletes its files and clears its main-chat and per-step attachments in this workspace. Platform-managed skills cannot be uninstalled.
 
 Inspect at any point with `get_workflow_config` (the workflow's selected skills) and `list_skills` (everything installed). Inspect `planning/step_config.json` or use step config tools to see per-step `enabled_skills`.
 

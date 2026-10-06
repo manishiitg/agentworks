@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	"github.com/gorilla/mux"
 )
@@ -14,21 +17,80 @@ import (
 func RegisterSkillRoutes(router *mux.Router, api *StreamingAPI) {
 	workspaceAPIURL := getWorkspaceAPIURL()
 
-	router.HandleFunc("/skills", listSkillsHandler(workspaceAPIURL)).Methods("GET", "OPTIONS")
-	router.HandleFunc("/skills/import", importSkillHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
-	router.HandleFunc("/skills/import-zip", importSkillZipHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
-	router.HandleFunc("/skills/validate", validateSkillHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
-	router.HandleFunc("/skills/validate-zip", validateSkillZipHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
-	router.HandleFunc("/skills/{name}", getSkillHandler(workspaceAPIURL)).Methods("GET", "OPTIONS")
-	router.HandleFunc("/skills/{name}", updateSkillHandler(workspaceAPIURL)).Methods("PUT", "OPTIONS")
-	router.HandleFunc("/skills/{name}", deleteSkillHandler(workspaceAPIURL)).Methods("DELETE", "OPTIONS")
-
-	// CLI-based routes (Vercel skills CLI)
-	router.HandleFunc("/skills/cli/install", cliInstallHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
-	router.HandleFunc("/skills/cli/check-updates", cliCheckUpdatesHandler(workspaceAPIURL)).Methods("GET", "OPTIONS")
-	router.HandleFunc("/skills/cli/update", cliUpdateHandler(workspaceAPIURL)).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills", workspaceSkillRoute(false, listSkillsHandler(workspaceAPIURL))).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/import", workspaceSkillRoute(true, importSkillHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/import-zip", workspaceSkillRoute(true, importSkillZipHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/validate", workspaceSkillRoute(false, validateSkillHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/validate-zip", workspaceSkillRoute(false, validateSkillZipHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/{name}", workspaceSkillRoute(false, getSkillHandler(workspaceAPIURL))).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/{name}", workspaceSkillRoute(true, deleteSkillHandler(workspaceAPIURL))).Methods("DELETE", "OPTIONS")
+	router.HandleFunc("/skills/cli/install", workspaceSkillRoute(true, cliInstallHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/cli/available", cliAvailableHandler()).Methods("GET", "OPTIONS")
 	router.HandleFunc("/skills/cli/search", cliSearchHandler()).Methods("GET", "OPTIONS")
+
+}
+
+// Skills always belong to the active workspace. Authorize before any inventory,
+// migration or mutation; canonicalize private product paths once at the edge.
+func workspaceSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		claims := GetUserFromContext(r.Context())
+		if claims == nil {
+			http.Error(w, "sign in to manage skills", http.StatusUnauthorized)
+			return
+		}
+		if write && workflowAccessForClaims(claims) == WorkflowAccessRead {
+			http.Error(w, "read-only accounts cannot change workspace skills", http.StatusForbidden)
+			return
+		}
+		raw := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
+		clean := path.Clean(raw)
+		if raw == "" || clean != raw || strings.Contains(raw, "..") || path.IsAbs(raw) {
+			http.Error(w, "workspace_path is required and must identify the current workspace", 400)
+			return
+		}
+		if crew, ok := resolveCrewPath(r.Context(), claims.UserID, clean); ok {
+			access := crewAccessFor(claims, crew)
+			if crew.Rest != "" || access == crewAccessNone || (write && access != crewAccessOwner) {
+				http.Error(w, "Crew skill access denied", 403)
+				return
+			}
+			clean = crew.Root
+		} else if strings.HasPrefix(clean, "Workflow/") {
+			manifest, exists, err := ReadWorkflowManifest(r.Context(), clean)
+			if err != nil || !exists || !userAllowedWorkflowID(claims, manifest.ID) {
+				http.Error(w, "choose a workflow you can access", 403)
+				return
+			}
+			if write {
+				if !requireWorkflowOwner(w, r, clean) {
+					return
+				}
+			} else if !requireWorkflowVisible(w, r, clean) {
+				return
+			}
+		} else {
+			ref := workspaceref.MustParse(clean)
+			if ref.Logical() != "Chats" && !strings.HasPrefix(ref.Logical(), "Chats/") {
+				http.Error(w, "choose a product or workflow workspace", 400)
+				return
+			}
+			validated, err := cleanAgentProfileWorkspace(clean, claims.UserID)
+			if err != nil {
+				http.Error(w, err.Error(), 403)
+				return
+			}
+			clean = agentProfileRuntimeWorkspace(claims.UserID, validated)
+		}
+		query := r.URL.Query()
+		query.Set("workspace_path", clean)
+		r.URL.RawQuery = query.Encode()
+		handler(w, r)
+	}
 }
 
 func listSkillsHandler(workspaceAPIURL string) http.HandlerFunc {
@@ -38,15 +100,16 @@ func listSkillsHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
-		skillList, err := skills.DiscoverSkills(workspaceAPIURL)
+		inventory, err := skills.DiscoverSkillsIn(workspaceAPIURL, r.URL.Query().Get("workspace_path"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		response := skills.ListSkillsResponse{
-			Skills: skillList,
-			Total:  len(skillList),
+			Skills: inventory.Skills,
+			Total:  len(inventory.Skills),
+			Usage:  inventory.Usage,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -68,7 +131,7 @@ func getSkillHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
-		skill, err := skills.GetSkill(workspaceAPIURL, name)
+		skill, err := skills.GetSkillIn(workspaceAPIURL, r.URL.Query().Get("workspace_path"), name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -97,7 +160,7 @@ func importSkillHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
-		result, err := skills.ImportGitHubSkill(workspaceAPIURL, req.GitHubURL, req.GitHubToken)
+		result, err := skills.ImportGitHubSkillInto(workspaceAPIURL, req.GitHubURL, req.GitHubToken, path.Join(r.URL.Query().Get("workspace_path"), "skills"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -137,39 +200,12 @@ func validateSkillHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
+		if result.Frontmatter != nil {
+			_, err := skills.GetSkillIn(workspaceAPIURL, r.URL.Query().Get("workspace_path"), result.Frontmatter.Name)
+			result.Exists = err == nil
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
-	}
-}
-
-func updateSkillHandler(workspaceAPIURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		vars := mux.Vars(r)
-		name := vars["name"]
-		if name == "" {
-			http.Error(w, "skill name is required", http.StatusBadRequest)
-			return
-		}
-
-		var req skills.UpdateSkillRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		skill, err := skills.UpdateSkill(workspaceAPIURL, name, req.Content)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(skill)
 	}
 }
 
@@ -187,13 +223,10 @@ func deleteSkillHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
-		if err := skills.DeleteSkill(workspaceAPIURL, name); err != nil {
+		if err := skills.UninstallSkillIn(r.Context(), workspaceAPIURL, r.URL.Query().Get("workspace_path"), name); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// Also remove from lock file if tracked
-		_ = skills.RemoveFromLockFile(workspaceAPIURL, name)
 
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -225,6 +258,10 @@ func validateSkillZipHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
+		if result.Frontmatter != nil {
+			_, err := skills.GetSkillIn(workspaceAPIURL, r.URL.Query().Get("workspace_path"), result.Frontmatter.Name)
+			result.Exists = err == nil
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
 	}
@@ -286,45 +323,9 @@ func cliInstallHandler(workspaceAPIURL string) http.HandlerFunc {
 			return
 		}
 
-		result, err := skills.ImportToWorkspace(r.Context(), workspaceAPIURL, req.Source)
+		result, err := skills.ImportToWorkspaceDir(r.Context(), workspaceAPIURL, req.Source, path.Join(r.URL.Query().Get("workspace_path"), "skills"))
 		if err != nil {
 			log.Printf("[SKILLS CLI] Install failed for '%s': %v", req.Source, err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
-	}
-}
-
-func cliCheckUpdatesHandler(workspaceAPIURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		updates, err := skills.CheckUpdates(r.Context(), workspaceAPIURL)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(updates)
-	}
-}
-
-func cliUpdateHandler(workspaceAPIURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		result, err := skills.UpdateAll(r.Context(), workspaceAPIURL)
-		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -354,7 +355,7 @@ func importSkillZipHandler(workspaceAPIURL string) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		result, err := skills.ImportZipSkill(workspaceAPIURL, file, header)
+		result, err := skills.ImportZipSkillInto(workspaceAPIURL, file, header, path.Join(r.URL.Query().Get("workspace_path"), "skills"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
