@@ -33,6 +33,33 @@ func skillHasScripts(paths []string) bool {
 	return false
 }
 
+// companySkillsFolder is where a published skill goes when the caller names no folder.
+const companySkillsFolder = "Skills"
+
+// defaultSkillFolder is Skills/<name> for a package's SKILL.md front-matter name, kebab-cased; empty without a name.
+func defaultSkillFolder(files []any) string {
+	for _, item := range files {
+		m := asMap(item)
+		if strings.Trim(stringArg(m, "path"), "/") != skillFile {
+			continue
+		}
+		name, _ := skillFrontmatter(stringArg(m, "content"))
+		var b strings.Builder
+		for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+			switch {
+			case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+				b.WriteRune(r)
+			case b.Len() > 0 && !strings.HasSuffix(b.String(), "-"):
+				b.WriteByte('-')
+			}
+		}
+		if slug := strings.Trim(b.String(), "-"); slug != "" {
+			return companySkillsFolder + "/" + slug
+		}
+	}
+	return ""
+}
+
 // skillFrontmatter reads name and description from SKILL.md's YAML front matter (simple key: value lines).
 func skillFrontmatter(content string) (name, description string) {
 	if !strings.HasPrefix(content, "---\n") {
@@ -191,14 +218,23 @@ type skillFileInput struct {
 }
 
 func (s *Service) publishSkill(ctx context.Context, p Principal, args map[string]any) (any, error) {
-	folder := strings.Trim(stringArg(args, "folder_path"), "/")
-	if err := validatePath(folder, false); err != nil || folder == "" {
-		return nil, badArg("folder_path names the skill's folder, for example Company/Skills/release-notes.")
-	}
 	base := stringArg(args, "request_id")
 	raw := asSlice(args["files"])
 	if len(raw) == 0 || len(raw) > maxSkillFiles {
 		return nil, badArg("files must hold 1 to %d files.", maxSkillFiles)
+	}
+	folder := strings.Trim(stringArg(args, "folder_path"), "/")
+	// Company skills live in the top-level Skills folder unless the caller names another (owner, 2026-10-06): one
+	// place to find them, instead of next to whatever content the publishing agent happened to see.
+	defaulted := folder == ""
+	if defaulted {
+		folder = defaultSkillFolder(raw)
+		if folder == "" {
+			return nil, badArg("Give folder_path, or a SKILL.md whose front matter has a name (it is published to %s/<name>).", companySkillsFolder)
+		}
+	}
+	if err := validatePath(folder, false); err != nil || folder == "" {
+		return nil, badArg("folder_path names the skill's folder, for example %s/release-notes.", companySkillsFolder)
 	}
 	inputs := map[string]skillFileInput{}
 	paths := []string{}
@@ -237,6 +273,9 @@ func (s *Service) publishSkill(ctx context.Context, p Principal, args map[string
 	}
 	// Folders: the skill folder and every subfolder its files use, parents first.
 	folders := map[string]bool{folder: true}
+	if defaulted {
+		folders[companySkillsFolder] = true
+	}
 	for _, rel := range paths {
 		for dir := path.Dir(rel); dir != "."; dir = path.Dir(dir) {
 			folders[folder+"/"+dir] = true

@@ -53,3 +53,7 @@ Owner, 2026-10-06. Today the only shared skills are the installation's flat `ski
 - Not deployed; not tried live with a real agent or MCP client.
 - No app UI for skills (the Brain tab shows them as folders/files).
 - Old root `skills/` library content is not imported into Brain automatically; an Owner can publish the ones worth keeping.
+
+## Top-level Skills folder (2026-10-06)
+
+Owner: "yes. top level skills". `brain_skills publish` without `folder_path` now publishes to `Skills/<name>` (the SKILL.md front-matter name, kebab-cased), creating the top-level `Skills` folder if needed; naming a folder still works. The tool says to publish only when the person asks to share a skill company-wide. Why: an RTS Crew put a skill in `RTS/Latency/skills` because that was the only Brain content it saw. Not deployed. The existing `RTS/Latency/skills` copy on RTS is unchanged.
