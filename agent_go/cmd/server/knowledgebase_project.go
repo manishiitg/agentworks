@@ -19,7 +19,10 @@ type knowledgeProjectBuilderKey struct{}
 type knowledgeProjectBuilderAuthority struct{ UserID, Workspace, Session string }
 
 func knowledgeProjectBuilderQuery(req QueryRequest, claims *UserClaims, authoritySession, toolSession string, readOnly bool) bool {
-	return req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" &&
+	// handleQuery turns every workflow_phase request into multi-agent before the tool context is bound, so requiring
+	// workflow_phase here meant the root Builder never received authority for its own Brain project tools (RTS
+	// 2026-10-06: "Only the current workflow Builder can configure knowledge bindings" in the rts-aws Builder).
+	return (req.AgentMode == "workflow_phase" || req.AgentMode == "multi-agent") && req.PhaseID == "workflow-builder" &&
 		!readOnly && authoritySession == toolSession && req.BotPlatform == "" &&
 		(req.TriggeredBy == "" || req.TriggeredBy == "external") && claims != nil &&
 		claims.ExecutionPrincipal == nil && (knowledgeInteractiveAccess(claims) ||
