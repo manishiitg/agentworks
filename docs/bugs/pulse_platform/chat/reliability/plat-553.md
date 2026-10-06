@@ -47,3 +47,7 @@ Owner request: show context compaction for every coding CLI in the chat, from st
 ## Register notes
 
 [PLAT-553](plat-553.md), P2, fixed on main, not deployed: Codex, Claude, Pi, Muse and Agy compaction records become a `context_compaction` event and one chat row ("Compacting context…" → "Compacted context (1m 39s) · 384k → 92k tokens"); Cursor records none.
+
+## Verified live
+
+2026-10-06: in the owner's local app a long Plan Drift chat showed "Compacted context (2m 10s) · 236k → 24k tokens".

@@ -7,6 +7,6 @@
 | [backup](backup/index.md) | 2 | 2 |
 | [findings](findings/index.md) | 19 | 3 |
 | [fixer](fixer/index.md) | 1 | 1 |
-| [general](general/index.md) | 4 | 1 |
+| [general](general/index.md) | 5 | 1 |
 | [lifecycle](lifecycle/index.md) | 8 | 1 |
 | [reviews](reviews/index.md) | 17 | 6 |

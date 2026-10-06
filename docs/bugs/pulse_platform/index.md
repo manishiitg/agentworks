@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 2 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 169 | 35 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 170 | 35 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 29 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
 | [PLAT-565](goals/plans-contracts/plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-564](vault/local/plat-564.md) | Local Vault fails to start: configuration key left in the old state folder | fixed on main | P0 | [vault/local](vault/local/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-530](browser/browser/plat-530.md) | Workflow extension rollout and immediate current-tab sharing | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-529](app/tests/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [app/tests](app/tests/index.md) |
 | [PLAT-528](app/chat/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [app/chat](app/chat/index.md) |
-| [PLAT-527](app/chat/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [app/chat](app/chat/index.md) |

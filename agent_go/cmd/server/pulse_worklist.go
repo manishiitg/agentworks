@@ -3119,6 +3119,14 @@ func readPulseFocusAgendaView(ctx context.Context, workspacePath, module, routeS
 	return string(encoded), nil
 }
 
+// The module view is read whole at the start of every Pulse turn, so it carries
+// the recent history only. The ledger alone was 200 of 320 thousand characters
+// on a workflow with a long Pulse history (PLAT-567); the rest stays in the DB.
+const (
+	pulseModuleViewLedgerLimit         = 20
+	pulseModuleViewFocusSelectionLimit = 10
+)
+
 func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID string) (string, error) {
 	states, err := getPulseModuleStates(ctx, workspacePath)
 	if err != nil {
@@ -3176,7 +3184,7 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 	// only explicit status disagreements and structured failures into compact
 	// evidence for Gate; it never promotes them directly to Pulse issues.
 	runtimeIntake := pulseintake.CheckRuntime(workspacePath, time.Now().UTC())
-	impactLedger, impactErr := step_based_workflow.LoadPulseImpactLedger(ctx, workspacePath, 100)
+	impactLedger, impactErr := step_based_workflow.LoadPulseImpactLedger(ctx, workspacePath, pulseModuleViewLedgerLimit)
 	if impactErr != nil {
 		log.Printf("[PULSE] get_pulse_state(view=module): impact ledger unavailable for %s: %v", workspacePath, impactErr)
 	}
@@ -3185,7 +3193,7 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		log.Printf("[PULSE] get_pulse_state(view=module): focus history unavailable for %s: %v", workspacePath, focusErr)
 		focusHistory = []PulseReviewFocus{}
 	}
-	focusSelections, selectionErr := getPulseReviewFocusSelections(ctx, workspacePath, 50)
+	focusSelections, selectionErr := getPulseReviewFocusSelections(ctx, workspacePath, pulseModuleViewFocusSelectionLimit)
 	if selectionErr != nil {
 		log.Printf("[PULSE] get_pulse_state(view=module): focus selections unavailable for %s: %v", workspacePath, selectionErr)
 		focusSelections = []PulseReviewFocus{}
@@ -3274,7 +3282,7 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		"pending_review_recoveries":      pendingRecoveries,
 		"pending_review_recoveries_note": "Backend-owned interrupted-review recovery. A listed module is mandatory due regardless of cooldown. Its executor reads saved review_notes for source_pulse_run_id and existing typed records; checkpoint_path is an optional legacy file only. Do not infer missing findings or duplicate recorded work. Runtime owns interruption tracking; no recovery report is required.",
 		"impact_ledger":                  impactLedger,
-		"impact_ledger_note":             "Durable intervention, per-run success-criterion observation, and append-only before/after assessment history. Reliability or measurement work is not direct goal progress; inconclusive is correct until a comparable evidence window matures.",
+		"impact_ledger_note":             "The most recent interventions and per-run success-criterion observations (older ones stay in the database), with append-only before/after assessment history. Reliability or measurement work is not direct goal progress; inconclusive is correct until a comparable evidence window matures.",
 		"context_records":                loadPulseContextRecordsForState(ctx, workspacePath),
 		"context_records_note":           "User-confirmed workflow rules captured through capture_context. The context file is the runtime source; these immutable records show who captured what and when.",
 		"architecture_budget_candidates": map[string]interface{}{

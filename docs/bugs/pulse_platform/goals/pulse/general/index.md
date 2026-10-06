@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-567](plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 |
 | [PLAT-559](plat-559.md) | Simplify Pulse: three roles that find and fix, code due rules, one record type | open | P1 |
 | [PLAT-315](plat-315.md) | Pulse slash command resolves the open chat workflow | deployed | - |
 | [PLAT-311](plat-311.md) | Goal metric groups and linked supporting measurements | deployed | - |
