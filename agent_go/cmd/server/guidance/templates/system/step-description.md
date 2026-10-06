@@ -52,6 +52,30 @@ the first item. The first item should tell the agent what to do now under the
 charter, not redefine the charter. Live Workshop `human_input` and parent-agent
 delegation instructions are also user messages, not description mutations.
 
+### Use this section layout for the description
+
+Write the description with these Markdown sections, in this order. Omit a section
+only when it has nothing to say; do not add other sections.
+
+```
+## Goal       — what the step achieves, in one to three sentences
+## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
+## Output     — what it produces and where; the shape stays in validation_schema
+## Rules      — binding business constraints, approval limits, actions outside its authority
+## Done when  — the success boundary, including what counts as a valid no-op
+## Guides     — the skill/learning references to use, named only, never copied
+```
+
+Everything else belongs somewhere else: execution phases in `items[]`, reusable
+procedures in skills and learnings, domain facts and decisions in the
+knowledgebase, platform mechanics nowhere (the runtime supplies them).
+
+A description holds no history. Dated observations ("measured on 2026-08-10…"),
+incident narratives and "this exists because…" explanations go to the
+knowledgebase as a decision or to the learnings as a verified technique, or are
+deleted once the fix is in place. A repair after a failed run changes the rule,
+the item or the guide it concerns; it does not append a story to the charter.
+
 Put reusable execution methods in the step's skills and learnings: tool usage, selectors, API/authentication sequences, troubleshooting, and techniques verified in prior runs. Reference the relevant guidance and configure the step's skill/learning access so it can actually read it. Do not assume a skill exists or that a new step has already learned a procedure; provide needed guidance there, or let the execution agent choose a method within the task's constraints and retain verified reusable know-how through the configured learning flow.
 
 For browser-test steps, describe the test outcome and any required live visibility.

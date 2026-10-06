@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Step descriptions use a fixed layout and hold no history
+- A description is the step's charter: Goal, Inputs, Output, Rules, Done when, Guides. Execution phases go in a
+  sequence's items, reusable how-to in skills/learnings, facts and decisions in the knowledgebase, platform mechanics
+  nowhere. Dated observations and incident stories are not kept in descriptions. Why: Upwork's descriptions grew to
+  163k characters through repairs, mixing procedure and history into the charter. Guidance only; no hard validation.
+  Ticket: [PLAT-555](bugs/pulse_platform/step-execution/plat-555.md).
+
 ### 2026-10-06 — Every MCP tool is exposed with its connection as a prefix
 - In the platform's own agent loop every MCP tool is named `<alias>__<tool>` (a short, stable connection alias); platform
   tools keep their names, so a connector can never clash with or hide a platform tool, and two connections of the same server

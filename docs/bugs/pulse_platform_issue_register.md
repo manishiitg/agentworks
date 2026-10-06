@@ -275,6 +275,10 @@ usable node_modules if the install fails.
 
 [PLAT-552](pulse_platform/scheduler-runs/plat-552.md), fixed on main, not deployed: a cancel now kills the CLI's whole process group (the npm codex wrapper left the real Codex running).
 
+## Step descriptions grow into manuals: fixed layout — PLAT-555
+
+[PLAT-555](pulse_platform/step-execution/plat-555.md), guidance on main; Upwork pilot and review-side enforcement open.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
