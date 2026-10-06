@@ -883,7 +883,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                       <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                       <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">Quick Switcher</span>
                     </div>
-                    <kbd className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 text-xs rounded font-mono font-semibold">Ctrl+K</kbd>
+                    <kbd className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 text-xs rounded font-mono font-semibold">⌘K / Ctrl+K</kbd>
                   </div>
                   <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
                     Jump to any product, project, workflow or chat. Use @active or @events to narrow the list.
@@ -907,8 +907,24 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                   </div>
                 </div>
 
+                {/* Code chat tabs (PLAT-571); same keys as Code's terminal tabs. */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2.5">Code</p>
+                  <div className="space-y-1.5">
+                    {[
+                      ['Switch chat tab', '⌥1–5 / Alt+1–5'],
+                      ['New chat tab', '⌥⇧T / Alt+Shift+T'],
+                    ].map(([label, key]) => (
+                      <div key={key} className="flex items-center justify-between py-1">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{label}</span>
+                        <kbd className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded font-mono">{key}</kbd>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
-                  Use Ctrl on Windows/Linux or Cmd on Mac
+                  Mac keys first: ⌘ Cmd and ⌥ Option. On Windows/Linux use Ctrl and Alt
                 </p>
               </div>
             </div>

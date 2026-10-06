@@ -95,3 +95,8 @@ tab-helper and quick-switcher tests pass.
   project the user had picked; switching inside Code was unaffected because the preparation does not re-run there.
   Pinned in `workChatTabSelection.test.ts`. To check on RTS with the rest.
 - Owner, 2026-10-06 (RTS): "tabs seem to work well for now" in their testing.
+- Owner: chat-tab keys like the terminal's. Alt+1–5 / Option(⌥)+1–5 pick a chat (1 = primary), Alt+Shift+T /
+  ⌥⇧T opens one (`workChatTabShortcut`, physical keys, so ⌥ works on a Mac). Active only while Code is on screen
+  and never for a key Code's terminal already took. Shown for both systems in the start-card hint, the New tab
+  tooltip and the shortcuts panel's new Code section. Pinned in `workChatTabSelection.test.ts`.
+

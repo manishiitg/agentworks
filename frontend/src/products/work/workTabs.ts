@@ -57,6 +57,21 @@ export function workTabToKeepActive(
   return previous.tabId
 }
 
+export type WorkChatTabShortcut = { kind: 'tab'; index: number } | { kind: 'new' }
+
+/**
+ * Code chat tabs use the terminal's keys (PLAT-571, owner 2026-10-06):
+ * Alt+1..Alt+5 pick a chat (1 = the primary), Alt+Shift+T opens a new one.
+ * The physical key is read, because Option changes the character on a Mac.
+ */
+export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'code' | 'key'>): WorkChatTabShortcut | null {
+  if (!event.altKey || event.ctrlKey || event.metaKey) return null
+  const code = event.code || ''
+  if (event.shiftKey) return code === 'KeyT' || event.key.toLowerCase() === 't' ? { kind: 'new' } : null
+  const digit = /^Digit([1-5])$/.exec(code)?.[1] ?? (/^[1-5]$/.test(event.key) ? event.key : undefined)
+  return digit ? { kind: 'tab', index: Number(digit) - 1 } : null
+}
+
 /** Find the local projection of the server-owned conversation for this project. */
 export function findCanonicalWorkProjectTab(
   tabs: Record<string, ChatTab>,

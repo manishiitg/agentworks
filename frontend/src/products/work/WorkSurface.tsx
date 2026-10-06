@@ -38,7 +38,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workChatTabShortcut, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -597,6 +597,31 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       setOpening(false)
     }
   }
+  // Alt+1..5 / Option+1..5 pick a chat, Alt+Shift+T / Option+Shift+T opens one
+  // (PLAT-571), only while Code is the product on screen and never for a key
+  // the terminal already took (it marks its own Alt keys handled).
+  const tabsRef = useRef(tabs)
+  const openSideChatRef = useRef(openSideChat)
+  tabsRef.current = tabs
+  openSideChatRef.current = openSideChat
+  useEffect(() => {
+    if (!allowSideChats) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || useProductSurfaceStore.getState().productSurface !== 'code') return
+      if (event.target instanceof Element && event.target.closest('.xterm')) return
+      const action = workChatTabShortcut(event)
+      if (!action) return
+      event.preventDefault()
+      if (action.kind === 'new') {
+        void openSideChatRef.current()
+        return
+      }
+      const target = tabsRef.current[action.index]
+      if (target) activateTab(target.tabId)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [allowSideChats])
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1">
       {tabs.map(tab => <AgentWorksChatTabItem
@@ -621,7 +646,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
           aria-label="New chat tab"
           title={sideChats.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} chats per project`
-            : 'New chat tab: another full chat in this project (the first chat keeps Slack, WhatsApp, MCP and schedules)'}
+            : 'New chat tab (⌥⇧T on Mac, Alt+Shift+T on Windows): another full chat in this project. The first chat keeps Slack, WhatsApp, MCP and schedules'}
           data-testid="work-new-chat-tab"
         >
           {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { ChatTab } from '../../stores/useChatStore'
 import { selectWorkChatTabIds } from './WorkSurface'
-import { isWorkSideChatTab, workSideChatKey, workTabToKeepActive } from './workTabs'
+import { isWorkSideChatTab, workChatTabShortcut, workSideChatKey, workTabToKeepActive } from './workTabs'
 
 function crewTab(tabId: string, projectId: string, inputText = ''): ChatTab {
   return {
@@ -50,5 +50,19 @@ describe('Work surface chat-tab selection', () => {
     const state = { chatTabs: { t1: crewTab('t1', 'p1'), t2: crewTab('t2', 'p2') }, activeTabId: 't2' }
     expect(selectWorkChatTabIds(state, 'p1')).toEqual({ canonicalTabId: 't1', activeProjectTabId: undefined })
     expect(selectWorkChatTabIds(state, undefined)).toEqual({ canonicalTabId: undefined, activeProjectTabId: undefined })
+  })
+
+  // Code chat tabs use the terminal's keys: Alt/Option+1..5 and Alt/Option+Shift+T.
+  // On a Mac Option changes the character (⌥1 types ¡), so the physical key counts.
+  it('reads Alt or Option chat-tab keys from the physical key', () => {
+    const key = (code: string, k: string, extra: Partial<KeyboardEvent> = {}) =>
+      workChatTabShortcut({ altKey: true, ctrlKey: false, metaKey: false, shiftKey: false, code, key: k, ...extra })
+    expect(key('Digit1', '¡')).toEqual({ kind: 'tab', index: 0 })
+    expect(key('Digit5', '5')).toEqual({ kind: 'tab', index: 4 })
+    expect(key('Digit6', '6')).toBeNull()
+    expect(key('KeyT', 'ˇ', { shiftKey: true })).toEqual({ kind: 'new' })
+    expect(key('Digit1', '1', { metaKey: true })).toBeNull()
+    expect(key('Digit1', '1', { ctrlKey: true })).toBeNull()
+    expect(workChatTabShortcut({ altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, code: 'Digit1', key: '1' })).toBeNull()
   })
 })
