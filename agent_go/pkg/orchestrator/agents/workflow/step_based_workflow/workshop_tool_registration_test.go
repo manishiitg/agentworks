@@ -442,7 +442,7 @@ func TestWorkshopRegistersKnowledgeProjectSetupOnlyOnRootBuilder(t *testing.T) {
 			}}
 			session := &WorkshopChatSession{controller: &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}, StepRegistry: NewWorkshopStepRegistry(), config: config, workshopModeOverride: mode}
 			RegisterWorkshopChatTools(draft, session, workshopToolTestLogger{})
-			def, found := draft.tools["manage_knowledgebase_access"]
+			def, found := draft.tools["brain_access"]
 			if found != (mode == "workshop") {
 				t.Fatalf("%s setup registration = %v", mode, found)
 			}

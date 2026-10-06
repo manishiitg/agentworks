@@ -57,12 +57,12 @@ func knowledgeDispatchTest(t *testing.T, s *knowledgebase.Service, p knowledgeba
 func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	s, a, workspace, id := knowledgeIntegrationFixture(t)
 	preview := map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "write", "request_id": "preview"}
-	r := knowledgeDispatchTest(t, s, a, "update_knowledgebase", preview).(*knowledgeMigrationReceipt)
+	r := knowledgeDispatchTest(t, s, a, "brain_update", preview).(*knowledgeMigrationReceipt)
 	if len(r.Files) != 1 || r.State != "PREVIEWED" {
 		t.Fatalf("bad preview %#v", r)
 	}
 	run := func(action, req string) *knowledgeMigrationReceipt {
-		return knowledgeDispatchTest(t, s, a, "update_knowledgebase", map[string]any{"action": action, "workspace_path": workspace, "migration_id": r.ID, "request_id": req}).(*knowledgeMigrationReceipt)
+		return knowledgeDispatchTest(t, s, a, "brain_update", map[string]any{"action": action, "workspace_path": workspace, "migration_id": r.ID, "request_id": req}).(*knowledgeMigrationReceipt)
 	}
 	r = run("migration_import", "import")
 	if r.State != "IMPORTED" || r.Files[0].EntryID == "" {
@@ -99,10 +99,10 @@ func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	session := "migration-runtime"
 	common.SetSessionWorkflowPath(session, workspace)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID, "binding_alias": "local"}); err != nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "brain_read", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID, "binding_alias": "local"}); err != nil {
 		t.Fatal("workflow reader", err)
 	}
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "priya"), "priya", false, "brain_read", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
 		t.Fatal("workflow escaped binding")
 	}
 	r = run("migration_rollback", "rollback")
@@ -115,7 +115,7 @@ func TestKnowledgebaseMigrationImportCutoverAndRollback(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), workspace, "knowledgebase", "notes", "guide.md")); err != nil {
 		t.Fatal("source removed", err)
 	}
-	if _, err := s.CallTool(t.Context(), a, "read_knowledgebase", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID}); err != nil {
+	if _, err := s.CallTool(t.Context(), a, "brain_read", map[string]any{"action": "read", "entry_id": r.Files[0].EntryID}); err != nil {
 		t.Fatal("rollback deleted imported knowledge", err)
 	}
 }
@@ -128,8 +128,8 @@ func TestKnowledgebaseBindProjectRetryAndAudience(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "expected_manifest_version": project.Version, "request_id": "binding"}
-	result := knowledgeMap(knowledgeDispatchTest(t, s, a, "manage_knowledgebase_access", args))
-	retry := knowledgeMap(knowledgeDispatchTest(t, s, a, "manage_knowledgebase_access", args))
+	result := knowledgeMap(knowledgeDispatchTest(t, s, a, "brain_access", args))
+	retry := knowledgeMap(knowledgeDispatchTest(t, s, a, "brain_access", args))
 	if result["manifest_version"] != retry["manifest_version"] {
 		t.Fatal("retry changed manifest")
 	}
@@ -144,7 +144,7 @@ func TestKnowledgebaseBindProjectRetryAndAudience(t *testing.T) {
 	session := "audience-runtime"
 	common.SetSessionWorkflowPath(session, workspace)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "browse_knowledgebase", map[string]any{"action": "entries", "binding_alias": "local"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "brain_browse", map[string]any{"action": "entries", "binding_alias": "local"}); err == nil {
 		t.Fatal("ungranted audience admitted")
 	}
 }
@@ -157,12 +157,12 @@ func TestKnowledgebaseMigrationRejectsChangedSourceAndSymlink(t *testing.T) {
 	if err := os.Symlink(secret, filepath.Join(root, "secret.md")); err != nil {
 		t.Fatal(err)
 	}
-	r := knowledgeDispatchTest(t, s, a, "update_knowledgebase", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "preview"}).(*knowledgeMigrationReceipt)
+	r := knowledgeDispatchTest(t, s, a, "brain_update", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "preview"}).(*knowledgeMigrationReceipt)
 	if len(r.Files) != 1 || len(r.Skipped) != 1 {
 		t.Fatalf("symlink imported %#v", r)
 	}
 	args := map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}
-	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "brain_update", args); err == nil {
 		t.Fatal("skipped file not acknowledged")
 	}
 	if _, err := knowledgeReadSource(root, "secret.md"); err == nil {
@@ -171,7 +171,7 @@ func TestKnowledgebaseMigrationRejectsChangedSourceAndSymlink(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "notes", "guide.md"), []byte("changed"), 0600)
 	args["allow_skipped_files"] = true
 	args["request_id"] = "changed_import"
-	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "update_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, a.IdentityID, "brain_update", args); err == nil {
 		t.Fatal("changed source imported")
 	}
 }
@@ -194,23 +194,23 @@ func TestKnowledgebaseCrewAndWorkflowShareFolder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		knowledgeDispatchTest(t, s, a, "manage_knowledgebase_access", map[string]any{"action": "bind_project", "workspace_path": projectPath, "folder_id": id, "alias": "payments", "access": "write", "expected_manifest_version": p.Version, "request_id": []string{"bind-workflow", "bind-crew"}[i]})
+		knowledgeDispatchTest(t, s, a, "brain_access", map[string]any{"action": "bind_project", "workspace_path": projectPath, "folder_id": id, "alias": "payments", "access": "write", "expected_manifest_version": p.Version, "request_id": []string{"bind-workflow", "bind-crew"}[i]})
 	}
 	session := "crew-kb-runtime"
 	common.SetSessionWorkingDir(session, crew)
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, session)
-	saved, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "shared.md", "type": "note", "title": "Shared", "content": "Crew contribution", "request_id": "crew-write"})
+	saved, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "brain_update", map[string]any{"action": "create", "binding_alias": "payments", "filename": "shared.md", "type": "note", "title": "Shared", "content": "Crew contribution", "request_id": "crew-write"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	entry := knowledgeMap(json.RawMessage(saved))
 	common.SetSessionWorkflowPath("workflow-kb-runtime", workspace)
 	workflowCtx := context.WithValue(t.Context(), common.ChatSessionIDKey, "workflow-kb-runtime")
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(workflowCtx, "priya"), "priya", false, "read_knowledgebase", map[string]any{"action": "read", "entry_id": entry["entry_id"], "binding_alias": "payments"}); err != nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(workflowCtx, "priya"), "priya", false, "brain_read", map[string]any{"action": "read", "entry_id": entry["entry_id"], "binding_alias": "payments"}); err != nil {
 		t.Fatal("workflow failed to read unpushed Crew write", err)
 	}
 	common.SetSessionCrewReader(session, true)
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "update_knowledgebase", map[string]any{"action": "create", "binding_alias": "payments", "filename": "denied.md", "type": "note", "title": "Denied", "content": "x", "request_id": "crew-readonly"}); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(ctx, "admin"), "admin", false, "brain_update", map[string]any{"action": "create", "binding_alias": "payments", "filename": "denied.md", "type": "note", "title": "Denied", "content": "x", "request_id": "crew-readonly"}); err == nil {
 		t.Fatal("Crew reader wrote")
 	}
 	// A viewer's trusted session resolves the owner's physical workspace.
@@ -221,8 +221,8 @@ func TestKnowledgebaseCrewAndWorkflowShareFolder(t *testing.T) {
 
 func TestKnowledgebaseMigrationConflictsAndResumesCheckpoint(t *testing.T) {
 	s, a, workspace, id := knowledgeIntegrationFixture(t)
-	r := knowledgeDispatchTest(t, s, a, "update_knowledgebase", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "preview"}).(*knowledgeMigrationReceipt)
-	imported := knowledgeDispatchTest(t, s, a, "update_knowledgebase", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}).(*knowledgeMigrationReceipt)
+	r := knowledgeDispatchTest(t, s, a, "brain_update", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "preview"}).(*knowledgeMigrationReceipt)
+	imported := knowledgeDispatchTest(t, s, a, "brain_update", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}).(*knowledgeMigrationReceipt)
 	// Simulate a crash after the entry mutation but before its checkpoint.
 	originalID := imported.Files[0].EntryID
 	imported.Files[0].EntryID = ""
@@ -231,15 +231,15 @@ func TestKnowledgebaseMigrationConflictsAndResumesCheckpoint(t *testing.T) {
 	if err := knowledgeSaveMigration(imported); err != nil {
 		t.Fatal(err)
 	}
-	resumed := knowledgeDispatchTest(t, s, a, "update_knowledgebase", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}).(*knowledgeMigrationReceipt)
+	resumed := knowledgeDispatchTest(t, s, a, "brain_update", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "import"}).(*knowledgeMigrationReceipt)
 	if resumed.Files[0].EntryID != originalID {
 		t.Fatal("resumed import duplicated entry")
 	}
 	file := resumed.Files[0]
-	if _, err := s.CallTool(t.Context(), a, "update_knowledgebase", map[string]any{"action": "update", "entry_id": file.EntryID, "expected_version": file.Version, "content": "new user edit", "request_id": "later-edit"}); err != nil {
+	if _, err := s.CallTool(t.Context(), a, "brain_update", map[string]any{"action": "update", "entry_id": file.EntryID, "expected_version": file.Version, "content": "new user edit", "request_id": "later-edit"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "update_knowledgebase", map[string]any{"action": "migration_cutover", "workspace_path": workspace, "migration_id": r.ID, "request_id": "cutover"}); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "brain_update", map[string]any{"action": "migration_cutover", "workspace_path": workspace, "migration_id": r.ID, "request_id": "cutover"}); err == nil {
 		t.Fatal("cutover ignored destination edit")
 	}
 }
@@ -261,12 +261,12 @@ func TestKnowledgebaseReplaceLegacyAliasAndNativePolicy(t *testing.T) {
 	}
 	a.AccessOnly = true
 	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "payments", "access": "read", "expected_manifest_version": project.Version, "request_id": "replace"}
-	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "manage_knowledgebase_access", args); err == nil {
+	if _, err := knowledgebaseDispatch(context.WithValue(t.Context(), knowledgebaseMigrationAuthorityKey{}, true), s, a, "admin", "brain_access", args); err == nil {
 		t.Fatal("ambiguous alias accepted")
 	}
 	args["replace_legacy_alias"] = true
 	args["request_id"] = "replace-confirmed"
-	knowledgeDispatchTest(t, s, a, "manage_knowledgebase_access", args)
+	knowledgeDispatchTest(t, s, a, "brain_access", args)
 	project, err = knowledgeProjectLoad(t.Context(), "admin", workspace, true)
 	if err != nil {
 		t.Fatal(err)

@@ -1444,7 +1444,7 @@ func TestSharedKnowledgebaseStepToolsFollowAccess(t *testing.T) {
 	}
 	base.WorkspaceToolExecutors = map[string]interface{}{}
 	base.ToolCategories = map[string]string{}
-	for _, name := range []string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access"} {
+	for _, name := range []string{"brain_browse", "brain_read", "brain_update", "brain_backup", "brain_access"} {
 		base.WorkspaceTools = append(base.WorkspaceTools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}})
 		base.WorkspaceToolExecutors[name] = func(context.Context, map[string]interface{}) (string, error) { return "", nil }
 		base.ToolCategories[name] = "knowledgebase"
@@ -1453,10 +1453,10 @@ func TestSharedKnowledgebaseStepToolsFollowAccess(t *testing.T) {
 	for _, access := range []string{KBAccessRead, KBAccessReadWrite, KBAccessWrite, KBAccessNone} {
 		config := &AgentConfigs{KnowledgebaseAccess: access, EnabledCustomTools: []string{"workspace_advanced:execute_shell_command", "knowledgebase:*"}}
 		_, executors := hcpo.prepareCustomTools(config)
-		if (executors["read_knowledgebase"] != nil) != (access != KBAccessNone) {
+		if (executors["brain_read"] != nil) != (access != KBAccessNone) {
 			t.Fatalf("%s missing/extra read tool", access)
 		}
-		if (executors["update_knowledgebase"] != nil) != (access == KBAccessWrite || access == KBAccessReadWrite) {
+		if (executors["brain_update"] != nil) != (access == KBAccessWrite || access == KBAccessReadWrite) {
 			t.Fatalf("%s missing/extra write tool", access)
 		}
 	}

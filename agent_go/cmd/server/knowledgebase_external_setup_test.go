@@ -54,12 +54,12 @@ func TestKnowledgebaseExternalMCPBackupSetupAndUserWriteAccess(t *testing.T) {
 	}
 	setup := map[string]any{"action": "configure_backup", "username": "kb-user", "remote_url": "https://github.com/org/knowledge-backup.git", "pat": "mcp-test-only-secret", "branch": "main", "request_id": "mcp-backup-setup"}
 	requireRemoteError(t, call(priya, "manage_knowledgebase_access", setup), "non-admin backup setup", "FORBIDDEN")
-	if got := result(admin, "manage_knowledgebase_access", setup); got["configured"] != true || got["pat_configured"] != true || got["pat"] != nil || got["encrypted_pat"] != nil {
+	if got := result(admin, "brain_access", setup); got["configured"] != true || got["pat_configured"] != true || got["pat"] != nil || got["encrypted_pat"] != nil {
 		t.Fatal("backup setup not applied", got)
 	}
 	// Exact retries are safe, and configuration is visible to an ordinary reader.
-	result(admin, "manage_knowledgebase_access", setup)
-	if got := result(priya, "backup_knowledgebase", map[string]any{"action": "status", "folder_path": "Payments/Checkout"}); got["configured"] != true {
+	result(admin, "brain_access", setup)
+	if got := result(priya, "brain_backup", map[string]any{"action": "status", "folder_path": "Payments/Checkout"}); got["configured"] != true {
 		t.Fatal("reader cannot see configured backup", got)
 	}
 	if configured, err := service.BackupConfigured(); err != nil || !configured {
@@ -68,20 +68,20 @@ func TestKnowledgebaseExternalMCPBackupSetupAndUserWriteAccess(t *testing.T) {
 	requireRemoteError(t, call(admin, "manage_knowledgebase_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/other.git", "request_id": "mcp-backup-redirect"}), "backup redirect", "BACKUP_REMOTE_CHANGED")
 
 	inspect := func() map[string]any {
-		return result(admin, "manage_knowledgebase_access", map[string]any{"action": "inspect", "folder_path": "Payments/Checkout"})
+		return result(admin, "brain_access", map[string]any{"action": "inspect", "folder_path": "Payments/Checkout"})
 	}
-	result(admin, "manage_knowledgebase_access", map[string]any{"action": "list", "folder_path": "Payments/Checkout"})
+	result(admin, "brain_access", map[string]any{"action": "list", "folder_path": "Payments/Checkout"})
 	readArgs := map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}
-	entry := result(priya, "read_knowledgebase", readArgs)
+	entry := result(priya, "brain_read", readArgs)
 	write := map[string]any{"action": "update", "path": readArgs["path"], "expected_version": entry["version"], "content": "# Retries\nWritten by Priya through MCP.\n", "request_id": "mcp-priya-write"}
 	requireRemoteError(t, call(priya, "update_knowledgebase", write), "Reader cannot edit", "FORBIDDEN")
-	result(admin, "manage_knowledgebase_access", map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "priya", "role": "Editor", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-grant-editor"})
-	result(priya, "update_knowledgebase", write)
-	if got := result(admin, "read_knowledgebase", readArgs); got["content"] != write["content"] {
+	result(admin, "brain_access", map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "priya", "role": "Editor", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-grant-editor"})
+	result(priya, "brain_update", write)
+	if got := result(admin, "brain_read", readArgs); got["content"] != write["content"] {
 		t.Fatal("new Editor save not immediately shared", got)
 	}
 	requireRemoteError(t, call(priya, "manage_knowledgebase_access", map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-editor-grant"}), "Editor cannot manage access", "FORBIDDEN")
 	requireRemoteError(t, call(priya, "read_knowledgebase", map[string]any{"action": "read", "path": "Payments/Billing/private.md"}), "grant cannot escape folder", "NOT_FOUND")
-	result(admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-revoke-editor"})
+	result(admin, "brain_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-revoke-editor"})
 	requireRemoteError(t, call(priya, "read_knowledgebase", readArgs), "revocation takes effect immediately", "NOT_FOUND")
 }

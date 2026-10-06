@@ -118,7 +118,7 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 		"description: " + hostedSkillDescription,
 		"https://skills.test",
 		"get_agent_context",
-		"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "manage_knowledgebase_access", "agentworks-local",
+		"brain_browse", "brain_read", "brain_update", "brain_backup", "brain_access", "agentworks-local",
 		"list_workflows",
 		"run_status",
 		"If Builder is absent",

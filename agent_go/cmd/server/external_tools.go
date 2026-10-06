@@ -387,6 +387,8 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 500, "schema_error", err.Error())
 		return
 	}
+	// A Brain tool called by its pre-rename name is the same tool (PLAT-608).
+	call.Name = knowledgebase.CanonicalToolName(call.Name)
 	var tool *externalTool
 	for i := range catalog {
 		if catalog[i].Name == call.Name {

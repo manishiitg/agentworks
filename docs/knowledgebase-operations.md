@@ -36,7 +36,7 @@ embedded in remote URLs. The product never returns credentials to connected agen
 
 Administrators can also use the `Configure backup` action above the chat.
 Supply the repository HTTPS URL and username; an optional PAT for a private repository is entered in the secure confirmation field. Branch defaults to main. The existing
-builder proposes `manage_knowledgebase_access` / `configure_backup` for app
+builder proposes `brain_access` / `configure_backup` for app
 confirmation. An unrestricted external admin connection can apply it directly.
 Setup persists private configuration across restarts; it does not verify remote
 reachability or publish content. An HTTPS PAT is encrypted in KB-owned private configuration; operator-configured SSH URLs use host SSH credentials.
@@ -82,18 +82,18 @@ The MVP has five tools, all requiring `action`:
 
 | Tool | Actions |
 | --- | --- |
-| `browse_knowledgebase` | `folders`, `entries` |
-| `read_knowledgebase` | `read`, `search` |
-| `update_knowledgebase` | `create`, `update`, `delete`, `create_folder` |
-| `backup_knowledgebase` | `status`, `commit`, `push`, `git` |
-| `manage_knowledgebase_access` | `inspect`; unrestricted writable external connections also expose `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account`, `configure_backup` |
+| `brain_browse` | `folders`, `entries` |
+| `brain_read` | `read`, `search` |
+| `brain_update` | `create`, `update`, `delete`, `create_folder` |
+| `brain_backup` | `status`, `commit`, `push`, `git` |
+| `brain_access` | `inspect`; unrestricted writable external connections also expose `list`, `grant`, `revoke`, `create_service_account`, `disable_service_account`, `configure_backup` |
 
 Read-only connections discover four tools with read-only action schemas. Use different request IDs for different actions.
 
 ### Set up a GitHub backup through MCP
 
 An administrator using an unrestricted writable connection can call
-`manage_knowledgebase_access` with:
+`brain_access` with:
 
 ```json
 {
@@ -106,7 +106,7 @@ An administrator using an unrestricted writable connection can call
 }
 ```
 
-Supply an existing repository URL and username. The PAT is optional: public repositories can be read without one, while private reads and authenticated writes need a suitable credential. A public repository may still need a PAT to push. Setup stores configuration without creating the repository, checking remote access, committing or pushing. Use `backup_knowledgebase` for status, commit and push. External MCP setup applies directly; app chat uses its existing confirmation card with a secure PAT field, never asks for the PAT in messages.
+Supply an existing repository URL and username. The PAT is optional: public repositories can be read without one, while private reads and authenticated writes need a suitable credential. A public repository may still need a PAT to push. Setup stores configuration without creating the repository, checking remote access, committing or pushing. Use `brain_backup` for status, commit and push. External MCP setup applies directly; app chat uses its existing confirmation card with a secure PAT field, never asks for the PAT in messages.
 
 KB owns the secret: the PAT is AES-256-GCM encrypted in private control storage, bound to the organization, remote and username. Git receives it only in a URL-scoped Authorization header via its child environment, with redirects and credential caching disabled. No PAT or header is stored in Git, tool responses or request journals. This has no Vault dependency. Reconfigure the same destination with a new request ID to rotate a PAT; omit `pat` to retain it, or send `pat: ""` to remove it. The repository destination remains pinned. SSH backups use host SSH credentials only when their destination is set by deployment configuration; app/MCP setup accepts HTTPS only.
 
@@ -116,7 +116,7 @@ The encryption key derives from the platform's `AUTH_SECRET`. Preserve that secr
 
 ### Give another user read or write access through MCP
 
-Use `manage_knowledgebase_access(action=list)` on the target folder to discover
+Use `brain_access(action=list)` on the target folder to discover
 existing platform identities and grants, then `action=inspect` to obtain the
 current `acl_version`. A folder Owner or administrator can grant access:
 
@@ -140,10 +140,10 @@ existing platform users or managed service accounts; they do not invite users.
 An Editor cannot grant access merely because they can update content.
 
 Typical write flow: list folders, read an entry's version, call
-`update_knowledgebase(action=update)` with `expected_version`, a patch or replacement, and a stable
+`brain_update(action=update)` with `expected_version`, a patch or replacement, and a stable
 `request_id`. Keep the same ID and arguments when retrying uncertain delivery.
-To back up, call `backup_knowledgebase(action=commit)` with selected current versions/deletion
-tokens, then `backup_knowledgebase(action=push)` with the returned opaque receipt. Never stage the
+To back up, call `brain_backup(action=commit)` with selected current versions/deletion
+tokens, then `brain_backup(action=push)` with the returned opaque receipt. Never stage the
 live directory or push a private receipt ref yourself.
 
 Content and diffs must be UTF-8 text. Binary control characters and NUL bytes are
@@ -194,7 +194,7 @@ existing configuration.
 
 
 Workflow/Crew adoption is now available through owner-managed shared folder
-bindings and explicit `update_knowledgebase` migration actions. Follow the
+bindings and explicit `brain_update` migration actions. Follow the
 [integration and migration runbook](design/knowledgebase-integration-migration.md).
 Deployment itself performs no migration or grant changes. Pause project writers,
 schedules and triggers before cutover; import and rollback preserve source files,
@@ -219,7 +219,7 @@ recording. Recovery journals and retry/backup receipts remain in private state.
 
 ## Files Git controls
 
-Configure the repository using the existing backup setup action. Root Readers see the shared Files Source Control, history, diff and blame; unrestricted root Editors/Owners can stage, commit, push, pull, change branches, stash or discard. Folder-scoped readers keep the ordinary Files view and selected receipt backup tools. The external MCP `git` action is available to unrestricted writable connections; the viewer exposes read-only Git to root Readers. Git requests use `/api/knowledgebase/git` and `backup_knowledgebase(action=git)`, not workspace paths or a separate MCP server.
+Configure the repository using the existing backup setup action. Root Readers see the shared Files Source Control, history, diff and blame; unrestricted root Editors/Owners can stage, commit, push, pull, change branches, stash or discard. Folder-scoped readers keep the ordinary Files view and selected receipt backup tools. The external MCP `git` action is available to unrestricted writable connections; the viewer exposes read-only Git to root Readers. Git requests use `/api/knowledgebase/git` and `brain_backup(action=git)`, not workspace paths or a separate MCP server.
 
 Example external MCP call:
 
@@ -237,9 +237,9 @@ Push uses a remote lease and persists a delivery intent before transport. If its
 
 In Workflow → Attached folders, the Brain folders panel follows the Vault project selection pattern: it lists caller-authorized folders, permits owners to select them, and offers Read only / Read-write. Selection never grants permission. The full workflow audience must already have Reader access; the execution identity needs Editor access for a write binding. The existing Ask AI button sends setup to the workflow Builder.
 
-The root Builder can discover folders with `browse_knowledgebase action=folders`, then use `manage_knowledgebase_access action=inspect_project` for its exact workspace and `bind_project` / `unbind_project` with the returned manifest version. These actions also work directly through the global MCP. External tokens need KB read/write plus existing authoring scopes for the exact workflow/Crew. KB-only writers and folder-capped tokens cannot change project bindings. No sixth MCP tool or dedicated connection is added.
+The root Builder can discover folders with `brain_browse action=folders`, then use `brain_access action=inspect_project` for its exact workspace and `bind_project` / `unbind_project` with the returned manifest version. These actions also work directly through the global MCP. External tokens need KB read/write plus existing authoring scopes for the exact workflow/Crew. KB-only writers and folder-capped tokens cannot change project bindings. No sixth MCP tool or dedicated connection is added.
 
-For a read smoke test, create a Markdown note containing a fresh marker, bind its folder under an alias such as `kbtest`, and ask the Builder to retrieve it through `read_knowledgebase`. Configure an agent step with `knowledgebase_access=read` (ordinary workflows have KB enabled by default), and ask it to retrieve the same marker using `binding_alias=kbtest`. Check its tool trace. For writes, use a write binding and `knowledgebase_access=read-write` plus a concrete `knowledgebase_contribution`. Content is shared immediately without a Git push. Read-only and disabled steps cannot write; steps cannot change bindings or grants. Folder grants and the output audience are rechecked on tool calls.
+For a read smoke test, create a Markdown note containing a fresh marker, bind its folder under an alias such as `kbtest`, and ask the Builder to retrieve it through `brain_read`. Configure an agent step with `knowledgebase_access=read` (ordinary workflows have KB enabled by default), and ask it to retrieve the same marker using `binding_alias=kbtest`. Check its tool trace. For writes, use a write binding and `knowledgebase_access=read-write` plus a concrete `knowledgebase_contribution`. Content is shared immediately without a Git push. Read-only and disabled steps cannot write; steps cannot change bindings or grants. Folder grants and the output audience are rechecked on tool calls.
 
 MCP sequence (use real values returned by discovery):
 
@@ -256,7 +256,7 @@ Global MCP admits `create_workflow` through AgentWorks `product.yaml`. It uses t
 
 The connection needs unrestricted `builder:chat` (and its companion read/run scopes), account creation rights, AgentWorks product access, and an enabled external Builder. The local Owner’s `agentworks-local` token includes these when enabled; hosted connections use their existing OAuth Builder consent. Ownership is stamped from the current authenticated user, and revoked grants are rechecked before creation. Scoped Builder/read/run connections cannot create.
 
-After creation, inspect the project with `manage_knowledgebase_access(action=inspect_project)` and bind an authorized folder with `action=bind_project`, current `expected_manifest_version`, and a stable `request_id`. These actions check live project Owner and folder/audience permissions. Creation cannot inject folder grants or KB/project bindings. Use Builder to author/test scripted-step code before running. Existing folders and workflow IDs are never overwritten.
+After creation, inspect the project with `brain_access(action=inspect_project)` and bind an authorized folder with `action=bind_project`, current `expected_manifest_version`, and a stable `request_id`. These actions check live project Owner and folder/audience permissions. Creation cannot inject folder grants or KB/project bindings. Use Builder to author/test scripted-step code before running. Existing folders and workflow IDs are never overwritten.
 
 Fresh MCP/chat-created workflows receive the same current contract and `code_layout_version=1` defaults as UI creation, even if the client supplied legacy markers. This only applies to new workflows; existing workflows still go through the checked migration flow. Authored scripted code belongs in `code/<step-id>/main.py`.
 

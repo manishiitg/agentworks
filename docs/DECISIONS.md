@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Brain tools are named brain_*; product.yaml is the tool registry
+The six Brain tools are `brain_browse`, `brain_read`, `brain_update`, `brain_backup`, `brain_skills` and
+`brain_access` (were `*_knowledgebase`, `knowledgebase_skills`, `manage_knowledgebase_access`). The old names are
+accepted where a call comes in and converted at once; they are not advertised. Product id, URLs and token scopes stay
+`knowledgebase`. Names live in `pkg/knowledgebase/names.go`; copied lists derive from it. Workflow-phase admission is
+recorded once (`admittedWorkflowPhase`) because handleQuery rewrites the mode before tools run. Why: owner, "should
+we rename these too to brain" and "there should be no other path to register" (PLAT-600 came from a re-derived check).
+Ticket: [PLAT-608](bugs/pulse_platform/app/tools/plat-608.md).
+
 ### 2026-10-06 — Code projects can have up to 4 chats; the primary keeps every channel
 
 What: a Code project has its primary chat plus up to 3 side chats, each a full Builder chat (own conversation and

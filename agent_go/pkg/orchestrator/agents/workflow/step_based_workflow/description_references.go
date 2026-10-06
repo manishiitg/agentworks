@@ -288,7 +288,7 @@ func buildReferencedGuidesSection(ctx context.Context, workspacePath, descriptio
 				warn(fmt.Sprintf("referenced Brain note %s not delivered: %v", label, err))
 				continue
 			}
-			attach(label, "read_knowledgebase path="+ref.Path, content)
+			attach(label, "brain_read path="+ref.Path, content)
 			continue
 		}
 		if strings.HasPrefix(ref.Path, KnowledgebaseFolderName+"/") {

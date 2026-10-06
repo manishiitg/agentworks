@@ -28,12 +28,12 @@ func TestKnowledgebaseMigrationCannotEscapeManagedSession(t *testing.T) {
 			common.SetSessionWorkflowPath(session, workspace)
 			common.GetSessionShellConfig(session).ReadOnlyAccess = true
 		}
-		if _, err := knowledgebaseDispatch(ctx, s, p, p.IdentityID, "update_knowledgebase", args); err == nil {
+		if _, err := knowledgebaseDispatch(ctx, s, p, p.IdentityID, "brain_update", args); err == nil {
 			t.Fatalf("migration admitted in session %q", session)
 		}
 	}
 	ctx := context.WithValue(t.Context(), common.ChatSessionIDKey, "missing-policy")
-	if _, err := knowledgebaseDispatch(ctx, s, p, p.IdentityID, "read_knowledgebase", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
+	if _, err := knowledgebaseDispatch(ctx, s, p, p.IdentityID, "brain_read", map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
 		t.Fatal("missing session policy admitted ambient read")
 	}
 	for _, d := range knowledgebase.ConnectionToolDefinitions(true) {
@@ -46,8 +46,8 @@ func TestKnowledgebaseMigrationCannotEscapeManagedSession(t *testing.T) {
 
 func TestKnowledgebaseCutoverRechecksNewConsumers(t *testing.T) {
 	s, p, workspace, id := knowledgeIntegrationFixture(t)
-	r := knowledgeDispatchTest(t, s, p, "update_knowledgebase", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "consumer-preview"}).(*knowledgeMigrationReceipt)
-	r = knowledgeDispatchTest(t, s, p, "update_knowledgebase", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "consumer-import"}).(*knowledgeMigrationReceipt)
+	r := knowledgeDispatchTest(t, s, p, "brain_update", map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": "consumer-preview"}).(*knowledgeMigrationReceipt)
+	r = knowledgeDispatchTest(t, s, p, "brain_update", map[string]any{"action": "migration_import", "workspace_path": workspace, "migration_id": r.ID, "request_id": "consumer-import"}).(*knowledgeMigrationReceipt)
 	root := os.Getenv("WORKSPACE_DOCS_PATH")
 	path := filepath.Join(root, "Workflow/consumer")
 	if err := os.MkdirAll(path, 0700); err != nil {
@@ -124,7 +124,7 @@ func TestKnowledgebaseToolsRequireBindingAndOAuthIsExplicit(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.AccessOnly = true
-	knowledgeDispatchTest(t, s, p, "manage_knowledgebase_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "expected_manifest_version": project.Version, "request_id": "review-binding"})
+	knowledgeDispatchTest(t, s, p, "brain_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "expected_manifest_version": project.Version, "request_id": "review-binding"})
 	tools, _, _ := createKnowledgebaseTools("admin", "initial-registration", workspace)
 	// browse, read, backup (status), skills (list/get) and access (inspect) for a read-bound project.
 	if len(tools) != 5 {
@@ -168,7 +168,7 @@ func TestKnowledgebaseExternalMigrationRequiresSourceBuilderForPreview(t *testin
 			t.Fatal(err)
 		}
 		claims := &UserClaims{UserID: "admin", Username: "admin", AccessToken: &token}
-		body, _ := json.Marshal(map[string]any{"name": "update_knowledgebase", "arguments": map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": fmt.Sprintf("external-preview-%t", builder)}})
+		body, _ := json.Marshal(map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": fmt.Sprintf("external-preview-%t", builder)}})
 		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(body))).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		(&StreamingAPI{}).handleExternalCall(w, req)

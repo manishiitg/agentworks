@@ -16,7 +16,7 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 	if p.Product != ProfileID || p.Scope != agentprofiles.ProfileScopeProject || p.Runtime.AgentTools.Mode != "mcp_only" || p.Runtime.Workspace.Root != "Chats/Knowledgebase" {
 		t.Fatalf("invalid product runtime: %+v", p.Runtime)
 	}
-	if len(p.ToolPolicy.Enabled) != 4 || p.ToolPolicy.Enabled[0] != "manage_knowledgebase_access" || len(p.Runtime.BridgeTools) != 4 {
+	if len(p.ToolPolicy.Enabled) != 4 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 4 {
 		t.Fatalf("builder tools: %+v", p.ToolPolicy)
 	}
 	if len(m.Chat["mcp"].ExternalTools) != 6 {
@@ -41,7 +41,7 @@ func TestAccessFactoryRetainsTrustedRuntimeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tool.Name != "manage_knowledgebase_access" {
+	if tool.Name != "brain_access" {
 		t.Fatal(tool.Name)
 	}
 	if _, err = tool.Execute(context.Background(), map[string]any{"identity_id": "someone-else", "action": "list"}); err != nil {

@@ -308,6 +308,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 }
 
 func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, userID, tool string, args map[string]any) (any, error) {
+	tool = knowledgebase.CanonicalToolName(tool)
 	action, _ := args["action"].(string)
 	if tool == knowledgebase.ToolBackup && action == "git" {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {

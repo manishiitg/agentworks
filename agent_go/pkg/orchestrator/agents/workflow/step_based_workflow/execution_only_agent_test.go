@@ -362,13 +362,13 @@ func TestSharedKnowledgebasePromptUsesMCPInsteadOfLocalRecipes(t *testing.T) {
 	}
 	vars := map[string]string{"KbAccess": "read", "KnowledgebasePath": "archive", "KnowledgebaseContribution": ""}
 	applySharedKBPrompt(workspace, vars)
-	if vars["KbAccess"] != "shared" || vars["KnowledgebasePath"] != "" || !strings.Contains(vars["KBGuidanceBlock"], "read_knowledgebase") {
+	if vars["KbAccess"] != "shared" || vars["KnowledgebasePath"] != "" || !strings.Contains(vars["KBGuidanceBlock"], "brain_read") {
 		t.Fatal(vars)
 	}
 	vars["DBAccess"] = "read"
 	vars["WorkflowRoot"] = workspace
 	prompt := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(vars)
-	if !strings.Contains(prompt, "read_knowledgebase") || strings.Contains(prompt, "jq '.topics") || strings.Contains(prompt, "ALWAYS `cat knowledgebase/") {
+	if !strings.Contains(prompt, "brain_read") || strings.Contains(prompt, "jq '.topics") || strings.Contains(prompt, "ALWAYS `cat knowledgebase/") {
 		t.Fatal("shared prompt retained local recipes", prompt)
 	}
 

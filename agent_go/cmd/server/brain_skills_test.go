@@ -28,7 +28,7 @@ func TestBrainSkillSearchAndInstallIntoWorkspace(t *testing.T) {
 		map[string]any{"path": "SKILL.md", "content": "---\nname: release-notes\ndescription: Release notes from merged PRs\n---\nSteps.\n"},
 		map[string]any{"path": "assets/logo.png", "content_base64": base64.StdEncoding.EncodeToString(png)},
 	}
-	if _, err := service.CallTool(t.Context(), admin, "knowledgebase_skills", map[string]any{"action": "publish", "folder_path": "Company/Skills/release-notes", "files": files, "request_id": "publish"}); err != nil {
+	if _, err := service.CallTool(t.Context(), admin, "brain_skills", map[string]any{"action": "publish", "folder_path": "Company/Skills/release-notes", "files": files, "request_id": "publish"}); err != nil {
 		t.Fatal(err)
 	}
 	var imported struct {

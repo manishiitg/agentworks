@@ -50,7 +50,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	wrong, _ := connect("another-workflow", true)
 	contentOnly, _ := connect("payments-workflow", false)
 	call := func(cli *client.Client, args map[string]any) *mcp.CallToolResult {
-		return callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "manage_knowledgebase_access", "arguments": args})
+		return callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_access", "arguments": args})
 	}
 	result := func(args map[string]any) map[string]any {
 		t.Helper()
@@ -74,14 +74,14 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	common.SetSessionWorkflowPath(parent, workspace)
 	defer common.ClearSessionShellConfig(parent)
 	_, executors, _ := createKnowledgebaseTools("admin", parent, workspace)
-	read := executors["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
-	update := executors["update_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	read := executors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
+	update := executors["brain_update"].(func(context.Context, map[string]interface{}) (string, error))
 	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": current["manifest_version"], "request_id": "mcp-bind-test"}
 	bound := result(args)
 	if result(args)["manifest_version"] != bound["manifest_version"] {
 		t.Fatal("binding retry changed manifest")
 	}
-	entry, err := service.CallTool(t.Context(), admin, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "smoke.md", "title": "Smoke", "type": "note", "content": "kb-marker-71831", "request_id": "marker-create"})
+	entry, err := service.CallTool(t.Context(), admin, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "smoke.md", "title": "Smoke", "type": "note", "content": "kb-marker-71831", "request_id": "marker-create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +112,10 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	rootCtx = context.WithValue(rootCtx, common.ChatSessionIDKey, parent)
 	version := result(inspect)["manifest_version"]
 	writeArgs := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "write", "expected_manifest_version": version, "request_id": "builder-write-bind"}
-	if _, err := knowledgeProjectBuilderExecute(context.WithValue(rootCtx, common.ChatSessionIDKey, "project-step-read"), "manage_knowledgebase_access", writeArgs); err == nil {
+	if _, err := knowledgeProjectBuilderExecute(context.WithValue(rootCtx, common.ChatSessionIDKey, "project-step-read"), "brain_access", writeArgs); err == nil {
 		t.Fatal("child inherited Builder setup")
 	}
-	if _, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", writeArgs); err != nil {
+	if _, err := knowledgeProjectBuilderExecute(rootCtx, "brain_access", writeArgs); err != nil {
 		t.Fatal("builder attachment", err)
 	}
 	ctx := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-write"), "admin")
@@ -219,19 +219,19 @@ func TestKnowledgebaseProjectSetupUsesAuthenticatedToolBinding(t *testing.T) {
 	claims := &UserClaims{UserID: "admin", Username: "admin"}
 	input := context.WithValue(t.Context(), UserContextKey, claims)
 	req := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", SelectedFolder: workspace, admittedWorkflowPhase: true}
-	root, err := api.bindToolExecutionContext(input, "kb-root", req, false)(executor.WithSessionID(t.Context(), "kb-root"), "manage_knowledgebase_access")
+	root, err := api.bindToolExecutionContext(input, "kb-root", req, false)(executor.WithSessionID(t.Context(), "kb-root"), "brain_access")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if value, ok := root.Value(knowledgeProjectBuilderKey{}).(knowledgeProjectBuilderAuthority); !ok || value.UserID != "admin" || value.Workspace != workspace {
 		t.Fatal("missing root authority")
 	}
-	child, err := api.bindToolExecutionContextForSession(input, "kb-root", "kb-child", req, false)(root, "manage_knowledgebase_access")
+	child, err := api.bindToolExecutionContextForSession(input, "kb-root", "kb-child", req, false)(root, "brain_access")
 	// The incoming root session is intentionally rejected for a child binding.
 	if err == nil {
 		t.Fatal("root caller admitted as child")
 	}
-	child, err = api.bindToolExecutionContextForSession(input, "kb-root", "kb-child", req, false)(context.WithValue(executor.WithSessionID(t.Context(), "kb-child"), knowledgeProjectBuilderKey{}, root.Value(knowledgeProjectBuilderKey{})), "manage_knowledgebase_access")
+	child, err = api.bindToolExecutionContextForSession(input, "kb-root", "kb-child", req, false)(context.WithValue(executor.WithSessionID(t.Context(), "kb-child"), knowledgeProjectBuilderKey{}, root.Value(knowledgeProjectBuilderKey{})), "brain_access")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestBrainProjectAccessModes(t *testing.T) {
 		for key, value := range folder {
 			args[key] = value
 		}
-		entry, err := service.CallTool(t.Context(), admin, "update_knowledgebase", args)
+		entry, err := service.CallTool(t.Context(), admin, "brain_update", args)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -268,8 +268,8 @@ func TestBrainProjectAccessModes(t *testing.T) {
 	common.SetSessionWorkflowPath(parent, workspace)
 	defer common.ClearSessionShellConfig(parent)
 	_, executors, _ := createKnowledgebaseTools("admin", parent, workspace)
-	read := executors["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
-	update := executors["update_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	read := executors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
+	update := executors["brain_update"].(func(context.Context, map[string]interface{}) (string, error))
 	run := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, parent), "admin")
 
 	rootCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
@@ -278,7 +278,7 @@ func TestBrainProjectAccessModes(t *testing.T) {
 	rootCtx = context.WithValue(rootCtx, common.ChatSessionIDKey, parent)
 	setMode := func(mode string) {
 		t.Helper()
-		out, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", map[string]any{"action": "inspect_project", "workspace_path": workspace})
+		out, err := knowledgeProjectBuilderExecute(rootCtx, "brain_access", map[string]any{"action": "inspect_project", "workspace_path": workspace})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,7 +286,7 @@ func TestBrainProjectAccessModes(t *testing.T) {
 		if err := json.Unmarshal([]byte(out), &inspected); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := knowledgeProjectBuilderExecute(rootCtx, "manage_knowledgebase_access", map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": mode, "expected_manifest_version": inspected["manifest_version"], "request_id": "mode-" + mode}); err != nil {
+		if _, err := knowledgeProjectBuilderExecute(rootCtx, "brain_access", map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": mode, "expected_manifest_version": inspected["manifest_version"], "request_id": "mode-" + mode}); err != nil {
 			t.Fatal("set", mode, err)
 		}
 	}
@@ -351,7 +351,7 @@ func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
 	if project.BrainMode() != "write" || len(project.Audience) != 1 || project.Audience[0] != "admin" {
 		t.Fatalf("Code project: mode %q audience %v", project.BrainMode(), project.Audience)
 	}
-	seed, err := service.CallTool(t.Context(), admin, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "code.md", "title": "Code", "type": "note", "content": "code-marker", "request_id": "code-seed"})
+	seed, err := service.CallTool(t.Context(), admin, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "code.md", "title": "Code", "type": "note", "content": "code-marker", "request_id": "code-seed"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,8 +359,8 @@ func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
 	common.SetSessionWorkingDir(session, code)
 	defer common.ClearSessionShellConfig(session)
 	_, executors, _ := createKnowledgebaseTools("admin", session, code)
-	read, ok := executors["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
-	update, writable := executors["update_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	read, ok := executors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
+	update, writable := executors["brain_update"].(func(context.Context, map[string]interface{}) (string, error))
 	if !ok || !writable {
 		t.Fatal("a Code session got no Brain tools")
 	}

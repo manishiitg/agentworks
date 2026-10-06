@@ -112,7 +112,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if isExternalKnowledgebaseTool(tool.Name) {
-			instructions += " Brain stores files of any type (text in content, other files in content_base64) and has six tools with action parameters: browse_knowledgebase (folders/entries), read_knowledgebase (read/search), update_knowledgebase (create/update/delete/create_folder), backup_knowledgebase (status/commit/push), knowledgebase_skills (company skills: list, get to install one by writing its files under your own skills folder, publish a SKILL.md package; scripts need folder Owner), and manage_knowledgebase_access (inspect; writable unrestricted external connections may also list, grant/revoke, and manage service accounts and configure backup using remote_url, username and pat_secret (the name of a platform secret holding the token) subject to live Owner/admin authority). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt with a different request ID. External MCP access changes apply directly after permission checks; grants/revokes require a current expected_acl_version and stable request_id. App access-chat changes still require app confirmation."
+			instructions += " Brain stores files of any type (text in content, other files in content_base64) and has six tools with action parameters: brain_browse (folders/entries), brain_read (read/search), brain_update (create/update/delete/create_folder), brain_backup (status/commit/push), brain_skills (company skills: list, get to install one by writing its files under your own skills folder, publish a SKILL.md package; scripts need folder Owner), and brain_access (inspect; writable unrestricted external connections may also list, grant/revoke, and manage service accounts and configure backup using remote_url, username and pat_secret (the name of a platform secret holding the token) subject to live Owner/admin authority). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt with a different request ID. External MCP access changes apply directly after permission checks; grants/revokes require a current expected_acl_version and stable request_id. App access-chat changes still require app confirmation."
 			break
 		}
 	}
@@ -184,7 +184,7 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 		return externalMCPAPISpec(args, allowed)
 	}
 	target, _ := args["name"].(string)
-	target = strings.TrimSpace(target)
+	target = knowledgebase.CanonicalToolName(strings.TrimSpace(target))
 	if target == "" {
 		return mcp.NewToolResultError("invalid_arguments: call_tool requires the tool name in \"name\" (discover names with get_api_spec)")
 	}
@@ -269,7 +269,7 @@ func externalMCPAPISpec(args map[string]any, allowed []externalTool) *mcp.CallTo
 	}
 	schemas := make(map[string]any, len(names))
 	for _, name := range names {
-		tool, ok := byName[strings.TrimSpace(name)]
+		tool, ok := byName[knowledgebase.CanonicalToolName(strings.TrimSpace(name))]
 		if !ok {
 			return mcp.NewToolResultError("unknown_tool: \"" + name + "\" is not available to this connection; call get_api_spec with no arguments for the available tools")
 		}

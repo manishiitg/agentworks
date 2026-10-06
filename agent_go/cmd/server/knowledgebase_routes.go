@@ -323,6 +323,7 @@ func isExternalKnowledgebaseTool(name string) bool {
 }
 
 func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *http.Request, tool string, args map[string]any) {
+	tool = knowledgebase.CanonicalToolName(tool)
 	claims := GetUserFromContext(r.Context())
 	if !knowledgebaseProductAllowed(claims) {
 		externalError(w, 404, "NOT_FOUND", "Brain not found.")

@@ -31,7 +31,7 @@ func TestKnowledgebaseAccessFactoryThroughMCPBridge(t *testing.T) {
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/tools/custom/manage_knowledgebase_access" || r.Header.Get("Authorization") != "Bearer bridge-test-token" || r.Header.Get("X-Session-ID") != "kb-access-bridge" {
+		if r.URL.Path != "/tools/custom/brain_access" || r.Header.Get("Authorization") != "Bearer bridge-test-token" || r.Header.Get("X-Session-ID") != "kb-access-bridge" {
 			http.Error(w, "unknown tool", 404)
 			return
 		}
@@ -106,7 +106,7 @@ func TestKnowledgebaseAccessFactoryThroughMCPBridge(t *testing.T) {
 		t.Fatal("bridge grant did not reach live permissions:", err)
 	}
 	blocked := mcp.CallToolRequest{}
-	blocked.Params.Name = "update_knowledgebase"
+	blocked.Params.Name = "brain_update"
 	blocked.Params.Arguments = map[string]any{}
 	result, err = bridge.CallTool(callCtx, blocked)
 	if err == nil && !result.IsError {

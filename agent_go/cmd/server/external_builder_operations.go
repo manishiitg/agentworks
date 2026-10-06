@@ -555,6 +555,7 @@ func externalBuilderToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.ExternalBuilderOperationID == "" {
 		return false
 	}
+	name = knowledgebase.CanonicalToolName(name)
 	if slices.Contains(externalBuilderKnowledgeTools, name) {
 		return claims.AccessToken == nil || !claims.AccessToken.Allows("knowledgebase:read")
 	}

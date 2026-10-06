@@ -35,7 +35,7 @@ func TestKnowledgebaseTokenToolAdmission(t *testing.T) {
 		if externalTokenAllows(workflow, tool) {
 			t.Errorf("ordinary workflow token admitted %s", definition.Name)
 		}
-		wantRead := definition.Name != "update_knowledgebase"
+		wantRead := definition.Name != "brain_update"
 		if got := externalTokenAllows(read, tool); got != wantRead {
 			t.Errorf("reader admission for %s = %v, want %v", definition.Name, got, wantRead)
 		}
@@ -45,7 +45,7 @@ func TestKnowledgebaseTokenToolAdmission(t *testing.T) {
 	}
 	// Brain is core: no product allowlist switches it off for a connection.
 	t.Setenv("AGENT_PRODUCTS", "work")
-	if !externalTokenAllows(write, externalTool{Name: "read_knowledgebase"}) || !externalTokenAllows(write, externalTool{Name: "update_knowledgebase", mutates: true}) {
+	if !externalTokenAllows(write, externalTool{Name: "brain_read"}) || !externalTokenAllows(write, externalTool{Name: "brain_update", mutates: true}) {
 		t.Fatal("Brain must stay available whatever AGENT_PRODUCTS lists")
 	}
 }
@@ -147,7 +147,7 @@ func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) 
 	if unrestricted.Metadata.KnowledgebaseFolders != nil || denied.Metadata.KnowledgebaseFolders == nil || len(*denied.Metadata.KnowledgebaseFolders) != 0 {
 		t.Fatalf("null and empty caps confused: %+v %+v", unrestricted.Metadata, denied.Metadata)
 	}
-	readRequest := `{"name":"read_knowledgebase","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
+	readRequest := `{"name":"brain_read","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
 	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
 		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
 	}

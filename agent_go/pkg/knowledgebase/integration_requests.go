@@ -13,6 +13,8 @@ import (
 // ordinary content mutations. Integration effects are checkpointed by their
 // server-owned receipt; a reservation never claims the effect has completed.
 func (s *Service) ReserveIntegrationRequest(ctx context.Context, p Principal, tool string, args map[string]any) (string, error) {
+	// Same key as CallTool, which converts a legacy tool name first (PLAT-608).
+	tool = CanonicalToolName(tool)
 	unlock, err := s.lock(ctx, true)
 	if err != nil {
 		return "", err

@@ -356,7 +356,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		}
 	}
 	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
-	wantRun = append([]string{"browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access"}, wantRun...)
+	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_backup", "brain_skills", "brain_access"}, wantRun...)
 	if len(run) != len(wantRun) {
 		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
 	}

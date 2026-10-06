@@ -42,7 +42,7 @@ func SharedConfig(root, workspace string) (bool, string) {
 	if m.Mode != "" && m.Mode != "shared" {
 		return true, "Knowledge mode is invalid; legacy knowledge access is disabled."
 	}
-	lines := []string{"## Shared Knowledge Base", "Use browse_knowledgebase and read_knowledgebase with binding_alias. Contribute through update_knowledgebase only when the binding and this step allow writes. Read an entry before patching it; use its version and a unique request_id. Local knowledgebase/ is an archived migration source and cannot be read or edited after cutover. Bindings grant no permissions; unavailable access must be reported to the owner."}
+	lines := []string{"## Shared Knowledge Base", "Use brain_browse and brain_read with binding_alias. Contribute through brain_update only when the binding and this step allow writes. Read an entry before patching it; use its version and a unique request_id. Local knowledgebase/ is an archived migration source and cannot be read or edited after cutover. Bindings grant no permissions; unavailable access must be reported to the owner."}
 	for _, b := range m.Bindings {
 		lines = append(lines, fmt.Sprintf("- %s: %s", b.Alias, b.Access))
 	}

@@ -46,7 +46,7 @@ func TestKnowledgebaseExternalAccessAppliesWithOwnerChecks(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, c))
 		w := httptest.NewRecorder()
-		api.externalKnowledgebaseCall(w, r, "manage_knowledgebase_access", args)
+		api.externalKnowledgebaseCall(w, r, "brain_access", args)
 		return w
 	}
 	args := func(id, folder string) map[string]any {
@@ -147,7 +147,7 @@ func TestKnowledgebaseExternalAccessDiscovery(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			claims := &UserClaims{UserID: GetDefaultUserID(), AccessToken: &accesstokens.Token{Scopes: tc.scopes, KnowledgebaseFolders: tc.caps, AllWorkflows: true, AllCrews: true}}
-			tool := knowledgebaseToolForClaims(claims, externalTool{Name: "manage_knowledgebase_access"})
+			tool := knowledgebaseToolForClaims(claims, externalTool{Name: "brain_access"})
 			raw, _ := json.Marshal(tool.InputSchema)
 			var schema struct {
 				Properties struct {

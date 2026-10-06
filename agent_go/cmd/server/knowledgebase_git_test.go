@@ -60,7 +60,7 @@ func TestKnowledgebaseGitUsesSharedHandlersAndRootAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := knowledgebaseDispatch(t.Context(), s, knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}, "admin", "backup_knowledgebase", map[string]any{"action": "git", "op": "status"})
+	value, err := knowledgebaseDispatch(t.Context(), s, knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}, "admin", "brain_backup", map[string]any{"action": "git", "op": "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestKnowledgebaseGitUsesSharedHandlersAndRootAuthority(t *testing.T) {
 		t.Fatal("Git added an extra MCP tool")
 	}
 	for _, def := range knowledgebase.ConnectionToolDefinitions(true) {
-		if def.Name == "backup_knowledgebase" {
+		if def.Name == "brain_backup" {
 			raw, _ := json.Marshal(def.InputSchema)
 			if strings.Contains(string(raw), `"const":"git"`) {
 				t.Fatal("managed content connection exposed repo actions")

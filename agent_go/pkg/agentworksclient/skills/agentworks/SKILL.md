@@ -40,15 +40,15 @@ List topics with `list_guidance_topics` and load only relevant ones via `get_gui
 ## Shared Brain
 
 Discover the schemas through `get_api_spec`, then invoke actions through `call_tool`:
-- `browse_knowledgebase`: `folders` / `entries` for accessible skills, facts, notes and sources.
-- `read_knowledgebase`: `read` / `search`; read the current version before changing content.
-- `update_knowledgebase`: `create` / `update` / `delete` / `create_folder`. Use diff patches for large files, `expected_version` for updates/deletes and stable `request_id` values. Saves become readable immediately.
-- `backup_knowledgebase`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
-- `knowledgebase_skills`: company skills. `list` finds skills you can read; `get` returns one skill's files: install it by writing each file under your own skills folder as `.claude/skills/<name>/<path>` (Claude Code) or `.agents/skills/<name>/<path>` (Codex, Cursor), decoding `content_base64`; `publish` uploads a skill package (`SKILL.md` plus `references/`, `scripts/`, assets) into a Brain folder and replaces its previous files (Editor; a skill with scripts needs Owner). Re-run `get` to update.
+- `brain_browse`: `folders` / `entries` for accessible skills, facts, notes and sources.
+- `brain_read`: `read` / `search`; read the current version before changing content.
+- `brain_update`: `create` / `update` / `delete` / `create_folder`. Use diff patches for large files, `expected_version` for updates/deletes and stable `request_id` values. Saves become readable immediately.
+- `brain_backup`: `status`, then explicitly requested `commit` and `push`. Commit selected versions; push the returned receipt using a different request ID. Keep receipts for safe retries.
+- `brain_skills`: company skills. `list` finds skills you can read; `get` returns one skill's files: install it by writing each file under your own skills folder as `.claude/skills/<name>/<path>` (Claude Code) or `.agents/skills/<name>/<path>` (Codex, Cursor), decoding `content_base64`; `publish` uploads a skill package (`SKILL.md` plus `references/`, `scripts/`, assets) into a Brain folder and replaces its previous files (Editor; a skill with scripts needs Owner). Re-run `get` to update.
 - Files of any type (images, PDF, PPTX, XLSX; not programs) can be stored: send text in `content`, anything else in `content_base64`.
-- `manage_knowledgebase_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
+- `brain_access`: `inspect`. Writable unrestricted external connections also expose `list`, `grant`, `revoke`, `create_service_account` and `disable_service_account`. Owners manage their folder grants; service-account administration requires an administrator. Inspect first and use the current `expected_acl_version` plus a stable `request_id` for grant/revoke. Changes apply directly; app chat uses its separate confirmation flow.
 
-Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `manage_knowledgebase_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Brain.
+Read-only, folder-scoped and managed workflow/Crew connections cannot administer access. Folder grants remain authoritative. Authorized project Owners with Builder/Crew permission can use `brain_access` actions `inspect_project`, `bind_project` and `unbind_project`, with the current `expected_manifest_version` and stable `request_id`. Binding does not grant folder access. Never treat a content edit as permission to change access, migrate a project or publish a Git backup. Unavailable tools/actions are omitted from the connection's catalog. Do not substitute legacy workflow knowledge files for the shared Brain.
 
 ## Run
 
@@ -70,13 +70,13 @@ Code review (`code:review`; admins and Code reviewers only, re-checked on every 
 
 When `create_workflow` appears in `get_api_spec`, invoke it through `call_tool` with `folder_name` (kebab-case), `workflow_json` (`schema_version`, unique `id`, `label`) and `plan_json` (a valid non-empty steps graph). It reuses the app creator and returns `workflow_id`; the new workflow belongs to the authenticated user. Account creation rights and unrestricted `builder:chat` permission are required. The local `agentworks-local` Owner token qualifies when Builder is enabled. Existing folders and IDs are never overwritten.
 
-Creation writes structure only. Use `builder_chat` with the returned ID to author/test scripted-step code before running; poll `builder_status`, answer questions with `builder_reply_input`, and reuse `submission_id` for uncertain Builder delivery. Add KB folders through `manage_knowledgebase_access` actions `inspect_project` / `bind_project` using that ID and current folder/audience permissions. Creation cannot preconfigure host-folder grants or KB/project attachments.
+Creation writes structure only. Use `builder_chat` with the returned ID to author/test scripted-step code before running; poll `builder_status`, answer questions with `builder_reply_input`, and reuse `submission_id` for uncertain Builder delivery. Add KB folders through `brain_access` actions `inspect_project` / `bind_project` using that ID and current folder/audience permissions. Creation cannot preconfigure host-folder grants or KB/project attachments.
 
 ## Answer from reading
 
 Use only authoring operations shown in this connection’s catalog. If the needed operation is absent, describe or suggest the change.
 
-Administrators may configure an initial Git backup with `manage_knowledgebase_access`
+Administrators may configure an initial Git backup with `brain_access`
 `action=configure_backup`, the user's exact HTTPS `remote_url`, `username`, optional `pat` and `branch`
 (default `main`), and stable `request_id`. Never invent a destination or ask for
 credentials in app chat: use its secure confirmation field for the optional PAT.
@@ -85,7 +85,7 @@ commit/push. KB encrypts the PAT in its own private storage, with no Vault
 dependency. Omit `pat` to retain it or send an empty string to remove it. SSH URLs
 require deployment configuration and use host SSH credentials; app/MCP setup is HTTPS only.
 
-For explicitly requested repository-wide Git work, use `backup_knowledgebase(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
+For explicitly requested repository-wide Git work, use `brain_backup(action=git, op=...)`. Root Reader permits repository history/diff; unrestricted root Editor permits staging, commit/push, pull, branches and stashes. Pull and checkout update live knowledge and require a clean tree; stash/discard also affect live content. Preserve the original request ID when retrying an uncertain push. Scoped or managed workflow/Crew connections keep selected-version receipt backups. Never infer a Git push or destructive restore from a content edit.
 
 ## Vault management
 

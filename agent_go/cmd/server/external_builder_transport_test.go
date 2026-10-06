@@ -50,7 +50,7 @@ func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	const marker = "BUILDER-DIRECT-KB-94817"
-	if _, err = service.CallTool(t.Context(), admin, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "smoke.md", "title": "Smoke", "type": "note", "content": marker, "request_id": "builder-marker"}); err != nil {
+	if _, err = service.CallTool(t.Context(), admin, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "smoke.md", "title": "Smoke", "type": "note", "content": marker, "request_id": "builder-marker"}); err != nil {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
@@ -97,12 +97,12 @@ func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
 			for _, tool := range request.Tools {
 				names = append(names, tool.Function.Name)
 			}
-			if !slices.Contains(names, "read_knowledgebase") || slices.Contains(names, "execute_shell_command") || slices.Contains(names, "update_knowledgebase") {
+			if !slices.Contains(names, "brain_read") || slices.Contains(names, "execute_shell_command") || slices.Contains(names, "brain_update") {
 				http.Error(w, fmt.Sprintf("incorrect Builder tools: %v", names), 400)
 				return
 			}
 			message["content"] = nil
-			message["tool_calls"] = []any{map[string]any{"id": "read-binding", "type": "function", "function": map[string]any{"name": "read_knowledgebase", "arguments": `{"action":"read","binding_alias":"kbtest","path":"Imported/smoke.md"}`}}}
+			message["tool_calls"] = []any{map[string]any{"id": "read-binding", "type": "function", "function": map[string]any{"name": "brain_read", "arguments": `{"action":"read","binding_alias":"kbtest","path":"Imported/smoke.md"}`}}}
 			finish = "tool_calls"
 		} else if !strings.Contains(string(request.Messages), marker) {
 			http.Error(w, "KB tool result did not reach model", 400)
@@ -139,7 +139,7 @@ func TestExternalBuilderTransportKeepsPermissionBoundary(t *testing.T) {
 			claims.AccessToken.Scopes = []string{"knowledgebase:read"}
 		}
 		code, names := externalBuilderTransport(claims)
-		if code || slices.Contains(names, "read_knowledgebase") != kb {
+		if code || slices.Contains(names, "brain_read") != kb {
 			t.Fatal("incorrect transport", code, names)
 		}
 		for _, name := range names {

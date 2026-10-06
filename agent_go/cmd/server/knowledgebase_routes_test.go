@@ -124,7 +124,7 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	if search.Code != 200 || strings.Contains(search.Body.String(), "Billing") || strings.Contains(search.Body.String(), "Protected billing") {
 		t.Fatal(search.Code, search.Body.String())
 	}
-	external := request("/api/external/v1/call", `{"name":"read_knowledgebase","arguments":{"action":"read","path":"Payments/Checkout/retries.md"}}`, "priya", true)
+	external := request("/api/external/v1/call", `{"name":"brain_read","arguments":{"action":"read","path":"Payments/Checkout/retries.md"}}`, "priya", true)
 	if external.Code != 200 || !strings.Contains(external.Body.String(), "Retry failed payments safely") {
 		t.Fatal(external.Code, external.Body.String())
 	}
@@ -134,7 +134,7 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	if err := json.Unmarshal(read.Body.Bytes(), &readBody); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"name": "update_knowledgebase", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "content": "Bad overwrite", "expected_version": readBody.Version, "request_id": "denied-write"}})
+	args, _ := json.Marshal(map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "content": "Bad overwrite", "expected_version": readBody.Version, "request_id": "denied-write"}})
 	denied := request("/api/external/v1/call", string(args), "priya", true)
 	if denied.Code != 403 {
 		t.Fatal(denied.Code, denied.Body.String())
@@ -145,12 +145,12 @@ func TestKnowledgebaseBuilderOnlyAdmitsAccessAndGitTools(t *testing.T) {
 	api, service := knowledgebaseServerTest(t)
 	p := knowledgebaseproduct.BuiltinAgentProfile()
 	gate := newProductToolGate(&resolvedAgentProfile{Definition: p})
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "query_database", "agent_browser"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "brain_browse", "brain_read", "brain_update", "query_database", "agent_browser"} {
 		if gate.Admit(name) {
 			t.Fatalf("builder admitted %s", name)
 		}
 	}
-	if !gate.Admit("manage_knowledgebase_access") || !gate.Admit("backup_knowledgebase") {
+	if !gate.Admit("brain_access") || !gate.Admit("brain_backup") {
 		t.Fatal("builder cannot manage access")
 	}
 	_, err := service.Call(t.Context(), knowledgebase.Principal{IdentityID: "admin", IsAdmin: true, AccessOnly: true}, "create_knowledgebase", map[string]any{"folder_path": "", "filename": "blocked.md", "type": "note", "title": "Blocked", "content": "blocked", "request_id": "blocked"})
@@ -180,14 +180,14 @@ func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testin
 	// Unattended calls carry claims bound from the authenticated run identity,
 	// with exactly the same folder checks as interactive MCP calls.
 	args := map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}
-	if result, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "read_knowledgebase", args); err != nil || !strings.Contains(result, "Retry failed payments safely") {
+	if result, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "brain_read", args); err != nil || !strings.Contains(result, "Retry failed payments safely") {
 		t.Fatal("run identity could not read granted folder", result, err)
 	}
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "outsider"), "outsider", false, "read_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "outsider"), "outsider", false, "brain_read", args); err == nil {
 		t.Fatal("ungranted run identity read shared knowledge")
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
-	if _, err := knowledgebaseExecute(ctx, "priya", false, "read_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseExecute(ctx, "priya", false, "brain_read", args); err == nil {
 		t.Fatal("run identity borrowed another caller's authority")
 	}
 	admin := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}
@@ -198,7 +198,7 @@ func TestKnowledgebaseContentRuntimeUsesExecutionIdentityAndLiveGrants(t *testin
 	if _, err = service.Call(t.Context(), admin, "manage_knowledgebase_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "request_id": "revoke-runtime", "expected_acl_version": access.(map[string]any)["acl_version"]}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "read_knowledgebase", args); err == nil {
+	if _, err := knowledgebaseExecute(knowledgeTestCaller(t.Context(), "priya"), "priya", false, "brain_read", args); err == nil {
 		t.Fatal("running agent retained revoked folder access")
 	}
 }

@@ -335,9 +335,9 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.AccessOnly = true
-	knowledgeDispatchTest(t, service, owner, "manage_knowledgebase_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": project.Version, "request_id": "identity-bind"})
+	knowledgeDispatchTest(t, service, owner, "brain_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": project.Version, "request_id": "identity-bind"})
 	owner.AccessOnly = false
-	_, err = service.CallTool(t.Context(), owner, "update_knowledgebase", map[string]any{"action": "create", "folder_id": folderID, "filename": "identity.md", "type": "note", "title": "Identity", "content": "identity-bound-marker", "request_id": "identity-create"})
+	_, err = service.CallTool(t.Context(), owner, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "identity.md", "type": "note", "title": "Identity", "content": "identity-bound-marker", "request_id": "identity-create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	common.SetSessionWorkflowPath(session, workspace)
 	defer common.ClearSessionShellConfig(session)
 	_, tools, _ := createKnowledgebaseTools("admin", session, workspace)
-	read := tools["read_knowledgebase"].(func(context.Context, map[string]interface{}) (string, error))
+	read := tools["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
 	args := map[string]any{"action": "read", "binding_alias": "kbtest", "path": "Imported/identity.md"}
 	caller := executor.WithSessionID(t.Context(), session)
 	for _, tc := range []struct {
@@ -367,14 +367,14 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
 	api.eventStore.SetSessionOwner(session, "admin")
 	bound := api.bindToolExecutionContext(knowledgeTestCaller(t.Context(), "admin"), session, QueryRequest{}, false)
-	ctx, err := bound(caller, "read_knowledgebase")
+	ctx, err := bound(caller, "brain_read")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out, err := read(ctx, args); err != nil || !strings.Contains(out, "identity-bound-marker") {
 		t.Fatalf("owner read failed: %s %v", out, err)
 	}
-	if _, err := bound(executor.WithSessionID(t.Context(), "foreign-chat"), "read_knowledgebase"); err == nil {
+	if _, err := bound(executor.WithSessionID(t.Context(), "foreign-chat"), "brain_read"); err == nil {
 		t.Fatal("foreign session admitted")
 	}
 }
