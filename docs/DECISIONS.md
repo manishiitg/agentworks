@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Automatic help belongs at the product level
+
+Owner decision: keep the full product walkthrough's existing automatic startup
+rules; open help inside panels and sections only from the user's help button.
+Remove contextual first-visit popups because they interrupt routine navigation.
+Ticket: [PLAT-558](bugs/pulse_platform/frontend-chat/plat-558.md).
+
 ### 2026-10-06 — Brain holds shared knowledge; workflow-only facts stay local (option B)
 - Facts about the person, company, projects and org-wide decisions live once in shared Brain folders, read by every
   project. Facts used only by one workflow stay in its local `knowledgebase/`. These projects import their shared notes,

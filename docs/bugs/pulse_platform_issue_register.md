@@ -1,3 +1,7 @@
+## Panel help is manual; only product walkthroughs open automatically — PLAT-558
+
+[PLAT-558](pulse_platform/frontend-chat/plat-558.md), P2, fixed on main, not deployed. Remove automatic contextual panel/section popups, keep manual help and existing product walkthrough startup. 54 frontend tests, TypeScript and lint passed.
+
 ## Product workspace toolbar views reset after page refresh — PLAT-551
 
 [PLAT-551](pulse_platform/frontend-chat/plat-551.md), P2, fixed on main, not deployed. Shared server/product/project view preferences across all nine products; delay Goals Files synchronization until its saved view restores. Regression checks and an isolated full-page browser reload passed.

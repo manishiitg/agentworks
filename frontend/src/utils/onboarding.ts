@@ -83,12 +83,6 @@ export const rememberGuide = (key: string) => {
 export const isWorkflowWalkthroughDismissed = (surface: WalkthroughSurface) => isGuideRemembered(WALKTHROUGH_DISMISSED_KEYS[surface])
 export const dismissWorkflowWalkthrough = (surface: WalkthroughSurface) => rememberGuide(WALKTHROUGH_DISMISSED_KEYS[surface])
 
-export const contextualGuideKey = (surface: 'agentworks' | 'crew' | 'code' | 'providers', topic: string) => {
-  const stableTopic = topic.startsWith('Schedules for ') ? 'Schedules' : topic
-  const slug = stableTopic.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 80)
-  return `agentworks_tip_${surface}_${slug || 'workspace'}_v1_dismissed`
-}
-
 export const getLLMDiscoveryOnboardingState = (): LLMDiscoveryOnboardingState => {
   const state = getWindowState()
   if (state) return state

@@ -50,18 +50,28 @@ describe('Panel walkthroughs', () => {
     }
   })
 
-  it('does not show an automatic tip after the same help was opened manually', async () => {
+  it('keeps new panels and tabs quiet until help is requested, including after remount', async () => {
     vi.useFakeTimers()
-    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    const host = document.createElement('div'); document.body.append(host)
+    let root = createRoot(host)
     try {
-      await act(async () => root.render(<WorkspaceViewHeader title="Manual-first test panel" />))
-      const button = host.querySelector<HTMLButtonElement>('[aria-label="Walkthrough: Manual-first test panel"]')!
-      button.getBoundingClientRect = () => ({ width: 30, height: 30, left: 20, right: 50, top: 20, bottom: 50 }) as DOMRect
-      await act(async () => button.click())
-      expect(host.querySelector('[role="dialog"]')).not.toBeNull()
-      await act(async () => button.click())
-      await act(async () => vi.advanceTimersByTime(600))
-      expect(host.querySelector('[role="dialog"]')).toBeNull()
+      for (const surface of ['agentworks', 'crew', 'code'] as const) {
+        for (const topic of ['Pulse · Platform health', 'Identity · General']) {
+          await act(async () => root.render(<WorkspacePanelGuideContext.Provider value={surface}>
+            <WorkspaceViewHeader title="Manual panel help" helpTopic={topic} />
+          </WorkspacePanelGuideContext.Provider>))
+          const button = host.querySelector<HTMLButtonElement>(`[aria-label="Walkthrough: ${topic}"]`)!
+          button.getBoundingClientRect = () => ({ width: 30, height: 30, left: 20, right: 50, top: 20, bottom: 50 }) as DOMRect
+          await act(async () => vi.advanceTimersByTime(2000))
+          expect(host.querySelector('[role="dialog"]')).toBeNull()
+          await act(async () => button.click())
+          expect(host.querySelector('[role="dialog"]')).not.toBeNull()
+          await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+          expect(host.querySelector('[role="dialog"]')).toBeNull()
+          await act(async () => root.unmount())
+          root = createRoot(host)
+        }
+      }
     } finally {
       await act(async () => root.unmount()); host.remove(); vi.useRealTimers()
     }
