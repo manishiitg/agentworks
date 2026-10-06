@@ -14,6 +14,7 @@ const DBG = '[skill-popup]'
 import { Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
+import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -597,6 +598,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // flicker several times a second during a run. Gate the control's PRESENCE on
   // this; keep isStreaming for whether the composer accepts input.
   const isTurnInFlight = isStreaming || (activeTab?.hasRunningBgAgents ?? false)
+  // The flags behind isTurnInFlight still dip for a moment during a run; hold
+  // Stop briefly so it does not swap with Send (useHeldTurnInFlight).
+  const isTurnShownInFlight = useHeldTurnInFlight(isTurnInFlight, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
   const tabSessionId = activeTab?.sessionId ?? null
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
@@ -2803,7 +2807,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Scheduled runs share the compact actions beside the live-terminal toggle.
   // Bot runs still use the separate footer in ChatArea.
   const hasRunFooter = !!activeTab?.metadata?.isBotRun && !activeTab?.metadata?.isScheduledRun
-  const showStopButton = !!tabSessionId && isTurnInFlight && !hasRunFooter && !terminalViewSelected
+  const showStopButton = !!tabSessionId && isTurnShownInFlight && !hasRunFooter && !terminalViewSelected
   const stopButton = activeTabId ? <SessionStopButton key={activeTabId} tabId={activeTabId} /> : null
 
   // Check if query is valid (view-only tabs cannot submit)

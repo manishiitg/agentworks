@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 16 | 3 |
 | [Browser and browser automation](browser/index.md) | 36 | 10 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 18 | 5 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 17 | 5 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-579](goals/plans-contracts/plat-579.md) | Strict input/output graph preflight | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-578](coding-agents/models/plat-578.md) | Stale AGY alpha-gate assertion fails the workflow test suite | open | P2 | [coding-agents/models](coding-agents/models/index.md) |
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-543](brain/learnings-knowledge/plat-543.md) | Brain access setting for projects (Off, Read, Folders) | fixed on main | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-542](app/navigation/plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |
-| [PLAT-540](app/navigation/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
