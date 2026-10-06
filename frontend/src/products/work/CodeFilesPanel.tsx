@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, Copy, Folder, Laptop, RefreshCw } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Check, Copy, Laptop } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { getApiBaseUrl } from '../../services/api'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { codeLocalFilesApi, localFileError, useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference, type CodeLocalFileTarget, type LocalFile, type LocalFileDevice, type LocalFileEntry, type LocalFileReceipt } from './codeLocalFiles'
+import { useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
 
 function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
@@ -30,76 +28,6 @@ function ComputerSetup() {
   </details>
 }
 
-export function CodeServerTerminalNotice({ sessionId }: { sessionId: string }) {
-  const preference = useCodeFilesPreference(sessionId)
-  return preference.location === 'computer' ? <p className="border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Server terminal · This terminal cannot run commands in your selected computer folder. The local connection supports files only.</p> : null
-}
-
-function LocalFolderFiles({ target, writable, connected, guardHint, onAsk }: { target: CodeLocalFileTarget; writable: boolean; connected: boolean; guardHint: string; onAsk: (message: string) => Promise<void> }) {
-  const [directory, setDirectory] = useState('.')
-  const [entries, setEntries] = useState<LocalFileEntry[]>([])
-  const [file, setFile] = useState<LocalFile | null>(null)
-  const [content, setContent] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [receipt, setReceipt] = useState<LocalFileReceipt | null>(null)
-  // Keep a failed write's exact ID and payload for safe reconciliation.
-  const pendingWrite = useRef<{ content: string; expected_revision: string; request_id: string } | null>(null)
-  const generation = useRef(0)
-  const load = useCallback(async (path: string, operation: 'list' | 'read') => {
-    const current = ++generation.current
-    setBusy(true); setError(null)
-    try {
-      const result = await codeLocalFilesApi.call(target, operation, path)
-      if (generation.current !== current) return
-      if (operation === 'list') { setDirectory(path); setEntries(result.entries || []); setFile(null) }
-      else { setFile(result.file || null); setContent(result.file?.content || '') }
-      setReceipt(null); pendingWrite.current = null
-    } catch (cause) { if (generation.current === current) setError(localFileError(cause)) }
-    finally { if (generation.current === current) setBusy(false) }
-  }, [target])
-  useEffect(() => { void load('.', 'list'); return () => { generation.current += 1 } }, [load])
-  const save = async () => {
-    if (!file) return
-    const current = generation.current
-    setBusy(true); setError(null)
-    const write = pendingWrite.current || { content, expected_revision: file.revision, request_id: crypto.randomUUID() }
-    pendingWrite.current = write
-    try {
-      const result = await codeLocalFilesApi.call(target, 'write', file.path, write)
-      if (generation.current !== current) return
-      if (!result.receipt) throw new Error('Write receipt unavailable; retry to reconcile.')
-      setFile({ ...file, content: write.content, revision: result.receipt.revision }); setContent(write.content)
-      setReceipt(result.receipt); pendingWrite.current = null
-    } catch (cause) { if (generation.current === current) setError(`${localFileError(cause)} Retry uses the same write request. Reload to check the current file before making another edit.`) }
-    finally { if (generation.current === current) setBusy(false) }
-  }
-  return <div className="flex min-h-0 flex-1 flex-col gap-3">
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <span>{writable ? 'Can edit' : 'Read only'} · {guardHint}</span>
-      <span>Agent and LLM run on the server. Requested file contents reach the server and LLM.</span>
-    </div>
-    <p className="text-xs text-muted-foreground">The terminal and browser run on the server. Local builds and tests are not available in this connection.</p>
-    <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" disabled={busy || !connected || (!file && directory === '.')} onClick={() => void load(file ? directory : directory.split('/').slice(0, -1).join('/') || '.', 'list')}>{file ? 'Folder' : 'Up'}</Button>
-      <span className="min-w-0 flex-1 truncate font-mono text-xs">{file?.path || directory}</span>
-      <Button size="sm" variant="ghost" disabled={busy || !connected} aria-label="Reload local files" onClick={() => void load(file?.path || directory, file ? 'read' : 'list')}><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /></Button>
-      {file && <Button size="sm" variant="outline" disabled={busy || !connected} onClick={() => void onAsk(`Look at ${JSON.stringify(file.path)} in my selected local Code folder (${target.resource_id} on ${target.device_id}). Use the local file tools.`).catch(cause => setError(localFileError(cause)))}>Ask Code</Button>}
-    </div>
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    {file ? <>
-      <textarea aria-label="Local file content" spellCheck={false} value={content} readOnly={!writable || !connected || busy || pendingWrite.current !== null} onChange={event => setContent(event.target.value)} className="min-h-64 flex-1 resize-none rounded-md border border-border bg-background p-3 font-mono text-xs" />
-      {writable && <Button size="sm" disabled={busy || !connected || (content === (file.content || '') && !pendingWrite.current)} onClick={() => void save()}>{pendingWrite.current ? 'Retry save' : 'Save to computer'}</Button>}
-      {receipt && <p role="status" className="text-xs text-muted-foreground">Saved by {receipt.identity.username || receipt.identity.user_id || 'you'} · revision {receipt.revision.slice(0, 12)}</p>}
-    </> : <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border">
-      {!busy && entries.length === 0 && !error && <p className="p-4 text-sm text-muted-foreground">No visible files in this folder.</p>}
-      {entries.map(entry => <button key={entry.path} disabled={busy || !connected} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => void load(entry.path, entry.type === 'folder' || entry.type === 'directory' ? 'list' : 'read')}>
-        {(entry.type === 'folder' || entry.type === 'directory') && <Folder className="h-4 w-4 shrink-0" />}<span className="truncate">{entry.path.split('/').pop()}</span>
-      </button>)}
-    </div>}
-  </div>
-}
-
 /** The connection belongs to this Code session's files, not its runtime. */
 export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
   const preference = useCodeFilesPreference(sessionId)
@@ -112,7 +40,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
     try { writeCodeFilesPreference(sessionId, pref); setSettingError(null) }
     catch { setSettingError('This browser could not save the file connection.') }
   }
-  return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local files" description="Connect a folder on your computer to this Code chat. Only file access changes; your chat, agent, model and server runtime stay the same.">
+  return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Local mode uses a minimal tool set. Connect your CLI and choose a shared folder; your agent and model run on the server.">
     {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : preference.location === 'server' ?
       <Button variant="outline" onClick={() => savePreference({ location: 'computer' })}>Connect local files</Button> : <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -130,37 +58,21 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
           {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
           {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.writable ? 'Can edit' : 'Read only'}</option>))}
         </select>
-        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. Dashboard, Automation, Slack, WhatsApp and Google apps are unavailable in this mode. Tools, skills and secrets stay available. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
+        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. The right side shows only this CLI connection, Costs and Models. File access is through the agent in chat. MCP connections, skills, secrets and background agents are disabled in Local mode, including before folder selection. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>}
     {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
   </SettingsCard>
 }
 
-export function CodeFilesPanel({ sessionId, serverFiles, onAsk, onManageConnection }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void>; onManageConnection: () => void }) {
-  const accountCanEdit = useAuthStore(state => state.user?.can_edit !== false && state.user?.role !== 'viewer')
-  const accountID = useAuthStore(state => state.user?.id)
-  const workspaceID = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+export function CodeFilesPanel({ sessionId, serverFiles, onManageConnection }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void>; onManageConnection: () => void }) {
   const preference = useCodeFilesPreference(sessionId)
-  const { devices, error, checked } = useLocalFileDevices(preference.location === 'computer')
-  const knownFolders = useRef(new Map<string, LocalFileDevice['resources'][number]>())
-  const selected = preference.location === 'computer' ? preference.target : undefined
-  const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
-  const selectedKey = selected ? JSON.stringify([selected.device_id, selected.resource_id]) : ''
-  const editorKey = JSON.stringify([accountID, workspaceID, sessionId, selectedKey])
-  if (resource) knownFolders.current.set(editorKey, resource)
-  const knownResource = resource || knownFolders.current.get(editorKey)
+  if (preference.location === 'computer') return <div className="h-full overflow-y-auto p-4"><CodeLocalFilesSettings sessionId={sessionId} /></div>
   return <div className="flex h-full min-h-0 flex-col">
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <span className="min-w-0 flex-1 truncate text-xs font-medium">{preference.location === 'server' ? 'Server files' : selected ? `Local files · ${selected.device_id} / ${selected.resource_id}` : 'Local files'}</span>
-      {preference.location === 'computer' && <span role="status" className="text-xs text-muted-foreground">{resource ? 'Connected' : !selected ? 'Not connected' : checked ? 'Offline' : 'Checking…'}</span>}
+    <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <span className="flex-1 text-xs font-medium">Server files</span>
       <Button size="sm" variant="ghost" onClick={onManageConnection}>Manage file connection</Button>
     </div>
-    {preference.location === 'server' ? <div className="min-h-0 flex-1">{serverFiles}</div> : <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-      {!selected && <p className="text-sm text-muted-foreground">Choose your computer and shared folder in Settings → General → Local files.</p>}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {selected && !resource && checked && <p className="text-sm text-muted-foreground">The local folder is offline or no longer shared. Reconnect it to use these files. Your Code chat can continue; local file actions will not switch to server files.</p>}
-      {selected && knownResource && <LocalFolderFiles key={editorKey} target={selected} connected={Boolean(resource)} writable={knownResource.writable && accountCanEdit} guardHint={knownResource.guard.read_only_paths?.length || knownResource.guard.blocked_paths?.length || knownResource.guard.blocked_write_paths?.length ? 'Folder restrictions apply' : 'Protected files stay guarded'} onAsk={onAsk} />}
-    </div>}
+    <div className="min-h-0 flex-1">{serverFiles}</div>
   </div>
 }

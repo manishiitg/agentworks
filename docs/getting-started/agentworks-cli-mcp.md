@@ -750,39 +750,34 @@ writes inside the shared folder. Default receipt storage is beside the CLI confi
 
 ### Code website: connect local files to the current chat
 
-Open a Code chat, then **Settings → General → Local files → Connect local files**.
-Follow the CLI setup commands and select a connected computer and shared folder.
-The connection takes over file access for this Code session only. The same chat,
-agent, model, terminal and server runtime remain in use; other Code chats keep
-their own file access. The binding stays in this browser, scoped to your account,
-server workspace and session.
+Open a Code chat and switch its composer from **Server** to **Local**. You can
+also enter Local mode from **Settings → General → Local CLI connection → Connect local files**.
+Follow the CLI setup commands and select a computer and shared folder. The
+browser remembers this binding for your account, server workspace and chat only.
+The chat, agent and selected model continue running on the server.
 
-In local mode, **Dashboard**, **Automation** (schedules and webhook triggers),
-and built-in **Slack**, **WhatsApp** and **Google apps** are unavailable in this
-chat. Their agent tools are disabled as well; going offline does not restore
-them. Coding tools/MCPs, skills, secrets, models and usage remain available with
-their existing permissions. Other Code chats and existing server schedules or
-channel connections are unchanged and do not inherit this local binding.
+The right side shows only **Local CLI connection**, **Costs and usage**, and
+**Models**. The connection panel provides CLI setup, folder selection, status
+and disconnect. There is no local file browser/editor; ask the agent in chat
+to read or edit the shared files.
 
-**Files** shows the selected connection, Connected/Offline and Read only/Can edit.
-It lets you browse text files, use **Ask Code** and **Save to computer** for writable
-folders/accounts. **Manage file connection** returns to Settings. Disconnect local
-files in Settings to return this chat to server files; it does not stop the CLI.
+Local mode applies a separate minimal tool policy even before a folder is selected.
+The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
+skills, project/Vault secrets, background agents and server terminal/browser
+access. Saved selections are excluded without changing project settings.
+Other chats and existing schedules/connections are unchanged. Disconnect returns
+this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
 
-Code chat sends only the selected device and folder aliases as a context hint.
-Every file action validates live ownership, connection authorization and grants.
-Tools are bound to that folder; changing the binding refreshes retained chat
-tools between turns. Ordinary chat works before folder selection and while the
-computer is offline; local file actions fail without substituting server files.
-An interrupted editor save keeps
-its exact request ID and payload while this Files panel stays open, including
-disconnect/reconnect; use Retry save to reconcile it, or Reload to inspect the
-current file. Leaving the panel or refreshing the page discards that editor draft.
+Every file action validates live ownership, authorization and folder grants.
+Changing the selected folder or permissions refreshes retained tools between
+turns. Offline bindings retain their restrictions: chat can continue, but local
+file operations fail without server-file fallback. Writes retain revision checks,
+request IDs and durable receipts for identical retries.
 
-Local files are available in interactive **Code** chats only. Crew, Brain, Vault,
-general chat, schedules and connector turns do not acquire local file tools.
-The Code terminal and browser still run on the server; the file executor cannot
-run laptop builds or tests. Requested file contents reach the server and LLM.
+Local tools are available only to interactive **Code** chats. Crew, Brain, Vault,
+schedules and connector turns do not acquire them. The CLI cannot run laptop
+builds/tests or browsers. Requested file contents reach the server and LLM.
+Provider credentials needed by the selected server model remain available.
 
 In a Code chat with a local file connection selected, the server agent receives `list_local_devices`,
 `list_local_files`, `read_local_file` and, for writable accounts/turns,
@@ -791,11 +786,9 @@ In a Code chat with a local file connection selected, the server agent receives 
 `request_id`. File contents read by the agent reach the server and its LLM provider.
 Public MCP connections and shared bot-route identities do not receive these tools.
 
-The website backend also exposes owner-authenticated `GET /api/devices` and
-`POST /api/devices/{device_id}/files`. The latter accepts `operation` (`list`,
-`read`, `write`), `resource_id`, `path`, and the same write fields. Lists are
-single-directory and bounded to 200 entries; reads/writes are UTF-8 and bounded
-to 2 MiB. No shell/browser operation is implemented in this first executor.
+The website backend exposes owner-authenticated `GET /api/devices` for connection
+selection/status. File operations are available to the local-connected Code
+agent through its scoped tools; there is no separate website file editor API.
 
 Ctrl-C stops sharing. Network loss or laptop sleep makes the device unavailable;
 there is no fallback to server files. The CLI reconnects with backoff and renewed

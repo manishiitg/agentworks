@@ -830,6 +830,7 @@ type QueryRequest struct {
 	AgentProfileConversationKey string `json:"agent_profile_conversation_key,omitempty"`
 	// Code source selection is a hint, never file authority.
 	CodeLocalFiles *codeLocalFileTarget `json:"code_local_files,omitempty"`
+	CodeChatMode   string               `json:"code_chat_mode,omitempty"`
 	// Code execution mode: When enabled, only virtual tools are added to LLM
 	// MCP tools are accessed through generated scripts using the on-demand HTTP API specification.
 	UseCodeExecutionMode bool `json:"use_code_execution_mode,omitempty"`
@@ -3107,7 +3108,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
-	apiRouter.HandleFunc("/devices/{device_id}/files", api.handleLocalDevices).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
@@ -6053,13 +6053,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
 		}
-		if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
-			selectedServers = mergeServerLists(selectedServers, placeNames)
-			if agentConfig.RuntimeOverrides == nil {
-				agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
-			}
-			for name, override := range placeOverrides {
-				agentConfig.RuntimeOverrides[name] = override
+		if !codeLocalModeTurn(req, resolvedProfile) {
+			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
+				selectedServers = mergeServerLists(selectedServers, placeNames)
+				if agentConfig.RuntimeOverrides == nil {
+					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
+				}
+				for name, override := range placeOverrides {
+					agentConfig.RuntimeOverrides[name] = override
+				}
 			}
 		}
 		// Apply the external Builder boundary last, including after a Code
@@ -6067,7 +6069,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
-		if resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID {
+		if codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
 			selectedServers = []string{mcpclient.NoServers}
 			agentConfig.RuntimeOverrides = nil
 		}
@@ -7029,7 +7031,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			if codeLocalFileTurn(req, resolvedProfile) {
+			if codeLocalModeTurn(req, resolvedProfile) {
 				if err := llmAgent.AddInstructions(codeLocalFilesInstructions(req.CodeLocalFiles)); err != nil {
 					sendError("Failed to apply local Code file instructions", true)
 					return
@@ -7116,7 +7118,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			promptCtx.NativeCodingTools = strings.HasPrefix(llmAgent.CodingAgentToolsMode(), "full")
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
-				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
+				if !codeLocalModeTurn(req, resolvedProfile) {
+					promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
+				}
 			}
 			if len(req.WorkflowContextPaths) > 0 {
 				referenceSkillName := "work-workflow-files"
@@ -14207,6 +14211,12 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	}
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
+	}
+	if req.CodeChatMode != "" && (resolvedProfile == nil || resolvedProfile.Definition.ID != "code") {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Code chat mode requires a Code chat"), invalidProfile: true}
+	}
+	if req.CodeChatMode == "local" && (!codeLocalModeTurn(*req, resolvedProfile) || !websiteDeviceClaims(GetUserFromContext(ctx))) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Local mode requires an interactive Code website chat"), invalidProfile: true}
 	}
 	if req.CodeLocalFiles != nil {
 		if !codeLocalFileTurn(*req, resolvedProfile) || !req.CodeLocalFiles.valid() {

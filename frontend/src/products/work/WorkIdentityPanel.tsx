@@ -365,7 +365,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -377,6 +377,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   projectTemplates: Array<{ id: string; version: number }>
   onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   tabId: string
+  modelsOnly?: boolean
   openLocalFilesSettings?: boolean
   onLocalFilesSettingsOpened?: () => void
   selectedSecrets: string[]
@@ -396,7 +397,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
   const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
-  const visibleTabs = IDENTITY_TABS.filter(option => isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   useEffect(() => {
     if (!openLocalFilesSettings) return
@@ -412,7 +413,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={product.hasIdentity ? Fingerprint : Settings}
-        title={product.hasIdentity ? 'Identity' : 'Settings'}
+        title={modelsOnly ? 'Models' : product.hasIdentity ? 'Identity' : 'Settings'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
         actions={(
           <WorkspaceViewActions
@@ -423,7 +424,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
+        tabs={modelsOnly ? undefined : { value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
@@ -451,7 +452,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
             onRuntimeChange={onRuntimeChange}
             hideHeader
           />
-          {product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
+          {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
         </div>}
       </div>
     </div>

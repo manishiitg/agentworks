@@ -1,14 +1,14 @@
 # Local and Server Agent Design
 
-**Status: guarded public writes and the file executor implemented; broader local tool support remains future work. Updated 2026-10-06.**
+**Status: guarded public MCP writes, the file executor and minimal Local chat mode implemented. Updated 2026-10-06.**
 
 This document replaces the workspace-router proposal. Support two directions:
 
 - **Local → server:** a local agent uses the existing public AgentWorks MCP to
   work with server-owned workflows. Extend that MCP with guarded file writes.
 - **Server → local:** the agent and LLM run in the website's server backend;
-  a connected laptop executes authorized operations on its local files and tools.
-  Use an internal authenticated device connection. MCP is optional here.
+  a connected laptop executes authorized file operations in one selected folder.
+  Use an internal authenticated device connection for these file operations.
 
 Keep each workspace authoritative on its owning machine. Neither direction
 requires a synchronized filesystem or a second working copy.
@@ -34,24 +34,21 @@ Implemented now:
   heartbeat/reconnect, token revocation and pending-request failure on disconnect.
 - Local file writes retain private receipts across reconnects/restarts. The
   server never blindly resends a write after a timeout or disconnect.
-- Code **Settings → General → Local files** offers **Connect local files** and
-  **Disconnect local files**, with CLI setup and device/folder selection. The
-  browser-scoped binding takes over file access for the current Code session;
-  ordinary chat and the server runtime remain available when a device is offline.
-  Files shows live status, text browsing, Ask Code and guarded saves. Local file
-  tools are bound to the selected alias; binding changes refresh retained tools
-  between turns without replacing the conversation.
-- Local-connected Code sessions disable Dashboard/managed database, Automation
-  (schedules and webhook triggers), and built-in Slack, WhatsApp and Gmail/Google
-  integrations. UI entry points and per-turn feature tools are narrowed together,
-  including offline bindings. Coding MCP tools, skills, secrets, models and costs
-  remain available under their normal grants. Existing server project schedules,
-  triggers and account connections are not deleted or paused; they never inherit
-  the browser session's local-folder binding. Disconnect restores server mode.
+- Code **Settings → General → Local CLI connection** offers **Connect local files**.
+  The browser-scoped binding takes over file access for the current Code chat.
+  The right side shows only **Local CLI connection**, **Costs**, and **Models**.
+  The connection panel provides CLI setup, folder selection, status and disconnect.
+  File reads and edits happen through the agent in chat, with guarded local tools.
+- Local-connected turns exclude MCP connections, skills, project/Vault secrets,
+  background agents, server terminal/browser tools and other server adapters.
+  Dashboards/databases, schedules/triggers and messaging stay disabled. Saved
+  settings are excluded from the turn without changing project configuration.
+  Offline bindings retain these restrictions. Disconnect restores normal Code.
+  Other chats and existing server schedules/connections are unchanged.
 
-The first executor is file-only. Shell/browser operations, workflow execution
-against laptop-owned plans, a general device-management panel, remote schedules,
-public history/restore APIs and history retention policies remain future work.
+The executor is file-only. Shell/browser execution, laptop workflow routing,
+schedules, device-management panels, public history/restore APIs and retention
+policies are outside this change.
 Before-content history is capped at 128 KiB per write; full revisions are retained.
 Device connections currently live in one backend process. Deployments with
 multiple backend instances need routing affinity for device and chat requests.
@@ -83,8 +80,8 @@ every internal tool call into an external MCP call.
 |---|---|---|
 | Local → server | A person's Claude/Codex/other agent reads and edits shared workflow code or documents using that person's LLM | Server endpoint is reachable and the connection has the required grants |
 | Local → server | Inspect runs, call workflow functions, ask Crews or manage permitted Vault resources from an external agent | Existing product tools and their independent permissions |
-| Server → local | The website supplies the model and orchestration while a developer keeps repositories and build tools on their laptop | Laptop executor is connected |
-| Server → local | The website agent works with local documents, downloads, an authenticated local browser or local applications | Explicit device/folder/tool grants and an appropriate local executor |
+| Server → local | The website supplies the model and conversation while a developer keeps source files on their laptop | Laptop executor is connected |
+| Server → local | The website agent reads and edits files within an explicitly shared local folder | Explicit device/folder/tool grants and an appropriate local executor |
 
 Using a server LLM alone does not require moving the agent loop. A local loop
 with a server model gateway is a separate, simpler option if centralized model
@@ -205,177 +202,67 @@ Builder's existing operation audit remains separate; its mounted file writer
 participates in the same serialization lock. Public writes always use the
 file-owning service and therefore support separate service volumes.
 
-## 4. Server → local through a laptop executor
+## 4. Server → local through a file executor
 
 ```mermaid
 flowchart LR
-    U[Website UI] --> A[Server agent and LLM]
-    L[Laptop companion] -->|Authenticated outbound connection| G[Server device gateway]
-    A -->|Scoped tool request| G
-    G -->|Request over existing connection| L
-    L --> F[Local files, shell and browser]
-    F -->|Result through companion and gateway| A
+    U[Code website chat] --> A[Server agent and LLM]
+    L[Local CLI] -->|Authenticated outbound WebSocket| G[Server device gateway]
+    A -->|Selected folder file request| G
+    G -->|Existing connection| L
+    L --> F[Granted local folder]
+    F -->|Result and write receipt| A
 ```
 
-The website backend owns the agent loop and LLM access. Its tool registry routes
-local-resource operations to a selected connected device. The laptop executor
-checks the request against its grants and runs the existing local tool handlers.
-Results return to the server's agent loop.
+The server owns the agent loop and LLM. The CLI lists, reads and writes files
+under locally approved folder aliases. It exposes no local listener, shell,
+browser, application control or credential export. Requested file contents
+reach the server and LLM.
 
-Native filesystem/shell tools running on the server see the server's filesystem.
-They cannot stand in for a laptop operation. Use explicitly targeted laptop
-tools; any permitted server tools have their own resource identity and policy.
+### Connection and website experience
 
-The authoritative workflow files, including plans and durable local outputs,
-remain on the laptop for a local workspace. Typed plan/configuration tools must
-also route to its owning service. Server orchestration cannot retain direct
-server-disk assumptions for those resources. Transient execution state and LLM
-context may live on the server; chat/history persistence is an open decision.
+1. Open a Code chat and switch **Server → Local** in its composer (or use
+   **Settings → General → Local CLI connection**). Local has a separate minimal
+   tool policy, applied before a folder is selected. The selected model stays the same.
+2. Install the CLI, sign in with `devices:connect`, and run
+   `agentworks executor connect` with named folder grants.
+3. Select the computer and shared folder. The browser remembers this binding
+   for the account, server workspace and current chat only.
+4. The right-side toolbar offers **Local CLI connection**, **Costs**, and
+   **Models**. The connection panel shows setup, folder permissions, status
+   and disconnect. No file editor, terminal, browser, dashboard, automation,
+   integrations or general project settings are shown.
+5. The agent uses local file tools from chat. MCP connections, skills,
+   project/Vault secrets and background agents are excluded from local turns.
+   Provider authentication remains available for the selected server model.
+6. Disconnect restores normal Code mode. Saved configuration and other chats
+   remain unchanged; Ctrl-C in the CLI ends folder sharing.
 
-### Establishing the connection
+Only interactive Code turns receive local tools. Crew, Brain, Vault, schedules,
+messaging turns and unattended agents do not inherit this binding. Native
+server filesystem/terminal/browser tools are disabled for connected turns.
 
-1. The signed-in user pairs a laptop executor with their server account.
-2. The laptop establishes an outbound authenticated connection to the backend.
-3. The backend associates it with a user, device and revocable connection grant.
-4. The website lets the user select an online device and grant local resources
-   and operations. Scope increases require an explicit grant change.
-5. Agent requests travel back over the established connection; laptop results
-   return on the same channel.
+### Authority and failures
 
-An outbound TLS WebSocket with request multiplexing is the preferred candidate
-for the app. Exact endpoints, framing and credential issuance remain to be
-designed. MCP need not be the wire protocol: reuse internal tool schemas and
-handlers. If external clients need laptop tools later, an MCP adapter can expose
-the same guarded executor.
+Every dispatch validates website ownership and live connection authorization.
+The CLI independently confines requests to the approved root, checks folder
+permissions and applies protected-file rules. Absolute paths and credentials
+never cross the connection.
 
-A reverse SSH tunnel can prove connectivity in a developer-only experiment.
-It is not the intended user onboarding or multi-user routing mechanism.
+An offline device retains the binding and restrictions. Ordinary chat can
+continue; local file calls fail without server-file fallback. Connection controls
+remain available during setup and offline.
 
-### Device and execution authority
+Writes require a revision and unique request ID. Private receipts survive CLI
+reconnects and restarts. Retry an uncertain write with its identical request;
+never resend it blindly under a new ID. Typed plan/configuration edits, laptop
+workflow execution and builds/tests are outside this file-only mode.
 
-- Bind each request to the authenticated user, selected device, workspace,
-  execution/session, tool and request ID. The backend must not select another
-  user's device based on a model-supplied identifier.
-- The laptop holds its own grant policy and independently refuses requests
-  outside it. The connection carries operations, not blanket desktop authority.
-- Prefer registered resource IDs over server-supplied absolute laptop paths.
-  Resolve them to granted roots locally and apply the same protected-file rules.
-- Local shell tools need both tool permission and filesystem/process confinement.
-  Adding file-write permission does not authorize shell execution.
-- Inject permitted local secrets inside local execution. Do not send plaintext
-  credential stores or a bulk secret environment to the server. Tool outputs
-  can contain sensitive content and need the existing output controls.
-- Browser/application operations use the existing local handlers, authenticated
-  namespaces and session locking. A server browser cannot reuse a laptop's
-  browser login merely because its agent knows the task.
-- Recheck revocation at dispatch and before execution. Define cancellation and
-  process cleanup for work already running when its grant is revoked.
+The device registry currently lives in one backend process. Multiple instances
+need routing affinity for device and chat requests. This change does not deploy
+the service or invoke an external LLM.
 
-### Availability and delivery
-
-Show device connectivity and pending tool work in the website. An offline or
-sleeping laptop cannot execute local tools. A connected server does not make a
-local workspace always available.
-
-Use heartbeats, bounded reconnects, deadlines, request IDs, cancellation and
-streaming outputs. On disconnect, distinguish work that never started from
-work whose outcome is unknown. Persist enough receipts to reconcile reconnects;
-do not replay uncertain shell commands or file mutations automatically.
-
-Local-workspace schedules require an eligible connected device. Device choice,
-missed-run behavior and prevention of duplicate execution remain open decisions;
-the retired proposal's pinned-laptop/server-lease model is not a current promise.
-
-### Website-only versus companion
-
-Browser-supported file access can support user-selected files or folders within
-browser permissions. It does not supply arbitrary local shell commands,
-background filesystem access or control of installed applications.
-
-The full server → local design therefore requires a running companion. The
-website supplies task/chat controls, device selection and grant management.
-The companion supplies local execution and connection lifecycle.
-
-## 5. Crew, Code, Vault and data ownership
-
-Workflow file access does not relocate a Crew, Code, browser or Vault. Explicit
-product operations keep their existing execution ownership and permissions.
-
-- In local → server mode, asking a server Crew or running a server workflow uses
-  that service's configured agent and credentials. A local external agent can
-  separately use its own local tools.
-- In server → local mode, local file/shell/browser tools execute on the selected
-  laptop. Any server-hosted Crew or Vault operation remains a server operation;
-  choosing a laptop does not copy those credentials there.
-- Sharing workflow files does not transfer laptop logins, place-connection
-  stores or secret encryption keys between devices.
-- When a local executor uses a permitted credential, it performs the operation
-  locally and returns its result. Explicit secret export is not part of this
-  design.
-
-File location and data visibility are different. A local file read by the server
-agent is sent to the server and potentially its LLM provider. Conversely, an
-external local agent reading a server file receives that content on the laptop.
-Neither direction promises that file contents never leave their storage host.
-
-## 6. Implementation sequence
-
-1. **Retire the router prototype.** Remove placement files/routes, workflow
-   moves, remote-scratch routing, special server-mode auth and disk-access bypasses
-   introduced solely for that proposal. Remove its remote-only CLI tool-mode
-   enforcement. Preserve main's existing auth, confinement and workspace APIs.
-   Review shared helpers separately so useful ordinary file-write improvements
-   are not confused with router functionality.
-2. **Public MCP file writes.** Implement shared policy and write ownership,
-   explicit `files:write` issuance/consent, the catalog/schema/dispatcher and
-   audit/retry behavior. Keep `plan:write` out of generic file authoring. Update
-   MCP discovery instructions, OAuth/Connect UI and documentation together.
-3. **Prove local → server.** Use a real external local agent to read a revision,
-   write source/documents and verify results, with protected-plan writes refused.
-   Existing Builder delegation and read/run connections must keep working.
-4. **Prove server → local.** Start with a paired device and guarded file reads/
-   writes using the server model. Then add scoped local execution/browser tools
-   and workflow ownership adapters as needed.
-5. **Complete device lifecycle.** Reconnect, outcome reconciliation, cancellation,
-   revocation, website device status and schedule behavior before broader use.
-
-Steps 1–2 and the file-only connection in step 4 are implemented. Automated tests
-exercise real MCP and WebSocket clients for steps 3–4; they do not call an external
-LLM. Reconnect/revocation/receipts are implemented; broader lifecycle and local
-shell/browser/workflow adapters in steps 4–5 remain future work.
-
-## 7. Validation requirements
-
-- Public MCP discoverability reflects write consent; existing read/run grants
-  still cannot write. Revoked or downgraded access fails on the next operation.
-- Both transports enforce writable, read-only, blocked and protected folders.
-  Test traversal, prefix siblings, symlinks and changes during path resolution.
-- Source/document writes succeed while plan/configuration/database/private writes
-  fail. Typed plan tools still operate under their own authority.
-- Concurrent writes from different processes/transports cannot silently overwrite
-  one another. Revision conflicts, duplicate requests and uncertain receipts have
-  explicit recoverable outcomes.
-- Writes work when agent and workspace services do not share a local volume.
-- One user cannot select another user's device, grant or execution session.
-- Disconnect, laptop sleep, reconnect, cancellation and revocation do not cause
-  automatic duplicate execution. Multi-device delivery has an explicit owner.
-- The server agent can operate local resources without launching a second local
-  Builder model. Browser targets remain local when a local browser is selected.
-
-## 8. Open decisions
-
-- How public MCP folder caps are represented, persisted and presented in consent.
-- Where the shared revision/write/audit transaction lives and how every writer
-  participates, including service-volume separation.
-- Whether direct remote shell/database operations are needed beyond the existing
-  public product tools; their scopes must be independent of `files:write`.
-- Laptop pairing, credential renewal, revocation and device ownership UI.
-- Device connection wire format and outcome receipt persistence.
-- Server orchestration adapters for laptop-owned plans, configuration, databases,
-  output files and histories; policy for server-persisted chat/context retention.
-- Local-workspace schedule behavior, multi-device selection and leases if needed.
-
-## 9. Existing implementation references
+## 5. Existing implementation references
 
 | Area | Source |
 |---|---|

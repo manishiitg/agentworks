@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -42,10 +40,31 @@ type codeLocalFileTarget struct {
 func (target *codeLocalFileTarget) valid() bool {
 	return target != nil && localfiles.ValidID(target.DeviceID) && localfiles.ValidID(target.ResourceID)
 }
-func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
-	return req.CodeLocalFiles != nil && profile != nil && profile.Definition.ID == "code" &&
+func resolveCodeChatMode(mode string, target *codeLocalFileTarget) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		if target != nil {
+			return "local", nil
+		}
+		return "server", nil
+	}
+	if mode != "server" && mode != "local" {
+		return "", fmt.Errorf("Code chat mode must be server or local")
+	}
+	if mode == "server" && target != nil {
+		return "", fmt.Errorf("a local folder requires Local chat mode")
+	}
+	return mode, nil
+}
+
+func codeLocalModeTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	return (req.CodeChatMode == "local" || (req.CodeChatMode == "" && req.CodeLocalFiles != nil)) && profile != nil && profile.Definition.ID == "code" &&
 		req.BotPlatform == "" && (strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
 		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
+}
+
+func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	return req.CodeLocalFiles != nil && codeLocalModeTurn(req, profile)
 }
 
 // Narrow this turn's resolved copy; the server project and its existing
@@ -54,11 +73,12 @@ func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool,
 	if profile == nil || profile.ID != "code" {
 		return nil, nil
 	}
-	blockedFeatures := map[string]bool{"dashboard": true, "database": true, "schedules": true, "triggers": true, "bots": true}
+	blockedFeatures := map[string]bool{"dashboard": true, "database": true, "schedules": true, "triggers": true, "bots": true, "mcp": true, "skills": true, "secrets": true, "background-work": true, "browser": true, "terminal": true, "attached-folders": true, "workflow-references": true, "knowledgebase": true}
 	// Include Slack variants already narrowed out by Code's DM-only option,
 	// so another registrar cannot redeclare a broader channel capability.
 	blockedTools := map[string]bool{
 		"get_report_link": true, "slack": true, "send_slack_message": true,
+		"manage_my_mcp_servers": true, "read_skill": true, "execute_shell_command": true, "get_file_link": true, "diff_patch_workspace_file": true, "read_image": true, "delegate": true,
 		"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 	}
 	blockedSkills, retainedSkills := map[string]bool{}, map[string]bool{}
@@ -91,7 +111,20 @@ func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool,
 			profile.Features[i].Enabled = &disabled
 		}
 	}
-	profile.Skills = withoutCodeLocalValues(profile.Skills, blockedSkills)
+	for _, skill := range profile.Skills {
+		blockedSkills[skill] = true
+	}
+	profile.Skills = nil
+	// Models and UI controls remain available without their skill bundles.
+	for i := range profile.ResolvedFeatures {
+		profile.ResolvedFeatures[i].Skills = nil
+		if profile.ResolvedFeatures[i].ID == "models" {
+			profile.ResolvedFeatures[i].PromptExtension = "Model selection is available in the website's Models panel."
+		}
+		if profile.ResolvedFeatures[i].ID == "workspace-ui" {
+			profile.ResolvedFeatures[i].PromptExtension = "The right side offers Local CLI connection, Costs and Models. Use list_ui_capabilities before requesting a view."
+		}
+	}
 	profile.ToolPolicy.Enabled = withoutCodeLocalValues(profile.ToolPolicy.Enabled, blockedTools)
 	names := make([]string, 0, len(blockedTools))
 	for name := range blockedTools {
@@ -99,6 +132,13 @@ func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool,
 	}
 	sort.Strings(names)
 	profile.Runtime.Capabilities.WhatsApp = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.Secrets = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.MCPSelection = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.SkillSelection = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.WorkflowReferences = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.Browser = agentprofiles.CapabilityDisabled
+	profile.Runtime.Capabilities.RawTerminal = agentprofiles.CapabilityDisabled
+	profile.Runtime.AgentTools.Mode = "mcp_only"
 	return blockedSkills, names
 }
 
@@ -113,7 +153,10 @@ func withoutCodeLocalValues(values []string, blocked map[string]bool) []string {
 }
 
 func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Coding tools, skills and secrets remain available under their own grants. Native filesystem tools, terminal and browser still operate on the SERVER and cannot access this local folder. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	if target == nil {
+		return "\nThis Code chat is in Local mode, with no folder selected yet. Only conversation and the Local CLI connection, Costs and Models views are available. Ask the user to connect their CLI and select a folder before file work. MCP connections, skills, secrets, background agents and server file/terminal/browser tools are disabled. Never substitute server files.\n"
+	}
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
@@ -379,26 +422,7 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	if r.Method == "GET" {
-		externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
-		return
-	}
-	var request localfiles.Request
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, localfiles.MaxMessageBytes))
-	d.DisallowUnknownFields()
-	if d.Decode(&request) != nil || d.Decode(new(any)) != io.EOF {
-		externalError(w, 400, "invalid_arguments", "Invalid local file request.")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
-	defer cancel()
-	response, err := api.localDeviceCall(ctx, claims, mux.Vars(r)["device_id"], request)
-	if err != nil {
-		code, message := wf.ErrorDetails(err)
-		externalError(w, wf.StatusCode(err), code, message)
-		return
-	}
-	externalJSON(w, response)
+	externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
 }
 func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {

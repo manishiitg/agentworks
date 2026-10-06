@@ -9,8 +9,9 @@ const transport = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: transport, getApiBaseUrl: () => 'https://code.example.test' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selector: (state: typeof account) => unknown) => selector(account), { getState: () => account }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
+import { CodeChatModeSwitch } from './CodeChatModeSwitch'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeLocalFilesForChat, readCodeFilesPreference, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -27,13 +28,13 @@ beforeEach(() => {
     : { file: { path: 'README.md', exists: true, content: 'Local source', revision: 'rev-1' } } }))
 })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
-async function render(settings = false) {
+async function render(settings = false, modeSwitch = false) {
   const host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)
   const ask = vi.fn(async () => {})
   const manage = vi.fn()
   const files = <CodeFilesPanel sessionId={session} serverFiles={<p>Server source</p>} onAsk={ask} onManageConnection={manage} />
-  await act(async () => root?.render(settings ? <CodeLocalFilesSettings sessionId={session} /> : files))
+  await act(async () => root?.render(<>{modeSwitch && <CodeChatModeSwitch sessionId={session} />}{settings ? <CodeLocalFilesSettings sessionId={session} /> : files}</>))
   const showFiles = async () => { await act(async () => root?.render(files)) }
   return { host, ask, manage, showFiles }
 }
@@ -57,7 +58,7 @@ it('keeps connection controls in Settings and links there from Files', async () 
   expect(manage).toHaveBeenCalledOnce()
 })
 
-it('connects the current session in Settings and browses local files in Files', async () => {
+it('connects the current session and shows only CLI connection controls', async () => {
   const { host, showFiles } = await render(true)
   await click(host, 'Connect local files')
   expect(host.textContent).toContain('--scopes devices:connect')
@@ -68,14 +69,12 @@ it('connects the current session in Settings and browses local files in Files', 
   expect(codeLocalFilesForChat('another-chat-in-the-same-project')).toBeUndefined()
   expect(transport.post).not.toHaveBeenCalled()
   await showFiles()
-  expect(host.textContent).toContain('Read only')
-  await click(host, 'README.md')
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Local source')
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')?.readOnly).toBe(true)
-  expect(host.textContent).not.toContain('Save to computer')
-  await click(host, 'Ask Code')
-  expect(transport.post).toHaveBeenCalledWith('/api/devices/laptop/files', expect.objectContaining({ resource_id: 'project', operation: 'read', path: 'README.md' }), expect.anything())
-  await click(host, 'Folder'); expect(host.textContent).toContain('README.md')
+  expect(host.textContent).toContain('Local CLI connection')
+  expect(host.querySelector('textarea')).toBeNull()
+  expect(host.textContent).not.toContain('Server source')
+  expect(host.textContent).not.toContain('README.md')
+  expect(transport.post).not.toHaveBeenCalled()
+
 })
 
 it('disconnects only this session in Settings without a server runtime mutation', async () => {
@@ -93,8 +92,8 @@ it('preserves offline selections without rendering server files or silently wide
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render()
   expect(host.textContent).toContain('Offline')
-  expect(host.textContent).toContain('Your Code chat can continue')
-  expect(host.textContent).toContain('local file actions will not switch to server files')
+  expect(host.textContent).toContain('--scopes devices:connect')
+  expect(host.textContent).toContain('Costs and Models')
   expect(host.textContent).not.toContain('Server source')
   expect(codeLocalFilesForChat(session)).toEqual(target)
   expect(transport.post).not.toHaveBeenCalled()
@@ -109,31 +108,19 @@ it('isolates file connections by account, server workspace and session', () => {
   workspace.activeWorkspaceId = 'hosted'; expect(codeLocalFilesForChat(session)).toEqual(target)
 })
 
-it('reconciles uncertain saves with the identical request ID and revision', async () => {
-  vi.useFakeTimers()
-  writeCodeFilesPreference(session, { location: 'computer', target })
-  transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, guard: {} }] }] } })
-  const { host } = await render()
-  await click(host, 'README.md')
-  const textarea = host.querySelector<HTMLTextAreaElement>('textarea')!
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, 'Edited locally')
-    textarea.dispatchEvent(new Event('input', { bubbles: true }))
-  })
-  transport.post.mockRejectedValueOnce({ response: { data: { error: { message: 'Device disconnected' } } } })
-  await click(host, 'Save to computer')
-  expect(host.textContent).toContain('Device disconnected')
-  const write = transport.post.mock.calls.at(-1)![1]
-  transport.get.mockResolvedValueOnce({ data: { devices: [] } })
-  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Edited locally')
-  const retry = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Retry save')!
-  expect(retry.disabled).toBe(true)
-  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
-  expect(retry.disabled).toBe(false)
-  transport.post.mockResolvedValueOnce({ data: { receipt: { applied: true, revision: 'rev-2', identity: { username: 'alice' } } } })
-  await click(host, 'Retry save')
-  expect(transport.post.mock.calls.at(-1)![1]).toEqual(write)
-  expect(write).toMatchObject({ expected_revision: 'rev-1', content: 'Edited locally', operation: 'write' })
-  expect(host.textContent).toContain('Saved by alice')
+it('switches this chat between Server and minimal Local mode before choosing a folder', async () => {
+  const { host } = await render(true, true)
+  expect(codeChatModeForChat(session)).toBe('server')
+  await click(host, 'Local')
+  expect(codeChatModeForChat(session)).toBe('local')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  expect(host.textContent).toContain('Choose a folder')
+  await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
+  expect(codeChatModeForChat(session)).toBe('local')
+  expect(codeLocalFilesForChat(session)).toEqual(target)
+  expect(codeChatModeForChat('other-chat')).toBe('server')
+  await click(host, 'Server')
+  expect(codeChatModeForChat(session)).toBe('server')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  expect(transport.post).not.toHaveBeenCalled()
 })

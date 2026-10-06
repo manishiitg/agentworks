@@ -1,3 +1,4 @@
+import { CodeChatModeSwitch } from '../products/work/CodeChatModeSwitch'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
@@ -3130,7 +3131,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {/* The transcript above ends with its own margin; keep the band's top
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
-        <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<div ref={setMicBannerHost} className="empty:hidden" />}>
+        <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
+          {agentProfileId === 'code' && <CodeChatModeSwitch sessionId={activeTab?.sessionId || ''} disabled={isViewOnly || isTurnInFlight} />}
+          <div ref={setMicBannerHost} className="empty:hidden" />
+        </>}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
                 The product surface used to collapse this to a bare "N messages

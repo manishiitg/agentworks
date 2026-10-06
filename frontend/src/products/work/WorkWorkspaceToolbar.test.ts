@@ -37,7 +37,7 @@ describe('WorkWorkspaceToolbar', () => {
 
     expect(source).toContain('useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)')
     expect(source).toContain("'data-ui-workspace': selected.workspacePath")
-    expect(source).toContain("'data-ui-view': workPresentationView(workspaceView)")
+    expect(source).toContain("'data-ui-view': workPresentationView(workspaceView, localCodeSession)")
     expect(source).toContain('data-ui-view-mounted')
     expect(source).toContain("report: 'dashboard'")
     expect(source).toContain("memory: 'memory'")

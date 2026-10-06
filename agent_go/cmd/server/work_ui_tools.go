@@ -89,7 +89,10 @@ func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionT
 		views := make([]uiViewCapability, 0, len(contract.Views))
 		for _, view := range contract.Views {
 			switch view.ID {
-			case "report", "database", "workshop", "schedules", "bots", "email":
+			case "files":
+				view.Label = "Local CLI connection"
+			case "costs", "llm":
+			default:
 				continue
 			}
 			views = append(views, view)

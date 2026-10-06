@@ -33,6 +33,7 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
+	CodeChatMode    string               `json:"code_chat_mode,omitempty"`
 	CodeLocalFiles  *codeLocalFileTarget `json:"code_local_files,omitempty"`
 	ConnectionID    string               `json:"connection_id,omitempty"`
 	Message         string               `json:"message"`
@@ -137,6 +138,16 @@ func hasSelectedServers(servers []string) bool {
 }
 
 func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	if input.CodeChatMode != "" && profile.ID != "code" {
+		return QueryRequest{}, fmt.Errorf("chat mode is available only in Code")
+	}
+	if profile.ID == "code" {
+		mode, err := resolveCodeChatMode(input.CodeChatMode, input.CodeLocalFiles)
+		if err != nil {
+			return QueryRequest{}, err
+		}
+		input.CodeChatMode = mode
+	}
 	if input.CodeLocalFiles != nil && (profile.ID != "code" || !input.CodeLocalFiles.valid()) {
 		return QueryRequest{}, fmt.Errorf("local file selection requires Code and a valid device and folder alias")
 	}
@@ -148,6 +159,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 	}
 	req := QueryRequest{
 		CodeLocalFiles:              input.CodeLocalFiles,
+		CodeChatMode:                input.CodeChatMode,
 		Query:                       input.Message,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),
 		SessionTitle:                firstNonEmptyTrimmed(conversation.Title, profile.Name),

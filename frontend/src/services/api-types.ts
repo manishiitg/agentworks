@@ -213,6 +213,7 @@ export interface AgentQueryResponse {
 // skills from the same shared controls as AgentWorks; the server accepts those
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
+  code_chat_mode?: 'server' | 'local'
   /** Code-only selection hint; device ownership and local grants are checked live. */
   code_local_files?: { device_id: string; resource_id: string }
   /** Brain folder context only; the server revalidates visibility. */

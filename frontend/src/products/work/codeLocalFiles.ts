@@ -7,10 +7,6 @@ export interface CodeLocalFileTarget { device_id: string; resource_id: string }
 export type CodeFilesPreference = { location: 'server' } | { location: 'computer'; target?: CodeLocalFileTarget }
 export interface LocalFolderGuard { read_paths?: string[]; write_paths?: string[]; read_only_paths?: string[]; blocked_write_paths?: string[]; blocked_paths?: string[] }
 export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; guard: LocalFolderGuard }[] }
-export interface LocalFile { path: string; exists: boolean; content?: string; revision: string }
-export interface LocalFileEntry { path: string; type: string; size?: number }
-export interface LocalFileReceipt { revision: string; identity: { username?: string; user_id?: string }; applied: boolean }
-export interface LocalFileResponse { file?: LocalFile; entries?: LocalFileEntry[]; receipt?: LocalFileReceipt }
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
@@ -46,6 +42,9 @@ export function useCodeFilesPreference(sessionId: string) {
   return useMemo(() => parse(raw), [raw])
 }
 /** The selection is context, never authority; the backend rechecks local grants. */
+export function codeChatModeForChat(sessionId: string): 'server' | 'local' {
+  return readCodeFilesPreference(sessionId).location === 'computer' ? 'local' : 'server'
+}
 export function codeLocalFilesForChat(sessionId: string): CodeLocalFileTarget | undefined {
   const pref = readCodeFilesPreference(sessionId)
   if (pref.location === 'server') return undefined
@@ -53,8 +52,7 @@ export function codeLocalFilesForChat(sessionId: string): CodeLocalFileTarget | 
 }
 export const codeLocalFilesApi = {
   devices: async (): Promise<LocalFileDevice[]> => (await api.get<{ devices: LocalFileDevice[] }>('/api/devices', { skipSessionContext: true })).data.devices,
-  call: async (target: CodeLocalFileTarget, operation: 'list' | 'read' | 'write', path: string, write?: { content: string; expected_revision: string; request_id: string }): Promise<LocalFileResponse> =>
-    (await api.post<LocalFileResponse>(`/api/devices/${encodeURIComponent(target.device_id)}/files`, { resource_id: target.resource_id, operation, path, ...write }, { skipSessionContext: true })).data,
+
 }
 export function localFileError(cause: unknown) {
   const err = cause as { response?: { data?: { error?: { message?: string } | string } }; message?: string }

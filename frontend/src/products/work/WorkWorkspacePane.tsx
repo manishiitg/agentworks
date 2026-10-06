@@ -1,5 +1,5 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Settings } from 'lucide-react'
+import { DollarSign, Laptop, Server, Settings } from 'lucide-react'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
@@ -25,6 +25,7 @@ import type { ProductIdentity, ProductIdentityPatch } from '../../platform/chat/
 import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPanel'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { WorkIdentityPanel } from './WorkIdentityPanel'
+import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
@@ -44,7 +45,6 @@ const ReportHumanInputPanel = lazy(() => import('../../components/workflow/Repor
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
-const CodeServerTerminalNotice = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeServerTerminalNotice })))
 
 export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
@@ -85,8 +85,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const product = useProjectProduct()
   const isCode = product.profileId === 'code'
   const filePreference = useCodeFilesPreference(sessionId)
-  const localCodeSession = isCode && filePreference.location === 'computer' && Boolean(filePreference.target)
-  const hasSuggestions = !isCode
+  const localCodeSession = isCode && filePreference.location === 'computer'
+  const hasSuggestions = !isCode && !localCodeSession
   // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
   // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
   const viewButtons = isCode
@@ -105,6 +105,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
     : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
     .filter(item => item.id !== 'shell' || showShell)
+    .filter(item => !localCodeSession)
   const browserConnected = useBrowserToolbarConnection(workspacePath, product.profileId, [...visibleViews, ...visibleOps].some(item => item.id === 'browser'), !readOnly)
   // Setup (identity, integrations) edits owner state, so someone else's
   // Crew offers no setup views at all — not even the always-on identity.
@@ -129,6 +130,16 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
       {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>
+
+  if (localCodeSession) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
+    <TooltipProvider delayDuration={150}>
+      <WorkspaceToolbarFrame>
+        <WorkspaceToolbarButton label="Local CLI connection" icon={Laptop} active={view === 'files'} onClick={() => onViewChange('files')} />
+        {(!enabledPanels || enabledPanels.has('costs')) && <WorkspaceToolbarButton label="Costs and usage" icon={DollarSign} active={view === 'costs'} onClick={() => onViewChange('costs')} />}
+        {(!enabledPanels || enabledPanels.has('models')) && <WorkspaceToolbarButton label="Models" icon={Settings} active={view === 'identity'} onClick={() => onViewChange('identity')} />}
+      </WorkspaceToolbarFrame>
+    </TooltipProvider>
+  </div>
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
@@ -272,7 +283,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const filePreference = useCodeFilesPreference(activeSessionId || '')
-  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer' && Boolean(filePreference.target)
+  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
@@ -323,6 +334,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     }
   }
 
+  // Every other saved or agent-requested view lands on the connection controls.
+  if (localCodeSession && view !== 'identity' && view !== 'costs') {
+    return <div className="h-full overflow-y-auto bg-background p-4"><CodeLocalFilesSettings sessionId={activeSessionId || ''} /></div>
+  }
+
   if (!isWorkWorkspaceViewEnabled(view, undefined, localCodeSession)) {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">Dashboard and Automation are unavailable while this Code chat uses local files.</div>
   }
@@ -350,8 +366,9 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           crewRoot={workspacePath}
           request={sharedFileRequest}
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} onManageConnection={() => { setOpenLocalFilesSettings(true); onViewChange('identity') }} /> : serverFiles}</Suspense>)}
-        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><CodeServerTerminalNotice sessionId={activeSessionId || ''} /><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
+          modelsOnly={localCodeSession}
           workspacePath={workspacePath}
           shared={Boolean(shared)}
           projectId={projectId}

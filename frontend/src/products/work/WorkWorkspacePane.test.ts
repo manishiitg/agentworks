@@ -58,7 +58,7 @@ describe('Work Setup consolidation', () => {
     expect(source).toContain('isWorkWorkspaceViewEnabled(view, enabledPanels, localCodeSession)')
     expect(gating).toContain("if (view === 'identity' || view === 'plan' || view === 'suggestions') return true")
     expect(gating).toContain("enabledPanels.has('mcp') || enabledPanels.has('skills')")
-    expect(identity).toContain("tabs={{ value: activeTab")
+    expect(identity).toContain("tabs={modelsOnly ? undefined : { value: activeTab")
     expect(identity).toContain("ariaLabel: 'Identity'")
     expect(identity).toContain("{ value: 'general', label: 'General' }")
     expect(identity).not.toContain("{ value: 'secrets'")
