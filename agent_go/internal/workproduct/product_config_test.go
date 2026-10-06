@@ -177,6 +177,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"read_knowledgebase":                false,
 		"update_knowledgebase":              false,
 		"backup_knowledgebase":              false,
+		"knowledgebase_skills":              false,
 		"manage_knowledgebase_access":       false,
 	}
 	for _, name := range manifest.Profile.ToolPolicy.Enabled {
