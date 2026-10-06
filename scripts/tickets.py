@@ -140,8 +140,8 @@ def problems(tickets):
     for t in tickets:
         rel = t['rel']
         parts = Path(rel).parts
-        if len(parts) != 3:
-            out.append(f'{rel}: tickets live at <product>/<area>/plat-NNN.md')
+        if len(parts) < 3:
+            out.append(f'{rel}: tickets live at <product>/<area>[/<subarea>...]/plat-NNN.md')
             continue
         for field in HEADER_FIELDS[:4]:
             if not t.get(field):
@@ -152,8 +152,8 @@ def problems(tickets):
             out.append(f"{rel}: Priority must be one of {', '.join(PRIORITIES)}")
         if t.get('Product') and (t['Product'] != parts[0] or t['Product'] not in PRODUCTS):
             out.append(f"{rel}: Product must match its folder and be one of {', '.join(PRODUCTS)}")
-        if t.get('Area') and t['Area'] != parts[1]:
-            out.append(f'{rel}: Area must match its folder')
+        if t.get('Area') and t['Area'] != '/'.join(parts[1:-1]):
+            out.append(f"{rel}: Area must be its folder path below the product ({'/'.join(parts[1:-1])})")
         seen.setdefault(t['n'], []).append(rel)
     known = {339, 373, 496}  # numbers given twice before 2026-10-06; both tickets are kept
     for n, rels in seen.items():
@@ -352,8 +352,9 @@ def cmd_migrate(_):
     print(f'migrated {len(plan)} tickets')
 
 
-def relocate(moves):
-    """Move whole folders of tickets ({old_rel_dir: new_rel_dir}), set their Product/Area, and fix every link."""
+def relocate(moves, file_moves=None):
+    """Move whole folders ({old_rel_dir: new_rel_dir}) and/or single files ({old_rel_file: new_rel_dir}) of
+    tickets, set their Product/Area, and fix every link and path mention."""
     mapping = {}
     dir_mapping = {(TICKETS / o).resolve(): (TICKETS / n).resolve() for o, n in moves.items()}
     for old_rel, new_rel in moves.items():
@@ -362,9 +363,14 @@ def relocate(moves):
             if f.name == 'index.md':
                 continue
             mapping[f.resolve()] = (new_dir / f.name).resolve()
+    for old_rel_file, new_rel in (file_moves or {}).items():
+        f = TICKETS / old_rel_file
+        mapping[f.resolve()] = (TICKETS / new_rel / f.name).resolve()
     tracked = subprocess.run(['git', 'ls-files', '-co', '--exclude-standard'], capture_output=True, text=True, cwd=ROOT, check=True).stdout.split()
     # Plain path strings in code and config (Go comments, scripts, workflows).
     text_moves = {f"pulse_platform/{o}/": f"pulse_platform/{n}/" for o, n in moves.items()}
+    for old_rel_file, new_rel in (file_moves or {}).items():
+        text_moves[f"pulse_platform/{old_rel_file}"] = f"pulse_platform/{new_rel}/{Path(old_rel_file).name}"
     link = re.compile(r'\]\(([^)\s#]+?\.(?:md|html))(#[^)]*)?\)')
     rewrites = {}
     for f in tracked:
@@ -391,8 +397,8 @@ def relocate(moves):
             s2 = s2.replace(o, n)
         if s2 != s:
             rewrites[fp] = s2
-    for old_rel, new_rel in moves.items():
-        (TICKETS / new_rel).mkdir(parents=True, exist_ok=True)
+    for new in mapping.values():
+        new.parent.mkdir(parents=True, exist_ok=True)
     for old, new in mapping.items():
         subprocess.run(['git', 'mv', str(old), str(new)], check=True, cwd=ROOT)
     for fp, s2 in rewrites.items():
@@ -402,13 +408,15 @@ def relocate(moves):
             continue
         text = new.read_text()
         fields, m = read_header(text)
+        rel_parts = new.relative_to(TICKETS.resolve()).parts
         if m:
-            fields['Product'], fields['Area'] = new.parent.parent.name, new.parent.name
+            fields['Product'], fields['Area'] = rel_parts[0], '/'.join(rel_parts[1:-1])
             new.write_text(text[:m.start()] + header_table(fields) + text[m.end():])
         text = new.read_text()
-        text = re.sub(r'^\[← [^\]]*\]\(index\.md\)', f"[← {new.parent.parent.name} / {new.parent.name}](index.md)", text, count=1, flags=re.M)
+        text = re.sub(r'^\[← [^\]]*\]\(index\.md\)', f"[← {' / '.join(rel_parts[:-1])}](index.md)", text, count=1, flags=re.M)
         new.write_text(text)
-    for old_rel in moves:
+    emptied = list(moves) + sorted({str(Path(f).parent) for f in (file_moves or {})})
+    for old_rel in emptied:
         d = TICKETS / old_rel
         idx = d / 'index.md'
         if idx.exists():
