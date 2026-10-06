@@ -2785,3 +2785,7 @@ change what a workflow does while still allowing it to report success.
 ## Live context fill and plan-limit warning in the chat footer — PLAT-554
 
 [PLAT-554](pulse_platform/chat-reliability/plat-554.md), P2, fixed on main, not deployed: Codex and Claude stream throttled context/plan usage during a turn; the chat's working footer shows a context meter and a plan window at 90%+ with its reset time.
+
+## Brain restricted folders (private folders inside shared ones) — PLAT-557
+
+[PLAT-557](pulse_platform/learnings-knowledge/plat-557.md), P3, open, not started: access only adds downwards, so a subfolder cannot be hidden from someone who can read its parent; proposal is a per-folder "restricted" switch that stops inheritance.
