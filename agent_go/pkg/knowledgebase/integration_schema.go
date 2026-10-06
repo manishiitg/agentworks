@@ -36,21 +36,9 @@ func integrationDefinitions() []ToolDefinition {
 		}
 		defs = append(defs, ToolDefinition{Name: name, InputSchema: obj(required, props), Mutates: true})
 	}
-	for _, name := range []string{"kb_bind_project", "kb_unbind_project"} {
-		props := map[string]any{"workspace_path": str(), "alias": str(), "expected_manifest_version": str(), "request_id": str()}
-		props["request_id"] = map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}
-		required := []any{"workspace_path", "alias", "expected_manifest_version", "request_id"}
-		if name == "kb_bind_project" {
-			props["replace_legacy_alias"] = map[string]any{"type": "boolean"}
-			props["folder_id"] = str()
-			props["access"] = map[string]any{"type": "string", "enum": []any{"read", "write"}}
-			required = append(required, "folder_id", "access")
-		}
-		defs = append(defs, ToolDefinition{Name: name, InputSchema: obj(required, props), Mutates: true})
-	}
 	defs = append(defs, ToolDefinition{Name: "kb_set_project_access", InputSchema: obj([]any{"workspace_path", "mode", "expected_manifest_version", "request_id"}, map[string]any{
 		"workspace_path": str(), "expected_manifest_version": str(),
-		"mode":       map[string]any{"type": "string", "enum": []any{"off", "read", "write", "folders"}, "description": "off: no Brain access. read: read-only on folders the owner and every output reader can read. write: read and write wherever the owner may (the agents organize folders themselves), still limited by every output reader's access. folders: only the bound folders, each read or write."},
+		"mode":       map[string]any{"type": "string", "enum": []any{"off", "read", "write"}, "description": "off: no Brain access. read: read-only on folders the owner and every output reader can read. write: read and write wherever the owner may (the agents organize folders themselves), still limited by every output reader's access. Which folders each step uses is written in its step description."},
 		"request_id": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
 	}), Mutates: true})
 	return defs

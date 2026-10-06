@@ -18,7 +18,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 	tool = knowledgebase.CanonicalToolName(tool)
 	claims := GetUserFromContext(ctx)
 	if claims == nil || strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseMCPAllowed(claims) {
-		// Agents and connections act within the person's folder roles and a bound folder; the app product is not needed.
+		// Agents and connections act within the person's folder roles; the app product is not needed.
 		return "", fmt.Errorf("Brain is unavailable to this principal")
 	}
 	if caller, _ := ctx.Value(common.UserIDKey).(string); caller != "" && caller != claims.UserID {
@@ -89,7 +89,7 @@ func knowledgebaseAccessExecutor(ctx context.Context, runtime agentprofiles.Tool
 // setup names that secret (pat_secret).
 func knowledgebaseChatActsDirectly(action string, args map[string]any) bool {
 	switch action {
-	case "bind_project", "unbind_project", "set_project_access":
+	case "set_project_access":
 		return true
 	case "configure_backup":
 		return true
@@ -148,19 +148,12 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 		if err == nil {
 			mode = project.BrainMode()
 		}
-		// An owner's tool pool exists while Brain is off so a Builder session can turn it on or bind a folder and use it
+		// An owner's tool pool exists while Brain is off so a Builder session can turn it on and use it
 		// at once; the runtime policy refuses every call while it is off, and it is what limits "read" to reading.
 		if err != nil || mode == "off" && !containsID(project.Owners, userID) {
 			return tools, executors, categories
 		}
 		canWrite := mode == "write" || mode == "off" && containsID(project.Owners, userID)
-		if mode == "folders" {
-			for _, binding := range project.Bindings {
-				if binding.Access == "write" {
-					canWrite = true
-				}
-			}
-		}
 		if cfg := common.GetSessionShellConfig(sessionIDs[0]); cfg != nil && (cfg.ReadOnlyAccess || cfg.CrewReader || cfg.Env["SHARED_KB_STEP_ACCESS"] == "read" || cfg.Env["SHARED_KB_STEP_ACCESS"] == "none" || cfg.Env["WORKFLOW_KB_ACCESS"] == "none") {
 			canWrite = false
 		}
@@ -213,7 +206,7 @@ func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args m
 			return false
 		}
 		switch action {
-		case "inspect_project", "bind_project", "unbind_project", "set_project_access":
+		case "inspect_project", "set_project_access":
 			return claims.AccessToken == nil || claims.AccessToken.BuilderAccess() ||
 				claims.AccessToken.Allows("crews:read") && claims.AccessToken.Allows("crews:write")
 		case "list", "grant", "revoke", "create_service_account", "disable_service_account", "configure_backup":

@@ -42,15 +42,13 @@ export function normalizeKnowledgeSearch(data: Page & { results?: Array<{ entry:
 
 export interface KnowledgeAccessProposal { id: string; arguments: Record<string, unknown>; expires_at: string }
 
-export interface KnowledgeBinding { alias: string; folder_id: string; access: 'read' | 'write' }
-export type BrainAccessMode = 'off' | 'read' | 'write' | 'folders'
-export interface KnowledgeProject { manifest_version: string; brain_access?: BrainAccessMode; shared_knowledgebase: KnowledgeBinding[] | null; can_manage: boolean }
+export type BrainAccessMode = 'off' | 'read' | 'write'
+// brain_access may still read 'folders' on an old project; it means 'write' (folder bindings were removed, PLAT-628).
+export interface KnowledgeProject { manifest_version: string; brain_access?: BrainAccessMode | 'folders'; can_manage: boolean }
 
 export const knowledgebaseApi = {
   project: async (workspace_path: string, signal?: AbortSignal): Promise<KnowledgeProject> => (await api.get('/api/knowledgebase/project', { params: { workspace_path }, signal })).data,
-  bindProject: async (args: { action: 'bind_project' | 'unbind_project'; workspace_path: string; alias: string; folder_id?: string; access?: 'read' | 'write'; expected_manifest_version: string; request_id: string }): Promise<KnowledgeProject> => (await api.post('/api/knowledgebase/project', args)).data,
   setProjectAccess: async (args: { workspace_path: string; mode: BrainAccessMode; expected_manifest_version: string; request_id: string }): Promise<{ brain_access: BrainAccessMode; manifest_version: string }> => (await api.post('/api/knowledgebase/project', { action: 'set_project_access', ...args })).data,
-  projectFolders: async (cursor = '', signal?: AbortSignal): Promise<{ items: KnowledgeFolder[]; next_cursor?: string }> => (await api.get('/api/knowledgebase/folders', { params: { folder_path: '', depth: 1024, limit: 100, cursor }, signal })).data,
  proposals: async (): Promise<{ proposals: KnowledgeAccessProposal[] }> => (await api.get("/api/knowledgebase/access-proposals")).data,
  confirmAccess: async (id: string, approve: boolean, pat?: string): Promise<unknown> => (await api.post("/api/knowledgebase/access-proposals", { id, approve, ...(pat ? { pat } : {}) })).data,
   bootstrap: async (signal?: AbortSignal): Promise<KnowledgeBootstrap> => (await api.get('/api/knowledgebase/bootstrap', { signal })).data,

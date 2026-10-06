@@ -22,15 +22,15 @@ var mcpSurface = []mcpTool{
 	{ToolUpdate, "Save live knowledge: create, update, delete, or create_folder. Migration actions preview/import/cutover/rollback explicitly migrate an owned workflow or Crew after preview. Use expected_version and stable request IDs; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}, {"migration_preview", "kb_migration_preview"}, {"migration_import", "kb_migration_import"}, {"migration_cutover", "kb_migration_cutover"}, {"migration_rollback", "kb_migration_rollback"}}},
 	{ToolBackup, "Inspect Git backup with action=status, prepare selected current versions/deletions with action=commit, then explicitly publish the owned receipt with action=push. Commit/push require distinct stable request IDs. Repository-wide Files Git operations use action=git with op (status, diff, log, branches, stage, commit, pull, push, checkout, stash); pull and checkout update live knowledge. Require root access and an unrestricted connection.", []mcpAction{{"status", "get_knowledgebase_backup_status"}, {"commit", "commit_knowledgebase"}, {"push", "push_knowledgebase"}, {"git", "kb_git"}}},
 	{ToolSkills, "Company skills in Brain. action=list finds skills you can read; action=get returns one skill's files to install into your own skills folder (write each file under <skills>/<name>/); action=publish uploads a skill package (SKILL.md plus references/, scripts/, assets) into a Brain folder, replacing its previous files. Publishing needs Editor on the folder; a skill with scripts needs Owner.", []mcpAction{{"list", "list_knowledgebase_skills"}, {"get", "get_knowledgebase_skill"}, {"publish", "publish_knowledgebase_skill"}}},
-	{ToolAccess, "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. Authorized builders and external authoring connections can inspect, bind, unbind and set Off/Read/Read & write/Folders access on owned workflow/Crew projects. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}, {"set_project_access", "kb_set_project_access"}}},
+	{ToolAccess, "Inspect folder access. Owners can manage folder grants; administrators can manage service accounts and configure Git backup. Authorized builders and external authoring connections can inspect and set Off/Read/Read & write Brain access on owned workflow/Crew projects (always limited by the owner's folder roles; steps say in their descriptions which folders they read and write).", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"configure_backup", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"set_project_access", "kb_set_project_access"}}},
 }
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
 // builder receives only manage_knowledgebase_access from this definition.
 func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true, true, false) }
 
-// IsProjectAction is an action that configures a workflow/Crew project (not a folder): inspect, bind, unbind and the
-// Off/Read/Folders access setting.
+// IsProjectAction is an action that configures a workflow/Crew project (not a folder): inspect and the Off/Read/Read &
+// write access setting. Folder bindings were removed (PLAT-628).
 func IsProjectAction(action string) bool {
 	return strings.HasSuffix(action, "_project") || action == "set_project_access"
 }
@@ -88,7 +88,7 @@ func ProjectToolDefinitions() []ToolDefinition {
 		schema["oneOf"] = variants
 		schema["properties"].(map[string]any)["action"] = map[string]any{"type": "string", "enum": actions}
 		def.InputSchema = schema
-		def.Description = "Inspect/bind/unbind shared KB folders for the current owned workflow. Inspect its manifest_version first; bind with folder_id, unique alias, read/write access, expected_manifest_version and request_id. Selection never grants permissions. Use browse_knowledgebase action=folders to discover folders. Steps use read_knowledgebase/update_knowledgebase with binding_alias and knowledgebase_access."
+		def.Description = "Inspect or set the current owned workflow's Brain access: off, read, or write (read and write wherever the owner's folder roles allow). Inspect its manifest_version first, then set_project_access with mode, expected_manifest_version and request_id. Which folders each step reads or writes is written in that step's description (Inputs, Output, Rules), not configured here."
 		out = append(out, def)
 	}
 	return out
@@ -127,10 +127,6 @@ func mcpDefinitions(canWrite, accessBuilder, migration, externalAccess bool) []T
 			}
 			variant := asMap(operations[schemaOperation].InputSchema)
 			fields := variant["properties"].(map[string]any)
-			fields["binding_alias"] = map[string]any{"type": "string", "description": "Select a configured workflow/Crew shared-folder alias; required when a default scope is ambiguous."}
-			if action.operation == "create_knowledgebase" || action.operation == "create_knowledgebase_folder" {
-				variant["oneOf"] = append(variant["oneOf"].([]any), map[string]any{"required": []any{"binding_alias"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []any{"folder_id"}}, map[string]any{"required": []any{"folder_path"}}}}})
-			}
 			fields["action"] = map[string]any{"type": "string", "const": action.name}
 			required, _ := variant["required"].([]any)
 			if !containsRequired(required, "action") {

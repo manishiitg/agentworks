@@ -32,7 +32,7 @@ func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string
 	tool = knowledgebase.CanonicalToolName(tool)
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID != userID || !knowledgebaseProductAllowed(claims) ||
-		!knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "bind_project"}) ||
+		!knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "set_project_access"}) ||
 		workflowAccessForClaims(claims) == WorkflowAccessRead {
 		return "", &knowledgebase.Error{Code: "FORBIDDEN", Message: "Project setup authority is required"}
 	}
@@ -84,12 +84,12 @@ func knowledgeProjectBuilderExecute(ctx context.Context, tool string, args map[s
 	if !ok || executor.SessionIDFromContext(ctx) != authority.Session {
 		chat, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		log.Printf("[KB_PROJECT] refused %s: authority=%v authority_session=%q executor_session=%q chat_session=%q", tool, ok, authority.Session, executor.SessionIDFromContext(ctx), chat)
-		return "", fmt.Errorf("Only the current workflow Builder can configure knowledge bindings")
+		return "", fmt.Errorf("Only the current workflow Builder can set the project's Brain access")
 	}
 	// A step may invoke a parent's registered HTTP bridge; the actual caller
 	// remains in ChatSessionIDKey and must not acquire root Builder authority.
 	if session, _ := ctx.Value(common.ChatSessionIDKey).(string); session != "" && session != authority.Session {
-		return "", fmt.Errorf("Steps cannot configure knowledge bindings")
+		return "", fmt.Errorf("Steps cannot change the project's Brain access")
 	}
 	return knowledgeProjectExecute(ctx, authority.UserID, authority.Workspace, tool, args)
 }
@@ -140,7 +140,7 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 			externalError(w, http.StatusForbidden, "FORBIDDEN", "Project access is required.")
 			return
 		}
-		knowledgebaseWriteJSON(w, map[string]any{"manifest_version": project.Version, "brain_access": project.BrainMode(), "shared_knowledgebase": project.Bindings, "can_manage": containsID(project.Owners, claims.UserID) && workflowAccessForClaims(claims) != WorkflowAccessRead})
+		knowledgebaseWriteJSON(w, map[string]any{"manifest_version": project.Version, "brain_access": project.BrainMode(), "can_manage": containsID(project.Owners, claims.UserID) && workflowAccessForClaims(claims) != WorkflowAccessRead})
 		return
 	}
 	args := map[string]any{}
@@ -149,8 +149,8 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 		return
 	}
 	action, _ := args["action"].(string)
-	if action != "bind_project" && action != "unbind_project" && action != "set_project_access" {
-		externalError(w, 400, "INVALID_ARGUMENT", "Use bind_project, unbind_project or set_project_access.")
+	if action != "set_project_access" {
+		externalError(w, 400, "INVALID_ARGUMENT", "Use set_project_access (folder bindings were removed).")
 		return
 	}
 	workspace, _ := args["workspace_path"].(string)

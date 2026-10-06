@@ -76,7 +76,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	_, executors, _ := createKnowledgebaseTools("admin", parent, workspace)
 	read := executors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
 	update := executors["brain_update"].(func(context.Context, map[string]interface{}) (string, error))
-	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": current["manifest_version"], "request_id": "mcp-bind-test"}
+	args := map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": "read", "expected_manifest_version": current["manifest_version"], "request_id": "mcp-bind-test"}
 	bound := result(args)
 	if result(args)["manifest_version"] != bound["manifest_version"] {
 		t.Fatal("binding retry changed manifest")
@@ -86,7 +86,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	entryID := knowledgeMap(entry)["entry_id"]
-	readArgs := map[string]any{"action": "read", "entry_id": entryID, "binding_alias": "kbtest"}
+	readArgs := map[string]any{"action": "read", "entry_id": entryID}
 	if out, err := read(knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, parent), "admin"), readArgs); err != nil || !strings.Contains(out, "kb-marker-71831") {
 		t.Fatalf("builder read: %s %v", out, err)
 	}
@@ -101,7 +101,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 		if (err == nil) != (access != "none") {
 			t.Fatalf("%s read: %s %v", access, out, err)
 		}
-		if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "denied-" + access + ".md", "title": "Denied", "type": "note", "content": "denied", "binding_alias": "kbtest", "request_id": "denied-step-" + access}); err == nil {
+		if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "denied-" + access + ".md", "title": "Denied", "type": "note", "content": "denied", "request_id": "denied-step-" + access}); err == nil {
 			t.Fatalf("%s bypassed read binding", access)
 		}
 	}
@@ -111,7 +111,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	rootCtx = context.WithValue(rootCtx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{"admin", workspace, parent})
 	rootCtx = context.WithValue(rootCtx, common.ChatSessionIDKey, parent)
 	version := result(inspect)["manifest_version"]
-	writeArgs := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "write", "expected_manifest_version": version, "request_id": "builder-write-bind"}
+	writeArgs := map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": "write", "expected_manifest_version": version, "request_id": "builder-write-bind"}
 	if _, err := knowledgeProjectBuilderExecute(context.WithValue(rootCtx, common.ChatSessionIDKey, "project-step-read"), "brain_access", writeArgs); err == nil {
 		t.Fatal("child inherited Builder setup")
 	}
@@ -119,11 +119,11 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 		t.Fatal("builder attachment", err)
 	}
 	ctx := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-write"), "admin")
-	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "step.md", "title": "Step", "type": "note", "content": "step-created", "binding_alias": "kbtest", "request_id": "write-step"}); err != nil {
+	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "step.md", "title": "Step", "type": "note", "content": "step-created", "request_id": "write-step"}); err != nil {
 		t.Fatal("write step", err)
 	}
 	ctx = knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, "project-step-read"), "admin")
-	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "readonly.md", "title": "Denied", "type": "note", "content": "denied", "binding_alias": "kbtest", "request_id": "read-step-rejected"}); err == nil {
+	if _, err := update(ctx, map[string]any{"action": "create", "folder_id": folderID, "filename": "readonly.md", "title": "Denied", "type": "note", "content": "denied", "request_id": "read-step-rejected"}); err == nil {
 		t.Fatal("read step inherited parent write")
 	}
 	if _, err := read(ctx, map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}); err == nil {
@@ -136,7 +136,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 }
 
 func TestKnowledgebaseProjectUIUsesOwnerAndAudienceChecks(t *testing.T) {
-	service, admin, workspace, folderID := knowledgeIntegrationFixture(t)
+	_, _, workspace, _ := knowledgeIntegrationFixture(t)
 	api := &StreamingAPI{}
 	request := func(user, method string, args map[string]any) *httptest.ResponseRecorder {
 		data, _ := json.Marshal(args)
@@ -153,9 +153,9 @@ func TestKnowledgebaseProjectUIUsesOwnerAndAudienceChecks(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	project, _ := knowledgeProjectLoad(t.Context(), "admin", workspace, true)
-	args := map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "ui", "access": "read", "expected_manifest_version": project.Version, "request_id": "ui-bind"}
+	args := map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": "read", "expected_manifest_version": project.Version, "request_id": "ui-bind"}
 	if w := request("priya", http.MethodPost, args); w.Code != 403 {
-		t.Fatal("reader changed binding", w.Code, w.Body.String())
+		t.Fatal("reader changed Brain access", w.Code, w.Body.String())
 	}
 	if w := request("admin", http.MethodPost, args); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -164,28 +164,9 @@ func TestKnowledgebaseProjectUIUsesOwnerAndAudienceChecks(t *testing.T) {
 	if w := request("admin", http.MethodPost, args); w.Code != 409 {
 		t.Fatal("stale UI accepted", w.Code, w.Body.String())
 	}
-	project, _ = knowledgeProjectLoad(t.Context(), "admin", workspace, true)
-	args["expected_manifest_version"] = project.Version
-	args["request_id"] = "private-ui-bind"
-	private, err := service.Call(t.Context(), admin, "create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "Private", "request_id": "private-folder"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	args["folder_id"] = knowledgeMap(private)["folder_id"]
-	if w := request("admin", http.MethodPost, args); w.Code != 403 {
-		t.Fatal("audience check bypassed", w.Code, w.Body.String())
-	}
-	// Existing selection survives a denied replacement and can be detached.
-	fresh, _ := knowledgeProjectLoad(t.Context(), "admin", workspace, true)
-	if fresh.Version != project.Version {
-		t.Fatal("denied binding mutated manifest")
-	}
-	delete(args, "folder_id")
-	delete(args, "access")
-	args["action"] = "unbind_project"
-	args["request_id"] = "ui-unbind"
-	if w := request("admin", http.MethodPost, args); w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
+	args["action"], args["request_id"] = "bind_project", "removed-bind"
+	if w := request("admin", http.MethodPost, args); w.Code != 400 {
+		t.Fatal("folder bindings were removed (PLAT-628)", w.Code, w.Body.String())
 	}
 }
 

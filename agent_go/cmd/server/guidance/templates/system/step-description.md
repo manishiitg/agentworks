@@ -77,6 +77,17 @@ knowledgebase access, and small files (up to 4,000 characters, 12,000 in total)
 are attached to its prompt; name Brain notes as `brain:<folder>/<note>`. A named
 path that does not exist is reported to the step and in the plan edit response.
 
+Brain use is part of the charter, in plain words; there is no folder binding
+to configure. The workflow's Brain access (Off, Read, Read & write) and the
+owner's folder roles bound what is possible; the step's sections say what this
+step does within that. Name what it reads under Inputs or Guides
+(`brain:RTS/Latency/runbooks/deploy.md`, delivered read-only), what it writes
+under Output ("add one line per incident to `brain:RTS/Latency/Incidents/`"),
+and any limit under Rules ("never write to Brain outside `RTS/Latency/`").
+Look up real folder paths with `brain_browse` before writing them. A step that
+must not write gets `knowledgebase_access: read`; one with no Brain use,
+`none`.
+
 A description holds no history. Dated observations ("measured on 2026-08-10…"),
 incident narratives and "this exists because…" explanations go to the
 knowledgebase as a decision or to the learnings as a verified technique, or are

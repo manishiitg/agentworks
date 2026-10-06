@@ -31,17 +31,10 @@ func knowledgebaseReadReferencedNote(ctx context.Context, workspacePath, notePat
 	}
 	mode := project.BrainMode()
 	policy := &knowledgebase.BindingPolicy{Audience: project.Audience}
-	switch mode {
-	case "off":
+	if mode == "off" {
 		return "", fmt.Errorf("Brain access is off for this project")
-	case "read", "write":
-		policy.ReadAll = true
-	default:
-		for _, binding := range project.Bindings {
-			binding.Access = "read"
-			policy.Bindings = append(policy.Bindings, binding)
-		}
 	}
+	policy.ReadAll = true
 	service, err := knowledgebaseService()
 	if err != nil {
 		return "", fmt.Errorf("Brain service unavailable")

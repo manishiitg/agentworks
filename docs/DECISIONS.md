@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — No Brain folder bindings; steps say how they use Brain
+
+A workflow, Crew or Code project's Brain access is Off, Read or Read & write, always
+limited by its owner's and every output reader's folder roles. "Only chosen folders"
+and project folder bindings (`bind_project`, `binding_alias`) are removed; an old
+`folders` value reads as Read & write. Which notes a step reads, what it writes and
+any limit ("never outside RTS/Latency") go in its description (Inputs/Guides as
+`brain:<folder>/<note>`, Output, Rules); the per-step none/read switch and read-only
+sessions stay. Why: owner, 2026-10-06: bindings were set by imports without anyone
+choosing them, and they disagreed with Brain's own roles once Brain was reorganized;
+the step charter already states inputs and outputs in plain words. Accepted
+trade-off: a folder limit is an instruction, not an enforced boundary. No project on
+RTS, Excellence or Confida had a binding. This supersedes the Folders option in the
+two 2026-10-05 entries below. [PLAT-628](bugs/pulse_platform/brain/access/plat-628.md).
+
 ### 2026-10-06 — Plan Drift is shown as "Workflow Review"
 
 What: the Pulse role that reviews plan changes is called Workflow Review on screen; its id `plan_drift_review` stays.
@@ -42,7 +57,6 @@ the service login or copies private account environment into default provider
 keys. Why: Code admitted a valid private account, then incorrectly demanded a
 deployment token. An unsigned private account directs its owner to Providers.
 Ticket: [PLAT-625](bugs/pulse_platform/coding-agents/accounts/plat-625.md).
-
 
 ### 2026-10-06 — Cmd/Ctrl+K is the only app-wide shortcut
 

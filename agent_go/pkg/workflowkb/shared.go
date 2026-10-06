@@ -2,10 +2,8 @@ package workflowkb
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // SharedConfig reads only a canonical manifest inside the installation.
@@ -33,8 +31,7 @@ func SharedConfig(root, workspace string) (bool, string) {
 		return true, "Knowledge configuration is invalid; legacy knowledge access is disabled."
 	}
 	var m struct {
-		Mode     string                           `json:"knowledgebase_mode"`
-		Bindings []struct{ Alias, Access string } `json:"shared_knowledgebase"`
+		Mode string `json:"knowledgebase_mode"`
 	}
 	if json.Unmarshal(data, &m) != nil {
 		return true, "Knowledge configuration is invalid; legacy knowledge access is disabled."
@@ -42,14 +39,11 @@ func SharedConfig(root, workspace string) (bool, string) {
 	if m.Mode != "" && m.Mode != "shared" {
 		return true, "Knowledge mode is invalid; legacy knowledge access is disabled."
 	}
-	lines := []string{"## Shared Knowledge Base", "Use brain_browse and brain_read with binding_alias. Contribute through brain_update only when the binding and this step allow writes. Read an entry before patching it; use its version and a unique request_id. Local knowledgebase/ is an archived migration source and cannot be read or edited after cutover. Bindings grant no permissions; unavailable access must be reported to the owner."}
-	for _, b := range m.Bindings {
-		lines = append(lines, fmt.Sprintf("- %s: %s", b.Alias, b.Access))
+	if m.Mode != "shared" {
+		return false, ""
 	}
-	if len(m.Bindings) == 0 {
-		return m.Mode == "shared", ""
-	}
-	return m.Mode == "shared", strings.Join(lines, "\n")
+	// Folder bindings were removed (PLAT-628): a migrated project's steps name the Brain folders they use.
+	return true, "## Shared Knowledge Base\nThis workflow's knowledge lives in Brain; the local knowledgebase/ folder is retired. Use brain_browse and brain_read on the Brain folders and notes this step's description names, and brain_update only when this step may write. Read an entry before patching it; use its version and a unique request_id."
 }
 
 func LegacyKnowledgeBlocks(root, workspace string) []string {

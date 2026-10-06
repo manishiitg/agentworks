@@ -335,7 +335,7 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.AccessOnly = true
-	knowledgeDispatchTest(t, service, owner, "brain_access", map[string]any{"action": "bind_project", "workspace_path": workspace, "folder_id": folderID, "alias": "kbtest", "access": "read", "expected_manifest_version": project.Version, "request_id": "identity-bind"})
+	knowledgeDispatchTest(t, service, owner, "brain_access", map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": "read", "expected_manifest_version": project.Version, "request_id": "identity-bind"})
 	owner.AccessOnly = false
 	_, err = service.CallTool(t.Context(), owner, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "identity.md", "type": "note", "title": "Identity", "content": "identity-bound-marker", "request_id": "identity-create"})
 	if err != nil {
@@ -346,7 +346,7 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	defer common.ClearSessionShellConfig(session)
 	_, tools, _ := createKnowledgebaseTools("admin", session, workspace)
 	read := tools["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
-	args := map[string]any{"action": "read", "binding_alias": "kbtest", "path": "Imported/identity.md"}
+	args := map[string]any{"action": "read", "path": "Imported/identity.md"}
 	caller := executor.WithSessionID(t.Context(), session)
 	for _, tc := range []struct {
 		name string

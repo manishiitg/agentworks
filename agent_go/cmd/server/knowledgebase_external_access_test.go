@@ -170,7 +170,7 @@ func TestKnowledgebaseExternalAccessDiscovery(t *testing.T) {
 			if contains("grant") != tc.want || contains("revoke") != tc.want {
 				t.Fatalf("wrong discovery actions: %s", raw)
 			}
-			for _, action := range []string{"inspect_project", "bind_project", "unbind_project"} {
+			for _, action := range []string{"inspect_project", "set_project_access"} {
 				if contains(action) != tc.project {
 					t.Fatalf("wrong project discovery: %s", raw)
 				}

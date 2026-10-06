@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 78 | 13 |
-| [Brain](brain/index.md) | 20 | 3 |
+| [Brain](brain/index.md) | 21 | 3 |
 | [Browser and browser automation](browser/index.md) | 43 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-626](app/tests/plat-626.md) | Record existing main CI failures outside Relay landing regression | open | P2 | [app/tests](app/tests/index.md) |
 | [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-591](crew/browser/plat-591.md) | Start browser fails for a Crew moved to the shared root | deployed | P2 | [crew/browser](crew/browser/index.md) |
 | [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-589](crew/functions/plat-589.md) | Completed Crew ask call remains running when its trigger binding is unavailable | deployed | P2 | [crew/functions](crew/functions/index.md) |
-| [PLAT-588](brain/files/plat-588.md) | Brain stores any file type, not only Markdown | fixed on main | P2 | [brain/files](brain/files/index.md) |

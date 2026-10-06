@@ -33,7 +33,7 @@ func (*builderKnowledgeModel) GenerateContent(context.Context, []llmtypes.Messag
 	return nil, fmt.Errorf("test generation must use the local HTTP provider")
 }
 
-func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
+func TestExternalBuilderModelReadsBrainWithoutShell(t *testing.T) {
 	service, admin, workspace, folderID := knowledgeIntegrationFixture(t)
 	path := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), workspace, "workflow.json")
 	data, err := os.ReadFile(path)
@@ -44,7 +44,7 @@ func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
 	if err = json.Unmarshal(data, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest["shared_knowledgebase"] = []any{map[string]any{"alias": "kbtest", "folder_id": folderID, "access": "read"}}
+	manifest["brain_access"] = "read"
 	data, _ = json.Marshal(manifest)
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestExternalBuilderModelReadsBindingWithoutShell(t *testing.T) {
 				return
 			}
 			message["content"] = nil
-			message["tool_calls"] = []any{map[string]any{"id": "read-binding", "type": "function", "function": map[string]any{"name": "brain_read", "arguments": `{"action":"read","binding_alias":"kbtest","path":"Imported/smoke.md"}`}}}
+			message["tool_calls"] = []any{map[string]any{"id": "read-binding", "type": "function", "function": map[string]any{"name": "brain_read", "arguments": `{"action":"read","path":"Imported/smoke.md"}`}}}
 			finish = "tool_calls"
 		} else if !strings.Contains(string(request.Messages), marker) {
 			http.Error(w, "KB tool result did not reach model", 400)

@@ -448,7 +448,7 @@ func TestWorkshopRegistersKnowledgeProjectSetupOnlyOnRootBuilder(t *testing.T) {
 			}
 			if found {
 				schema, _ := json.Marshal(def.InputSchema)
-				if !strings.Contains(string(schema), "bind_project") || strings.Contains(string(schema), `"const":"grant"`) {
+				if !strings.Contains(string(schema), "set_project_access") || strings.Contains(string(schema), "bind_project") || strings.Contains(string(schema), `"const":"grant"`) {
 					t.Fatal("Builder schema has incorrect access actions")
 				}
 				if _, err := def.Execute(t.Context(), map[string]interface{}{"action": "inspect_project"}); err != nil || !called {

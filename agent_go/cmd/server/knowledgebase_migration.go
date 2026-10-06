@@ -425,7 +425,7 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 		return nil, fmt.Errorf("workspace knowledge is already shared")
 	}
 	binding := knowledgebase.Binding{Alias: args["alias"].(string), FolderID: args["folder_id"].(string), Access: args["access"].(string)}
-	if err := knowledgebase.ValidateBindings(append(append([]knowledgebase.Binding{}, project.Bindings...), binding), project.Reserved); err != nil {
+	if err := knowledgebase.ValidateBindings([]knowledgebase.Binding{binding}, project.Reserved); err != nil {
 		return nil, err
 	}
 	// Import requires Editor even when the final execution binding is read-only.
@@ -453,7 +453,7 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 		return nil, err
 	}
 	original := map[string]json.RawMessage{}
-	for _, key := range []string{"shared_knowledgebase", "knowledgebase_mode", "knowledgebase_migration", "knowledgebase_contract_history"} {
+	for _, key := range []string{"shared_knowledgebase", "knowledgebase_mode", "knowledgebase_migration", "knowledgebase_contract_history", "brain_access"} {
 		original[key] = project.Raw[key]
 	}
 	receipt := &knowledgeMigrationReceipt{RequiredOwners: project.Owners, RequiredReaders: project.Audience, ID: id, Owner: p.IdentityID, Workspace: project.Workspace, ProjectID: project.ID, PreviewHash: knowledgeHash(args), ManifestVersion: project.Version, Original: original, Binding: binding, Destination: destination, SourceHash: sourceHash, Files: files, Skipped: skipped, Folders: map[string]string{}, State: "PREVIEWED"}
@@ -563,11 +563,9 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 		return nil, err
 	}
 	expectedVersion := project.Version
-	bindings := append(append([]knowledgebase.Binding{}, project.Bindings...), r.Binding)
-	if err := knowledgebase.ValidateBindings(bindings, project.Reserved); err != nil {
-		return nil, err
-	}
-	project.Raw["shared_knowledgebase"], _ = json.Marshal(bindings)
+	// The imported folder is not bound to the project (bindings were removed, PLAT-628): the project gets Read & write,
+	// limited by its owner's folder roles, and its steps name the folder in their descriptions (the receipt's folder).
+	project.Raw["brain_access"], _ = json.Marshal("write")
 	project.Raw["knowledgebase_mode"], _ = json.Marshal("shared")
 	r.CutoverTime = time.Now().UTC().Format(time.RFC3339Nano)
 	project.Raw["knowledgebase_migration"], _ = json.Marshal(map[string]any{"contract": sharedKnowledgebaseContract, "migration_id": r.ID, "source_hash": r.SourceHash, "folder_id": r.Binding.FolderID, "applied_at": r.CutoverTime})
