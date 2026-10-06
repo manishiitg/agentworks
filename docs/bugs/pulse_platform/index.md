@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 78 | 13 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
 | [Brain](brain/index.md) | 21 | 3 |
 | [Browser and browser automation](browser/index.md) | 43 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-593](goals/plans-contracts/plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-592](ops/ci/plat-592.md) | Go tests failing on main | open | P2 | [ops/ci](ops/ci/index.md) |
 | [PLAT-591](crew/browser/plat-591.md) | Start browser fails for a Crew moved to the shared root | deployed | P2 | [crew/browser](crew/browser/index.md) |
-| [PLAT-590](app/navigation/plat-590.md) | Refresh lands on Human actions instead of the saved view | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
