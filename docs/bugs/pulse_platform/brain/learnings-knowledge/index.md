@@ -7,7 +7,7 @@
 | [PLAT-557](plat-557.md) | Brain restricted folders (private folders inside shared ones) | open | P3 |
 | [PLAT-547](plat-547.md) | Brain refused every OAuth MCP connection as "expired or revoked" | fixed on main | P1 |
 | [PLAT-543](plat-543.md) | Brain access setting for projects (Off, Read, Folders) | fixed on main | P2 |
-| [PLAT-538](plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | closed | P2 |
+| [PLAT-538](plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | open | P2 |
 | [PLAT-496](plat-496.md) | Knowledge Base review: migration authority, consumer cutover and access confirmation | fixed on main | P1 |
 | [PLAT-325](plat-325.md) | Cross-workflow knowledgebase write access (PLAT-310 follow-up) | fixed on main | - |
 | [PLAT-310](plat-310.md) | Attach multiple workflow knowledge bases with read-only shell access | deployed | - |

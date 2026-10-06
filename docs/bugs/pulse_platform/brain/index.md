@@ -4,7 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [learnings-knowledge](learnings-knowledge/index.md) | 9 | 1 |
+| [learnings-knowledge](learnings-knowledge/index.md) | 9 | 2 |
 | [plans-contracts](plans-contracts/index.md) | 1 | 0 |
 | [pulse-governance](pulse-governance/index.md) | 1 | 0 |
 | [security-sandbox](security-sandbox/index.md) | 1 | 0 |

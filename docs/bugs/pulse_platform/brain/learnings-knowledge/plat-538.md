@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| State | closed |
+| State | open |
 | Priority | P2 |
 | Product | brain |
 | Area | learnings-knowledge |
@@ -27,6 +27,10 @@
 **Pilot, 2026-10-05 (rtslatency):** Brain folders `RTS` and `RTS/Latency` created; grants set (admin Owner, yoav and laxmi Reader, the workflow's owner and readers). `migration_preview` then `migration_import` ran through the MCP: 6 files imported (`context/context.md` and five notes, all read back through Brain), `notes/_index.json` skipped (unsupported), source files untouched. **Not done:** cutover. Three workflows still read this one through the old path and must be rebound first: `automationtesting` (alias `rtslatency`), `rtsaws` (`rtslatency`), `rtsprreviweer` (`latency`); the schedules must be paused around cutover. Next: do the same for rtssprinttracking, then rtsaws, automationtesting, rtsprreviweer.
 
 **Fixed 2026-10-06 (found doing the pilot):** the cutover compared the whole manifest with the preview, but requires schedules to be paused first, and pausing them edits the manifest, so the documented order could never succeed. It now compares only the knowledge configuration recorded at preview and saves against the current version (a concurrent edit is still refused); the migration test pins it. Also: a migrated project may now be set to Read & write (open), and in the open modes a binding alias is a shortcut to that folder instead of being ignored.
+
+**Upwork, option B (2026-10-06): prepared, not run.** No sanctioned path to the owner's local Brain was available: the local backend (127.0.0.1:18743) requires auth, the `agentworks` CLI is connected to another server, and no token was extracted. `brain_access` is server-managed (`workflow_manifest.go` keeps the prior value on manifest writes), so it was not set by file edit. Also, `migration_preview` imports the whole local `knowledgebase/` into one empty folder; it cannot take a subset, so option B needs per-note writes, not the migration importer.
+- Shared notes (local copies still in `Workflow/upwork/knowledgebase/notes/`, `graph.json` links already removed): `person-manish-prakash.md` → `Org/People`; `project-agentworks.md`, `project-conductor.md` → `Org/Projects`; `pattern-agent-orchestration.md`, `pattern-browser-automation.md`, `pattern-multi-model-orchestration.md`, `pattern-security-isolation.md`, `pattern-workflow-runtime.md` → `Org/Patterns`.
+- Steps: (1) create the three folders and grant the owner Owner and the Upwork workflow Reader; (2) write each note through the Brain MCP `update_knowledgebase` note action and read it back; (3) set Upwork `brain_access=read` through the access builder; (4) repoint references to `brain:Org/<folder>/<note>`: the plan names `project-agentworks` 6 times and step config twice (no `person-*` or `pattern-*` names in the plan); notes `upwork-positioning.md`, `profile-change-log.md` and `learnings/_global/references/cover-letter-and-output-integrity.md` link `project-agentworks` / `person-manish-prakash`; `bid-pick-job` Inputs say "the relevant project/person notes"; (5) only after the read-back, move the local copies to `archive/` and drop them from `notes/_index.json`; (6) needs guaranteed delivery of `brain:` references (PLAT-556 change 1) before steps rely on them.
 
 ## Register notes
 

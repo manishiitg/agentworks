@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [Brain](brain/index.md) | 13 | 1 |
+| [Brain](brain/index.md) | 13 | 2 |
 | [Code](code/index.md) | 2 | 0 |
 | [Crew](crew/index.md) | 17 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation)](goals/index.md) | 149 | 31 |
@@ -39,7 +39,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |
 | [PLAT-540](platform/frontend-chat/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
 | [PLAT-539](platform/chat-reliability/plat-539.md) | A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn | fixed on main | - | [platform/chat-reliability](platform/chat-reliability/index.md) |
-| [PLAT-538](brain/learnings-knowledge/plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | closed | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
+| [PLAT-538](brain/learnings-knowledge/plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | open | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-537](relays/mcp/plat-537.md) | `TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration` fails on main | open | P3 | [relays/mcp](relays/mcp/index.md) |
 | [PLAT-536](platform/mcp/plat-536.md) | a finished function call returns every step's full output, 400 KB | fixed on main | P3 | [platform/mcp](platform/mcp/index.md) |
 | [PLAT-535](platform/mcp/plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 | [platform/mcp](platform/mcp/index.md) |
