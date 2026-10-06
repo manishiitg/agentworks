@@ -46,3 +46,12 @@ declared by `toptal-scan-draft` but not listed in its `context_output`) and `ste
 - Other deterministic checks that could join the preflight: the DB and report contract checks Plan Drift already runs.
 - Producer order is not checked: the platform's execution-plan lookup finds producers placed after the consumer.
 - Fix the two real gaps above in their workflows (list the files in the producers' `context_output`).
+
+## Enforce by default (2026-10-06)
+
+Owner: enforce should be the default always, in every deployment and locally. `graphStrictMode` now returns
+`enforce` unless `AGENTWORKS_GRAPH_STRICT` is `warn` or `off`; no deploy config or launcher sets it. Local workflows
+at the switch: Upwork clean (Plan Drift fixed `toptal-submit`), build-in-public's `step-reddit-scan-draft` would be
+refused when reached until its producer lists `reddit_cdp_preflight.json` (PLAT-582 flags it to Plan Drift). Servers
+take it on their next deploy; their workflows are not scanned yet.
+

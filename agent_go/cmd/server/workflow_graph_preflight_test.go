@@ -8,7 +8,7 @@ import (
 )
 
 // A step whose input nothing produces is refused before it starts in enforce
-// mode, reported in warn mode (the default) and ignored when off. A step with
+// mode (the default), reported in warn mode and ignored when off. A step with
 // readable inputs is never touched (PLAT-579).
 func TestWorkflowGraphPreflightModes(t *testing.T) {
 	docs := t.TempDir()
@@ -25,6 +25,11 @@ func TestWorkflowGraphPreflightModes(t *testing.T) {
 	}
 
 	t.Setenv("AGENTWORKS_GRAPH_STRICT", "")
+	if _, err := workflowGraphPreflight("Workflow/g", "step-b"); err == nil || !strings.Contains(err.Error(), "workflow_graph_check_failed") {
+		t.Fatalf("enforce is the default: the step must be refused, got %v", err)
+	}
+
+	t.Setenv("AGENTWORKS_GRAPH_STRICT", "warn")
 	notice, err := workflowGraphPreflight("Workflow/g", "step-b")
 	if err != nil || !strings.Contains(notice, "ghost.json") {
 		t.Fatalf("warn mode must report and not refuse: %q, %v", notice, err)

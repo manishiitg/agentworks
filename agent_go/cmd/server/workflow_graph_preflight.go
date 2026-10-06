@@ -9,16 +9,16 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// graphStrictMode reads AGENTWORKS_GRAPH_STRICT (PLAT-579): "enforce" refuses a
-// run or step whose inputs cannot be read, "warn" (the default) logs what it
-// would refuse and tells the builder, "off" skips the check. The default stays
-// "warn" until the log of a few days of real runs is clean.
+// graphStrictMode reads AGENTWORKS_GRAPH_STRICT (PLAT-579): "enforce" (the
+// default, everywhere) refuses a run or step whose inputs cannot be read,
+// "warn" only logs it and tells the builder, "off" skips the check. Owner,
+// 2026-10-06: a broken input graph always fails.
 func graphStrictMode() string {
 	switch mode := strings.ToLower(strings.TrimSpace(os.Getenv("AGENTWORKS_GRAPH_STRICT"))); mode {
-	case "off", "enforce":
+	case "off", "warn":
 		return mode
 	}
-	return "warn"
+	return "enforce"
 }
 
 // workflowGraphPreflight checks the input and output graph before a step

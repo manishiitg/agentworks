@@ -121,8 +121,8 @@ Ticket: [PLAT-581](bugs/pulse_platform/integrations/skills/plat-581.md).
 
 What: the input and output graph is checked in Go before `execute_step`, `run_full_workflow` and a full workflow run.
 A step whose input no step produces, or that no producer lists in `context_output`, is refused with the exact input
-named, before anything is spent. `AGENTWORKS_GRAPH_STRICT=warn` (default) only logs and tells the builder;
-`enforce` refuses. Why: the Upwork merge left six inputs unreadable and nothing failed until the next run; the owner
+named, before anything is spent. This is the default in every deployment and locally (owner, 2026-10-06);
+`AGENTWORKS_GRAPH_STRICT=warn` only logs and tells the builder, `off` skips it. Why: the Upwork merge left six inputs unreadable and nothing failed until the next run; the owner
 wants structural checks in Go, not left to the agent. This is a structural check, not a judgment: it never rules on
 what a step should do. Ticket: [PLAT-579](bugs/pulse_platform/goals/plans-contracts/plat-579.md).
 
