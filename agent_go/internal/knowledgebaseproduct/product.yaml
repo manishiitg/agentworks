@@ -13,17 +13,13 @@ profile:
   tool_policy:
     mode: allowlist
     enabled: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]
-  # Curator commands (PLAT-618): /organize tidies a folder toward its readme or the default layout; /dedupe merges
-  # duplicates. Both run with the person's own folder roles.
+  # Curator command (PLAT-618): /organize tidies a folder (by products, teams or entities; Timeline and entity
+  # views always kept) and merges duplicates, with the person's own folder roles.
   commands:
     - name: organize
-      description: Organize a Brain folder (default layout, indexes, timeline) or the whole Brain
+      description: Organize a Brain folder or the whole Brain (by products, teams or entities); merges duplicates, keeps the timeline
       icon: brain
       file: commands/organize.md
-    - name: dedupe
-      description: Find and merge duplicate notes in a Brain folder
-      icon: brain
-      file: commands/dedupe.md
   runtime:
     transport: structured
     bridge_tools: [brain_access, brain_backup, list_secrets, manage_global_secret, brain_browse, brain_read, brain_update, brain_skills]

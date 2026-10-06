@@ -17,7 +17,7 @@ func TestManifestSeparatesAccessBuilderAndContent(t *testing.T) {
 		t.Fatalf("invalid product runtime: %+v", p.Runtime)
 	}
 	// The curator commands ship with the product and resolve their prompts (PLAT-618).
-	if len(p.Commands) != 2 || p.Commands[0].Name != "organize" || p.Commands[1].Name != "dedupe" {
+	if len(p.Commands) != 1 || p.Commands[0].Name != "organize" {
 		t.Fatalf("curator commands: %+v", p.Commands)
 	}
 	if len(p.ToolPolicy.Enabled) != 8 || p.ToolPolicy.Enabled[0] != "brain_access" || len(p.Runtime.BridgeTools) != 8 {

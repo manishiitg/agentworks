@@ -1,10 +1,19 @@
-Organize Brain: tidy the folder named below (or the whole Brain if none is named) so people and agents can find things. Act directly; this command is my explicit ask to move, merge and rewrite notes in folders I can edit.
+Organize Brain: tidy the folder named below (and the way to organize it, if I gave one) (or the whole Brain if none is named) so people and agents can find things. Act directly; this command is my explicit ask to move, merge and rewrite notes in folders I can edit.
 
 {{context}}
 
-## Target layout
+## How to organize
 
-If the folder (or Brain root) has a `readme.md` that describes its own structure, follow that. If I named a layout above, follow that. Otherwise use this default, by subject (never by workflow, team or company name; the Brain is the company):
+A folder tree has one main hierarchy; the other ways of looking at the same knowledge are kept as views (index notes that link, never copies).
+
+- Main hierarchy, in this order of precedence: the structure the folder's (or the Brain root's) `readme.md` describes; a mode I named above; otherwise **by products**. Modes:
+  - **by products** (default): `Products/<product>/` holds what each product is, does and how it runs.
+  - **by teams**: `Teams/<team>/` holds each team's knowledge; shared subjects stay in the subject folders below.
+  - **by entities**: `Entities/` holds one page per person, customer, system and vendor (`Entities/People/`, `Entities/Customers/`, `Entities/Systems/`, `Entities/Vendors/`).
+- Views, always kept current whatever the mode: `Timeline/` (what happened when) and the `Entities/` index (one page per person, customer, system and vendor, linking every note about it). Teams and products not chosen as the main hierarchy get an index note listing their notes.
+- Never organize by workflow or company name: the Brain is the company; knowledge used by one workflow only stays in that workflow.
+
+Default layout (by products):
 
 ```
 readme.md                 map of the Brain: what lives where
@@ -17,7 +26,8 @@ Engineering/
   Standards/              coding, review, testing conventions
 Operations/
   Monitoring/  Costs/  Security/  Incidents/
-Teams/<team>/             a team's own working knowledge
+Teams/<team>/             a team's own working knowledge (or index, when not the main hierarchy)
+Entities/                 People/, Customers/, Systems/, Vendors/: one page per entity
 Decisions/                one note per decision: what, why, who, when
 Timeline/<year>/<year>-<month>.md   one line per event, newest first
 Skills/                   company skills, one folder per skill (SKILL.md)
@@ -28,7 +38,8 @@ Sources/                  imported docs, meeting notes, raw material
 
 - Work only through brain_browse, brain_read and brain_update, in folders where I am Editor or Owner. Never change access.
 - If Git backup is configured, run brain_backup status first and say whether there are unbacked changes; do not push unless I asked.
-- One topic per note, kebab-case filenames, a type (fact, note, source, skill). A note covering two subjects is split; two notes on one subject are merged into the better one, keeping every fact, and the other is deleted (a merge is the only reason to delete).
+- One topic per note, kebab-case filenames, a type (fact, note, source, skill). A note covering two subjects is split.
+- Duplicates: find notes on the same subject even with different names or wording; keep the best-placed, most complete one, merge every fact from the others into it (newest wins on a conflict; when unsure keep both and mark the conflict), then delete the others. A merge is the only reason to delete.
 - Move misplaced notes to the folder their subject belongs in. Create folders as needed; split a folder holding more than about 15-20 notes.
 - Every folder you touch gets a `readme.md`: what belongs there, links to its notes and subfolders.
 - Decisions live once, in `Decisions/`, updated in place with who and when; other notes link to them.
@@ -38,4 +49,4 @@ Sources/                  imported docs, meeting notes, raw material
 
 ## Report
 
-A short summary: what you moved, merged, split, created and deleted (with paths), Timeline lines added, notes flagged stale, and anything you left because it needs a person to decide.
+A short summary: the mode used; what you moved, merged (kept path and removed paths), split, created and deleted; Timeline lines and entity pages added; notes flagged stale; and anything you left because it needs a person to decide.

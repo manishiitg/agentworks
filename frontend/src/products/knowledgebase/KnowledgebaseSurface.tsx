@@ -27,6 +27,9 @@ import { ProductChatLandingCard } from '../../components/chat/ProductChatLanding
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { activateTab } from '../../utils/activateTab'
+import { setProductCommands } from '../../commands/registry'
+import { loadWorkProductCommands } from '../work/workData'
+import { toProductCommandDefinitions } from '../work/productCommands'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
@@ -45,6 +48,15 @@ export function KnowledgebaseSurface() {
   const [proposals, setProposals] = useState<KnowledgeAccessProposal[]>([])
   const [approvalError, setApprovalError] = useState('')
   const [approving, setApproving] = useState(false)
+  // Brain's own slash commands (/organize), declared in its product.yaml; cleared on unmount so they never show in
+  // another product's chat (PLAT-618).
+  useEffect(() => {
+    let cancelled = false
+    void loadWorkProductCommands('knowledgebase', 1, 'Brain')
+      .then(commands => { if (!cancelled) setProductCommands(toProductCommandDefinitions(commands)) })
+      .catch(() => { if (!cancelled) setProductCommands([]) })
+    return () => { cancelled = true; setProductCommands([]) }
+  }, [])
   useEffect(() => {
     let active = true
     const refresh = () => { knowledgebaseApi.proposals().then(data => { if (active) setProposals(data.proposals) }).catch(() => {}) }
