@@ -782,18 +782,23 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
-	ExternalBuilderOperationID string   `json:"-"` // Set from authenticated execution claims.
-	ConnectionID               string   `json:"connection_id,omitempty"`
-	Query                      string   `json:"query"`
-	Message                    string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
-	SessionTitle               string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
-	ParentSessionID            string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind                string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
-	Servers                    []string `json:"servers,omitempty"`
-	EnabledServers             []string `json:"enabled_servers,omitempty"`
-	SelectedTools              []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
-	Provider                   string   `json:"provider,omitempty"`
-	ModelID                    string   `json:"model_id,omitempty"`
+	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
+	// admittedWorkflowPhase records, once and server-side, that this request was admitted as a Workflow phase chat.
+	// handleQuery later rewrites AgentMode from workflow_phase to multi-agent, so checks that run after that point
+	// read this instead of AgentMode (PLAT-608; PLAT-600 was a check that read the rewritten mode). A client cannot set
+	// it: an ordinary multi-agent chat that sends phase_id=workflow-builder is not the Builder.
+	admittedWorkflowPhase bool
+	ConnectionID          string   `json:"connection_id,omitempty"`
+	Query                 string   `json:"query"`
+	Message               string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
+	SessionTitle          string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
+	ParentSessionID       string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
+	SessionKind           string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
+	Servers               []string `json:"servers,omitempty"`
+	EnabledServers        []string `json:"enabled_servers,omitempty"`
+	SelectedTools         []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
+	Provider              string   `json:"provider,omitempty"`
+	ModelID               string   `json:"model_id,omitempty"`
 	// ReasoningEffort overrides the "reasoning_effort" key of an agent
 	// profile's provider_options[].Options for this turn only; every other
 	// key stays as declared. Ignored outside the profile query path.
@@ -4414,6 +4419,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
+	req.admittedWorkflowPhase = isWorkflowPhase
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
 	workflowPhaseRunFolder := ""

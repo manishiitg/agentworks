@@ -29,11 +29,12 @@ func TestAdmissionKeepsACurrentGuardAndPinsAStaleOne(t *testing.T) {
 // still get authority for its Brain project tools, and nothing outside the Builder phase may (RTS 2026-10-06).
 func TestKnowledgeProjectBuilderAuthoritySurvivesTheModeRewrite(t *testing.T) {
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	builder := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder"}
+	builder := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", admittedWorkflowPhase: true}
 	if !knowledgeProjectBuilderQuery(builder, claims, "s", "s", false) {
 		t.Fatal("the root Builder lost its Brain project authority after the mode rewrite")
 	}
-	for _, req := range []QueryRequest{{AgentMode: "multi-agent"}, {AgentMode: "multi-agent", PhaseID: "workflow-run"}, {AgentMode: "multi-agent", PhaseID: "workflow-builder", BotPlatform: "slack"}} {
+	// An ordinary chat that names the Builder phase itself is not the Builder.
+	for _, req := range []QueryRequest{{AgentMode: "multi-agent"}, {AgentMode: "multi-agent", PhaseID: "workflow-builder"}, {AgentMode: "multi-agent", PhaseID: "workflow-run", admittedWorkflowPhase: true}, {AgentMode: "multi-agent", PhaseID: "workflow-builder", BotPlatform: "slack", admittedWorkflowPhase: true}} {
 		if knowledgeProjectBuilderQuery(req, claims, "s", "s", false) {
 			t.Fatalf("only the Builder phase may configure Brain project access: %+v", req)
 		}

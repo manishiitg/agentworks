@@ -191,7 +191,8 @@ func TestKnowledgebaseProjectUIUsesOwnerAndAudienceChecks(t *testing.T) {
 
 func TestKnowledgebaseProjectBuilderAuthorityMatchesVaultIsolation(t *testing.T) {
 	claims := &UserClaims{UserID: "admin"}
-	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/payments"}
+	// The shape handleQuery binds tools with: the mode is already rewritten, the admission flag is set (PLAT-600/608).
+	req := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", SelectedFolder: "Workflow/payments", admittedWorkflowPhase: true}
 	if !knowledgeProjectBuilderQuery(req, claims, "root", "root", false) {
 		t.Fatal("interactive builder missing")
 	}
@@ -217,7 +218,7 @@ func TestKnowledgebaseProjectSetupUsesAuthenticatedToolBinding(t *testing.T) {
 	api := &StreamingAPI{}
 	claims := &UserClaims{UserID: "admin", Username: "admin"}
 	input := context.WithValue(t.Context(), UserContextKey, claims)
-	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: workspace}
+	req := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", SelectedFolder: workspace, admittedWorkflowPhase: true}
 	root, err := api.bindToolExecutionContext(input, "kb-root", req, false)(executor.WithSessionID(t.Context(), "kb-root"), "manage_knowledgebase_access")
 	if err != nil {
 		t.Fatal(err)

@@ -28,4 +28,5 @@ Owner, 2026-10-06: "we use product.yml to register tools right ... and there sho
 
 ## Progress
 
-- Survey of every registration path: running.
+- Survey done (2026-10-06): runtime-enforced product.yaml lists are Crew, Code, Brain, Vault, SparkQuill, Video, the Relay builder and every external MCP list. Goals workflow chats (Builder and Run) run the gate in observe mode and register about 20 tool groups by Go conditions; their yaml lists are compared only in tests. The Builder/workflow-phase decision is re-derived in about 30 places, about half after handleQuery rewrites AgentMode. Brain names are copied into about 10 code lists, and read/update/manage_knowledgebase_access are also internal operation names.
+- Step 1 done: `QueryRequest.admittedWorkflowPhase` (server-set, not JSON) is recorded once before the rewrite; `knowledgeProjectBuilderQuery` reads it. This also closes a gap in the PLAT-600 fix, which accepted any multi-agent request that named phase_id=workflow-builder. Tests now build the request in the shape the server actually binds tools with.
