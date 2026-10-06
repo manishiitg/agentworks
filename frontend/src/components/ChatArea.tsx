@@ -1,4 +1,5 @@
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
+import { codeLocalFilesForChat } from '../products/work/codeLocalFiles'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
 import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
@@ -3108,6 +3109,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             {
               ...buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, reasoningEffort),
               ...(currentTab.metadata.agentProfileId === 'knowledgebase' && knowledgebaseFolderPath ? { knowledgebase_folder_path: knowledgebaseFolderPath } : {}),
+              ...(currentTab.metadata.agentProfileId === 'code' ? { code_local_files: codeLocalFilesForChat(currentTab.metadata.agentProfileWorkspace || '') } : {}),
             },
             tabSessionId,
             { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },

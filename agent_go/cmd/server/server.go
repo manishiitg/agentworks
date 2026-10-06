@@ -828,6 +828,8 @@ type QueryRequest struct {
 	// authoritative manifest for this turn. It is never itself a filesystem
 	// authority: Work maps its workspace_id through the caller's current grants.
 	AgentProfileConversationKey string `json:"agent_profile_conversation_key,omitempty"`
+	// Code source selection is a hint, never file authority.
+	CodeLocalFiles *codeLocalFileTarget `json:"code_local_files,omitempty"`
 	// Code execution mode: When enabled, only virtual tools are added to LLM
 	// MCP tools are accessed through generated scripts using the on-demand HTTP API specification.
 	UseCodeExecutionMode bool `json:"use_code_execution_mode,omitempty"`
@@ -6845,8 +6847,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
-			if req.BotPlatform == "" && strings.TrimSpace(req.TriggeredBy) == "" && req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn {
-				if err := api.registerLocalDeviceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly); err != nil {
+			if codeLocalFileTurn(req, resolvedProfile) {
+				if err := api.registerLocalDeviceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, req.CodeLocalFiles); err != nil {
 					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
 					return
 				}
@@ -7025,6 +7027,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if err := guidance.AttachReferenceSurface("multi-agent", llmAgent.AttachSkill); err != nil {
 						logfWithContext(queryLogCtx, "[REFERENCE_DOC] Failed to attach multi-agent reference surface: %v", err)
 					}
+				}
+			}
+			if codeLocalFileTurn(req, resolvedProfile) {
+				if err := llmAgent.AddInstructions(codeLocalFilesInstructions(req.CodeLocalFiles)); err != nil {
+					sendError("Failed to apply local Code file instructions", true)
+					return
 				}
 			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
@@ -14200,6 +14208,15 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
+	if req.CodeLocalFiles != nil {
+		if !codeLocalFileTurn(*req, resolvedProfile) || !req.CodeLocalFiles.valid() {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("local files require an interactive Code chat"), invalidProfile: true}
+		}
+		if err := api.validateCodeLocalFiles(ctx, GetUserFromContext(ctx), req.CodeLocalFiles); err != nil {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
+		}
+		resolvedProfile.CodeLocalFiles = req.CodeLocalFiles
+	}
 	// Workflow-phase payloads identify the workspace through their preset,
 	// not selected_folder (the client never sends it for these chats).
 	// Resolve it BEFORE access: otherwise conversationTargetAccess skips the
@@ -14212,6 +14229,9 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
+	if req.CodeLocalFiles != nil {
+		resolvedProfile.CodeLocalFilePolicy = api.codeLocalFilePolicyKey(GetUserFromContext(ctx), req.CodeLocalFiles, crewReadOnly)
+	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}

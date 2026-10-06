@@ -32,6 +32,60 @@ type localDeviceConnection struct {
 	slots     chan struct{}
 }
 
+type codeLocalFileTarget struct {
+	DeviceID   string `json:"device_id"`
+	ResourceID string `json:"resource_id"`
+}
+
+func (target *codeLocalFileTarget) valid() bool {
+	return target != nil && localfiles.ValidID(target.DeviceID) && localfiles.ValidID(target.ResourceID)
+}
+func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	return req.CodeLocalFiles != nil && profile != nil && profile.Definition.ID == "code" &&
+		req.BotPlatform == "" && (strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
+		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
+}
+func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
+	return fmt.Sprintf("\nCode project files are on the user's computer: device_id=%q, resource_id=%q. This is the selected source folder for this turn. Use list_local_files, read_local_file and write_local_file for project source; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. Native filesystem tools and the workspace terminal operate on the SERVER, not this computer. They cannot inspect, edit, build or test this local project. Chat history, project settings and skills remain server-hosted. If the device disconnects, report it and stop local file work; never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+}
+func (api *StreamingAPI) validateCodeLocalFiles(ctx context.Context, claims *UserClaims, target *codeLocalFileTarget) error {
+	if !websiteDeviceClaims(claims) || !target.valid() {
+		return fmt.Errorf("local Code files require your website login and a valid folder selection")
+	}
+	for _, hello := range api.localDeviceList(claims) {
+		if hello.DeviceID != target.DeviceID {
+			continue
+		}
+		for _, resource := range hello.Resources {
+			if resource.ID != target.ResourceID {
+				continue
+			}
+			if value, ok := api.localDevices.Load(claims.UserID + "/" + target.DeviceID); ok && value.(*localDeviceConnection).authorized(ctx) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("selected Code folder is offline, no longer shared or its connection was revoked; reconnect your computer or explicitly choose Server in Code Files")
+}
+
+func (api *StreamingAPI) codeLocalFilePolicyKey(claims *UserClaims, target *codeLocalFileTarget, readOnly bool) string {
+	for _, hello := range api.localDeviceList(claims) {
+		if hello.DeviceID != target.DeviceID {
+			continue
+		}
+		for _, resource := range hello.Resources {
+			if resource.ID == target.ResourceID {
+				data, _ := json.Marshal(struct {
+					Resource localfiles.Resource `json:"resource"`
+					ReadOnly bool                `json:"read_only"`
+				}{resource, readOnly})
+				return string(data)
+			}
+		}
+	}
+	return "offline"
+}
+
 func (device *localDeviceConnection) authorized(ctx context.Context) bool {
 	t := device.claims.AccessToken
 	if t == nil || !t.Allows("devices:connect") || !t.ExpiresAt.After(time.Now()) {
@@ -290,13 +344,24 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 	}
 	externalJSON(w, response)
 }
-func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool) error {
-	if !websiteDeviceClaims(claims) || len(api.localDeviceList(claims)) == 0 {
+func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, target *codeLocalFileTarget) error {
+	if !websiteDeviceClaims(claims) || !target.valid() {
 		return nil
+	}
+	selected := *target
+	writable := false
+	for _, hello := range api.localDeviceList(claims) {
+		if hello.DeviceID == selected.DeviceID {
+			for _, resource := range hello.Resources {
+				if resource.ID == selected.ResourceID {
+					writable = resource.Writable
+				}
+			}
+		}
 	}
 	for _, name := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file"} {
 		tool := name
-		if tool == "write_local_file" && (readOnly || !userAccessForClaims(claims).CanEdit) {
+		if tool == "write_local_file" && (readOnly || !writable || !userAccessForClaims(claims).CanEdit) {
 			continue
 		}
 		props := map[string]interface{}{}
@@ -309,6 +374,7 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 				required = append(required, field)
 			}
 		}
+		description += fmt.Sprintf(" This Code uses only device_id=%q, resource_id=%q.", selected.DeviceID, selected.ResourceID)
 		if tool == "write_local_file" {
 			description += " Read first for expected_revision (missing for new files). Each write needs a unique request_id; identical retries return its receipt. Plans, databases and private files are protected."
 			for _, field := range []string{"content", "expected_revision", "request_id"} {
@@ -329,8 +395,24 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 			}
 			var result any
 			if tool == "list_local_devices" {
-				result = map[string]any{"devices": api.localDeviceList(caller)}
+				devices := []localfiles.Hello{}
+				for _, hello := range api.localDeviceList(caller) {
+					if hello.DeviceID != selected.DeviceID {
+						continue
+					}
+					for _, resource := range hello.Resources {
+						if resource.ID == selected.ResourceID {
+							hello.Resources = []localfiles.Resource{resource}
+							devices = append(devices, hello)
+							break
+						}
+					}
+				}
+				result = map[string]any{"devices": devices}
 			} else {
+				if externalArg(args, "device_id") != selected.DeviceID || externalArg(args, "resource_id") != selected.ResourceID {
+					return "", errors.New("file target differs from this Code's selected computer folder")
+				}
 				operation := map[string]string{"list_local_files": "list", "read_local_file": "read", "write_local_file": "write"}[tool]
 				request := localfiles.Request{ResourceID: externalArg(args, "resource_id"), Operation: operation, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id")}
 				operationCtx, cancel := context.WithTimeout(ctx, 35*time.Second)

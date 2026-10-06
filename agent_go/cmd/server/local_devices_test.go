@@ -65,6 +65,12 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatal("connect timeout")
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	if err = api.validateCodeLocalFiles(t.Context(), owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = api.validateCodeLocalFiles(t.Context(), owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "not-shared"}); err == nil {
+		t.Fatal("unshared Code folder admitted")
+	}
 	request := localfiles.Request{ResourceID: "project", Operation: "read", Path: "readme.md"}
 	response, err := api.localDeviceCall(t.Context(), owner, "laptop", request)
 	if err != nil || response.File.Content != "laptop content" {
@@ -77,15 +83,18 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatalf("cross-user %v", err)
 	}
 	registrar := &recordingRegistrar{}
-	if err = api.registerLocalDeviceTools(registrar, newProductToolGate(nil), owner, false); err != nil || len(registrar.tools) != 4 {
+	if err = api.registerLocalDeviceTools(registrar, newProductToolGate(nil), owner, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 4 {
 		t.Fatalf("tools %+v %v", registrar.tools, err)
 	}
 	if _, err = registrar.tools["read_local_file"].exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider"}), map[string]interface{}{"device_id": "laptop", "resource_id": "project", "path": "readme.md"}); err == nil {
 		t.Fatal("conflicting tool owner admitted")
 	}
+	if _, err = registrar.tools["read_local_file"].exec(t.Context(), map[string]interface{}{"device_id": "laptop", "resource_id": "another-folder", "path": "readme.md"}); err == nil {
+		t.Fatal("Code tool escaped its selected folder")
+	}
 	tokenClaims := writeTestClaims("owner")
 	reg := &recordingRegistrar{}
-	api.registerLocalDeviceTools(reg, newProductToolGate(nil), tokenClaims, false)
+	api.registerLocalDeviceTools(reg, newProductToolGate(nil), tokenClaims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"})
 	if len(reg.tools) != 0 {
 		t.Fatal("public MCP received local device tools")
 	}
@@ -183,7 +192,7 @@ func TestLocalDeviceToolsRejectConnectorPrincipals(t *testing.T) {
 			t.Fatalf("connector admitted %+v", claims)
 		}
 		reg := &recordingRegistrar{}
-		if err := api.registerLocalDeviceTools(reg, newProductToolGate(nil), claims, false); err != nil || len(reg.tools) != 0 {
+		if err := api.registerLocalDeviceTools(reg, newProductToolGate(nil), claims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(reg.tools) != 0 {
 			t.Fatalf("connector tool registration %+v %v", reg.tools, err)
 		}
 	}

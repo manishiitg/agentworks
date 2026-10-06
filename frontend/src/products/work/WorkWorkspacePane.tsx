@@ -41,6 +41,8 @@ const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView')
 const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
+const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
+const CodeServerTerminalNotice = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeServerTerminalNotice })))
 
 export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
@@ -253,6 +255,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const product = useProjectProduct()
   const noun = product.noun
   const ask = useCallback((message: string) => sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId])
+  const serverFiles = <FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" />
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
     [readOnly, projectId, workspacePath, product.profileId],
@@ -333,8 +336,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" /></Suspense>)}
-        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><CodeShellPanel projectId={projectId} /></Suspense>}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={workspacePath} workspacePath={workspacePath} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><CodeServerTerminalNotice workspacePath={workspacePath} /><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           shared={Boolean(shared)}

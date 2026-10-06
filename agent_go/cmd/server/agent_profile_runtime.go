@@ -42,6 +42,9 @@ type resolvedAgentProfile struct {
 	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
 	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
 	ProjectInstructions string
+	// Changing Code source location replaces retained tools/instructions between turns.
+	CodeLocalFiles      *codeLocalFileTarget
+	CodeLocalFilePolicy string
 	// ChatConnections are this chat's own MCP connections: a Code's personal
 	// servers switched on for it, or a Crew's attached ones. They join the
 	// turn's servers later in the query path; here they only feed the session
@@ -100,15 +103,17 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	secrets := append([]string(nil), profile.ChatSecrets...)
 	sort.Strings(secrets)
 	payload, err := json.Marshal(struct {
-		Definition      agentprofiles.Profile `json:"definition"`
-		SelectedServers []string              `json:"selected_servers,omitempty"`
-		IdentityKey     string                `json:"identity_key,omitempty"`
-		ChatConnections []string              `json:"chat_connections,omitempty"`
-		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
-		KnowledgeKey    string                `json:"knowledge_key,omitempty"`
-		Instructions    string                `json:"project_instructions,omitempty"`
+		Definition          agentprofiles.Profile `json:"definition"`
+		SelectedServers     []string              `json:"selected_servers,omitempty"`
+		IdentityKey         string                `json:"identity_key,omitempty"`
+		ChatConnections     []string              `json:"chat_connections,omitempty"`
+		ChatSecrets         []string              `json:"chat_secrets,omitempty"`
+		KnowledgeKey        string                `json:"knowledge_key,omitempty"`
+		CodeLocalFiles      *codeLocalFileTarget  `json:"code_local_files,omitempty"`
+		CodeLocalFilePolicy string                `json:"code_local_file_policy,omitempty"`
+		Instructions        string                `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions)})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions), CodeLocalFiles: profile.CodeLocalFiles, CodeLocalFilePolicy: profile.CodeLocalFilePolicy})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}

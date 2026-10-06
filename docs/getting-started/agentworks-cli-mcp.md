@@ -748,7 +748,31 @@ outside every shared folder. Read-only folders require no writable state. Writab
 writes inside the shared folder. Default receipt storage is beside the CLI config in
 `executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
 
-In a new website chat, the server agent receives `list_local_devices`,
+### Code website: choose where project files live
+
+Open a Code project and its **Files** view. **Files location** defaults to
+**Server**. Choose **My computer**, use **Connect computer** for the CLI setup
+commands, and select a connected computer and shared folder. The page shows
+Connected/Offline and Read only/Can edit, lets you browse text files, and offers
+**Ask Code** and guarded **Save to computer** for writable folders/accounts.
+Folder selection stays in this browser, scoped to your account, server workspace
+and Code project. It does not move the server project, its settings or chat history.
+
+Code chat sends only the selected device and folder aliases. The backend checks
+ownership, live grants and connection status before admitting a local turn, and
+every file operation rechecks them. Tools are bound to that folder; changing the
+location or folder refreshes retained chat tools between turns. Offline folders
+stay selected and never substitute server files. An interrupted editor save keeps
+its exact request ID and payload while this Files panel stays open, including
+disconnect/reconnect; use Retry save to reconcile it, or Reload to inspect the
+current file. Leaving the panel or refreshing the page discards that editor draft.
+
+Local files are available in interactive **Code** chats only. Crew, Brain, Vault,
+general chat, schedules and connector turns do not acquire local file tools.
+The Code terminal and browser still run on the server; the file executor cannot
+run laptop builds or tests. Requested file contents reach the server and LLM.
+
+In a Code chat with **My computer** selected, the server agent receives `list_local_devices`,
 `list_local_files`, `read_local_file` and, for writable accounts/turns,
 `write_local_file`. Specify `device_id`, `resource_id` (folder alias) and relative
 `path`; writes additionally require `content`, `expected_revision` and
@@ -768,7 +792,7 @@ disconnect, and write outcomes may be uncertain: reconnect, reuse the identical
 write request ID/payload to reconcile its receipt, then reread current content.
 Revoking the connection or disabling its account blocks dispatch immediately and
 closes idle sockets at the next heartbeat. Website chat tools are assembled at
-turn startup, so start a new turn after connecting a device.
+turn startup, so send a new Code message after connecting and selecting a folder.
 
 Device sockets are held by one backend process. Use a single backend or routing
 affinity so the website chat reaches the process holding its device connection.

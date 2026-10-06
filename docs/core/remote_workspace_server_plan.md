@@ -30,13 +30,17 @@ Implemented now:
   cross-process serialization boundary. Unmanaged local editors or shell commands
   do not participate in that lock; reads and writes remain individually atomic.
 - Executor login with `devices:connect`, owner-scoped device discovery and file
-  list/read/write tools for website chat agents, local guard enforcement,
+  list/read/write tools for interactive Code chat agents, local guard enforcement,
   heartbeat/reconnect, token revocation and pending-request failure on disconnect.
 - Local file writes retain private receipts across reconnects/restarts. The
   server never blindly resends a write after a timeout or disconnect.
+- Code's Files view has a per-project **Files location: Server / My computer**
+  selector, browser-scoped device/folder selection, connection setup, live status,
+  text browsing, Ask Code and guarded saves. Local chat tools are bound to the
+  selected alias; location changes refresh retained tools between turns.
 
 The first executor is file-only. Shell/browser operations, workflow execution
-against laptop-owned plans, a website device-management panel, remote schedules,
+against laptop-owned plans, a general device-management panel, remote schedules,
 public history/restore APIs and history retention policies remain future work.
 Before-content history is capped at 128 KiB per write; full revisions are retained.
 Device connections currently live in one backend process. Deployments with
