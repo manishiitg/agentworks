@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlannerFile } from '../../services/api-types'
-import { knowledgebaseApi, knowledgebaseError, type KnowledgeEntry, type KnowledgeRead } from '../../services/knowledgebaseApi'
+import { knowledgebaseApi, knowledgebaseError, type KnowledgeEntry, type KnowledgeFolder, type KnowledgeRead } from '../../services/knowledgebaseApi'
 import type { ReadOnlyFileWorkspaceSource } from '../../components/workspace/fileWorkspaceSource'
+import { BinaryFilePreview } from './BinaryFilePreview'
 
 export function useKnowledgebaseFiles(revision: number, active: boolean, onFolder: (path: string) => void): ReadOnlyFileWorkspaceSource {
   const [files, setFiles] = useState<PlannerFile[]>([])
@@ -42,35 +43,72 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
     } finally { if (!controller.signal.aborted) setLoadingFileContent(false) }
   }, [onFolder])
 
+  // Each folder's direct children are fetched once and cached. Expanding a folder fetches only that folder, and the
+  // tree is rebuilt from the cache at once; a refresh refetches the root and every open folder in parallel. The old
+  // version refetched the whole tree level by level on every click, so a folder looked dead and then filled all at
+  // once (RTS 2026-10-06).
+  const cache = useRef(new Map<string, { folders: KnowledgeFolder[]; entries: KnowledgeEntry[] }>())
+  const expandedRef = useRef(expandedFolders)
+  expandedRef.current = expandedFolders
+  const treeController = useRef<AbortController | null>(null)
+
+  const fetchFolder = useCallback(async (path: string, signal: AbortSignal) => {
+    const [folders, entries] = await Promise.all([
+      (async () => {
+        const items: KnowledgeFolder[] = []; let cursor = ''
+        do { const page = await knowledgebaseApi.folders(path, cursor, signal); items.push(...page.folders); cursor = page.next_cursor || '' } while (cursor)
+        return items.filter(folder => folder.path !== path)
+      })(),
+      (async () => {
+        const items: KnowledgeEntry[] = []; let cursor = ''
+        do { const page = await knowledgebaseApi.entries({ folder_path: path, cursor, limit: 100 }, signal); items.push(...page.entries); cursor = page.next_cursor || '' } while (cursor)
+        return items.filter(entry => entry.folder_path === path)
+      })(),
+    ])
+    if (signal.aborted) return
+    cache.current.set(path, { folders, entries })
+    const next = new Map(entryIndex.current)
+    for (const entry of entries) next.set(entry.path, entry)
+    entryIndex.current = next
+  }, [])
+
+  const rebuild = useCallback(() => {
+    const build = (path: string): PlannerFile[] => {
+      const node = cache.current.get(path)
+      if (!node) return []
+      return [
+        ...node.folders.map(folder => ({ filepath: folder.path, type: 'folder' as const, children: expandedRef.current.has(folder.path) ? build(folder.path) : [] })),
+        ...node.entries.map(entry => ({ filepath: entry.path, type: 'file' as const, last_modified: entry.updated_at })),
+      ]
+    }
+    setFiles(build(''))
+  }, [])
+
+  // Fetch any open folder that is not cached yet, then show it.
+  const loadMissing = useCallback(async (paths: string[]) => {
+    const missing = paths.filter(path => !cache.current.has(path))
+    if (!missing.length) { rebuild(); return }
+    const signal = treeController.current?.signal ?? new AbortController().signal
+    setLoading(true)
+    try {
+      await Promise.all(missing.map(path => fetchFolder(path, signal)))
+      if (!signal.aborted) rebuild()
+    } catch (failure) {
+      if (!signal.aborted) setError(knowledgebaseError(failure))
+    } finally { if (!signal.aborted) setLoading(false) }
+  }, [fetchFolder, rebuild])
+
   useEffect(() => {
     if (!active) return
     const readVersion = readGeneration.current
-    const controller = new AbortController()
+    treeController.current?.abort()
+    const controller = new AbortController(); treeController.current = controller
     setLoading(true); setError(null)
-    const index = new Map<string, KnowledgeEntry>()
-    async function folderTree(path: string): Promise<PlannerFile[]> {
-      const [folders, entries] = await Promise.all([
-        (async () => {
-          const items = []; let cursor = ''
-          do { const page = await knowledgebaseApi.folders(path, cursor, controller.signal); items.push(...page.folders); cursor = page.next_cursor || '' } while (cursor)
-          return items
-        })(),
-        (async () => {
-          const items = []; let cursor = ''
-          do { const page = await knowledgebaseApi.entries({ folder_path: path, cursor, limit: 100 }, controller.signal); items.push(...page.entries); cursor = page.next_cursor || '' } while (cursor)
-          return items.filter(entry => entry.folder_path === path)
-        })(),
-      ])
-      for (const entry of entries) index.set(entry.path, entry)
-      const children = await Promise.all(folders.filter(folder => folder.path !== path).map(async folder => ({ filepath: folder.path, type: 'folder' as const, children: expandedFolders.has(folder.path) ? await folderTree(folder.path) : [] })))
-      return [...children, ...entries.map(entry => ({ filepath: entry.path, type: 'file' as const, last_modified: entry.updated_at }))]
-    }
-    void folderTree('').then(async tree => {
+    cache.current = new Map()
+    void Promise.all(['', ...expandedRef.current].map(path => fetchFolder(path, controller.signal))).then(async () => {
       if (controller.signal.aborted) return
-      // Preserve open tab IDs for fresh authorized reads even when their folder is collapsed.
-      const next = new Map(entryIndex.current)
-      for (const [path, entry] of index) next.set(path, entry)
-      entryIndex.current = next; setFiles(tree)
+      rebuild()
+      const next = entryIndex.current
       const paths = new Set(tabsRef.current.map(tab => tab.path))
       if (selectedRef.current) paths.add(selectedRef.current)
       await Promise.all([...paths].map(async path => {
@@ -94,17 +132,17 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
       }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [revision, refreshKey, expandedFolders, active])
+    // expandedFolders is read through expandedRef: opening a folder must not refetch the whole tree.
+  }, [revision, refreshKey, active, fetchFolder, rebuild])
   useEffect(() => () => readController.current?.abort(), [])
 
   function revealFolder(path: string) {
     onFolder(path)
     setShowFileContent(false)
-    setExpandedFolders(current => {
-      const next = new Set(current); const parts = path.split('/')
-      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
-      return next
-    })
+    const next = new Set(expandedRef.current); const parts = path.split('/')
+    for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
+    expandedRef.current = next; setExpandedFolders(next)
+    void loadMissing([...next])
   }
   return {
     files, loading, error, expandedFolders,
@@ -115,22 +153,14 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
       setOpenTabs(tabs => tabs.filter(tab => tab.path !== path))
       if (selectedPath === path) { readController.current?.abort(); setSelectedPath(null); selectedRef.current = null; setRead(null); setShowFileContent(false) }
     },
-    toggleFolder: path => { onFolder(path); setExpandedFolders(current => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next }) },
+    toggleFolder: path => {
+      onFolder(path)
+      const next = new Set(expandedRef.current)
+      if (next.has(path)) next.delete(path); else next.add(path)
+      expandedRef.current = next; setExpandedFolders(next)
+      if (next.has(path)) void loadMissing([path]); else rebuild()
+    },
     refresh: () => setRefreshKey(value => value + 1),
     contentHeader: read && <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{read.entry.type} · Updated {read.entry.updated_at ? new Date(read.entry.updated_at).toLocaleString() : 'recently'}{read.entry.updated_by && ` by ${read.entry.updated_by}`}{read.entry.binary && read.content_base64 && <BinaryFilePreview name={read.entry.filename} base64={read.content_base64} size={read.size} />}</div>,
   }
-}
-
-const imageTypes: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
-
-// Brain stores any file (images, PDFs, decks, spreadsheets): show images inline and offer every file as a download.
-function BinaryFilePreview({ name, base64, size }: { name: string; base64: string; size?: number }) {
-  const extension = name.split('.').pop()?.toLowerCase() || ''
-  const image = imageTypes[extension]
-  // SVG can carry script; it is only ever shown through <img>, which does not run it.
-  const href = `data:${image || 'application/octet-stream'};base64,${base64}`
-  return <div className="mt-2 space-y-2">
-    {image && <img src={href} alt={name} className="max-h-96 max-w-full rounded border border-border" />}
-    <a href={href} download={name} className="inline-block text-primary hover:underline">Download {name}{size ? ` (${Math.max(1, Math.round(size / 1024))} KB)` : ''}</a>
-  </div>
 }
