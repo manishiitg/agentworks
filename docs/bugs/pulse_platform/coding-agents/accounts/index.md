@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-615](plat-615.md) | Private provider setup linked user credentials to the shared server login | fixed on main | P1 |
+| [PLAT-615](plat-615.md) | Private provider setup linked user credentials to the shared server login | deployed | P1 |

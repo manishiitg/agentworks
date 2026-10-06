@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | crew |
 | Area | chat |
@@ -35,7 +35,12 @@ Real product prompt composition fixtures cover Code, Crew Builder and Crew Run
 and assert the app identity and provider distinction. Existing workflow identity
 regression covers the shared wording. These focused checks pass on the Mac.
 
-## Left
+## Deployment
 
-Deploy and verify generated instructions on Excellence. Old replies remain
-historical; a restarted/resumed session must receive the corrected instructions.
+Deployed to Excellence in `agents-bd97744f-20261006143646`. Product prompt
+composition and authenticated-user regressions also passed on Excellence's
+Linux host. The release's saved source confirms the real request path supplies
+the signed-in user and the corrected identity section. The affected retained
+Claude session was closed as part of PLAT-615; its next authorized turn receives
+new instructions. No artificial message was sent to another person's chat.
+Old replies and historical prompt snapshots are not rewritten.

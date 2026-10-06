@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P1 |
 | Product | coding-agents |
 | Area | accounts |
@@ -47,9 +47,39 @@ private setup read/refreshed its own dummy login, the server dummy login stayed
 unchanged, and legacy-link rejection/reconnect passed. No real tokens were used
 in the regression. Live repair remains below.
 
-## Left
+## Excellence repair and live checks
 
-Deploy to Excellence, detach legacy links, preserve the verified owner's login
-in that owner's account only, quarantine the contaminated service login, and
-verify admission from both users. Other affected private accounts need their
-owners to sign in again. A valid shared server login requires an admin sign-in.
+On October 6, shared Claude availability was restricted to admins through the
+account API. The affected browser-test conversation was stopped through its
+session API, closing the cached Claude terminal without deleting its history.
+
+SSH repair confirmed the shared login identity matched Vaibhav before preserving
+it as a new independent `0600` file in his private account HOME. The contaminated
+shared credential was quarantined in private operator state and removed from
+service HOME; shared and unrelated runtime identity caches were cleared. Private
+Cursor/Codex links to service login files were detached without copying those
+logins. The other affected Claude connection had already been removed by the
+live registry; its runtime link/cache was removed too. No remaining private
+credential-file symlinks were found.
+
+Authenticated HTTP checks after repair:
+
+- Vaibhav's private Claude status: 200, signed in as his Claude email.
+- Ashutosh requesting Vaibhav's private Claude status: 404.
+- Ashutosh requesting shared Claude status: 404; account picker reports unusable.
+- Admin checking shared Claude: 200, signed out.
+
+These are CLI login status/admission checks, not a paid model request. Encrypted
+connection records and credential values were never included in logs or tickets.
+
+The fix is deployed in Excellence release
+`agents-bd97744f-20261006143646`. The same authenticated admission/status checks
+passed again after restart, with no private credential-file symlinks. Deployment
+health and the Linux slot self-test passed (156 checks; zero failures).
+
+## Account setup follow-up
+
+The affected private Cursor login needs its owner to sign in again. The Codex
+API-key connection keeps its stored key. A valid shared Claude login requires an
+admin sign-in; keep it unavailable to creators until then. Existing historical
+provider/account metadata in chat replies is not rewritten.
