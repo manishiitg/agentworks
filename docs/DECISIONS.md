@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Brain holds shared knowledge; workflow-only facts stay local (option B)
+- Facts about the person, company, projects and org-wide decisions live once in shared Brain folders, read by every
+  project. Facts used only by one workflow stay in its local `knowledgebase/`. These projects import their shared notes,
+  set Brain to Read and are not cut over (cutover would deny their local folder). Why: removes the duplicated person and
+  company notes without putting every workflow behind Brain access before delivery from Brain is guaranteed.
+  Full cutover stays possible later. Design: `design/workflow_knowledge_layers.md`; tickets PLAT-538, PLAT-556.
+
 ### 2026-10-06 — Step descriptions use a fixed layout and hold no history
 - A description is the step's charter: Goal, Inputs, Output, Rules, Done when, Guides. Execution phases go in a
   sequence's items, reusable how-to in skills/learnings, facts and decisions in the knowledgebase, platform mechanics

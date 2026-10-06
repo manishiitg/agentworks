@@ -279,6 +279,10 @@ usable node_modules if the install fails.
 
 [PLAT-555](pulse_platform/step-execution/plat-555.md), guidance on main; Upwork pilot and review-side enforcement open.
 
+## The improvement loop never closes: fixes accrete in descriptions — PLAT-556
+
+[PLAT-556](pulse_platform/pulse-governance/plat-556.md), P1, open: design proposal (layers, Brain option B, Pulse roles, budgets, delivery); nothing built yet.
+
 ## Clarification choice cards and Claude's native AskUserQuestion — PLAT-479
 
 [PLAT-479](pulse_platform/coding-agent-bridge/plat-479.md), fixed on `main` (PR 270 plus its
