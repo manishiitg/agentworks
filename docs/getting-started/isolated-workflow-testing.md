@@ -1,6 +1,6 @@
 # Testing workflow changes alongside a running AgentWorks
 
-> **Update 2026-09-30:** the probe below reproduces the *old* shared-folder collision (a CLI adapter overwriting and deleting `AGENTS.md` / `CLAUDE.md` and skills). Adapters now use a marked, session-counted block that keeps a project's own files ([PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md), [design](../design/project_instruction_files.md)); the workflow private-folder tests here are unchanged.
+> **Update 2026-09-30:** the probe below reproduces the *old* shared-folder collision (a CLI adapter overwriting and deleting `AGENTS.md` / `CLAUDE.md` and skills). Adapters now use a marked, session-counted block that keeps a project's own files ([PLAT-371](../bugs/pulse_platform/platform/security-sandbox/plat-371.md), [design](../design/project_instruction_files.md)); the workflow private-folder tests here are unchanged.
 
 Use the existing `Workflow/testing` as the source fixture, but run tests against
 an isolated copy. Never point a second server or test CLI at the live

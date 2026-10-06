@@ -4,7 +4,7 @@ Each file is one investigated defect: symptom, evidence, root cause, and what wa
 changed. They are written to be re-read by someone who was not there.
 
 Cross-workflow Pulse findings that require shared runtime work are indexed in
-[pulse_platform_issue_register.md](pulse_platform_issue_register.md). Canonical
+[pulse_platform/index.md](pulse_platform/index.md). Canonical
 per-ticket status, evidence, ownership, and acceptance live in the fragmented
 files under [`pulse_platform/`](pulse_platform/), organized into per-category
 subdirectories (see [pulse_platform_categories.md](pulse_platform_categories.md)

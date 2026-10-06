@@ -1,6 +1,6 @@
 # SQLite platform backlog comparison — 2026-09-05
 
-Read-only audit of all 14 local `workspace-docs/Workflow/*/db/db.sqlite` databases. Backup copies excluded. This does not include remote deployments. Compared with `docs/bugs/pulse_platform_issue_register.md` and its PLAT-001–281 ticket fragments. No findings or tickets were changed.
+Read-only audit of all 14 local `workspace-docs/Workflow/*/db/db.sqlite` databases. Backup copies excluded. This does not include remote deployments. Compared with `docs/bugs/pulse_platform/index.md` and its PLAT-001–281 ticket fragments. No findings or tickets were changed.
 
 ## Measured scope
 

@@ -144,7 +144,7 @@ def table_exists(conn, name: str) -> bool:
 def load_register_ids(repo_root: Path) -> set:
     """Every PLAT-NNN already known, so a finding citing one isn't re-flagged."""
     ids = set()
-    register = repo_root / "docs" / "bugs" / "pulse_platform_issue_register.md"
+    register = repo_root / "docs" / "bugs" / "pulse_platform/index.md"
     if register.exists():
         ids |= {m.upper() for m in PLAT_ID_RE.findall(register.read_text(errors="replace"))}
     frag_dir = repo_root / "docs" / "bugs" / "pulse_platform"
@@ -502,7 +502,7 @@ def report_untriaged(snapshot: dict, known_ids: set):
     print(f"  {total} external_action_required findings; MAY_NEED_ATTENTION={untriaged}")
     if untriaged:
         print("  An UNTRIAGED row is not automatically a new ticket — it may be a fresh instance of an")
-        print("  existing one in different words. Read it against docs/bugs/pulse_platform_issue_register.md")
+        print("  existing one in different words. Read it against docs/bugs/pulse_platform/index.md")
         print("  before filing a new PLAT-NNN.")
     print()
 

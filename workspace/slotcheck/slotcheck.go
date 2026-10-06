@@ -320,7 +320,7 @@ func fixFor(why string) string {
 	case strings.Contains(why, "sudo"):
 		return "check the sudo rule /etc/sudoers.d/agentworks-slots* (provision-slots.sh init)"
 	}
-	return "read the slot chain in docs/bugs/pulse_platform/security-sandbox/plat-478.md"
+	return "read the slot chain in docs/bugs/pulse_platform/platform/security-sandbox/plat-478.md"
 }
 
 // firstBlocked walks from / down to the launcher and returns the first folder the account cannot traverse (or the

@@ -2050,7 +2050,7 @@ func RecordPulseFindingDispositionsTx(
 				return err
 			}
 			if err == nil && strings.TrimSpace(issueKind) == IssueKindHarness {
-				return fmt.Errorf("finding %q was filed as %s and cannot be queued_for_engineering: no workflow-level Engineering Review pass can repair a boundary the workflow does not own, so queueing it here means it is rediscovered and re-deferred every pass. Either use external_action_required with external_owner=\"platform\", a reason_code, and a reopen_condition so it reaches docs/bugs/pulse_platform_issue_register.md, or re-file it as %s if this workflow's own plan, config, code, or data does own the failure",
+				return fmt.Errorf("finding %q was filed as %s and cannot be queued_for_engineering: no workflow-level Engineering Review pass can repair a boundary the workflow does not own, so queueing it here means it is rediscovered and re-deferred every pass. Either use external_action_required with external_owner=\"platform\", a reason_code, and a reopen_condition so it reaches docs/bugs/pulse_platform/index.md, or re-file it as %s if this workflow's own plan, config, code, or data does own the failure",
 					findingID, IssueKindHarness, IssueKindWorkflow)
 			}
 		}

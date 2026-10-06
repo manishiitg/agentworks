@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BUGS = ROOT / 'docs' / 'bugs'
 TICKETS = BUGS / 'pulse_platform'
-REGISTER = BUGS / 'pulse_platform_issue_register.md'
+REGISTER = BUGS / 'pulse_platform/index.md'
 GUIDE = TICKETS / 'README.md'
 
 PRODUCTS = {
@@ -293,7 +293,7 @@ def cmd_migrate(_):
         s = fp.read_text(errors='ignore')
         s2 = pattern.sub(lambda m: old_to_new[m.group(0)], s)
         if fp.parent != TICKETS and not fp.is_relative_to(TICKETS):
-            s2 = s2.replace('pulse_platform_issue_register.md', 'pulse_platform/index.md')
+            s2 = s2.replace('pulse_platform/index.md', 'pulse_platform/index.md')
         if s2 != s:
             fp.write_text(s2)
     # Inside tickets: relative links to other tickets and to the register.
@@ -312,7 +312,7 @@ def cmd_migrate(_):
                 return m.group(0)
             return '](' + rel_link(new_dir, new_abs) + anchor + ')'
         text = re.sub(r'^\[←[^\]]*\]\([^)]*pulse_platform_issue_register\.md\)', f"[← {p['fields']['Product']} / {p['fields']['Area']}](index.md)", text, flags=re.M)
-        text = text.replace('pulse_platform_issue_register.md', rel_link(new_dir, TICKETS / 'index.md'))
+        text = text.replace('pulse_platform/index.md', rel_link(new_dir, TICKETS / 'index.md'))
         text = link.sub(fix, text)
         lines = text.split('\n')
         at = next((i for i, l in enumerate(lines) if l.startswith('# ')), None)

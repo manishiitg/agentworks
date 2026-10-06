@@ -396,7 +396,7 @@ const (
 	IssueKindWorkflow = "workflow_issue"
 	// IssueKindHarness: the shared runtime, scheduler, bridge, tool contract,
 	// persistence, or UI. No workflow-level repair can fix it — it belongs to
-	// docs/bugs/pulse_platform_issue_register.md.
+	// docs/bugs/pulse_platform/index.md.
 	IssueKindHarness = "harness_issue"
 )
 

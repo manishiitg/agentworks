@@ -715,7 +715,7 @@ builder:  go test ./pkg/agentwrapper ./pkg/workspace ./cmd/server \
   subject, from the harness side rather than the description side.
 - [steps_never_learn_from_their_own_validation_failures.md](steps_never_learn_from_their_own_validation_failures.md)
   — the pattern behind the open `record_pulse_worklist` item.
-- [pulse_platform_issue_register.md](pulse_platform_issue_register.md) — a
+- [pulse_platform/index.md](pulse_platform/index.md) — a
   sibling index-plus-tickets document (PLAT-NNN), already following the
   structure this file is adopting. PLAT-018, fixed `c0ce81d86` (Claude Code),
   is the dashboard-stage twin of #3/#8 here: a prompt that never named the

@@ -5,8 +5,8 @@ workflow chats in their shared data folder with one shared prompt. Workflows
 instead use the same linked private-runtime design as Crew.
 
 Related: [project instruction files](project_instruction_files.md),
-[PLAT-296](../bugs/pulse_platform/security-sandbox/plat-296.md), and
-[PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
+[PLAT-296](../bugs/pulse_platform/platform/security-sandbox/plat-296.md), and
+[PLAT-371](../bugs/pulse_platform/platform/security-sandbox/plat-371.md).
 
 ## Layout and paths
 

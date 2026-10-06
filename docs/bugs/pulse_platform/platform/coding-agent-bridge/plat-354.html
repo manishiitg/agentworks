@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>PLAT-354 — Show coding-agent native questions in chat</title>
+  <style>
+    :root { --ink:#20283b; --muted:#68728a; --line:#dfe4ed; --paper:#fff;
+      --surface:#f5f7fb; --accent:#4255b9; --accent-pale:#eef1ff; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--surface); color:var(--ink);
+      font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif; }
+    a { color:var(--accent); text-decoration-thickness:1px; text-underline-offset:3px; }
+    a:hover { color:#293a95; }
+    .page { max-width:1440px; margin:auto; padding:32px 32px 88px; }
+    .back { display:inline-block; margin:0 0 20px; color:var(--muted); font-size:14px; }
+    .hero { background:linear-gradient(135deg,#fff 35%,#eff2ff); border:1px solid var(--line);
+      border-radius:20px; padding:34px 40px; box-shadow:0 8px 30px rgba(27,39,83,.05); }
+    .eyebrow { color:var(--accent); font-size:12px; font-weight:750; letter-spacing:.13em;
+      text-transform:uppercase; }
+    h1 { font-size:clamp(28px,3vw,42px); line-height:1.15; letter-spacing:-.035em;
+      margin:10px 0 24px; max-width:900px; }
+    .meta { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .meta-item { min-width:0; padding:12px 14px; border:1px solid #e5e9f3;
+      border-radius:10px; background:rgba(255,255,255,.82); }
+    .meta-item span { display:block; color:var(--muted); font-size:11px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.07em; }
+    .meta-item strong { display:block; margin-top:4px; font-size:14px; font-weight:650;
+      line-height:1.35; overflow-wrap:anywhere; }
+    .layout { display:grid; grid-template-columns:230px minmax(0,1fr); gap:28px;
+      align-items:start; margin-top:28px; }
+    .toc { position:sticky; top:24px; background:var(--paper); border:1px solid var(--line);
+      border-radius:14px; padding:20px 16px; }
+    .toc h2 { margin:0 8px 10px; font-size:12px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--muted); }
+    .toc nav { display:grid; gap:2px; }
+    .toc a { display:block; padding:7px 9px; border-radius:7px; text-decoration:none;
+      color:#49546d; font-size:13px; line-height:1.35; }
+    .toc a:hover { background:var(--accent-pale); color:var(--accent); }
+    article { min-width:0; padding:34px 44px 55px; background:var(--paper);
+      border:1px solid var(--line); border-radius:16px; box-shadow:0 5px 22px rgba(27,39,83,.035); }
+    article h2 { margin:48px 0 14px; padding-top:9px; border-top:1px solid var(--line);
+      font-size:25px; line-height:1.25; letter-spacing:-.02em; scroll-margin-top:24px; }
+    article h2:first-child { margin-top:0; border-top:0; padding-top:0; }
+    article h3 { margin:32px 0 9px; font-size:19px; line-height:1.3;
+      letter-spacing:-.01em; scroll-margin-top:24px; }
+    article p { margin:12px 0 17px; }
+    article ul, article ol { padding-left:24px; margin:12px 0 20px; }
+    article li { padding-left:3px; margin:7px 0; }
+    article li::marker { color:var(--accent); }
+    article strong { color:#17213a; }
+    code { padding:.1em .33em; border:1px solid #e7eaf2; border-radius:5px;
+      background:#f5f6fa; color:#31428e; font: .88em/1.45 ui-monospace,SFMono-Regular,
+      Menlo,Consolas,monospace; overflow-wrap:anywhere; }
+    pre { overflow:auto; padding:16px; background:#f5f6fa; border-radius:10px; }
+    pre code { border:0; padding:0; }
+    article > p:first-of-type { color:#3c4760; }
+    article a { overflow-wrap:anywhere; }
+    .contract-note { padding:15px 18px; border-left:4px solid var(--accent);
+      border-radius:0 9px 9px 0; background:var(--accent-pale); }
+    .contract-card { margin:14px 0; padding:17px 20px; border:1px solid var(--line);
+      border-radius:11px; background:#fcfdff; }
+    .contract-card h3 { margin:0 0 8px; }
+    .contract-card p { margin:7px 0; }
+    .tool-map-wrap { overflow-x:auto; }
+    .tool-map { width:100%; border-collapse:collapse; margin:16px 0 20px; font-size:14px; }
+    .tool-map th, .tool-map td { padding:11px 12px; border:1px solid var(--line);
+      text-align:left; vertical-align:top; }
+    .tool-map th { background:#f5f6fa; color:#17213a; }
+    .signal-list { list-style:none; padding:0; }
+    .signal-list > li { margin:13px 0; padding:15px 19px; border:1px solid var(--line);
+      border-radius:10px; background:#fcfdff; }
+    .signal-list h3 { margin:0 0 6px; }
+    .signal-list p { margin:7px 0; }
+    .signal-priority { display:inline-block; margin-left:8px; color:var(--accent);
+      font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    @media (max-width:980px) {
+      .layout { grid-template-columns:1fr; }
+      .toc { position:static; }
+      .toc nav { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .meta { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width:650px) {
+      .page { padding:16px 12px 50px; }
+      .hero { padding:24px 20px; border-radius:14px; }
+      article { padding:22px 20px 36px; border-radius:12px; }
+      .meta, .toc nav { grid-template-columns:1fr; }
+      article h2 { font-size:22px; }
+    }
+    @media print {
+      body { background:#fff; font-size:11pt; }
+      .page { padding:0; max-width:none; }
+      .back, .toc { display:none; }
+      .hero, article { border:0; box-shadow:none; padding:0; }
+      .layout { display:block; }
+      h2, h3 { break-after:avoid; }
+      li, p { orphans:3; widows:3; }
+      a { color:inherit; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="../../index.md">← Pulse platform issue index</a>
+    <header class="hero">
+      <div class="eyebrow">Pulse platform · Coding agent bridge</div>
+      <h1>PLAT-354 — Show coding-agent native questions in chat</h1>
+      <div class="meta"><div class="meta-item"><span>Status</span><strong>Question card restored for attended Muse chats (2026-09-29); completion is structured for all five CLIs</strong></div>
+<div class="meta-item"><span>Priority</span><strong>P0 contract migration; P1 question flow</strong></div>
+<div class="meta-item"><span>Owner</span><strong>coding agent bridge and frontend chat</strong></div>
+<div class="meta-item"><span>Reported</span><strong>2026-09-23</strong></div>
+<div class="meta-item"><span>Related</span><strong>PLAT-134 (browser products cannot answer native terminal questions)</strong></div></div>
+    </header>
+    <div class="layout">
+      <aside class="toc" aria-label="On this page">
+        <h2>On this page</h2>
+        <nav><a href="#problem">Problem</a>
+<a href="#current-delivery-focus">Current delivery focus</a>
+<a href="#observed-muse-transcript-contract">Observed Muse transcript contract</a>
+<a href="#proposed-behavior">Proposed behavior</a>
+<a href="#muse-native-tools-and-bridge">Muse native tools and MCP bridge</a>
+<a href="#claude-transcript-follow-up-2026-09-23">Claude transcript follow-up (2026-09-23)</a>
+<a href="#claude-tool-containment">Claude native tools and MCP bridge</a>
+<a href="#codex-transcript-follow-up-2026-09-23">Codex transcript follow-up (2026-09-23)</a>
+<a href="#future-hybrid-revisit">Future hybrid revisit</a>
+<a href="#migration-progress-2026-09-23">Migration progress (2026-09-23)</a>
+<a href="#p0-tmux-contract-replacement">P0 tmux contract replacement</a>
+<a href="#structured-parsing-by-cli">Structured parsing by CLI</a>
+<a href="#additional-structured-signals">Additional structured signals</a>
+<a href="#acceptance">Acceptance</a>
+<a href="#observed-structured-record-inventory-2026-09-23">Observed structured-record inventory (2026-09-23)</a>
+<a href="#code-references">Code references</a></nav>
+      </aside>
+      <article>
+<h2 id="problem">Problem</h2>
+<p>Muse can call its native <code>request_user_input</code> tool with several questions and
+multiple options per question. The current tmux adapter reads the visible
+question widget, moves the cursor to option 1, and presses Enter automatically.
+The user never sees or chooses the options in chat. The P0 test
+<code>TestMuseCLIRealAutoFirstOptionThreeQuestionsP0</code> verifies this current behavior;
+it does not test a user-facing choice flow. The option name
+<code>WithAutoSelectRecommended</code> is historical: the implementation chooses the
+first option even when a different option is marked Recommended.</p>
+<p class="contract-note"><strong>Current delivery focus:</strong> migrate one coding
+agent at a time from pane-string correctness checks to native structured P0
+proof. Keep tmux for keystroke transport and P1 terminal presentation. Start
+with Muse; the native question UI and a return to <code>hybrid</code> follow after
+the Muse contract migration is certified. The concrete order and gate are
+<a href="#current-delivery-focus">below</a>.</p>
+<p class="contract-note"><strong>Future product direction:</strong> browser
+profiles stayed on <code>mcp_only</code> after native Claude choosers appeared in
+tmux and left chat waiting for input it could not send. Reading structured
+question events and returning the user's selection through a verified input
+path could let us <a href="#future-hybrid-revisit">revisit hybrid later</a>.
+PLAT-354 documents that path; it does not enable hybrid now.</p>
+<h2 id="current-delivery-focus">Current delivery focus: Muse first</h2>
+<p><strong>Shared chat contract:</strong> One
+<code>coding_agent_question</code> event uses <code>provider</code>,
+<code>prompt_id</code>, and a provider-neutral <code>requested</code> or
+<code>settled</code> kind. Questions contain IDs, headers, text, ordered
+options, descriptions, and <code>multi_select</code>. Answers contain
+<code>selected_labels</code>, allowing one choice for Muse or several for a
+Claude <code>AskUserQuestion</code> with <code>multiSelect</code>. The reusable
+chat card renders radio buttons or checkboxes accordingly. Claude's
+<code>tool_use.id</code> can serve as <code>prompt_id</code>; a later matching
+<code>tool_result.tool_use_id</code> can settle it. Claude question emission
+and validated native answer delivery are future provider work; the shared
+answer route currently dispatches only to the proven Muse adapter.</p>
+<p><strong>Structured question choice in chat:</strong> The Muse persistent
+session now leaves native <code>request_user_input</code> prompts open. A
+session-scoped reader follows newline-committed <code>user_input_prompt_requested</code>
+and <code>user_input_prompt_settled</code> rows and emits durable
+<code>coding_agent_question</code> events keyed by native session and sequence.
+The chat renders each question, option label, and description; it waits for the
+settled event before marking a submitted choice complete. The answer endpoint
+requires the current <code>prompt_id</code> and validates question IDs and
+option labels against the latest pending JSONL record. It checks the live Muse
+widget before moving the cursor and sending Enter through tmux, including the
+multi-question review. A stale prompt returns a conflict. Direct Muse adapter
+callers retain first-option automatic selection unless they opt into the chat
+choice mode. The real Muse P0 choice test selected the third option in a
+single question, then selected the last option in each of three questions on
+the same retained session and observed answered settlements on 2026-09-23.
+The composer waits while a choice is pending.</p>
+<p>Finish the P0/P1 split for <strong>Muse</strong> before changing another
+coding-agent adapter. The next providers are Claude Code, Codex CLI, Cursor
+CLI, and Pi CLI with Gemini, each with its own native record shape and live
+proof. The provider cards below are a migration inventory, not approval to
+change every adapter in parallel.</p>
+<div class="tool-map-wrap"><table class="tool-map">
+  <thead><tr><th>Muse contract</th><th>Structured P0 proof</th><th>tmux P1 / remaining safety role</th><th>State</th></tr></thead>
+  <tbody>
+    <tr><td><code>durable_ack</code></td><td>Current send's <code>runtime.user_intent.accepted</code> row, scoped by sequence and exact prompt.</td><td>Fast pane receipt and queue display are P1. tmux still sends the keys.</td><td>Already implemented; retain the live busy and idle steering proof.</td></tr>
+    <tr><td><code>final_extraction</code> and <code>reply_formatting_fidelity</code></td><td>Current run's <code>assistant_message_committed</code> text from <code>session.jsonl</code>, with the accepted intent/run ID preventing an older or concurrent answer from winning.</td><td>Wrapped pane text and scrollback are P1 presentation evidence.</td><td>Implemented in the adapter; live retained-session and formatting tests pass.</td></tr>
+    <tr><td><code>structured_streaming</code> and <code>stream_no_history_replay</code></td><td>Sequence-scoped assistant commits, tool calls, and tool-result batches; pair tools by <code>call_id</code>.</td><td>Raw pane snapshots remain a separate P1 terminal stream.</td><td>The tailer now starts from the pre-submit sequence, including fast commits after submit without replaying prior history. Certified live 2026-09-23: <code>TestMuseCLIRealTmuxTranscriptStreamP0</code> streams an early commit and a paired tool call on one retained session with no history replay across three turns.</td></tr>
+    <tr><td><code>done_detection</code> and <code>slow_tool_false_idle</code></td><td>A <code>runtime.session</code> event with <code>payload.kind=run</code>, <code>event.kind=terminal</code>, <code>event.terminal=completed</code>, and the current turn's resolved <code>run_id</code>. Treat cancelled/failed as terminal errors.</td><td>Spinner and settled-pane appearance are P1. tmux still handles transport, pending questions, and trust/auth gates.</td><td>Implemented for foreground turns. Live multi-turn, retained-session, slow-tool, and pending-question checks pass. Background-task lifecycle after foreground completion needs its own contract.</td></tr>
+    <tr><td>Blocker and input safety</td><td>Use native question and approval records when they cover a specific blocker.</td><td>Keep pane trust/auth checks, pending widget validation, and stuck-draft detection as P0 until equivalent structured proof exists; tmux remains the input transport.</td><td>Explicit exception to a blanket “tmux is P1” rule.</td></tr>
+  </tbody>
+</table></div>
+<p><strong>Completion rule:</strong> the Muse P0 runner must prove exact intake,
+current-run answer and tool mapping, terminal completion after multi-step work,
+no false idle during a slow tool, cancellation, retained multi-turn use, and
+no prior-turn replay. Move a pane-string assertion to P1 only after its P0
+structured replacement passes a live turn through the production adapter.
+Keep the original P0 test ID and replace its proof source; do not simply drop
+the test. Then repeat this process for the next provider.</p>
+<p><strong>Current evidence:</strong> the live Muse tests
+<code>TestMuseCLIRealTmuxMultiTurn</code>,
+<code>TestMuseCLIRealPersistentSession</code>,
+<code>TestMuseCLIRealTmuxToolRunTerminal</code>,
+<code>TestMuseCLIRealPendingQuestionResumeP0</code>,
+<code>TestMuseCLIRealTmuxReplyFidelity</code>, and
+<code>TestMuseCLIRealPersistentStopThenNewMessage</code> passed on
+2026-09-23. The Stop test first exposed a retained editor draft; the adapter
+now clears only its own visibly matching stopped draft before the next
+submission. A changed draft blocks submission. The last Muse gates are closed:
+<code>TestMuseCLIRealBackgroundTaskAfterRunTerminal</code> covers the
+background-task lifecycle, and
+<code>TestMuseCLIRealTmuxTranscriptStreamP0</code> (passed live 2026-09-23 in
+108s) certifies production streaming including an early commit. Claude Code is
+the next provider migration.</p>
+<p>In the observed logs, <code>runtime.session</code>
+<code>event.kind=completed</code> has <code>payload.kind=task</code> and can
+appear repeatedly during one run. <code>model_completed</code> can end with
+<code>finish_reason=tool_calls</code>. Neither is a whole-turn completion
+signal. A run-level <code>terminal</code> row is the candidate; its
+accepted-intent correlation and behavior around pending input still need a
+live certification before it replaces the interactive waiter. Ordinary
+initial turns observed locally share the accepted intent ID and run ID;
+queued or mid-turn intents may join an existing run, so do not require a
+separate terminal row for every accepted intent. A backgrounded task can
+outlive the foreground run: one observed Muse log has a run-level
+<code>terminal=completed</code> at sequence 28859, then status/output for
+the linked background task at 28912–28915 and task cancellation at 28916.
+Use the run terminal to finish the foreground chat reply; continue tracking
+the background task by its <code>task_id</code>/<code>task_stream</code>. Do not
+silently drop its later events or hold the foreground reply open until every
+background task ends.</p>
+<h2 id="observed-muse-transcript-contract">Observed Muse transcript contract</h2>
+<p>Muse's native <code>session.jsonl</code> includes a <code>user_input_prompt_requested</code> event
+with <code>prompt_id</code>, <code>tool_call_id</code>, and a <code>questions</code> array. Each question has an
+<code>id</code>, <code>header</code>, <code>question</code>, and ordered <code>options</code>; options have a <code>label</code> and
+may carry Markdown preview text. A subsequent <code>user_input_prompt_settled</code>
+event contains the same prompt/tool-call identity, an <code>outcome</code>, and answers
+with question <code>id</code> and <code>selected_label</code>. A real three-question transcript was
+inspected locally; the P0 test already reads the requested event to verify
+the first displayed labels.</p>
+<p>The JSONL file is an observation source, not an input API. The current
+transcript streamer emits assistant text and tool start/end chunks but does
+not project these question events into chat. The auto-answer path instead
+parses tmux pixels and sends tmux keys.</p>
+<h2 id="proposed-behavior">Proposed behavior</h2>
+<ol>
+<li>Tail the active Muse session's <code>session.jsonl</code> by sequence. On a new
+   <code>user_input_prompt_requested</code>, parse the structured questions and present
+   all of them, including option labels and previews, in chat. Correlate the
+   prompt by native session ID plus <code>prompt_id</code> and <code>tool_call_id</code> so resumed
+   sessions and earlier questions cannot be confused with the active prompt.</li>
+<li>Disable automatic first-option selection for turns whose choices are
+   presented to the user. Keep the turn pending while the user decides.</li>
+<li>On submission, use the existing Muse tmux input path to navigate the live
+   widget and submit the user's selected option for each question. Before
+   sending keys, verify that the visible widget matches the expected question
+   and option labels; if it has changed or vanished, refresh the prompt
+   instead of sending keys against a stale screen.</li>
+<li>Confirm completion from the matching <code>user_input_prompt_settled</code> event.
+   Show the recorded selections or an actionable canceled/error state. Avoid
+   duplicate submission across reconnects and repeated event reads.</li>
+</ol>
+<p>This is a Muse-specific first implementation. Claude has a related structured
+source, but its answer record and tmux widget need a provider-specific bridge.</p>
+<h2 id="muse-native-tools-and-bridge">Muse native tools and MCP bridge</h2>
+<p>For AgentWorks launches, the Muse adapter mounts <code>api-bridge</code> in an
+isolated Muse config root. Its <code>PreToolUse</code> hook admits native
+<code>web_search</code>, Muse's <code>tool_search</code> discovery tool, the internal
+<code>submit_reminder_decision</code> sink, and names beginning with
+<code>mcp__</code>. The hook asks Muse to deny other native tool calls.
+The adapter also sets <code>run.subagent_delegation_mode=off</code> and
+<code>run.workflow_trigger_mode=off</code>. This is best-effort containment:
+native tools can remain visible, and some internal session controls such as
+<code>write_todos</code> may bypass the hook. A live restriction test verifies
+denial of <code>read_file</code> and <code>bash</code> while MCP stays usable.</p>
+<p>These are native tool names seen in 305 local Muse <code>session.jsonl</code>
+files, plus <code>subagent_spawn</code> from the adapter's policy test and
+<a href="https://github.com/meta-models/meta-model-cookbook/blob/main/04_muse_code/06_subagent_fanout/README.md">Meta's Muse subagent recipe</a>.
+Argument names below describe observed calls; they are not a complete
+versioned input schema.</p>
+<div class="tool-map-wrap"><table class="tool-map">
+  <thead><tr><th>Muse native tool</th><th>Call inputs</th><th>AgentWorks bridge route / status</th></tr></thead>
+  <tbody>
+    <tr><td><code>bash</code>, <code>bash_input</code></td><td><code>command</code>, <code>description</code>, optional <code>workdir</code> / <code>yield_time_ms</code>; follow-up <code>session_id</code> / <code>terminate</code></td><td><code>api-bridge.execute_shell_command</code> for shell execution. No direct background-shell follow-up equivalent is established.</td></tr>
+    <tr><td><code>read_file</code>, <code>search</code></td><td><code>path</code> with optional <code>offset</code> / <code>limit</code>; or <code>pattern</code>, <code>paths</code>, and search options</td><td><code>api-bridge.execute_shell_command</code> using file and search commands.</td></tr>
+    <tr><td><code>edit_file</code>, <code>write_file</code></td><td><code>path</code> with <code>find</code> / <code>replace</code>; or <code>path</code> / <code>content</code></td><td><code>api-bridge.diff_patch_workspace_file</code> applies a unified diff. Its input shape differs from Muse's native edit tools.</td></tr>
+    <tr><td><code>web_fetch</code></td><td><code>url</code></td><td>Bridge shell/HTTP or an admitted browser tool. Native <code>web_search(query)</code> remains allowed.</td></tr>
+    <tr><td><code>read_skill</code></td><td><code>name</code>, sometimes <code>path</code></td><td>Direct <code>api-bridge.read_skill</code> when skills are attached; otherwise a profile-specific route.</td></tr>
+    <tr><td><code>request_user_input</code></td><td><code>questions</code> array with IDs, text, and options</td><td>No one-to-one bridge widget. The hook policy asks to deny the native call; this needs a live AgentWorks-profile check for the proposed choice flow.</td></tr>
+    <tr><td><code>subagent_spawn</code></td><td><code>role</code>, <code>objective</code>, optional <code>worktree_isolation</code></td><td>Native delegation is switched off; no one-to-one MCP bridge replacement.</td></tr>
+    <tr><td><code>workflow</code></td><td><code>script</code> in the one observed call</td><td>Native workflow triggering is switched off; no one-to-one bridge replacement.</td></tr>
+  </tbody>
+</table></div>
+<div class="contract-card">
+  <h3>Muse's equivalent of Claude Agent / Task</h3>
+  <p><code>subagent_spawn</code> gives a child a <code>role</code> and an
+  <code>objective</code>. <code>worktree_isolation: true</code> requests a separate
+  Git worktree for write-capable work when the Muse profile supports it. Meta's
+  recipe also names <code>subagent_status</code>, <code>subagent_send_message</code>,
+  <code>subagent_cancel</code>, <code>subagent_wait</code>, and
+  <code>subagent_read_result</code> for managing the child. No
+  <code>subagent_spawn</code> invocation was present in the 305 local logs
+  checked here, so these input names come from Meta's recipe rather than a
+  local call record.</p>
+</div>
+<p class="contract-note"><strong>Choice-flow dependency:</strong> the direct
+Muse P0 question test exercises the native <code>request_user_input</code> path.
+The AgentWorks integration's current hook does not admit that name. Before
+using native question JSONL events as the production chat contract, verify
+whether the active AgentWorks profile actually reaches the widget; if the
+hook blocks it, explicitly admit this tool or supply another supported
+question path.</p>
+<h2 id="claude-transcript-follow-up-2026-09-23">Claude transcript follow-up (2026-09-23)</h2>
+<p>Local Claude conversation JSONL files contain assistant <code>tool_use</code> blocks named
+<code>AskUserQuestion</code>. Their <code>input.questions</code> array carries <code>question</code>, <code>header</code>,
+<code>multiSelect</code> (when present), and ordered <code>options</code> with <code>label</code> and
+<code>description</code>. These blocks have a <code>tool_use</code> ID. A later user-role
+<code>tool_result</code> block refers to that ID and contains the answer as text. The
+question row was observed 25 seconds before its matching answer row in one
+local session, so the transcript can expose a pending question. Local files
+included one-, two-, and three-question calls.</p>
+<p>Claude therefore also has enough structured data to render choices without
+parsing tmux text. Unlike Muse, it has no observed dedicated
+<code>user_input_prompt_requested</code> / <code>user_input_prompt_settled</code> pair: correlate
+<code>tool_use.id</code> with <code>tool_result.tool_use_id</code>, and treat the result as text
+until its answer format is verified. The existing Claude transcript streamer
+already projects tool starts and ends, including input arguments; it does not
+provide a dedicated user-question event. Claude's native widget still needs
+live validation before sending the selected choice through tmux.</p>
+<h2 id="claude-tool-containment">Claude native tools and MCP bridge</h2>
+<p>The default <code>mcp_only</code> profile passes <code>--tools WebSearch</code> to Claude
+Code and mounts our <code>api-bridge</code> with <code>--mcp-config</code> and
+<code>--strict-mcp-config</code>. Claude's own <code>WebSearch</code> remains available.
+<code>--allowed-tools mcp__api-bridge__*,WebSearch</code> lets those tools run without a
+permission prompt; it is <em>not</em> the switch that removes native tools.
+Claude's <a href="https://code.claude.com/docs/en/cli-reference">CLI reference</a>
+distinguishes <code>--allowedTools</code> from <code>--tools</code> and says the latter
+does not remove MCP tools.</p>
+<div class="contract-card">
+  <h3>Enforcement differs by transport</h3>
+  <p><strong>Interactive / tmux:</strong> launches with <code>--tools WebSearch</code>,
+  <code>--permission-mode dontAsk</code>, and the bridge MCP config. There is no
+  explicit <code>--disallowedTools</code> list in this path. The optional
+  <code>MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING</code> setting adds a
+  <code>PreToolUse</code> hook that denies calls outside the registered bridge tools
+  and <code>WebSearch</code>; it is not on by default.</p>
+  <p><strong>Structured / print:</strong> launches with <code>--tools WebSearch</code>
+  and an explicit <code>--disallowedTools</code> list, because this path also uses
+  <code>--dangerously-skip-permissions</code> by default. The denylist is
+  <code>Bash,Read,Edit,Write,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,Task</code>.
+  These are configured deny names, not a claim that every name belongs to
+  Claude's current default set on every platform.</p>
+  <p><strong>Hybrid:</strong> sets <code>--tools default</code>, allowing native tools
+  alongside the bridge. With <code>provider_auto</code>, Claude receives
+  <code>--permission-mode auto</code> and the structured denylist is omitted.
+  The <code>approve_all</code> branch requests native tools but sets only a
+  permission-bypass metadata flag. The interactive argv builder does not read
+  that flag and falls back to <code>dontAsk</code>; the structured argv builder
+  selects <code>--dangerously-skip-permissions</code> yet still adds the native-tool
+  denylist. This is a tool-mode mismatch to fix or test before relying on
+  <code>approve_all</code> for Claude.</p>
+</div>
+<p>The following are the intended bridge routes for the native tools withheld
+in <code>mcp_only</code>. A route may be absent when the owning profile does not
+register or admit that bridge tool.</p>
+<div class="tool-map-wrap"><table class="tool-map">
+  <thead><tr><th>Claude native tool</th><th>Our bridge route</th><th>Scope</th></tr></thead>
+  <tbody>
+    <tr><td><code>Bash</code></td><td><code>api-bridge.execute_shell_command</code></td><td>Shell commands run through the platform bridge.</td></tr>
+    <tr><td><code>Read</code>, <code>Glob</code>, <code>Grep</code></td><td><code>api-bridge.execute_shell_command</code></td><td>Read or search with commands such as <code>cat</code>, <code>ls</code>, and <code>rg</code>.</td></tr>
+    <tr><td><code>Edit</code>, <code>Write</code>, <code>MultiEdit</code></td><td><code>api-bridge.diff_patch_workspace_file</code></td><td>Apply a unified diff to a workspace file.</td></tr>
+    <tr><td><code>NotebookEdit</code></td><td>Patch or shell route, if admitted</td><td>No dedicated notebook-cell equivalent is registered.</td></tr>
+    <tr><td><code>WebFetch</code></td><td><code>api-bridge.execute_shell_command</code> with HTTP, or an admitted platform browser tool</td><td>No dedicated native <code>WebFetch</code> replacement; <code>WebSearch</code> stays native.</td></tr>
+    <tr><td><code>Agent</code> (formerly <code>Task</code>)</td><td>None one-to-one</td><td>Spawns a Claude subagent with its own context and returns its result; the bridge does not recreate that tool.</td></tr>
+  </tbody>
+</table></div>
+<p>The bridge also advertises <code>api-bridge.agent_browser</code> when the profile
+admits it. <code>api-bridge.get_api_spec</code> is always registered; additional
+tools can be registered for a session. The routing prompt points Claude to
+<code>get_api_spec</code> plus bridge shell/HTTP for other platform tools.</p>
+<p><strong>Alias check:</strong> Claude renamed the <code>Task</code> subagent tool to
+<code>Agent</code> in v2.1.63; <code>Task(...)</code> remains an alias in settings and agent
+definitions according to <a href="https://code.claude.com/docs/en/sub-agents">Claude's
+subagent documentation</a>. Our structured denylist still names only
+<code>Task</code>. Verify that this CLI deny rule also removes <code>Agent</code> on the
+installed version; otherwise add <code>Agent</code> to the denylist. The
+<code>--tools WebSearch</code> allowlist does not name either tool.</p>
+<p class="contract-note"><strong>Implication for the question UI:</strong>
+<code>AskUserQuestion</code> appears in local Claude JSONL, but it is not named
+in the default <code>--tools WebSearch</code> list. Those historical records do
+not establish that a bridge-only session can call it today. Test that exact
+profile before building the Claude choice flow around this event. If it is
+unavailable, a narrowly expanded native-tool list should be evaluated
+without enabling the full <code>default</code> set.</p>
+<p>The earlier Video Studio hybrid trial exposed the browser-product failure
+directly: Claude opened an <code>AskUserQuestion</code>-style chooser in tmux,
+waited for a selection, and browser chat stayed on <code>Working</code> because
+it could not answer that provider-owned UI. That is why the browser product
+kept <code>mcp_only</code> as its default. See the
+<a href="../../../design/native_coding_agent_environment_policy.md">native
+coding-agent environment policy</a>. The separate <code>native_shell</code>
+product-API experiment was left off after Codex and Cursor could not reliably
+use their native shells; that failure is recorded in the
+<a href="../../../design/product_api_transport_for_coding_agents.md">product
+API transport investigation</a>.</p>
+<h2 id="codex-transcript-follow-up-2026-09-23">Codex transcript follow-up (2026-09-23)</h2>
+<p>Local Codex <code>rollout-*.jsonl</code> files also persist native question calls as
+<code>response_item</code> records. A <code>function_call</code> named <code>request_user_input</code> has
+<code>arguments.questions</code> with question IDs, headers, text, and ordered option
+labels/descriptions. Its <code>call_id</code> links to a later
+<code>function_call_output</code> containing structured <code>answers</code> by question ID; a
+three-question example was verified locally.</p>
+<p>Recent rollouts also show <code>request_user_input_async</code> calls. Their observed
+arguments use <code>questions</code> with <code>title</code> and string <code>options</code>; the immediate
+output was only <code>{ "accepted": true }</code>, so that output does not prove which
+answer the user eventually selected. The eventual user reply needs its own
+correlation rule. Codex rollouts also carry structured turn/task events,
+tool-call starts and outputs, assistant messages, reasoning, and token usage.
+These shapes differ from both Muse and Claude and should be parsed separately.</p>
+<h2 id="future-hybrid-revisit">Future hybrid revisit</h2>
+<p>The historical Video Studio chooser failure explains why browser products
+defaulted to <code>mcp_only</code>. The structured question records documented
+here create a path to revisit <code>hybrid</code> later: read the pending prompt
+from the provider's session record, show the choices in chat, submit the
+user's answer through a verified live input path, then confirm settlement
+from the matching structured result. Reading a JSONL event alone does not
+answer the provider's terminal widget.</p>
+<p>Before enabling hybrid for a browser profile, certify this flow under that
+profile's actual tool policy and transport. In particular, Muse's current
+hook asks to deny <code>request_user_input</code>; Claude's current
+<code>mcp_only</code> tool list does not name <code>AskUserQuestion</code>.
+Approval dialogs and other provider-owned menus need the same chat response
+path or a verified policy that prevents them from appearing. Test pause,
+answer, cancel, and resume without a person at the tmux pane. This is a
+future gate, not a mode change in PLAT-354.</p>
+<h2 id="migration-progress-2026-09-23">Migration progress (2026-09-23)</h2>
+<p class="contract-note"><strong>Decision (2026-09-29, user): the native question
+card is back for chats a person is attending.</strong> Muse's structured
+<code>user_input_prompt_requested</code> record drives a chat card; the person's
+choice is typed into the live widget after it is checked against that record.
+Unattended runs (schedule, bot, webhook, background stage) still auto-select the
+first option. Multi-select questions (<code>selection.mode = "multiple"</code>)
+render as checkboxes within the min/max bounds and are answered by toggling rows
+then Submit. The card always offers <em>Let Muse choose</em> (the auto-first
+answer), and a question the server reports as no longer open releases the input
+lock. A retried submit resumes at the question shown in the widget, and labels
+are matched with whitespace folded so wrapped or description-column rows match.
+Muse's <code>muse serve</code> (MSP) has a native <code>userInput/answer</code>
+method; moving Muse to that transport would retire the keystroke submit.
+Live: <code>TestMuseCLIRealStructuredQuestionChoiceP0</code> (single choice,
+three questions with review, multi-select).</p>
+<p class="contract-note"><strong>Decision (2026-09-23, user): the native question
+card is removed.</strong> Muse auto-selects the first option of its native
+<code>request_user_input</code> widget in every run: chat, schedule, bot,
+webhook and background stage. That is the behaviour before this ticket's
+question flow. Removed: the chat question card and the input lock while a card
+is pending; the answer endpoint, including the <code>/muse-question/answer</code>
+alias; the attending-user plumbing
+(<code>codingAgentRequestHasAttendingUser</code>,
+<code>UserAnswersNativeQuestions</code>); the Muse question watcher and the
+<code>coding_agent_question</code> event; and Muse user-choice mode
+(<code>WithUserChoice</code>, <code>SubmitQuestionAnswers</code>). Stored events
+of that type in old chats are ignored by the transcript. The "question card"
+parts of this ticket below are historical. Native questions for other CLIs will
+not be built; the remaining work is the pane→structured replacement.
+Verified live: <code>TestMuseCLIRealAutoFirstOptionThreeQuestionsP0</code>,
+<code>PendingQuestionResumeP0</code> and <code>LiveInputQuestionsP0</code> pass on
+the removal. <code>TestMuseCLIRealTmuxLiveInput</code> had failed with and
+without it; the cause was the tests, now fixed (see below).</p>
+<p><strong>Direction:</strong> keep tmux as the process host and keystroke
+transport. Provider JSON, rollout, transcript or database records are the P0
+proof of intake, completion and the final answer. Pane parsing becomes P1
+secondary evidence. The exceptions are pane-only safety states with no
+structured record (trust/login, a draft visibly stuck in the editor). Every
+change below was proven with live end-to-end tests against the real CLI;
+unit tests are supplementary.</p>
+<p><strong>AGY onboarding branch (2026-09-28):</strong> AGY's conversation SQLite
+now proves intake with the matching type-14 user step and supplies the final
+answer from the last type-15 field 20.1 after that step. Earlier assistant
+rows are progress updates, not pieces of the final answer. The turn waits for a stable,
+completed assistant step at the end of the SQLite trail. AGY 1.2.12 has no
+separate observed run-terminal row, so tmux composer readiness remains a
+secondary completion guard as well as the keystroke and blocker surface;
+pane capture still streams coarse terminal display updates.
+Retained-turn final text and progress also come from SQLite rather than pane
+scraping. The retained-session and 25-second MCP tool live tests pass with
+this gate;
+the live-input durable receipt also passed twice with an identical message.
+The isolated full application P0 runner passed with AGY 1.2.12 in Gemini
+API-key mode, including retained Chat and two-step workflow completion.</p>
+<ul>
+<li><strong>Unattended runs auto-answer questions.</strong> Persistent Muse
+  enabled user choice, and schedules keep the native session alive, so a
+  scheduled step that asked a question waited forever. User choice now needs
+  <code>codingAgentRequestHasAttendingUser</code> (mcpagent <code>757cf40</code>,
+  builder <code>2ebd0972f</code>).</li>
+<li><strong>Muse gates closed.</strong> <code>TestMuseCLIRealTmuxTranscriptStreamP0</code>
+  certifies production streaming, including an early commit
+  (<code>2e7685d</code>).</li>
+<li><strong>Claude Code <code>done_detection</code> is transcript-primary</strong>
+  (<code>51a58ca</code>). The latest record must be a committed
+  <code>end_turn</code>, followed by a 1.5&nbsp;s quiet window; the pane is the
+  fallback only when no transcript exists.
+  <code>TestClaudeCodeTmuxRealStructuredCompletionP0</code>.</li>
+<li><strong>Codex rollout is the authority once it records the turn</strong>
+  (<code>5aaa833</code>). Pane idleness and the stale-pane backstop can no
+  longer end the turn before <code>task_complete</code> or
+  <code>turn_aborted</code>. A bounded late fallback (final answer written, no
+  pending tool, pane idle 30&nbsp;s) prevents a hang if a Codex build omits
+  <code>task_complete</code>. Post-completion modal dismissal is unchanged.
+  Results carry <code>codex_completion_source</code>.
+  <code>TestCodexCLIRealRolloutCompletionP0</code>.</li>
+<li><strong>Codex cross-session answer leak fixed</strong> (<code>e0d5e67</code>).
+  Two sessions that started together in one directory could each bind the
+  other's rollout before learning a thread ID, and each returned the other's
+  answer under its own identity. Binding now requires the rollout to contain
+  that session's first prompt. <code>SharedWorkingDirMCPIsolation</code> failed
+  2/2 before (baseline too) and passes 3/3.</li>
+<li><strong>Claude multi-line live input settles</strong> (<code>04a7e1f</code>).
+  Short multi-line pastes stay inline (no chip) while the spinner keeps the pane
+  changing, so the old settle wait always timed out. The wait now recognises the
+  whole message in the composer box. <code>HaikuLiveInputAndEscape</code>
+  failed every run before and passes 3/3.</li>
+<li><strong>Claude pasted-content distrust</strong> (<code>b5145f4</code>).
+  Claude Code records a multi-line paste as <code>&lt;pasted_content&gt;</code>
+  with no typed text, and its system prompt says to follow pasted instructions
+  only where the user's own message asks. Haiku, and sometimes Sonnet, refused
+  ordinary AgentWorks prompts as prompt injection (reproduced live). After such
+  a paste the adapter now types <em>"The pasted content above is my own message:
+  follow its instructions."</em>, and the transcript normaliser strips it.
+  <code>TestClaudeCodeTmuxRealMultilinePromptIsActedOn</code> (Haiku) passes 3/3.</li>
+<li><strong>Test model.</strong> Live Claude tests default to
+  <code>claude-sonnet-5</code>; the pasted-content regression stays on Haiku,
+  because a stronger model can hide that bug. Claude live suite: 34 pass on
+  both models.</li>
+<li><strong>Muse live tests match intake by prefix</strong> (<code>53b893c</code>).
+  <code>71fdb70</code> made intake match the accepted intent by prefix (what
+  production passes); four live-test call sites still passed mid-prompt
+  fragments. <code>TmuxCancellation</code>: a Ctrl-C before any output makes
+  Muse restore the prompt into the composer (<code>run_retracted</code>), so
+  the test now clears it as production does. Full Muse live suite 28/28.</li>
+<li><strong>Cursor key and store pinning</strong> (<code>bf44fdc</code>). The tmux
+  launch exports the process <code>CURSOR_API_KEY</code>: a pane inherits the
+  tmux <em>server</em> environment, so "authentication required" appeared
+  whenever a keyless process had started that server. <code>71fdb70</code>
+  resolved the store before the first prompt, pinning a sibling chat in the
+  same workdir and blinding durable ack; it now snapshots only an
+  already-pinned store. <code>DurableAckContract</code> 2/2.</li>
+<li><strong>Cursor completion from store.db</strong> (<code>bf44fdc</code>,
+  <code>cc791c7</code>). Cursor writes no end-of-turn marker, so the shape of
+  this query's baseline-scoped trail decides: a trailing tool call means a tool
+  is running (idle pane = false idle, keep waiting); a trailing tool result
+  means the reply is missing (recovery may fire); trailing assistant prose is
+  the answer. No user row means not taken in: no recovery or no-output error,
+  a stuck draft is resubmitted, and a prompt Cursor 2026.09 holds without
+  starting a turn gets at most two Enter nudges. The pane only reports that
+  the composer is back, and is the fallback when no store exists.
+  <code>cursor_completion_source=store_turn_answer</code> is asserted by
+  <code>TestCursorCLIRealCompletionDetection</code>;
+  <code>DenyBuiltinHookActuallyFires</code> went from 0/5 to 5/5.</li>
+<li><strong>Pi completes on <code>agent_settled</code></strong> (<code>a11889d</code>).
+  The tmux wait already used our marker extension, not the pane, but returned
+  on the first <code>agent_end</code>, which fires inside Pi's post-run loop
+  (retries, multi-step) and can come mid-run. The extension now forwards the
+  once-per-run <code>agent_settled</code>; a build without it falls back to
+  <code>agent_end</code> plus 15&nbsp;s of marker silence.
+  <code>TestPiCLIRealSlowMCPToolDoneDetectionContract</code> asserts
+  <code>pi_completion_source=marker_agent_settled</code>. Test cleanup now
+  stops Pi before removing its temp workdir (<code>8c6472f</code>).</li>
+</ul>
+<ul>
+<li><strong>Claude multi-line input stays the user's message</strong>
+  (<code>60f597e</code>). <code>ExtendedResumeIsolation</code> was not an
+  <code>/exit</code> fusion: Sonnet 5 refused session B's first message as
+  <code>&lt;pasted_content&gt;</code> despite the typed authorization line, and
+  kept refusing on resume. Multi-line or large input is now pasted one line at a
+  time in chunks under the 800-char attachment threshold, with Ctrl-J between
+  lines; the transcript records a plain user message. Typing was rejected (a
+  leading <code>!</code> enters shell mode; <code>@</code> opens the file picker).
+  A message starting with <code>!</code> keeps the whole paste plus the
+  authorization line.</li>
+<li><strong>Submit path:</strong> already two-stage for every CLI: a fast pane
+  receipt, then durable proof from the CLI's own record that promotes the chat
+  tick; a pane misread defers to that record. No further migration needed.</li>
+</ul>
+<h2 id="migration-progress-2026-09-24">Migration progress (2026-09-24)</h2>
+<p><strong>Direction (user):</strong> tmux stays, but for as little as
+possible: launching the CLI, typing input (live steering), live stderr, and the
+CLI's own harness. Fixes read the CLI's structured files (JSONL, SQLite); no new
+pane-string parsing. One pane-parsing fix for Claude steering was reverted for
+this reason. The real cause was found in the transcript (see below).</p>
+<ul>
+<li><strong>Claude Code: steers lost under load.</strong> When the server ran
+  inside another Claude session, the child CLI inherited
+  <code>CLAUDECODE</code>, <code>CLAUDE_CODE_CHILD_SESSION</code>,
+  <code>CLAUDE_CODE_SESSION_ID</code>, the messaging socket/token and
+  <code>CLAUDE_CODE_SESSION_ATTENDED</code>. These turn transcript saving off, so
+  there was no record to prove delivery. They are now blanked for the tmux launch
+  (<code>-e NAME=</code>) and removed from the structured command's environment.
+  Long prompts are pasted line by line, so Claude no longer treats a
+  <code>pasted_content</code> block as untrusted.</li>
+<li><strong>Background subagents no longer end a turn early.</strong> Claude:
+  the turn is done only when the <code>turn_duration</code> row reports
+  <code>pendingBackgroundAgentCount</code> 0. Muse: the adapter follows
+  <code>spawn_accepted</code> → <code>inbox_item_queued</code> (keyed by
+  <code>source_run_record_id</code>) → the drained run → that run's terminal,
+  and reads the answer from the final run.</li>
+<li><strong>Cursor: steered turn.</strong> Cursor records a mid-turn steer as a
+  later user row in the same <code>store.db</code> turn. The reader used to
+  restart the trail there and returned only the steer's reply. It now keeps it in
+  the same trail (multi-llm-provider-go <code>28964a4</code>).</li>
+<li><strong>Muse send latency:</strong> the fixed 1&nbsp;s pane wait before
+  Enter became a short settle (about 120&nbsp;ms, capped at 1&nbsp;s). Each send
+  logs its per-stage timings under <code>[LATENCY_DEBUG] muse submit</code>.</li>
+<li><strong>Stress tests</strong> (opt-in, <code>-coding-cli-stress</code>,
+  <code>CODING_CLI_STRESS_ITERATIONS</code>). Each iteration runs parallel
+  subagents, a slow MCP tool and a mid-turn steer, with native read tools on:
+  Codex 3/3, Claude 3/3, Muse 3/3, Cursor 5/5 (every answer came from
+  <code>store.db</code>).</li>
+<li><strong>Certification:</strong> Pi certified at 0.87.1. The gate script now
+  requires <code>WORKSPACE_API_TOKEN</code>; without it, Pi workflow tests got
+  401s. The Muse gate had one failure: <code>ExecRuntimeContext</code>. The
+  skill was projected and seen, but Muse refused to reveal a "canary word",
+  treating it as a leak probe. The test now asks for a neutral "project
+  codename" (<code>70b838c</code>) and passes 3/3; Muse stays certified at
+  1.3.0.</li>
+<li><strong>Native agent tools</strong> (separate from this ticket's
+  transport work). A crew toggle for Claude, Codex, Cursor and Muse enables
+  read, search, skills, todos and subagents. Native writes stay off in every
+  mode, and Codex keeps its read-only sandbox. Pi stays bridge-only.</li>
+</ul>
+<p><strong>Accepted as known issues (2026-09-24, user).</strong> The transport
+work in this ticket is complete. These three stay as they are; reopen only if
+they recur or get worse:</p>
+<ul>
+<li><code>TestClaudeCode…StructuredCompletionP0</code> fails about one run in
+  three on unchanged main (pre-existing flake).</li>
+<li>Muse IC-11: an occasional "timed out waiting for retained
+  execute_shell_command to start" (not seen in the 2026-09-24 gate).</li>
+<li>Seen once in a Pi gate run, not reproduced since: a retry after cancel
+  returned empty content. Probably fixed by <code>a11889d</code>
+  (<code>agent_end</code> completion); unconfirmed.</li>
+</ul>
+<h2 id="p0-tmux-contract-replacement">P0 tmux contract replacement</h2>
+<p class="contract-note"><strong>Keep the P0 correctness contracts and live tests.</strong>
+Retire the <em>pane-string assertion</em> when the same behavior has a
+session-scoped structured proof. The relevant certification IDs are
+<code>durable_ack</code>, <code>final_extraction</code>,
+<code>reply_formatting_fidelity</code>, <code>done_detection</code>,
+<code>slow_tool_false_idle</code>, and, where claimed,
+<code>structured_streaming</code> plus <code>stream_no_history_replay</code>.
+The <a href="../../../refactor/durable_ack_p0.md">P0/P1 contract split</a>
+already places fast pane acknowledgement, spinner interpretation, and
+queue-banner presentation in P1. Trust/auth blockers and stuck drafts remain
+P0 screen checks until equivalent structured signals exist.</p>
+<p>The <a href="#current-delivery-focus">Muse-first migration table</a> is the
+active work plan. The remaining provider cards are the later queue.</p>
+<div class="contract-list">
+  <section class="contract-card" aria-labelledby="p0-muse">
+    <h3 id="p0-muse">Muse</h3>
+    <p><strong>Retire from pane parsing:</strong> text-based intake proof for
+    <code>durable_ack</code>; answer/tool text for
+    <code>final_extraction</code> and structured streaming; option labels read
+    from the question widget.</p>
+    <p><strong>Use instead:</strong> sequence-scoped
+    <code>runtime.user_intent.accepted</code>,
+    <code>assistant_message_committed</code>,
+    <code>assistant_tool_calls_committed</code> /
+    <code>tool_result_batch_committed</code>, and the matching
+    <code>user_input_prompt_requested</code> /
+    <code>user_input_prompt_settled</code> pair.</p>
+    <p><strong>Keep for now:</strong> tmux keystrokes and live widget
+    validation. The production completion gate now uses the current run's
+    <code>terminal</code> event; the old pane/quiet-log waiter remains only
+    in legacy test paths. The live background-task lifecycle and stream
+    certifications pass. User choice is certified by
+    <code>TestMuseCLIRealStructuredQuestionChoiceP0</code> (option 3 of one
+    question, then the last option of each of three questions, with matching
+    settled records).
+    <code>TestMuseCLIRealAutoFirstOptionThreeQuestionsP0</code> is kept, not
+    replaced. Automatic answering is the correct behaviour whenever no person
+    attends the chat. Schedules, webhooks, bots, child sessions and runtime
+    stages keep auto-answering: only <code>codingAgentRequestHasAttendingUser</code>
+    enables user choice (mcpagent <code>757cf40</code>, builder
+    <code>2ebd0972f</code>). Before that fix, a scheduled Muse run that asked a
+    question waited forever. That test is now the unattended-mode
+    certification.</p>
+  </section>
+  <section class="contract-card" aria-labelledby="p0-claude">
+    <h3 id="p0-claude">Claude Code</h3>
+    <p><strong>Retire from pane parsing:</strong> intake proof, wrapped final
+    answer, tool activity, and question-menu text. Done
+    (2026-09-23, multi-llm-provider-go <code>51a58ca</code>): prompt-shape
+    <code>done_detection</code> now sits behind the current-turn
+    <code>end_turn</code> proof. See the Claude Code state below.</p>
+    <p><strong>Use instead:</strong> JSONL user row; assistant
+    <code>text</code> and <code>tool_use</code>; matching
+    <code>tool_result</code>; <code>AskUserQuestion</code> input; and
+    <code>stop_reason=end_turn</code>. Final answer, usage, and durable
+    intake already use JSONL.</p>
+    <p><strong>Keep for now:</strong> startup/trust/auth and live
+    question-widget navigation through tmux. Verify the text answer format
+    before claiming a choice has settled.</p>
+  </section>
+  <section class="contract-card" aria-labelledby="p0-codex">
+    <h3 id="p0-codex">Codex CLI</h3>
+    <p><strong>Retire from pane parsing:</strong> intake proof, final-answer
+    and tool text, question-menu strings, and idle/completed status text as
+    the primary <code>done_detection</code> proof.</p>
+    <p><strong>Use instead:</strong> rollout user
+    <code>response_item</code>; assistant and tool records;
+    <code>request_user_input</code> call/output by <code>call_id</code>;
+    current-turn <code>task_complete</code> or
+    <code>turn_aborted</code>. Rollout completion and final text are already
+    primary.</p>
+    <p><strong>Keep for now:</strong> tmux input, startup and
+    post-completion runtime-modal handling. Done 2026-09-23
+    (<code>5aaa833</code>): once the rollout records the turn, only
+    <code>task_complete</code>/<code>turn_aborted</code> end it. The pane
+    completes a turn only for sessions without a rollout, or through the
+    bounded late fallback. Modal dismissal still runs before completion is
+    honoured. An async
+    <code>{"accepted":true}</code> output proves dispatch, not the user's
+    selection.</p>
+  </section>
+  <section class="contract-card" aria-labelledby="p0-cursor">
+    <h3 id="p0-cursor">Cursor CLI</h3>
+    <p><strong>Retire from pane parsing:</strong> intake proof and
+    hard-wrapped final answer/tool text. Use the pane only as a checksum
+    while a delayed store commit is pending.</p>
+    <p><strong>Use instead:</strong> the current session's
+    <code>store.db</code> user, assistant, <code>tool-call</code>, and
+    <code>tool-result</code> blocks. The separate print lane already has
+    structured <code>tool_call</code> and terminal <code>result</code>
+    events.</p>
+    <p><strong>Keep for now:</strong> interactive pane
+    <code>done_detection</code> and <code>slow_tool_false_idle</code>:
+    <code>store.db</code> is cumulative, commits asynchronously, and has no
+    observed terminal event. No native choice event was found in RTS stores.</p>
+  </section>
+  <section class="contract-card" aria-labelledby="p0-pi">
+    <h3 id="p0-pi">Pi CLI with Gemini</h3>
+    <p><strong>Retire from pane parsing:</strong> submit-success guesses,
+    answer/tool text, provider-error strings, and token estimates when
+    native usage exists.</p>
+    <p><strong>Use instead:</strong> user <code>message_end</code> and
+    tool/message/error events from adapter <code>markers.jsonl</code>;
+    native session JSONL for message, tool, and usage records. In print mode,
+    <code>agent_settled</code> plus process exit proves run completion.</p>
+    <p><strong>Keep for now:</strong> tmux editor readiness, startup
+    blockers, and the interactive completion fallback. Do not use
+    <code>agent_end</code> alone to retire <code>done_detection</code>;
+    it can occur during a multi-step run. No native choice event was
+    observed locally or on Confida.</p>
+  </section>
+</div>
+<h2 id="structured-parsing-by-cli">Structured parsing by CLI</h2>
+<p>Read the <strong>active native session and current turn</strong>. Use a pre-submit offset,
+sequence, or timestamp; match tools and questions by native ID; consume only
+complete records; and deduplicate replayed rows. A prior turn's record must
+never complete the current turn.</p>
+<h3 id="muse">Muse</h3>
+<ul>
+<li><strong>Read:</strong> <code>session.jsonl</code> records: <code>runtime.user_intent.accepted</code> for
+  intake; <code>assistant_message_committed</code> for text;
+  <code>assistant_tool_calls_committed</code> and <code>tool_result_batch_committed</code> for
+  tools; <code>user_input_prompt_requested</code> and
+  <code>user_input_prompt_settled</code> for questions and answers.</li>
+<li><strong>Replace:</strong> Pane-derived acknowledgement, answer and tool text, and
+  question-widget text. The choice flow should stop automatic option-1
+  selection. The current run's <code>terminal</code> event now replaces the
+  stable-idle-pane plus quiet-log completion gate in production.</li>
+<li><strong>State:</strong> Intake and text/tool parsing exist; question projection and
+  user choice are proposed. <code>model_completed</code> may end one model step, so
+  check the accepted run's <code>terminal</code> for foreground completion.
+  Background tasks continue through a separate session event path; they do
+  not hold the foreground answer open.</li>
+</ul>
+<h3 id="claude-code">Claude Code</h3>
+<ul>
+<li><strong>Read:</strong> Conversation JSONL user messages for intake; assistant <code>text</code>
+  and <code>tool_use</code> blocks; matching user <code>tool_result</code> blocks;
+  <code>AskUserQuestion</code> input for choices; <code>stop_reason=end_turn</code> for the
+  committed answer; message usage for tokens.</li>
+<li><strong>Replace:</strong> Pane-rendered answer and tool activity, question-menu text,
+  and prompt-shape completion detection.</li>
+<li><strong>State:</strong> The final <code>end_turn</code> answer, usage, and durable intake already
+  come from JSONL; mid-turn transcript streaming is opt-in.
+  <strong><code>end_turn</code> is now the primary completion gate</strong>
+  (2026-09-23, <code>51a58ca</code>). Whenever a transcript exists, a turn ends
+  when its latest assistant/user record is a committed <code>end_turn</code>
+  answer and the transcript has been quiet for 1.5&nbsp;s; a continuation after
+  <code>end_turn</code> resets the wait. The pane wait runs alongside, but it
+  settles a turn on its own only when no transcript is readable. Results carry
+  <code>claude_code_completion_source</code>
+  (<code>jsonl_end_turn</code> | <code>tmux_pane</code>).
+  <code>TestClaudeCodeTmuxRealStructuredCompletionP0</code> passed live 3/3: a
+  12&nbsp;s MCP tool turn and a retained follow-up. The full Claude live suite
+  had no new failures. <code>DurableAckContract</code>,
+  <code>HaikuExtendedResumeIsolation</code> and
+  <code>HaikuLiveInputAndEscape</code> fail on the unchanged baseline too
+  (Haiku refuses the prompts as injection, or the paste never settles), and
+  <code>TranscriptStreamingBridgeLive</code> is flaky on both. Questions are
+  deferred until every CLI's pane replacement is done. The
+  <code>AskUserQuestion</code> result is text, so verify its answer encoding
+  before showing a selected option as confirmed.</li>
+</ul>
+<h3 id="codex-cli">Codex CLI</h3>
+<ul>
+<li><strong>Read:</strong> Rollout JSONL user <code>response_item</code> for intake; <code>event_msg</code>
+  and <code>response_item</code> records for assistant text and tool calls/results;
+  <code>request_user_input</code> <code>function_call</code> plus matching
+  <code>function_call_output</code> by <code>call_id</code> for choices; <code>task_complete</code> or
+  <code>turn_aborted</code> for turn outcome; <code>token_count</code> and
+  <code>token_usage_record</code> for usage.</li>
+<li><strong>Replace:</strong> Pane-derived answer and tool progress, question-menu text,
+  idle/completed markers, and terminal error text.</li>
+<li><strong>State:</strong> Current-turn <code>task_complete</code> and rollout final text are
+  primary. Since <code>5aaa833</code> the pane cannot end a turn that the
+  rollout records, and since <code>e0d5e67</code> a new session binds only the
+  rollout containing its own prompt. Runtime modals are still handled on the
+  pane. Transcript streaming is opt-in. The immediate
+  <code>request_user_input_async</code> output <code>{"accepted":true}</code> acknowledges
+  dispatch only; correlate the later user reply before claiming an answer.</li>
+</ul>
+<h3 id="cursor-cli">Cursor CLI</h3>
+<ul>
+<li><strong>Read:</strong> In interactive mode, <code>store.db</code> message blocks <code>text</code>,
+  <code>tool-call</code>, and <code>tool-result</code>, paired by <code>toolCallId</code>. In the separate
+  <code>--print --output-format stream-json</code> lane, read <code>assistant</code>,
+  <code>tool_call</code> started/completed, and terminal <code>result</code> with <code>is_error</code>
+  and usage.</li>
+<li><strong>Replace:</strong> Interactive pane text extraction, wrapping-sensitive final
+  answer, and tool progress. The print lane already has a structured turn
+  outcome.</li>
+<li><strong>State:</strong> The interactive adapter already reconciles final text with
+  <code>store.db</code>; transcript streaming is opt-in. SQLite commits can lag the
+  terminal, and no terminal event was observed in the store, so it cannot
+  alone replace the interactive pane completion gate. No native choice
+  event was seen in the 927 RTS stores.</li>
+</ul>
+<h3 id="pi-cli-with-gemini">Pi CLI with Gemini</h3>
+<ul>
+<li><strong>Read:</strong> Native session JSONL user/assistant/<code>toolResult</code> messages,
+  assistant <code>toolCall</code> blocks, stop reason, and usage. In the tmux lane,
+  the bundled extension's temporary <code>markers.jsonl</code> supplies user
+  <code>message_end</code> for intake, <code>message_update</code>/<code>message_end</code> for text,
+  <code>tool_execution_start</code>/<code>tool_execution_end</code> for tools,
+  <code>provider_error</code>, and <code>agent_start</code>/<code>agent_end</code> for activity. In
+  <code>--print --mode json</code>, use streamed <code>agent_settled</code> with process exit
+  for run completion.</li>
+<li><strong>Replace:</strong> Pane guesses about submit success, answer/tool text,
+  busy/idle status, and provider errors.</li>
+<li><strong>State:</strong> Marker intake already overrides pane disagreement; transcript
+  usage replaces estimates when present. The tmux readiness check still
+  needs the editor/status line. <code>agent_end</code> can fire during a multi-step
+  print run, so it cannot alone prove completion. <code>agent_settled</code> is a
+  print-stream event, not a durable session-file event. No native choice
+  event was observed locally or on Confida.</li>
+</ul>
+<h3 id="transport-boundary-and-migration">Transport boundary and migration</h3>
+<p>Keep tmux as the interactive process host and keystroke transport where no
+provider input API exists. Before answering a native question, confirm the
+latest pending structured event still has the expected prompt ID, then
+validate the visible widget's questions and options. Confirm settlement from
+the matching structured result.</p>
+<p>Keep screen checks for startup, editor focus, trust/auth, and runtime modals
+until the provider exposes an equivalent structured signal. Cursor's delayed
+<code>store.db</code> commits and Pi's temporary marker file need missing-data
+fallbacks. The terminal rail can stay visible for diagnostics without
+providing chat message text.</p>
+<p>Project text, tools, and questions first. Change a provider's completion and
+failure gate only after live tests cover tool loops, interruptions, pending
+input, and resumed sessions. Preserve pane parsing as a compatibility
+fallback for absent or unreadable records, and label each result with its
+source so native proof is distinguishable from a terminal guess.</p>
+<h2 id="additional-structured-signals">Additional structured signals</h2>
+<p>The inventory below contains more than answer, tool-call, and question
+records. These are the next useful projections into chat or diagnostics,
+ordered by likely value. Each needs provider-specific correlation and a
+current-turn boundary; observing a record is not the same as certifying its
+meaning as a completion or user decision.</p>
+<ol class="signal-list">
+  <li>
+    <h3>Approval state <span class="signal-priority">High</span></h3>
+    <p><strong>Muse:</strong> <code>requested</code> carries choices and a
+    <code>pending_action_id</code>; <code>decision_applied</code> records
+    the outcome. <code>automated_review_started</code> and
+    <code>automated_review_completed</code> expose review progress.</p>
+    <p><strong>Use:</strong> Show a pending approval and its resolved
+    decision without scraping an approval widget. Correlate by
+    <code>pending_action_id</code>. The JSONL is an observation source;
+    approval input still needs the provider's supported input path.</p>
+  </li>
+  <li>
+    <h3>Queued input and delivery <span class="signal-priority">High</span></h3>
+    <p><strong>Muse:</strong> <code>inbox_item_queued</code> and
+    <code>inbox_item_drained</code>. <strong>Claude:</strong>
+    <code>queue-operation</code> with <code>enqueue</code>,
+    <code>dequeue</code>, or <code>remove</code>.</p>
+    <p><strong>Use:</strong> Distinguish queued, delivered, and removed
+    follow-ups, replacing queue-banner and spinner guesses. A queue record
+    does not prove the model acted on the message or completed the turn;
+    retain the provider's durable intake and final-answer checks.</p>
+  </li>
+  <li>
+    <h3>Tool outcomes and failures <span class="signal-priority">High</span></h3>
+    <p><strong>Muse:</strong> task <code>status</code>/<code>output</code>
+    and terminal <code>failed</code>, <code>cancelled</code>,
+    <code>timed_out</code>, or <code>rejected</code>.
+    <strong>Claude:</strong> <code>tool_result.is_error</code> and
+    <code>system</code> rows with <code>subtype=api_error</code>.
+    <strong>Codex:</strong> <code>item_completed</code> result status,
+    <code>task_complete.error</code> when present, and
+    <code>turn_aborted</code>. <strong>Cursor print stream:</strong>
+    <code>tool_call</code> completion and <code>result.is_error</code>.
+    <strong>Pi:</strong> <code>tool_execution_update</code> /
+    <code>tool_execution_end</code> and <code>provider_error</code>.</p>
+    <p><strong>Use:</strong> Show a specific failed tool or provider
+    error instead of inferring failure from red terminal text. Pair tool
+    updates with their call/task ID; a status update alone is not final.</p>
+  </li>
+  <li>
+    <h3>Usage, limits, and model state <span class="signal-priority">Medium</span></h3>
+    <p><strong>Muse:</strong> <code>resource_usage_sampled</code> and
+    <code>goal_usage_attribution</code>. <strong>Claude:</strong>
+    assistant message usage and cumulative <code>cost-state</code>.
+    <strong>Codex:</strong> <code>token_count</code> (including
+    <code>rate_limits</code>) and <code>token_usage_record</code>.
+    <strong>Cursor print stream:</strong> <code>result</code> usage.
+    <strong>Pi:</strong> assistant message usage plus
+    <code>model_change</code>.</p>
+    <p><strong>Use:</strong> Drive token/cost and model indicators from
+    records instead of terminal footers. Label cumulative, sampled, and
+    per-turn values separately; do not treat a sampled usage event as an
+    exact bill.</p>
+  </li>
+  <li>
+    <h3>Compaction and context changes <span class="signal-priority">Medium</span></h3>
+    <p><strong>Muse:</strong> <code>context_compaction_installed</code>.
+    <strong>Claude:</strong> <code>system</code> with
+    <code>subtype=compact_boundary</code>; <code>permission-mode</code>
+    for mode display. <strong>Codex:</strong> <code>compacted</code>
+    and <code>turn_context</code>. <strong>Pi:</strong>
+    <code>compaction</code>, <code>model_change</code>, and
+    <code>thinking_level_change</code>. <strong>Cursor:</strong>
+    optional <code>meta.lastUsedModel</code> and
+    <code>meta.approvalMode</code> are session state, not live events.</p>
+    <p><strong>Use:</strong> Show that context was compacted or the
+    model/mode changed, replacing fragile terminal notices. These records
+    do not themselves end a turn; display the transition, not raw
+    replacement history or summary content.</p>
+  </li>
+  <li>
+    <h3>Background work and lifecycle <span class="signal-priority">Later</span></h3>
+    <p><strong>Muse:</strong> <code>task_backgrounded</code>,
+    <code>workflow_child_lifecycle</code>, <code>session.resumed</code>.
+    <strong>Codex:</strong> <code>task_started</code>,
+    <code>task_complete</code>, <code>turn_aborted</code>.
+    <strong>Pi markers:</strong> <code>agent_start</code>,
+    <code>turn_start</code>, <code>turn_end</code>,
+    <code>agent_end</code>.</p>
+    <p><strong>Use:</strong> Show why a conversation remains busy while
+    child work runs, and distinguish resume from a new session. Respect
+    each provider's actual terminal condition: Pi
+    <code>agent_end</code> alone is not full-run completion.</p>
+  </li>
+</ol>
+<p>Project only fields needed for the UI. Raw reasoning/thinking blocks,
+model-input traces, full approval arguments, and Cursor's
+<code>blobEncryptionKey</code> should stay out of chat events.</p>
+<h2 id="acceptance">Acceptance</h2>
+<h3>Current phase: Muse structured P0 / tmux P1</h3>
+<ul>
+<li>The production Muse adapter scopes acceptance, answer, tool records, and
+  run completion to the current turn. A prior turn or queued intent cannot
+  satisfy the current turn's P0 checks.</li>
+<li>Live Muse tests cover a slow tool, a multi-step tool loop, a pending
+  question, cancellation, and two turns in one retained session. A task-level
+  <code>completed</code> or model <code>finish_reason=tool_calls</code> cannot
+  end the turn.</li>
+<li>Pane text supplies P1 progress, fast receipt, and rendering checks after
+  structured P0 replacements pass. Trust/auth gates, pending widgets, and
+  visibly stuck drafts remain P0 safety checks until equivalent native
+  records are proven.</li>
+</ul>
+<h3>Muse background task lifecycle</h3>
+<p>A native <code>task_backgrounded</code> marker belongs to its parent
+<code>run_id</code> and <code>task_id</code>. Muse can commit the parent run's
+<code>terminal=completed</code> before later task <code>status</code>,
+<code>output</code>, or terminal task events. A live Muse run also produced
+post-terminal task <code>status</code> and <code>completed</code> rows
+<em>without</em> a <code>task_backgrounded</code> marker. The reader therefore
+projects explicit background markers and task lifecycle rows arriving after
+their parent run's terminal. Foreground completion returns the answer
+immediately; it does not close the task.</p>
+<p><strong>Implemented locally:</strong> a session-owned JSONL reader follows
+newline-committed task rows after the turn's stream channel closes. It matches
+the background marker and subsequent task rows by run and task ID, emits a
+bounded <code>coding_agent_background_task</code> event with the native sequence
+as its stable ID, and stops when the owning session closes. The server
+persists these events in the interactive chat journal; the chat shows late
+updates in order after the foreground answer. A synthetic test covers a
+background marker, foreground terminal, partial appended row, later status,
+output, and task completion. Separate tests cover unmarked late tasks, the
+session watcher, and durable replay. The live
+<code>TestMuseCLIRealBackgroundTaskAfterRunTerminal</code> now passes with
+post-terminal task rows from a real Muse shell run.</p>
+<p><strong>Restart recovery:</strong> opening a saved Muse session rescans its
+native journal from the beginning, including rows committed while the server
+was down. Native sequence IDs let the chat journal discard already persisted
+events. A restore test verifies that a completed background task is replayed
+without waiting for another foreground turn.</p>
+<h3 id="muse-slow-first-prompt-intake">Muse slow first-prompt intake (2026-09-25)</h3>
+<p><strong>Symptom:</strong> the first prompt of a new Muse tmux session failed with
+<code>muse prompt delivery unconfirmed after durable intake wait; last discovery
+error: no muse session log has a matching intake record since &lt;launch&gt;</code>.
+The platform marked the turn failed and restarted the session, but Muse accepted
+the prompt moments later and ran the whole turn unseen. Pulse lost its first
+step on every Muse workflow (Plan Drift in fix runs, the Gate in one full Pulse).</p>
+<p><strong>Evidence:</strong> Muse's own <code>session.jsonl</code> shows the delay
+between session start and <code>runtime.user_intent.accepted</code>:</p>
+<ul>
+<li>jobsearch fix run, session <code>01a0d6b8…</code>: session started 09:29:40,
+prompt accepted 09:30:45 (+66s); the adapter gave up at 09:30:44. Muse then worked
+the turn until 09:52.</li>
+<li>hetznerssh fix run, 2026-09-24: session started 17:44:34, prompt accepted
+17:46:49 (+135s).</li>
+<li>upwork fix run, 2026-09-24: same failure message on its first turn.</li>
+</ul>
+<p><strong>Cause:</strong> <code>museWaitIntake</code> waited a fixed 60s for the
+intake record. A cold Muse session can need over two minutes before it accepts
+its first prompt.</p>
+<p><strong>Fix:</strong> after 60s, if Muse has already written a session log for
+this workdir since the turn started (<code>museSessionStartedSince</code>), the wait
+extends to 5 minutes; with no session at all it still fails at 60s
+(<code>multi-llm-provider-go/pkg/adapters/musecli/musecli_interactive_turn.go</code>,
+unit test <code>TestMuseSessionStartedSinceSeesAStartedSessionForTheWorkdir</code>).
+Not yet live-verified: confirm on the next Muse Pulse fix run that the first step
+completes and no duplicate turn runs.</p>
+<p><strong>Related, not fixed here:</strong> after that failure, the jobsearch
+scheduled session <code>schedule-cron--d13c74ea_1790304931282532000</code> retried a
+closed session every ~5s ("AskWithHistory failed: session is closed", 6,000+ times
+from 09:29 onward): the background synthetic-turn retry never stops for a closed
+session.</p>
+<h3>Later phase: native multiple-choice UI</h3>
+<ul>
+<li>A live Muse turn asking three questions in one <code>request_user_input</code> call
+  shows all three questions and their ordered options in chat without choosing
+  any answer automatically.</li>
+<li>The user can choose an option other than the first for each question; Muse
+  receives those choices and continues the same turn.</li>
+<li>Chat confirms the answers recorded in the matching
+  <code>user_input_prompt_settled</code> event. Reload/reconnect does not replay or
+  resubmit an already settled prompt.</li>
+<li>A changed or dismissed tmux widget cannot receive keys intended for an
+  earlier prompt; the user sees a recoverable state.</li>
+</ul>
+<h2 id="observed-structured-record-inventory-2026-09-23">Observed structured-record inventory (2026-09-23)</h2>
+<p>This is an inventory of record <strong>types</strong>, not conversation content or every
+tool name. It comes from 300 local Muse session JSONL files, 2,434 local
+Claude conversation JSONL files, the 350 newest local Codex rollouts plus
+the older question examples above, all 927 Cursor <code>store.db</code> files found
+under the RTS service user's Cursor chat roots, 666 local Pi session JSONL
+files, and 178 deployed Pi sessions on Confida Hetzner. Codex's 13 GB archive was
+sampled for this inventory, so older rollout versions may contain other
+types. These native formats can change with CLI versions; the lists describe
+what was observed, not a promised provider API.</p>
+<h3 id="muse-sessionjsonl">Muse — <code>session.jsonl</code></h3>
+<p>Muse records have a <code>payload_type</code>, usually with <code>payload.event.kind</code>. The
+observed <code>runtime.session</code> event kinds are:</p>
+<ul>
+<li>Conversation and model: <code>user_prompt_display</code>, <code>assistant_message_committed</code>,
+  <code>reasoning_committed</code>, <code>reasoning_summary_delta</code>,
+  <code>reasoning_summary_committed</code>, <code>model_request_configured</code>,
+  <code>provider_request_options_configured</code>, <code>model_input_trace_recorded</code>,
+  <code>model_response_created</code>, <code>model_completed</code>, <code>terminal</code>.</li>
+<li>Tools and task lifecycle: <code>proposed</code>, <code>accepted</code>, <code>scheduled</code>, <code>started</code>,
+  <code>status</code>, <code>output</code>, <code>tool_delta</code>, <code>tool_output_ref</code>,
+  <code>assistant_tool_calls_committed</code>, <code>tool_result_batch_committed</code>,
+  <code>tool_result_model_visible_content</code>, <code>tool_results_cleared</code>, <code>completed</code>,
+  <code>failed</code>, <code>cancelled</code>, <code>timed_out</code>, <code>rejected</code>, <code>side_effect_intent</code>,
+  <code>task_stream_linked</code>, <code>task_backgrounded</code>.</li>
+<li>Human input and approvals: <code>user_input_prompt_requested</code>,
+  <code>user_input_prompt_settled</code>, <code>requested</code>, <code>decision_applied</code>,
+  <code>stage_requirement_resolved</code>, <code>automated_review_started</code>,
+  <code>automated_review_completed</code>.</li>
+<li>Context, goals, and usage: <code>context_block_diagnostic</code>,
+  <code>context_block_updated</code>, <code>context_compaction_candidate</code>,
+  <code>context_compaction_installed</code>, <code>context_projection_checkpoint</code>,
+  <code>goal_usage_attribution</code>, <code>resource_usage_sampled</code>,
+  <code>todo_snapshot_updated</code>, <code>skill_read_observed</code>,
+  <code>skill_reminder_decision</code>, <code>hook_run_started</code>, <code>hook_run_terminal</code>.</li>
+<li>Background work and delivery: <code>inbox_delivery_anomaly</code>,
+  <code>inbox_item_queued</code>, <code>inbox_item_drained</code>,
+  <code>memory_reminder_child_session_linked</code>, <code>reminder_installed</code>,
+  <code>reminder_proposal</code>, <code>reminder_reconciler_outcome</code>, <code>run_retracted</code>,
+  <code>workflow_child_lifecycle</code>, <code>workflow_child_result_protocol_recorded</code>,
+  <code>workflow_child_result_submitted</code>, <code>workflow_launch_reconciled</code>,
+  <code>workflow_run_launched</code>.</li>
+</ul>
+<p>Other observed Muse <code>payload_type</code> families are
+<code>runtime.session.task</code> (<code>proposed</code>, <code>accepted</code>, <code>scheduled</code>,
+<code>side_effect_intent</code>, <code>started</code>, <code>completed</code>),
+<code>tool_batch.effect.started</code> / <code>.terminal</code>,
+<code>approval_wait.effect.started</code> / <code>.terminal</code>,
+<code>reminder.cleanup_effect.started</code> / <code>.terminal</code>,
+<code>runtime.command_intake.received</code> /
+<code>.session_name.received</code> / <code>.settled</code>,
+<code>subagent.control.attempt_admitted</code> / <code>.child_session_bound</code> /
+<code>.result_ready</code> / <code>.resume_context_recorded</code> / <code>.runtime_observed</code> /
+<code>.spawn_accepted</code> / <code>.start_attested</code> / <code>.status_updated</code>, and
+<code>async.owner.attempt_admitted</code>. The observed envelope/fact types without
+an inner event kind are <code>command.invoked</code>, <code>run.model.configured</code>,
+<code>runtime.mcp_tool_identity_catalog</code>, <code>runtime.retained_fact</code>,
+<code>runtime.session.metadata</code>, <code>runtime.session.route_facts</code>,
+<code>runtime.session.task_source_committed</code>, <code>runtime.user_intent.accepted</code>,
+<code>runtime.user_intent.materialized</code>, <code>session.end</code>, <code>session.name.changed</code>,
+<code>session.opened.observed</code>, <code>session.resource_pressure.observed</code>,
+<code>session.resumed</code>, <code>session.startup_phases.observed</code>, and
+<code>session.workspace_branch.observed</code>. A few rows had no <code>payload_type</code>.</p>
+<h3 id="claude-conversation-jsonl">Claude — conversation JSONL</h3>
+<p>Observed top-level row <code>type</code> values: <code>assistant</code>, <code>user</code>, <code>system</code>,
+<code>attachment</code>, <code>last-prompt</code>, <code>atis-latch</code>, <code>ai-title</code>, <code>mode</code>,
+<code>permission-mode</code>, <code>agent-name</code>, <code>custom-title</code>, <code>queue-operation</code>,
+<code>bridge-session</code>, <code>file-history-snapshot</code>, <code>file-history-delta</code>,
+<code>cost-state</code>, <code>pr-link</code>, <code>fork-context-ref</code>, and <code>frame-link</code>.</p>
+<p>Within <code>assistant</code> and <code>user</code> messages, observed content block types are
+<code>text</code>, <code>thinking</code>, <code>tool_use</code>, <code>tool_result</code>, <code>image</code>, <code>document</code>, and
+<code>fallback</code>. A <code>tool_use</code> has an ID, name, and input; a later <code>tool_result</code>
+refers to the ID. <code>AskUserQuestion</code> is one tool name, not a dedicated row
+type. Some top-level metadata rows are app/session bookkeeping rather than
+model conversation events.</p>
+<h3 id="codex-rollout-jsonl">Codex — rollout JSONL</h3>
+<p>In the 350 newest rollouts, top-level <code>type</code> values were <code>session_meta</code>,
+<code>turn_context</code>, <code>world_state</code>, <code>event_msg</code>, <code>response_item</code>,
+<code>token_usage_record</code>, <code>compacted</code>, and
+<code>inter_agent_communication_metadata</code>.</p>
+<ul>
+<li>Observed <code>event_msg.payload.type</code>: <code>task_started</code>, <code>task_complete</code>,
+  <code>turn_aborted</code>, <code>item_completed</code>, <code>thread_settings_applied</code>, <code>token_count</code>.</li>
+<li>Observed <code>response_item.payload.type</code>: <code>message</code>, <code>agent_message</code>,
+  <code>reasoning</code>, <code>function_call</code>, <code>function_call_output</code>,
+  <code>custom_tool_call</code>, <code>custom_tool_call_output</code>, <code>tool_search_call</code>,
+  <code>tool_search_output</code>.</li>
+</ul>
+<p><code>request_user_input</code> and <code>request_user_input_async</code> are function-call names
+inside <code>response_item</code>, not standalone event types. A <code>call_id</code> links a call
+to its immediate output; for async input the output may only acknowledge
+acceptance, as noted above.</p>
+<h3 id="cursor-rts-storedb">Cursor — RTS <code>store.db</code></h3>
+<p>RTS Cursor conversations are SQLite stores, principally <code>meta</code> and <code>blobs</code>,
+under the service user's XDG Cursor chat root (with a few legacy
+<code>~/.cursor/chats</code> stores). The <code>meta</code> object had <code>agentId</code>,
+<code>latestRootBlobId</code>, <code>name</code>, <code>mode</code>, <code>isRunEverything</code>, and <code>createdAt</code>;
+some stores also had <code>lastUsedModel</code> or <code>approvalMode</code>. It also contains
+<code>blobEncryptionKey</code>, which must never be surfaced in chat or diagnostics.
+The latest root references cumulative message blobs in order, rather than
+providing an append-only event sequence. The observed message <code>role</code> values
+were <code>system</code>, <code>user</code>, <code>assistant</code>, and <code>tool</code>; typed content blocks were
+<code>text</code>, <code>reasoning</code>, <code>redacted-reasoning</code>, <code>tool-call</code>, <code>tool-result</code>, and
+<code>image</code>. <code>tool-call</code> / <code>tool-result</code> carry <code>toolCallId</code>; many calls are a
+<code>CallDynamicTool</code> wrapper whose <code>args.toolName</code> names the actual bridge
+tool. Tool results may be strings or structured JSON.</p>
+<p>Across all 927 RTS stores, no native question/choice tool name appeared
+among tool calls or nested <code>CallDynamicTool</code> names. One nested
+<code>human_feedback</code> call was a platform bridge tool, not evidence of a Cursor
+native question widget. This establishes the observed RTS data, not that
+Cursor can never emit a native question in another version or configuration.
+The existing Cursor adapter already polls <code>store.db</code> for assistant text and
+tool call/result chunks; commits can lag the visible terminal by seconds.
+Separately, Cursor's live <code>--output-format stream-json</code> transport has
+<code>system</code>, <code>thinking</code>, <code>assistant</code>, <code>tool_call</code> (<code>started</code> / <code>completed</code>),
+and <code>result</code> event types in the adapter. That stream is a runtime wire
+source, not another event table in the RTS <code>store.db</code> files inspected here.</p>
+<h3 id="pi-cli-with-gemini-local-session-jsonl">Pi CLI with Gemini — local session JSONL</h3>
+<p>The local <code>pi</code> executable reports version 0.87.0. All 666 local files under
+<code>~/.pi/agent/sessions</code> were scanned; 660 contain a Google provider or Gemini
+model message. Persisted row <code>type</code> values were <code>session</code>, <code>model_change</code>,
+<code>thinking_level_change</code>, <code>message</code>, and <code>compaction</code>. <code>message.role</code> values
+were <code>user</code>, <code>assistant</code>, and <code>toolResult</code>; observed content block types were
+<code>text</code>, <code>thinking</code>, and <code>toolCall</code>. Assistant messages carry provider, model,
+API, token/cost usage, stop reason, and response ID; tool calls and tool
+results correlate by ID and carry arguments/results. No question-like native
+tool call appeared in these local session files.</p>
+<p>The adapter also creates a separate per-session <code>markers.jsonl</code> through its
+bundled Pi extension. Its code emits <code>extension_loaded</code>, <code>session_start</code>,
+<code>agent_start</code>, <code>turn_start</code>, <code>message_start</code>, <code>message_update</code>, <code>message_end</code>,
+<code>tool_execution_start</code>, <code>tool_execution_update</code>, <code>tool_execution_end</code>,
+<code>turn_end</code>, <code>agent_end</code>, and <code>provider_error</code>. These are adapter-added live
+markers, distinct from Pi's native persisted conversation file. Structured
+<code>pi --print --mode json</code> can stream the corresponding run/message/tool
+lifecycle, but that output is a runtime stream rather than the session file.</p>
+<h3 id="pi-cli-with-gemini-confida-hetzner-deployment">Pi CLI with Gemini — Confida Hetzner deployment</h3>
+<p>The Confida server was inspected read-only through its documented SSH port
+on 2026-09-23. Its deployed Pi executable reports version 0.87.1. Pi sessions
+are stored under isolated AgentWorks runtime homes in the <code>.pi</code> tree, plus
+one workspace-local <code>.pi</code> tree; the login user's <code>~/.pi/agent/sessions</code> is
+not the complete source. A full <code>find</code> of <code>/srv/confida</code> found 178 Pi session
+JSONL files, and all 178 contain Google/Gemini activity. Their models were
+<code>gemini-3.8-flash</code> and <code>gemini-3.7-flash</code> (15,926 and 129 assistant records,
+respectively). Observed row types were <code>session</code>, <code>model_change</code>,
+<code>thinking_level_change</code>, and <code>message</code>; message roles were <code>assistant</code>,
+<code>toolResult</code>, <code>user</code>, and a small number of <code>system</code> rows. Content block
+types were <code>text</code>, <code>thinking</code>, and <code>toolCall</code>. No question-like native tool
+call name appeared in the 15,105 recorded tool calls. This is an absence in
+the observed deployed sessions, not a capability claim for every Pi version.</p>
+<p>The service's <code>agent.log</code> and <code>llm_debug.log</code> also contain Pi CLI and Gemini
+entries through 2026-09-22. No <code>markers.jsonl</code> was retained under the
+checked runtime home or <code>/tmp</code>; the bundled extension's marker file is a
+separate temporary runtime signal, while Pi's session JSONL is the durable
+conversation record.</p>
+<h2 id="code-references">Code references</h2>
+<ul>
+<li><code>multi-llm-provider-go/pkg/adapters/musecli/musecli_auto_answer.go</code> —
+  current tmux widget parser and automatic first-option submission.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/musecli/musecli_auto_answer_live_test.go</code> —
+  three-question P0 and JSONL event parsing.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/musecli/musecli_transcript_stream.go</code> —
+  current JSONL-to-stream projection.</li>
+<li><code>mcpagent/agent/coding_agent_options.go</code> and
+  <code>multi-llm-provider-go/pkg/adapters/musecli/musecli_mcpsettings.go</code> —
+  Muse bridge configuration, native-tool policy, and subagent/workflow settings.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/claudecode/claudecode_interactive_adapter.go</code>
+  and <code>claudecode_transcript_messages.go</code> — pane completion and JSONL final
+  answer contracts.</li>
+<li><code>mcpagent/agent/coding_agent_integrations.go</code>,
+  <code>coding_agents_bridge.go</code>, and <code>coding_agent_bridge_routing_prompt.go</code>
+  — Claude tool mode, registered bridge tools, and replacement guidance.</li>
+<li><code>mcpagent/agent/llm_generation.go</code> and
+  <code>multi-llm-provider-go/pkg/adapters/claudecode/claudecode_structured_args.go</code>
+  — optional interactive enforcement hook and structured-mode hard denylist.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/codexcli/codexcli_interactive_adapter.go</code>
+  and <code>codexcli_transcript_stream.go</code> — rollout completion and streaming.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/cursorcli/cursorcli_interactive_adapter.go</code>
+  and <code>cursorcli_structured_adapter.go</code> — <code>store.db</code> and <code>stream-json</code> lanes.</li>
+<li><code>multi-llm-provider-go/pkg/adapters/picli/picli_interactive_adapter.go</code>
+  and <code>picli_structured_adapter.go</code> — Pi session/marker and print-stream lanes.</li>
+</ul></article>
+    </div>
+  </div>
+</body>
+</html>

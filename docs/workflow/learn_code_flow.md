@@ -10,7 +10,7 @@ This is the current source of truth for scripted workflow execution.
 > Generation, repair and save-back below happen only when the Builder runs the
 > step itself with `execute_step` (Workshop mode, not `fast_path_only`, not a
 > scheduled session). Decision: `docs/DECISIONS.md`, ticket
-> `bugs/pulse_platform/step-execution/plat-436.md`.
+> `bugs/pulse_platform/goals/step-execution/plat-436.md`.
 
 `learn_code` and `code_exec` are not separate systems. They are two execution modes built on the same code-execution foundation:
 

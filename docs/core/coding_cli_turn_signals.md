@@ -2,7 +2,7 @@
 
 Status: current as of 2026-09-27 (five original CLIs certified; AGY onboarding
 tested at the provider boundary). Detailed history:
-[PLAT-354](../bugs/pulse_platform/coding-agent-bridge/plat-354.html). Submit
+[PLAT-354](../bugs/pulse_platform/platform/coding-agent-bridge/plat-354.html). Submit
 receipts: [durable_ack_p0.md](../refactor/durable_ack_p0.md).
 
 ## Rule

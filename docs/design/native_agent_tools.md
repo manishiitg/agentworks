@@ -2,7 +2,7 @@
 
 Status: shipped 2026-09-24. All code is on main in mcpagent, multi-llm-provider-go
 and this repo. Transport history is in
-[PLAT-354](../bugs/pulse_platform/coding-agent-bridge/plat-354.html).
+[PLAT-354](../bugs/pulse_platform/platform/coding-agent-bridge/plat-354.html).
 
 ## Tool modes
 
@@ -70,7 +70,7 @@ those workflows and crews are now on.
   on someone else's shared provider account can read that account's login
   files. Confining the CLIs is the follow-up that closes both.
   The plan (lock every CLI, CLI-login accounts, login proxy, then **Full CLI**
-  on Code) is in [PLAT-364](../bugs/pulse_platform/security-sandbox/plat-364.md#plan-2026-09-29-lock-every-cli-then-full-cli-on-code).
+  on Code) is in [PLAT-364](../bugs/pulse_platform/platform/security-sandbox/plat-364.md#plan-2026-09-29-lock-every-cli-then-full-cli-on-code).
   The leak and the lock were both shown live on RTS on 2026-09-29.
 
 ## The crew switch

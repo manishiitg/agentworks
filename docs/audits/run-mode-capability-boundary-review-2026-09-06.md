@@ -192,8 +192,8 @@ Relevant records:
 - `docs/design/agent_tool_surface_single_source.md`
 - `docs/refactor/canonical_agent_definition_construction.md`
 - `docs/refactor/mcpagent_public_api_simplification.md`
-- `docs/bugs/pulse_platform/security-sandbox/plat-262.md`
-- `docs/bugs/pulse_platform/security-sandbox/plat-296.md`
+- `docs/bugs/pulse_platform/platform/security-sandbox/plat-262.md`
+- `docs/bugs/pulse_platform/platform/security-sandbox/plat-296.md`
 
 The design documents also state the correct principle: focus guidance can live
 in prompts, while authority must be enforced in code. The regression was

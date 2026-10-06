@@ -20,7 +20,7 @@ definitions and observations. There is no extra reviewer-authored report.
 ## Data contract
 
 `configure_goal_metrics` saves the complete active list to
-`workflow_goal_metrics` in the workflow database. At least one metric is primary. Primary metrics may be grouped with `goal_id`/`goal_name`; supporting measurements link to primary IDs through `supports` and `support_kind`. Multiple primaries require explicit supporting links. See [PLAT-311](bugs/pulse_platform/pulse-governance/plat-311.md) for the shipped workflow-boundary contract.
+`workflow_goal_metrics` in the workflow database. At least one metric is primary. Primary metrics may be grouped with `goal_id`/`goal_name`; supporting measurements link to primary IDs through `supports` and `support_kind`. Multiple primaries require explicit supporting links. See [PLAT-311](bugs/pulse_platform/goals/pulse-governance/plat-311.md) for the shipped workflow-boundary contract.
 Definitions include stable ID, criterion, name, unit, direction, calculation,
 source, window, route/environment, collection cadence, freshness tolerance, and
 optional target/date. Omitting a metric retires its definition without deleting

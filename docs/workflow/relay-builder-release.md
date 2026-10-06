@@ -48,4 +48,4 @@ Slack and WhatsApp connections, tools, bot routes and notifications are excluded
 The product manifest owns the Builder tool allowlist, prompt and skill; manifest
 validation and execution-time checks enforce the same scope. Existing saved
 Slack bindings are suppressed when constructing a Relay API execution context.
-See [PLAT-389](../bugs/pulse_platform/integrations/plat-389.md).
+See [PLAT-389](../bugs/pulse_platform/relays/integrations/plat-389.md).
