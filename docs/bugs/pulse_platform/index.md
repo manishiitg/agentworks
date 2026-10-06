@@ -26,7 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
+| [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | fixed on main | P1 | [sandbox/environment](sandbox/environment/index.md) |

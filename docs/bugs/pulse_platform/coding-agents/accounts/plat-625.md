@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P1 |
 | Product | coding-agents |
 | Area | accounts |
@@ -41,6 +41,22 @@ before the first model request. Existing dedicated-product/multi-user Code
 token-policy tests pass. Workspace state is mocked in these local checks; the
 separate real private CLI verification passed on Excellence.
 
+## Excellence deployment and verification
+
+Deployed commit `2840c424f` in release
+`agents-2840c424-20261006152913`. Public/internal health returned 200; the Linux
+slot self-test passed 156 checks, zero failures, 16 skips.
+
+After restart, Vaibhav's private Claude status returned 200, signed in with his
+provider identity; its credential file remains independent and mode `0600`.
+Ashutosh's request for that private account returned 404. Vaibhav's request for
+shared Claude returned 404; admin status confirmed shared Claude still signed
+out. No shared fallback was restored. These post-deploy checks verify account
+availability/admission; the production Code route is exercised by the local
+regression above, which stops before a paid model turn.
+
 ## Left
 
-Deploy to Excellence and verify private-account availability after restart.
+No implementation or deployment work remains. Vaibhav can refresh and retry his
+failed Hosati message with `Void` selected. Ankita's independent key-rotation
+follow-up remains tracked in [PLAT-623](plat-623.md).

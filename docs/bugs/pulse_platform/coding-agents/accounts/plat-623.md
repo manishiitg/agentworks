@@ -80,6 +80,11 @@ Deleted accounts and older rotated logs limit historical attribution; this is
 an audit of the current registry and available server evidence, not a claim
 that no earlier account was ever exposed. Credential values were not recorded.
 
+After the PLAT-625 Excellence release restart, Ankita's private Codex remained
+signed in; Utkarsh, Ashutosh and Vaibhav still received 404 for both her private
+account and the restricted shared account. The repeated live-file scan again
+found zero outside copies of her key. Shared Codex remained signed out.
+
 ## Left
 
 Ankita must revoke the exposed old key with its provider, generate a replacement,
