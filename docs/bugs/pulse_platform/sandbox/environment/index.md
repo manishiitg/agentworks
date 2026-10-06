@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-622](plat-622.md) | Shell environment leaks server and account data | in progress | P1 |
+| [PLAT-622](plat-622.md) | Shell environment leaks server and account data | fixed on main | P1 |

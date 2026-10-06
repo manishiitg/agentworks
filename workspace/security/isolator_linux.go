@@ -227,7 +227,8 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()), policy.WorkDir, policy.WritePaths)
 	if iso.Slot != "" {
 		// As the user's own account: always the project's private home, the same as their Code terminal (see SlotHomeEnv).
-		cmd.Env = SlotHomeEnv(cmd.Env, policy.WorkDir, policy.WritePaths, iso.UserHome)
+		// Only the allowlisted part of the shared service environment reaches a person's own account (PLAT-622).
+		cmd.Env = SlotHomeEnv(SlotShellEnv(cmd.Env), policy.WorkDir, policy.WritePaths, iso.UserHome)
 		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
 		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)
 		// Run as the user's slot account: the namespaces and the policy are created after the switch.

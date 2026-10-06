@@ -82,3 +82,12 @@ func TestNativeEnvironmentDropsServerIdentityAndAccountData(t *testing.T) {
 		}
 	}
 }
+
+// A person's slot shell gets an allowlist of the service environment: tool and platform settings pass, anything
+// else (a server setting added tomorrow, other people's ids) does not (PLAT-622).
+func TestSlotShellEnvKeepsToolsAndDropsTheRest(t *testing.T) {
+	got := strings.Join(SlotShellEnv([]string{"PATH=/bin", "HOME=/h", "AGENT_API_URL=x", "PIP_CACHE_DIR=x", "TERM=xterm", "NEW_SERVER_SETTING=x", "SUPABASE_URL=x", "AGENTWORKS_SLOT_CLI_USERS=a,b", "FRONTEND_DIR=/srv"}), " ")
+	if got != "PATH=/bin HOME=/h AGENT_API_URL=x PIP_CACHE_DIR=x TERM=xterm" {
+		t.Fatalf("slot shell env = %q", got)
+	}
+}

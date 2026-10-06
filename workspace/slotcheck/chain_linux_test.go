@@ -35,6 +35,22 @@ func TestRealSlotChain(t *testing.T) {
 			t.Fatalf("refused: %s", errOut)
 		}
 	})
+	// PLAT-622: a person's command gets an allowlist of the shared service environment, not all of it.
+	t.Run("the slot's shell gets only the allowlisted environment", func(t *testing.T) {
+		t.Setenv("AUTH_ALLOWED_EMAILS", "e2e-canary")
+		t.Setenv("GATEWAY_USERNAME", "e2e-canary")
+		t.Setenv("NEW_SERVER_SETTING", "e2e-canary")
+		t.Setenv("AGENTWORKS_SLOT_CLI_USERS", "e2e-canary")
+		out, errOut, err := runThroughShellTool(ctx, base, "env")
+		if err != nil || !strings.Contains(out, "PATH=") {
+			t.Fatalf("env: err=%v stderr=%q", err, errOut)
+		}
+		for _, key := range []string{"AUTH_ALLOWED_EMAILS=", "GATEWAY_USERNAME=", "NEW_SERVER_SETTING=", "AGENTWORKS_SLOT_CLI_USERS="} {
+			if strings.Contains(out, key) {
+				t.Fatalf("%s reached the slot's shell", key)
+			}
+		}
+	})
 	t.Run("the slot reads its own project", func(t *testing.T) {
 		out, errOut, err := runThroughShellTool(ctx, base, "cat own.txt")
 		if err != nil || strings.TrimSpace(out) != "own" {

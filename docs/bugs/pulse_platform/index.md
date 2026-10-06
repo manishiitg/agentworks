@@ -17,7 +17,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 21 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 14 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 7 | 1 |
@@ -28,7 +28,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|---|---|
 | [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | open | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | in progress | P1 | [sandbox/environment](sandbox/environment/index.md) |
+| [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | fixed on main | P1 | [sandbox/environment](sandbox/environment/index.md) |
 | [PLAT-621](app/navigation/plat-621.md) | Shortcut hint on new chats | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-620](app/integrations/plat-620.md) | Name Connected and Available tabs explicitly as MCPs | fixed on main | P2 | [app/integrations](app/integrations/index.md) |
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |

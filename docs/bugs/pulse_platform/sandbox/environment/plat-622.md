@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | fixed on main |
 | Priority | P1 |
 | Product | sandbox |
 | Area | environment |
@@ -14,19 +14,12 @@
 
 ## Fix
 
-## Left
+## Allowlist (done)
 
-## What happened
+Commands that run as a person's slot account (their Code terminal and the agent's shell for them) now get an allowlist of the service environment (`security.SlotShellEnv`, applied in the slot branch of `isolator_linux.go` before the slot HOME and per-call values): PATH/HOME/locale/TMPDIR, terminal and tmux, the platform URLs and `AGENT_*`/`AGENTWORKS_*` (minus `AGENTWORKS_SLOT_CLI_USERS`), git/pip/python/npm/node/go/cargo settings, proxies and CA bundles. Anything else, including a server variable added later, stays out. Verified in the Linux container harness (`TestRealSlotChain`, "the slot's shell gets only the allowlisted environment": planted AUTH_ALLOWED_EMAILS, GATEWAY_USERNAME, AGENTWORKS_SLOT_CLI_USERS and an unknown variable are absent, PATH present), plus `TestSlotShellEnvKeepsToolsAndDropsTheRest`.
 
-Excellence, 2026-10-06: `env` in a Code terminal (running as slot12) showed the server's environment: `AUTH_ALLOWED_EMAILS` (everyone allowed to sign in), `AGENTWORKS_SLOT_CLI_USERS` (other users' ids), `SSH_AUTH_SOCK` (the service's SSH agent), `GATEWAY_*` settings, internal paths and ports. `GOG_KEYRING_PASSWORD` is also passed, on purpose, by `gogconfig.Environment`. No server API keys or tokens passed: the deny-list covers AUTH_SECRET, MCP/bridge tokens, provider keys and the login password.
+## Google CLI keyring password (no change needed)
 
-Cause: native mode (`workspace/security/environment.go` `buildNativeEnvironment`) passes the whole service environment minus a deny-list, so any new server variable reaches every user's shell unless someone adds it.
+Checked live on Excellence 2026-10-06: slot12's Code terminal has no `GOG_*` variable; slot commands already drop them (`hostGogRestricted` is true for any slot). Only the service account's own shells get the password, and that account owns the keyring (`/srv/agents/home/.config/agentworks/gog`, agents 0700; slot12 cannot list it).
 
-## Done
-
-Deny-list now also drops `AUTH_*`, `GATEWAY_*`, `AGENTWORKS_SLOT_CLI_USERS`, `SSH_AUTH_SOCK` and systemd bookkeeping (`MEMORY_PRESSURE_*`, `NOTIFY_SOCKET`, `INVOCATION_ID`, `JOURNAL_STREAM`, `SYSTEMD_EXEC_PID`). Only server processes and launcher scripts read `AUTH_*`/`GATEWAY_*`. Pinned by `TestNativeEnvironmentDropsServerIdentityAndAccountData`. Not deployed.
-
-## Left
-
-- Replace the deny-list with an allowlist for user-facing (slot) shells: PATH, HOME, LANG, TZ, TERM, TMPDIR, SHELL, USER/LOGNAME, the tool paths and the few AGENTWORKS_* variables the shell helpers need.
-- Owner decision: `GOG_KEYRING_PASSWORD` in every user's shell. On a multi-user server it should be per-user, or not passed to slot shells, which needs the Google CLI keyring to move out of the shared service home.
+Not deployed.
