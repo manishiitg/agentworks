@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 21 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 174 | 36 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 175 | 37 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 20 | 4 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-608](app/tools/plat-608.md) | product.yaml is the only tool registry; Brain tools renamed to brain_* | in progress | P1 | [app/tools](app/tools/index.md) |
 | [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-571](code/frontend-chat/plat-571.md) | Code side-chat tabs | fixed on main | P1 | [code/frontend-chat](code/frontend-chat/index.md) |
-| [PLAT-570](browser/browser/plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 | [browser/browser](browser/browser/index.md) |

@@ -14,4 +14,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-610](plat-610.md) | Step conversation log repeats the previous item | open | P2 |
 | [PLAT-605](plat-605.md) | Failed run record has no error or failed step | open | P2 |
