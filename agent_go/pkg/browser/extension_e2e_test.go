@@ -92,7 +92,17 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	defer shell.Close()
 	executor := NewExecutor(NewClient(shell.URL), WithBrowserRuntimeConfig(NewBrowserRuntimeConfig("auto", nil)))
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/browser/extension/connect", func(w http.ResponseWriter, r *http.Request) { live.Load().ServeExtension(w, r) })
+	mux.HandleFunc("/api/browser/extension/connect", func(w http.ResponseWriter, r *http.Request) {
+		live.Load().ServeExtensionAuthorizedWithNames(w, r, nil, func(_, workspace, profile string) string {
+			if profile == "workflow" {
+				return "Customer Onboarding"
+			}
+			if profile == "work" {
+				return "Support Crew"
+			}
+			return "Code Browser Test"
+		})
+	})
 	mux.HandleFunc("/fixture/code-status", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(live.Load().Status("alice", common.SandboxBrowserSession(session)))
 	})

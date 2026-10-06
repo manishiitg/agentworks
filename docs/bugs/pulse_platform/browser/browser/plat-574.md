@@ -1,6 +1,6 @@
 [← browser / browser](index.md)
 
-# PLAT-571: Copy the existing browser connection code without resetting or selecting a browser
+# PLAT-574: Copy the existing browser connection code without resetting or selecting a browser
 
 | Field | Value |
 |---|---|

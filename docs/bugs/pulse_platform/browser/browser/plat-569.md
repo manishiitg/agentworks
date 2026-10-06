@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | fixed on main |
 | Priority | P1 |
 | Product | browser |
 | Area | browser |
-| Summary | The connected extension drops its shared-tab/session mapping during agent use; the physical Chrome tab remains open. Chrome target closure discarded still-live tab authority. Extension 0.4.2 reattaches the same authorized physical tab; RTS verification remains pending. |
+| Summary | The connected extension drops its shared-tab/session mapping during agent use; the physical Chrome tab remains open. Chrome target closure discarded still-live tab authority. Extension 0.4.3 restores the same tab/session after Chrome target closure and waits for transient frame permissions; the uninterrupted RTS regression passed. |
 
 ## What happened
 
@@ -121,11 +121,39 @@ it does not reproduce the original Chrome trigger in the owner's profile.
 
 No production server restart/deployment was performed for this recovery change.
 
+## RTS verification of 0.4.3
+
+After 0.4.2 restored new-tab creation, the actual RTS retry exposed a second
+startup race: Page.enable briefly returned `Cannot access a chrome-extension://
+URL of different extension`. The physical tab's native target was HTTPS, and
+later read-only native Page.getFrameTree/Runtime.evaluate succeeded on it.
+The observed denial was transient; no particular installed extension is proved
+to be the cause. Chromium checks frame URLs as well as the main page URL.
+
+Domain subscriptions now wait with bounded backoff (about ten seconds) only for
+that exact Chrome permission error, retaining the same grant/connection and
+rechecking the safe tab URL and native permissions on each attempt. No navigation,
+evaluation, input action or arbitrary error is retried. Setup/attach failure phases
+are separately logged with fixed metadata; error payloads are excluded.
+
+Loaded 0.4.3 in the owner's existing installed extension folder, with no token
+reset or production server deployment. The first navigation retry passed but
+its final list was invalidated by our extension reload for the group-name change
+while the test was still running; that run is not claimed as an uninterrupted pass.
+
+The subsequent browser-only SDE Private retry was uninterrupted: create a dev-home
+tab, navigate that same tab to `/voice-study`, read title and compact interactive
+snapshot, create a second dev-home tab, list both, select and read each. All passed.
+Chrome showed the two physical tabs in the same project group. The pages showed
+the site's login screen; no login, file/settings writes or deployment was attempted.
+The full local managed-tool Chrome E2E and focused backend checks also pass.
+
 ## Left
 
-Reload extension 0.4.2 in the owner's existing browser and verify concurrent
-Code/Crew new-tab creation and navigation on RTS. Deploy the updated relay to
-capture group and recovery events in server logs (the local extension ring works
-with the previous relay). Establish Chrome's original closure trigger if it
-persists. Keep this issue in progress until the actual RTS retry is verified.
-The separate screenshot staging failure is tracked in [PLAT-572](plat-572.md).
+Deploy the updated relay to RTS to capture new group/setup/recovery metadata in
+server logs; extension-side recovery is already loaded and verified. The original
+reason Chrome closes the target in this profile remains unestablished, but the
+reported new-tab/navigation loss is fixed at the lifecycle boundary. Observe
+longer usage for a recurrence. Screenshot staging is a separate open issue in
+[PLAT-575](plat-575.md). Friendly group names require the server change in
+[PLAT-573](plat-573.md); the loaded extension already removes the brand prefix.

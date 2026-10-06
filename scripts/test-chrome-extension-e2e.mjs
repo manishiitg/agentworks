@@ -89,14 +89,14 @@ try {
     await popup.locator('#project').selectOption(process.env.CHROME_EXTENSION_E2E_WORKFLOW_SCOPE);
     const workflowState=await message({action:'state'});assert.equal(workflowState.tabs.length,1);
     const group=await popup.evaluate(async id=>(await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,workflowState.tabs[0].id);
-    assert.equal(group,'Acme Test · extension-workflow');
+    assert.equal(group,'Customer Onboarding');
     await message({action:'stop'});
     console.log('PASS workflow step one creates/fills its own background tab; step two reuses it, isolated from Code/Crew, with workflow group and disconnect');
   }
   const tabId = await popup.evaluate(async base => (await chrome.tabs.query({})).find(t => t.url === `${base}/fixture`).id, base);
   const shared = await message({ action: 'share', tabId }); assert.equal(shared.ok, true, JSON.stringify(shared));
   const grouping = await popup.evaluate(async id => { const tab = await chrome.tabs.get(id); return {groupId:tab.groupId, tabs:(await chrome.tabs.query({groupId:tab.groupId})).map(t=>t.id), title:(await chrome.tabGroups.get(tab.groupId)).title}; }, tabId);
-  assert.deepEqual(grouping.tabs, [tabId]); assert.equal(grouping.title, 'Acme Test · extension-e2e');
+  assert.deepEqual(grouping.tabs, [tabId]); assert.equal(grouping.title, 'Code Browser Test');
   await popup.locator('body').screenshot({path:`${evidence}/popup-ready.png`});
   console.log('PASS automatically created shared tab group excludes private tabs');
   const privateTabId = await popup.evaluate(async base => (await chrome.tabs.query({})).find(t => t.url === `${base}/private`).id, base);
@@ -184,7 +184,7 @@ try {
   assert.equal(reconnected.ok,true,JSON.stringify(reconnected)); assert.equal(reconnected.tabs.length,0);
   assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), -1, 'disconnect ungroups shared tabs');
   await message({action:'share',tabId});
-  assert.match(await popup.evaluate(async id => (await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,tabId), /^AgentWorks · /, 'older codes without branding use AgentWorks');
+  assert.equal(await popup.evaluate(async id => (await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,tabId), 'Code Browser Test', 'group titles use only the project name, including older connection codes');
   if(process.env.CHROME_EXTENSION_E2E_CREW_SCOPE) {
     const codeScope=process.env.CHROME_EXTENSION_E2E_SCOPE, crewScope=process.env.CHROME_EXTENSION_E2E_CREW_SCOPE;
     let result=await message({action:'select-project',scope:crewScope});assert.equal(result.ok,true,JSON.stringify(result));
@@ -194,6 +194,7 @@ try {
     await crewTool({command:'tab',args:['new','--label','crew-agent-tab',`${base}/fixture?crew-tab-new=1`]});const crewState=await message({action:'state'});assert.equal(crewState.tabs.length,1);
     const code=await message({action:'select-project',scope:codeScope});assert.equal(code.connected,true);assert.equal(code.tabs.length,1,'Code connection remains live');
     assert.notEqual(await popup.evaluate(async id=>(await chrome.tabs.get(id)).groupId,crewState.tabs[0].id),await popup.evaluate(async id=>(await chrome.tabs.get(id)).groupId,tabId),'each project has its own group');
+    assert.equal(await popup.evaluate(async id=>(await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,crewState.tabs[0].id),'Support Crew');
     const crewTabs=await crewTool({command:'tab',args:[]});assert.equal(crewTabs.data.tabs.length,1);assert.equal(crewTabs.data.tabs[0].label,'crew-agent-tab','first labeled tab retains its native alias');assert.doesNotMatch(JSON.stringify(crewTabs),/navigation=1/,'Crew cannot list Code tabs');
     await crewTool({command:'open',args:[`${base}/fixture?crew=1`]});
     await crewTool({command:'snapshot',args:['-i']});

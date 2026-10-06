@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
@@ -105,7 +108,7 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(browserrelay.Default.Status(user, scope))
 }
 func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r *http.Request) {
-	browserrelay.Default.ServeExtensionAuthorized(w, r, func(user, scope, workspace, profile string) error {
+	browserrelay.Default.ServeExtensionAuthorizedWithNames(w, r, func(user, scope, workspace, profile string) error {
 		claims := &UserClaims{UserID: user}
 		if rec := directoryUserFor(user, "", ""); rec != nil {
 			if rec.Disabled {
@@ -123,6 +126,39 @@ func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r 
 			return fmt.Errorf("browser scope changed")
 		}
 		return nil
+	}, func(user, workspace, profile string) string {
+		ctx := context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user})
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		filename := "product.json"
+		if profile == "workflow" {
+			filename = "workflow.json"
+		}
+		name := path.Base(workspace)
+		if raw, found, err := readFileFromWorkspace(ctx, workspace+"/"+filename); err == nil && found {
+			var manifest struct {
+				Title, Label string
+				Identity     struct{ Name string }
+			}
+			if json.Unmarshal([]byte(raw), &manifest) == nil {
+				if profile == "workflow" {
+					name = firstNonEmptyTrimmed(manifest.Label, name)
+				} else {
+					name = firstNonEmptyTrimmed(manifest.Identity.Name, manifest.Title, manifest.Label, name)
+				}
+			}
+		}
+		name = strings.TrimSpace(strings.Map(func(c rune) rune {
+			if unicode.IsControl(c) {
+				return ' '
+			}
+			return c
+		}, name))
+		runes := []rune(name)
+		if len(runes) > 120 {
+			name = string(runes[:120])
+		}
+		return name
 	})
 }
 func (api *StreamingAPI) handleBrowserExtensionDownload(w http.ResponseWriter, r *http.Request) {

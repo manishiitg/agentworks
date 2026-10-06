@@ -34,6 +34,7 @@ type projectGrant struct {
 	Scope     string `json:"scope"`
 	Label     string `json:"workspace"`
 	ProfileID string `json:"profile_id"`
+	Name      string `json:"name,omitempty"`
 }
 type Status struct {
 	Selected         bool     `json:"selected"`
@@ -154,7 +155,7 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 		if g.User == user {
 			if g.Scope != "" {
 				if _, registered := projects[g.Scope]; !registered {
-					projects[g.Scope] = projectGrant{g.Scope, g.Label, g.ProfileID}
+					projects[g.Scope] = projectGrant{Scope: g.Scope, Label: g.Label, ProfileID: g.ProfileID}
 				}
 				legacy = append(legacy, existing)
 			}
@@ -177,7 +178,7 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 	if reset || token == "" {
 		token = secret()
 	}
-	projects[scope] = projectGrant{scope, label, profile}
+	projects[scope] = projectGrant{Scope: scope, Label: label, ProfileID: profile}
 	if len(projects) > 1000 {
 		return "", errors.New("too many browser connections")
 	}
@@ -231,7 +232,7 @@ func (m *Manager) availableProjects(token string, authorize func(string, string,
 		projects = append(projects, p)
 	}
 	if g.Scope != "" {
-		projects = append(projects, projectGrant{g.Scope, g.Label, g.ProfileID})
+		projects = append(projects, projectGrant{Scope: g.Scope, Label: g.Label, ProfileID: g.ProfileID})
 	}
 	m.mu.Unlock()
 	if !exists {
@@ -473,6 +474,7 @@ type envelope struct {
 	ProfileID   string          `json:"profile_id,omitempty"`
 	Projects    []projectGrant  `json:"projects,omitempty"`
 	Workspace   string          `json:"workspace,omitempty"`
+	Name        string          `json:"name,omitempty"`
 	Tabs        int             `json:"tabs,omitempty"`
 	TabTitles   []string        `json:"tab_titles,omitempty"`
 	Message     json.RawMessage `json:"message,omitempty"`
@@ -492,12 +494,12 @@ type envelope struct {
 // log arbitrary message strings, CDP parameters, page URLs or credentials.
 func logExtensionDiagnostic(scope, connection string, e envelope) {
 	switch e.Event {
-	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached", "tab_created", "tab_grouping_started", "tab_grouped", "tab_grouping_failed", "target_recovery_started", "target_recovered", "target_recovery_failed":
+	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached", "tab_created", "tab_grouping_started", "tab_grouped", "tab_grouping_failed", "setup_waiting_for_page", "target_attach_failed", "target_setup_failed", "target_recovery_started", "target_recovered", "target_recovery_failed":
 	default:
 		return
 	}
 	switch e.Reason {
-	case "", "target_closed", "canceled_by_user", "requested_unshare", "target_close", "debugger_detached", "tab_closed", "unsupported_url", "detached", "not_shared", "other":
+	case "", "target_closed", "canceled_by_user", "requested_unshare", "target_close", "debugger_detached", "tab_closed", "unsupported_url", "detached", "not_shared", "foreign_frame", "other":
 	default:
 		return
 	}
@@ -527,6 +529,11 @@ func (m *Manager) ServeExtension(w http.ResponseWriter, r *http.Request) {
 	m.ServeExtensionAuthorized(w, r, nil)
 }
 func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Request, authorize func(user, scope, workspace, profile string) error) {
+	m.ServeExtensionAuthorizedWithNames(w, r, authorize, nil)
+}
+
+// Display names never replace physical workspace labels used for authorization.
+func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *http.Request, authorize func(user, scope, workspace, profile string) error, displayName func(user, workspace, profile string) string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", 405)
 		return
@@ -557,6 +564,21 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	available := m.availableProjects(hello.Token, authorize)
+	names := func(projects []projectGrant) []projectGrant {
+		if displayName != nil {
+			for i := range projects {
+				projects[i].Name = displayName(g.User, projects[i].Label, projects[i].ProfileID)
+			}
+		}
+		return projects
+	}
+	available = names(available)
+	var name string
+	for _, p := range available {
+		if p.Scope == g.Scope {
+			name = p.Name
+		}
+	}
 	m.mu.Lock()
 	// Reset may have revoked the code while the workspace access check ran.
 	current, exists := m.pairs[hello.Token]
@@ -594,7 +616,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 		old.closeWithReason("Connected from another browser")
 	}
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
 	b.mu.Unlock()
 	if err != nil {
 		return
@@ -617,7 +639,7 @@ func (m *Manager) ServeExtensionAuthorized(w http.ResponseWriter, r *http.Reques
 
 		var projects []projectGrant
 		if e.Type == "ping" {
-			projects = m.availableProjects(hello.Token, authorize)
+			projects = names(m.availableProjects(hello.Token, authorize))
 		}
 		b.mu.Lock()
 		switch e.Type {

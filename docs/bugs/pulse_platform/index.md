@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 69 | 11 |
 | [Brain](brain/index.md) | 15 | 2 |
-| [Browser and browser automation](browser/index.md) | 35 | 12 |
+| [Browser and browser automation](browser/index.md) | 36 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 18 | 5 |
 | [Code](code/index.md) | 3 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
@@ -26,12 +26,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-572](browser/browser/plat-572.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-573](browser/browser/plat-573.md) | Browser tab groups use the Code, Crew or workflow display name | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-572](chat/rendering/plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-571](browser/browser/plat-571.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-571](code/frontend-chat/plat-571.md) | Code side-chat tabs (parked) | open | P3 | [code/frontend-chat](code/frontend-chat/index.md) |
 | [PLAT-570](browser/browser/plat-570.md) | Browser picker shows the connected account browser across products | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-569](browser/browser/plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | in progress | P1 | [browser/browser](browser/browser/index.md) |
+| [PLAT-569](browser/browser/plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-568](sandbox/skills/plat-568.md) | Custom skills can be installed again; only our policy files are protected | fixed on main | P2 | [sandbox/skills](sandbox/skills/index.md) |
 | [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
 | [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-538](brain/learnings-knowledge/plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | open | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-537](relays/mcp/plat-537.md) | `TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration` fails on main | open | P3 | [relays/mcp](relays/mcp/index.md) |
 | [PLAT-536](integrations/mcp/plat-536.md) | a finished function call returns every step's full output, 400 KB | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
-| [PLAT-535](integrations/mcp/plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |

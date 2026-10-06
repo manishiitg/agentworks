@@ -3,7 +3,7 @@
 This is the single browser design and implementation guide for our products.
 It consolidates the former core browser, workflow authoring, live browser and
 Chrome/Edge extension designs, including extension installation and deployment.
-The extension policy includes PLAT-569–571 (2026-10-06); other browser
+The extension policy includes PLAT-569–574 (2026-10-06); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
@@ -171,7 +171,7 @@ token and this project's routing scope without selecting the project, requesting
 a new connection or putting a connected panel into Waiting. Copying does not
 rotate the token; **Reset connection code** is a separate confirmed action.
 Pasting the code into another browser still replaces that project's binding.
-Tracking: [PLAT-571](../bugs/pulse_platform/browser/browser/plat-571.md).
+Tracking: [PLAT-574](../bugs/pulse_platform/browser/browser/plat-574.md).
 
 The private credential survives server restarts in the existing 0600 file.
 Account Reset rotates it and closes all of that account's live connections;
@@ -223,7 +223,7 @@ restart or extension reload clears session grants: the connection returns ready
 with zero tabs, and the agent can create its own first tab. Sharing an existing
 page again remains optional. Reconnection never brings tabs into focus.
 
-Extension 0.4.2 distinguishes physical-tab closure from Chrome debugger
+Extension 0.4.3 distinguishes physical-tab closure from Chrome debugger
 `target_closed`. If the explicitly granted physical tab still exists with a safe
 URL and the same live project owner, bounded recovery reattaches that exact ID,
 keeps the logical root session and group, and restores domain subscriptions.
@@ -231,8 +231,12 @@ Following commands wait for recovery; page actions are never replayed. Child
 sessions from the old target are discarded. Human cancellation, actual tab
 closure, unsupported URLs and stopped/replaced connections revoke access.
 Recovery never creates a replacement blank tab or infers a grant from a group.
-Group and recovery diagnostics contain lifecycle metadata only. The real local
-Chrome regression passes; verification of the original RTS profile is pending.
+Group and recovery diagnostics contain lifecycle metadata only. Startup/domain
+subscriptions wait up to about ten seconds for transient Chrome foreign-frame
+permission checks to clear; Chrome rechecks permissions on every attempt. This
+wait never retries navigation, evaluation, clicks or typing. The full local Chrome regression and an uninterrupted RTS SDE Private retry
+pass new-tab creation, existing-tab navigation, snapshots and reading/listing two
+tabs in one group; no login or authenticated application action was attempted.
 Tracking: [PLAT-569](../bugs/pulse_platform/browser/browser/plat-569.md).
 
 Disconnect in the popup removes that project's remembered pairing before
@@ -293,16 +297,19 @@ avoids flashing setup over a running session while discovery is pending.
 The branded popup hides setup after connecting. It shows a Connected badge,
 Code/Crew/workflow workspace picker and server identity, empty or populated shared-tab list, Share this tab,
 New shared tab, Regroup tabs, Disconnect project and Disconnect all projects.
-Sharing or creating the first tab automatically creates a deployment-brand · project group in its window. New tabs
+Sharing or creating the first tab automatically creates a group named only for
+the Code/Crew project display name or workflow label, without a deployment prefix. New tabs
 may be created by either the popup or the agent and join that managed group.
 Grouping applies only to already shared tabs, separately per window. It does
 not share other tabs, including tabs dragged into a group. Stop/unshare removes
 our shared tabs from our managed groups without touching unrelated groups.
-The copied connection includes the existing runtime appName as display-only
-branding. Validate the name with the frontend's branding helper; the extension
-also rejects blank, overlong or control-character names and falls back to
-AgentWorks for older codes. This metadata never changes the account/project
-credential or grants authority.
+The relay reads names from authorized project/workflow manifests and sends them
+as display-only metadata, separately from physical paths/scopes used to authorize
+access. Heartbeats update names of existing managed groups after a project rename;
+this does not move or share tabs. Missing names/older servers fall back to the
+unprefixed folder basename. The copied connection still retains its legacy brand
+field for compatibility with old extension packages, but 0.4.3 group titles ignore
+it. Tracking: [PLAT-573](../bugs/pulse_platform/browser/browser/plat-573.md).
 
 Extension commands keep the user's active tab by default. The optional
 `agent_browser` `active=true` parameter permits Target.activateTarget,

@@ -1,6 +1,6 @@
 [← browser / browser](index.md)
 
-# PLAT-572: RTS extension screenshot cannot save its staging artifact across workspace service boundaries
+# PLAT-575: RTS extension screenshot cannot save its staging artifact across workspace service boundaries
 
 | Field | Value |
 |---|---|

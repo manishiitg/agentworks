@@ -121,7 +121,7 @@ async function connectProject(raw) {
 function createConnection() {
 let socket = null;
 let workspace = '';
-let brand = 'AgentWorks';
+let projectName = '';
 let error = '';
 let heartbeat;
 let discover = false;
@@ -132,6 +132,7 @@ const sessions = new Map();
 const groups = new Map();
 const recoveries = new Map();
 const sessionSettings = new Map();
+const setupMethods = new Set(['Page.enable', 'Runtime.enable', 'Network.enable', 'DOM.enable', 'Accessibility.enable', 'Log.enable', 'Console.enable', 'CSS.enable', 'Performance.enable', 'Target.setAutoAttach']);
 const diagnostics = [];
 let lastMethod = '';
 let queue = Promise.resolve();
@@ -142,8 +143,8 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
-function diagnostic(event, tabId = 0, reason = '', requestId = '') {
-  const record = { event, tab_id: tabId, reason, method: lastMethod, request_id: requestId, at: Date.now() };
+function diagnostic(event, tabId = 0, reason = '', requestId = '', method = lastMethod) {
+  const record = { event, tab_id: tabId, reason, method, request_id: requestId, at: Date.now() };
   diagnostics.push(record); if (diagnostics.length > 256) diagnostics.shift();
   // Fixed lifecycle metadata only: never send CDP arguments, page URLs or tokens.
   console.info('[CHROME_EXTENSION]', JSON.stringify(record));
@@ -184,7 +185,7 @@ async function groupSharedTab(tabId, connection = socket) {
   if (!connection || socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
   const tab = await chrome.tabs.get(tabId);
   if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
-  const title = `${brand} · ${workspace.split('/').pop()}`;
+  const title = projectName || workspace.split('/').pop();
   diagnostic('tab_grouping_started', tabId);
   let groupId;
   try { groupId = await chrome.tabs.group({ ...(groups.has(tab.windowId) ? { groupId: groups.get(tab.windowId) } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
@@ -213,6 +214,19 @@ async function share(tabId) {
   }
   return state();
 }
+function displayName(value) { return typeof value === 'string' && value.trim() && value.length <= 240 && !/[\x00-\x1f\x7f]/.test(value) ? value.trim() : ''; }
+async function updateGroupNames(name, connection = socket) {
+  name = displayName(name);
+  if (name === projectName) return;
+  projectName = name;
+  for (const groupId of groups.values()) {
+    try {
+      const tabs = await chrome.tabs.query({groupId});
+      if (socket !== connection || !workspace) return;
+      if (tabs.some(tab => shared.has(tab.id) && tabOwners.get(tab.id) === api)) await chrome.tabGroups.update(groupId, {title:projectName || workspace.split('/').pop()});
+    } catch { /* A deleted group is recreated only when a tab is shared. */ }
+  }
+}
 async function unshare(tabId, reason = 'requested_unshare') {
   if (!shared.has(tabId)) return;
   const recovery = recoveries.get(tabId); if (recovery) recovery.cancelled = true;
@@ -230,7 +244,7 @@ async function unshare(tabId, reason = 'requested_unshare') {
 }
 async function stop(reason = '') {
   if (socket) diagnostic('connection_stopped');
-  const previous = socket; socket = null; workspace = ''; brand = 'AgentWorks'; error = reason;
+  const previous = socket; socket = null; workspace = ''; projectName = ''; error = reason;
   clearInterval(heartbeat); discover = false; autoAttach = false;
   serverDiagnostics = false;
   for (const recovery of recoveries.values()) recovery.cancelled = true;
@@ -267,7 +281,7 @@ async function restoreTarget(tabId, recovery) {
       await chrome.debugger.attach({tabId}, '1.3'); attached = true;
       if (!allowed()) throw new Error('Connection stopped');
       for (const [method, params] of sessionSettings.get(tabId) || []) {
-        await chrome.debugger.sendCommand({tabId}, method, params);
+        await sendSetupCommand({tabId}, method, params);
         if (!allowed()) throw new Error('Connection stopped');
       }
       if (!allowed()) throw new Error('Connection stopped');
@@ -276,7 +290,8 @@ async function restoreTarget(tabId, recovery) {
       diagnostic('target_recovered', tabId);
       await announceTabs();
       return;
-    } catch {
+    } catch (e) {
+      diagnostic(attached ? 'target_setup_failed' : 'target_attach_failed', tabId, e.message === 'Cannot access a chrome-extension:// URL of different extension' ? 'foreign_frame' : 'other');
       // Never detach a tab already claimed by a different project.
       if (attached && (!tabOwners.has(tabId) || tabOwners.get(tabId) === api)) {
         try { await chrome.debugger.detach({tabId}); } catch {}
@@ -285,11 +300,26 @@ async function restoreTarget(tabId, recovery) {
   }
   if (allowed()) { diagnostic('target_recovery_failed', tabId); await unshare(tabId, 'debugger_detached'); }
 }
-function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, server: socket ? new URL(socket.url).host : '', error, diagnostics: [...diagnostics], tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
+// A newly navigating tab can briefly fail Chrome's frame permission check even
+// though its main URL is HTTP(S). Retry subscriptions only, on the same grant;
+// never suppress the check or retry input, evaluation or navigation actions.
+async function sendSetupCommand(source, method, params) {
+  const connection = socket;
+  const delays = [0, 100, 250, 500, 1000, 2000, 2000, 2000, 2000];
+  for (const [index, delay] of delays.entries()) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    if (!connection || socket !== connection || !workspace || !shared.has(source.tabId) || tabOwners.get(source.tabId) !== api) throw new Error('Session is not shared with this workspace');
+    const tab = await chrome.tabs.get(source.tabId); safeURL(tab.pendingUrl || tab.url || 'about:blank');
+    try { return await chrome.debugger.sendCommand(source, method, params); }
+    catch (e) {
+      if (e.message !== 'Cannot access a chrome-extension:// URL of different extension' || index === delays.length - 1) throw e;
+      diagnostic('setup_waiting_for_page', source.tabId, '', '', method);
+    }
+  }
+}
+function state() { return { connected: !!workspace && socket?.readyState === WebSocket.OPEN, workspace, name:projectName, server: socket ? new URL(socket.url).host : '', error, diagnostics: [...diagnostics], tabs: [...shared.values()].map(t => ({ id: t.id, title: t.title || t.url })) }; }
 async function connect(raw) {
   const pairing = JSON.parse(raw);
-  // Display metadata follows the app's runtime branding; it grants no access.
-  const displayBrand = typeof pairing.brand === 'string' && pairing.brand.trim().length > 0 && pairing.brand.trim().length <= 120 && !/[\x00-\x1f\x7f]/.test(pairing.brand) ? pairing.brand.trim() : 'AgentWorks';
   const endpoint = new URL(pairing.url);
   if (endpoint.pathname !== '/api/browser/extension/connect' || endpoint.search || endpoint.hash || endpoint.username || endpoint.password) throw new Error('Invalid pairing connection');
   if (endpoint.protocol !== 'wss:' && !(endpoint.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(endpoint.hostname))) throw new Error('A secure platform connection is required');
@@ -305,7 +335,7 @@ async function connect(raw) {
       if (socket !== ws) return;
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
       if (e.type === 'paired') {
-        clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; brand = displayBrand; error = '';
+        clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; projectName = displayName(e.name); error = '';
         serverDiagnostics = e.diagnostics === true;
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
         diagnostic('connection_paired');
@@ -318,6 +348,8 @@ async function connect(raw) {
         queue=queue.then(async()=>{if(socket!==ws || !workspace)return;try{const result=await command(e.target_id ? {method:'Target.closeTarget',params:{targetId:e.target_id}} : {method:'Target.createTarget',params:{url:e.url}},e.active===true);send({type:'target-result',request_id:e.request_id,target_id:e.target_id || result.targetId});}catch(error){send({type:'target-result',request_id:e.request_id,error:error.message});}}).catch(()=>{});
       } else if (e.type === 'projects' || e.type === 'pong') {
         if (Array.isArray(e.projects)) availableProjects = e.projects;
+        const project = availableProjects.find(p => p.scope === api.scope);
+        if (project) void updateGroupNames(project.name, ws);
       } else if (e.type === 'error') {
         clearTimeout(timer); reject(new Error(e.workspace)); revoke();void stop(e.workspace);
       } else if (e.type === 'cdp') {
@@ -373,8 +405,8 @@ async function command(message, active = false) {
   if (['DOM.setFileInputFiles', 'Page.setDownloadBehavior', 'Page.addScriptToEvaluateOnNewDocument', 'Runtime.addBinding'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
   if (method === 'Page.navigate') safeURL(params.url);
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
-  const result = await chrome.debugger.sendCommand(source, method, params) || {};
-  if (!source.sessionId && ['Page.enable', 'Runtime.enable', 'Network.enable', 'DOM.enable', 'Accessibility.enable', 'Log.enable', 'Console.enable', 'CSS.enable', 'Performance.enable', 'Target.setAutoAttach'].includes(method)) {
+  const result = await (setupMethods.has(method) && !source.sessionId ? sendSetupCommand(source, method, params) : chrome.debugger.sendCommand(source, method, params)) || {};
+  if (!source.sessionId && setupMethods.has(method)) {
     if (!sessionSettings.has(source.tabId)) sessionSettings.set(source.tabId, new Map());
     sessionSettings.get(source.tabId).set(method, params);
   } else if (!source.sessionId && method.endsWith('.disable')) sessionSettings.get(source.tabId)?.delete(method.replace(/\.disable$/, '.enable'));
