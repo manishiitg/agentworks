@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 75 | 12 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 76 | 12 |
 | [Brain](brain/index.md) | 20 | 3 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-620](app/integrations/plat-620.md) | Name Connected and Available tabs explicitly as MCPs | fixed on main | P2 | [app/integrations](app/integrations/index.md) |
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
 | [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | in progress | P2 | [brain/curation](brain/curation/index.md) |
 | [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-583](browser/browser/plat-583.md) | Make transient Chrome setup error detection independent of exact message wording | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-582](goals/plans-contracts/plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-581](integrations/skills/plat-581.md) | Skills belong to each workspace, with step usage and scoped uninstall | fixed on main | P2 | [integrations/skills](integrations/skills/index.md) |
-| [PLAT-580](chat/rendering/plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |

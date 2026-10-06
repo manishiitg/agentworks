@@ -41,7 +41,7 @@ async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', 
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => { root.render(<TooltipProvider><PlaceBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} chatSessionId={chatSessionId} /></TooltipProvider>) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-  if (canEdit) { await act(async () => { host.querySelector<HTMLButtonElement>('button[role="tab"][title="Available"]')!.click() }) }
+  if (canEdit) { await act(async () => { host.querySelector<HTMLButtonElement>('button[role="tab"][title="Available MCPs"]')!.click() }) }
   return host
 }
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })

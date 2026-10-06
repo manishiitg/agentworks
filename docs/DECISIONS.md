@@ -40,6 +40,12 @@ nor a connected mailbox. Gmail skills require verified scoped account evidence.
 Why: a Crew suggested the Claude account email despite no Gmail connections.
 Ticket: [PLAT-616](bugs/pulse_platform/crew/chat/plat-616.md).
 
+### 2026-10-06 — Integration tabs name MCPs explicitly
+
+Use “Connected MCPs” and “Available MCPs” in the shared project integrations and
+MCP browser tabs. Why: “Connected” and “Available” alone were unclear beside
+Secrets, Skills and Vault. Ticket: [PLAT-620](bugs/pulse_platform/app/integrations/plat-620.md).
+
 ### 2026-10-06 — AGY warmup publishes its ready terminal before live input
 
 An AGY launch-only resume emits a captured terminal frame before returning its

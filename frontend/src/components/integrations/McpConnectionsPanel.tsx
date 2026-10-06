@@ -55,7 +55,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   return <div className="space-y-4 text-xs" data-testid="mcp-connections-panel">
     {(!view || headerActions) && <div className="flex min-w-0 items-center justify-between gap-2">
       {!view && <div className="min-w-0 flex-1 overflow-x-auto"><WorkspaceViewTabs value={tab} onChange={value => setTab(value as typeof tab)} ariaLabel="MCP browser"
-        options={[{ value: 'connected', label: 'Connected', count: servers.length }, { value: 'available', label: 'Available', count: catalog.length }]} /></div>}
+        options={[{ value: 'connected', label: 'Connected MCPs', count: servers.length }, { value: 'available', label: 'Available MCPs', count: catalog.length }]} /></div>}
       {headerActions && <div className="shrink-0 whitespace-nowrap">{headerActions}</div>}
     </div>}
     <div className="flex flex-wrap items-center gap-2">

@@ -4,8 +4,8 @@ import { WorkspaceViewTabs } from '../workflow/WorkspaceViewTabs'
 
 export type PluginTab = 'connected' | 'available' | 'secrets' | 'skills' | 'vault'
 export const PROJECT_PLUGIN_TABS = [
-  { value: 'connected', label: 'Connected' },
-  { value: 'available', label: 'Available' },
+  { value: 'connected', label: 'Connected MCPs' },
+  { value: 'available', label: 'Available MCPs' },
   { value: 'secrets', label: 'Secrets' },
   { value: 'skills', label: 'Skills' },
   { value: 'vault', label: 'Vault' },

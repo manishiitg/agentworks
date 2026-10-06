@@ -82,7 +82,7 @@ describe('Work Setup consolidation', () => {
     expect(sections).toContain("{ value: 'apps', label: 'Tools & secrets'")
     expect(integrations).toContain("ariaLabel: 'Integrations'")
     const plugins = readFileSync('src/components/integrations/ProjectPluginsPanel.tsx', 'utf8')
-    for (const tab of ["{ value: 'connected', label: 'Connected' }", "{ value: 'secrets', label: 'Secrets' }", "{ value: 'skills', label: 'Skills' }", "{ value: 'vault', label: 'Vault' }"]) expect(plugins).toContain(tab)
+    for (const tab of ["{ value: 'connected', label: 'Connected MCPs' }", "{ value: 'available', label: 'Available MCPs' }", "{ value: 'secrets', label: 'Secrets' }", "{ value: 'skills', label: 'Skills' }", "{ value: 'vault', label: 'Vault' }"]) expect(plugins).toContain(tab)
     for (const section of ["{ value: 'slack', label: 'Slack'", "{ value: 'whatsapp', label: 'WhatsApp'", "{ value: 'gmail', label: 'Google apps'", "{ value: 'cli', label: 'Use in AI apps'"]) expect(sections).toContain(section)
     expect(integrations).toContain('fixedChannel="slack"')
     expect(integrations).toContain('fixedChannel="whatsapp"')

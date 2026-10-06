@@ -7,6 +7,7 @@
 | [activity](activity/index.md) | 7 | 0 |
 | [chat](chat/index.md) | 26 | 6 |
 | [general](general/index.md) | 3 | 0 |
+| [integrations](integrations/index.md) | 1 | 0 |
 | [models](models/index.md) | 2 | 1 |
 | [navigation](navigation/index.md) | 23 | 1 |
 | [reports](reports/index.md) | 7 | 2 |
