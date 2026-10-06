@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-556](plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | open | P1 |
+| [PLAT-556](plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | in progress | P1 |

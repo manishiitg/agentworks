@@ -4,18 +4,18 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | in progress |
 | Priority | P1 |
 | Product | goals |
 | Area | pulse/fixer |
-| Summary | open: design accepted; Upwork data side of decision 6 and the bid-pick-job pilot applied 2026-10-06; decision 1 (delivery) on main, not deployed; budgets, consolidator, scheduling, routing and Brain import open. |
+| Summary | in progress: Upwork pilot and decision-6 data cleanup applied 2026-10-06; decisions 1-5, learning-access ownership and the success metric on main (not deployed); deployed observation, decision 6 remainder and Brain import open. |
 
 | Coordination | Value |
 |---|---|
-| State | open: design accepted (owner: "implement the full redesign"); Upwork data cleanup applied 2026-10-06; platform changes 1-5 in progress in other sessions; Brain option B import prepared, not run |
+| State | in progress: decisions 1-5, learning-access ownership and the success metric built on main 2026-10-06 (not deployed); Brain option B import prepared, not run |
 | Priority | P1 |
 | Date | 2026-10-06 |
-| Owner | pulse-governance (dedicated Pulse session; coordinate before editing Pulse code) |
+| Owner | pulse-governance (Pulse edited from this work with the owner's go; the dedicated Pulse session was not running) |
 
 ## Source
 
@@ -34,17 +34,6 @@ Earlier attempts each fixed one piece: PLAT-049 (platform mechanics), PLAT-258 (
 - Decision 6, per-step learnings folders: 12 metadata-only folders of steps no longer in the plan moved to `archive/knowledge-layers-2026-10-06/learnings/` (bid-draft-letter, bid-read-brief, post-bid-exit, profile-report, profile-suggest, read-flow-mode, search-detail-fetch, search-enrich-shortlist, search-pick-keywords, search-score-jobs, search-scrape-jobs, search-semantic-score). Judgment: the 11 metadata-only folders of live steps stay, because the runtime writes run counters, the execution tier and description-hash runs into `learnings/<step>/.learning_metadata.json` and would recreate them; they are runtime state, not a knowledge place.
 - Decision 6, `graph.json`: frozen since 2026-04-20, read by no Go or frontend code; it and its frozen `knowledgebase/index.json` moved to `archive/knowledge-layers-2026-10-06/knowledgebase/`; 30 `[x](../graph.json#…)` links in 8 notes became plain text. `knowledgebase/_freshness.json` stays: it is the code-owned freshness ledger Pulse `knowledgebase_health` reads (stale since 2026-08-07 because no step confirms the KB; that staleness is the change-2 trigger, not a reason to delete it).
 
-## Done on main: decision 1, guaranteed delivery (2026-10-06, not deployed)
-
-- At step execution the description's `## Inputs` and `## Guides` sections are parsed (`step_based_workflow/description_references.go`) for workflow paths under `learnings/`, `knowledgebase/`, `code/shared/`, `soul/`, `db/README.md` (a leading `Workflow/<name>/` or docs-root prefix is tolerated) and `brain:<folder>/<note>`.
-- Each named path that exists inside the workflow (symlinks resolved; one leading out counts as missing) is added to the step's Folder Guard read paths, whatever `learnings_access` / `knowledgebase_access` says, never to write paths. Hooked into every builder: regular/scripted (`setupExecutionFolderGuard` call sites and `createExecutionOnlyAgent`), message_sequence (`executeMessageSequenceUserMessage`) and todo_task (`setupOrchestratorFolderGuard`).
-- The step's system prompt (template and authored prompts) ends with a "Referenced guides" section, built once per sequence: files attached in the order named up to 4,000 characters each and 12,000 in total; larger or over-budget files and folders are listed with path, size and "read it"; a missing path is reported. Every undelivered reference logs `[REFERENCED_GUIDES]` as a warning.
-- Brain notes are read by `knowledgebaseReadReferencedNote` (cmd/server) as the run's person (claims in the run context), under that person's folder roles and the project's `brain_access` (off refuses; read/write read everything the person may read; folders reads only bound folders), always read-only. An unreadable note is reported in the prompt and logged.
-- `add_*_step`, `update_message_sequence_step` and `update_todo_task_step` responses add a one-line warning when the saved description names a workflow path that does not exist. The step-description guide says naming a path delivers it.
-- Judgment calls: a project cut over to shared Brain (`knowledgebase_mode=shared`) does not get local `knowledgebase/` paths back by naming them (the prompt says so); a bare root (`learnings/`) is not a reference; globs and `{{VAR}}` placeholders are skipped; Brain note names without `.md` get it appended; directories are granted but not attached; the edit warning does not check Brain notes (that needs the run's person).
-- Evidence: a real in-process workflow run (message_sequence step, Claude Code CLI, isolated workspace API) with `learnings_access: none` saved a system prompt whose Allowed READ held exactly the two named files (not `SKILL.md`), with both attached and the missing KB note reported. The CLI's bridge calls were refused with 401 because an out-of-server harness cannot mint session bridge tokens, so live enforcement of the read grant through the bridge was not observed. Tests: `TestDescriptionNamedGuidesAreReadableAndAttached`, `TestReferencedBrainNoteRespectsPersonAndProjectAccess` (real Brain service: reader reads, non-member refused, `brain_access=off` refused).
-- Left for decision 1: observe one deployed run (Upwork `bid-pick-job` names its guides) reading a named guide through the bridge with learnings access off; deploy needs the owner's go.
-
 ## Measurements (Upwork, same script before and after)
 
 | Measure | Before | After |
@@ -56,17 +45,45 @@ Earlier attempts each fixed one piece: PLAT-049 (platform mechanics), PLAT-258 (
 | Dated-text hits in descriptions (ISO dates, "measured", "observed on", run ids) | 68 | 68 (bid-pick-job had none) |
 | `bid-pick-job` description / items | 13,103 / 1,562 | 3,085 / 1,286 |
 
-## Left (the six changes of the design note)
+## Done on main: decision 1, guaranteed delivery (2026-10-06, not deployed)
 
-1. Guaranteed delivery: on main (above); deployed-run observation left.
-2. Budgets as triggers (size vs plan median, dated text, duplication, stale KB) making consolidation due; never a gate.
-3. Architecture may apply a consolidation under a no-loss check plus one comparison run.
-4. Plan Drift must not starve Architecture; over-budget steps make Architecture due with `prompt_design` focus.
-5. Repairs routed by type in fixer and builder-chat guidance.
-6. One ownership map; fold `context.md` and `rules.md` into the knowledge layer (Upwork data side otherwise done, above).
+- At step execution the description's `## Inputs` and `## Guides` sections are parsed (`step_based_workflow/description_references.go`) for workflow paths under `learnings/`, `knowledgebase/`, `code/shared/`, `soul/`, `db/README.md` (a leading `Workflow/<name>/` or docs-root prefix is tolerated) and `brain:<folder>/<note>`.
+- Each named path that exists inside the workflow (symlinks resolved; one leading out counts as missing) is added to the step's Folder Guard read paths, whatever `learnings_access` / `knowledgebase_access` says, never to write paths. Hooked into every builder: regular/scripted (`setupExecutionFolderGuard` call sites and `createExecutionOnlyAgent`), message_sequence (`executeMessageSequenceUserMessage`) and todo_task (`setupOrchestratorFolderGuard`).
+- The step's system prompt (template and authored prompts) ends with a "Referenced guides" section, built once per sequence: files attached in the order named up to 4,000 characters each and 12,000 in total; larger or over-budget files and folders are listed with path, size and "read it"; a missing path is reported. Every undelivered reference logs `[REFERENCED_GUIDES]` as a warning.
+- Brain notes are read by `knowledgebaseReadReferencedNote` (cmd/server) as the run's person (claims in the run context), under that person's folder roles and the project's `brain_access` (off refuses; read/write read everything the person may read; folders reads only bound folders), always read-only. An unreadable note is reported in the prompt and logged.
+- `add_*_step`, `update_message_sequence_step` and `update_todo_task_step` responses add a one-line warning when the saved description names a workflow path that does not exist. The step-description guide says naming a path delivers it.
+- Judgment calls: a project cut over to shared Brain (`knowledgebase_mode=shared`) does not get local `knowledgebase/` paths back by naming them (the prompt says so); a bare root (`learnings/`) is not a reference; globs and `{{VAR}}` placeholders are skipped; Brain note names without `.md` get it appended; directories are granted but not attached; the edit warning does not check Brain notes (that needs the run's person).
+- Evidence: a real in-process workflow run (message_sequence step, Claude Code CLI, isolated workspace API) with `learnings_access: none` saved a system prompt whose Allowed READ held exactly the two named files (not `SKILL.md`), with both attached and the missing KB note reported. The CLI's bridge calls were refused with 401 because an out-of-server harness cannot mint session bridge tokens, so live enforcement of the read grant through the bridge was not observed. Tests: `TestDescriptionNamedGuidesAreReadableAndAttached`, `TestReferencedBrainNoteRespectsPersonAndProjectAccess` (real Brain service: reader reads, non-member refused, `brain_access=off` refused).
+- Left for decision 1: observe one deployed run (Upwork `bid-pick-job` names its guides) reading a named guide through the bridge with learnings access off; deploy needs the owner's go.
+
+## Built on main (2026-10-06, Pulse side; not deployed)
+
+**Decision 2, budgets as triggers.** `get_plan_prompt_health` now reports per step a `budget` record: size against the median of the plan's other steps with `over_budget` above 3x that median (floor 12,000, the same constants as the edit-time OVER BUDGET nudge), dated/incident text count with samples (ISO dates, "measured", "observed on", run-id values, UUIDs), characters inside 300+-character spans repeated verbatim in another step (Rabin-Karp over whitespace-collapsed text), and missing layout sections; plan totals and `consolidation_due_steps`. `CollectPromptBudgetDue` (step_based_workflow/prompt_budget.go) reads plan.json from disk, like `CollectPlanDriftCandidates`, and is shown to Gate as `architecture_budget_candidates`. `record_pulse_worklist` makes `architecture_review` due with focus `prompt_design` (and `learning_quality`, below) while that state's fingerprint has not been reviewed (cmd/server/pulse_prompt_budget.go). Never a gate on runs or edits.
+- Judgment: "no layout" triggers only when Goal, Output or Done when is missing; Inputs, Rules and Guides can be honestly empty and are only reported. Layout is checked for message_sequence and orchestrator steps; regular steps are scripted by definition (PLAT-287), so only their dated text counts.
+- Judgment: a state Architecture already completed (done/changed) is not forced again; any edit to a flagged step changes the fingerprint and makes it due again. Stale KB notes are not measured yet.
+
+**Decision 3, consolidator.** New plan tools `check_plan_no_loss` (step_id, proposed_description, proposed_items, dropped_history) and `restore_step_from_changelog` (change_id, step_id, reason). The check extracts identifiers with underscores (incl. VAR_ names), numbers and ranges, thresholds (symbolic and "at least/at most/no more than/up to"), file paths and quoted literals from the old description and items, and searches the new description, items and every workflow file the new description names under Inputs/Guides (learnings/, knowledgebase/, code/shared/, soul/, db/README.md); pass only when nothing is missing. Dates inside dated sentences may drop; any other history-only token must be acknowledged in `dropped_history`, and a rule token cannot be. Restore reapplies the changelog entry's recorded old description/items through `update_message_sequence_step` (the changelog stores hashes as before_ref/after_ref and the old values in `changes[].old_value`; there is no stored snapshot to restore from). architecture-review.md: apply a pure text move only after the check passes, run the step once, keep it only when validation passes, else restore and propose; record each in `record_pulse_result(consolidations=[...])`. Behaviour, rule, output and topology changes stay owner proposals.
+- Judgment: slash lists ("closed/unavailable/applied") are prose, not paths, and are not required tokens; the identifiers inside them still are. `brain:` references are listed but not read (no project Brain access in this tool).
+
+**Decision 4, scheduling.** Plan Drift still defers Architecture, but only up to two passes in a row (`architecture_drift_deferrals:N` in the worklist evidence); on the third, or immediately when every budget-flagged step is outside Drift's candidate set, Architecture stays due in the same pass with `plan_drift_review:architecture_scoped` and `architecture_scope_excludes:<Drift's steps>`; the scheduler dispatches it after Drift and its contract says not to touch those steps. Technical and Goal Work are unchanged.
+
+**Decision 5, routing.** pulse-fixer-practices.md (step 4), pulse-review-fixer.md, technical-review.md, workflow-chat.md (builder chat fixes) and workshop-mode-flow.md: technique to a skill reference named under Guides, rule or decision to the knowledge layer or Rules, evidence to the change reason; moving the text a repair touches is part of the smallest complete repair.
+
+**Learning access (owner addition, 2026-10-06).** Architecture (`learning_quality`) alone decides `learnings_access`; Plan Drift and the Fixer only flag. A read-write step with 5+ successful runs on one description hash and no new learning in the latest 5 detections (`.learning_metadata.json`) makes Architecture due with `learning_quality`; it may set read-write to read itself with a reason (reversible); read to read-write still needs a learning_objective and a decision. PLAT-263's contract sentence updated.
+
+**Success metric.** `pulse_prompt_budget_metrics` (module-state DB) gets one row per Pulse pass at worklist time: total and largest description, steps over budget, dated text, duplicated characters, steps without layout, due steps, settled learning steps, cumulative Architecture runs (done/changed audit rows), consolidations applied/kept/restored and validation before/after from `pulse_consolidation`. `get_pulse_state(view="module")` returns the latest 10 as `prompt_budget_metrics`.
+
+**Evidence.** `TestCheckPlanNoLossUpworkPilot` (PLAT556_PILOT_DIR, data kept outside the repo): the reviewed bid-pick-job rewrite passes (119 tokens, 6 named guides resolved); the same rewrite without the $300 floor fails naming it; without `hard_floors_cleared` fails naming it. `TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice` drives four real worklist passes (module DB, plan files on disk). Measured on the Upwork backup: median 2,893, 4 steps over budget, 68 dated-text hits, 14,515 duplicated characters, 15 agentic steps without the layout, 16 steps due for prompt_design.
+
+## Left
+
+1. Decision 1: observe one deployed run reading a named guide through the bridge (above). `check_plan_no_loss` has its own small Inputs/Guides parser (`NoLossNamedFiles`); it could reuse `description_references.go`.
+2. Decisions 2-5: stale-KB-note budget trigger; deploy (owner's go per server) and watch the first Upwork passes: Architecture runs, consolidations kept vs restored, metric rows.
+3. Success metric: validation "before" is the reviewer-reported latest validation; a windowed before/after rate from run history is not computed.
+4. Decision 6: one ownership map; fold `context.md` and `rules.md` into the knowledge layer (Upwork data side otherwise done, above).
 Plus Brain option B (shared/org facts in Brain, workflow-only facts local; no cutover for these projects), tracked with PLAT-538: Upwork import prepared there, not run.
-7. Upwork: the remaining over-budget steps (`improve-analyze-report`, `profile-suggest-report`, `toptal-scan-draft`) and the 68 dated-text hits, through Architecture `prompt_design` once changes 2-4 exist, not in one sweep.
+5. Upwork: the remaining over-budget steps (`improve-analyze-report`, `profile-suggest-report`, `toptal-scan-draft`) and the 68 dated-text hits, through Architecture `prompt_design` (now triggered by the budgets), not in one sweep.
 
 ## Register notes
 
-[PLAT-556](plat-556.md), P1, open: design accepted (layers, Brain option B, Pulse roles, budgets, delivery); decision 1 delivery on main 2026-10-06, not deployed; changes 2-6 open.
+[PLAT-556](plat-556.md), P1, in progress: design accepted; Upwork pilot and cleanup applied; decisions 1-5, learning-access ownership and the success metric on main 2026-10-06 (not deployed); deployed observation, decision 6 remainder and Brain import open.

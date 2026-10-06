@@ -40,6 +40,18 @@ For each actionable finding:
    and knowledge notes affected by the target.
 4. **Choose the smallest complete repair.** Change every surface required for
    consistency, but do not broaden into strategy, policy, or unrelated cleanup.
+   The smallest complete repair includes moving the text it touches to its
+   owner (PLAT-556), instead of appending a sentence to the step description:
+   - a technique, procedure, selector or phrasing rule goes to a skill reference
+     (`learnings/_global/references/<topic>.md`, correcting an existing topic in
+     place) named in the step description's `## Guides`;
+   - a business rule or decision goes to the knowledge layer (a local
+     `knowledgebase/` note, or Brain for shared facts) or to the description's
+     `## Rules` when it is that step's own constraint;
+   - the evidence and history of the repair (dates, run ids, what failed) go to
+     the change `reason`, never into the description or a guide.
+   If the passage you change sits in dated or duplicated text, move or delete
+   that passage in the same repair. The edit-time size and layout nudges apply.
 5. **Preserve meaning and safety.** Never weaken a check, invent missing data,
    lower a threshold, change a destination, or reinterpret an operator decision
    merely to obtain a pass.

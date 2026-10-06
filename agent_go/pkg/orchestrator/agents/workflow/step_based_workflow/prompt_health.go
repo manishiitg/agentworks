@@ -28,6 +28,9 @@ type PromptHealthStep struct {
 	Type             StepType `json:"type"`
 	DescriptionChars int      `json:"description_chars"`
 	Threshold        string   `json:"threshold"`
+	// Budget is the PLAT-556 trigger set: size vs the plan's median, dated
+	// text, cross-step duplication and the description layout.
+	Budget *PromptBudgetStep `json:"budget,omitempty"`
 }
 
 // PromptHealthDuplicateCluster identifies one long paragraph shared verbatim
@@ -55,6 +58,16 @@ type PromptHealthReport struct {
 	TechnicalReviewTrigger   string                         `json:"technical_review_trigger,omitempty"`
 	Steps                    []PromptHealthStep             `json:"steps"`
 	DuplicateClusters        []PromptHealthDuplicateCluster `json:"duplicate_clusters,omitempty"`
+	// PLAT-556 budget triggers. Any step listed in ConsolidationDueSteps makes
+	// Architecture due with focus prompt_design; never a gate on runs or edits.
+	PlanMedianChars          int      `json:"plan_median_chars"`
+	LargestDescriptionChars  int      `json:"largest_description_chars"`
+	LargestDescriptionStepID string   `json:"largest_description_step_id,omitempty"`
+	StepsOverBudget          int      `json:"steps_over_budget"`
+	DatedTextCount           int      `json:"dated_text_count"`
+	DuplicatedBudgetChars    int      `json:"duplicated_300_chars"`
+	StepsWithoutLayout       int      `json:"steps_without_layout"`
+	ConsolidationDueSteps    []string `json:"consolidation_due_steps,omitempty"`
 }
 
 const (
@@ -73,6 +86,7 @@ func BuildPromptHealthReport(steps []PlanStepInterface) PromptHealthReport {
 	paragraphLengths := make(map[string]int)
 
 	seen := make(map[string]struct{})
+	var budgetInputs []promptBudgetInput
 	for _, info := range collectAllSteps(steps) {
 		step := info.Step
 		if step == nil {
@@ -92,6 +106,11 @@ func BuildPromptHealthReport(steps []PlanStepInterface) PromptHealthReport {
 			continue
 		}
 		chars := utf8.RuneCountInString(description)
+		scriptOnly := false
+		if regular, ok := step.(*RegularPlanStep); ok {
+			scriptOnly = regular.ScriptOnly
+		}
+		budgetInputs = append(budgetInputs, promptBudgetInput{id: id, stepType: step.StepType(), scriptOnly: scriptOnly, description: description})
 		report.StepsWithDescriptions++
 		report.TotalDescriptionChars += chars
 		threshold := promptHealthThreshold(chars)
@@ -157,6 +176,7 @@ func BuildPromptHealthReport(steps []PlanStepInterface) PromptHealthReport {
 		return report.DuplicateClusters[i].RepeatedChars > report.DuplicateClusters[j].RepeatedChars
 	})
 
+	applyPromptBudget(&report, budgetInputs)
 	setPromptHealthReviewTrigger(&report)
 	return report
 }

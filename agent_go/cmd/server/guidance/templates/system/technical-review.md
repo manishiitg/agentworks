@@ -95,7 +95,11 @@ PLAT ticket and mark the finding external_action_required with the exact owner
 and reopen condition; do not repeatedly patch around it in each workflow.
 
 Apply safe workflow-owned repairs in this retained task using normal typed
-Builder tools. When `pulse.autonomy.run` is `auto` (the default; see
+Builder tools. Route each repair's text by type (`pulse-fixer-practices.md`
+step 4): technique to a skill reference named in the step's Guides, rule or
+decision to the knowledge layer or the description's Rules, evidence to the
+change reason; never append incident history to a description. Prompt
+consolidation and learning-access changes belong to Architecture. When `pulse.autonomy.run` is `auto` (the default; see
 `get_pulse_state(view="goal_work")`), resume or re-run the steps a recovery
 needs yourself with `execute_step`/`run_full_workflow` once the duplicate risk
 is ruled out; only `ask` turns that into a decision. Preserve the goal and constraints. Use existing human decisions

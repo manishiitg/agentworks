@@ -6692,6 +6692,16 @@ func registerNativePlanModificationTools(
 		return fmt.Errorf("failed to register record_plan_drift_review tool: %w", err)
 	}
 
+	// PLAT-556: the consolidator's no-loss check and its rollback.
+	if err := mcpAgent.RegisterCustomTool("check_plan_no_loss", checkPlanNoLossDescription, checkPlanNoLossParameters(),
+		createCheckPlanNoLossExecutor(workspacePath, readFile), "workflow"); err != nil {
+		return fmt.Errorf("failed to register check_plan_no_loss tool: %w", err)
+	}
+	if err := mcpAgent.RegisterCustomTool("restore_step_from_changelog", restoreStepFromChangelogDescription, restoreStepFromChangelogParameters(),
+		createRestoreStepFromChangelogExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
+		return fmt.Errorf("failed to register restore_step_from_changelog tool: %w", err)
+	}
+
 	// Register type-specific step addition tools
 	regularSchema := getAddRegularStepSchema()
 	regularParams, err := parseSchemaForToolParameters(regularSchema)

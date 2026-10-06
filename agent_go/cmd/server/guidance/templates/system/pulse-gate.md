@@ -65,7 +65,8 @@ or duplication evidence warrants Architecture Review. It returns only compact de
 size and long verbatim-duplication metrics; it is specifically the safe
 alternative to dumping `planning/plan.json`. A triggered report is evidence
 that a **prompt_design** architecture review may be useful, not an automatic
-finding and not authority for Gate to rewrite the workflow. The later Architecture
+finding and not authority for Gate to rewrite the workflow; its
+`consolidation_due_steps` are the budget triggers that make Architecture due. The later Architecture
 Review must inspect the affected descriptions, schemas, and shared references
 before it decides whether prompt-contract consolidation is safe.
 
@@ -146,6 +147,16 @@ cost, quality, latency, or orchestration patterns. A new severe structural risk
 or an approved proposal reaching its checkpoint can override that longer wait.
 Without such evidence, do not select Architecture more often than about once
 every two weeks.
+
+**Budget triggers make it due (PLAT-556).** `architecture_budget_candidates` in
+`get_pulse_state(view="module")` is Go-precomputed, like `plan_drift_candidates`:
+steps over the prompt budget (over 3x the plan's median description, floor
+12,000 characters; dated or incident text; 300+ characters repeated across steps;
+missing layout) and settled read-write learning steps. While that state has not
+been reviewed, `record_pulse_worklist` marks Architecture due with focus
+`prompt_design` or `learning_quality` regardless of elapsed time and the
+two-week horizon; name those steps in your reason. A state Architecture already
+completed is not forced again. These measures never block a run or an edit.
 
 ## Decide whether Technical Review is due
 
@@ -260,7 +271,12 @@ Review) on their own merits exactly as if Plan Drift were not due: open issues,
 new step concerns, failed runs and goal evidence still make them due, and they
 run right after Plan Drift in this pass. Do not skip them because Plan Drift is
 due. Only Architecture waits for a later cycle, because judging the design
-against a plan known to be stale gives conclusions from the wrong baseline.
+against a plan known to be stale gives conclusions from the wrong baseline —
+and only for the steps Drift flagged, and at most two passes in a row. On the
+third pass, or at once when every budget-flagged step is outside Drift's set,
+the worklist keeps Architecture due in the same pass with
+`architecture_scope_excludes:` naming Drift's steps, which it must not touch.
+Mark Architecture due on its merits; the backend applies this rule.
 
 When DB, knowledgebase, or learnings integrity is selected, explicitly name the
 Stores Health scope in the reason. Stores Health remains a technical lens, not

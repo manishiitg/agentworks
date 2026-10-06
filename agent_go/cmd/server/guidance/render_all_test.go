@@ -153,7 +153,7 @@ func TestFocusedScheduledPulseReferencesStayComplete(t *testing.T) {
 			wants: []string{
 				"exactly once", "durable evidence", "from prose", `get_pulse_state(view="backlog", detail="compact")`,
 				"normal Workflow Builder tools", "terminal", "cannot erase or block other due work", "priority-ordered Fix queue",
-				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "read-only access justified per step",
+				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "Learning-access changes\nbelong to Architecture",
 				"proposal_only", "there is no evidence-wait route", "strategic-proposal-", "No mandatory Markdown checkpoint",
 			},
 		},

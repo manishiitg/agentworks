@@ -40,6 +40,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 		"update_validation_schema",
 		"change_step_type",
 		"record_plan_drift_review",
+		"check_plan_no_loss", "restore_step_from_changelog",
 	)
 	add("workshop execution tools",
 		"execute_step", "query_step", "send_step_message", "debug_step", "list_executions",

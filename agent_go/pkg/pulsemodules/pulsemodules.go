@@ -94,6 +94,9 @@ var All = []Module{
 		Aliases:   []string{"architecture", "workflow_improvement"},
 		Question:  "Could the approved approach be implemented with a materially better technical structure?",
 		Trigger:   "Evidence of structural complexity, duplication, handoff friction, topology limits, or persistent cost/latency inefficiency.",
+		// propose, with one bounded exception (PLAT-556): a pure text-moving
+		// consolidation that passes check_plan_no_loss and a validated
+		// comparison run, and settling read-write learning access to read.
 		Authority: "propose",
 	},
 	{
@@ -138,8 +141,11 @@ var All = []Module{
 // (docs/design/pulse_goal_work.md), so it runs next and is never blocked by a
 // due Plan Drift (it only loses its Run permission then). Technical also runs
 // in the same pass: Plan Drift has already finished and repaired the plan by
-// then, and open issues must not wait a cycle. Architecture is research and
-// waits for the next cycle rather than judging a plan known to drift.
+// then, and open issues must not wait a cycle. Architecture waits for the
+// next cycle rather than judging a plan known to drift, but at most two
+// passes in a row (PLAT-556): then, or when its budget-flagged steps are all
+// outside Drift's set, the worklist scopes it away from Drift's steps and it
+// runs in the same pass.
 var ExecutionOrder = []string{
 	PlanDriftReviewID,
 	StrategicReviewID,

@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Architecture may consolidate; Plan Drift may defer it at most twice
+- Architecture (focus prompt_design, learning_quality or knowledgebase_design) applies a pure text-moving
+  consolidation itself when `check_plan_no_loss` passes and one run of the step passes validation; otherwise it restores
+  from the changelog and proposes. Rule, behaviour, output and topology changes stay owner proposals. It also owns
+  `learnings_access` and may set a settled read-write step to read. Why: only Architecture subtracts, and it had run once.
+- Budgets (size over 3x the plan median, dated text, cross-step duplication, missing layout, settled learning) make
+  Architecture due; they never block a run or an edit. Plan Drift defers Architecture only for its flagged steps and at
+  most two passes in a row; then Architecture runs in the same pass scoped away from them. Ticket:
+  [PLAT-556](bugs/pulse_platform/goals/pulse/fixer/plat-556.md).
+
 ### 2026-10-06 — Automatic help belongs at the product level
 
 Owner decision: keep the full product walkthrough's existing automatic startup

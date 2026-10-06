@@ -39,8 +39,10 @@ desired state was already expressible directly.
   - `none` neither reads nor writes.
 - `lock_code` remains independent and continues to protect proven scripted
   `main.py` artifacts.
-- Pulse and plan-drift review judge whether read-write access is still useful;
-  they do not create or manage a second learning lock.
+- Architecture review (focus `learning_quality`) owns whether read-write access
+  is still useful and may set a settled step to `read` itself; Plan Drift and the
+  Fixer only flag it (PLAT-556, 2026-10-06). Nobody creates or manages a second
+  learning lock.
 
 ## Migration
 

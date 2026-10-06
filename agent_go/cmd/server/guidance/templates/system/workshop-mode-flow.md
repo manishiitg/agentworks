@@ -59,15 +59,17 @@ objective invariant violations rooted in local contracts or
 reliability. Use Goal Advisor for strategy or path redesign.
 
 - Adds pre-validation rules that would have caught the failure.
-- Tightens step descriptions to be more specific.
+- Tightens step descriptions to be more specific, routing the text by type:
+  technique to a skill reference named under Guides, rule or decision to the
+  knowledge layer or Rules, evidence to the change reason (PLAT-556).
 - Applies small evidence-backed structural fixes when the failure is
   caused by missing/split/obsolete steps or bad step boundaries.
 - Patches `main.py` only for `scripted` steps; deletes stale
   `<script-dir>/main.py` for `agentic` steps.
 - Updates step config (execution mode, servers, learnings,
   KB/db/report/eval wiring).
-- Locks stable learnings when they converge and records review
-  evidence.
+- Flags learnings that look settled; Architecture (`learning_quality`)
+  decides whether a read-write step becomes read (PLAT-556).
 - Cleans deterministic best-practice violations such as invalid locks,
   missing learning objectives, KB/db contract mismatches, stale report
   wiring after field changes, and hardcoded user-specific values.

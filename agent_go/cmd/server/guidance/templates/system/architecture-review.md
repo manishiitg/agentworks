@@ -47,6 +47,57 @@ can answer the question. Preserve source URLs/paths, dates and evidence versus
 hypothesis in the brief review_note when not already in the linked evidence. Reuse fresh
 research instead of repeating it. External actions retain existing authorizations.
 
+### Budget triggers and the consolidator (PLAT-556)
+
+`get_pulse_state(view="module")` lists `architecture_budget_candidates`: steps over
+the prompt budget (more than 3x the plan's median description, floor 12,000
+characters; dated or incident text; 300+ characters repeated verbatim across
+steps; no `## Goal` / `## Output` / `## Done when` layout) and read-write learning
+steps whose learning has settled. While that state has not been reviewed, the
+worklist makes this review due with focus `prompt_design` or `learning_quality`
+(the reason and evidence name the steps). These are triggers, not gates: they
+never block a run or an edit, and you still decide how to restructure.
+If the worklist evidence carries `architecture_scope_excludes:`, Plan Drift owns
+those steps this pass: do not read them as targets and do not edit them.
+
+With focus `prompt_design`, `learning_quality` or `knowledgebase_design` you may
+apply a **pure text-moving consolidation** yourself, one step at a time:
+1. Load `references/step-description.md`. Rewrite the description into Goal,
+   Inputs, Output, Rules, Done when, Guides. Move reusable HOW into a skill
+   reference under `learnings/_global/references/<topic>.md` (correct an existing
+   topic in place before adding one), rules and decisions into a knowledgebase
+   note, and name each moved file under Guides or Inputs. Delete dated history and
+   incident stories; their evidence belongs in the change `reason`.
+2. Call `check_plan_no_loss(step_id, proposed_description, proposed_items)`. It must
+   return `pass=true`: every identifier, VAR_ name, number, range, threshold, file
+   path and quoted literal of the old text appears in the new description, items,
+   or a file the new description names. Put anything missing back. List a token in
+   `dropped_history` only when it described history.
+3. Apply with `update_message_sequence_step` (reason: what moved where and why).
+   Note the changelog `change_id` and the step's latest validation before the edit.
+4. Run the step once (`execute_step`, test mode where available) and read its
+   validation. Passed: keep it. Failed: `restore_step_from_changelog(change_id,
+   reason)` at once and turn the rewrite into an owner proposal.
+5. Record each attempt in `record_pulse_result(..., consolidations=[{step_id,
+   focus_key, change_id, chars_before, chars_after, validation_before,
+   validation_after, restored}])` with `result="changed"`.
+
+Anything beyond moving text — a changed rule, threshold, output, schema, item
+sequence, step type, route or schedule — stays an owner proposal through the
+decision flow below. Do not consolidate a step whose old text you cannot fully
+account for; a proposal is the correct result then.
+
+**Learning access (owner of the decision).** Architecture alone decides whether a
+step keeps `learnings_access="read-write"`; Plan Drift only flags it. With focus
+`learning_quality`, review the step's learnings (merge duplicates, move business
+facts to the knowledge layer, remove non-skill content) and read
+`learnings/<step-id>/.learning_metadata.json` (`successful_runs`,
+`description_hash_runs`, `detection_history`). When the learning has settled (the
+trigger is 5+ successful runs on one description hash with no new learning in the
+latest detections), you may set `learnings_access="read"` yourself with
+`update_step_config` and a reason citing those counters: it is reversible.
+Read to read-write still needs a concrete `learning_objective` and a decision.
+
 ### Crew versus message sequence
 
 The step-type rule is in
@@ -166,9 +217,11 @@ Learning is part of this assessment: distinguish hypotheses from validated
 observations, name applicability and contradictory evidence, and propose retiring
 stale advice. A successful script is not proof that a business strategy improved.
 
-The review is read-only for workflow implementation. Save research only when it
-materially helps, and persist only canonical issues, genuine decisions and one
-review result. Do not edit plans, code, DB records, learnings, KB, reports or schedules.
+The review is read-only for workflow implementation, except the consolidations
+and the read-write to read learning change described above. Save research only
+when it materially helps, and persist only canonical issues, genuine decisions and
+one review result. Otherwise do not edit plans, code, DB records, learnings, KB,
+reports or schedules.
 Do not publish, message others, or execute production actions during research.
 Record one terminal `record_pulse_result(module="architecture_review")` with a
 concise conclusion and evidence; do not persist focus coverage.

@@ -1265,6 +1265,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"update_validation_schema",
 		"change_step_type",
 		"record_plan_drift_review",
+		"check_plan_no_loss", "restore_step_from_changelog",
 	}
 
 	// Variable & config tools
@@ -3044,7 +3045,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// a reviewer prompt just to establish whether prompt-contract bloat exists.
 		if err := mcpAgent.RegisterCustomTool(
 			"get_plan_prompt_health",
-			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, and long verbatim duplicate paragraphs. This is an objective review signal, not permission to rewrite a workflow automatically.",
+			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, long verbatim duplicate paragraphs, and the PLAT-556 budget per step (size vs this plan's median with OVER budget above 3x the median, floor 12,000 chars; dated/incident text; 300+ characters repeated verbatim across steps; missing ## Goal/Inputs/Output/Rules/Done when/Guides sections). consolidation_due_steps are the steps that make Architecture (prompt_design) due. Budgets are triggers, never gates: they never block a run or an edit.",
 			map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},

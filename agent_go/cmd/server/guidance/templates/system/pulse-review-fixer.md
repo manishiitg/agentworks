@@ -378,10 +378,16 @@ authoritative owner across Soul, Plan/step config, Validation, Learnings,
 Knowledgebase, DB, and Pulse. The KB lens inventories every content-bearing
 note in `kb_purity_manifest`; the DB lens maps every relevant table and
 content-bearing TEXT/JSON column in `db_ownership_manifest`. Stable references
-to canonical records are valid; copied content is not. Learning-write reductions
-are valid only after the complete relevant manifest is clean, with read-only
-access justified per step from its own objective, description hash, successful
-runs, and `.learning_metadata.json` rather than the shared global skill alone.
+to canonical records are valid; copied content is not. Learning-access changes
+belong to Architecture (focus `learning_quality`, PLAT-556): the Fixer does not
+change `learnings_access`; when a read-write step looks settled, say so in the
+finding and leave the decision to Architecture.
+
+**Where a repair's text goes (PLAT-556).** Follow `pulse-fixer-practices.md`
+step 4: technique to a skill reference named under the step's `## Guides`, a
+rule or decision to the knowledge layer or the description's `## Rules`, the
+evidence and history to the change `reason`. Moving the text a repair touches is
+part of the smallest complete repair.
 
 **Issue-register lifecycle.** A successfully applied repair closes its issue in
 the same Fixer pass. Reviews do not schedule or perform a separate verification

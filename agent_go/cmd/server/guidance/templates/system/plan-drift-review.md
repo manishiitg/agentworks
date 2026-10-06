@@ -188,6 +188,9 @@ Then inspect only the dependencies the actual change could affect:
 - **Descriptions, saved code, skills, and KB:** identify stale instructions or
   inaccessible required guidance caused by the changed contract. Do not redesign
   learning ownership merely because another access mode seems preferable.
+  Architecture owns `learnings_access` decisions (PLAT-556): Plan Drift only
+  flags a read-write step whose learning looks settled or stale, in the drift
+  record's evidence; it does not change the access itself.
   When an affected step uses browser tests or promises live visibility, read
   `references/playwright-scripted.md`. Check the step description, accessible skill
   bundle, actual test import/custom fixture, and installed runtime together. A plain

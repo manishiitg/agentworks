@@ -2794,11 +2794,15 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			}
 			// Plan Drift is a prerequisite for Architecture only, which resumes
 			// on the next Pulse cycle rather than judging a plan already known
-			// to drift. Technical and Goal Work still run after it (Goal Work
+			// to drift -- at most twice in a row (PLAT-556), after which it runs
+			// here scoped away from Drift's flagged steps. Technical and Goal Work still run after it (Goal Work
 			// without its Run permission, held by the agent from the permission text in
 			// its step).
 			for _, module := range pulsemodules.PostDriftExecutionOrder() {
-				if planDriftDue && !pulsemodules.RunsWhileDriftDue(module) {
+				// PLAT-556: Architecture runs while Drift is due only when the
+				// worklist scoped it away from Drift's flagged steps.
+				if planDriftDue && !pulsemodules.RunsWhileDriftDue(module) &&
+					!(module == pulseModuleArchitectureReview && pulseArchitectureScopedDuringDrift(ctx, sctx.WorkspacePath, pulseRunID)) {
 					continue
 				}
 				if due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module); err != nil || due {
@@ -3169,7 +3173,7 @@ func pulseModuleReviewParts(module string) (label, reference, contract string) {
 	label, reference, contract = "technical-review", "technical-review", "First close every open workflow issue in get_pulse_state(view=\"backlog\"): fix it, close it as not a problem with the check that shows it, ask the user through a decision with the exact change, or hand a platform defect off. Nothing stays open waiting: an old next_check that waits for a future run or more evidence is not a reason to wait (check whether the fix is already in place and close it, or fix it now), and a due or failed Plan Drift is not a reason to leave issues open. Then investigate new correctness failures and apply safe workflow-owned repairs. Do not perform a general optimization audit."
 	switch module {
 	case pulseModuleArchitectureReview:
-		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements; do not mutate implementation in the review."
+		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements. The one exception (PLAT-556, see architecture-review.md): with focus prompt_design, learning_quality or knowledgebase_design you may apply a pure text-moving consolidation yourself when check_plan_no_loss passes, then run the step once and keep it only if validation passes (else restore_step_from_changelog), and you may set a settled learnings_access=read-write step to read; record each with record_pulse_result consolidations. Behaviour, rule, output and topology changes stay owner proposals. If the worklist evidence carries architecture_scope_excludes, do not touch those steps: Plan Drift owns them this pass."
 	case pulseModuleStrategicReview:
 		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permission levels the runtime granted (prepare under pulse/work/; run existing steps only when Run is auto; never act outward or edit the workflow yourself; put those to the user as ready decisions). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. This module is not blocked by a due Plan Drift; when Drift is due, prepare and research but do not run steps."
 	}

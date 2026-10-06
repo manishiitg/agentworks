@@ -252,6 +252,8 @@ chat:
       - preview_report
       - query_step
       - record_plan_drift_review
+      - check_plan_no_loss
+      - restore_step_from_changelog
       - remove_mcp_server
       - remove_slack_bot_route
       - reorganize_knowledgebase

@@ -358,6 +358,8 @@ func ensurePulseModuleStateSchema(ctx context.Context, db *sql.DB) error {
 		pulseFinalCommandStateSchema,
 		backgroundAgentLogSchema,
 		pulseFastRequestSchema,
+		pulsePromptBudgetMetricsSchema,
+		pulseConsolidationSchema,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
@@ -1112,15 +1114,10 @@ func recordPulseWorklistWithMode(ctx context.Context, workspacePath, pulseRunID,
 	// Recovery is a backend fact, not another input for Gate to remember. Apply
 	// it before validating the worklist so an otherwise valid Gate skip cannot
 	// suppress an interrupted review behind a cooldown.
-	decisions, err = forcePendingPulseReviewRecoveries(ctx, workspacePath, decisions)
+	decisions, err = applyPulseSchedulingRules(ctx, workspacePath, decisions)
 	if err != nil {
 		return nil, err
 	}
-	decisions, err = applyDisabledPulseReviewModules(ctx, workspacePath, decisions)
-	if err != nil {
-		return nil, err
-	}
-	decisions = enforcePlanDriftExclusivePass(decisions)
 	if err := validatePulseWorklistDecisions(decisions); err != nil {
 		return nil, err
 	}
@@ -1221,6 +1218,10 @@ func recordPulseWorklistWithMode(ctx context.Context, workspacePath, pulseRunID,
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	// PLAT-556 success metric: one row per Pulse pass. Never blocks the worklist.
+	if err := recordPulsePromptBudgetMetric(ctx, workspacePath, pulseRunID); err != nil {
+		log.Printf("[PULSE] prompt budget metric not recorded for %s: %v", workspacePath, err)
 	}
 	return states, nil
 }
@@ -1370,6 +1371,9 @@ func enforcePlanDriftExclusivePass(decisions []PulseWorklistDecision) []PulseWor
 		module := normalizePulseModule(isolated[index].Module)
 		if module == pulseModulePlanDriftReview || pulsemodules.RunsWhileDriftDue(module) {
 			continue
+		}
+		if isolated[index].Due && pulseEvidenceHas(isolated[index].Evidence, evidenceArchitectureScoped) {
+			continue // PLAT-556: runs this pass, away from Drift's flagged steps
 		}
 		isolated[index].Due = false
 		isolated[index].Reason = "Deferred until the due Plan Drift pass establishes a current, compatible plan baseline."
@@ -1654,15 +1658,10 @@ func recordPulseWorklistOnceAfter(ctx context.Context, workspacePath, pulseRunID
 	// interrupted module that Gate skipped without a future boundary would be
 	// rejected before the backend got its chance to make it mandatory due.
 	var err error
-	decisions, err = forcePendingPulseReviewRecoveries(ctx, workspacePath, decisions)
+	decisions, err = applyPulseSchedulingRules(ctx, workspacePath, decisions)
 	if err != nil {
 		return nil, err
 	}
-	decisions, err = applyDisabledPulseReviewModules(ctx, workspacePath, decisions)
-	if err != nil {
-		return nil, err
-	}
-	decisions = enforcePlanDriftExclusivePass(decisions)
 	if err := validatePulseWorklistDecisions(decisions); err != nil {
 		return nil, err
 	}
@@ -2769,6 +2768,24 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"changed_files": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Exact workspace-relative files changed by this module. Required when result=changed; otherwise omit."},
 					"verification":  map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Agent-reported checks performed and their observed outcomes. Required when result=changed; otherwise include only when useful. These records are audit evidence, not backend-executed proof."},
 					"before_refs":   map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional agent-supplied pre-change hashes, versions, or cursors. When present, provide an equal-length after_refs audit pair."},
+					"consolidations": map[string]interface{}{
+						"type":        "array",
+						"description": "architecture_review only (PLAT-556): each pure text-moving consolidation applied this pass after check_plan_no_loss passed. validation_after is the one comparison run's validation (passed|failed); a failed one must already be restored with restore_step_from_changelog (restored=true). validation_before is the step's latest validation before the edit when known.",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"step_id":           map[string]interface{}{"type": "string"},
+								"focus_key":         map[string]interface{}{"type": "string", "enum": []string{"prompt_design", "learning_quality", "knowledgebase_design"}},
+								"change_id":         map[string]interface{}{"type": "string"},
+								"chars_before":      map[string]interface{}{"type": "integer"},
+								"chars_after":       map[string]interface{}{"type": "integer"},
+								"validation_before": map[string]interface{}{"type": "string", "enum": []string{"passed", "failed", "unknown"}},
+								"validation_after":  map[string]interface{}{"type": "string", "enum": []string{"passed", "failed"}},
+								"restored":          map[string]interface{}{"type": "boolean"},
+							},
+							"required": []string{"step_id", "validation_after"},
+						},
+					},
 					"after_refs":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional agent-supplied post-change hashes, versions, or cursors paired positionally with before_refs."},
 					"finding_dispositions": map[string]interface{}{
 						"type":        "array",
@@ -3184,6 +3201,16 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		lastReviewsError = lastReviewsErr.Error()
 		lastReviews = []PulseModuleAudit{}
 	}
+	promptBudget, promptBudgetErr := step_based_workflow.CollectPromptBudgetDue(ctx, workspacePath)
+	promptBudgetErrText := ""
+	if promptBudgetErr != nil {
+		promptBudgetErrText = promptBudgetErr.Error()
+	}
+	promptBudgetMetrics, metricsErr := getPulsePromptBudgetMetrics(ctx, workspacePath, 10)
+	if metricsErr != nil {
+		log.Printf("[PULSE] get_pulse_state(view=module): prompt budget metrics unavailable for %s: %v", workspacePath, metricsErr)
+		promptBudgetMetrics = []PulsePromptBudgetMetric{}
+	}
 	var runMode *PulseRunMode
 	if strings.TrimSpace(pulseRunID) != "" {
 		var modeErr error
@@ -3242,6 +3269,21 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		"impact_ledger_note":             "Durable intervention, per-run success-criterion observation, and append-only before/after assessment history. Reliability or measurement work is not direct goal progress; inconclusive is correct until a comparable evidence window matures.",
 		"context_records":                loadPulseContextRecordsForState(ctx, workspacePath),
 		"context_records_note":           "User-confirmed workflow rules captured through capture_context. The context file is the runtime source; these immutable records show who captured what and when.",
+		"architecture_budget_candidates": map[string]interface{}{
+			"prompt_design_steps":    promptBudget.PromptDesign,
+			"learning_settled_steps": promptBudget.LearningSettled,
+			"fingerprint":            promptBudget.Fingerprint,
+			"summary": map[string]interface{}{
+				"plan_median_chars": promptBudget.Health.PlanMedianChars, "largest_description_chars": promptBudget.Health.LargestDescriptionChars,
+				"largest_description_step_id": promptBudget.Health.LargestDescriptionStepID, "steps_over_budget": promptBudget.Health.StepsOverBudget,
+				"dated_text_count": promptBudget.Health.DatedTextCount, "duplicated_300_chars": promptBudget.Health.DuplicatedBudgetChars,
+				"steps_without_layout": promptBudget.Health.StepsWithoutLayout,
+			},
+			"error": promptBudgetErrText,
+		},
+		"architecture_budget_candidates_note": "PLAT-556 budget triggers, Go-precomputed like plan_drift_candidates. prompt_design_steps are over 3x the plan's median description (floor 12,000 chars), carry dated/incident text, share 300+ verbatim characters with another step, or lack ## Goal/Output/Done when; learning_settled_steps are learnings_access=read-write steps with 5+ successful runs on one description hash and no new learning in the latest detections. While this state (fingerprint) has not been reviewed, record_pulse_worklist makes architecture_review due with that focus (get_plan_prompt_health has per-step detail). Triggers, never gates: they block no run and no edit.",
+		"prompt_budget_metrics":      promptBudgetMetrics,
+		"prompt_budget_metrics_note": "PLAT-556 success metric, one row per Pulse pass, newest first: description size totals, steps over budget, dated text, duplicated text, missing layout, and cumulative Architecture runs and consolidations (kept, restored, validation before/after).",
 		"gate_mode":                      runMode,
 		"gate_mode_note":                 "The Gate-selected pass shape for the supplied pulse_run_id. Go records it but does not choose it; the following message sequence must follow it.",
 	})
@@ -3778,12 +3820,19 @@ func recordPulseResultFromToolArgs(ctx context.Context, args map[string]interfac
 			return "", fmt.Errorf("finding_dispositions is required when result=changed; %s. %s", changedRequirement, pulseFindingDispositionsShape)
 		}
 	}
+	consolidations, err := pulseConsolidationsFromToolArg(args["consolidations"], normalizePulseModule(module))
+	if err != nil {
+		return "", err
+	}
 	state, err := markPulseModuleResultFromAgentWithAuditFindingsAndFocuses(
 		ctx, workspacePath, module, pulseRunID, result, reason,
 		stringSliceFromToolArg(args["evidence"]), audit, dispositions, focuses,
 	)
 	if err != nil {
 		return "", err
+	}
+	if err := recordPulseConsolidations(ctx, workspacePath, pulseRunID, normalizePulseModule(module), consolidations); err != nil {
+		return "", fmt.Errorf("record consolidations: %w", err)
 	}
 	payload, _ := json.Marshal(map[string]interface{}{"status": "updated", "module": state})
 	return string(payload), nil
