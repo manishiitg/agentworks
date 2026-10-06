@@ -14,7 +14,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 21 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 175 | 37 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 28 | 5 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 21 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 60 | 13 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |
 | [PLAT-613](chat/reliability/plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-611](relays/execution/plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-577](relays/execution/plat-577.md) | Remove variable groups from Relay execution and authoring | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-576](brain/skills/plat-576.md) | Brain owns company skills; MCP get_skill replaces CLI skill install | fixed on main | P2 | [brain/skills](brain/skills/index.md) |
 | [PLAT-575](browser/browser/plat-575.md) | RTS extension screenshot cannot save its staging artifact across workspace service boundaries | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-574](browser/browser/plat-574.md) | Copy the existing browser connection code without resetting or selecting a browser | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
