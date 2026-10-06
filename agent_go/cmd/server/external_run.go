@@ -21,7 +21,7 @@ import (
 // catalog. Display-only: membership comes from product.yaml run.tools, and a
 // tool without a hint here still proxies with the generic description.
 var externalRunToolHints = map[string]string{
-	"execute_step":      "Start one workflow step in the background. Arguments: step_id (required; plan step ID or positional like '1'), group_name, human_input, script_parameters (object), tier (high|medium|low).",
+	"execute_step":      "Start one workflow step in the background. Arguments: step_id (required; plan step ID or positional like '1'), group_name, human_input, script_parameters (object), tier (high|medium|low), test_mode (true: run without real-world side effects; reads stay real, external actions are stubbed and recorded).",
 	"run_full_workflow": "Run all steps end-to-end for one variable group. Arguments: group_name (required), human_inputs (object keyed by step ID), route_selections (object keyed by routing step ID).",
 	"send_step_message": "Steer a live execution. Arguments: execution_id (required), message (required).",
 	"query_step":        "One-off live status check for a tracked execution. Arguments: step_id or execution_id.",

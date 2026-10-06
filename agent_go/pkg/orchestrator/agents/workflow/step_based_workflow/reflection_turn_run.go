@@ -59,7 +59,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 	executionLLM string,
 ) stepReflectionTurnResult {
 	result := stepReflectionTurnResult{History: history}
-	if executionAgent == nil || !hcpo.platformStoresEnabled() {
+	if executionAgent == nil || !hcpo.platformStoresEnabled() || hcpo.activeTestRun() != nil {
+		// A test run (PLAT-562) records neither learnings nor knowledge.
 		return result
 	}
 

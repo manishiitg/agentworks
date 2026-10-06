@@ -50,6 +50,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeCrewStep(
 	if err := validateCrewStepFieldsTyped(crewStep); err != nil {
 		return CrewStepResult{}, updatedContextFiles, err
 	}
+	if run := hcpo.activeTestRun(); run != nil {
+		// A Crew call acts in another project; test mode cannot contain it (PLAT-562).
+		return CrewStepResult{}, updatedContextFiles, fmt.Errorf("crew step %q is not run in test mode (%s): a Crew call acts outside this workflow and cannot be stubbed or redirected", crewStep.GetID(), run.ID)
+	}
 	opts := hcpo.GetExecutionOptions()
 	if opts == nil || opts.CrewRunner == nil {
 		return CrewStepResult{}, updatedContextFiles, fmt.Errorf(

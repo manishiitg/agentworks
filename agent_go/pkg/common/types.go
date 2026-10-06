@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"log"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 )
 
 // FolderGuardConfig represents folder access restrictions
@@ -775,6 +778,9 @@ func SetSessionBrowserNamespace(sessionID, namespace string) {
 // write restrictions AND the same blocked-write exceptions. Returns true if a
 // guard was copied.
 func CopySessionFolderGuard(fromSessionID, toSessionID string) bool {
+	// A child of a test-mode session is in the same test run (PLAT-562),
+	// whether or not the parent has a folder guard to copy.
+	testmode.Inherit(fromSessionID, toSessionID)
 	src := GetSessionShellConfig(fromSessionID)
 	if src == nil || (!src.FolderGuardSet && len(src.ReadPaths) == 0 && len(src.WritePaths) == 0 && len(src.BlockedPaths) == 0 && len(src.BlockedWritePaths) == 0) {
 		return false
@@ -868,7 +874,34 @@ func GetSessionShellConfig(sessionID string) *SessionShellConfig {
 		}
 		cfg.BlockedPaths = DeduplicateStrings(append(cfg.BlockedPaths, SessionKnowledgebaseBlockedPaths(workspace)...))
 	}
+	applyTestModeOverlay(sessionID, cfg)
 	return cfg
+}
+
+func init() {
+	testmode.ContextSessionID = func(ctx context.Context) string {
+		sid, _ := ctx.Value(ChatSessionIDKey).(string)
+		return strings.TrimSpace(sid)
+	}
+}
+
+// applyTestModeOverlay confines a test-mode session (PLAT-562) every time its
+// config is read, so no later grant or setter can widen it: writes outside the
+// test run folder are denied, DB_PATH names the run's DB copy, and the shell
+// sees AGENTWORKS_TEST_MODE=1.
+func applyTestModeOverlay(sessionID string, cfg *SessionShellConfig) {
+	run := testmode.ForSession(sessionID)
+	if run == nil || cfg == nil {
+		return
+	}
+	cfg.BlockedWritePaths = DeduplicateStrings(run.BlockedWrites(cfg.WritePaths, cfg.BlockedWritePaths))
+	if cfg.Env == nil {
+		cfg.Env = map[string]string{}
+	}
+	cfg.Env[testmode.EnvFlag] = "1"
+	if _, has := cfg.Env["DB_PATH"]; has {
+		cfg.Env["DB_PATH"] = run.DBAbsPath
+	}
 }
 
 func workflowCapabilityEnv(key string) bool {

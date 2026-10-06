@@ -9,4 +9,4 @@
 | [learnings](learnings/index.md) | 16 | 3 |
 | [plans-contracts](plans-contracts/index.md) | 19 | 4 |
 | [pulse](pulse/index.md) | 51 | 14 |
-| [steps](steps/index.md) | 50 | 10 |
+| [steps](steps/index.md) | 51 | 10 |

@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
@@ -938,12 +940,18 @@ type ServerAgentInfo struct {
 
 // InteractiveWorkshopManager manages the interactive workshop phase
 type InteractiveWorkshopManager struct {
-	controller             *StepBasedWorkflowOrchestrator
-	workshopConfig         *WorkshopConfig
-	presetLLM              *AgentLLMConfig
-	sessionID              string
-	workflowID             string
-	stepRegistry           *WorkshopStepRegistry
+	controller     *StepBasedWorkflowOrchestrator
+	workshopConfig *WorkshopConfig
+	presetLLM      *AgentLLMConfig
+	sessionID      string
+	workflowID     string
+	stepRegistry   *WorkshopStepRegistry
+	// executeStartMu serializes execute_step's start checks so a test run and
+	// another execution never start together (PLAT-562).
+	executeStartMu sync.Mutex
+	// runningTestRunID is the test run started here and not yet finished;
+	// guarded by executeStartMu.
+	runningTestRunID       string
 	sessionCtx             context.Context                             // long-lived ctx for background goroutines
 	toolCallQueryFunc      ToolCallQueryFunc                           // optional: query live tool calls for running steps
 	tmuxLookupFunc         TmuxLookupFunc                              // optional: resolve live tmux session name for a coding-CLI step
@@ -2022,6 +2030,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"additionalProperties": true,
 					"description":          "Named runtime inputs for a scripted step. Values must match that step's declared script_parameters contract and are passed to main.py as STEP_PARAMS_JSON. Omit for non-scripted steps.",
 				},
+				"test_mode": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Run the step once WITHOUT real-world side effects, to verify a change before it counts as done. Reads stay real (DB, files, read-only MCP tools, browser navigation and snapshots). Everything with an external effect is NOT performed but recorded as 'would have run': MCP tools not annotated read-only (send, post, submit, spend), browser clicks/typing/forms/eval, notifications and human-input requests, Crew calls, KB and goal-metric writes. The workflow DB is a copy and files go to runs/test-<id>/; learnings are not written. The shell's outbound network is NOT blocked, so a step that sends through curl in a script is not contained. The result lists every stubbed action. Cannot run while another step of this workshop runs.",
+				},
 			},
 			"required": []string{"step_id"},
 		},
@@ -2131,6 +2143,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateWorkshopFastPathRequest(iwm.currentWorkshopModeFromConfigs(nil), fastPathOnly); err != nil {
 				return "", err
 			}
+			testMode, _ := args["test_mode"].(bool)
 
 			execOpts := &WorkshopExecuteOptions{
 				GroupName:       resolvedGroupName,
@@ -2147,6 +2160,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				MessageSequenceRestart: messageSequenceRestart,
 				ScriptParameters:       scriptParameters,
 				ScriptParametersSet:    scriptParametersSet,
+			}
+			if testMode {
+				// PLAT-562: the test run gets its own folder under runs/ and
+				// reads upstream outputs copied from the real run folder.
+				execOpts.TestRunID = fmt.Sprintf("%s%d", testmode.FolderPrefix, time.Now().UnixNano())
+				execOpts.RealRunFolder = runFolder
+				execOpts.RunFolder = fmt.Sprintf("%s/%s", execOpts.TestRunID, groupFolderName)
+				execOpts.AllowScriptRepair = false
 			}
 
 			// Resolve flexible step ID (handles "1", "step-1", "step1" etc.)
@@ -2166,6 +2187,20 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			// execution instead of forking a second concurrent run. Two runs of
 			// one step race on shared state (db/ rows, the browser/CDP session)
 			// and can double-act — e.g. post the same tweet twice.
+			// A test run shares this workshop's controller and its group tool
+			// session, so it never overlaps another execution here (PLAT-562).
+			iwm.executeStartMu.Lock()
+			defer iwm.executeStartMu.Unlock()
+			if running := iwm.runningTestRunID; running != "" {
+				return fmt.Sprintf("A test-mode run (%s) is in progress in this workshop; wait for it to finish before starting %q.", running, stepID), nil
+			}
+			if testMode {
+				for _, snap := range iwm.stepRegistry.ListSnapshots() {
+					if snap.Status == WorkshopStepRunning {
+						return fmt.Sprintf("Step %q was NOT started in test mode: step %q is running in this workshop (execution_id %q). Test mode runs only when nothing else runs here; wait for it to finish.", stepID, snap.StepID, snap.ID), nil
+					}
+				}
+			}
 			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
 				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
 				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
@@ -2277,6 +2312,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			startMetadata := map[string]string{
 				"execution_type": "workflow-step",
 			}
+			if execOpts.TestRunID != "" {
+				startMetadata["test_run_id"] = execOpts.TestRunID
+			}
 			registerWorkshopExecutionBeforeLaunch(iwm.executionNotifier, WorkshopExecutionStart{
 				ID:                execID,
 				ParentExecutionID: parentExecutionID,
@@ -2292,7 +2330,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
 			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
 
+			if execOpts.TestRunID != "" {
+				iwm.runningTestRunID = execOpts.TestRunID
+			}
 			go func() {
+				if execOpts.TestRunID != "" {
+					defer func() {
+						iwm.executeStartMu.Lock()
+						if iwm.runningTestRunID == execOpts.TestRunID {
+							iwm.runningTestRunID = ""
+						}
+						iwm.executeStartMu.Unlock()
+					}()
+				}
 				defer releaseRunningStep()
 				if workflowSessionID != "" {
 					defer virtualtools.UnregisterParentChat(workflowSessionID)

@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Step test mode fails closed: only what is known to be read-only runs
+- `execute_step(test_mode=true)` runs a step with reads real and external effects stubbed and recorded: an MCP tool runs
+  only when its server marks it `readOnlyHint` (and not destructive); the browser only navigates and reads (`eval` is
+  stubbed); platform tools run only from a short read-only/redirected list; anything else, including any new tool, is
+  stubbed. The DB is a copy, writes stay in `runs/test-<id>/`, learnings and KB are not written, Crew steps are refused.
+  Why: Builder and Pulse must verify fixes on steps that bid, spend or send without doing so. Shell outbound network is
+  NOT contained (documented). Design: `design/step_test_mode.md`; ticket
+  [PLAT-562](bugs/pulse_platform/goals/steps/general/plat-562.md).
+
 ### 2026-10-06 — Edits list their dependents; broken references are reported, never gated
 
 What: a deterministic reference map (steps, evals, KB notes, soul.md, guides, step_config) reports

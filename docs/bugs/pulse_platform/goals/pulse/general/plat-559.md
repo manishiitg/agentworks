@@ -43,6 +43,11 @@ What is left for QA is the outside world changing (site changes, account restric
 - Edit-time dependency updates (change 1 above): the deterministic reference map is built in
   [PLAT-561](../../plans-contracts/plat-561.md) (plan and file edits list dependents; prompt health and Pulse
   carry open breaks). Left there: the AI pass for business-rule contradictions.
+- The builder tests before saving (change 3) and test mode for steps with external effects (proposal item 1): step
+  test mode is built in [PLAT-562](../../steps/general/plat-562.md) (`execute_step(test_mode=true)`: reads real,
+  external effects stubbed and recorded, DB a copy, files in `runs/test-<id>/`, no learnings). Left there:
+  full-workflow test mode, the Pulse rule that a fix to a step with external effects is verified only by a test-mode
+  run (migration step 5), and a live check through a Builder chat.
 
 ## Source
 

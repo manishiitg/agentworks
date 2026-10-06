@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 )
 
 // WorkshopExecuteOptions holds per-call overrides for ExecuteStepForWorkshop.
@@ -26,6 +28,11 @@ type WorkshopExecuteOptions struct {
 	ScriptParameters       map[string]interface{} // Validated named inputs for a scripted step, exposed through STEP_PARAMS_JSON.
 	ScriptParametersSet    bool                   // Distinguishes an omitted field from an explicitly supplied empty object.
 	ExecutionID            string                 // Server-generated identity for this direct step execution.
+	// TestRunID, when set, runs the step in test mode (PLAT-562): RunFolder is
+	// the test run's folder runs/<TestRunID>/..., RealRunFolder the run whose
+	// upstream outputs are copied in. Server-generated, never model input.
+	TestRunID     string
+	RealRunFolder string
 }
 
 // cleanupWorkshopExecutionPath removes a specific workshop execution folder and archives
@@ -70,6 +77,24 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if hcpo.selectedRunFolder == "" {
 		return "", fmt.Errorf("no run folder selected; cannot execute step %q — pass group_name or run_folder in execute_step, or select a group first", stepID)
 	}
+
+	// Test mode (PLAT-562): from here every session this controller sets up
+	// belongs to the test run until the step finishes.
+	var testRun *testmode.Run
+	if opts != nil && opts.TestRunID != "" {
+		run, err := hcpo.beginTestRun(ctx, opts.TestRunID, opts.RealRunFolder)
+		if err != nil {
+			return "", fmt.Errorf("test mode: %w", err)
+		}
+		testRun = run
+		opts.AllowScriptRepair = false
+	}
+	var execErr error
+	defer func() {
+		if testRun != nil {
+			hcpo.endTestRun(testRun, stepID, execErr)
+		}
+	}()
 
 	// 1b. Ensure variable values are loaded (same as normal workflow's Execute method).
 	// If group_name was passed, applyWorkshopExecuteOptions already loaded group values.
@@ -170,7 +195,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if err := hcpo.createRunFolderStructure(ctx, fullRunFolderPath); err != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Failed to create run folder structure: %v (continuing)", err))
 	}
-	if executionOpts := hcpo.GetExecutionOptions(); executionOpts != nil && (executionOpts.RunKind == "schedule" || executionOpts.RunKind == "slack") {
+	if executionOpts := hcpo.GetExecutionOptions(); testRun == nil && executionOpts != nil && (executionOpts.RunKind == "schedule" || executionOpts.RunKind == "slack") {
 		executionID := ""
 		if opts != nil {
 			executionID = opts.ExecutionID
@@ -272,7 +297,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	// 6. Run via the standard execution pipeline.
 	retryStarted := time.Now().UTC()
 	retryFolder, retryExecutionID, retryRevision := hcpo.selectedRunFolder, "", ""
-	if !isInnerStep {
+	if !isInnerStep && testRun == nil {
 		if raw, err := hcpo.ReadWorkspaceFile(ctx, workflowRunMetadataPath(retryFolder)); err == nil {
 			var meta map[string]interface{}
 			if json.Unmarshal([]byte(raw), &meta) == nil && meta["status"] == "failed" {
@@ -284,8 +309,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 		}
 	}
 	var lastOutcome LastExecutedStepOutcome
-	execErr := hcpo.runExecutionPhase(ctx, breakdownSteps, 1, progress, setup.StartFromStep, setup.Context, &lastOutcome)
-	if execErr == nil && lastOutcome.Found && lastOutcome.StepID == stepID && hcpo.selectedRunFolder == retryFolder {
+	execErr = hcpo.runExecutionPhase(ctx, breakdownSteps, 1, progress, setup.StartFromStep, setup.Context, &lastOutcome)
+	if execErr == nil && testRun == nil && lastOutcome.Found && lastOutcome.StepID == stepID && hcpo.selectedRunFolder == retryFolder {
 		if err := hcpo.recordWorkshopRetryRecovery(ctx, retryFolder, retryExecutionID, retryRevision, stepID, totalSteps, retryStarted); err != nil {
 			execErr = fmt.Errorf("step %q succeeded but run recovery evidence could not be persisted: %w", stepID, err)
 		}
@@ -332,6 +357,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	// WorkshopHumanInput is scoped via ExecutionContext, so no session-level reset needed.
 	hcpo.SetRunSingleStepMode(false, -1)
 
+	if testRun != nil {
+		result = testRun.Summary() + "\n" + result
+	}
 	return result, execErr
 }
 

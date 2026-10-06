@@ -140,6 +140,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	if attachedFolders := workflowFolderAccessPrompt(hcpo.GetWorkspacePath()) + "\n" + sharedKBPrompt; strings.TrimSpace(attachedFolders) != "" {
 		supplements = append(supplements, attachedFolders)
 	}
+	if section := testModePromptSection(hcpo.activeTestRun()); section != "" {
+		supplements = append(supplements, section)
+	}
 	if err := baseAgent.ApplyIdentity(ctx, identitySkills, supplements...); err != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to apply supplementary agent identity: %v", err))
 	}

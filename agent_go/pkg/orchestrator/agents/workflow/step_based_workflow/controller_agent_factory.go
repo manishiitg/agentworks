@@ -469,6 +469,8 @@ func isGenericAgentStep(stepID, stepPath string) bool {
 // When kbAccess permits writes the step is the KB writer,
 // so knowledgebase/notes/ is added to writePaths. Returns readPaths and writePaths.
 func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath string, stepID string, kbAccess string, learningsAccess string, dbAccess string, stepConfig *AgentConfigs) (readPaths, writePaths []string) {
+	// A test run (PLAT-562) writes only inside its own run folder.
+	defer func() { writePaths = hcpo.testModeWritePaths(writePaths) }()
 	baseWorkspacePath := hcpo.GetWorkspacePath()
 	// Use run folder if available, otherwise use base workspace (backward compatibility)
 	var runWorkspacePath string
@@ -1022,6 +1024,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) workflowStepShellWorkingDir() string 
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) configureSubAgentSessionGuard(sessionID string, agentKind string, stepID string, readPaths []string, writePaths []string, kbReadOverride ...bool) {
+	// Every session of a test run is guarded from its first grant (PLAT-562).
+	hcpo.registerTestSession(sessionID)
+	writePaths = hcpo.testModeWritePaths(writePaths)
 	kbRead := false
 	localKB := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "knowledgebase")
 	for _, path := range readPaths {
@@ -1477,7 +1482,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
 		dbAbsPath := ""
 		if directDBAccess {
-			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+			dbAbsPath = hcpo.testModeDBAbsPath(filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite"))
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
@@ -1881,7 +1886,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// filesystem scope without breaking shared browser behavior with the builder.
 		dbAbsPath := ""
 		if directDBAccess {
-			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+			dbAbsPath = hcpo.testModeDBAbsPath(filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite"))
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())

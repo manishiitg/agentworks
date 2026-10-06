@@ -7,7 +7,7 @@
 | [config](config/index.md) | 6 | 0 |
 | [database](database/index.md) | 12 | 2 |
 | [file-tools](file-tools/index.md) | 9 | 5 |
-| [general](general/index.md) | 2 | 1 |
+| [general](general/index.md) | 3 | 1 |
 | [routing](routing/index.md) | 7 | 0 |
 | [scripted](scripted/index.md) | 8 | 1 |
 | [tools](tools/index.md) | 6 | 1 |

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowrun"
 )
 
@@ -284,6 +285,10 @@ func retainedRunCandidates(runsRoot string) ([]runCandidate, error) {
 	err := filepath.WalkDir(runsRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		// Test-mode runs (PLAT-562) are never Pulse evidence.
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), testmode.FolderPrefix) && filepath.Dir(path) == runsRoot {
+			return filepath.SkipDir
 		}
 		if entry.IsDir() || entry.Name() != "run_metadata.json" {
 			return nil

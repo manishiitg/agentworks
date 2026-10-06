@@ -19,6 +19,7 @@ import (
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/subagents"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"log"
 	"os"
@@ -929,6 +930,9 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		_ = subAgent.AddInstructions(fmt.Sprintf("## Browser Isolation\nYou have an isolated browser session. When using the agent_browser tool, use a unique session name (e.g., \"isolated-%d\") instead of \"default\" to avoid sharing browser state with other agents.", time.Now().UnixNano()))
 		log.Printf("[DELEGATION] Added browser isolation guidance to sub-agent system prompt")
 	}
+
+	// A sub-agent of a test-mode session is in the same test run (PLAT-562).
+	testmode.Inherit(sessionID, subAgentSessionID)
 
 	// Register workspace tools for sub-agent
 	if underlyingAgent := subAgent.GetUnderlyingAgent(); underlyingAgent != nil {

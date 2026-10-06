@@ -272,6 +272,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) knowledgebaseItemsAbsDir() string {
 // distinguishing an actual update from a reviewed-unchanged confirmation, and
 // reconciles per-reference-file freshness.
 func (hcpo *StepBasedWorkflowOrchestrator) recordLearningsConfirmation(ctx context.Context, runFolder, stepID string, updated bool) error {
+	if hcpo.activeTestRun() != nil {
+		return nil // a test run confirms nothing (PLAT-562)
+	}
 	action := freshnessActionConfirmedUnchanged
 	if updated {
 		action = freshnessActionUpdated
@@ -283,5 +286,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) recordLearningsConfirmation(ctx conte
 // store and reconciles per-topic-note freshness. v1 does not distinguish updated
 // vs unchanged at the store level for KB; per-item update detection is by hash.
 func (hcpo *StepBasedWorkflowOrchestrator) recordKnowledgebaseConfirmation(ctx context.Context, runFolder, stepID string) error {
+	if hcpo.activeTestRun() != nil {
+		return nil // a test run confirms nothing (PLAT-562)
+	}
 	return hcpo.recordStoreConfirmation(ctx, "knowledgebase", knowledgebaseFreshnessLedgerPath(), hcpo.knowledgebaseItemsAbsDir(), runFolder, stepID, freshnessActionReviewed)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 )
 
 // Steps raise concerns as plain `CONCERNS:` lines in their completion summary
@@ -132,8 +133,8 @@ func collectStepConcerns(workspacePath string, since time.Time) StepConcernsView
 			return nil
 		}
 		if d.IsDir() {
-			// Pulse's own run folders are not step evidence.
-			if d.Name() == "pulse" && filepath.Dir(path) == runsRoot {
+			// Pulse's own run folders and test-mode runs (PLAT-562) are not step evidence.
+			if (d.Name() == "pulse" || strings.HasPrefix(d.Name(), testmode.FolderPrefix)) && filepath.Dir(path) == runsRoot {
 				return filepath.SkipDir
 			}
 			return nil
@@ -401,7 +402,7 @@ func collectStepOutputs(workspacePath, onlyStep string) StepOutputsView {
 			return nil
 		}
 		if d.IsDir() {
-			if d.Name() == "pulse" && filepath.Dir(path) == runsRoot {
+			if (d.Name() == "pulse" || strings.HasPrefix(d.Name(), testmode.FolderPrefix)) && filepath.Dir(path) == runsRoot {
 				return filepath.SkipDir
 			}
 			return nil

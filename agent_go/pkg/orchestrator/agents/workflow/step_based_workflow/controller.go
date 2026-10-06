@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/observability"
@@ -62,6 +63,10 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion      atomic.Int32
 	platformStoresDisabled atomic.Bool
+	// testRun is the active test-mode execution (PLAT-562), nil otherwise.
+	// Every tool session this controller sets up while it is set belongs to
+	// the test run.
+	testRun atomic.Pointer[testmode.Run]
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
 	// NEW: Store planning conversation for iterative refinement
