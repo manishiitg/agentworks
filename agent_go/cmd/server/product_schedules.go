@@ -1385,6 +1385,7 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 		RunCount:            job.State.RunCount,
 		ConsecutiveFailures: job.State.ConsecutiveFailures,
 		RunDestination:      runDestination(job.Schedule.Isolated),
+		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
 	}
 	if sched.CronExpression == "" && sched.CadenceHours > 0 {

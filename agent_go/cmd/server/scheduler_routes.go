@@ -45,6 +45,7 @@ type ScheduledJobResponse struct {
 	CronExpression       string                      `json:"cron_expression"`
 	Timezone             string                      `json:"timezone"`
 	Enabled              bool                        `json:"enabled"`
+	CadenceHours         int                         `json:"cadence_hours,omitempty"` // a product cadence schedule's interval, after the person's override
 	LastRunAt            *time.Time                  `json:"last_run_at,omitempty"`
 	NextRunAt            *time.Time                  `json:"next_run_at,omitempty"`
 	LastSessionID        string                      `json:"last_session_id,omitempty"`
@@ -385,16 +386,19 @@ func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
 	apiRouter.HandleFunc("/jobs/{id}", deleteScheduledJobHandler(svc)).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/enable", enableScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/disable", disableScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
-	// A person's own interval for a product cadence schedule (PLAT-618, Organize Brain every N days).
-	apiRouter.HandleFunc("/jobs/{id}/cadence", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if !handleProductScheduleJob(w, r, svc, mux.Vars(r)["id"], "cadence") {
-			http.Error(w, "a cadence applies to product schedules only", http.StatusNotFound)
-		}
-	}).Methods("POST", "OPTIONS")
+	// A person's own interval and message for a product schedule (PLAT-618, Organize Brain every N days, doing X).
+	for _, action := range []string{"cadence", "message"} {
+		action := action
+		apiRouter.HandleFunc("/jobs/{id}/"+action, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if !handleProductScheduleJob(w, r, svc, mux.Vars(r)["id"], action) {
+				http.Error(w, "this applies to product schedules only", http.StatusNotFound)
+			}
+		}).Methods("POST", "OPTIONS")
+	}
 	apiRouter.HandleFunc("/jobs/{id}/trigger", triggerScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/pulse-run", requireWorkflowWriteAccess(triggerWorkflowPulseHandler(svc))).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/stop", stopScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
@@ -1414,6 +1418,20 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 		updated, err := ps.SetEnabled(ctx, userID, id, action == "enable")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return true
+		}
+		respond(updated)
+	case "message":
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&body); err != nil {
+			http.Error(w, "message is required", http.StatusBadRequest)
+			return true
+		}
+		updated, err := ps.SetMessage(ctx, userID, id, body.Message)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return true
 		}
 		respond(updated)

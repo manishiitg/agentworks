@@ -1,7 +1,7 @@
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { BookOpen, BrainCircuit, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react'
+import { BookOpen, BrainCircuit, CalendarClock, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react'
 import ChatArea, { type ChatAreaRef } from '../../components/ChatArea'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -34,7 +34,7 @@ import { toProductCommandDefinitions } from '../work/productCommands'
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
-const views = [{ id: 'library', label: 'Files', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }, { id: 'secrets', label: 'Secrets', icon: KeyRound }] as const
+const views = [{ id: 'library', label: 'Files', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }] as const
 const normalizeBrainView = normalizeViewFrom(views.map(view => view.id))
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 

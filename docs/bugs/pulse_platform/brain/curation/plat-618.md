@@ -61,3 +61,7 @@ Still open: owner check of a real scheduled run (apply directly vs propose first
 - "it depends on what user sets in schedule msg": each person sets their own schedule message (`brain_schedule set_message`; empty restores the default); a run does what its message says, including apply directly vs only propose. Pinned in `TestOrganizeBrainScheduleCadenceIsPerPerson`.
 - "keep schedules in chat only always for brain": Organize Brain is no longer isolated; it runs in the person's Brain chat and is managed from that chat.
 - "organize should suggest modes, but it's up to the user": /organize no longer defaults to by-products. It uses what the person says or what the folder's readme records; otherwise it suggests two or three fitting ways (products, teams, entities, timeline, or their own), the person picks, and the choice is recorded in that folder's readme. A scheduled run with nothing chosen only does safe work (exact duplicates, Timeline) and ends with the suggestions.
+
+## Schedules view in the Brain tab (2026-10-06)
+
+Owner: "why is schedules not visible in right pane". The Brain tab's right pane has a Schedules view: Organize Brain on/off, how often (daily, every 3 days, weekly, every 2 weeks, every 30 days), what each run does (the person's own message, or the default), last and next run, and Run now. Server: the schedule response carries `cadence_hours`; `POST /api/scheduler/jobs/{id}/message` sets the person's message. Not deployed.
