@@ -4484,6 +4484,31 @@ func clearDriftReviewAfterPlanUpdateRetried(ctx context.Context, workspacePath, 
 // typed tools are called to implement one repair.
 const planEditImpactGuidance = "After related edits are complete, do one combined compatibility check in the current agent before the targeted test. For small internal edits with unchanged outputs, DB writes, routing, and behavior, confirm compatibility briefly and test. For output, DB, routing, or behavior changes, inspect and reconcile only affected dependencies before testing. Stop once affected consumers are compatible; unrelated backlog and missing audit receipts must not delay the test. Read builder-reference/references/plan-change-impact.md for the procedure. Do not launch a separate drift reviewer for each edit or test retry; reserve the full review-artifact-drift audit for scheduled Pulse or an explicit user request."
 
+// planEditImpactGuidancePointer replaces planEditImpactGuidance on repeated plan edits of the same workflow.
+// The full paragraph (~700 characters) used to come back on every edit, most of each update response.
+const planEditImpactGuidancePointer = "Same compatibility procedure as earlier in this session: one combined check after related edits, then the targeted test (builder-reference/references/plan-change-impact.md)."
+
+const planEditImpactGuidanceRepeatWindow = 30 * time.Minute
+
+// planEditImpactGuidanceShownAt records, per workflow, when the full paragraph was last sent.
+var planEditImpactGuidanceShownAt sync.Map
+
+// compactRepeatedPlanEditImpactGuidance sends the full compatibility paragraph on the first plan edit of a workflow
+// and a one-line pointer to the same procedure on edits within the following 30 minutes of activity. Without a
+// workflow path it always keeps the full text.
+func compactRepeatedPlanEditImpactGuidance(workspacePath, notice string, now time.Time) string {
+	key := strings.TrimSpace(workspacePath)
+	if key == "" || !strings.Contains(notice, planEditImpactGuidance) {
+		return notice
+	}
+	last, seen := planEditImpactGuidanceShownAt.Load(key)
+	planEditImpactGuidanceShownAt.Store(key, now)
+	if seen && now.Sub(last.(time.Time)) < planEditImpactGuidanceRepeatWindow {
+		return strings.Replace(notice, planEditImpactGuidance, planEditImpactGuidancePointer, 1)
+	}
+	return notice
+}
+
 func buildPlanStepDependentArtifactReviewNotice(stepID string, fieldChanges []PlanFieldChange, descriptionReviewCleared, driftReviewCleared, driftReviewFlagFailed bool) string {
 	if !planStepUpdateRequiresDependentArtifactReview(fieldChanges) {
 		return ""
@@ -4534,7 +4559,7 @@ func handlePlanStepDependentArtifactReview(ctx context.Context, workspacePath, s
 		logger.Warn(fmt.Sprintf("⚠️ Failed to flag drift_review.needs_review after updating step %s (both attempts failed): %v", stepID, err))
 		driftReviewFlagFailed = true
 	}
-	return buildPlanStepDependentArtifactReviewNotice(stepID, fieldChanges, descriptionReviewCleared, driftReviewCleared, driftReviewFlagFailed)
+	return compactRepeatedPlanEditImpactGuidance(workspacePath, buildPlanStepDependentArtifactReviewNotice(stepID, fieldChanges, descriptionReviewCleared, driftReviewCleared, driftReviewFlagFailed), time.Now())
 }
 
 func buildAddedStepArtifactSetupNotice(stepID, stepType string) string {
@@ -4622,7 +4647,7 @@ func handleOrchestratorRouteArtifactReview(ctx context.Context, workspacePath, p
 		logger.Warn(fmt.Sprintf("⚠️ Failed to flag drift_review.needs_review after %s route %s on step %s (both attempts failed): %v", action, routeID, parentStepID, err))
 		driftReviewFlagFailed = true
 	}
-	return buildOrchestratorRouteArtifactReviewNotice(parentStepID, routeID, action, descriptionReviewCleared, driftReviewCleared, driftReviewFlagFailed)
+	return compactRepeatedPlanEditImpactGuidance(workspacePath, buildOrchestratorRouteArtifactReviewNotice(parentStepID, routeID, action, descriptionReviewCleared, driftReviewCleared, driftReviewFlagFailed), time.Now())
 }
 
 // createUpdateRegularStepExecutor edits the internal regular plan type exposed as update_scripted_step.
@@ -4804,6 +4829,8 @@ const (
 	descriptionSizeRelativeMultiplier = 2.5
 	descriptionSizeAbsoluteFloor      = 5000
 	descriptionSizeGrowthThreshold    = 1000
+	descriptionSizeSevereMultiplier   = 3.0
+	descriptionSizeSevereFloor        = 12000
 )
 
 // planMedianOtherStepDescriptionLen returns the median description length
@@ -4857,7 +4884,24 @@ func stepDescriptionSizeNudge(before, after, planMedian int) string {
 	if after < relativeThreshold && grew < descriptionSizeGrowthThreshold {
 		return ""
 	}
-	return fmt.Sprintf("\n\nDescription is now %d characters (+%d this edit; this plan's other steps have a median of %d). Description should stay WHAT to achieve -- the outcome, business rules, and binding constraints. HOW to do it (technique, phrasing rules, proven methods) belongs in a skill. Before finalizing: check learnings/_global/SKILL.md's index and attached skills for an existing topic covering this. If a topic already covers it, correct that topic file in place and fold this into it -- do not also leave the old wording standing if this changes it, and do not just append a new section under it; a topic file with two unreconciled versions of the same rule is worse than either alone, since nothing tells a step which one to follow. If this is genuinely new technique with no existing topic, add learnings/_global/references/<topic>.md (named for the subject, not this step) and a one-line index entry, rather than growing this description.", after, grew, planMedian)
+	layout := "Description should stay WHAT to achieve, in the sections Goal, Inputs, Output, Rules, Done when and Guides. " +
+		"Reusable HOW (technique, procedure, phrasing rules, proven methods) belongs in a skill reference; domain facts and decisions belong in a knowledgebase note; " +
+		"dated observations and incident stories belong in neither the description nor a guide: delete them once the fix is in place. " +
+		"Before adding to a skill, check learnings/_global/SKILL.md's index and attached skills for an existing topic; correct that topic file in place rather than appending a second version of the same rule. " +
+		"For genuinely new technique add learnings/_global/references/<topic>.md (named for the subject, not this step) with a one-line index entry."
+	severeThreshold := int(float64(planMedian) * descriptionSizeSevereMultiplier)
+	if severeThreshold < descriptionSizeSevereFloor {
+		severeThreshold = descriptionSizeSevereFloor
+	}
+	if after >= severeThreshold {
+		// Advisory text alone did not stop slow growth (Upwork 2026-10-05: profile-suggest-report kept growing past
+		// 21k characters with the nudge showing every time). Above this size, ask for the move now.
+		return fmt.Sprintf("\n\nOVER BUDGET: this description is now %d characters (+%d this edit; this plan's other steps have a median of %d), more than %.0fx the plan's normal size. "+
+			"The edit is saved. Before your next test or edit of this step, restructure it in this session: keep only Goal, Inputs, Output, Rules, Done when and Guides in the description, "+
+			"move procedures to a skill reference and facts or decisions to a knowledgebase note, delete dated history, and name the moved guides under Guides. "+
+			"Verify nothing binding was lost (every rule, threshold, identifier and file name still appears in the description or a referenced note). %s", after, grew, planMedian, descriptionSizeSevereMultiplier, layout)
+	}
+	return fmt.Sprintf("\n\nDescription is now %d characters (+%d this edit; this plan's other steps have a median of %d). %s", after, grew, planMedian, layout)
 }
 
 func createUpdateMessageSequenceStepExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
@@ -5124,7 +5168,7 @@ func createDeletePlanStepsExecutor(workspacePath string, logger loggerv2.Logger,
 		// response rather than only logged, so it cannot be silently missed.
 		prunedConfigIDs, driftReviewFlagFailed := cascadeDeleteStepConfigsRetried(ctx, workspacePath, deletedSet, deletedIDs, readFile, writeFile, logger)
 
-		cleanupNotice := buildDeletedStepArtifactCleanupNotice(deletedIDs, prunedConfigIDs, driftReviewFlagFailed)
+		cleanupNotice := compactRepeatedPlanEditImpactGuidance(workspacePath, buildDeletedStepArtifactCleanupNotice(deletedIDs, prunedConfigIDs, driftReviewFlagFailed), time.Now())
 
 		logger.Info(fmt.Sprintf("✅ Deleted %d steps from plan", len(deletedIDs)))
 		return fmt.Sprintf("Successfully deleted %d step(s) from the plan%s", len(deletedIDs), cleanupNotice), nil
@@ -6375,7 +6419,7 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 			AddedSteps: addedStepJSON,
 		}, readFile, writeFile, logger)
 
-		setupNotice := buildAddedStepArtifactSetupNotice(typedStep.GetID(), stepType)
+		setupNotice := compactRepeatedPlanEditImpactGuidance(workspacePath, buildAddedStepArtifactSetupNotice(typedStep.GetID(), stepType), time.Now())
 		if scriptedRegularCount > 0 {
 			setupNotice += fmt.Sprintf("\n\nConfigured %d new scripted execution boundary/boundaries (regular plan type, code execution on). Author and test each code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py) before production use.", scriptedRegularCount)
 		}

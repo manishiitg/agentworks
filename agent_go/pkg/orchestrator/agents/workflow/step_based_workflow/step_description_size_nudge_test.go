@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
@@ -188,5 +189,38 @@ func TestUpdateMessageSequenceStepOmitsNudgeWhenDescriptionUntouched(t *testing.
 	}
 	if strings.Contains(result, "Description should stay WHAT to achieve") {
 		t.Fatalf("update response included a size nudge for an edit that never touched description: %s", result)
+	}
+}
+
+// Far above the plan's normal size the nudge asks for the restructure now, naming the layout and where content goes.
+func TestStepDescriptionSizeNudgeOverBudgetAsksForTheMove(t *testing.T) {
+	got := stepDescriptionSizeNudge(21191, 21208, 5662)
+	for _, want := range []string{"OVER BUDGET", "median of 5662", "Goal, Inputs, Output, Rules, Done when", "knowledgebase note", "Description should stay WHAT to achieve"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("over-budget nudge is missing %q: %q", want, got)
+		}
+	}
+	if mild := stepDescriptionSizeNudge(3000, 4200, 4000); strings.Contains(mild, "OVER BUDGET") || !strings.Contains(mild, "knowledgebase note") {
+		t.Fatalf("a growth-only nudge must be the normal one with the layout: %q", mild)
+	}
+}
+
+// The ~700-character compatibility paragraph is sent once per workflow editing session, then a pointer.
+func TestPlanEditImpactGuidanceIsSentOncePerSession(t *testing.T) {
+	notice := "Plan change recorded.\n- " + planEditImpactGuidance
+	now := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	ws := "Workflow/compaction-test-" + t.Name()
+	if got := compactRepeatedPlanEditImpactGuidance(ws, notice, now); !strings.Contains(got, planEditImpactGuidance) {
+		t.Fatal("the first edit must carry the full paragraph")
+	}
+	got := compactRepeatedPlanEditImpactGuidance(ws, notice, now.Add(5*time.Minute))
+	if strings.Contains(got, planEditImpactGuidance) || !strings.Contains(got, "plan-change-impact.md") {
+		t.Fatalf("a repeat within the session must carry the pointer only: %q", got)
+	}
+	if got := compactRepeatedPlanEditImpactGuidance(ws, notice, now.Add(5*time.Minute+31*time.Minute)); !strings.Contains(got, planEditImpactGuidance) {
+		t.Fatal("after 30 idle minutes the full paragraph returns")
+	}
+	if got := compactRepeatedPlanEditImpactGuidance("", notice, now); !strings.Contains(got, planEditImpactGuidance) {
+		t.Fatal("without a workflow path the full paragraph is kept")
 	}
 }

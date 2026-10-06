@@ -24,6 +24,8 @@ Owner: "step description is like a user message ... what to do -> skills is how 
 
 - `agent_go/cmd/server/guidance/templates/system/step-description.md`: a required section layout for descriptions (Goal, Inputs, Output, Rules, Done when, Guides), where everything else belongs (phases in items, procedures in skills/learnings, facts and decisions in the KB, platform mechanics nowhere), and "a description holds no history": a repair changes the rule, item or guide, it does not append a story. Guidance tests pass.
 
+- Plan edit tool responses (`planning_agent.go`): the description size nudge now names the layout and where content goes (how-to to a skill reference, facts and decisions to a KB note, dated history deleted). Above 3x the plan's median description size (floor 12,000 characters) it says OVER BUDGET and asks for the restructure in the same session, with a no-loss check; the edit is still saved. The ~700-character compatibility paragraph is sent on the first plan edit of a workflow and replaced by a one-line pointer for edits within the next 30 minutes of activity. Tests `TestStepDescriptionSizeNudgeOverBudgetAsksForTheMove`, `TestPlanEditImpactGuidanceIsSentOncePerSession`; the package suite passes except the pre-existing `TestValidateStepLLMConfigEnforcesAgyAlphaGate`.
+
 ## Left
 
 - Pilot: rewrite Upwork `bid-pick-job` into the layout, move procedure to the skill and decisions to the KB, delete history; owner reviews before saving; run once and compare.
