@@ -17,6 +17,12 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Plan Drift is shown as "Workflow Review"
+
+What: the Pulse role that reviews plan changes is called Workflow Review on screen; its id `plan_drift_review` stays.
+Why: the owner wants the name to say what it does (review the workflow's quality and compatibility), not how the
+problem arises. Ticket: [PLAT-559](bugs/pulse_platform/goals/pulse/general/plat-559.md).
+
 ### 2026-10-06 — Code extension browsing isolates each root conversation
 
 Keep one account token and one project extension connection, but give each Code

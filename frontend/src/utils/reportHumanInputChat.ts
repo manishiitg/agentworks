@@ -7,7 +7,7 @@ function sourceName(source: string): string {
   if (['strategic_review', 'strategy_auditor', 'goal_advisor'].includes(source)) return 'Strategic Review'
   if (source === 'user_suggestion') return 'User suggestion'
   if (source === 'architecture_review') return 'Architecture Review'
-  if (source === 'plan_drift_review') return 'Plan Drift Review'
+  if (source === 'plan_drift_review') return 'Workflow Review'
   return 'Pulse'
 }
 

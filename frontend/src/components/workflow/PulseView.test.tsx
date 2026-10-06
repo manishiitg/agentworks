@@ -74,5 +74,5 @@ it('updates the header walkthrough when the Pulse tab changes', async () => {
 
   await act(async () => (host.querySelector('[data-testid="pulse-workspace"] button:last-child') as HTMLButtonElement).click());
   expect(host.querySelector('[aria-label="Walkthrough: Pulse · Platform health"]')).not.toBeNull();
-  expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Plan Drift, Technical, and Architecture');
+  expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Workflow Review, Technical, and Architecture');
 });

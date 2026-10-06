@@ -67,3 +67,11 @@ Owner, 2026-10-06: "is the pulse design simplified", "i think every agent should
 ## Left
 
 Owner decisions (listed in the design note), then the migration steps in the note. Nothing built.
+
+## Naming (2026-10-06)
+
+Owner: "Plan Drift" is renamed **Workflow Review** on screen (Pulse card, buttons, tooltips, the panel guide, the
+human-input source label). Display only: the module id `plan_drift_review`, saved review records and tool names stay.
+The text the agents read still says Plan Drift until the next change to its guidance (after the layout upgrade lands),
+so the instruction sent from the button keeps naming `plan_drift_review` explicitly.
+

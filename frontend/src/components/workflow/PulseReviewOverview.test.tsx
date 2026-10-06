@@ -34,7 +34,7 @@ it('makes Strategy primary and groups Architecture with platform stability', asy
     expect(navigation.textContent).toContain('Goals, metrics & strategy')
     expect(navigation.textContent).toContain('Platform health & stability')
     expect(navigation.textContent).toContain('Architecture')
-    expect(navigation.textContent).toContain('Drift check')
+    expect(navigation.textContent).toContain('Workflow Review')
     expect(navigation.textContent!.indexOf('Strategy')).toBeLessThan(navigation.textContent!.indexOf('Architecture'))
     expect(container.querySelector('[aria-label="Architecture content"]')?.textContent).toContain('Learning quality')
     expect(container.querySelector('[aria-label="Technical content"]')).toBeNull()
@@ -80,7 +80,7 @@ it('shows the stored date, run, or cooldown boundary for skipped reviewers', asy
   } finally { await act(async () => root.unmount()) }
 })
 
-it('requires Plan Drift before manual reviewers and keeps the drift action available', async () => {
+it('requires the Workflow Review before manual reviewers and keeps the drift action available', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const container = document.createElement('div'); const root = createRoot(container)
   const onRunReviewModule = vi.fn()
@@ -90,11 +90,11 @@ it('requires Plan Drift before manual reviewers and keeps the drift action avail
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Strategy review now"]')!.disabled).toBe(true)
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Technical review now"]')!.disabled).toBe(true)
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Architecture review now"]')!.disabled).toBe(true)
-    expect(container.querySelectorAll('[aria-label="Plan Drift due"]')).toHaveLength(1)
-    expect([...container.querySelectorAll('button')].filter(button => button.textContent?.startsWith('Drift check ·'))).toHaveLength(0)
-    expect(container.textContent!.indexOf('Technical')).toBeLessThan(container.textContent!.indexOf('Plan Drift is due'))
-    expect(container.textContent!.indexOf('Architecture')).toBeLessThan(container.textContent!.indexOf('Plan Drift is due'))
-    const driftButton = container.querySelector<HTMLButtonElement>('[aria-label="Run Plan Drift now"]')!
+    expect(container.querySelectorAll('[aria-label="Workflow Review due"]')).toHaveLength(1)
+    expect([...container.querySelectorAll('button')].filter(button => button.textContent?.startsWith('Workflow Review ·'))).toHaveLength(0)
+    expect(container.textContent!.indexOf('Technical')).toBeLessThan(container.textContent!.indexOf('Workflow Review is due'))
+    expect(container.textContent!.indexOf('Architecture')).toBeLessThan(container.textContent!.indexOf('Workflow Review is due'))
+    const driftButton = container.querySelector<HTMLButtonElement>('[aria-label="Run Workflow Review now"]')!
     expect(driftButton.disabled).toBe(false)
     await act(async () => driftButton.click())
     expect(onRunReviewModule).toHaveBeenCalledWith('plan_drift_review')

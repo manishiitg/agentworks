@@ -83,7 +83,7 @@ const FOCUS_HINTS: Record<PulseFocus, string> = {
 }
 
 const REVIEW_HISTORY_MODULES = [
-  { id: 'plan_drift_review', label: 'Plan Drift' },
+  { id: 'plan_drift_review', label: 'Workflow Review' },
   { id: 'technical_review', label: 'Technical' },
   { id: 'architecture_review', label: 'Architecture' },
   { id: 'strategic_review', label: 'Strategic' },
@@ -128,7 +128,7 @@ export function manualPulseReviewMessage(module: string, workspacePath = '<this 
     case 'technical_review':
       return 'Run the Technical Review for this workflow now as a background task. Call get_workflow_command_guidance(kind="engineering-review", focus="Manual Technical Review requested from the Pulse UI") and follow the returned instructions; after the review receipt is saved, call get_workflow_command_guidance(kind="pulse-fixer") and fix every issue it found in the same task, so each ends fixed, not a problem, a decision for the user, or platform-owned.'
     case 'plan_drift_review':
-      return 'Run Plan Drift for this workflow now. Call get_workflow_command_guidance(kind="review-artifact-drift", focus="Manual Plan Drift requested from the Pulse UI") and follow the returned instructions exactly. Apply only the bounded compatibility repairs that Plan Drift authorizes.'
+      return 'Run the Workflow Review (plan_drift_review) for this workflow now. Call get_workflow_command_guidance(kind="review-artifact-drift", focus="Manual Plan Drift requested from the Pulse UI") and follow the returned instructions exactly. Apply only the bounded compatibility repairs that Plan Drift authorizes.'
     default:
       throw new Error(`Unsupported Pulse review module: ${module}`)
   }
@@ -292,7 +292,7 @@ export function PulseWorkspace({
     setManualReviewStarting(module)
     try {
       await sendWorkspacePaneMessageToChat({ workspacePath, message: pulseTabReviewMessage(module, workspacePath) })
-      useChatStore.getState().addToast(`${module === 'strategic_review' ? 'Goal Work' : module === 'architecture_review' ? 'Architecture Review' : module === 'technical_review' ? 'Technical Review' : 'Plan Drift'} opened in chat`, 'success')
+      useChatStore.getState().addToast(`${module === 'strategic_review' ? 'Goal Work' : module === 'architecture_review' ? 'Architecture Review' : module === 'technical_review' ? 'Technical Review' : 'Workflow Review'} opened in chat`, 'success')
     } catch (err) {
       useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not start the review', 'error')
     } finally {
@@ -417,10 +417,10 @@ export function PulseWorkspace({
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}
           playbookFocusAreas={playbookFocuses.flatMap(item => item.focusAreas.map(area => ({ area, source: item.playbookTitle })))}
           running={manualReviewStarting === 'strategic_review'}
-          runBlockedReason={driftBlocksRun ? 'Plan Drift is due: Goal Work will prepare and research but not run workflow steps or change the workflow.' : undefined} />
+          runBlockedReason={driftBlocksRun ? 'Workflow Review is due: Goal Work will prepare and research but not run workflow steps or change the workflow.' : undefined} />
         {(findings.length > 0 || planDriftDue) && (
           <button type="button" onClick={() => setTab('platform')} className="w-full rounded-lg border bg-muted/20 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/40">
-            <span className="font-medium text-foreground">Platform health:</span> {pulseFixSummary(fixStats)}{planDriftDue ? ' · Plan Drift check due' : ''}
+            <span className="font-medium text-foreground">Platform health:</span> {pulseFixSummary(fixStats)}{planDriftDue ? ' · Workflow Review due' : ''}
           </button>
         )}
       </> : <>
@@ -449,7 +449,7 @@ export function PulseWorkspace({
                   {FOCUS_TITLES[focus]}
                   {moduleFilter && (
                     <span className="ml-1 font-normal">
-                      in {moduleFilter === 'plan_drift_review' ? 'Drift check' : moduleSummaries.find((m) => m.id === moduleFilter)?.label || moduleFilter}
+                      in {moduleFilter === 'plan_drift_review' ? 'Workflow Review' : moduleSummaries.find((m) => m.id === moduleFilter)?.label || moduleFilter}
                     </span>
                   )}
                   {' · '}{FOCUS_HINTS[focus]}
@@ -463,7 +463,7 @@ export function PulseWorkspace({
                     onClick={() => { setModuleFilter(null); setShowCompleteBacklog(false) }}
                     className="flex items-center gap-1 rounded-full border border-primary/35 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary"
                   >
-                    {moduleFilter === 'plan_drift_review' ? 'Drift check' : moduleSummaries.find((module) => module.id === moduleFilter)?.label || readable(moduleFilter)}
+                    {moduleFilter === 'plan_drift_review' ? 'Workflow Review' : moduleSummaries.find((module) => module.id === moduleFilter)?.label || readable(moduleFilter)}
                     <X className="h-3 w-3" />
                   </button>
                 )}

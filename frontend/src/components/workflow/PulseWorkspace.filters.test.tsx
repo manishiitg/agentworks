@@ -108,7 +108,7 @@ describe('Pulse workspace filter interactions', () => {
     for (const retired of ['Pulse to fix', 'Queued for Pulse', 'Waiting for evidence', 'Your decisions', 'Paused', 'Platform repair pending']) {
       expect([...container.querySelectorAll('button')].some((node) => node.textContent?.startsWith(retired))).toBe(false)
     }
-    await click('Drift check')
+    await click('Workflow Review')
     await click('Closed')
     expect(count('Closed')).toBe(3)
     shownCount(3)
@@ -148,7 +148,7 @@ describe('Pulse workspace filter interactions', () => {
     const history = container.querySelector('[aria-label="Review run history"]')!
     const cards = [...history.querySelectorAll(':scope > div:last-child > div')]
     const card = (label: string) => cards.find((item) => item.textContent?.startsWith(label))!
-    expect(card('Plan Drift').textContent).toContain('0 runs')
+    expect(card('Workflow Review').textContent).toContain('0 runs')
     expect(card('Technical').textContent).toContain('4 runs')
     expect(card('Technical').textContent).toContain('View all 4 run dates')
     expect(card('Technical').textContent).toContain('2026')
@@ -157,15 +157,15 @@ describe('Pulse workspace filter interactions', () => {
   })
 
   it('opens drift content and closed findings together when no open findings remain', async () => {
-    await click('Drift check')
-    expect(button('Drift check').getAttribute('aria-pressed')).toBe('true')
-    expect(container.querySelector('[aria-label="Drift check content"]')?.textContent).toContain('No current drift findings.')
+    await click('Workflow Review')
+    expect(button('Workflow Review').getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector('[aria-label="Workflow Review content"]')?.textContent).toContain('No current drift findings.')
     expect(container.textContent).not.toContain('View drift findings')
     expect(button('Closed').getAttribute('aria-pressed')).toBe('true')
     shownCount(3)
     expect(container.textContent).toContain('PUL-R0')
     await click('Technical')
-    expect(container.querySelector('[aria-label="Drift check content"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Workflow Review content"]')).toBeNull()
     expect(container.querySelector('[aria-label="Technical content"]')).not.toBeNull()
     shownCount(5)
   })
@@ -173,7 +173,7 @@ describe('Pulse workspace filter interactions', () => {
   it('opens an explicit empty drift view when no findings were recorded', async () => {
     vi.mocked(agentApi.getPulseFindings).mockResolvedValue({ success: true, findings: [] })
     await act(async () => window.dispatchEvent(new CustomEvent(WORKFLOW_LOG_REFRESH_EVENT)))
-    await click('Drift check')
+    await click('Workflow Review')
     expect(button('Open').getAttribute('aria-pressed')).toBe('true')
     shownCount(0)
     expect(container.textContent).toContain('Completed drift checks and their details are shown above.')
@@ -181,13 +181,13 @@ describe('Pulse workspace filter interactions', () => {
   })
 
   it('does not carry the tab or filters into another workflow', async () => {
-    await click('Drift check')
+    await click('Workflow Review')
     await click('Closed')
     await act(async () => render('Workflow/another'))
     expect(button('For you').getAttribute('aria-selected')).toBe('true')
     await click('Platform health')
     expect(button('Open').getAttribute('aria-pressed')).toBe('true')
-    expect(container.querySelector('[aria-label="Drift check content"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Workflow Review content"]')).toBeNull()
     shownCount(10)
   })
 })
