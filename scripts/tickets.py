@@ -9,6 +9,7 @@ edit the ticket, then run `scripts/tickets.py index`.
   scripts/tickets.py new --product brain --area access --priority P2 "Title"   create the next ticket
   scripts/tickets.py index                                                     regenerate the indexes
   scripts/tickets.py check                                                     fail if anything is stale (CI)
+  scripts/tickets.py move OLD/FOLDER NEW-PRODUCT/NEW-AREA                     move a folder's tickets, fixing links
   scripts/tickets.py migrate                                                   one-time conversion (2026-10-06)
 """
 import argparse
@@ -25,8 +26,15 @@ REGISTER = BUGS / 'pulse_platform/index.md'
 GUIDE = TICKETS / 'README.md'
 
 PRODUCTS = {
-    'platform': 'Platform (shared runtime, sandbox, CLIs, chat, browser, integrations)',
-    'goals': 'Goals (workflows: steps, plans, Pulse, evaluation)',
+    'goals': 'Goals (workflows: steps, plans, Pulse, evaluation, learnings)',
+    'app': 'App UI (panes, toolbars, chat screen, settings)',
+    'chat': 'Chat delivery (streaming, steering, restore)',
+    'coding-agents': 'Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)',
+    'sandbox': 'Sandbox and security (slot accounts, isolation, permissions)',
+    'schedules': 'Schedules, triggers and runs',
+    'browser': 'Browser and browser automation',
+    'integrations': 'Integrations (Slack, Gmail, WhatsApp, MCP)',
+    'ops': 'Operations (cost, performance, deploys, logs)',
     'crew': 'Crew', 'code': 'Code', 'relays': 'Relays', 'vault': 'Vault', 'brain': 'Brain',
     'video-studio': 'Video Studio', 'sparkquill': 'SparkQuill', 'dominion': 'Dominion',
 }
@@ -344,12 +352,85 @@ def cmd_migrate(_):
     print(f'migrated {len(plan)} tickets')
 
 
+def relocate(moves):
+    """Move whole folders of tickets ({old_rel_dir: new_rel_dir}), set their Product/Area, and fix every link."""
+    mapping = {}
+    for old_rel, new_rel in moves.items():
+        old_dir, new_dir = TICKETS / old_rel, TICKETS / new_rel
+        for f in sorted(old_dir.iterdir()):
+            if f.name == 'index.md':
+                continue
+            mapping[f.resolve()] = (new_dir / f.name).resolve()
+    tracked = subprocess.run(['git', 'ls-files', '-co', '--exclude-standard'], capture_output=True, text=True, cwd=ROOT, check=True).stdout.split()
+    # Plain path strings in code and config (Go comments, scripts, workflows).
+    text_moves = {f"pulse_platform/{o}/": f"pulse_platform/{n}/" for o, n in moves.items()}
+    link = re.compile(r'\]\(([^)\s#]+?\.(?:md|html))(#[^)]*)?\)')
+    rewrites = {}
+    for f in tracked:
+        fp = (ROOT / f).resolve()
+        if not fp.is_file() or fp.suffix not in ('.md', '.html', '.go', '.ts', '.tsx', '.py', '.yml', '.yaml', '.json', '.sh'):
+            continue
+        s = fp.read_text(errors='ignore')
+        here_old = fp.parent
+        here_new = mapping.get(fp, fp).parent
+
+        def fix(m):
+            target, anchor = m.group(1), m.group(2) or ''
+            if target.startswith(('http', 'mailto:', '/')):
+                return m.group(0)
+            old_abs = (here_old / target).resolve()
+            new_abs = mapping.get(old_abs, old_abs)
+            if not old_abs.exists() and old_abs not in mapping:
+                return m.group(0)
+            return '](' + rel_link(here_new, new_abs) + anchor + ')'
+        s2 = link.sub(fix, s) if fp.suffix in ('.md', '.html') else s
+        if fp.suffix not in ('.md', '.html'):
+            for o, n in text_moves.items():
+                s2 = s2.replace(o, n)
+        if s2 != s:
+            rewrites[fp] = s2
+    for old_rel, new_rel in moves.items():
+        (TICKETS / new_rel).mkdir(parents=True, exist_ok=True)
+    for old, new in mapping.items():
+        subprocess.run(['git', 'mv', str(old), str(new)], check=True, cwd=ROOT)
+    for fp, s2 in rewrites.items():
+        mapping.get(fp, fp).write_text(s2)
+    for new in mapping.values():
+        if new.suffix != '.md':
+            continue
+        text = new.read_text()
+        fields, m = read_header(text)
+        if m:
+            fields['Product'], fields['Area'] = new.parent.parent.name, new.parent.name
+            new.write_text(text[:m.start()] + header_table(fields) + text[m.end():])
+        text = new.read_text()
+        text = re.sub(r'^\[← [^\]]*\]\(index\.md\)', f"[← {new.parent.parent.name} / {new.parent.name}](index.md)", text, count=1, flags=re.M)
+        new.write_text(text)
+    for old_rel in moves:
+        d = TICKETS / old_rel
+        idx = d / 'index.md'
+        if idx.exists():
+            idx.unlink()
+        while d != TICKETS and d.exists() and not any(d.iterdir()):
+            d.rmdir()
+            d = d.parent
+    cmd_index(None)
+    print(f'moved {len(mapping)} files')
+
+
+def cmd_move(args):
+    relocate({args.old.strip('/'): args.new.strip('/')})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='cmd', required=True)
     sub.add_parser('index')
     sub.add_parser('check')
     sub.add_parser('migrate')
+    mv = sub.add_parser('move')
+    mv.add_argument('old')
+    mv.add_argument('new')
     new = sub.add_parser('new')
     new.add_argument('--product', required=True)
     new.add_argument('--area', required=True)
@@ -357,7 +438,7 @@ def main():
     new.add_argument('--summary', default='')
     new.add_argument('title')
     args = parser.parse_args()
-    {'index': cmd_index, 'check': cmd_check, 'migrate': cmd_migrate, 'new': cmd_new}[args.cmd](args)
+    {'index': cmd_index, 'check': cmd_check, 'migrate': cmd_migrate, 'new': cmd_new, 'move': cmd_move}[args.cmd](args)
 
 
 if __name__ == '__main__':
