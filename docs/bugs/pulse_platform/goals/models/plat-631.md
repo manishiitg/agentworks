@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | goals |
 | Area | models |
@@ -54,6 +54,21 @@ saved continuation use manifest High over stale browser Medium, with its
 options fingerprint surviving saved runtime serialization. It stops before a
 model request; external workspace state is mocked.
 
+## Deployment
+
+Deployed to Excellence in release `agents-b0c18a1f-20261006161016` on
+2026-10-06. Public health returns 200; the Linux slot/confinement self-test
+reports 156 passed, 0 failed, 16 skipped. Verified the deployed frontend
+contains the Builder-card fix and the backend source includes the retained
+options comparison. An authenticated read of the live provider manifest
+returns Builder Sonnet 5.5 with Medium effort, and the workflow's managed
+profile and selected private account remain intact.
+
+No user configuration was changed and no model message was injected into
+Vaibhav's conversation. High-effort selection and next-turn refresh are
+covered by the query-assembly and live-input handler regressions above;
+they were not exercised with a paid production turn.
+
 ## Left
 
-Deploy the fix to Excellence and verify health/confinement after restart.
+None for this fix.

@@ -26,7 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | fixed on main | P2 | [goals/models](goals/models/index.md) |
+| [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |

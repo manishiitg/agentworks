@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-631](plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | fixed on main | P2 |
+| [PLAT-631](plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 |
