@@ -473,7 +473,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	// Excellence 2026-10-05, first chat after a Crew move). The turn's real guard is set later in this request; until then
 	// the session may only READ the folder this turn was verified to run in.
 	if isProjectProfileID(profile.ID) && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(workspacePath) != "" {
-		common.SetSessionFolderGuard(sessionID, []string{strings.TrimSuffix(workspacePath, "/") + "/"}, nil)
+		pinReadOnlyUnlessGuardCovers(sessionID, strings.TrimSuffix(workspacePath, "/")+"/")
 	}
 	if productVars, err := api.agentProfiles.PromptVariables(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,
@@ -985,4 +985,23 @@ func agentProfileReadOnlyFolders(sandbox agentprofiles.SandboxPolicy, workflowRe
 		out = append(out, clean+"/")
 	}
 	return appendUniqueStrings(out, workflowReadOnlyFolders...)
+}
+
+// pinReadOnlyUnlessGuardCovers replaces a session's folder guard with read-only access to root only when the guard is
+// stale (it grants no write inside root, as after a Crew move). A current guard is kept: a message to a coding CLI that
+// is already running is admitted here but delivered to the live CLI before the turn's real guard is set again, and
+// replacing it left that CLI's shell read-only ("Permission denied" on every write, RTS SDE Code, 2026-10-06).
+func pinReadOnlyUnlessGuardCovers(sessionID, root string) {
+	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil && cfg.FolderGuardSet {
+		for _, write := range cfg.WritePaths {
+			clean := strings.TrimSuffix(write, "/") + "/"
+			if strings.HasPrefix(clean, root) || strings.HasPrefix(root, clean) {
+				if !containsID(cfg.ReadPaths, root) {
+					common.SetSessionFolderGuard(sessionID, append(append([]string{}, cfg.ReadPaths...), root), cfg.WritePaths)
+				}
+				return
+			}
+		}
+	}
+	common.SetSessionFolderGuard(sessionID, []string{root}, nil)
 }

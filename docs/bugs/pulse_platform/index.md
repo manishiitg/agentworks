@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 18 | 2 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 22 | 8 |
-| [Code](code/index.md) | 4 | 1 |
+| [Code](code/index.md) | 5 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 67 | 16 |
 | [Crew](crew/index.md) | 20 | 5 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 174 | 36 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-606](code/sandbox/plat-606.md) | Code CLI shell made read-only by turn admission | fixed on main | P1 | [code/sandbox](code/sandbox/index.md) |
 | [PLAT-605](goals/steps/plat-605.md) | Failed run record has no error or failed step | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-603](chat/reliability/plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 | [chat/reliability](chat/reliability/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-569](browser/browser/plat-569.md) | RTS extension loses shared tabs while the Chrome tabs remain open | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-568](sandbox/skills/plat-568.md) | Custom skills can be installed again; only our policy files are protected | fixed on main | P2 | [sandbox/skills](sandbox/skills/index.md) |
 | [PLAT-567](goals/pulse/general/plat-567.md) | get_pulse_state module view is oversized | fixed on main | P2 | [goals/pulse/general](goals/pulse/general/index.md) |
-| [PLAT-566](brain/chat/plat-566.md) | Brain chat is told who is signed in and whether they are an administrator | fixed on main | P3 | [brain/chat](brain/chat/index.md) |
