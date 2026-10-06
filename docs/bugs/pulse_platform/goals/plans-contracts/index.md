@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-629](plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 |
 | [PLAT-593](plat-593.md) | Old plan changes leave the review backlog | fixed on main | P2 |
 | [PLAT-582](plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 |
 | [PLAT-579](plat-579.md) | Strict input/output graph preflight | fixed on main | P1 |

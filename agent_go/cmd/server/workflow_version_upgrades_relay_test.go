@@ -59,9 +59,10 @@ func TestRelayMigrationRunGatesAndNextStampAgree(t *testing.T) {
 		allowed                   bool
 	}{
 		{name: "Relay owes shared artifact migration", kind: "relay", version: "1.0.43", next: "1.0.44", layout: 1},
-		{name: "Relay skips DB migration", kind: "relay", version: "1.0.44", layout: 1, allowed: true},
+		{name: "Relay skips DB migration but owes description layout", kind: "relay", version: "1.0.44", next: "1.0.46", layout: 1},
+		{name: "Relay on the current contract runs", kind: "relay", version: "1.0.46", layout: 1, allowed: true},
 		{name: "Goals owes DB migration", version: "1.0.44", next: "1.0.45", layout: 1},
-		{name: "Relay still needs code layout", kind: "relay", version: "1.0.44"},
+		{name: "Relay still needs code layout", kind: "relay", version: "1.0.46"},
 		{name: "Relay refuses unknown version", kind: "relay", version: "9.9.9", layout: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,19 +119,23 @@ func TestRelayOwesOnlySharedWorkflowMigrations(t *testing.T) {
 }
 
 func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
-	// 1.0.45 is current for both kinds.
+	// 1.0.46 is current for both kinds.
 	for _, kind := range []string{"", "relay"} {
 		if !manifestContractIsExecutionCompatible(&WorkflowManifest{Version: WorkflowContractCurrentVersion, Kind: kind}) {
 			t.Errorf("kind %q on the current contract must run", kind)
 		}
 	}
-	// 1.0.44 owes the managed-DB migration. A Goals workflow is blocked; a
-	// Relay has no database, owes nothing and runs.
+	// 1.0.44 owes the managed-DB migration, which a Relay (no database) skips,
+	// and the shared description layout migration, which it does not.
 	if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion}) {
 		t.Error("a Goals workflow on 1.0.44 must be blocked")
 	}
-	if !manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay"}) {
-		t.Error("a Relay on 1.0.44 owes nothing (it has no database) and must run")
+	relay144 := &WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay"}
+	if plan := workflowVersionUpgradePlan(relay144); len(plan) != 1 || plan[0].label != "upgrade-step-description-layout" {
+		t.Errorf("a Relay on 1.0.44 owes only the description layout migration, got %+v", plan)
+	}
+	if manifestContractIsExecutionCompatible(relay144) {
+		t.Error("a Relay on 1.0.44 owes the description layout migration and must be blocked")
 	}
 	// A Relay that still owes a shared runtime migration is blocked.
 	if manifestContractIsExecutionCompatible(&WorkflowManifest{Version: workflowContractEvalRetirementVersion, Kind: "relay"}) {

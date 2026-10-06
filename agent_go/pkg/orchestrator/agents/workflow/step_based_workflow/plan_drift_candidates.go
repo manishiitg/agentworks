@@ -393,11 +393,18 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 	reportCheck, _ := CheckReportQueryCompatibility(ctx, workspacePath, planDriftPlainFileReader)
 	readmeCheck, _ := CheckDBReadmeContract(ctx, workspacePath, planDriftPlainFileReader)
 
+	// Description layout (contract 1.0.46): a pure text check, so it runs from the
+	// raw plan even when the typed decode failed.
+	descriptions, descErr := planStepDescriptionsFromPlanJSON(planRaw)
+
 	candidates := make([]PlanDriftCandidate, 0, len(pendingStepIDs)+1)
 	for _, stepID := range pendingStepIDs {
 		checks := []StepDriftCheck{reportCheck, readmeCheck}
 		if planDecoded {
 			checks = append(checks, checkContextDependencyFilenames(&plan, stepID))
+		}
+		if descErr == nil {
+			checks = append(checks, checkDescriptionLayout(descriptions, stepID))
 		}
 
 		scriptedCheck, _ := CheckScriptedCodeDBQueries(ctx, workspacePath, stepID, planDriftPlainFileReader)

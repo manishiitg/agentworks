@@ -51,6 +51,12 @@ const NestedAgentArtifactsContractVersion = "1.0.44"
 // query/mutate tools) instead of opening db.sqlite themselves (PLAT-428).
 const ManagedDBScriptsContractVersion = "1.0.45"
 
+// StepDescriptionLayoutContractVersion is the contract where every plan step's
+// description uses the standard section layout (## Goal, ## Inputs, ## Output,
+// ## Rules, ## Done when, ## Guides; see the step-description guidance).
+// validateStepDescriptionLayoutStamp gates the stamp (step_description_layout.go).
+const StepDescriptionLayoutContractVersion = "1.0.46"
+
 // validateManagedDBScriptsStamp refuses the 1.0.45 stamp while any script of the
 // workflow (workflowDir is its absolute folder) still opens the database itself or
 // carries a schema statement. Like the 1.0.44 layout check it lives in the stamp

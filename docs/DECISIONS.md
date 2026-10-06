@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Step descriptions use the standard layout (contract 1.0.46)
+
+Every plan step description must carry `## Goal`, `## Inputs`, `## Output` and `## Done when` (Rules and Guides
+optional). Contract 1.0.46 converts existing workflows and Relays without behaviour change; the stamp is refused while
+any step lacks those headings, and Plan Drift checks due steps for them. Why: one layout keeps descriptions to WHAT,
+with rules in the knowledgebase and HOW in learnings. Ticket: [PLAT-629](bugs/pulse_platform/goals/plans-contracts/plat-629.md).
+
 ### 2026-10-06 — No Brain folder bindings; steps say how they use Brain
 
 A workflow, Crew or Code project's Brain access is Off, Read or Read & write, always

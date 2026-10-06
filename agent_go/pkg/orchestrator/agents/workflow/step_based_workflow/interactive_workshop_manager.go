@@ -6008,6 +6008,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateManagedDBScriptsStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
 			}
+			if err := validateStepDescriptionLayoutStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+				return fmt.Sprintf("Refused: the step description layout migration is incomplete: %v", err), nil
+			}
 			if current, _ := manifest["version"].(string); strings.TrimSpace(current) == version {
 				return fmt.Sprintf("Workflow contract version is already %s.", version), nil
 			}

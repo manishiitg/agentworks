@@ -25,10 +25,11 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 }
 
 // Only the current contract is execution-compatible. Historical 1.0.41-1.0.43
-// workflows owe the nested-agent-artifact migration, and 1.0.44 workflows the
-// managed database script migration.
+// workflows owe the nested-agent-artifact migration, 1.0.44 workflows the
+// managed database script migration, and 1.0.45 workflows the step description
+// layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
-	return strings.TrimSpace(version) == workflowContractManagedDBScriptsVersion
+	return strings.TrimSpace(version) == workflowContractStepDescriptionLayoutVersion
 }
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
@@ -129,6 +130,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractEvalRetirementVersion,
 		workflowContractNestedAgentArtifactsVersion,
 		workflowContractManagedDBScriptsVersion,
+		workflowContractStepDescriptionLayoutVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -436,6 +438,29 @@ Do only this migration. Scripted steps used to open db/db.sqlite themselves (imp
 
 If a script cannot be converted without a product decision (it needs a PRAGMA, ATTACH, a trigger created at run time, or its behaviour is unclear), do not guess and do not stamp: leave it as it is and report exactly what blocked it so the operator can decide.`
 
+const upgradeStepDescriptionLayout = `WORKFLOW CONTRACT UPGRADE: STEP DESCRIPTIONS USE THE STANDARD LAYOUT.
+
+Do only this migration. Every plan step description (nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
+## Goal       — what the step achieves, in one to three sentences
+## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
+## Output     — what it produces and where; the shape stays in validation_schema
+## Rules      — binding business constraints, approval limits, actions outside its authority
+## Done when  — the success boundary, including what counts as a valid no-op
+## Guides     — the skill/learning references to use, named only, never copied
+Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Read that reference once before you start.
+
+THIS IS A TEXT REORGANIZATION. NEVER CHANGE BEHAVIOUR: do not change outputs, context_dependencies, context_output, validation_schema, items, routes, step type, or any other step field; only the description moves.
+
+1. Read planning/plan.json and list every step with its description length. A step whose description already has the ## Goal, ## Inputs, ## Output and ## Done when headings is done: skip it, so a re-run of this migration resumes where the last one stopped.
+2. Work one step at a time, largest description first. For each step:
+   - Keep only WHAT in the description: objective, inputs, output location, binding constraints, success boundary.
+   - Move binding business rules that are long or shared by several steps to a knowledgebase note, and reusable HOW-TO (tool usage, selectors, API sequences, troubleshooting, verified techniques) to a learnings skill reference; name each moved file under ## Inputs or ## Guides (a named workflow path is delivered to the step). Write moved files first.
+   - Express any Brain/knowledge-base use the step already has the way the reference says: Brain reads under ## Inputs or ## Guides as brain:<folder>/<note> (delivered read-only), Brain writes under ## Output, limits under ## Rules; look up real folder paths with brain_browse. Do not change the step's knowledgebase_access value.
+   - Remove history: dated observations, incident narratives and "this exists because" explanations. Keep any rule they carry; put the history itself in the change reason.
+   - Run check_plan_no_loss(step_id=..., proposed_description=...) (pass dropped_history only for tokens that appear solely in dated/incident sentences). Fix everything it reports missing and run it again until it passes, then save the new description with the normal plan edit tools.
+3. If a step cannot be converted without a product decision (its rules conflict, or what a passage means is unclear), do not guess: leave it unchanged, finish the other steps, and report exactly what blocked it.
+4. Do not hand-edit workflow.json and do not run the workflow. Stamp only when every step is done: call set_workflow_contract_version(version="1.0.46"). The stamp tool refuses, naming each step still missing a required heading, until every plan step is in the layout.`
+
 const workflowUpgradeWorkspacePathPlaceholder = "{{WORKSPACE_PATH}}"
 
 func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
@@ -562,6 +587,10 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	// workflowContractManagedDBScriptsVersion ("1.0.45") sits at rank 44.
 	if rank < 44 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractManagedDBScriptsVersion, label: "upgrade-managed-db-scripts", query: upgradeManagedDBScripts})
+	}
+	// workflowContractStepDescriptionLayoutVersion ("1.0.46") sits at rank 45.
+	if rank < 45 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractStepDescriptionLayoutVersion, label: "upgrade-step-description-layout", query: upgradeStepDescriptionLayout})
 	}
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse

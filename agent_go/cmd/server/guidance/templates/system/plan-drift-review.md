@@ -88,6 +88,12 @@ plan.json could not be read) and already carrying Go-computed results for:
   resolves its `sqlite3` queries against the live schema.
 - `db_readme_contract` — `db/README.md`'s documented `CREATE TABLE` DDL still
   matches the live schema (workflow-wide, attached to every candidate step).
+- `description_layout` — the step description carries the `## Goal`,
+  `## Inputs`, `## Output` and `## Done when` layout headings. Fix a `fail` in
+  this review: convert that step to the layout (`references/step-description.md`)
+  with no behaviour, output, dependency, validation or item change, move binding
+  rules to the knowledgebase and reusable HOW to a learnings skill named under
+  Guides, then run `check_plan_no_loss` and record it `fixed`.
 
 Read `plan_drift_candidates_note` for the exact coverage boundary. Treat a
 precomputed `fail` as real evidence — do not re-derive it, and do not accept a

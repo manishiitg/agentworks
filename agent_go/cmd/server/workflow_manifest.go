@@ -36,7 +36,7 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractManagedDBScriptsVersion
+const WorkflowContractCurrentVersion = workflowContractStepDescriptionLayoutVersion
 
 const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitPulseContractVersion
 
@@ -60,6 +60,11 @@ const workflowContractNestedAgentArtifactsVersion = step_based_workflow.NestedAg
 // helper, not by opening db.sqlite themselves (PLAT-428). The stamp is refused
 // while any script still opens the database or carries a schema statement.
 const workflowContractManagedDBScriptsVersion = step_based_workflow.ManagedDBScriptsContractVersion
+
+// Every plan step description uses the standard section layout (## Goal,
+// ## Inputs, ## Output, ## Rules, ## Done when, ## Guides). The stamp is refused
+// while any plan step lacks Goal, Inputs, Output or Done when.
+const workflowContractStepDescriptionLayoutVersion = step_based_workflow.StepDescriptionLayoutContractVersion
 
 const workflowContractInitialVersion = "1.0.0"
 const workflowContractMessageSequenceCodeVersion = "1.0.10"
