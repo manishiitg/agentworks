@@ -22,7 +22,7 @@ Design references for the linked runtime decisions:
 Owner decision: keep the full product walkthrough's existing automatic startup
 rules; open help inside panels and sections only from the user's help button.
 Remove contextual first-visit popups because they interrupt routine navigation.
-Ticket: [PLAT-558](bugs/pulse_platform/platform/frontend-chat/plat-558.md).
+Ticket: [PLAT-558](bugs/pulse_platform/app/ui/plat-558.md).
 
 ### 2026-10-06 — Brain holds shared knowledge; workflow-only facts stay local (option B)
 - Facts about the person, company, projects and org-wide decisions live once in shared Brain folders, read by every
@@ -47,7 +47,7 @@ Ticket: [PLAT-558](bugs/pulse_platform/platform/frontend-chat/plat-558.md).
   prefixed name or a real name (with `server_name` when a platform tool shares it), and specs show the real route.
   Replaces the "prefix only on a clash" direction; the stopgap (platform tool wins, `[TOOL_SHADOW]`) stays as a safety net.
   A read-only scan of local, Confida, Excellence and RTS found nothing saved that depends on bare MCP tool names.
-  Ticket: [PLAT-519](bugs/pulse_platform/platform/mcp/plat-519.md).
+  Ticket: [PLAT-519](bugs/pulse_platform/integrations/mcp/plat-519.md).
 
 ### 2026-10-05 — Product workspace toolbar choices survive page refresh
 
@@ -55,7 +55,7 @@ Use one view-preference helper across all products, scoped by server connection,
 product and project/workflow. Restore saved views before layout reconciliation;
 loading defaults do not overwrite a choice. Why: selecting a toolbar destination
 should survive refresh and stay independent of another product's view.
-Ticket: [PLAT-551](bugs/pulse_platform/platform/frontend-chat/plat-551.md).
+Ticket: [PLAT-551](bugs/pulse_platform/app/ui/plat-551.md).
 
 
 ### 2026-10-05 — Extension browser documentation reads stay on the server
@@ -66,13 +66,13 @@ docs under the caller's workspace grants; do not acquire a relay or launch a
 browser. Reject connection/launch flags and paths. Explain the attached
 `read_skill` route and extension limitations in the browser guidance.
 Why: required documentation must not block a connected workflow before browsing.
-Ticket: [PLAT-550](bugs/pulse_platform/platform/browser/plat-550.md).
+Ticket: [PLAT-550](bugs/pulse_platform/browser/browser/plat-550.md).
 
 ### 2026-10-05 — An auto-notification is the same chat role as a typed message
 - A coding CLI's session is replaced only on a role change (mode, origin, capabilities). An auto-notification now counts as
   `interactive` for that role, like Pulse counts as scheduled, so notifications no longer restart the CLI and repeat the
   "Conversation restored" summary. Its origin is still recorded as `notification`; different capabilities still restart.
-  Ticket: [PLAT-548](bugs/pulse_platform/platform/chat-reliability/plat-548.md).
+  Ticket: [PLAT-548](bugs/pulse_platform/chat/reliability/plat-548.md).
 
 ### 2026-10-05 — Browser lifecycle changes stay in the browser UI
 
@@ -81,7 +81,7 @@ in Code, Crew and workflow chats. Drop pending browser notices from older client
 before queue delivery; keep browser status indicators and per-call tool routing.
 Why: browser connection changes should not send a message or start an agent turn.
 This supersedes the browser chat-notification policy below.
-Ticket: [PLAT-549](bugs/pulse_platform/platform/browser/plat-549.md).
+Ticket: [PLAT-549](bugs/pulse_platform/browser/browser/plat-549.md).
 
 ### 2026-10-05 — Workflow browser bridge calls retain authenticated run identity
 
@@ -91,7 +91,7 @@ HTTP requests use that authenticated account and controller while keeping their
 step-local file grants. Why: dropping the account identity made steps miss the
 selected private extension and silently use local CDP. A selected offline
 extension must continue to stop browser actions.
-Ticket: [PLAT-546](bugs/pulse_platform/platform/browser/plat-546.md).
+Ticket: [PLAT-546](bugs/pulse_platform/browser/browser/plat-546.md).
 
 ### 2026-10-05 — Plan refresh includes the displayed variables
 
@@ -99,7 +99,7 @@ The Plan refresh control reloads variables alongside the plan and step config,
 and reports success only if both reads succeed. Open step details follow the
 current graph data. Why: a refresh should show the current plan inputs and
 details, including after an edit.
-Ticket: [PLAT-544](bugs/pulse_platform/platform/frontend-chat/plat-544.md).
+Ticket: [PLAT-544](bugs/pulse_platform/app/ui/plat-544.md).
 
 ### 2026-10-05 — Browser toolbar status follows the selected live connection
 
@@ -108,7 +108,7 @@ button even while another pane is open. A selected extension owns this status,
 including zero-tab connections; otherwise use active live browser sessions and
 exclude completed recordings. Why: users need connection health at a glance,
 without mistaking a different browser or a replay for their selected connection.
-Ticket: [PLAT-542](bugs/pulse_platform/platform/frontend-chat/plat-542.md).
+Ticket: [PLAT-542](bugs/pulse_platform/app/ui/plat-542.md).
 
 ### 2026-10-05 — Deploys prune old releases by default and make room first
 
@@ -116,12 +116,13 @@ Every deployer (RTS, the rootless-Linux products, Dominion) keeps the live relea
 and the one before it, plus anything a running process still uses, and removes the
 rest; when the disk has under 15 GB free it does this before delivering the new
 release. Why: a silently failing cleanup let 27 releases fill RTS and break a deploy.
-[PLAT-545](bugs/pulse_platform/platform/performance/plat-545.md).
+[PLAT-545](bugs/pulse_platform/ops/performance/plat-545.md).
 
 ### 2026-10-06 — Platform tickets are organized like Brain; no register
 
-Tickets live at `docs/bugs/pulse_platform/<product>/<area>/plat-NNN.md` (products: platform, goals, crew, code,
-relays, vault, brain, video-studio, sparkquill, dominion), each with the same header table (State, Priority,
+Tickets live at `docs/bugs/pulse_platform/<product>/<area>/plat-NNN.md` (top folders: goals, app, chat,
+coding-agents, sandbox, schedules, browser, integrations, ops, crew, code, relays, vault, brain, video-studio,
+sparkquill, dominion; the broad "platform" bucket was split the same day), each with the same header table (State, Priority,
 Product, Area, Summary). Every folder has a generated `index.md`; the top one is the map, with the newest tickets.
 The hand-edited register is gone: its per-ticket prose moved into each ticket under "Register notes", and its
 general sections into `docs/bugs/pulse_platform/README.md`. Create tickets with `scripts/tickets.py new`, run
@@ -167,7 +168,7 @@ Move Browser from collapsed Ops into the always-visible Views group, after
 Activity and before Ops. Keep its existing pane, settings and selection behavior.
 Update panel help and the walkthrough to match. Why: users should reach their
 browser connection directly, as they can in Code and Crew.
-Ticket: [PLAT-540](bugs/pulse_platform/platform/frontend-chat/plat-540.md).
+Ticket: [PLAT-540](bugs/pulse_platform/app/ui/plat-540.md).
 
 ### 2026-10-05 — Remember extension connections and resume after transient loss
 
@@ -180,7 +181,7 @@ and access revocation stop resume; server resume also requires the durable
 selection so offline Disconnect cannot be undone. Why: a stable account token
 should let users return without pasting again, while sharing and revocation stay
 explicit. This reverses the earlier memory-only, manual reconnect lifecycle.
-Ticket: [PLAT-532](bugs/pulse_platform/platform/browser/plat-532.md).
+Ticket: [PLAT-532](bugs/pulse_platform/browser/browser/plat-532.md).
 
 ### 2026-10-05 — Workflows use account-private extension connections; human Connect shares the current website
 
@@ -193,7 +194,7 @@ already-owned tab leaves the connection ready with zero tabs. Automatically
 connecting another workspace never adopts the user's current tab. Why: workflow
 steps should use the same browser path as Code/Crew, and connecting should make
 that browser usable without a second Share action. Relay rollout remains deferred.
-Ticket: [PLAT-530](bugs/pulse_platform/platform/browser/plat-530.md).
+Ticket: [PLAT-530](bugs/pulse_platform/browser/browser/plat-530.md).
 
 ### 2026-10-05 — Crew and Code schedules can be one-time
 - A project schedule has exactly one timing form: a cron line, every N hours, or `run_at` (one moment). A one-time schedule
@@ -209,7 +210,7 @@ Ticket: [PLAT-530](bugs/pulse_platform/platform/browser/plat-530.md).
   server start. It duplicated a live-input message in the Upwork chat (PLAT-518) and caused PLAT-341/178/140 before.
 - Kept: text typed straight into the CLI terminal (native terminal observer) and the read-only proof that an uncertain send
   never arrived. A retained turn whose completion has no final reply is logged, not repaired.
-- Risk accepted: a reply the platform failed to save stays missing from the restored chat. Ticket: [PLAT-525](bugs/pulse_platform/platform/chat-reliability/plat-525.md).
+- Risk accepted: a reply the platform failed to save stays missing from the restored chat. Ticket: [PLAT-525](bugs/pulse_platform/chat/reliability/plat-525.md).
 
 ### 2026-10-05 — One browser account token serves separately authorized Code and Crew projects
 
@@ -238,7 +239,7 @@ active=true; human popup actions may still select their new tab. Console/errors
 are scoped to the selected shared target. Reuse inline tab selection without
 clearing existing refs when that tab is already selected.
 Why: the agent must notice routing changes and the user must see its shared tabs
-without extra setup actions. Ticket: [PLAT-516](bugs/pulse_platform/platform/browser/plat-516.md).
+without extra setup actions. Ticket: [PLAT-516](bugs/pulse_platform/browser/browser/plat-516.md).
 
 ### 2026-10-05 — Code-only extension choice with reusable private connection codes
 
@@ -250,7 +251,7 @@ and heartbeats. A successful reconnect replaces the prior browser and creates
 fresh refs; grouping already shared tabs is visual organization, never consent
 to additional tabs. Why: setup must be understandable and repeatable without
 competing browser controls or unexpected token changes. Ticket:
-[PLAT-513](bugs/pulse_platform/platform/browser/plat-513.md).
+[PLAT-513](bugs/pulse_platform/browser/browser/plat-513.md).
 
 ### 2026-10-05 — Google accounts use compact summaries and one permission comparison
 
@@ -259,7 +260,7 @@ only one full AgentWorks/Google grant comparison at a time. Keep permission
 warnings visible while collapsed. Why: repeated inactive-app tiles obscure
 multiple accounts. Label the existing delivery switch Workflow email
 notifications, because account sign-in/access and notification delivery are
-separate states. Ticket: [PLAT-512](bugs/pulse_platform/platform/integrations/plat-512.md).
+separate states. Ticket: [PLAT-512](bugs/pulse_platform/integrations/integrations/plat-512.md).
 
 ### 2026-10-05 — Personal Chrome extension connections are private and explicit
 
@@ -268,7 +269,7 @@ CDP bridge retaining agent-browser. A disconnected selection fails browser
 actions rather than switching browsers. Collaborators cannot inherit personal
 Chrome access. Why: hosted agents need existing local logins without exposing
 a debugging port or sharing one person’s browser profile. Ticket:
-[PLAT-510](bugs/pulse_platform/platform/browser/plat-510.md).
+[PLAT-510](bugs/pulse_platform/browser/browser/plat-510.md).
 
 ## 2026-10-05: `search_web_llm` is removed; coding agents use their own web search
 
@@ -329,7 +330,7 @@ locally across workflows, Crew and Code. Use the connected backend's local
 mode, including tunnels, and retain account connections/read/send permissions.
 Why: Cloud provisioning and tunnel setup complicate local use. This is a UI
 boundary; existing backend capability and saved receiving resources remain.
-Ticket: [PLAT-500](bugs/pulse_platform/platform/integrations/plat-500.md).
+Ticket: [PLAT-500](bugs/pulse_platform/integrations/integrations/plat-500.md).
 
 ### 2026-10-05 — Gmail setup supports browser consent and Google provisioning contracts
 
@@ -339,7 +340,7 @@ cross-origin Referer. Provisioning resolves project numbers through Service
 Usage before mutation, accepts Google's dotted operation IDs, and waits for
 new push account visibility. Why: the live review failed and the audit found
 later blockers hidden by synchronous API fakes. Ticket:
-[PLAT-499](bugs/pulse_platform/platform/integrations/plat-499.md).
+[PLAT-499](bugs/pulse_platform/integrations/integrations/plat-499.md).
 
 ### 2026-10-05 — Gmail setup browser routes reach backend consent checks without an app token
 
@@ -349,7 +350,7 @@ the backend still validates expiring plans, current admin authority and
 single-use Google consent with PKCE before provisioning. Why: browser review
 links cannot carry the app bearer token, and RTS rejected them before those
 checks. Management and sender approval stay authenticated. Ticket:
-[PLAT-497](bugs/pulse_platform/platform/integrations/plat-497.md).
+[PLAT-497](bugs/pulse_platform/integrations/integrations/plat-497.md).
 
 ### 2026-10-05 - The DMG runs Vault by default - PLAT-493
 
@@ -373,13 +374,13 @@ The Landlock launcher every confined CLI starts through now removes the platform
   The switch is a deliberate exception to "confinement has no switches" (2026-10-03): it can only loosen a default, it is not a
   per-user setting, and it exists so a CLI update that breaks the denial can be worked around without a code change.
 - **Not covered here.** Scrubbing platform secrets from the CLI environment and the app Docker socket are separate fixes in the
-  ticket. Ticket: [PLAT-491](bugs/pulse_platform/platform/security-sandbox/plat-491.md).
+  ticket. Ticket: [PLAT-491](bugs/pulse_platform/sandbox/security/plat-491.md).
 
 ### 2026-10-05 — Agent steps keep today's permission map
 
 Owner decision: an agent step may write only its own execution folder, may read its declared upstream files, and has no
 access to `db/` (it uses the DB tools), `code/`, `planning/` or `workflow.json`. Scripted steps keep reading `code/` and
-`planning/` and writing `db/`. Ticket: [PLAT-419](bugs/pulse_platform/platform/security-sandbox/plat-419.md).
+`planning/` and writing `db/`. Ticket: [PLAT-419](bugs/pulse_platform/sandbox/security/plat-419.md).
 
 ### 2026-10-05 — A Builder MCP connection follows the account's own permissions; no per-workflow selection
 
@@ -397,7 +398,7 @@ these setup instructions and reuse pending review links. Manual settings remain 
 conflicts fail closed. Mailbox connections, rules and extra-sender approval remain
 separate. Why: the manual Pub/Sub checklist made receiving too difficult; gog
 watchers still require its infrastructure. Ticket:
-[PLAT-483](bugs/pulse_platform/platform/integrations/plat-483.md).
+[PLAT-483](bugs/pulse_platform/integrations/integrations/plat-483.md).
 
 ### 2026-10-04 — Slot commands keep access to their slot's rootless Docker (accepted exception to the sandbox)
 
@@ -416,7 +417,7 @@ Landlock does not govern connect() on pathname Unix sockets below ABI 9 (RTS ker
   scheduled Upwork run fail ("active MCP user required"): a run has no person.
 - **Where.** `placeMCPUsableBy`, `resolvePlaceAttachedMCP` and `placeAttachedMatch` in `cmd/server/place_mcp_attach.go` and `place_mcp_runtime.go`; the
   agent inventory in `vault_runtime.go`. Replaces the 2026-09-28 Code private-MCP design and the "only that owner can see or run it" rule for non-Code
-  places. [PLAT-482](bugs/pulse_platform/platform/integrations/plat-482.md).
+  places. [PLAT-482](bugs/pulse_platform/integrations/integrations/plat-482.md).
 
 ### 2026-10-04 — Slot-run shell commands never receive app-private paths such as browser profiles; every slot deploy proves the chain
 
@@ -431,7 +432,7 @@ Why: a project chat's shell command named its project's browser, the profile lan
 launcher, running as the slot, refused every Crew/Code command on RTS (`SANDBOX_UNAVAILABLE: inspect Landlock path`).
 Deploys of slot hosts set `releases/` 0711 and run a read-only self-test (`deploy/common/slotcheck.sh`, `./deploy.sh
 slotcheck <server>`) that fails the deploy loudly when a real slotted `pwd` does not start. Code: `workspace/security/
-slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: [PLAT-478](bugs/pulse_platform/platform/security-sandbox/plat-478.md).
+slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: [PLAT-478](bugs/pulse_platform/sandbox/security/plat-478.md).
 
 ### 2026-10-04 — Muse in Full CLI refuses every native tool that is not on a list — PLAT-473
 
@@ -443,7 +444,7 @@ slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: [PLA
 - **Why.** Full mode gave Muse every tool it ships. Its cron, goals, memory and session messaging run outside the platform's
   schedules, Goals, knowledge and workflow isolation. Claude Code, Codex and Pi already had a fixed set.
 - **Where.** `museFullNativeTools` in the provider's Muse adapter; the same hook as the platform-call redirect.
-  [PLAT-473](bugs/pulse_platform/platform/coding-agent-bridge/plat-473.md).
+  [PLAT-473](bugs/pulse_platform/coding-agents/bridge/plat-473.md).
 
 ### 2026-10-04 — The Platform group automatically has every shared secret and platform MCP; admin revokes persist
 
@@ -457,7 +458,7 @@ groups are untouched and project secrets still win over same-named shared ones.
 This grants only things that exist and never creates or reads a value, so it
 does not conflict with "do not broaden grants as a workaround" for missing
 secrets. Servers without Vault behave as before Vault. Ticket:
-[PLAT-471](bugs/pulse_platform/platform/security-sandbox/plat-471.md).
+[PLAT-471](bugs/pulse_platform/sandbox/security/plat-471.md).
 
 ### 2026-10-04 — One Google account UI supports both company and named OAuth clients
 
@@ -467,7 +468,7 @@ choices, not the UI design. Existing connections keep their ID and client;
 Code ownership and shared-account administration stay enforced. Show saved
 AgentWorks settings separately from Google's grants so a granted scope never
 implies an application opt-in. Ticket:
-[PLAT-470](bugs/pulse_platform/platform/integrations/plat-470.md).
+[PLAT-470](bugs/pulse_platform/integrations/integrations/plat-470.md).
 
 ### 2026-10-04 — PR #228 merged with mcp-gateway not compiling; gate it in CI
 
@@ -493,7 +494,7 @@ user and assistant messages plus questions, approvals and errors, paged over
 that view (`view=messages`); nothing is deleted. A chat opens at its latest
 message unless the reader deliberately scrolled up; a position seen while the
 transcript was still mounting is never saved.
-Ticket: [PLAT-466](bugs/pulse_platform/platform/frontend-chat/plat-466.md).
+Ticket: [PLAT-466](bugs/pulse_platform/app/ui/plat-466.md).
 
 ### 2026-10-04 — Quick switching exposes navigation by click, and chat tabs identify their product
 
@@ -502,8 +503,8 @@ so users can scroll and click. Replace visible typed scope hints with footer
 icons and named filters, including separate workflow and Relay lists. Put the
 owning product mark on the first persistent chat tab beside its name and
 status dot. These controls share the browser and desktop implementation.
-Tickets: [PLAT-464](bugs/pulse_platform/platform/frontend-chat/plat-464.md),
-[PLAT-465](bugs/pulse_platform/platform/frontend-chat/plat-465.md).
+Tickets: [PLAT-464](bugs/pulse_platform/app/ui/plat-464.md),
+[PLAT-465](bugs/pulse_platform/app/ui/plat-465.md).
 
 ### 2026-10-04 — Quick navigation keeps running work first and reaches every product
 
@@ -512,8 +513,8 @@ workflows, Crews, Code and Relays; products and allowed menus appear on search
 or through dedicated scopes. Hiding the sidebar teaches this shortcut once
 per hide action. Auto-hide overlays an invisible edge target and consumes no
 workspace width, so the hidden strip leaves no empty column.
-Tickets: [PLAT-462](bugs/pulse_platform/platform/frontend-chat/plat-462.md),
-[PLAT-461](bugs/pulse_platform/platform/frontend-chat/plat-461.md).
+Tickets: [PLAT-462](bugs/pulse_platform/app/ui/plat-462.md),
+[PLAT-461](bugs/pulse_platform/app/ui/plat-461.md).
 
 ### 2026-10-04 — Global navigation can stay fixed or auto-hide
 
@@ -521,21 +522,21 @@ The user chooses Fixed (default) or Auto-hide with the bottom pin; remember
 the choice across products and reloads. Auto-hide reveals at the left edge or
 on keyboard focus to free workspace space while preserving access. Keep the
 navigation mounted so its live activity monitor continues refreshing.
-Ticket: [PLAT-460](bugs/pulse_platform/platform/frontend-chat/plat-460.md).
+Ticket: [PLAT-460](bugs/pulse_platform/app/ui/plat-460.md).
 
 ### 2026-10-04 — The persistent chat tab names its workflow or project
 
 Show the workflow/Relay name or Crew/Code/Vault project name on the persistent
 chat tab so its context remains visible with the workspace pane closed. Keep
 the full name on hover when the pill truncates it.
-Ticket: [PLAT-458](bugs/pulse_platform/platform/frontend-chat/plat-458.md).
+Ticket: [PLAT-458](bugs/pulse_platform/app/ui/plat-458.md).
 
 ### 2026-10-04 — A chat switch scrolls to the bottom once, after the list settles; a pane message keeps a reader's place
 
 - Switching chats or workflows asks for the bottom through one request that is performed once the chat content has stopped changing (capped at 0.8 s)
   and is dropped if the person scrolls first. No caller repeats it on timers.
 - "Apply in chat" / pane messages into the chat already on screen do not move a reader who has scrolled up; into another chat they land at the bottom.
-  Ticket: [PLAT-455](bugs/pulse_platform/platform/frontend-chat/plat-455.md).
+  Ticket: [PLAT-455](bugs/pulse_platform/app/ui/plat-455.md).
 
 ### 2026-10-04 — A moved Crew keeps its old paths, its CLI runtime and its browser profile
 
@@ -559,8 +560,8 @@ Ticket: [PLAT-458](bugs/pulse_platform/platform/frontend-chat/plat-458.md).
 - A private Code whose registered owner is not the person whose tree admitted it is refused before any CLI starts, with an explicit error. There is no
   ownership transfer; adding one must update the registry and the project's location together.
 - The startup scan, the owner opening a project, project creation and the Crew move write the registry; the owner scan and every manifest write refuse
-  symlinks (anchored opens, no write through a link): [PLAT-450](bugs/pulse_platform/platform/security-sandbox/plat-450.md).
-- Tickets: [PLAT-449](bugs/pulse_platform/platform/security-sandbox/plat-449.md), [PLAT-442](bugs/pulse_platform/crew/security-sandbox/plat-442.md).
+  symlinks (anchored opens, no write through a link): [PLAT-450](bugs/pulse_platform/sandbox/security/plat-450.md).
+- Tickets: [PLAT-449](bugs/pulse_platform/sandbox/security/plat-449.md), [PLAT-442](bugs/pulse_platform/crew/security-sandbox/plat-442.md).
 
 ### 2026-10-04 — No background-agent tool; the agent does the work itself
 
@@ -579,7 +580,7 @@ whose declared user+slot the host table does not confirm. It never falls back
 to the app account, which would silently drop isolation. A declared app account
 (Crew/goal CLI turns) and hosts without slots are unaffected. Code:
 `workspace/slots` `SlotForLaunch`, `workspace/cmd/slottmux`, provider
-`internal/slotfs`. Ticket: [PLAT-451](bugs/pulse_platform/platform/security-sandbox/plat-451.md).
+`internal/slotfs`. Ticket: [PLAT-451](bugs/pulse_platform/sandbox/security/plat-451.md).
 
 ### 2026-10-04 — Relay execution has no platform DB, KB or learnings
 
@@ -612,7 +613,7 @@ Remove the admin/reviewer workspace inspection button and popup from the
 shared Code/Crew surface at the user's request: the unfamiliar popup failed
 with a Network Error on Excellence. The separate audited review API and
 Providers conversations overview retain their existing authorization.
-Ticket: [PLAT-439](bugs/pulse_platform/platform/frontend-chat/plat-439.md).
+Ticket: [PLAT-439](bugs/pulse_platform/app/ui/plat-439.md).
 
 ### 2026-10-04 — Scripted steps never self-heal in a run
 
@@ -644,7 +645,7 @@ Ticket: [PLAT-432](bugs/pulse_platform/goals/plans-contracts/plat-432.md).
 The build box publishes each build to `github.com/manishiitg/agentworks-builds` (releases only, newest 8 kept, no source) and RTS downloads its trimmed copy itself,
 accepting it only if `manifest.json` hashes to the value `deploy.sh` read on the box (then the normal manifest verify). The repo is public so servers need no credential; only
 the box holds a write token (Contents read+write on that one repo, root-only 0600 file). Streaming through the owner's Mac took 5+ minutes. Without a token or a release, `./deploy.sh rts`
-falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetzner products still copy from `/srv/_builds`. Ticket: [PLAT-426](bugs/pulse_platform/platform/scheduler-runs/plat-426.md).
+falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetzner products still copy from `/srv/_builds`. Ticket: [PLAT-426](bugs/pulse_platform/schedules/runs/plat-426.md).
 
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
 
@@ -662,7 +663,7 @@ cards show fresh/cached input, output and cache share; daily rows use numeric
 input/cache/output/cost columns. Conversations remain inspectable and secondary
 run/model details expand on demand. Missing-usage and unpriced counters stay
 visible so incomplete accounting is not mistaken for zero cost.
-[PLAT-430](bugs/pulse_platform/platform/cost-telemetry/plat-430.md).
+[PLAT-430](bugs/pulse_platform/ops/cost/plat-430.md).
 
 ### 2026-10-04 — Old builds are pruned by default after every deploy — PLAT-426
 
@@ -688,7 +689,7 @@ schema fails and autofix repairs it. Contract 1.0.45 migrates existing scripts a
 blocks execution until done. `$DB_PATH` stays set for old scripts only.
 Managed writes enforce declared foreign keys (scripts used to set the PRAGMA
 themselves; agent writes never had it); only new writes are checked.
-Ticket: [PLAT-428](bugs/pulse_platform/platform/security-sandbox/plat-428.md).
+Ticket: [PLAT-428](bugs/pulse_platform/sandbox/security/plat-428.md).
 
 ### 2026-10-04 — Relay MCP authoring is explicit and execution uses direct graph runs
 
@@ -709,7 +710,7 @@ An uncertain earlier submission is reconciled even while a terminal is live, if 
 
 Setup → Models offers only a handful of ready coding providers. Show that list
 directly when changing provider; omit provider search and keep refresh available.
-Ticket: [PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+Ticket: [PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-04 — Named Python tools reuse the step registry and sandbox
 
@@ -729,7 +730,7 @@ Ticket: [PLAT-423](bugs/pulse_platform/relays/coding-agent-bridge/plat-423.md).
 - **Why.** A chat answered from the owner's own AgentWorks MCP connection (their real workflows) instead of
   the platform's tools. Their home stays open to the CLI's shell; their *config* is not part of the session.
 - **Where.** `llmtypes.SandboxHomeEnvironment`, `clisandbox.prepareSeatbeltCodexHome`.
-  [PLAT-418](bugs/pulse_platform/platform/coding-agent-bridge/plat-418.md).
+  [PLAT-418](bugs/pulse_platform/coding-agents/bridge/plat-418.md).
 
 ### 2026-10-04 — Codex `gpt-5.3-codex-spark` is no longer offered — PLAT-416
 
@@ -742,7 +743,7 @@ Use the shared sandbox's set_output(value) helper for Python JSON handoff.
 The platform persists result.json for inspection and recovery; users pass data
 through existing step-output references without managing files. Stdout stays
 a log, and existing direct output writes remain compatible.
-Ticket: [PLAT-415](bugs/pulse_platform/platform/security-sandbox/plat-415.md).
+Ticket: [PLAT-415](bugs/pulse_platform/sandbox/security/plat-415.md).
 
 ### 2026-10-04 — A stuck managed browser is closed and the command retried once; very tall full-page screenshots are refused
 
@@ -755,7 +756,7 @@ Ticket: [PLAT-415](bugs/pulse_platform/platform/security-sandbox/plat-415.md).
 - **Why.** After a tab crash `open` hung until the user closed and reopened; a 600000 px capture killed Chrome; the "stop browsers"
   control found no process to stop because it matched the name "chromium".
 - **Where.** `agent_go/pkg/browser/executor.go` (`isStuckBrowserError`, `fullPageScreenshotRefusal`), `workspace/handlers/browser_processes.go`,
-  `shell.go`, `workspace/browserconfig` (`RemoveEmptySessionSocketDirs`). [PLAT-414](bugs/pulse_platform/platform/browser/plat-414.md).
+  `shell.go`, `workspace/browserconfig` (`RemoveEmptySessionSocketDirs`). [PLAT-414](bugs/pulse_platform/browser/browser/plat-414.md).
 
 ### 2026-10-04 — Source Control never shows or commits the platform's `.sandbox-cache` folder — PLAT-410
 
@@ -773,7 +774,7 @@ Ticket: [PLAT-409](bugs/pulse_platform/relays/frontend-chat/plat-409.md).
 The workflow and Relay header retains the Ops label and opens its icons on
 click, per the user's revised preference. Views and setup icons stay expanded.
 This supersedes the always-open Ops choice in PLAT-398.
-Ticket: [PLAT-408](bugs/pulse_platform/platform/frontend-chat/plat-408.md).
+Ticket: [PLAT-408](bugs/pulse_platform/app/ui/plat-408.md).
 
 ### 2026-10-03 — Granted slot output directories must also permit Unix writes
 
@@ -781,7 +782,7 @@ The shared shell prepares only authorized workspace write directories for its
 user slot, repairing service-created group permissions before launch. Ancestors
 get traversal; Folder Guard remains the access boundary. Relay scripts write
 JSON files explicitly; stdout and context_output do not create them.
-Ticket: [PLAT-399](bugs/pulse_platform/platform/security-sandbox/plat-399.md).
+Ticket: [PLAT-399](bugs/pulse_platform/sandbox/security/plat-399.md).
 
 ### 2026-10-03 — Builder owns Relay output selection; workflow tools stay visible
 
@@ -804,7 +805,7 @@ Ticket: [PLAT-398](bugs/pulse_platform/relays/frontend-chat/plat-398.md).
   outlive the turn.
 - **Why.** Native subagents cover in-turn work but inherit write rights and end with the turn.
 - **Where.** `native-subagents` in `cmd/server/prompt_sections.go`; workflow-tools guidance.
-  [PLAT-397](bugs/pulse_platform/platform/coding-agent-bridge/plat-397.md).
+  [PLAT-397](bugs/pulse_platform/coding-agents/bridge/plat-397.md).
 
 ### 2026-10-03 — One managed-browser launcher on every server
 
@@ -827,7 +828,7 @@ Ticket: [PLAT-398](bugs/pulse_platform/relays/frontend-chat/plat-398.md).
 - **Why.** Two edit tools for the same file only split the model's choice; the sandbox already refuses
   protected files.
 - **Where.** `admitsBridgeTool` in mcpagent `agent/coding_agents_bridge.go`.
-  [PLAT-396](bugs/pulse_platform/platform/coding-agent-bridge/plat-396.md).
+  [PLAT-396](bugs/pulse_platform/coding-agents/bridge/plat-396.md).
 
 ### 2026-10-03 — Chats read other workflows only when attached — PLAT-395
 
@@ -836,37 +837,37 @@ Ticket: [PLAT-398](bugs/pulse_platform/relays/frontend-chat/plat-398.md).
 - **Why.** The sandbox self-test showed a Builder reading another workflow's files; attachment is the
   explicit way to share one.
 - **Where.** Read grants in `cmd/server/server.go`, `delegation.go`, `tool_setup.go`.
-  [PLAT-395](bugs/pulse_platform/platform/security-sandbox/plat-395.md).
+  [PLAT-395](bugs/pulse_platform/sandbox/security/plat-395.md).
 
 ### 2026-10-03 — Workflow Models tab: one Model card, per-role list behind a switch — PLAT-407
 
 The workflow Models tab shows one Model card that sets every role to the same value; "Use different models for different roles" (off by default, on
 when saved roles differ) reveals a compact per-role list, and switching it off sets every role to High reasoning's value (owner). Role ids and the
-saved `llm_config` format are unchanged. Ticket: [PLAT-407](bugs/pulse_platform/platform/frontend-chat/plat-407.md).
+saved `llm_config` format are unchanged. Ticket: [PLAT-407](bugs/pulse_platform/app/ui/plat-407.md).
 
 ### 2026-10-03 — Composer layout: terminal and attach left; New chat, commands, mic, send right. Workflow page: no Native agent tools toggle — PLAT-406
 
 In every chat input the live-view (terminal) toggle and attach sit on the left; New chat, commands (wand), mic and send on the right. The workflow
 Models page no longer offers "Native agent tools" (always on, as in Crew and Code); a value already saved as off is left untouched and not editable
-(owner). Ticket: [PLAT-406](bugs/pulse_platform/platform/frontend-chat/plat-406.md), [PLAT-402](bugs/pulse_platform/relays/coding-agent-bridge/plat-402.md).
+(owner). Ticket: [PLAT-406](bugs/pulse_platform/app/ui/plat-406.md), [PLAT-402](bugs/pulse_platform/relays/coding-agent-bridge/plat-402.md).
 
 ### 2026-10-03 — Allowed models per provider account — PLAT-407
 
 Every provider account (admin-managed or personal) has an optional `allowed_models` list; empty means every model (owner request). An admin sets it
 for the server account, the owner for a personal account. Enforced on the server: a model the account does not allow, however it arrives (picked, saved, default),
 runs on the first allowed model so a chat never fails on it (refusing a "new pick" 422'd every message once a fallback had bound the chat to another model, PLAT-416).
-Ticket: [PLAT-407](bugs/pulse_platform/platform/frontend-chat/plat-407.md).
+Ticket: [PLAT-407](bugs/pulse_platform/app/ui/plat-407.md).
 
 ### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome) — PLAT-404
 
 `/opt/google/chrome` is granted to the Landlock sandbox (read + execute, on every Linux server). Why: `/usr/bin/google-chrome` resolves there and the
 Code browser could not start; it worked before only because the removed mount-namespace fallback could see /opt. Ticket:
-[PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+[PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order — PLAT-406
 
 The mic is on for Code (owner; needs the server's speech engine); New chat and the live-view toggle sit with the send controls; Code's toolbar reads
-Dashboard | Files, Terminal, Browser | Automation, Costs | Setup. Ticket: [PLAT-406](bugs/pulse_platform/platform/frontend-chat/plat-406.md).
+Dashboard | Files, Terminal, Browser | Automation, Costs | Setup. Ticket: [PLAT-406](bugs/pulse_platform/app/ui/plat-406.md).
 
 ### 2026-10-03 — Mac: Seatbelt for every coding CLI, home open; no unconfined mode — PLAT-394
 
@@ -877,7 +878,7 @@ Dashboard | Files, Terminal, Browser | Automation, Costs | Setup. Ticket: [PLAT-
 - **Why.** The owner wants agents to keep the same reach as the person on their own machine; the risk is the
   platform's own data and escapes through other apps, not the person's home.
 - **Where.** `internal/clisandbox/seatbelt.go` (provider), `cmd/server/cli_landlock.go` (builder).
-  [PLAT-394](bugs/pulse_platform/platform/security-sandbox/plat-394.md).
+  [PLAT-394](bugs/pulse_platform/sandbox/security/plat-394.md).
 
 ### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work) — PLAT-403
 
@@ -889,7 +890,7 @@ scroll did nothing. Supersedes the browser-side scroll in the one-home entry. Ti
 
 A model or reasoning-effort change applies only when the agent has completed its turn: if a turn is running, the message waits in the durable turn
 queue and the CLI relaunches with the new setting when it runs (owner). Why: relaunching at once cancelled the running turn. Ticket:
-[PLAT-407](bugs/pulse_platform/platform/frontend-chat/plat-407.md).
+[PLAT-407](bugs/pulse_platform/app/ui/plat-407.md).
 
 ### 2026-10-03 — Compact browser chrome and recovery preserve the working browser
 
@@ -900,20 +901,20 @@ to the existing daemon over fixed IPC operations, avoiding CLI version changes
 that restart Chrome. A writable viewer that had control may recover a dropped
 managed browser once; passive viewers and local CDP do not launch browsers.
 Interrupted teaching stays interrupted. Ticket:
-[PLAT-393](bugs/pulse_platform/platform/browser/plat-393.md).
+[PLAT-393](bugs/pulse_platform/browser/browser/plat-393.md).
 
 ### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy — PLAT-405
 
 The rootless-linux deploy writes every same-everywhere setting of `deploy/common/runtime_profile.json` into `.env` and both services (native
 workspace, CDP off, CLI lock and Full CLI, state root, MCP state dir, shared browser profile). `MULTI_USER_MODE` stays per server: SparkQuill is
 single-user and switching it on would hide its data. No rollback step (owner: "if anything goes down it's fine"). Ticket:
-[PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+[PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — Deployment unification, step 1: a read-only drift report — PLAT-405
 
 All servers are deployed one way with one runtime profile (owner; `docs/design/deploy_unification.md`). `./deploy.sh report [server]` prints how each
 running server differs from `deploy/common/runtime_profile.json`; report only, the deploy never fails on it. Ticket:
-[PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+[PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — Codex resume adoption handles interactive options and historical startup banners
 
@@ -922,18 +923,18 @@ private CLI home, parsing the model/profile/config options before that ID.
 A newer Codex ready header supersedes an older `Resuming session` banner in
 scrollback. The original rollout and existing private copies are retained.
 Shared provider `648234b`, validated with a real two-turn resumed conversation
-and deployed to SparkQuill in `sparkquill-7fc2ae97-20261003181010`. [PLAT-392](bugs/pulse_platform/platform/coding-agent-bridge/plat-392.md).
+and deployed to SparkQuill in `sparkquill-7fc2ae97-20261003181010`. [PLAT-392](bugs/pulse_platform/coding-agents/bridge/plat-392.md).
 
 ### 2026-10-03 — Deploy Slack notices are silent by default again — PLAT-405
 
 Deploy Slack notices are silent by default: `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1` (owner: "for now make Slack posts
-silent"). Ticket: [PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+silent"). Ticket: [PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks — PLAT-404
 
 The Code agent may set up a tunnel (cloudflared, ngrok) when the user asks, saying once that the app becomes reachable by anyone with the link. Why
 (owner): the platform should be secure and people can already do anything from the terminal. Browser IDEs, SSH/remote-desktop servers, VPNs and
-binding ports to all interfaces stay forbidden. Ticket: [PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+binding ports to all interfaces stay forbidden. Ticket: [PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — Gmail sender exceptions require separate owner confirmation
 
@@ -944,13 +945,13 @@ to sender policy, actions, mailbox, replies or enabled state revoke consent; old
 allowlists require review. Common public mailbox domains and public suffixes are
 rejected. The pane remains read-only for configuration, with a dedicated owner
 security confirmation/revocation. Ticket:
-[PLAT-391](bugs/pulse_platform/platform/security-sandbox/plat-391.md).
+[PLAT-391](bugs/pulse_platform/sandbox/security/plat-391.md).
 
 ### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal) — PLAT-404
 
 A sandboxed command without a scoped browser socket always gets `AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser`, the folder the sandbox grants. Why: a
 project browser has no per-user socket folder and agent-browser's default (`$XDG_RUNTIME_DIR`) is not writable without the removed fallback. Ticket:
-[PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+[PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
 
@@ -958,14 +959,14 @@ project browser has no per-user socket folder and agent-browser's default (`$XDG
 
 Owner decision. The reads-only hybrid mode is gone; on means the CLI's own
 tools inside Landlock/Seatbelt, or mcp_only when it cannot be confined. Pi
-stays bridge-only. Ticket: [PLAT-390](bugs/pulse_platform/platform/coding-agent-bridge/plat-390.md).
+stays bridge-only. Ticket: [PLAT-390](bugs/pulse_platform/coding-agents/bridge/plat-390.md).
 
 ### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser — PLAT-404
 
 Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it. A Code command run as the owner's slot
 (terminal and the agent's shell) gets the slot's own home as HOME with a Landlock write grant; users without a slot keep the per-project home.
 Workflows and Crew keep per-project homes (unattended, shareable, bot-triggered). Why: the agent's shell and the terminal must see the same installs.
-Ticket: [PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md) (the scroll part is superseded, see
+Ticket: [PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md) (the scroll part is superseded, see
 [PLAT-403](bugs/pulse_platform/code/frontend-chat/plat-403.md)).
 
 ### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server — PLAT-403
@@ -986,7 +987,7 @@ Slack scope per the user. Ticket: [PLAT-389](bugs/pulse_platform/relays/integrat
 ### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now — PLAT-405
 
 A deploy restarts the services without waiting for running agent turns (`DEPLOY_DRAIN_SECONDS` default 0; set it, e.g. 300, to wait). Why (owner):
-"force deploys for now". A running turn is cut off by a deploy. Ticket: [PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+"force deploys for now". A running turn is cut off by a deploy. Ticket: [PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — User slot shells exclude the service account's Google CLI store
 
@@ -1002,7 +1003,7 @@ A deploy restarts the services without waiting for running agent turns (`DEPLOY_
 
 A workflow's `folder_access` needs the same admin-assigned roots as a Work
 folder, and absolute host grants (including the host Downloads) never reach a
-server's CLI or shell sandbox. Ticket: [PLAT-383](bugs/pulse_platform/platform/security-sandbox/plat-383.md).
+server's CLI or shell sandbox. Ticket: [PLAT-383](bugs/pulse_platform/sandbox/security/plat-383.md).
 
 ### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu) — PLAT-403
 
@@ -1016,7 +1017,7 @@ Use native local clipboard gestures to copy the active page selection and insert
 plain text into the existing scoped browser's focused field. Require current
 write access and exclusive control for every transfer; never use the shared
 server OS clipboard. Browser controls use the selected neutral header/tab/address
-layout. Ticket: [PLAT-382](bugs/pulse_platform/platform/browser/plat-382.md).
+layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/browser/plat-382.md).
 
 ### 2026-10-05 — A missing secret does not stop a run
 
@@ -1056,7 +1057,7 @@ this boundary. Incoming Gmail's read-only pane and Builder explain Google sign-i
 versus receiving, the deployment's event URL and the Google Cloud/server checklist.
 Infrastructure setup requires cloud and server access; an app admin role alone
 is insufficient. Account consent and rules stay in Builder. Ticket:
-[PLAT-379](bugs/pulse_platform/platform/integrations/plat-379.md).
+[PLAT-379](bugs/pulse_platform/integrations/integrations/plat-379.md).
 
 ### 2026-10-03 — Relay commands follow its product; prompt inspection stays private
 
@@ -1076,32 +1077,32 @@ The server records the launch user and channel in WorkshopConfig. Detached
 workshop sessions carry those values into their step and background agents,
 while keeping their lifetime controlled by session Close rather than the HTTP
 request. Missing identities stay unknown; current workflow ownership is not
-evidence of who launched a historical run. [PLAT-377](bugs/pulse_platform/platform/cost-telemetry/plat-377.md).
+evidence of who launched a historical run. [PLAT-377](bugs/pulse_platform/ops/cost/plat-377.md).
 
 ### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only — PLAT-406
 
 Code gets a New chat button that replaces the current conversation in the same tab (Code always has one active tab). The chat input has no model
 picker on any surface: models change in each product's settings, a workflow's model in its LLM configuration panel (user). Ticket:
-[PLAT-406](bugs/pulse_platform/platform/frontend-chat/plat-406.md).
+[PLAT-406](bugs/pulse_platform/app/ui/plat-406.md).
 
 ### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals — PLAT-404
 
 In a provider Usage setup session typed input goes through the same slash allowlist as the coding agents' live terminals (default `/usage` only), so a
 manager of a shared account cannot type `/logout` or change settings for everyone. Managers keep the live view. Ticket:
-[PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+[PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — The old workspace `Downloads/` folder is no longer granted
 
 Folder guards stop granting `Downloads/` and prompts stop pointing at it; outputs
 and browser artifacts go to the chat or workflow folder. It was a leftover whose
-local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/platform/security-sandbox/plat-373.md).
+local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sandbox/security/plat-373.md).
 
 ### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account — PLAT-374
 
 A slot command never runs on the mount-namespace backend, and a policy Landlock cannot carry is refused, never downgraded. Blocked paths inside a
 granted path are hidden by an empty read-only placeholder mounted over each. Why: a blocked `db.sqlite` inside the Code project made
 `landlockPolicy()` fail and agent shells silently fell back to a backend that ran as the service account and could read the platform `.env`. The agent
-shell's `HOME` is now the same private home as the Code terminal (user request). Ticket: [PLAT-374](bugs/pulse_platform/platform/security-sandbox/plat-374.md).
+shell's `HOME` is now the same private home as the Code terminal (user request). Ticket: [PLAT-374](bugs/pulse_platform/sandbox/security/plat-374.md).
 
 ### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
 
@@ -1169,13 +1170,13 @@ and Relay choose an authorized ready account, model and supported reasoning
 effort. Keep effort visible when Model is collapsed; intersect profile and model
 capabilities and preserve account identity on changes. Existing credentials remain
 compatible. Implementation, verification and rollout are tracked in
-[PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+[PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed) — PLAT-404
 
 The private sandbox home is group-accessible (rwx + setgid, healed on each start) so a user's slot can use it, and the terminal creates an empty
 `~/.bashrc`. Why: the service created it 0700, so slot users could not install anything under `$HOME` (nvm). Ticket:
-[PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+[PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
 
@@ -1273,7 +1274,7 @@ prompt is just the current folder's name (`code $`). Why (user): plain white on 
 
 `deploy.sh` posts the deploying and finished notices to Slack by default again; `DEPLOY_SLACK_NOTIFY=0` silences a run (user). Why: the false
 "problem" notices behind the opt-in came from the early health probe, fixed 2026-10-01. Superseded by the silent-by-default entry above. Ticket:
-[PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+[PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals — PLAT-403
 
@@ -1411,10 +1412,10 @@ Ticket: [PLAT-403](bugs/pulse_platform/code/frontend-chat/plat-403.md).
 Offer documented Cursor models and preserve exact live CLI selectors alongside
 curated metadata. Catalog presence does not establish availability for an account;
 Codex GLM requires a separately configured compatible provider/gateway. Completed
-catalog work is in [PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md);
+catalog work is in [PLAT-386](bugs/pulse_platform/app/ui/plat-386.md);
 account inventory and native pricing follow-ups are
-[PLAT-387](bugs/pulse_platform/platform/frontend-chat/plat-387.md) and
-[PLAT-388](bugs/pulse_platform/platform/cost-telemetry/plat-388.md).
+[PLAT-387](bugs/pulse_platform/app/ui/plat-387.md) and
+[PLAT-388](bugs/pulse_platform/ops/cost/plat-388.md).
 
 ### 2026-10-03 — My local product-list change wrote an invalid runtime config (empty value)
 
@@ -1439,7 +1440,7 @@ account inventory and native pricing follow-ups are
 Project model and supported effort choices remain editable for admin-managed
 accounts. New-project selection uses the same account labels/readiness policy as
 Models; Antigravity effort follows its model variant. See
-[PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+[PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-03 — The terminal starts on a Mac (tmux by full path)
 
@@ -1474,12 +1475,12 @@ Models; Antigravity effort follows its model variant. See
 Product model selectors require an installed CLI and an authorized usable account.
 Preserve unavailable saved selections for diagnosis without selecting a replacement.
 Remove GPT-5.5/GPT-5.4 from new Codex choices while retaining saved-session metadata.
-See [PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+See [PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-03 — Deploy notices in Slack are opt-in — PLAT-405
 
 `deploy.sh` no longer posts to Slack by default; `DEPLOY_SLACK_NOTIFY=1` turns the notices on for a run (user). Why: noise, including false "problem"
-notices. Reversed by the entry above. Ticket: [PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+notices. Reversed by the entry above. Ticket: [PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
 
@@ -1548,13 +1549,13 @@ notices. Reversed by the entry above. Ticket: [PLAT-405](bugs/pulse_platform/pla
 
 Label installation credentials **Admin-managed account** consistently across
 Providers and product selection. Keep the Providers header Back control and use
-provider brand icons. See [PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+provider brand icons. See [PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-03 — Setup model choices show installed coding providers only
 
 Keep uninstalled coding providers in Providers management, outside product model
 selection. The later ready-account decision also requires a usable account.
-See [PLAT-386](bugs/pulse_platform/platform/frontend-chat/plat-386.md).
+See [PLAT-386](bugs/pulse_platform/app/ui/plat-386.md).
 
 ### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28) — PLAT-403
 
@@ -1566,7 +1567,7 @@ rather than a shell as the service account. Ticket: [PLAT-403](bugs/pulse_platfo
 
 `provision-slots.sh init` sets `o+x` on `/etc/agentworks` unconditionally. Why: init for the default product reset it to 0750 and Confida's service,
 which reads its slot table through that folder, would fail with "slot table unavailable". Ticket:
-[PLAT-404](bugs/pulse_platform/platform/security-sandbox/plat-404.md).
+[PLAT-404](bugs/pulse_platform/sandbox/security/plat-404.md).
 
 ### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
 
@@ -1590,7 +1591,7 @@ which reads its slot table through that folder, would fail with "slot table unav
 
 The release pruner ignores a `.deploying` marker older than 6 hours. Why: the rootless deploy removes it only on its last line, so a deploy that
 exited after the release went live left it behind and pinned the release (14 GB on Confida). Ticket:
-[PLAT-405](bugs/pulse_platform/platform/scheduler-runs/plat-405.md).
+[PLAT-405](bugs/pulse_platform/schedules/runs/plat-405.md).
 
 ### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
 

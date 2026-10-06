@@ -48,7 +48,7 @@ One Fixer then reconciles their findings and applies only bounded safe changes.
 Consequential strategy changes remain proposals requiring the existing human
 decision flow. One ordered finalizer renders the dashboard, backs up, publishes,
 and notifies. The canonical current topology and its rationale live in
-[`pulse_consolidation.md`](./pulse_consolidation.md).
+[`pulse_consolidation.md`](pulse_consolidation.md).
 
 "Working but off-goal" remains a normal, important state: operational health and
 goal progress are separate judgments, and a broken run cannot supply trustworthy

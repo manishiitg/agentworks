@@ -160,6 +160,6 @@ Use this mental model:
 
 ## Related Docs
 
-- [workflow_manifest_architecture.md](./workflow_manifest_architecture.md)
-- [workflow_monitoring.md](./workflow_monitoring.md)
-- [workflow_shell_working_directory.md](./workflow_shell_working_directory.md)
+- [workflow_manifest_architecture.md](workflow_manifest_architecture.md)
+- [workflow_monitoring.md](workflow_monitoring.md)
+- [workflow_shell_working_directory.md](workflow_shell_working_directory.md)

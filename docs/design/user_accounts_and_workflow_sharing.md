@@ -3,7 +3,7 @@
 **Status:** design agreed 2026-09-02; all four phases built and deployed to the
 RTS Video Studio box the same day. Kept as the reference for the model.
 **Related:** `docs/core/multi_user_authentication.md` (current auth),
-`docs/bugs/pulse_platform/platform/security-sandbox/plat-262.md` (read-only enforcement, reused as is),
+`docs/bugs/pulse_platform/sandbox/security/plat-262.md` (read-only enforcement, reused as is),
 `deploy/aws-ec2/server/auth-gateway.go` (Video Studio gateway).
 
 ## Current behavior
@@ -37,7 +37,7 @@ Read-only sessions can submit a requested improvement through
 `submit_workflow_suggestion`. It creates a durable owner-review item without
 changing the workflow. Only an interactive workflow owner can answer, dismiss
 or consume that suggestion; accepting it does not automatically implement it.
-See [PLAT-330](../bugs/pulse_platform/platform/security-sandbox/plat-330.md).
+See [PLAT-330](../bugs/pulse_platform/sandbox/security/plat-330.md).
 
 ## The model
 
@@ -83,7 +83,7 @@ tracked separately only to narrow capabilities and label/audit the conversation.
 Direct headless workflow execution remains Run because it is not a conversation.
 Native-session admission is refreshed when its existing ChatPolicyKey changes,
 while preserving the durable chat ID and conversation history. See
-[PLAT-262](../bugs/pulse_platform/platform/security-sandbox/plat-262.md).
+[PLAT-262](../bugs/pulse_platform/sandbox/security/plat-262.md).
 
 Products have no account roles of their own. Crew (`work` in the product
 allowlist) projects are scoped to the authenticated user's private project

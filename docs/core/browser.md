@@ -7,7 +7,7 @@ The extension policy is current through PLAT-530 (2026-10-05); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
-their own release verification. See [PLAT-393](../bugs/pulse_platform/platform/browser/plat-393.md).
+their own release verification. See [PLAT-393](../bugs/pulse_platform/browser/browser/plat-393.md).
 The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
 must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
 
@@ -77,11 +77,11 @@ Neither dependency requires a source change for this feature.
 
 ## Personal Chrome extension
 
-Tracking: [PLAT-510](../bugs/pulse_platform/platform/browser/plat-510.md),
-[PLAT-513](../bugs/pulse_platform/platform/browser/plat-513.md) and
-[PLAT-516](../bugs/pulse_platform/platform/browser/plat-516.md) and
+Tracking: [PLAT-510](../bugs/pulse_platform/browser/browser/plat-510.md),
+[PLAT-513](../bugs/pulse_platform/browser/browser/plat-513.md) and
+[PLAT-516](../bugs/pulse_platform/browser/browser/plat-516.md) and
 [PLAT-524](../bugs/pulse_platform/crew/browser/plat-524.md) and
-[PLAT-530](../bugs/pulse_platform/platform/browser/plat-530.md).
+[PLAT-530](../bugs/pulse_platform/browser/browser/plat-530.md).
 
 Let a Code, Crew or workflow agent use explicitly shared tabs in the user's
 existing Chrome profile, locally or from a hosted platform. Keep the existing
@@ -98,7 +98,7 @@ with a Connected tooltip and accessible description. This remains visible while
 another pane is open. A selected extension can be connected with zero shared
 tabs; otherwise active live browser sessions count. Disconnects and failed status
 requests clear the dot, and completed recordings never count as live connections.
-Tracking: [PLAT-542](../bugs/pulse_platform/platform/frontend-chat/plat-542.md).
+Tracking: [PLAT-542](../bugs/pulse_platform/app/ui/plat-542.md).
 
 ### Install and connect
 
@@ -191,7 +191,7 @@ before step tool assembly. Dedicated execution, message-sequence and todo tool
 sessions register under that parent run, so fresh script/CLI HTTP calls resolve
 the same extension while keeping the child's file grants. Dropping account
 identity must never turn a selected extension into a local-CDP fallback.
-Tracking: [PLAT-546](../bugs/pulse_platform/platform/browser/plat-546.md).
+Tracking: [PLAT-546](../bugs/pulse_platform/browser/browser/plat-546.md).
 
 Live bindings last at most eight hours and remain process-local. Server selection
 is recorded without credentials or target IDs. Extension 0.4.0 remembers explicitly
@@ -363,9 +363,9 @@ wrong capability and target revocation through real WebSocket requests. Verify a
 build the server/frontend and package the unpacked extension as a downloadable
 ZIP. Record actual checks and remaining qualifications in the linked platform tickets.
 Real Chrome and Edge qualification for the current behavior is recorded in
-[PLAT-516](../bugs/pulse_platform/platform/browser/plat-516.md). Browser/server restart,
+[PLAT-516](../bugs/pulse_platform/browser/browser/plat-516.md). Browser/server restart,
 offline Disconnect and remembered pairing checks are recorded in
-[PLAT-532](../bugs/pulse_platform/platform/browser/plat-532.md); deployment remains separate.
+[PLAT-532](../bugs/pulse_platform/browser/browser/plat-532.md); deployment remains separate.
 
 References: [agent-browser CDP](https://agent-browser.dev/cdp-mode),
 [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger),
@@ -1063,7 +1063,7 @@ unchanged. Watch-only users cannot send clipboard or navigation actions.
 **Fill width** uses the panel width with vertical scrolling; **Fit page** keeps
 the whole viewport visible. Browser is a workspace view (the toolbar group is
 currently Pulse), not a Setup page; mode/connection settings remain behind its
-gear button. Implementation and qualification: [PLAT-382](../bugs/pulse_platform/platform/browser/plat-382.md).
+gear button. Implementation and qualification: [PLAT-382](../bugs/pulse_platform/browser/browser/plat-382.md).
 
 ### Runtime mode changes
 
@@ -1351,10 +1351,10 @@ rollout does not resolve these direct-CDP/managed-runtime issues.
 
 | Issue | Scope and remaining work |
 | --- | --- |
-| [PLAT-520](../bugs/pulse_platform/platform/browser/plat-520.md) | Direct-CDP listing, known-tab selection and exact-URL reuse currently expose the configured browser; ownership is bookkeeping, not target authorization. Define/enforce the complete boundary and redact label conflicts. |
-| [PLAT-521](../bugs/pulse_platform/platform/browser/plat-521.md) | Global managed-browser eviction can stop an unrelated idle session; reject or reclaim only an authorized victim. |
-| [PLAT-522](../bugs/pulse_platform/platform/browser/plat-522.md) | Force cleanup trusts persisted PIDs; validate process identity and reject special/system PIDs before signaling. |
-| [PLAT-523](../bugs/pulse_platform/platform/browser/plat-523.md) | Text-based dead-session classification can reset a healthy runtime; corroborate transport failures with execution-host health. |
+| [PLAT-520](../bugs/pulse_platform/browser/browser/plat-520.md) | Direct-CDP listing, known-tab selection and exact-URL reuse currently expose the configured browser; ownership is bookkeeping, not target authorization. Define/enforce the complete boundary and redact label conflicts. |
+| [PLAT-521](../bugs/pulse_platform/browser/browser/plat-521.md) | Global managed-browser eviction can stop an unrelated idle session; reject or reclaim only an authorized victim. |
+| [PLAT-522](../bugs/pulse_platform/browser/browser/plat-522.md) | Force cleanup trusts persisted PIDs; validate process identity and reject special/system PIDs before signaling. |
+| [PLAT-523](../bugs/pulse_platform/browser/browser/plat-523.md) | Text-based dead-session classification can reset a healthy runtime; corroborate transport failures with execution-host health. |
 
 The extension uses a separate account/project relay and shares only that project's
 authorized tabs. Direct-CDP locks prevent simultaneous commands from racing;

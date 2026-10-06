@@ -355,6 +355,7 @@ def cmd_migrate(_):
 def relocate(moves):
     """Move whole folders of tickets ({old_rel_dir: new_rel_dir}), set their Product/Area, and fix every link."""
     mapping = {}
+    dir_mapping = {(TICKETS / o).resolve(): (TICKETS / n).resolve() for o, n in moves.items()}
     for old_rel, new_rel in moves.items():
         old_dir, new_dir = TICKETS / old_rel, TICKETS / new_rel
         for f in sorted(old_dir.iterdir()):
@@ -380,13 +381,14 @@ def relocate(moves):
                 return m.group(0)
             old_abs = (here_old / target).resolve()
             new_abs = mapping.get(old_abs, old_abs)
-            if not old_abs.exists() and old_abs not in mapping:
+            if old_abs.name == 'index.md' and old_abs.parent in dir_mapping:
+                new_abs = dir_mapping[old_abs.parent] / 'index.md'
+            elif not old_abs.exists() and old_abs not in mapping:
                 return m.group(0)
             return '](' + rel_link(here_new, new_abs) + anchor + ')'
         s2 = link.sub(fix, s) if fp.suffix in ('.md', '.html') else s
-        if fp.suffix not in ('.md', '.html'):
-            for o, n in text_moves.items():
-                s2 = s2.replace(o, n)
+        for o, n in sorted(text_moves.items(), key=lambda kv: -len(kv[0])):
+            s2 = s2.replace(o, n)
         if s2 != s:
             rewrites[fp] = s2
     for old_rel, new_rel in moves.items():

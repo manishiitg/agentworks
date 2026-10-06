@@ -21,7 +21,7 @@
 - **Owner:** conversation turn-stall cleanup and scheduler conversation reuse.
 - **Observed on:** Build-in-Public Pulse-only run
   `schedule-cron--af5a941f_1787078711034693000`.
-- **Related:** [PLAT-116](../../platform/coding-agent-bridge/plat-116.md)), which owns the upstream missed
+- **Related:** [PLAT-116](../../coding-agents/bridge/plat-116.md)), which owns the upstream missed
   provider-completion signal.
 
 ## Evidence and RCA

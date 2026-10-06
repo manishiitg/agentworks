@@ -2,7 +2,7 @@
 
 This doc explains how workflow costs and logs are measured now.
 
-It is not the same as [workflow_monitoring.md](./workflow_monitoring.md).
+It is not the same as [workflow_monitoring.md](workflow_monitoring.md).
 
 - `workflow_monitoring.md` is about the user-facing observability surfaces
 - this doc is about the storage and measurement architecture underneath those surfaces
@@ -269,6 +269,6 @@ Use this mental model:
 
 ## Related Docs
 
-- [workflow_monitoring.md](./workflow_monitoring.md)
-- [iteration_run_folder_architecture.md](./iteration_run_folder_architecture.md)
+- [workflow_monitoring.md](workflow_monitoring.md)
+- [iteration_run_folder_architecture.md](iteration_run_folder_architecture.md)
 - [evaluation_system.md](./evaluation_system.md)

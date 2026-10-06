@@ -144,7 +144,7 @@ Implementation: `agent_go/cmd/server/pulse_worklist.go`,
 - **Owners:** Pulse review dispatch/guidance, typed Pulse persistence, review
   agenda/query tools, and the Pulse review-history UI.
 - **Related:** [PLAT-138](plat-138.md), [PLAT-155](plat-155.md),
-  [PLAT-090](../../platform/cost-telemetry/plat-090.md)), [PLAT-114](../../platform/coding-agent-bridge/plat-114.md)),
+  [PLAT-090](../../ops/cost/plat-090.md)), [PLAT-114](../../coding-agents/bridge/plat-114.md)),
   [PLAT-156](../../brain/pulse-governance/plat-156.md), [PLAT-158](plat-158.md), and
   [PLAT-137](plat-137.md).
 

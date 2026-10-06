@@ -350,8 +350,8 @@ And:
 
 ## Related Docs
 
-- [mcp_bridge_layer.md](./mcp_bridge_layer.md)
-- [folder_guard_system.md](./folder_guard_system.md)
-- [browser.md](./browser.md)
+- [mcp_bridge_layer.md](mcp_bridge_layer.md)
+- [folder_guard_system.md](folder_guard_system.md)
+- [browser.md](browser.md)
 - [workflow_builder_interactive.md](../workflow/workflow_builder_interactive.md)
 - [workflow_shell_working_directory.md](../workflow/workflow_shell_working_directory.md)

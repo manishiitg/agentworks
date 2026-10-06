@@ -28,7 +28,7 @@
 - **Owner:** N/A — no code change made or needed by this ticket.
 - **Related:** `harness:pulse-review-persist:malformed-marker-discards-whole-review`
   (`Workflow/HDFC-Personal-Accounts`, high) — the finding this closes.
-  [PLAT-055](../../platform/learnings-knowledge/plat-055.md)) (the earlier ticket, already landed before this
+  [PLAT-055](../learnings/plat-055.md)) (the earlier ticket, already landed before this
   session, that began the migration to typed per-finding tool calls).
 
 ## The finding

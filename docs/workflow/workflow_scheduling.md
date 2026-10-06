@@ -185,7 +185,7 @@ Current implications:
 
 There is helper logic for resolving a group-scoped workshop run folder, but the standard workshop scheduler request still starts from `iteration-0`.
 
-That means scheduled runs follow the same broader run-folder model documented in [iteration_run_folder_architecture.md](./iteration_run_folder_architecture.md).
+That means scheduled runs follow the same broader run-folder model documented in [iteration_run_folder_architecture.md](iteration_run_folder_architecture.md).
 
 ## Auto Report Generation
 
@@ -323,8 +323,8 @@ Use this mental model:
 
 Related docs:
 
-- [workflow_manifest_architecture.md](./workflow_manifest_architecture.md)
-- [iteration_run_folder_architecture.md](./iteration_run_folder_architecture.md)
-- [workflow_builder_interactive.md](./workflow_builder_interactive.md)
-- [workflow_monitoring.md](./workflow_monitoring.md)
-- [cost_and_log_measurement.md](./cost_and_log_measurement.md)
+- [workflow_manifest_architecture.md](workflow_manifest_architecture.md)
+- [iteration_run_folder_architecture.md](iteration_run_folder_architecture.md)
+- [workflow_builder_interactive.md](workflow_builder_interactive.md)
+- [workflow_monitoring.md](workflow_monitoring.md)
+- [cost_and_log_measurement.md](cost_and_log_measurement.md)

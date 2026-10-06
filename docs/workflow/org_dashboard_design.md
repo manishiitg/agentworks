@@ -3,8 +3,8 @@
 **Status (2026-08-03): historical design record; implementation evolved.** The
 card-based Org dashboard was built, but the two-loop writer model and fixed Pulse
 sequence below are no longer the current Pulse contract. Read
-[`pulse_consolidation.md`](./pulse_consolidation.md) for current review/fix
-architecture and [`workflow_monitoring.md`](./workflow_monitoring.md) for the
+[`pulse_consolidation.md`](pulse_consolidation.md) for current review/fix
+architecture and [`workflow_monitoring.md`](workflow_monitoring.md) for the
 current database-native per-workflow Pulse popup. The body below is retained to
 explain the Org dashboard's card-assembly decisions.
 

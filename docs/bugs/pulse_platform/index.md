@@ -6,12 +6,19 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 68 | 11 |
 | [Brain](brain/index.md) | 13 | 2 |
+| [Browser and browser automation](browser/index.md) | 31 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 17 | 5 |
 | [Code](code/index.md) | 2 | 0 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 66 | 15 |
 | [Crew](crew/index.md) | 17 | 5 |
-| [Goals (workflows: steps, plans, Pulse, evaluation)](goals/index.md) | 149 | 31 |
-| [Platform (shared runtime, sandbox, CLIs, chat, browser, integrations)](platform/index.md) | 349 | 79 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 165 | 34 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 27 | 5 |
+| [Operations (cost, performance, deploys, logs)](ops/index.md) | 27 | 9 |
 | [Relays](relays/index.md) | 19 | 4 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 58 | 13 |
+| [Schedules, triggers and runs](schedules/index.md) | 39 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 5 | 1 |
 
@@ -19,43 +26,43 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-558](platform/frontend-chat/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
+| [PLAT-558](app/ui/plat-558.md) | Panel help is manual; only product walkthroughs open automatically | fixed on main | P2 | [app/ui](app/ui/index.md) |
 | [PLAT-557](brain/learnings-knowledge/plat-557.md) | Brain restricted folders (private folders inside shared ones) | open | P3 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-556](goals/pulse-governance/plat-556.md) | The improvement loop never closes: fixes accrete in step descriptions and nothing consolidates | open | P1 | [goals/pulse-governance](goals/pulse-governance/index.md) |
 | [PLAT-555](goals/step-execution/plat-555.md) | Step descriptions grow into manuals: give them a fixed layout (Goal, Inputs, Output, Rules, Done when, Guides) | open | - | [goals/step-execution](goals/step-execution/index.md) |
-| [PLAT-554](platform/chat-reliability/plat-554.md) | Live context fill and plan-limit warning in the chat during a turn | fixed on main | P2 | [platform/chat-reliability](platform/chat-reliability/index.md) |
-| [PLAT-553](platform/chat-reliability/plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 | [platform/chat-reliability](platform/chat-reliability/index.md) |
-| [PLAT-552](platform/scheduler-runs/plat-552.md) | Stopping a workflow did not stop its Codex step: the real Codex process kept running | fixed on main | - | [platform/scheduler-runs](platform/scheduler-runs/index.md) |
-| [PLAT-551](platform/frontend-chat/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-550](platform/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [platform/browser](platform/browser/index.md) |
-| [PLAT-549](platform/browser/plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 | [platform/browser](platform/browser/index.md) |
-| [PLAT-548](platform/chat-reliability/plat-548.md) | An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored" | fixed on main | - | [platform/chat-reliability](platform/chat-reliability/index.md) |
+| [PLAT-554](chat/reliability/plat-554.md) | Live context fill and plan-limit warning in the chat during a turn | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-553](chat/reliability/plat-553.md) | The chat never showed when a coding CLI compacted its context | fixed on main | P2 | [chat/reliability](chat/reliability/index.md) |
+| [PLAT-552](schedules/runs/plat-552.md) | Stopping a workflow did not stop its Codex step: the real Codex process kept running | fixed on main | - | [schedules/runs](schedules/runs/index.md) |
+| [PLAT-551](app/ui/plat-551.md) | Product workspace toolbar views reset after page refresh | fixed on main | P2 | [app/ui](app/ui/index.md) |
+| [PLAT-550](browser/browser/plat-550.md) | Extension workflow cannot read required browser documentation | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-549](browser/browser/plat-549.md) | Browser connection changes send unwanted automatic chat messages | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
+| [PLAT-548](chat/reliability/plat-548.md) | An auto-notification restarted the coding CLI's session, so the chat kept showing "Conversation restored" | fixed on main | - | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-547](brain/learnings-knowledge/plat-547.md) | Brain refused every OAuth MCP connection as "expired or revoked" | fixed on main | P1 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
-| [PLAT-546](platform/browser/plat-546.md) | Workflow steps fall back to local CDP instead of the selected extension | fixed on main | P2 | [platform/browser](platform/browser/index.md) |
-| [PLAT-545](platform/performance/plat-545.md) | old release copies were never pruned and filled the RTS disk | fixed on main | P1 | [platform/performance](platform/performance/index.md) |
-| [PLAT-544](platform/frontend-chat/plat-544.md) | Plan reload leaves variables, connections and open details stale | fixed on main | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
+| [PLAT-546](browser/browser/plat-546.md) | Workflow steps fall back to local CDP instead of the selected extension | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-545](ops/performance/plat-545.md) | old release copies were never pruned and filled the RTS disk | fixed on main | P1 | [ops/performance](ops/performance/index.md) |
+| [PLAT-544](app/ui/plat-544.md) | Plan reload leaves variables, connections and open details stale | fixed on main | P2 | [app/ui](app/ui/index.md) |
 | [PLAT-543](brain/learnings-knowledge/plat-543.md) | Brain access setting for projects (Off, Read, Folders) | fixed on main | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
-| [PLAT-542](platform/frontend-chat/plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 | [platform/frontend-chat](platform/frontend-chat/index.md) |
+| [PLAT-542](app/ui/plat-542.md) | Show browser connection health in workspace toolbars | fixed on main | P3 | [app/ui](app/ui/index.md) |
 | [PLAT-541](brain/security-sandbox/plat-541.md) | Vault and Brain are core products, on in every installation | fixed on main | P2 | [brain/security-sandbox](brain/security-sandbox/index.md) |
-| [PLAT-540](platform/frontend-chat/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-539](platform/chat-reliability/plat-539.md) | A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn | fixed on main | - | [platform/chat-reliability](platform/chat-reliability/index.md) |
+| [PLAT-540](app/ui/plat-540.md) | Move workflow Browser into the visible toolbar | fixed on main | P2 | [app/ui](app/ui/index.md) |
+| [PLAT-539](chat/reliability/plat-539.md) | A long Codex chat showed its FIRST reply (3 October sandbox test) again after every turn | fixed on main | - | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-538](brain/learnings-knowledge/plat-538.md) | move RTS knowledge to Brain, then retire per-workflow KB sharing | open | P2 | [brain/learnings-knowledge](brain/learnings-knowledge/index.md) |
 | [PLAT-537](relays/mcp/plat-537.md) | `TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration` fails on main | open | P3 | [relays/mcp](relays/mcp/index.md) |
-| [PLAT-536](platform/mcp/plat-536.md) | a finished function call returns every step's full output, 400 KB | fixed on main | P3 | [platform/mcp](platform/mcp/index.md) |
-| [PLAT-535](platform/mcp/plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 | [platform/mcp](platform/mcp/index.md) |
+| [PLAT-536](integrations/mcp/plat-536.md) | a finished function call returns every step's full output, 400 KB | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
+| [PLAT-535](integrations/mcp/plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-534](crew/scheduler-runs/plat-534.md) | One-time schedules for Crew and Code ("check the deploy in 3 hours") | fixed on main | - | [crew/scheduler-runs](crew/scheduler-runs/index.md) |
-| [PLAT-533](platform/mcp/plat-533.md) | the external MCP returns stored webhook secrets in workflow manifests | fixed on main | P3 | [platform/mcp](platform/mcp/index.md) |
-| [PLAT-532](platform/browser/plat-532.md) | Remember browser extension connections when users return | fixed on main | P2 | [platform/browser](platform/browser/index.md) |
+| [PLAT-533](integrations/mcp/plat-533.md) | the external MCP returns stored webhook secrets in workflow manifests | fixed on main | P3 | [integrations/mcp](integrations/mcp/index.md) |
+| [PLAT-532](browser/browser/plat-532.md) | Remember browser extension connections when users return | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-531](crew/frontend-chat/plat-531.md) | Switching from a workflow to Crew (or Code) shows "Opening workspace…" every time, slow on RTS | fixed on main | - | [crew/frontend-chat](crew/frontend-chat/index.md) |
-| [PLAT-530](platform/browser/plat-530.md) | Workflow extension rollout and immediate current-tab sharing | fixed on main | P2 | [platform/browser](platform/browser/index.md) |
-| [PLAT-529](platform/frontend-chat/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-528](platform/frontend-chat/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-527](platform/frontend-chat/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-526](platform/frontend-chat/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [platform/frontend-chat](platform/frontend-chat/index.md) |
-| [PLAT-525](platform/chat-reliability/plat-525.md) | Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation | open | P2 | [platform/chat-reliability](platform/chat-reliability/index.md) |
+| [PLAT-530](browser/browser/plat-530.md) | Workflow extension rollout and immediate current-tab sharing | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-529](app/ui/plat-529.md) | `formsKitAdoption.test.ts` "builds folders and browser settings from the kit" fails on main | fixed on main | P3 | [app/ui](app/ui/index.md) |
+| [PLAT-528](app/ui/plat-528.md) | The agent's "working" spinner sat at the top of its turn, out of sight on a long message, and had no text | fixed on main | - | [app/ui](app/ui/index.md) |
+| [PLAT-527](app/ui/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [app/ui](app/ui/index.md) |
+| [PLAT-526](app/ui/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [app/ui](app/ui/index.md) |
+| [PLAT-525](chat/reliability/plat-525.md) | Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-524](crew/browser/plat-524.md) | Account browser token and simultaneous Code/Crew connections | fixed on main | P2 | [crew/browser](crew/browser/index.md) |
-| [PLAT-523](platform/browser/plat-523.md) | Browser dead-session recovery can misclassify unrelated errors | open | P3 | [platform/browser](platform/browser/index.md) |
-| [PLAT-522](platform/browser/plat-522.md) | Browser cleanup trusts persisted process IDs before signaling | open | P2 | [platform/browser](platform/browser/index.md) |
-| [PLAT-521](platform/browser/plat-521.md) | Global browser capacity eviction stops unrelated sessions | open | P2 | [platform/browser](platform/browser/index.md) |
-| [PLAT-520](platform/browser/plat-520.md) | Shared direct-CDP callers can select other owners’ tabs | open | P1 | [platform/browser](platform/browser/index.md) |
-| [PLAT-519](platform/mcp/plat-519.md) | an MCP tool named like a platform tool stops the chat from starting | fixed on main | P1 | [platform/mcp](platform/mcp/index.md) |
+| [PLAT-523](browser/browser/plat-523.md) | Browser dead-session recovery can misclassify unrelated errors | open | P3 | [browser/browser](browser/browser/index.md) |
+| [PLAT-522](browser/browser/plat-522.md) | Browser cleanup trusts persisted process IDs before signaling | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-521](browser/browser/plat-521.md) | Global browser capacity eviction stops unrelated sessions | open | P2 | [browser/browser](browser/browser/index.md) |
+| [PLAT-520](browser/browser/plat-520.md) | Shared direct-CDP callers can select other owners’ tabs | open | P1 | [browser/browser](browser/browser/index.md) |
+| [PLAT-519](integrations/mcp/plat-519.md) | an MCP tool named like a platform tool stops the chat from starting | fixed on main | P1 | [integrations/mcp](integrations/mcp/index.md) |

@@ -3,8 +3,8 @@
 > **Status (2026-08-03): historical experiment decision.** The experiment shaped
 > the current hybrid design, but its proposed module topology and staging are no
 > longer the current operating contract. See
-> [`pulse_consolidation.md`](./pulse_consolidation.md) for current architecture
-> and [`pulse_v2_proof_carrying_architecture.md`](./pulse_v2_proof_carrying_architecture.md)
+> [`pulse_consolidation.md`](pulse_consolidation.md) for current architecture
+> and [`pulse_v2_proof_carrying_architecture.md`](pulse_v2_proof_carrying_architecture.md)
 > for the retained measurements and later decisions.
 >
 > **Date:** 2026-07-29
@@ -17,7 +17,7 @@
 > semantic review, automatic repair boundaries, notifications, and Goal Advisor
 > experiments
 >
-> **Background discussion:** [Pulse v2 architecture and review exchange](./pulse_v2_proof_carrying_architecture.md)
+> **Background discussion:** [Pulse v2 architecture and review exchange](pulse_v2_proof_carrying_architecture.md)
 
 ## Executive decision
 

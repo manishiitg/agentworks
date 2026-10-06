@@ -18,7 +18,7 @@ original 120** are closed. The inventories below are historical snapshots.
 
 ## Subsequent Substack closure — latest status
 
-[PLAT-289](../bugs/pulse_platform/platform/learnings-knowledge/plat-289.md) subsequently verified and closed all
+[PLAT-289](../bugs/pulse_platform/goals/learnings/plat-289.md) subsequently verified and closed all
 ten G09 research-folder reports, corrected three stale learning statements and
 added a real guarded file-write/readback test. The retained September 5 source
 packets and parent summary reconcile to 57 findings. **78** typed reports now

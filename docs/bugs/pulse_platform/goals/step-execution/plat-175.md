@@ -24,7 +24,7 @@
   (`setupMessageSequenceFolderGuard`).
 - **Related:** none filed. The code comment this fix rewrites cited
   "PLAT-169 follow-up" as the origin of the `db/` block being narrowed here
-  — that citation was wrong. [PLAT-169](../../platform/frontend-chat/plat-169.md)) is a real, unrelated
+  — that citation was wrong. [PLAT-169](../../app/ui/plat-169.md)) is a real, unrelated
   ticket (MCP server checkbox spelling/dedup). The actual `db/` block was
   introduced by commit `a960df20` ("Fix message sequence sandbox and
   duplicate failures", 2026-08-21), which has no PLAT ticket of its own —

@@ -21,9 +21,9 @@
   that a step notices and files a concern about it.
 - **Owner:** `pkg/orchestrator/agents/workflow/step_based_workflow/reflection_turn.go`
   (`buildReflectionKBSection`), `cmd/server/guidance/templates/system/stores.md`
-- **Related:** [PLAT-055](../../platform/learnings-knowledge/plat-055.md) (created the merged reflection turn this
+- **Related:** [PLAT-055](../../goals/learnings/plat-055.md) (created the merged reflection turn this
   ticket completes — it fixed routing *between* stores but left the KB half's
-  own write discipline unstated), [PLAT-058](../../platform/learnings-knowledge/plat-058.md) (the same
+  own write discipline unstated), [PLAT-058](../../goals/learnings/plat-058.md) (the same
   append-forever pattern, caught and fixed for learnings only),
   [PLAT-123](../../goals/step-execution/plat-123.md)) (the `record_run_concern` path that surfaced this).
 

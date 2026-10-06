@@ -162,7 +162,7 @@ Current schedule fields include:
 - `messages`
 - `workshop_mode`
 
-For current runtime behavior, APIs, run history, and workshop-vs-workflow execution paths, see [workflow_scheduling.md](./workflow_scheduling.md).
+For current runtime behavior, APIs, run history, and workshop-vs-workflow execution paths, see [workflow_scheduling.md](workflow_scheduling.md).
 
 ### Auto-improvement framework fields
 
@@ -177,7 +177,7 @@ Two optional top-level fields configure hard behavioral gates the auto-improveme
 
 The stable Goal lives only in `soul/soul.md`. `/define-success` records operating-model reasoning as a dated Reflection / Hansei entry in `builder/improve.html`; there is no permanent Workflow Profile card that can silently become an immutable constraint.
 
-For the design rationale and worked examples, see [auto_improvement_framework.md](./auto_improvement_framework.md).
+For the design rationale and worked examples, see [auto_improvement_framework.md](auto_improvement_framework.md).
 
 ## What Does Not Belong In The Manifest
 
@@ -206,7 +206,7 @@ These still live alongside it:
 - `planning/workflow_layout.json`
 - `planning/output_plan.json`
 - `variables/variables.json`
-- `builder/improve.html` — the schema-5 lightweight, newest-first Pulse executive journal: Bug/Goal verdicts, one status sentence, three Latest Pulse cells, and at most six material Activity transitions. Goal / Ikigai remains exclusively in `soul/soul.md` and is rendered directly by Runloop. Reviewer coverage, assumptions, issues, backlog counts, and complete operational detail stay in SQLite/Pulse; older material history can live in linked monthly `builder/improve-archive/YYYY-MM.html` files. See [auto_improvement_framework.md](./auto_improvement_framework.md).
+- `builder/improve.html` — the schema-5 lightweight, newest-first Pulse executive journal: Bug/Goal verdicts, one status sentence, three Latest Pulse cells, and at most six material Activity transitions. Goal / Ikigai remains exclusively in `soul/soul.md` and is rendered directly by Runloop. Reviewer coverage, assumptions, issues, backlog counts, and complete operational detail stay in SQLite/Pulse; older material history can live in linked monthly `builder/improve-archive/YYYY-MM.html` files. See [auto_improvement_framework.md](auto_improvement_framework.md).
 - `knowledgebase/rules/rules.md` and `knowledgebase/rules/examples/` — legacy business-rule storage when present. Current user-confirmed runtime context belongs in `knowledgebase/context/`; its audit trail is recorded in dated Reflection entries in `builder/improve.html`.
 
 `workflow.json` is the workflow-level definition file.

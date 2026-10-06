@@ -17,10 +17,10 @@ Keep Pulse documentation split by purpose, not by competing versions:
 | What is the current Pulse design, and why? | This document |
 | What must a running agent do? | `pulse-gate.md`, `pulse-review-fixer.md`, `pulse-finalizer.md`, and the focused module references they load |
 | What does Go actually permit and persist? | The Pulse module registry, scheduler, worklist, finding lifecycle, and impact-ledger code |
-| What does the user see? | [`workflow_monitoring.md`](./workflow_monitoring.md) |
-| What experiments, objections, and measurements led here? | [`pulse_v2_proof_carrying_architecture.md`](./pulse_v2_proof_carrying_architecture.md) |
-| What was the reliability-first v2.1 experiment? | [`pulse_v2_1_experiment_proposal.md`](./pulse_v2_1_experiment_proposal.md), retained as history |
-| What did one real workflow review cost and produce? | [`linkedin_pulse_review_audit_2026-08-02.md`](./linkedin_pulse_review_audit_2026-08-02.md) and later cross-workflow measurements |
+| What does the user see? | [`workflow_monitoring.md`](workflow_monitoring.md) |
+| What experiments, objections, and measurements led here? | [`pulse_v2_proof_carrying_architecture.md`](pulse_v2_proof_carrying_architecture.md) |
+| What was the reliability-first v2.1 experiment? | [`pulse_v2_1_experiment_proposal.md`](pulse_v2_1_experiment_proposal.md), retained as history |
+| What did one real workflow review cost and produce? | [`linkedin_pulse_review_audit_2026-08-02.md`](linkedin_pulse_review_audit_2026-08-02.md) and later cross-workflow measurements |
 
 Do not add another general Pulse architecture document. Put a shipped design
 change and its reason in **Current decisions** below; put detailed measurements,

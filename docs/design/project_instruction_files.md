@@ -1,9 +1,9 @@
 # Project instruction files, skills and the reader role
 
 Status: merged to `main` 2026-09-30 (not deployed). Ticket:
-[PLAT-371](../bugs/pulse_platform/platform/security-sandbox/plat-371.md). Supersedes the
+[PLAT-371](../bugs/pulse_platform/sandbox/security/plat-371.md). Supersedes the
 per-adapter "write CLAUDE.md/AGENTS.md, delete on cleanup" behavior that
-[PLAT-296](../bugs/pulse_platform/platform/security-sandbox/plat-296.md) and
+[PLAT-296](../bugs/pulse_platform/sandbox/security/plat-296.md) and
 [isolated workflow testing](../getting-started/isolated-workflow-testing.md)
 describe for shared folders.
 

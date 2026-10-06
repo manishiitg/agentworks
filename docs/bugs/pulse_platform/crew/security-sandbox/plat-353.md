@@ -110,9 +110,9 @@ can chat and browse memory/files but cannot change model, selections,
 identity, schedules, or triggers; the owner's transcripts and databases
 stay unreachable; and each reader's chat history stays private to them.
 
-Related: [PLAT-262](../../platform/security-sandbox/plat-262.md) (workflow Run-mode seams),
+Related: [PLAT-262](../../sandbox/security/plat-262.md) (workflow Run-mode seams),
 [PLAT-339](plat-339.md) (read-only Crew workflow invocation),
-[PLAT-330](../../platform/security-sandbox/plat-330.md) (whose "private project permissions" note this
+[PLAT-330](../../sandbox/security/plat-330.md) (whose "private project permissions" note this
 supersedes), and [issue #205](https://github.com/manishiitg/coding-agent-loop/issues/205)
 (`BUG_ID_001`).
 

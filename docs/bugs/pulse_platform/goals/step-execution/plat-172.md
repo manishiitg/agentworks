@@ -18,7 +18,7 @@
 
 - **Priority:** P1 — one contradictory handoff instruction can make a long workflow turn fail after completing useful work, so the scheduler reports the whole occurrence as failed.
 - **Owner:** workflow plan contract/guidance, execution prompt rendering, and the typed plan-review surface.
-- **Related:** [PLAT-062](plat-062.md), [PLAT-162](plat-162.md), and [PLAT-169](../../platform/frontend-chat/plat-169.md)).
+- **Related:** [PLAT-062](plat-062.md), [PLAT-162](plat-162.md), and [PLAT-169](../../app/ui/plat-169.md)).
 
 ## Incident
 

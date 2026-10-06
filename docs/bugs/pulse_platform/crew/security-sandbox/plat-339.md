@@ -95,7 +95,7 @@ workflow read-only to a Crew, invoke it without pre-creating a binding, verify
 the resulting `iteration-*-hook` run and returned outputs, then detach or revoke
 workflow access and confirm subsequent invocation and polling fail closed.
 
-Related: [PLAT-262](../../platform/security-sandbox/plat-262.md) and the
+Related: [PLAT-262](../../sandbox/security/plat-262.md) and the
 [Crew workflow step contract](../../../../workflow/crew-step.md).
 
 ## Register notes

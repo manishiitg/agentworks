@@ -51,7 +51,7 @@ Checked directly against the live workflow rather than the finding's
 snapshot: `workspace-docs/Workflow/linkedin/builder/` today holds
 `card.*.html`, `review.html`, `decisions.jsonl`, and related files —
 **no `improve.html`**. LinkedIn's `workflow.json` is at contract version
-`1.0.31`. [PLAT-055](../../platform/learnings-knowledge/plat-055.md)) documents a mandatory version-upgrade
+`1.0.31`. [PLAT-055](../learnings/plat-055.md)) documents a mandatory version-upgrade
 preflight (`workflowContractArtifactPurityVersion`, "1.0.21") that moves
 `builder/improve.html` and `builder/improve-archive/` into
 `migration-backups/artifact-purity-<timestamp>/` for every workflow as it

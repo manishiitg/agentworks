@@ -19,7 +19,7 @@
 - **Priority:** P1 — valid webhook runs reached their routing branch, then
   failed before selecting the next step.
 - **Owner:** shared workspace-path resolution used by trusted Go-side readers.
-- **Related:** [PLAT-007](../../platform/integrations/plat-007.md) fixed the same canonical
+- **Related:** [PLAT-007](../../integrations/integrations/plat-007.md) fixed the same canonical
   absolute-path mismatch for `read_image`; it did not cover deterministic
   routing, whose internal reader bypasses the agent-tool wrapper.
 

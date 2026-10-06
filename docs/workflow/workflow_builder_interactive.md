@@ -188,7 +188,7 @@ Current rule:
 
 This is why the builder always feels attached to the latest mutable run.
 
-For the broader run-folder model, see [iteration_run_folder_architecture.md](./iteration_run_folder_architecture.md).
+For the broader run-folder model, see [iteration_run_folder_architecture.md](iteration_run_folder_architecture.md).
 
 ## Session Behavior
 
@@ -250,7 +250,7 @@ Use this mental model:
 
 ## Related Docs
 
-- [iteration_run_folder_architecture.md](./iteration_run_folder_architecture.md)
-- [cost_and_log_measurement.md](./cost_and_log_measurement.md)
-- [workflow_shell_working_directory.md](./workflow_shell_working_directory.md)
-- [workflow_manifest_architecture.md](./workflow_manifest_architecture.md)
+- [iteration_run_folder_architecture.md](iteration_run_folder_architecture.md)
+- [cost_and_log_measurement.md](cost_and_log_measurement.md)
+- [workflow_shell_working_directory.md](workflow_shell_working_directory.md)
+- [workflow_manifest_architecture.md](workflow_manifest_architecture.md)

@@ -175,7 +175,7 @@ silent Sunday omissions. The daily occurrences have durable `skipped_paused`
 or `skipped_busy` decisions. The Sunday schedules had older persisted tracking
 windows but no fire-decision rows; on restart `LoadSchedule` reset their cursor
 to `now-30s` and advanced directly to next Sunday. That bootstrap defect is
-[PLAT-080](../../platform/scheduler-runs/plat-080.md)), implemented with runtime reverify pending.
+[PLAT-080](../../schedules/runs/plat-080.md)), implemented with runtime reverify pending.
 
 `3e42ae71` (linkedin) is explained by the durable ledger (`skipped_paused` on
 2026-08-04), which the reviewer did not consult. `3565d07c` is a stale

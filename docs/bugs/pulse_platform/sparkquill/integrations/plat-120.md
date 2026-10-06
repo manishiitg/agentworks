@@ -76,7 +76,7 @@ than hardcoded to Video Studio:
 
 - **No confirmed end-to-end pass with real human speech.** Every real-mic
   attempt on the reporter's machine has returned `rms=0.0000` — tracked
-  separately as [PLAT-122](../../platform/integrations/plat-122.md), which blocks this ticket's own
+  separately as [PLAT-122](../../integrations/integrations/plat-122.md), which blocks this ticket's own
   closure.
 - Live text appearing in the banner as real speech streams, and the final
   transcript landing in the chat composer on stop, are both implemented per

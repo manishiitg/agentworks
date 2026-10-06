@@ -1072,7 +1072,7 @@ the RTS release procedure.
 
 ## 2026-09-18 — Workflow permission reconnect must preserve the same conversation
 
-Implemented and regression-tested locally; deployment/live verification pending. Related permission enforcement: [PLAT-262](../../platform/security-sandbox/plat-262.md).
+Implemented and regression-tested locally; deployment/live verification pending. Related permission enforcement: [PLAT-262](../../sandbox/security/plat-262.md).
 
 Both incoming message paths now compare AgentWorks workflow admission before retained delivery. A policy change uses the existing same-session history snapshot/handoff and full transcript merge; it does not invent a new browser chat ID or private namespace. A policy refresh must not seed the previous native session handle, even if a restored conversation target supplies one. Native cleanup is shared with the existing reconnect path and now includes Muse.
 
@@ -1086,7 +1086,7 @@ Confida release `confida-f75a304b-20260918150257` correctly admitted Builder too
 
 ## Confida provider-switch submission recurrence — 2026-09-18
 
-See [PLAT-099](../../platform/coding-agent-bridge/plat-099.md) for the provider/account
+See [PLAT-099](../../coding-agents/bridge/plat-099.md) for the provider/account
 routing repair and the subsequent `/query` versus `/live-input` receipt-project
 mismatch. The saved workflow had Gemini while its retained runtime had Claude.
 A reconciled failed receipt then hit a project conflict because the query route

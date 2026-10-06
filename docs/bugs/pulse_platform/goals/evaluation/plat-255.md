@@ -142,7 +142,7 @@ the `read_skill(...)` hint, and that calling it actually returns
 
 ## 2026-09-17 — Notification delivery ownership integration
 
-The [PLAT-106 notification-ownership follow-up](../../platform/frontend-chat/plat-106.md#notification-ownership-follow-up--2026-09-17) clarifies the recipient in this ticket's references to notifying “the builder.” An early pre-validation failure belongs to the session that launched the step. Chat-launched work may notify that chat; a schedule/trigger-launched step must notify its execution session, not an unrelated Builder chat viewing the same workflow.
+The [PLAT-106 notification-ownership follow-up](../../app/ui/plat-106.md#notification-ownership-follow-up--2026-09-17) clarifies the recipient in this ticket's references to notifying “the builder.” An early pre-validation failure belongs to the session that launched the step. Chat-launched work may notify that chat; a schedule/trigger-launched step must notify its execution session, not an unrelated Builder chat viewing the same workflow.
 
 The operator's decision to enable early failure notices and per-item notices is preserved. This follow-up adds shared registration/delivery ownership checks, not a change to notice timing, retry count, or suppression policy. Add a concurrent schedule + Chat case to live re-verification, and ensure chat-launched early notices still arrive. No new producer-specific live verification is claimed.
 

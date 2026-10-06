@@ -23,8 +23,8 @@
   plan-change backlog, Artifact Review closure, and Pulse impact linkage.
 - **Found on:** Social Media plan-change and Pulse follow-through audit.
 - **Related:** [PLAT-033](plat-033.md) and [PLAT-074](plat-074.md) make
-  before/after mutation evidence truthful; [PLAT-047](../../platform/scheduler-runs/plat-047.md)) owns
-  immutable run identity and plan-revision binding; [PLAT-037](../../platform/learnings-knowledge/plat-037.md))
+  before/after mutation evidence truthful; [PLAT-047](../../schedules/runs/plat-047.md)) owns
+  immutable run identity and plan-revision binding; [PLAT-037](../learnings/plat-037.md))
   records the same class of guessed authorship for learnings.
 
 ## Defect

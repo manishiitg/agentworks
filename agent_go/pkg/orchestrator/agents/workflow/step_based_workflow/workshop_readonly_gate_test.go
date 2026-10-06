@@ -10,7 +10,7 @@ import (
 
 // PLAT-262: a Run-mode session must never see a mutating tool in its catalog
 // at all (not just have it rejected at call time) — see the RCA in
-// docs/bugs/pulse_platform/platform/security-sandbox/plat-262.md for why registration-time exclusion,
+// docs/bugs/pulse_platform/sandbox/security/plat-262.md for why registration-time exclusion,
 // keyed on WorkshopMode via iwm.isRunModeRestricted(), is the correct
 // enforcement point (not WorkflowAccessLevel directly — a read-only identity
 // is simply always pinned to "run" by the caller, and anyone else genuinely

@@ -48,7 +48,7 @@ Chrome's own stderr through the isolator on Excellence:
 - Deploy to Confida (same script) and, if it uses the rootless deploy, Dominion; re-run the matrix there.
 - Matrix findings: an `open` right after `close` can fail once ("Failed to connect": the app already retries three times); the live
   stream's console messages arrive but no console panel uses them. The crashed-tab and tall-screenshot findings moved to
-  [PLAT-414](../../platform/browser/plat-414.md).
+  [PLAT-414](../../browser/browser/plat-414.md).
 
 ## Register notes
 

@@ -33,8 +33,8 @@ historical business/module-result repair are not claimed. Full mapping:
 - **Owner:** `pkg/orchestrator/agents/workflow/step_based_workflow/
   controller_agent_factory.go` (`applyStepConfigToAgentConfig`,
   `createTodoTaskOrchestratorAgent`, `prepareCustomTools`)
-- **Related:** [PLAT-055](../../platform/learnings-knowledge/plat-055.md)) (introduced `record_run_concern`),
-  [PLAT-057](../pulse-governance/plat-057.md)), [PLAT-058](../../platform/learnings-knowledge/plat-058.md)) (both cite
+- **Related:** [PLAT-055](../learnings/plat-055.md)) (introduced `record_run_concern`),
+  [PLAT-057](../pulse-governance/plat-057.md)), [PLAT-058](../learnings/plat-058.md)) (both cite
   `record_run_concern` working — via the one call site that already force-
   included it, not representative of the default path)
 

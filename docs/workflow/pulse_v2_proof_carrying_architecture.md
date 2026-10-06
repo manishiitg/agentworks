@@ -4,7 +4,7 @@
 > record, and detailed decision evidence.** It is intentionally retained rather
 > than rewritten so objections and rejected alternatives remain auditable. The
 > canonical current design and concise decision map is
-> [`pulse_consolidation.md`](./pulse_consolidation.md). Later dated decisions in
+> [`pulse_consolidation.md`](pulse_consolidation.md). Later dated decisions in
 > this file supersede conflicting statements in the original proposal.
 > **Date:** 2026-07-29  
 > **Scope:** Per-workflow Pulse, its post-run control loop, review/fix model,

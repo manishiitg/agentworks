@@ -20,8 +20,8 @@
 
 **Codex follow-up implemented locally; not committed/deployed.** The user asked
 to extend routes-as-sub-workflows to the daily actions already produced by
-Notify and to Pulse summaries. Related: [PLAT-264](../../platform/integrations/plat-264.md)) (one durable
-notification source) and [PLAT-279](../../platform/frontend-chat/plat-279.md)) (Daily Actions uses that source).
+Notify and to Pulse summaries. Related: [PLAT-264](../../integrations/integrations/plat-264.md)) (one durable
+notification source) and [PLAT-279](../../app/ui/plat-279.md)) (Daily Actions uses that source).
 
 The old `summary_route` string was only a label. Activity kept one latest Run
 and one latest Pulse summary per workflow, and fifty records per kind could
@@ -875,7 +875,7 @@ Follow-up: clicking a colored routing/branch line or its numbered badge now togg
 
 [PLAT-259](plat-259.md) now extends routes-as-sub-workflows to
 Notify, Activity, and the existing Daily Action report source from
-[PLAT-279](../../platform/frontend-chat/plat-279.md). One digest carries independent route
+[PLAT-279](../../app/ui/plat-279.md). One digest carries independent route
 outcomes; history preserves quiet routes, and Pulse scope comes from actual
 review evidence. Contract `1.0.40` supplies the bounded existing-report upgrade.
 Implemented/tested locally; commit, deployment and producing-run verification

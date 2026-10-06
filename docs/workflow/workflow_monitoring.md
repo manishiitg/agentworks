@@ -52,7 +52,7 @@ The log viewer still supports these file families:
 
 Important current nuance:
 - validation logs still exist in the execution log viewer, but validation is no longer the main architecture story for workflow docs
-- pre-validation remains relevant runtime signal, but the canonical validation doc is [pre_validation_guide.md](./pre_validation_guide.md)
+- pre-validation remains relevant runtime signal, but the canonical validation doc is [pre_validation_guide.md](pre_validation_guide.md)
 - execution logs are best thought of as per-run forensic data, not as the source of workflow architecture truth
 
 ## Costs
@@ -91,7 +91,7 @@ What changed:
 - the main persistent learning surface is now the shared skill at `learnings/_global/SKILL.md`
 - scripted steps can still have step-specific saved code such as `learnings/{step-id}/main.py`
 
-The canonical architecture doc for this is [learning_architecture.md](./learning_architecture.md).
+The canonical architecture doc for this is [learning_architecture.md](learning_architecture.md).
 
 ## Run Overview And Scheduled Runs
 
@@ -115,8 +115,8 @@ This doc is still relevant because the product clearly has workflow monitoring a
 
 ## Related Docs
 
-- [cost_and_log_measurement.md](./cost_and_log_measurement.md)
-- [pre_validation_guide.md](./pre_validation_guide.md)
-- [learning_architecture.md](./learning_architecture.md)
+- [cost_and_log_measurement.md](cost_and_log_measurement.md)
+- [pre_validation_guide.md](pre_validation_guide.md)
+- [learning_architecture.md](learning_architecture.md)
 - [evaluation_system.md](./evaluation_system.md)
-- [workflow_manifest_architecture.md](./workflow_manifest_architecture.md)
+- [workflow_manifest_architecture.md](workflow_manifest_architecture.md)

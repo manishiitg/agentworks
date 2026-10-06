@@ -16,7 +16,7 @@ AgentWorks now declares host chat capability admission in
 `agent_go/internal/agentworksproduct/product.yaml` under `chat_policy`.
 `workflow_chat_policy.go` resolves mode, origin and read-only access before
 registration. The MCP installer bug and tests are tracked in
-[PLAT-307](../bugs/pulse_platform/platform/security-sandbox/plat-307.md).
+[PLAT-307](../bugs/pulse_platform/sandbox/security/plat-307.md).
 
 Builder and Run are modes. Scheduled execution is an origin, not a third chat
 mode. Pulse maintenance and child agents retain explicit improvement-role
