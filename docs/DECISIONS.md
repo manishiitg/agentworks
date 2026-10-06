@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Workflow problems are fixed by the agents; an old unreadable input still makes Plan Drift due
+
+What: an input a step cannot read (the strict graph kinds) flags its step for Plan Drift once even when it predates the
+check; other old breaks still flag only when new. Why: the owner wants agents, not hand edits, to repair workflows;
+an old unreadable input in Upwork (`toptal-submit`) was never shown to Drift. Ticket:
+[PLAT-582](bugs/pulse_platform/goals/plans-contracts/plat-582.md).
+
 ### 2026-10-06 — Skills belong to their product or workflow workspace
 
 Owner decision: remove the shared skills library. Discover and manage skills

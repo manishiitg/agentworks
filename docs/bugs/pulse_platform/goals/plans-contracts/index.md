@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-582](plat-582.md) | Old unreadable inputs make Plan Drift due once | fixed on main | P1 |
 | [PLAT-579](plat-579.md) | Strict input/output graph preflight | fixed on main | P1 |
 | [PLAT-565](plat-565.md) | Reference breaks make Plan Drift due (Go-side check) | fixed on main | P1 |
 | [PLAT-561](plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 |

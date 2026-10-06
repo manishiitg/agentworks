@@ -20,7 +20,9 @@ import (
 // it saw last time. A NEW break flags its owning step (or the workflow, for a
 // note, eval or learnings file) until a drift review is recorded after the flag.
 //
-// Only new breaks flag. Breaks that already existed stay Plan Drift's evidence
+// Only new breaks flag, except an unreadable input (the GraphPreflight kinds),
+// which is flagged once even when it is old because it breaks the step's next
+// run (PLAT-582). Other breaks that already existed stay Plan Drift's evidence
 // (get_plan_prompt_health) but do not keep it due forever, so a break Drift
 // cannot or should not fix never blocks Technical and Architecture. The flags
 // live in planning/reference_map_flags.json, never in step_config.json, so a
@@ -34,9 +36,13 @@ type referenceMapFlag struct {
 }
 
 type referenceMapFlagState struct {
-	Fingerprint string                      `json:"fingerprint"`
-	Baseline    []string                    `json:"baseline_breaks"`
-	Flags       map[string]referenceMapFlag `json:"flags,omitempty"`
+	Fingerprint string   `json:"fingerprint"`
+	Baseline    []string `json:"baseline_breaks"`
+	// StrictFlagged holds the unreadable-input problems (GraphPreflight kinds)
+	// already flagged once. Unlike other breaks, an old one is flagged too: it
+	// breaks the step's next run, so Plan Drift must look at it at least once.
+	StrictFlagged []string                    `json:"strict_flagged,omitempty"`
+	Flags         map[string]referenceMapFlag `json:"flags,omitempty"`
 }
 
 var referenceMapFlagsMu sync.Mutex
@@ -69,14 +75,25 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 		if state.Flags == nil {
 			state.Flags = map[string]referenceMapFlag{}
 		}
+		strictSeen := map[string]bool{}
+		for _, key := range state.StrictFlagged {
+			strictSeen[key] = true
+		}
 		var current []string
 		for _, issue := range report.Issues {
-			if issue.Severity != refSeverityBreak {
+			strict := graphStrictKinds[issue.Kind] && strings.HasPrefix(issue.Source, "step:")
+			if issue.Severity != refSeverityBreak && !strict {
 				continue
 			}
 			key := issue.Kind + "|" + issue.Source + "|" + issue.Ref
 			current = append(current, key)
-			if !initialized || known[key] {
+			if strict {
+				if strictSeen[key] {
+					continue
+				}
+				strictSeen[key] = true
+				state.StrictFlagged = append(state.StrictFlagged, key)
+			} else if !initialized || known[key] {
 				continue
 			}
 			owner := referenceMapOwner(issue.Source)

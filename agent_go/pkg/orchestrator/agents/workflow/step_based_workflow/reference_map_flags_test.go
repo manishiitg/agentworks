@@ -56,3 +56,25 @@ func TestNewReferenceBreakMakesPlanDriftDueUntilReviewed(t *testing.T) {
 		t.Fatalf("a review recorded after the flag must clear it, got %#v", items)
 	}
 }
+
+// An unreadable input that was already there at the first look still makes
+// Plan Drift due once, so the agent repairs it (Toptal, 2026-10-06).
+func TestOldUnreadableInputFlagsPlanDriftOnce(t *testing.T) {
+	plan := `{"steps":[
+	 {"type":"message_sequence","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
+	 {"type":"message_sequence","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
+	planDriftCandidateWorkspace(t, "Workflow/strict-old", plan, reviewedStepConfig)
+	items, err := CollectPlanDriftDueItems("Workflow/strict-old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range items {
+		if item.StepID == "step-b" && strings.Contains(item.Reason, "selected.json") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("an old unreadable input must make Plan Drift due for its step, got %#v", items)
+	}
+}
