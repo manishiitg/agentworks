@@ -20,12 +20,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 58 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 5 | 1 |
+| [Vault](vault/index.md) | 6 | 1 |
 
 ## Newest tickets
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-564](vault/local/plat-564.md) | Local Vault fails to start: configuration key left in the old state folder | fixed on main | P0 | [vault/local](vault/local/index.md) |
 | [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
 | [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-527](app/chat/plat-527.md) | Chat scroll flickers after switching between workflows (cause not found) | open | P2 | [app/chat](app/chat/index.md) |
 | [PLAT-526](app/navigation/plat-526.md) | The voice "Loading the voice model" bar came back on every workflow or Crew switch | fixed on main | - | [app/navigation](app/navigation/index.md) |
 | [PLAT-525](chat/reliability/plat-525.md) | Make chat history simple: one source of truth instead of merging the CLI's own transcript into the saved conversation | open | P2 | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-524](crew/browser/plat-524.md) | Account browser token and simultaneous Code/Crew connections | fixed on main | P2 | [crew/browser](crew/browser/index.md) |

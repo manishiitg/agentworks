@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-06 — Local Vault is required: a failed start stops the local run
+
+What: with local Vault on (the default), the launcher stops when Vault fails to start, naming the log and the
+opt-out `AGENTWORKS_LOCAL_VAULT=0`; it no longer continues without it. Why: the owner needs Vault and Brain working
+locally always; a warning let the local app run without Vault for a day unnoticed (its key was left in the old
+state folder). Ticket: [PLAT-564](bugs/pulse_platform/vault/local/plat-564.md).
+
 ### 2026-10-06 — Product selection owns the chat mode before mounting
 
 Set product and chat mode as one navigation intent. A Code/Crew/Brain chat must

@@ -1049,8 +1049,16 @@ export MCP_AGENT_SERVER_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
 # is pointed at it. Without CAPLAYER_SERVICE_URL the backend runs with no Vault
 # (every shared secret and MCP usable by everyone). Opt out: AGENTWORKS_LOCAL_VAULT=0.
 if [ "$WITH_GATEWAY" = true ] && [ "${AGENTWORKS_LOCAL_VAULT:-1}" != "0" ] && [ -z "${CAPLAYER_SERVICE_URL:-}" ]; then
+    LOCAL_VAULT=true
     VAULT_STATE_DIR="${GATEWAY_DIR}/var/platform"
     mkdir -p "$VAULT_STATE_DIR" && chmod 700 "$VAULT_STATE_DIR"
+    # Vault's state used to live in var/. Its configuration database is encrypted
+    # with this key, so an existing key must follow, or Vault refuses to start.
+    # Copy, not move: the old file stays as a backup.
+    if [ ! -e "${VAULT_STATE_DIR}/gateway.sqlite.key" ] && [ -s "${GATEWAY_DIR}/var/gateway.sqlite.key" ]; then
+        (umask 077 && cp -p "${GATEWAY_DIR}/var/gateway.sqlite.key" "${VAULT_STATE_DIR}/gateway.sqlite.key")
+        echo "🔑 Copied the Vault configuration key into ${VAULT_STATE_DIR}"
+    fi
     VAULT_TOKEN_FILE="${VAULT_STATE_DIR}/service-token"
     if [ ! -s "$VAULT_TOKEN_FILE" ]; then
         (umask 077 && openssl rand -hex 32 > "$VAULT_TOKEN_FILE")
@@ -2283,9 +2291,14 @@ if [ "$WITH_WORKSPACE" = true ]; then
 fi
 
 if [ "$WITH_GATEWAY" = true ]; then
-    # The gateway is auxiliary: an explicit flag fails the run, but a
-    # default-on failure only warns so one sidecar can't break the stack.
+    # Local Vault is core, like Brain: if it fails to start, the run stops instead of
+    # quietly continuing without it. Only a standalone gateway (Vault opted out) is
+    # auxiliary, and an explicit flag still fails the run.
     if ! start_mcp_gateway; then
+        if [ "${LOCAL_VAULT:-false}" = true ]; then
+            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or set AGENTWORKS_LOCAL_VAULT=0 to run without Vault."
+            exit 1
+        fi
         if [ "$GATEWAY_EXPLICIT" = true ]; then
             exit 1
         fi
