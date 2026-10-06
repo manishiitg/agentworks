@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 72 | 11 |
-| [Brain](brain/index.md) | 17 | 2 |
+| [Brain](brain/index.md) | 18 | 2 |
 | [Browser and browser automation](browser/index.md) | 42 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 19 | 5 |
 | [Code](code/index.md) | 4 | 1 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-600](brain/builder/plat-600.md) | CLI Builder refused its own Brain project tools | fixed on main | P1 | [brain/builder](brain/builder/index.md) |
 | [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-563](app/navigation/plat-563.md) | Sidebar product switching is overridden by workflow restoration | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-562](goals/steps/general/plat-562.md) | Step test mode: verify a step without real-world side effects | fixed on main | P1 | [goals/steps/general](goals/steps/general/index.md) |
 | [PLAT-561](goals/plans-contracts/plat-561.md) | Edit-time reference map: changes carried through to dependents | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
-| [PLAT-560](brain/chat/plat-560.md) | Brain chat could not change providers: only Codex and Pi were offered | fixed on main | P2 | [brain/chat](brain/chat/index.md) |

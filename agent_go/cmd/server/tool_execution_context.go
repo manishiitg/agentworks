@@ -140,9 +140,17 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 			ctx = context.WithValue(ctx, vaultBuilderKey{}, vaultBuilderAuthority{copy.UserID, toolSession})
 		}
+		// A Builder run by a coding CLI calls back through the bridge under an MCP session registered to this Builder
+		// session (callerOwnedBySession); that is still the Builder. Steps the Builder starts are owned the same way,
+		// but they call with their own session in ChatSessionIDKey, which knowledgeProjectBuilderExecute refuses
+		// ("Steps cannot configure knowledge bindings"). RTS 2026-10-06: a CLI Builder got "Only the current workflow
+		// Builder can configure knowledge bindings" for browse folders and inspect_project.
 		if knowledgeProjectBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) &&
-			(callerSession == "" || callerSession == toolSession) {
+			(callerSession == "" || callerSession == toolSession || callerOwnedBySession) {
 			ctx = context.WithValue(ctx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{copy.UserID, req.SelectedFolder, toolSession})
+		} else if req.PhaseID == "workflow-builder" && isKnowledgeProjectTool(tool) {
+			log.Printf("[KB_PROJECT] no Builder authority for %s: phase=%s mode=%s triggered_by=%q bot=%q caller=%q tool_session=%q authority=%q owned=%v read_only=%v",
+				tool, req.PhaseID, req.AgentMode, req.TriggeredBy, req.BotPlatform, callerSession, toolSession, authoritySession, callerOwnedBySession, readOnly)
 		}
 		return ctx, nil
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -78,6 +79,8 @@ func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string
 func knowledgeProjectBuilderExecute(ctx context.Context, tool string, args map[string]any) (string, error) {
 	authority, ok := ctx.Value(knowledgeProjectBuilderKey{}).(knowledgeProjectBuilderAuthority)
 	if !ok || executor.SessionIDFromContext(ctx) != authority.Session {
+		chat, _ := ctx.Value(common.ChatSessionIDKey).(string)
+		log.Printf("[KB_PROJECT] refused %s: authority=%v authority_session=%q executor_session=%q chat_session=%q", tool, ok, authority.Session, executor.SessionIDFromContext(ctx), chat)
 		return "", fmt.Errorf("Only the current workflow Builder can configure knowledge bindings")
 	}
 	// A step may invoke a parent's registered HTTP bridge; the actual caller
@@ -155,4 +158,9 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(result))
+}
+
+// isKnowledgeProjectTool names the Builder's project-scoped Brain tools.
+func isKnowledgeProjectTool(name string) bool {
+	return name == "browse_knowledgebase" || name == "manage_knowledgebase_access"
 }
