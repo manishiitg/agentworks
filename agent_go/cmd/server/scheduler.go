@@ -633,20 +633,38 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 // user. Keep that compatibility deliberately in single-user mode, where that
 // user is the installation owner, but never invent an owner for a multi-user
 // workflow.
+//
+// The creator runs it while they are still an owner with an active account; otherwise the first active owner does.
+// A workflow handed to a new owner (creator removed from its owners, or their account disabled) kept running as the
+// creator, a non-owner, and broke once that account was disabled (Dominion trading workflow, 2026-10-07).
 func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 	if manifest == nil {
 		return ""
 	}
-	if createdBy := strings.TrimSpace(manifest.CreatedBy); createdBy != "" {
+	owners := manifest.effectiveOwners()
+	createdBy := strings.TrimSpace(manifest.CreatedBy)
+	if createdBy != "" && containsID(owners, createdBy) && workflowExecutionAccountActive(createdBy) {
 		return createdBy
 	}
-	if owners := manifest.effectiveOwners(); len(owners) > 0 {
-		return strings.TrimSpace(owners[0])
+	for _, owner := range owners {
+		if owner = strings.TrimSpace(owner); owner != "" && workflowExecutionAccountActive(owner) {
+			return owner
+		}
+	}
+	if len(owners) > 0 {
+		return strings.TrimSpace(owners[0]) // nobody active: fail closed on a real owner rather than invent one
 	}
 	if !IsMultiUserMode() {
 		return GetDefaultUserID()
 	}
 	return ""
+}
+
+// workflowExecutionAccountActive reports whether an account can run unattended turns: known and enabled where there is
+// a user directory; any account in single-user mode.
+func workflowExecutionAccountActive(userID string) bool {
+	acc := userAccessForClaims(&UserClaims{UserID: userID})
+	return !acc.Disabled && (acc.Known || !IsMultiUserMode())
 }
 
 func shouldRunPulseLifecycle(sctx *ScheduleContext, manifest *WorkflowManifest) bool {

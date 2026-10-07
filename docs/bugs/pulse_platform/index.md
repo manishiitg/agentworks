@@ -18,7 +18,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
 | [Relays](relays/index.md) | 25 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
-| [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
+| [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 7 | 1 |
 
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
 | [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-639](chat/general/plat-639.md) | Queued turn broke the Codex chat: security policy changed | fixed on main | P1 | [chat/general](chat/general/index.md) |
 | [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-603](chat/reliability/plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-602](chat/reliability/plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 | [chat/reliability](chat/reliability/index.md) |
-| [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | fixed on main | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
