@@ -1149,6 +1149,25 @@ export interface SlackTargetSettings {
   channels: SlackTargetChannel[]
 }
 
+// A channel a bot is in, as seen from one target's Slack tab (by name; the
+// bot token never reaches the browser).
+export interface SlackBotChannel {
+  id: string
+  name?: string
+  is_private?: boolean
+  answers: boolean
+  is_default: boolean
+  removable: boolean
+  targets: SlackBotChannelRoute[]
+}
+
+export interface SlackBotChannelsResponse {
+  bot_name: string
+  slug: string
+  channels: SlackBotChannel[]
+  error?: string
+}
+
 export interface SlackPlatformBotSettings {
   products: string[]
   targets_on: number
@@ -1165,6 +1184,7 @@ export interface SlackUsableBot {
   profile_id?: string
   owner_label?: string
   own_slug?: string
+  channel_name?: string
   channel_routes: SlackBotChannelRoute[]
   targets?: SlackBotTarget[]
 }

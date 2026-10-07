@@ -50,14 +50,16 @@ type SlackBotTargetResponse struct {
 // SlackUsableBotResponse is one bot the caller can share: a scoped
 // connection they manage. Never carries tokens.
 type SlackUsableBotResponse struct {
-	ID            string                                `json:"id"`
-	DisplayName   string                                `json:"display_name"`
-	Enabled       bool                                  `json:"enabled"`
-	Configured    bool                                  `json:"configured"`
-	WorkspacePath string                                `json:"workspace_path"`
-	ProfileID     string                                `json:"profile_id,omitempty"`
-	OwnerLabel    string                                `json:"owner_label,omitempty"`
-	OwnSlug       string                                `json:"own_slug,omitempty"`
+	ID            string `json:"id"`
+	DisplayName   string `json:"display_name"`
+	Enabled       bool   `json:"enabled"`
+	Configured    bool   `json:"configured"`
+	WorkspacePath string `json:"workspace_path"`
+	ProfileID     string `json:"profile_id,omitempty"`
+	OwnerLabel    string `json:"owner_label,omitempty"`
+	OwnSlug       string `json:"own_slug,omitempty"`
+	// ChannelName is the channel just added, as Slack names it.
+	ChannelName   string                                `json:"channel_name,omitempty"`
 	ChannelRoutes []SlackConnectionChannelRouteResponse `json:"channel_routes"`
 	Targets       []SlackBotTargetResponse              `json:"targets"`
 }
@@ -76,12 +78,73 @@ type SlackConnectionChannelRouteRequest struct {
 	// bot's own target in a channel creates that channel's route.
 	Trigger      *services.SlackTrigger `json:"trigger,omitempty"`
 	ClearTrigger bool                   `json:"clear_trigger,omitempty"`
+	// Default, when set, makes this target answer in the channel and says
+	// whether it answers plain @mentions there ("Answer here without the
+	// slug"); the bot's own target keeps answering there by slug. The channel
+	// is checked with Slack first (it exists, the bot and the person adding
+	// it are members). Without Default this target becomes a new channel's
+	// default, as before slugs.
+	Default *bool `json:"default,omitempty"`
+}
+
+// slackChannelAddCheck asks Slack whether a channel can be added on an app;
+// tests replace it. email is "" for an admin (no membership rule).
+var slackChannelAddCheck = func(ctx context.Context, svc *services.SlackService, conn services.SlackConnection, email, channel string) (string, error) {
+	runtime, err := svc.ServiceForConnection(conn.ID)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", services.ErrSlackChannelCheck, err)
+	}
+	return runtime.CheckChannelForAdd(ctx, conn.DisplayName, email, channel)
+}
+
+// placeSlackChannelTarget makes next answer in a channel on a bot and sets
+// whether it is the channel's default. A channel the bot never listed starts
+// from the bot's own target as its default, which stays allowed by slug.
+func placeSlackChannelTarget(c *services.SlackConnection, channel string, next services.SlackTargetRef, makeDefault bool) {
+	own := services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}
+	entry, found := c.ChannelRoutes[channel]
+	if !found && !own.IsCode() {
+		entry = services.SlackConnectionRoute{WorkspacePath: own.WorkspacePath, ProfileID: own.ProfileID}
+	}
+	allowed := false
+	for _, ref := range entry.Allowed() {
+		if ref.Same(next) {
+			allowed = true
+		}
+	}
+	if !allowed {
+		entry.Targets = append(entry.Targets, next)
+	}
+	isDefault := !entry.Default().Empty() && entry.Default().Same(next)
+	switch {
+	case makeDefault && !isDefault:
+		previous := entry.Default()
+		kept := entry.Targets[:0]
+		for _, ref := range entry.Targets {
+			if !ref.Same(next) {
+				kept = append(kept, ref)
+			}
+		}
+		entry.Targets = kept
+		if !previous.Empty() {
+			entry.Targets = append(entry.Targets, previous)
+		}
+		entry.WorkspacePath, entry.ProfileID, entry.Trigger = next.WorkspacePath, next.ProfileID, nil
+	case !makeDefault && isDefault:
+		entry.Targets = append(entry.Targets, next)
+		entry.WorkspacePath, entry.ProfileID, entry.Trigger = "", "", nil
+	}
+	if entry.AddedBy == "" {
+		entry.AddedBy = next.AddedBy
+	}
+	c.ChannelRoutes[channel] = entry
 }
 
 func registerSlackConnectionChannelRoutes(r *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("/mine", listUsableSlackBotsHandler(api)).Methods("GET")
 	r.HandleFunc("/{id}/channel-routes/{channel}", putSlackConnectionChannelRouteHandler(api)).Methods("PUT", "POST", "OPTIONS")
 	r.HandleFunc("/{id}/channel-routes/{channel}", deleteSlackConnectionChannelRouteHandler(api)).Methods("DELETE")
+	r.HandleFunc("/{id}/channels", listSlackBotChannelsHandler(api)).Methods("GET")
 	r.HandleFunc("/{id}/targets", putSlackConnectionTargetHandler(api)).Methods("PUT", "POST", "OPTIONS")
 	r.HandleFunc("/{id}/targets", deleteSlackConnectionTargetHandler(api)).Methods("DELETE")
 }
@@ -298,6 +361,38 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 			addedBy = claims.UserID
 		}
 		next := services.SlackTargetRef{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy}
+		if req.Default != nil && req.Trigger == nil && !req.ClearTrigger {
+			email := ""
+			if !currentUserIsAdmin(r) {
+				if claims := GetUserFromContext(r.Context()); claims != nil {
+					email = claims.Email
+				}
+				if strings.TrimSpace(email) == "" {
+					http.Error(w, "your account has no email to check your Slack channel membership", http.StatusBadRequest)
+					return
+				}
+			}
+			name, err := slackChannelAddCheck(r.Context(), svc, conn, email, channel)
+			if err != nil {
+				http.Error(w, strings.TrimPrefix(err.Error(), services.ErrSlackChannelCheck.Error()+": "), http.StatusBadRequest)
+				return
+			}
+			updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
+				placeSlackChannelTarget(c, channel, next, *req.Default)
+				return nil
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			registerSlackBotConnectorForOwnedConnections(api, svc)
+			api.revokeSlackConnectionChannelSessions(r.Context(), conn.ID, channel)
+			out := projectUsableSlackBot(r.Context(), updated)
+			out.ChannelName = name
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
 		// A channel that already answers for another target gets this one
 		// added to its list (picked with "@bot <slug>", PLAT-668); a new
 		// channel answers for this target by default, as before.
@@ -540,4 +635,82 @@ func slackConnectionTargetRequest(w http.ResponseWriter, r *http.Request, api *S
 		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
 	}
 	return svc, conn, ref, true
+}
+
+// SlackBotChannelResponse is a channel a bot is in, as seen from one target.
+type SlackBotChannelResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	IsPrivate bool   `json:"is_private,omitempty"`
+	// Answers: this target answers here; IsDefault: it answers plain
+	// @mentions here (no slug needed).
+	Answers   bool `json:"answers"`
+	IsDefault bool `json:"is_default"`
+	// Removable: this target was added here (the bot's own target in a
+	// channel it never listed is not; kick the bot from the channel instead).
+	Removable bool                                  `json:"removable"`
+	Targets   []SlackConnectionChannelRouteResponse `json:"targets"`
+}
+
+// SlackBotChannelsResponse lists the channels a bot is in for a target's
+// Slack tab: picked by name, never typed. The bot token stays server-side.
+type SlackBotChannelsResponse struct {
+	BotName  string                    `json:"bot_name"`
+	Slug     string                    `json:"slug"`
+	Channels []SlackBotChannelResponse `json:"channels"`
+	Error    string                    `json:"error,omitempty"`
+}
+
+func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		svc, conn, ref, ok := slackConnectionTargetRequest(w, r, api, false)
+		if !ok {
+			return
+		}
+		ctx := r.Context()
+		registry := slackLoadTargetsRegistry(ctx)
+		out := SlackBotChannelsResponse{BotName: conn.DisplayName, Slug: slackNamedTarget(ctx, registry, ref).Slug, Channels: []SlackBotChannelResponse{}}
+		var listed []services.SlackChannelInfo
+		if runtime, err := svc.ServiceForConnection(conn.ID); err != nil {
+			out.Error = err.Error()
+		} else if listed, err = runtime.BotChannels(ctx); err != nil {
+			out.Error = err.Error()
+		}
+		seen := map[string]bool{}
+		for _, channel := range listed {
+			seen[services.NormalizeSlackChannelID(channel.ID)] = true
+		}
+		for channel := range conn.ChannelRoutes {
+			if !seen[channel] {
+				// Still routed here, but the bot left the channel.
+				listed = append(listed, services.SlackChannelInfo{ID: channel})
+			}
+		}
+		own := services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}
+		for _, channel := range listed {
+			id := services.NormalizeSlackChannelID(channel.ID)
+			row := SlackBotChannelResponse{ID: id, Name: channel.Name, IsPrivate: channel.IsPrivate, Targets: []SlackConnectionChannelRouteResponse{}}
+			entry, found := conn.ChannelRoutes[id]
+			allowed, def := []services.SlackTargetRef{}, services.SlackTargetRef{}
+			if found {
+				allowed, def = entry.Allowed(), entry.Default()
+			} else if !own.IsCode() {
+				allowed, def = []services.SlackTargetRef{own}, own
+			}
+			for _, target := range allowed {
+				named := slackNamedTarget(ctx, registry, target)
+				isDefault := !def.Empty() && def.Same(target)
+				row.Targets = append(row.Targets, SlackConnectionChannelRouteResponse{ChannelID: id, WorkspacePath: target.WorkspacePath, ProfileID: target.ProfileID, Label: named.Label, Slug: named.Slug, IsDefault: isDefault})
+				if target.Same(ref) {
+					row.Answers, row.IsDefault, row.Removable = true, isDefault, found
+				}
+			}
+			out.Channels = append(out.Channels, row)
+		}
+		sort.SliceStable(out.Channels, func(i, j int) bool {
+			return strings.ToLower(out.Channels[i].Name+out.Channels[i].ID) < strings.ToLower(out.Channels[j].Name+out.Channels[j].ID)
+		})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
 }

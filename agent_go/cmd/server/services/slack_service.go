@@ -1466,6 +1466,72 @@ func (s *SlackService) SlackUserInChannel(ctx context.Context, email, channelID 
 	return false, nil
 }
 
+// SlackChannelInfo is a channel the bot is in, by name.
+type SlackChannelInfo struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsPrivate bool   `json:"is_private"`
+}
+
+// BotChannels lists the public and private channels this app's bot is a
+// member of (users.conversations with the bot token, which never leaves
+// the server).
+func (s *SlackService) BotChannels(ctx context.Context) ([]SlackChannelInfo, error) {
+	if s == nil || s.client == nil {
+		return nil, fmt.Errorf("the Slack bot is not connected")
+	}
+	var out []SlackChannelInfo
+	cursor := ""
+	for page := 0; page < 20; page++ {
+		channels, next, err := s.client.GetConversationsForUserContext(ctx, &slack.GetConversationsForUserParameters{Cursor: cursor, Types: []string{"public_channel", "private_channel"}, Limit: 200, ExcludeArchived: true})
+		if err != nil {
+			return out, fmt.Errorf("users.conversations: %w (the app needs channels:read and groups:read)", err)
+		}
+		for _, channel := range channels {
+			out = append(out, SlackChannelInfo{ID: channel.ID, Name: channel.Name, IsPrivate: channel.IsPrivate})
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	return out, nil
+}
+
+// ErrSlackChannelCheck is a channel that cannot be added; its message says
+// why, in words the person adding it can act on.
+var ErrSlackChannelCheck = errors.New("slack channel check failed")
+
+// CheckChannelForAdd asks Slack, with this app's token, whether a channel
+// can be added: it exists, the bot is in it, and (when email is set) the
+// person adding it is too. It returns the channel's name.
+func (s *SlackService) CheckChannelForAdd(ctx context.Context, botName, email, channelID string) (string, error) {
+	if s == nil || s.client == nil {
+		return "", fmt.Errorf("%w: the Slack bot is not connected", ErrSlackChannelCheck)
+	}
+	info, err := s.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{ChannelID: channelID})
+	if err != nil {
+		if strings.Contains(err.Error(), "channel_not_found") {
+			return "", fmt.Errorf("%w: there is no channel %s that @%s can see. Check the ID, or for a private channel invite the bot first: /invite @%s", ErrSlackChannelCheck, channelID, botName, botName)
+		}
+		return "", fmt.Errorf("%w: Slack could not look up %s: %w", ErrSlackChannelCheck, channelID, err)
+	}
+	name := info.Name
+	if !info.IsMember {
+		return name, fmt.Errorf("%w: @%s is not in #%s. Invite @%s first: /invite @%s", ErrSlackChannelCheck, botName, name, botName, botName)
+	}
+	if strings.TrimSpace(email) != "" {
+		member, err := s.SlackUserInChannel(ctx, email, channelID)
+		if err != nil {
+			return name, fmt.Errorf("%w: %w", ErrSlackChannelCheck, err)
+		}
+		if !member {
+			return name, fmt.Errorf("%w: you are not a member of #%s in Slack; join it first", ErrSlackChannelCheck, name)
+		}
+	}
+	return name, nil
+}
+
 // DeleteSlackConnection removes one registry entry. The default connection
 // cannot be deleted; reassign the default first.
 func (s *SlackService) DeleteSlackConnection(ctx context.Context, connID string) error {

@@ -141,14 +141,18 @@ func slackPlatformBot() (*services.SlackService, services.SlackConnection, bool)
 	if svc == nil {
 		return nil, services.SlackConnection{}, false
 	}
+	// A platform bot exists only when the server's default connection is an
+	// unscoped app with both tokens and switched on. Own bots never count:
+	// without one, "Use the AgentWorks bot" is hidden and refused (RTS
+	// 2026-10-07: the switch showed on a server with own bots only).
 	conn, found := slackAppConnection("")
-	if found && strings.TrimSpace(conn.WorkspacePath) != "" {
+	if !found || strings.TrimSpace(conn.WorkspacePath) != "" {
 		return nil, services.SlackConnection{}, false
 	}
-	if found && !conn.Enabled {
+	if !conn.Enabled || strings.TrimSpace(conn.BotToken) == "" || strings.TrimSpace(conn.AppToken) == "" {
 		return svc, conn, false
 	}
-	return svc, conn, svc.IsEnabled()
+	return svc, conn, true
 }
 
 // slackChannelMembership checks Slack membership; tests replace it.
@@ -168,7 +172,7 @@ func (api *StreamingAPI) slackTargetSettings(ctx context.Context, ref services.S
 	out := SlackTargetSettingsResponse{
 		Slug:              named.Slug,
 		Label:             named.Label,
-		PlatformBot:       registry.PlatformOptIn(ref, legacy),
+		PlatformBot:       available && registry.PlatformOptIn(ref, legacy),
 		PlatformAvailable: available,
 		PlatformName:      conn.DisplayName,
 		ProductAllowed:    registry.ProductAllowed(ref),
@@ -176,7 +180,7 @@ func (api *StreamingAPI) slackTargetSettings(ctx context.Context, ref services.S
 		DMOnly:            ref.IsCode(),
 		Channels:          []SlackTargetChannel{},
 	}
-	if !canManage || ref.IsCode() {
+	if !canManage || ref.IsCode() || !available {
 		return out
 	}
 	channels := map[string]bool{}
@@ -251,6 +255,12 @@ func slackTargetSettingsHandler(api *StreamingAPI) http.HandlerFunc {
 		if err := requireSlackTargetOwner(r.Context(), api, ref); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
+		}
+		if body.PlatformBot != nil && *body.PlatformBot {
+			if _, _, available := slackPlatformBot(); !available {
+				http.Error(w, "this server has no AgentWorks bot; use one of your own Slack bots instead", http.StatusBadRequest)
+				return
+			}
 		}
 		if _, err := api.slackDestinationRoute(r.Context(), ref.WorkspacePath, ref.ProfileID); err != nil {
 			http.Error(w, fmt.Sprintf("cannot answer for %s in Slack: %v", ref.WorkspacePath, err), http.StatusBadRequest)
@@ -334,6 +344,10 @@ func addSlackTargetChannelHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		if ref.IsCode() {
 			http.Error(w, "Code answers only 1:1 Slack DMs, not channels", http.StatusBadRequest)
+			return
+		}
+		if _, _, available := slackPlatformBot(); !available {
+			http.Error(w, "this server has no AgentWorks bot; add the channel through one of your own Slack bots", http.StatusBadRequest)
 			return
 		}
 		registry := slackLoadTargetsRegistry(ctx)

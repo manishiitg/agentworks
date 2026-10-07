@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { AlertTriangle, Bot, CheckCircle, Loader2, MessageSquare, Plus, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, Bot, Check, CheckCircle, Copy, Loader2, MessageSquare, Plus, Trash2, Users } from 'lucide-react'
 import { Button } from '../../ui/Button'
 import { FormSection } from '../../ui/FormSection'
 import { Input } from '../../ui/Input'
@@ -7,28 +7,30 @@ import { Label } from '../../ui/label'
 import { SecretField } from '../../ui/SecretField'
 import { ToggleRow } from '../../ui/ToggleRow'
 import { READ_ONLY_TITLE } from '../../../hooks/useCanWriteWorkflow'
-import type { SlackConnection, SlackUsableBot } from '../../../services/api-types'
+import type { SlackConnection, SlackTargetSettings, SlackUsableBot } from '../../../services/api-types'
+import { agentApi } from '../../../services/api'
+import { SlackBotChannels } from './SlackBotChannels'
+import { sameBotWorkspacePath } from './slackWorkflowConnection'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { SharedSlackBotSettings } from '../../admin/SlackAdminPanel'
 import { RouteChip } from './RouteChips'
-import { SlackSlugsSection } from './SlackSlugsSection'
+import { SlackSlugsSection, slackErrorText } from './SlackSlugsSection'
 import { SlackAppSetupSteps, SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist, SlackTokenHint } from './SlackAppSetupSteps'
 import { routeId } from './types'
 
-// The Slack tab for one workflow or crew project answers a single question:
-// who answers for it in Slack?
+// The Slack tab for one workflow, Crew or Code is three blocks (owner,
+// 2026-10-07: "ui is not clear"):
 //
-//  - Its own bot: a Slack app scoped to this workflow/project. It answers
-//    only for it, in any channel it is invited to; no channel setup.
-//  - One of my bots: another workflow's or crew's own bot that this user
-//    manages. It answers for this one in the channels picked here, and for
-//    its own everywhere else. No admin needed.
-//  - The shared bot: the platform's default app. It answers for this
-//    workflow in the channels routed to it.
+//  1. Which bot answers: its own bot, one of my bots (another target's own
+//     bot this user manages), or the platform bot when the server has one.
+//  2. How people reach it: "@Bot <slug> your question" in a channel, and
+//     "<slug> your question" in a DM, with the slug editable here.
+//  3. Channels: picked by name from the channels the bot is in, each with
+//     one switch, "Answer here without the slug".
 //
-// Platform plumbing (enable switch, the shared app's tokens) is admin-only:
-// Access → Slack, or collapsed under the shared bot option here.
+// Everything else (bot tokens, tests, Home tab, permissions, admin routes)
+// sits under Advanced.
 
 const OWNER_ONLY_TITLE = 'Only an owner can manage this Slack bot'
 
@@ -82,11 +84,45 @@ type SlackSetupBots = Pick<WorkflowBots,
   | 'slackTarget' | 'reloadMyBots'
 >
 
+
+type AnsweringBot = { name: string; status: { label: string; ok: boolean }; connectionId: string | null }
+
+function usableBotStatus(bot: SlackUsableBot): { label: string; ok: boolean } {
+  if (!bot.configured) return { label: 'Missing tokens', ok: false }
+  if (!bot.enabled) return { label: 'Disabled', ok: false }
+  return { label: 'Ready', ok: true }
+}
+
+function CopyLine({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-foreground" title={text}>{text}</code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        aria-label={`Copy ${text}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          } catch { /* select and copy by hand */ }
+        }}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  )
+}
+
 export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = false }: {
   bots: SlackSetupBots
   headerAction?: ReactNode
   homeTabAction?: ReactNode
-  /** Only this target's own dedicated app, answering 1:1 DMs (a Code). */
+  /** A Code: 1:1 DMs only, never channels. */
   ownBotOnly?: boolean
 }) {
   const {
@@ -94,35 +130,79 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
     canManageWorkflowSlack, hasProfileTarget, slackSelection,
     workflowRoutes, routeError, myOtherBots, myBotRoutesHere,
   } = bots
-  const noun = hasProfileTarget ? 'project' : 'workflow'
+  const noun = ownBotOnly ? 'Code' : hasProfileTarget ? 'project' : 'workflow'
   const own = slackSelection.own
   const shared = (slackOriginal.connections || []).find(conn => conn.is_default) || null
   const slackRoutes = workflowRoutes.filter(route => route.kind === 'slack')
   const ownTitle = canManageWorkflowSlack ? undefined : (readOnly ? READ_ONLY_TITLE : OWNER_ONLY_TITLE)
+  const target = bots.slackTarget
+  const targetKey = target ? `${target.profile_id || ''}|${target.workspace_path}` : ''
 
-  // Other bots of mine that already answer here in some channels.
-  const sharingBots = myOtherBots.filter(bot => myBotRoutesHere(bot).length > 0)
-  // Offer the shared bot only when an admin has set one up (Access → Slack or
-  // the server's env), or when this target already has shared-bot channels
-  // that must stay visible to manage or remove.
-  const showShared = !!shared?.configured || slackRoutes.length > 0
+  // This target's slug and platform-bot state (the platform bot only exists
+  // on servers that have one; RTS has own bots only).
+  const [settings, setSettings] = useState<SlackTargetSettings | null>(null)
+  useEffect(() => {
+    if (!workflowId || !target?.workspace_path) return
+    let live = true
+    agentApi.getSlackTargetSettings(target).then(next => { if (live) setSettings(next) }).catch(() => {})
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId, targetKey])
 
-  // The own bot is the source of truth: it answers whenever it exists. The
-  // radio only chooses what to show while nothing is set up yet.
-  const [mode, setMode] = useState<SlackMode>(ownBotOnly || own ? 'own' : sharingBots.length > 0 ? 'mine' : slackRoutes.length > 0 ? 'shared' : 'own')
+  const attachedHere = (bot: SlackUsableBot) => !!target && (bot.targets || []).some(entry =>
+    sameBotWorkspacePath(entry.workspace_path, target.workspace_path) && (entry.profile_id || '') === (target.profile_id || ''))
+  const sharingBots = myOtherBots.filter(bot => myBotRoutesHere(bot).length > 0 || attachedHere(bot))
+  const [pickedBotId, setPickedBotId] = useState<string | null>(null)
+  const viaBot = own ? null : (myOtherBots.find(bot => bot.id === pickedBotId) || sharingBots[0] || null)
+  const platformAvailable = !!settings?.platform_available
+  const platformOn = platformAvailable && !!settings?.platform_bot
+  const answering: AnsweringBot | null = own
+    ? { name: own.display_name, status: connStatus(own), connectionId: own.id }
+    : viaBot
+      ? { name: viaBot.display_name, status: usableBotStatus(viaBot), connectionId: viaBot.id }
+      : platformOn
+        ? { name: settings?.platform_name || 'platform bot', status: { label: 'Ready', ok: true }, connectionId: null }
+        : null
+
+  // Offer the shared (platform) bot only when an admin has set one up, or
+  // when this target already has shared-bot channels to manage.
+  const showShared = !!shared?.configured || slackRoutes.length > 0 || platformAvailable
+  const [mode, setMode] = useState<SlackMode>(own ? 'own' : sharingBots.length > 0 ? 'mine' : (slackRoutes.length > 0 ? 'shared' : 'own'))
   const ownId = own?.id || null
   const hasSharingBots = sharingBots.length > 0
   useEffect(() => {
     if (ownId) setMode('own')
-    else if (hasSharingBots && !ownBotOnly) setMode(prev => prev === 'own' ? 'mine' : prev)
-  }, [ownId, hasSharingBots, ownBotOnly])
+    else if (hasSharingBots) setMode(prev => prev === 'own' ? 'mine' : prev)
+  }, [ownId, hasSharingBots])
+  const [changing, setChanging] = useState(false)
   const [editing, setEditing] = useState(false)
-  const ownFormOpen = mode === 'own' && (editing || !own)
   useEffect(() => { setEditing(false) }, [ownId])
+  const showChooser = changing || !answering
+  const ownFormOpen = showChooser && mode === 'own' && (editing || !own)
+
+  const [slugDraft, setSlugDraft] = useState('')
+  const [slugError, setSlugError] = useState<string | null>(null)
+  const [slugSaving, setSlugSaving] = useState(false)
+  useEffect(() => { setSlugDraft(settings?.slug || '') }, [settings?.slug])
+  const saveSlug = async () => {
+    if (!target) return
+    setSlugSaving(true)
+    setSlugError(null)
+    try {
+      setSettings(await agentApi.updateSlackTargetSettings(target, { slug: slugDraft }))
+    } catch (err) {
+      setSlugError(slackErrorText(err, 'The slug was not saved'))
+    } finally {
+      setSlugSaving(false)
+    }
+  }
 
   if (slackLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
   }
+
+  const slug = settings?.slug || ''
+  const canEditSlug = !!settings?.can_manage && !readOnly
 
   return (
     <div className="space-y-4">
@@ -131,76 +211,114 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
       {slackError && !ownFormOpen && <StatusBanner tone="error">{slackError}</StatusBanner>}
       {slackSuccess && <StatusBanner tone="success">{slackSuccess}</StatusBanner>}
 
-      {workflowId && bots.slackTarget?.workspace_path && (
-        <SlackSlugsSection
-          destination={bots.slackTarget}
-          noun={noun}
-          readOnly={readOnly}
-          dmOnly={ownBotOnly}
-          myOtherBots={myOtherBots}
-          onBotsChanged={() => void bots.reloadMyBots?.()}
-        />
-      )}
-
-      {ownBotOnly ? (
-        <FormSection title={`This ${noun}'s own Slack bot`} actions={headerAction}>
-          <p className="text-sm text-muted-foreground">A Slack app of its own that answers 1:1 direct messages only, never in channels. Each person with editor access or more gets their own chat of the {noun}; everyone else is refused.</p>
-        </FormSection>
-      ) : (
-      <FormSection title={`Who answers for this ${noun} in Slack?`} actions={headerAction}>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <ModeOption
-            checked={mode === 'own'}
-            disabled={false}
-            onSelect={() => setMode('own')}
-            icon={<MessageSquare className="h-3.5 w-3.5" />}
-            label={`Its own bot${own ? ` · ${own.display_name}` : ''}`}
-            hint={`Answers only for this ${noun}, in any channel it's invited to. Recommended.`}
-          />
-          <ModeOption
-            checked={mode === 'mine'}
-            disabled={false}
-            onSelect={() => setMode('mine')}
-            icon={<Bot className="h-3.5 w-3.5" />}
-            label={`One of my bots${sharingBots.length === 1 ? ` · ${sharingBots[0].display_name}` : ''}`}
-            hint={`A bot you set up for another workflow or crew. Answers here in the channels you pick.`}
-          />
-          {showShared && (
-            <ModeOption
-              checked={mode === 'shared'}
-              disabled={false}
-              onSelect={() => setMode('shared')}
-              icon={<Users className="h-3.5 w-3.5" />}
-              label={`Shared bot${shared ? ` · ${shared.display_name}` : ''}`}
-              hint="The platform bot an admin manages. Answers here in the channels you pick."
-            />
-          )}
-        </div>
+      <FormSection title="Which bot answers" actions={headerAction}>
+        {answering && !changing ? (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-foreground">{answering.name}</span>
+            <StatusDot ok={answering.status.ok} label={answering.status.label} />
+            <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setChanging(true)} disabled={readOnly} title={readOnly ? READ_ONLY_TITLE : undefined}>Change</Button>
+          </div>
+        ) : (
+          <>
+            {ownBotOnly && <p className="text-xs text-muted-foreground">A Code answers 1:1 direct messages only, for its owner, never in channels.</p>}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <ModeOption
+                checked={mode === 'own'}
+                disabled={false}
+                onSelect={() => setMode('own')}
+                icon={<MessageSquare className="h-3.5 w-3.5" />}
+                label={`Its own bot${own ? ` · ${own.display_name}` : ''}`}
+                hint={`A Slack app just for this ${noun}.`}
+              />
+              <ModeOption
+                checked={mode === 'mine'}
+                disabled={false}
+                onSelect={() => setMode('mine')}
+                icon={<Bot className="h-3.5 w-3.5" />}
+                label={`One of my bots${sharingBots.length === 1 ? ` · ${sharingBots[0].display_name}` : ''}`}
+                hint={`A bot you set up for another workflow or crew; people pick this ${noun} by its slug.`}
+              />
+              {showShared && (
+                <ModeOption
+                  checked={mode === 'shared'}
+                  disabled={false}
+                  onSelect={() => setMode('shared')}
+                  icon={<Users className="h-3.5 w-3.5" />}
+                  label={`Shared bot${shared ? ` · ${shared.display_name}` : ''}`}
+                  hint="The platform bot an admin manages."
+                />
+              )}
+            </div>
+            {answering && <div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => setChanging(false)}>Done</Button></div>}
+          </>
+        )}
       </FormSection>
+
+      {showChooser && mode === 'own' && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={editing || !own} onEdit={setEditing} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />}
+      {showChooser && mode === 'mine' && (
+        <MyBotsPicker bots={bots} noun={noun} dmOnly={ownBotOnly} attachedHere={attachedHere} onPick={id => { setPickedBotId(id); setChanging(false) }} />
+      )}
+      {showChooser && mode === 'shared' && showShared && (
+        <>
+          {!ownBotOnly && <SharedBotSection bots={bots} noun={noun} ownTitle={ownTitle} shared={shared} />}
+          {settings && target && !platformOn && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} dmOnly={ownBotOnly} settings={settings} onSettings={setSettings} />}
+        </>
       )}
 
-      {mode === 'own' && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={editing || !own} onEdit={setEditing} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />}
-      {mode === 'mine' && !ownBotOnly && <MyBotsSection bots={bots} noun={noun} />}
-      {mode === 'shared' && showShared && !ownBotOnly && <SharedBotSection bots={bots} noun={noun} ownTitle={ownTitle} shared={shared} />}
-
-      {mode === 'own' && !ownBotOnly && sharingBots.length > 0 && (
-        <section className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Also answers through your other bots in</h3>
-          <div className="grid gap-2">
-            {sharingBots.flatMap(bot => myBotRoutesHere(bot).map(route => (
-              <MyBotChannelChip key={`${bot.id}:${route.channel_id}`} bots={bots} bot={bot} channelId={route.channel_id} />
-            )))}
+      {answering && settings && target && (
+        <FormSection title={`How people reach this ${noun}`}>
+          {!ownBotOnly && <CopyLine label="In a channel" text={`@${answering.name} ${slug || 'slug'} your question`} />}
+          <CopyLine label="In a DM" text={`${slug || 'slug'} your question`} />
+          <p className="text-[11px] text-muted-foreground">
+            {ownBotOnly ? <>DM <b>@{answering.name}</b>; </> : <>Where it answers without the slug, <code className="font-mono">@{answering.name} your question</code> works too. In a DM, </>}
+            <code className="font-mono">list</code> shows everything you can reach.
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-xs text-muted-foreground">Slug</span>
+            <Input
+              aria-label="Slack slug"
+              value={slugDraft}
+              onChange={e => setSlugDraft(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              disabled={!canEditSlug || slugSaving}
+              title={canEditSlug ? undefined : `Only the ${noun}'s owner can change the slug`}
+              className="h-8 max-w-[14rem] font-mono text-xs"
+            />
+            {slugDraft !== slug && (
+              <Button variant="outline" size="sm" onClick={() => void saveSlug()} disabled={!canEditSlug || slugSaving || !slugDraft}>
+                {slugSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+              </Button>
+            )}
           </div>
-        </section>
+          {slugError && <p className="text-xs text-red-600 dark:text-red-400">{slugError}</p>}
+        </FormSection>
       )}
 
-      {mode === 'own' && !ownBotOnly && slackRoutes.length > 0 && (
-        <section className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Also answers through the shared bot in</h3>
-          <div className="grid gap-2">
-            {slackRoutes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
+      {answering && !ownBotOnly && target && (
+        <FormSection title="Channels">
+          {answering.connectionId
+            ? <SlackBotChannels botId={answering.connectionId} botName={answering.name} destination={target} readOnly={readOnly} />
+            : settings && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} settings={settings} onSettings={setSettings} />}
+        </FormSection>
+      )}
+
+      {answering && (
+        <details className="rounded-md border border-border px-3 py-2 text-sm">
+          <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground">Advanced</summary>
+          <div className="mt-3 space-y-3">
+            {own && !showChooser && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={false} onEdit={editing => { setEditing(editing); if (editing) { setMode('own'); setChanging(true) } }} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />}
+            {!own && viaBot && <p className="text-xs text-muted-foreground">{viaBot.display_name} is set up for {viaBot.owner_label || 'another workflow'}; its tokens, test and Home tab are in that one's Slack tab.</p>}
+            {platformOn && settings && target && ownBotOnly && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} dmOnly settings={settings} onSettings={setSettings} />}
+            {!ownBotOnly && slackRoutes.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-medium text-muted-foreground">Admin channel routes on the shared bot</h3>
+                <div className="grid gap-2">
+                  {slackRoutes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
+                </div>
+              </section>
+            )}
+            {!ownBotOnly && <p className="text-xs text-muted-foreground">Triggers (automation on channel messages) are set by asking the Builder; it uses the Slack route tools.</p>}
           </div>
-        </section>
+        </details>
       )}
       {routeError && <StatusBanner tone="error">{routeError}</StatusBanner>}
 
@@ -222,7 +340,7 @@ function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction, d
   const own = slackSelection.own
   const inviteHint = directMessagesOnly
     ? <>People with access open a direct message with <code className="rounded bg-muted px-1 font-mono">@{own?.display_name || 'YourBot'}</code> in Slack. It does not answer in channels.</>
-    : <>Invite it to a channel with <code className="rounded bg-muted px-1 font-mono">/invite @{own?.display_name || 'YourBot'}</code>, then @mention it. No channel setup needed here.</>
+    : <>Invite it to a channel with <code className="rounded bg-muted px-1 font-mono">/invite @{own?.display_name || 'YourBot'}</code>, then @mention it.</>
 
   if (own && !editing) {
     const status = connStatus(own)
@@ -369,118 +487,80 @@ function SharedBotSection({ bots, noun, ownTitle, shared }: {
   )
 }
 
-function MyBotChannelChip({ bots, bot, channelId }: { bots: SlackSetupBots; bot: SlackUsableBot; channelId: string }) {
-  const { readOnly, myBotSaving, removeMyBotChannel } = bots
-  const removing = myBotSaving === `remove:${bot.id}:${channelId}`
-  // Every target this bot answers for in the channel (PLAT-668): picked with
-  // "@bot <slug>", the default answers without one.
-  const inChannel = (bot.channel_routes || []).filter(route => route.channel_id === channelId)
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background p-2 shadow-sm">
-      <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Slack" />
-      <div className="min-w-0 truncate font-mono text-sm font-semibold text-foreground" title={channelId}>{channelId}</div>
-      <span className="flex min-w-0 flex-1 flex-wrap gap-1">
-        {inChannel.map(route => (
-          <span key={`${route.profile_id || ''}|${route.workspace_path}`} title={route.label} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-            {route.slug || route.label || route.workspace_path}{route.is_default ? ' · default' : ''}
-          </span>
-        ))}
-      </span>
-      <span className="max-w-[40%] truncate text-xs text-muted-foreground" title={bot.display_name}>{bot.display_name}</span>
-      {removing ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={() => void removeMyBotChannel(bot.id, channelId)}
-          disabled={readOnly || !!myBotSaving}
-          className="shrink-0 px-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-600"
-          aria-label={`Stop answering on Slack ${channelId} through ${bot.display_name}`}
-          title={readOnly ? READ_ONLY_TITLE : `Stop answering here in ${channelId}`}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function MyBotsSection({ bots, noun }: { bots: SlackSetupBots; noun: string }) {
-  const {
-    readOnly, workflowId, myOtherBots, myBotRoutesHere, newMyBotChannel, setNewMyBotChannel,
-    myBotSaving, myBotError, setMyBotError, addMyBotChannel,
-  } = bots
-  const preferred = myOtherBots.find(bot => myBotRoutesHere(bot).length > 0) || myOtherBots[0] || null
+function MyBotsPicker({ bots, noun, dmOnly, attachedHere, onPick }: {
+  bots: SlackSetupBots; noun: string; dmOnly: boolean; attachedHere: (bot: SlackUsableBot) => boolean; onPick: (id: string) => void
+}) {
+  const { readOnly, myOtherBots, myBotRoutesHere, slackTarget, reloadMyBots } = bots
+  const preferred = myOtherBots.find(bot => myBotRoutesHere(bot).length > 0 || attachedHere(bot)) || myOtherBots[0] || null
   const [pickedId, setPickedId] = useState<string>(preferred?.id || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const picked = myOtherBots.find(bot => bot.id === pickedId) || preferred
-  const adding = myBotSaving === `add:${picked?.id}`
 
   if (myOtherBots.length === 0) {
     return (
       <FormSection title="One of my bots" description={`Use a bot you already set up for another workflow or crew, so one Slack app answers for several of them.`}>
         <p className="text-xs text-muted-foreground">
           You have no other bots yet. Give another workflow or crew its own bot first, then pick it here.
-          Or, if this {noun} has its own bot, open the other workflow's or crew's Slack setup and pick this {noun}'s bot there.
         </p>
       </FormSection>
     )
   }
-
-  const status = picked ? (!picked.configured ? { label: 'Missing tokens', ok: false } : !picked.enabled ? { label: 'Disabled', ok: false } : { label: 'Ready', ok: true }) : null
-  const routesHere = picked ? myBotRoutesHere(picked) : []
+  const use = async () => {
+    if (!picked) return
+    if (!dmOnly) {
+      onPick(picked.id)
+      return
+    }
+    // A Code answers DMs only: attach it to the bot so its slug reaches it.
+    setBusy(true)
+    setError(null)
+    try {
+      await agentApi.attachSlackBotTarget(picked.id, slackTarget)
+      await reloadMyBots()
+      onPick(picked.id)
+    } catch (err) {
+      setError(slackErrorText(err, 'Could not use this bot'))
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
-    <FormSection
-      title={<span className="flex items-center gap-2">{picked?.display_name || 'One of my bots'}{status && <StatusDot ok={status.ok} label={status.label} />}</span>}
-      description={<>Pick one of your bots and the channels where it answers for this {noun}. Everywhere else it keeps answering for {picked?.owner_label || 'its own workflow'}. Invite the bot to the channel, then find the channel ID (starts with C) under View channel details.</>}
-    >
-      {myOtherBots.length > 1 && (
-        <div>
-          <Label className="mb-2 block" htmlFor="slack-my-bot">Bot</Label>
-          <select
-            id="slack-my-bot"
-            value={picked?.id || ''}
-            onChange={e => { setPickedId(e.target.value); setMyBotError(null) }}
-            className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-          >
-            {myOtherBots.map(bot => (
-              <option key={bot.id} value={bot.id}>{bot.display_name}{bot.owner_label ? ` (${bot.owner_label})` : ''}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      {myOtherBots.length === 1 && picked?.owner_label && (
-        <p className="text-xs text-muted-foreground">Set up for {picked.owner_label}.</p>
-      )}
-      {workflowId && picked && (
-        <div className="flex items-center gap-2">
-          <Input
-            type="text"
-            aria-label="Channel ID for my bot"
-            value={newMyBotChannel}
-            onChange={e => {
-              setNewMyBotChannel(e.target.value.toUpperCase().replace(/[^A-Z0-9_,;\s-]/g, ''))
-              if (myBotError) setMyBotError(null)
+    <FormSection title="One of my bots" description={dmOnly ? `People DM the bot and start with this ${noun}'s slug.` : `People pick this ${noun} with the bot's name and its slug. You choose the channels next.`}>
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="One of my bots"
+          value={picked?.id || ''}
+          onChange={e => { setPickedId(e.target.value); setError(null) }}
+          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+          disabled={readOnly || busy}
+        >
+          {myOtherBots.map(bot => <option key={bot.id} value={bot.id}>{bot.display_name}{bot.owner_label ? ` (set up for ${bot.owner_label})` : ''}</option>)}
+        </select>
+        <Button variant="outline" size="sm" onClick={() => void use()} disabled={readOnly || busy || !picked}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          Use this bot
+        </Button>
+      </div>
+      {myOtherBots.length === 1 && picked?.owner_label && <p className="text-xs text-muted-foreground">Set up for {picked.owner_label}.</p>}
+      {dmOnly && myOtherBots.filter(attachedHere).map(bot => (
+        <div key={bot.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex-1">Answers DMs through {bot.display_name}</span>
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label={`Stop answering DMs through ${bot.display_name}`}
+            disabled={readOnly || busy}
+            onClick={async () => {
+              setBusy(true)
+              try { await agentApi.detachSlackBotTarget(bot.id, slackTarget); await reloadMyBots() } catch (err) { setError(slackErrorText(err, 'Could not stop it')) } finally { setBusy(false) }
             }}
-            onKeyDown={e => { if (e.key === 'Enter') void addMyBotChannel(picked.id) }}
-            placeholder="channel ID, e.g. C1234567890"
-            disabled={readOnly || adding}
-            title={readOnly ? READ_ONLY_TITLE : undefined}
-            className="h-8 min-w-0 flex-1 font-mono text-xs"
-          />
-          <Button variant="outline" size="sm" onClick={() => void addMyBotChannel(picked.id)} disabled={readOnly || !newMyBotChannel.trim() || adding} title={readOnly ? READ_ONLY_TITLE : undefined}>
-            {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            Add channel
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
-      )}
-      {myBotError && <p className="text-xs text-red-600 dark:text-red-400">{myBotError}</p>}
-      {picked && routesHere.length > 0 ? (
-        <div className="grid gap-2">
-          {routesHere.map(route => <MyBotChannelChip key={route.channel_id} bots={bots} bot={picked} channelId={route.channel_id} />)}
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">No channels yet.</p>
-      )}
+      ))}
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </FormSection>
   )
 }

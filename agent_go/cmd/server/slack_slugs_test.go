@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -284,5 +285,82 @@ func TestSlackSlugsSettingsRouteIsRegistered(t *testing.T) {
 	var settings SlackTargetSettingsResponse
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &settings) != nil || settings.Slug == "" || !settings.CanManage {
 		t.Fatalf("GET settings = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// One of my bots, as the Slack tab does it (RTS 2026-10-07: QA Bot serving
+// several targets): a channel is checked with Slack before it is saved, the
+// bot's own target keeps answering there by slug, and "Answer here without
+// the slug" moves the channel's default.
+func TestSlackSlugsOwnBotChannelPlacement(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	ctx := context.Background()
+	app := w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")
+	refusal := ""
+	previous := slackChannelAddCheck
+	slackChannelAddCheck = func(_ context.Context, _ *services.SlackService, conn services.SlackConnection, email, channel string) (string, error) {
+		if refusal != "" {
+			return "", fmt.Errorf("%w: %s", services.ErrSlackChannelCheck, refusal)
+		}
+		return "qa-team", nil
+	}
+	t.Cleanup(func() { slackChannelAddCheck = previous })
+	put := func(makeDefault bool) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"workspace_path":"Workflow/shared","default":%v}`, makeDefault)
+		req := httptest.NewRequest(http.MethodPut, "/api/human-feedback/slack/connections/"+app.ID+"/channel-routes/C0QATEAM01", strings.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}))
+		req = mux.SetURLVars(req, map[string]string{"id": app.ID, "channel": "C0QATEAM01"})
+		rec := httptest.NewRecorder()
+		putSlackConnectionChannelRouteHandler(w.api)(rec, req)
+		return rec
+	}
+
+	refusal = "@SDE is not in #qa-team. Invite @SDE first: /invite @SDE"
+	if rec := put(false); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "/invite @SDE") {
+		t.Fatalf("an unchecked channel was saved: %d %s", rec.Code, rec.Body.String())
+	}
+	refusal = ""
+	if rec := put(false); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "qa-team") {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
+	}
+	set := w.api.slackChannelTargets(ctx, app.ID, "C0QATEAM01")
+	if len(set.Targets) != 2 || set.Default < 0 || !set.Targets[set.Default].Ref.Same(slugCrew) {
+		t.Fatalf("channel = %+v, want the bot's own crew as default plus the workflow by slug", set)
+	}
+	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "shared what changed?"), "workflow")
+	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "what changed?"), "crew-aaa")
+
+	if rec := put(true); rec.Code != http.StatusOK {
+		t.Fatalf("make default: %d %s", rec.Code, rec.Body.String())
+	}
+	set = w.api.slackChannelTargets(ctx, app.ID, "C0QATEAM01")
+	if len(set.Targets) != 2 || set.Default < 0 || !set.Targets[set.Default].Ref.Same(slugWorkflow) {
+		t.Fatalf("channel = %+v, want the workflow as default and the crew still by slug", set)
+	}
+}
+
+// Without a platform bot (RTS has only own bots) the AgentWorks bot is not
+// offered: settings say so, show it off, and refuse turning it on.
+func TestSlackSlugsNoPlatformBotIsNotOffered(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")
+	w.targetsRegistry(t, services.SlackTargetsRegistry{Targets: []services.SlackTargetSettings{{WorkspacePath: "Workflow/shared", PlatformBot: true}}})
+	router := mux.NewRouter()
+	SlackConnectionRoutes(router, w.api)
+	owner := &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}
+	get := httptest.NewRequest(http.MethodGet, "/api/human-feedback/slack/targets/settings?workspace_path=Workflow/shared", nil)
+	get = get.WithContext(context.WithValue(get.Context(), UserContextKey, owner))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, get)
+	var settings SlackTargetSettingsResponse
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &settings) != nil || settings.PlatformAvailable || settings.PlatformBot {
+		t.Fatalf("settings without a platform bot = %d %s", rec.Code, rec.Body.String())
+	}
+	put := httptest.NewRequest(http.MethodPut, "/api/human-feedback/slack/targets/settings", strings.NewReader(`{"workspace_path":"Workflow/shared","platform_bot":true}`))
+	put = put.WithContext(context.WithValue(put.Context(), UserContextKey, owner))
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, put)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("turning on a platform bot that does not exist = %d %s", rec.Code, rec.Body.String())
 	}
 }

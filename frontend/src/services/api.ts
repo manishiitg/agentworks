@@ -89,6 +89,7 @@ import type {
   SlackUsableBotsResponse,
   SlackTargetSettings,
   SlackPlatformBotSettings,
+  SlackBotChannelsResponse,
   ProjectSlackSelectionResponse,
   SlackTestResponse,
   SlackDryRunResponse,
@@ -1671,6 +1672,19 @@ export const agentApi = {
 
   updateSlackPlatformBotSettings: async (products: string[]): Promise<SlackPlatformBotSettings> => {
     const apiResponse = await api.put('/api/human-feedback/slack/targets/platform', { products })
+    return apiResponse.data
+  },
+
+  // The channels a bot is in, by name, and whether this target answers there.
+  listSlackBotChannels: async (id: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackBotChannelsResponse> => {
+    const apiResponse = await api.get(`/api/human-feedback/slack/connections/${id}/channels`, { params: destination, timeout: 20000 })
+    return apiResponse.data
+  },
+
+  // Make this target answer in a channel on a bot (checked with Slack first),
+  // and say whether it answers there without the slug.
+  placeSlackBotChannel: async (id: string, channelId: string, destination: { workspace_path: string; profile_id?: string }, makeDefault: boolean): Promise<SlackUsableBot> => {
+    const apiResponse = await api.put(`/api/human-feedback/slack/connections/${id}/channel-routes/${encodeURIComponent(channelId)}`, { ...destination, default: makeDefault })
     return apiResponse.data
   },
 

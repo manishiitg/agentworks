@@ -73,6 +73,10 @@ a slug (the target's name, lowercase `[a-z0-9-]`, editable) picks one.
   targets they can reach with their own access (`slackCanReach`: workflow access, a Crew's owner or shared-with, a
   Code's owner only), remembered for the DM; `list` lists them. An own bot's DM targets are its own, its channel
   targets and `targets` (DM attachments, Codes included).
+- **Slack tab**: which bot answers, how people reach the target (`@Bot <slug> …`), and channels picked by name from
+  the bot's own channel list (`GET /connections/{id}/channels`); `PUT …/channel-routes/{channel}` with `default`
+  checks the channel with Slack (exists, bot and adder are members) and sets "Answer here without the slug". The
+  platform bot is offered only when the server has one.
 - **Triggers** run on an own bot's channel route too (`channel_routes[<id>].trigger`, for the channel's default
   target; set with the route tools' `own_bot: true` or `PUT /connections/{id}/channel-routes/{channel}` with
   `trigger`): the event's arrival app picks the route (`slackTriggerRoute`). Files attached to a top-level channel

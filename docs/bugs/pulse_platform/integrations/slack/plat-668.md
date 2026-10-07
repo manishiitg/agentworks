@@ -60,6 +60,16 @@ possibly in a single channel.
 - Phase 4 (side fixes): files on a top-level channel mention are read from the raw event and downloaded; Slack
   triggers run on own-bot channel routes (route tools' `own_bot: true`).
 
+- Follow-up (owner on RTS, 2026-10-07: "use agentworks bot is confusing", "ui is not clear"): the platform bot is
+  offered only when the server has one (an enabled, configured, unscoped default connection); otherwise the settings
+  API reports it unavailable and off and refuses turning it on. The Slack tab is three blocks: which bot answers
+  ("QA Bot · Ready", Change), how people reach this target (copyable `@QA Bot <slug> your question` and the DM line,
+  slug editable inline), and channels picked by name from the ones the bot is in (`GET
+  /connections/{id}/channels`, `users.conversations` server-side) with one switch each, "Answer here without the
+  slug". Every add (picked or pasted ID) is checked with Slack first: the channel exists, the bot is in it ("Invite @QA
+  Bot first: /invite @QA Bot"), and the person adding it is too. A target added to a channel the bot already answers
+  in keeps the bot's own target there by slug. Tokens, tests, Home tab and admin routes moved under Advanced.
+
 ## Left
 
 - Live check on RTS after a deploy (nothing is deployed): the workflows' bot plus 3 Crews in one channel, and a Code
