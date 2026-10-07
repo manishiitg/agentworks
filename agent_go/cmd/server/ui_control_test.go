@@ -278,9 +278,17 @@ func TestUIControlDisconnectedAndAmbiguousClients(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = b.bind("session-a")
-	_, _ = b.bind("session-a")
+	second, _ := b.bind("session-a")
 	if _, _, err := b.submit("session-a", "flow", "open", "", "", nil); err == nil || err.Error() != "ambiguous_client" {
 		t.Fatal(err)
+	}
+	// The chat open in several tabs (PLAT-664): the visible one is the one in use.
+	if _, err := b.syncClient("session-a", second.id, second.token, uiSnapshot{View: "flow", Visible: true}); err != nil {
+		t.Fatal(err)
+	}
+	a, _, err := b.submit("session-a", "flow", "open", "", "", nil)
+	if err != nil || a.binding != second.id {
+		t.Fatalf("action went to %q, %v; want the visible tab %q", a.binding, err, second.id)
 	}
 }
 func TestUIControlDeduplicationAndReceiptIsolation(t *testing.T) {

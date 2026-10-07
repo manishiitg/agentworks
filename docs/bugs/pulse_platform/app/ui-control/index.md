@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-664](plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | open | P2 |
+| [PLAT-664](plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 |

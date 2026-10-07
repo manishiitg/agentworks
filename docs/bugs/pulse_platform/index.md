@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 15 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 46 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 27 | 10 |
@@ -29,7 +29,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|---|---|
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
-| [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | open | P2 | [app/ui-control](app/ui-control/index.md) |
+| [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
 | [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | open | P1 | [sandbox/cli](sandbox/cli/index.md) |
 | [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |

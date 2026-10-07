@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P2 |
 | Product | app |
 | Area | ui-control |
@@ -23,3 +23,7 @@
 ## Fix
 
 Target the tab the user last sent a message from (or the focused one) instead of refusing when several are attached; refuse only when none can be chosen.
+
+## Done
+
+Each tab's binding records when it last became visible. A UI action goes to the visible tab that became visible last, else to the tab last seen visible; `ambiguous_client` remains only when no tab can be told apart (none ever visible, or an exact tie). Test: `TestUIControlDisconnectedAndAmbiguousClients`.

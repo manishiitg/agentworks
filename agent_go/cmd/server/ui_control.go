@@ -65,6 +65,8 @@ type uiBinding struct {
 	id, token, session string
 	seen               time.Time
 	state              uiSnapshot
+	// becameVisible and lastVisible pick the tab in use when one chat is open in several (PLAT-664).
+	becameVisible, lastVisible time.Time
 }
 type uiControlBroker struct {
 	mu       sync.Mutex
@@ -262,20 +264,50 @@ func (b *uiControlBroker) snapshot(session string) (uiSnapshot, error) {
 	}
 	return c.state, nil
 }
+// onlyClient is the browser tab that receives a UI action for this chat. With
+// the chat open in several tabs it is the one in use: the visible tab that
+// became visible last, else the one last seen visible. Refusing whenever a
+// second tab existed left the agent unable to open any view (Confida
+// 2026-10-06, PLAT-664); it still refuses when no tab can be told apart.
 func (b *uiControlBroker) onlyClient(session string) (*uiBinding, error) {
-	var found *uiBinding
+	var candidates []*uiBinding
 	for _, c := range b.bindings {
 		if c.session == session {
-			if found != nil {
-				return nil, fmt.Errorf("ambiguous_client")
-			}
-			found = c
+			candidates = append(candidates, c)
 		}
 	}
-	if found == nil {
+	switch len(candidates) {
+	case 0:
 		return nil, fmt.Errorf("browser_disconnected")
+	case 1:
+		return candidates[0], nil
 	}
-	return found, nil
+	pick := func(at func(*uiBinding) time.Time, eligible func(*uiBinding) bool) *uiBinding {
+		var best *uiBinding
+		tie := false
+		for _, c := range candidates {
+			if !eligible(c) || at(c).IsZero() {
+				continue
+			}
+			switch {
+			case best == nil || at(c).After(at(best)):
+				best, tie = c, false
+			case at(c).Equal(at(best)):
+				tie = true
+			}
+		}
+		if tie {
+			return nil
+		}
+		return best
+	}
+	if c := pick(func(c *uiBinding) time.Time { return c.becameVisible }, func(c *uiBinding) bool { return c.state.Visible }); c != nil {
+		return c, nil
+	}
+	if c := pick(func(c *uiBinding) time.Time { return c.lastVisible }, func(*uiBinding) bool { return true }); c != nil {
+		return c, nil
+	}
+	return nil, fmt.Errorf("ambiguous_client")
 }
 func (b *uiControlBroker) submit(session, view, action, target, key string, revision *int64) (uiAction, bool, error) {
 	return b.submitForContract(session, uiControlContract, view, action, target, key, revision)
@@ -340,6 +372,12 @@ func (b *uiControlBroker) syncClient(session, id, token string, state uiSnapshot
 	}
 	c.seen = b.now()
 	state.ObservedAt = c.seen
+	if state.Visible {
+		if !c.state.Visible || c.becameVisible.IsZero() {
+			c.becameVisible = c.seen
+		}
+		c.lastVisible = c.seen
+	}
 	c.state = state
 	result := []uiAction{}
 	for _, a := range b.actions {
