@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 6 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
-| [Dominion](dominion/index.md) | 1 | 0 |
+| [Dominion](dominion/index.md) | 2 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-646](dominion/deployment/plat-646.md) | Reconcile Dominion product allowlist and enable its Vault service | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-645](code/shell/plat-645.md) | Backgrounded shell commands still block the chat's next commands | open | P2 | [code/shell](code/shell/index.md) |
 | [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-608](app/tools/plat-608.md) | product.yaml is the only tool registry; Brain tools renamed to brain_* | in progress | P1 | [app/tools](app/tools/index.md) |
 | [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-606](code/sandbox/plat-606.md) | Code CLI shell made read-only by turn admission | fixed on main | P1 | [code/sandbox](code/sandbox/index.md) |

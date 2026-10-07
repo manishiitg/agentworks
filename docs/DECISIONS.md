@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Dominion enables every requested product and its own Vault
+
+Persist Dominion's full product list through the managed .env settings, including
+Goals, Crew, Code, Relays, Vault and Brain. The owner explicitly enabled all of
+these products; the earlier admin-only Relay testing setup (PLAT-642) is superseded.
+Use the shared Vault installer/lifecycle, private state outside workspace documents,
+loopback port 21003 and the existing authenticated agent proxy. Future deployments
+must retain Vault and replace the stale native product allowlist.
+[PLAT-646](bugs/pulse_platform/dominion/deployment/plat-646.md).
+
 ### 2026-10-07 — Test Relays on Dominion as an admin product
 
 Enable Relays alongside Crew for administrators at trader.tectonicmarkets.com.

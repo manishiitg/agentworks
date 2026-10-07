@@ -19,10 +19,29 @@ up front. Don't repeat that.
 | SSH port | `2299` |
 | Runtime account | `dominion` |
 | Application root | `/srv/dominion` |
-| Product allowlist | `AGENT_PRODUCTS=dominion,work,relays`; `AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work,relays` |
+| Product allowlist | `AGENT_PRODUCTS=dominion,agentworks,work,code,relays,mcp-gateway,knowledgebase`; account product grants apply |
 
 The host already runs unrelated applications. Dominion must never change their
 containers, bound ports, systemd units, Caddy sites, or firewall rules.
+
+## Current shared deployment and Vault
+
+Since 2026-10-07, `./deploy.sh dominion` uses the shared build/deployer and
+`deploy/rootless-linux/products/dominion/`. The former native script remains only
+as `dominion-legacy`; sections below retain its historical setup details.
+
+[PLAT-646](../../docs/bugs/pulse_platform/dominion/deployment/plat-646.md) completed
+the one-time Vault setup and corrected the stale product allowlist in .env.
+Dominion now installs every requested product: Dominion, Goals, Crew, Code,
+Relays, Vault and Brain. The managed product profile replaces AGENT_PRODUCTS on
+future releases; per-account product and folder grants still apply.
+
+Vault is the separate `dominion-vault` user service, privately bound to
+127.0.0.1:21003. The agent uses its service token and exposes the existing
+authenticated proxy. Persistent credentials/audit data are under
+`/srv/dominion/state/vault` (0700, token 0600), outside workspace documents.
+VAULT_ENABLED=true invokes the shared installer, bootstrap and health checks on
+every subsequent shared deployment. Application services run as dominion.
 
 ## Account and filesystem isolation
 

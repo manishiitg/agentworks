@@ -74,6 +74,14 @@ Owner handed Dominion to this session ("you can take over"). Dominion was on 1b1
 
 ## Dominion on the shared deploy path (2026-10-07)
 
-Owner: "everything same as excellence/confida", "all should be at par now". Dominion now deploys like Confida: `./deploy.sh dominion` uses the one shared build and `deploy/rootless-linux/products/dominion/` (ports 21000/21001/21080, trader.tectonicmarkets.com, every product surface, CDP off, shared Crew root, Landlock and full CLI from the standard settings). The former own deploy stays as `./deploy.sh dominion-legacy`. Slots come in a second step: provision `dm01..dm05` (opt-in, as on Confida), then add the slot settings and redeploy. Vault is not set up for Dominion yet (host setup as root).
+Owner: "everything same as excellence/confida", "all should be at par now". Dominion now deploys like Confida: `./deploy.sh dominion` uses the one shared build and `deploy/rootless-linux/products/dominion/` (ports 21000/21001/21080, trader.tectonicmarkets.com, every product surface, CDP off, shared Crew root, Landlock and full CLI from the standard settings). The former own deploy stays as `./deploy.sh dominion-legacy`. Slots come in a second step: provision `dm01..dm05` (opt-in, as on Confida), then add the slot settings and redeploy. Vault was initially deferred; its one-time host setup and persistent enablement are now complete in PLAT-646.
 - First shared-path deploy of Dominion (1a280eb0): the agent copied its old state root (1.4 GB, 35k files, mostly cli-runtimes) into `/srv/dominion/state` on first start, which took longer than the deploy's 2-minute health wait; Dominion was down about 6 minutes and the deploy reported failure. `/srv/dominion/.env` needed a `PUBLIC_URL=` line (added). `AGENT_PRODUCTS` in `.env` still limits Dominion to dominion,work,relays (left to the owner).
 - Slots provisioned: dm01..dm05, group dmshared on the shared folders; manish.excel2011 -> dm01, john -> dm02. Slot settings (opt-in) now in products/dominion.
+
+
+## 2026-10-07: Dominion Vault and persisted products (PLAT-646)
+
+The owner requested the one-time setup. Dominion now enables the shared Vault
+lifecycle and manages its full product allowlist in .env, replacing the stale
+native deployment value that took precedence over the new profile.
+[PLAT-646](../../dominion/deployment/plat-646.md) tracks setup and live verification.
