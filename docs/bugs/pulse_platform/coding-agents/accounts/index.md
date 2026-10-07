@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-706](plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 |
 | [PLAT-688](plat-688.md) | Muse Check usage fails for non-managers | fixed on main | P2 |
 | [PLAT-682](plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 |
 | [PLAT-666](plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 |

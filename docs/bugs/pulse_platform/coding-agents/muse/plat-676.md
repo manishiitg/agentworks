@@ -38,5 +38,5 @@ A runtime change found while the chat's turn is running no longer closes anythin
 
 ## Left
 
-- The account default still flips a chat's binding from "none" to the server account on its second message, which restarts the CLI once between turns. That now costs only a relaunch, but for a person with their own Muse account the second turn moves to the server account. It needs an owner decision on which account a new chat binds.
+- ~~The account default still flips a chat's binding from "none" to the server account on its second message.~~ Decided and fixed in [PLAT-706](../accounts/plat-706.md) (owner 2026-10-07: a chat's account never changes by itself; it is resolved once and recorded).
 - Muse still printed `local session messaging unavailable: registry_io ... Permission denied` in this session despite the private XDG_RUNTIME_DIR (PLAT-417). By the code, the confined interactive launch puts XDG_RUNTIME_DIR into the launch script (`museAccountLaunch` → `museRuntimeEnv`). The warning only shows in the Muse pane, never in agent.log, so it was not rechecked live; look at a slot Muse pane after the next deploy.

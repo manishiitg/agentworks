@@ -596,7 +596,7 @@ func (store productConversationRegistryStore) bindRuntimeConfiguration(
 	conversationKey string,
 	provider, modelID, reasoningEffort string,
 	enabledServers, selectedSkills, workflowContextPaths []string,
-	connectionIDs ...string,
+	account ...productConversationAccount,
 ) (boundProvider string, restartNeeded bool, err error) {
 	provider = strings.TrimSpace(provider)
 	modelID = strings.TrimSpace(modelID)
@@ -634,11 +634,13 @@ func (store productConversationRegistryStore) bindRuntimeConfiguration(
 			!sameRuntimeSelection(record.EnabledServers, enabledServers) ||
 			!sameRuntimeSelection(record.SelectedSkills, selectedSkills)
 	}
-	if len(connectionIDs) > 0 {
-		if record.ConnectionID != connectionIDs[0] {
+	if len(account) > 0 {
+		next := strings.TrimSpace(account[0].ConnectionID)
+		// Recording the account a chat with none recorded already ran on needs no relaunch.
+		if record.ConnectionID != next && !(strings.TrimSpace(record.ConnectionID) == "" && account[0].FillsUnrecorded) {
 			restartNeeded = true
 		}
-		record.ConnectionID = connectionIDs[0]
+		record.ConnectionID = next
 	}
 	record.Provider = provider
 	if modelID != "" {
@@ -657,6 +659,14 @@ func (store productConversationRegistryStore) bindRuntimeConfiguration(
 		return "", false, writeErr
 	}
 	return provider, restartNeeded, nil
+}
+
+// productConversationAccount is the account a turn binds its chat to. FillsUnrecorded: the chat
+// had none recorded and this is the default its turns already resolved to, so recording it is not
+// a runtime change.
+type productConversationAccount struct {
+	ConnectionID    string
+	FillsUnrecorded bool
 }
 
 func canonicalRuntimeSelection(values []string) []string {

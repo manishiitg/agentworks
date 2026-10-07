@@ -248,6 +248,9 @@ export interface AgentProfileConversationResponse {
   conversation_id: string
   conversation_key: string
   session_id: string
+  /** The coding agent and account the chat is bound to (absent: none recorded yet). */
+  provider?: string
+  connection_id?: string
 }
 
 // Crew Run mode: every crew has a single owner and is read-only for

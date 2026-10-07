@@ -7597,7 +7597,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			currentUserID,
 			req.AgentMode,
 			withCostModel(finalProvider, finalModelID),
-			costobserver.WithAccount(costobserver.AccountIDFor(finalProvider, func() string { _, id := queryTurnConnection(req); return id }())),
+			// The account the turn runs on, as admission saw it: a follow-up that names none runs on
+			// the session's last account (queryTurnConnection alone recorded the server account).
+			costobserver.WithAccount(costobserver.AccountIDFor(finalProvider, func() string { _, id := api.queryTurnConnectionForSession(req, sessionID); return id }())),
 			withCostAttribution(
 				costScope,
 				costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder),

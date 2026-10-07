@@ -411,6 +411,8 @@ function useWorkChatTab(
           agentProfileBuilder: false,
           agentProfileConversationKey: conversation.conversation_key,
           agentProfileConversationId: conversation.conversation_id,
+          agentProfileChatProvider: conversation.provider,
+          agentProfileChatConnectionID: conversation.connection_id,
           ...(savedRuntime ? {
             agentProfileEngine: savedRuntime.provider,
             agentProfileConnectionID: savedRuntime.connectionId,

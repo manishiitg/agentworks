@@ -173,6 +173,8 @@ export function WorkModelsPanel({
   const savedSelection = workLLMSelectionFromConfig(projectLLMConfig)
   const selectedConnectionId = savedSelection?.connectionId ?? tab?.metadata?.agentProfileConnectionID
   const savedOption = options.find(option => option.provider === savedSelection?.provider)
+  // The account this chat runs on: the project's choice, else the one the chat recorded for this provider,
+  // else the default the server resolves (the person's own signed-in account, newest first; else the server's).
   const runtimeOption = options.find(option => option.provider === activeRuntime?.provider)
   const metadataOption = options.find(option => option.id === tab?.metadata?.agentProfileEngine)
   const selectedOption = savedOption
@@ -180,12 +182,20 @@ export function WorkModelsPanel({
     || runtimeOption
     || options.find(option => option.default)
     || options[0]
+  const recordedConnectionId = tab?.metadata?.agentProfileChatProvider === selectedOption?.provider
+    ? tab?.metadata?.agentProfileChatConnectionID || undefined
+    : undefined
+  const ownDefaultConnectionId = accounts
+    ?.filter(account => account.provider === selectedOption?.provider && (account.relation ?? (account.scope === 'global' ? 'server' : 'own')) === 'own'
+      && account.usable !== false && account.configured !== false)
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]?.id
+  const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId
   const llmConfig = useMemo<PresetLLMConfig | undefined>(() => selectedOption?.provider ? {
     schema_version: 2,
     mode: 'provider_profile',
     provider: selectedOption.provider as LLMProvider,
-    connection_id: selectedConnectionId,
-  } : undefined, [selectedOption, selectedConnectionId])
+    connection_id: selectedConnectionId || recordedConnectionId,
+  } : undefined, [selectedOption, selectedConnectionId, recordedConnectionId])
   // The models an account allows (absent = every model): the account the project names, else the server's.
   const allowedModelsFor = useCallback((provider: string | undefined, connectionId: string | undefined) => (
     provider ? accounts?.find(account => account.id === (connectionId || `global:${provider}`))?.allowed_models : undefined
@@ -314,7 +324,7 @@ export function WorkModelsPanel({
             This project is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
           </p>
         )}
-        <SharedTokenUsageNotice className="mb-3" accountProvider={sharedAccountProvider(selectedConnectionId, selectedOption?.provider)} />
+        <SharedTokenUsageNotice className="mb-3" accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />
         <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}

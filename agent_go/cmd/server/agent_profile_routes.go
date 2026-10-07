@@ -51,6 +51,9 @@ type AgentProfileChatRequest struct {
 	WorkflowContextRefs []workflowContextRef `json:"workflow_context_refs,omitempty"`
 	// KnowledgebaseFolderPath is a validated selection hint, never authority.
 	KnowledgebaseFolderPath *string `json:"knowledgebase_folder_path,omitempty"`
+	// interactive is set by the web chat route only: a person is sending this message. Bot and
+	// email turns leave it false, so a chat they start gets the server account, not a personal plan.
+	interactive bool
 }
 
 type AgentProfileConversationRequest struct {
@@ -79,6 +82,10 @@ type AgentProfileConversationResponse struct {
 	ConversationID  string `json:"conversation_id"`
 	ConversationKey string `json:"conversation_key"`
 	SessionID       string `json:"session_id"`
+	// Provider and ConnectionID are the coding agent and account the chat is bound to, so the
+	// Models panel shows the account actually in use. Empty: none recorded yet.
+	Provider     string `json:"provider,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
 }
 
 type resolvedResumeTargetContextKey struct{}
@@ -524,6 +531,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	input.interactive = true
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
@@ -621,6 +629,8 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
+		Provider:        conversation.Provider,
+		ConnectionID:    conversation.ConnectionID,
 	})
 }
 
@@ -966,18 +976,24 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err := constrainProductChatModel(ctx, &query); err != nil {
 		return QueryRequest{}, err
 	}
-	// A conversation that started on the shared account stays there: the query path defaults a
-	// chat with no account to the person's own one, which would move it under a different CLI
-	// login while its saved history stays under the old one. Only new conversations get the default.
-	if strings.TrimSpace(query.ConnectionID) == "" && strings.TrimSpace(conversation.ConnectionID) == "" &&
-		strings.TrimSpace(conversation.Provider) != "" && strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) {
-		query.ConnectionID = "global:" + strings.TrimSpace(query.Provider)
+	// A chat has one account, and only the person's choice in Models changes it (owner, 2026-10-07).
+	// When neither the request nor the chat names one for this provider (a new chat, or the first
+	// turn after a provider switch), it is resolved here once, the same way the turn itself would
+	// resolve it, and recorded on the chat below. Before, the first turn recorded none and ran on
+	// the person's own account, and the second pinned the server account: a restart and a silent
+	// move onto the shared account (PLAT-676).
+	filledAccount := false
+	if strings.TrimSpace(query.ConnectionID) == "" && strings.TrimSpace(query.Provider) != "" {
+		query.ConnectionID = productChatDefaultAccount(ctx, userID, profile, query.Provider, input.interactive)
+		filledAccount = true
 	}
+	// Filling in the account a chat with none recorded already ran on is not a change.
+	fillsUnrecorded := filledAccount && strings.TrimSpace(conversation.ConnectionID) == ""
 	// An account change is always an explicit choice here: an omitted account inherits the bound
-	// one, and the default above never moves an existing chat. The chat stays one conversation with
-	// its history; its CLI restarts on the new account (bindRuntimeConfiguration below), and the old
-	// account's saved native session cannot resume under another login, so it is not resumed.
-	accountChanged := conversation.Provider != "" &&
+	// one. The chat stays one conversation with its history; its CLI restarts on the new account
+	// (bindRuntimeConfiguration below), and the old account's saved native session cannot resume
+	// under another login, so it is not resumed.
+	accountChanged := conversation.Provider != "" && !fillsUnrecorded &&
 		canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) &&
 		strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) &&
 		(strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "")
@@ -996,7 +1012,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		query.resolvedResumeTarget = target
 	}
 	if strings.TrimSpace(query.Provider) != "" {
-		_, restart, err := defaultProductConversationRegistryStore().bindRuntimeConfiguration(ctx, userID, profile, conversation.ConversationKey, query.Provider, query.ModelID, query.ReasoningEffort, query.EnabledServers, query.SelectedSkills, query.WorkflowContextPaths, query.ConnectionID)
+		_, restart, err := defaultProductConversationRegistryStore().bindRuntimeConfiguration(ctx, userID, profile, conversation.ConversationKey, query.Provider, query.ModelID, query.ReasoningEffort, query.EnabledServers, query.SelectedSkills, query.WorkflowContextPaths, productConversationAccount{ConnectionID: query.ConnectionID, FillsUnrecorded: fillsUnrecorded})
 		if err != nil {
 			return QueryRequest{}, err
 		}
@@ -1023,6 +1039,20 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		}
 	}
 	return query, nil
+}
+
+// productChatDefaultAccount is the account a product chat that names none runs on: for a person
+// using the chat, their own signed-in account for the provider (ownDefaultProviderAccountID, owner
+// decision 2026-09-30); otherwise, and for a global-scope profile, the server account. It is the
+// same rule resolveAgentProfileForQuery applied at run time, now applied once and recorded.
+func productChatDefaultAccount(ctx context.Context, userID string, profile agentprofiles.Profile, provider string, interactive bool) string {
+	provider = strings.TrimSpace(provider)
+	if interactive && profile.EffectiveScope() != agentprofiles.ProfileScopeGlobal {
+		if own := ownDefaultProviderAccountID(ctx, userID, provider); own != "" {
+			return own
+		}
+	}
+	return "global:" + provider
 }
 
 // retireProductCodingCLI closes a product chat's coding CLI and its retained Session.Send target, so

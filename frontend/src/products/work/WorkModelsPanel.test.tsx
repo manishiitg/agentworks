@@ -227,3 +227,22 @@ it('restricts Cursor effort to the selected model and drops an incompatible effo
   await act(async () => choice('auto').click())
   expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'auto', reasoningEffort: undefined }))
 })
+
+// Owner 2026-10-07: Models names the account the chat actually runs on. With no project choice that is
+// the account the chat recorded, else the person's own (the server's default), never a guess of shared.
+it('shows the account the chat runs on: recorded, else the own default', async () => {
+  museFixture()
+  const metadata = state.chatTabs.project.metadata as Record<string, unknown>
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+    { id: 'mine', provider: 'muse-cli', display_name: 'Mine', scope: 'user', auth_method: 'cli_login', relation: 'own' },
+  ] as never)
+  const own = await render()
+  expect(own.host.querySelector('[data-testid="account-limits"]')?.textContent).toBe('Your own account · not limited')
+  await act(async () => { root?.unmount() }); document.body.innerHTML = ''
+  Object.assign(metadata, { agentProfileChatProvider: 'muse-cli', agentProfileChatConnectionID: 'global:muse-cli' })
+  const shared = await render()
+  expect(shared.host.querySelector('[data-testid="account-limits"]')?.textContent).toMatch(/^Shared account/)
+  expect(state.configurationProps.llmConfig?.connection_id).toBe('global:muse-cli')
+  delete metadata.agentProfileChatProvider; delete metadata.agentProfileChatConnectionID
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
+})

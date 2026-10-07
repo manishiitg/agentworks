@@ -3608,7 +3608,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 )}
                 {attachmentEl}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
-                <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID, currentOption?.provider)} />
+                <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
+                  || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
                 {/* Status text - removed observer initialization message */}
               </div>
               {/* Show old buttons */}

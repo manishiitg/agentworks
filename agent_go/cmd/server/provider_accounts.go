@@ -896,12 +896,15 @@ func (api *StreamingAPI) queryTurnConnectionForSession(req QueryRequest, session
 }
 
 // finalQueryTurnConnection is the account a /api/query turn will run on
-// after every override handleQuery applies: a workflow chat that does not
-// override its manifest runs on the manifest's model and account (the same
-// rule as handleQuery's workflow-phase block).
+// after every override handleQuery applies: a workflow phase chat that does
+// not override its manifest runs on the manifest's model and account (the
+// same rule as handleQuery's workflow-phase block, which only phase chats
+// take; any other chat runs on the account it names, so admission checks
+// that one, the same one the cost ledger records).
 func (api *StreamingAPI) finalQueryTurnConnection(ctx context.Context, req QueryRequest, sessionID string) (provider, connectionID string) {
 	provider, connectionID = api.queryTurnConnectionForSession(req, sessionID)
-	if isGlobalLLMConfigLocked() || req.LLMConfig == nil || requestLLMConfigOverridesManifest(req) {
+	isPhase := strings.TrimSpace(req.AgentMode) == "workflow_phase" || req.admittedWorkflowPhase
+	if !isPhase || isGlobalLLMConfigLocked() || req.LLMConfig == nil || requestLLMConfigOverridesManifest(req) {
 		return provider, connectionID
 	}
 	workspace := ""

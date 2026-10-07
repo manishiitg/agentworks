@@ -58,25 +58,49 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
   )
 }
 
-/** The Models panel notice; shown only when the selected account (or the overall cap) has a limit. */
+/**
+ * The Models panel line next to the selected account: which kind of account the chat runs on and its
+ * limits (owner, 2026-10-07). "Your own account · not limited", or "Shared account · limits: Day 32% ·
+ * Week 70% (resets …)" with only the limits that exist, "no limit" when none. accountProvider is the
+ * shared account's provider (null: the person's own account; undefined: not known yet, nothing shown).
+ */
 export function SharedTokenUsageNotice({ className = '', accountProvider }: { className?: string; accountProvider?: string | null }) {
   const usage = useSharedTokenUsage()
-  if (!usage || accountProvider === null) return null
-  const shown = shownTokenFigures(usage, accountProvider)
-  if (!shown.daily_limit && !shown.weekly_limit) return null
-  const tone = shown.state === 'over'
+  if (accountProvider === undefined) return null
+  const base = 'rounded-lg border px-3 py-2 text-xs'
+  if (accountProvider === null) {
+    return <p data-testid="account-limits" className={`${base} border-border bg-muted/40 text-muted-foreground ${className}`}>Your own account · not limited</p>
+  }
+  const shown = usage ? shownTokenFigures(usage, accountProvider) : null
+  const pct = (used: number, limit: number) => `${Math.min(999, Math.round((used / limit) * 100))}%`
+  const limits: string[] = []
+  const resets: string[] = []
+  if (shown?.daily_limit) {
+    limits.push(`Day ${pct(shown.daily_used, shown.daily_limit)}`)
+    if (usage?.day_resets_at) resets.push(`day ${resetLabel(usage.day_resets_at, false)}`)
+  }
+  if (shown?.weekly_limit) {
+    limits.push(`Week ${pct(shown.weekly_used, shown.weekly_limit)}`)
+    if (usage?.week_resets_at) resets.push(`week ${resetLabel(usage.week_resets_at, true)}`)
+  }
+  const text = limits.length
+    ? `Shared account · limits: ${limits.join(' · ')}${resets.length ? ` (resets ${resets.join(', ')})` : ''}`
+    : usage ? 'Shared account · no limit' : 'Shared account'
+  const state = limits.length ? shown?.state : 'ok'
+  const tone = state === 'over'
     ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/25 dark:text-red-300'
-    : shown.state === 'warning'
+    : state === 'warning'
       ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
       : 'border-border bg-muted/40 text-muted-foreground'
-  const parts: string[] = []
-  if (shown.daily_limit) parts.push(`${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} today (resets ${resetLabel(usage.day_resets_at, false)})`)
-  if (shown.weekly_limit) parts.push(`${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} this week (resets ${resetLabel(usage.week_resets_at, true)})`)
+  const detail: string[] = []
+  if (shown?.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)}`)
+  if (shown?.weekly_limit) detail.push(`This week: ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)}`)
   return (
-    <div role={shown.state === 'ok' ? undefined : 'status'} className={`rounded-lg border px-3 py-2 text-xs ${tone} ${className}`}>
-      <p><span className="font-medium">Tokens on {shown.scope}:</span> {parts.join(' · ')}.</p>
-      {shown.state === 'over' && <p className="mt-1">New messages on {shown.scope} are paused. Switch to another account here or ask an admin to raise your limit.</p>}
-      {shown.state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}
+    <div data-testid="account-limits" role={state === 'ok' ? undefined : 'status'} title={detail.length ? `Tokens on ${shown?.scope}. ${detail.join('. ')}.` : undefined}
+      className={`${base} ${tone} ${className}`}>
+      <p>{text}</p>
+      {state === 'over' && <p className="mt-1">New messages on {shown?.scope} are paused. Switch to another account here or ask an admin to raise your limit.</p>}
+      {state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}
     </div>
   )
 }

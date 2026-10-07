@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — A chat's account never changes by itself
+
+A Crew/Code chat has one account. When neither the project's Models choice nor
+the chat names one for its provider (a new chat, the first turn after a
+provider switch), it is resolved once (a person's turn: their own signed-in
+account, else the server account; a bot or email turn: the server account),
+recorded on the chat and kept; a recorded account is never replaced by the
+server account. Only an explicit Models choice changes it. This replaces the
+2026-09-30 rule that pinned an existing chat with no account to the server
+account, which moved chats onto the shared account on their second message.
+Models shows the account in use and its limits. Why: owner, 2026-10-07.
+[PLAT-706](bugs/pulse_platform/coding-agents/accounts/plat-706.md).
+
 ### 2026-10-07 — Goal check first: daily goal check and silence alarm
 
 Every workflow with a primary goal metric gets a daily goal check, the Goal Lead's first job: code computes

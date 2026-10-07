@@ -484,6 +484,10 @@ export interface ChatTab {
     // The product user's chosen coding-agent runtime, as one of the profile's
     // declared provider_options ids. Sent as `engine` on every profile query.
     agentProfileConnectionID?: string
+    // The provider and account the server recorded for this chat when it was opened: what the chat runs on
+    // when the project names no account (Models shows it).
+    agentProfileChatProvider?: string
+    agentProfileChatConnectionID?: string
     agentProfileEngine?: string
     // A model within that engine's provider (the composer's switcher). Sent as
     // `model_id` on every profile query; empty keeps the option's own model.

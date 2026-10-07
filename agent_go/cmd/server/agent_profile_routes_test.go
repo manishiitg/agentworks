@@ -461,28 +461,51 @@ func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 	}
 }
 
-// A conversation that started on the shared account stays on it: the query path's "use your own
-// account by default" applies to new conversations only, so a follow-up is pinned to the server
-// account instead of silently moving under another CLI login.
-func TestExistingSharedAccountConversationStaysOnTheServerAccount(t *testing.T) {
-	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
-	first, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, conversation)
-	if err != nil {
-		t.Fatalf("first turn: %v", err)
-	}
-	if first.ConnectionID != "" {
-		t.Fatalf("a new conversation gets the default at run time, not here: %q", first.ConnectionID)
-	}
-	conversation, err = api.resolveAgentProfileConversation(req, profile, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	followUp, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "again", Engine: "muse-cli"}, conversation)
-	if err != nil {
-		t.Fatalf("follow-up: %v", err)
-	}
-	if followUp.ConnectionID != "global:muse-cli" {
-		t.Fatalf("follow-up connection = %q, want the server account", followUp.ConnectionID)
+// Owner 2026-10-07 (PLAT-676): a chat's account never changes by itself. After a provider switch it
+// is resolved once (the person's own account, else the server's), recorded and kept: the second
+// message used to pin the server account and restart the CLI. Only an explicit Models choice moves it.
+func TestProviderSwitchKeepsTheChatsAccount(t *testing.T) {
+	for _, tc := range []struct{ name, own string }{{"own account", "alice-muse"}, {"no own account", ""}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AUTH_SECRET", "account-test-only-secret")
+			t.Setenv("LLM_CONFIG_LOCKED", "")
+			t.Setenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS", "")
+			api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+			want := "global:muse-cli"
+			if tc.own != "" {
+				want = tc.own
+				own := storedProviderConnection{ProviderConnection: ProviderConnection{ID: tc.own, Provider: "muse-cli", OwnerUserID: "alice", Scope: "user", AuthMethod: "cli_login", UpdatedAt: time.Now()}}
+				if err := saveProviderConnections(req.Context(), []storedProviderConnection{own}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			turn := func(input AgentProfileChatRequest) (QueryRequest, ProductConversationRecord) {
+				t.Helper()
+				input.interactive = true
+				query, err := prepareProductConversationTurn(req.Context(), "alice", profile, input, conversation)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Production resolves the binding fresh on every turn.
+				if conversation, err = api.resolveAgentProfileConversation(req, profile, "main"); err != nil {
+					t.Fatal(err)
+				}
+				return query, conversation
+			}
+			turn(AgentProfileChatRequest{Message: "first", Engine: "codex-cli"})
+			switched, bound := turn(AgentProfileChatRequest{Message: "switch", Engine: "muse-cli"})
+			if switched.ConnectionID != want || bound.ConnectionID != want {
+				t.Fatalf("after the switch the turn ran on %q and the chat recorded %q, want %q", switched.ConnectionID, bound.ConnectionID, want)
+			}
+			second, bound := turn(AgentProfileChatRequest{Message: "second", Engine: "muse-cli"})
+			if second.ConnectionID != want || bound.ConnectionID != want || second.DisableLiveInputDelivery {
+				t.Fatalf("second turn ran on %q (recorded %q, restart %v), want %q and no restart", second.ConnectionID, bound.ConnectionID, second.DisableLiveInputDelivery, want)
+			}
+			chosen, bound := turn(AgentProfileChatRequest{Message: "chosen", Engine: "muse-cli", ConnectionID: "account-B"})
+			if chosen.ConnectionID != "account-B" || bound.ConnectionID != "account-B" || !chosen.DisableLiveInputDelivery {
+				t.Fatalf("an explicit choice ran on %q (recorded %q, restart %v), want account-B and a restart", chosen.ConnectionID, bound.ConnectionID, chosen.DisableLiveInputDelivery)
+			}
+		})
 	}
 }
 
