@@ -46,7 +46,7 @@ it('labels a Relay, marks it current, and opens it on the Relay surface', async 
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => { root.render(<QuickSwitcher isOpen onClose={onClose} />) })
   const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('Invoice Relay'))!
-  expect(row.textContent).toContain('Relay · Workflow/invoice-relay')
+  expect(row.textContent).toContain('Relay')
   expect(row.textContent).toContain('current')
   expect(row.textContent).not.toContain('Automation ·')
   await act(async () => { useProductSurfaceStore.setState({ productSurface: 'work' }) })

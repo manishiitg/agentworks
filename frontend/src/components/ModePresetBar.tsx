@@ -890,6 +890,17 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                   </p>
                 </div>
 
+                {/* Panel search (owner 2026-10-07): the right-hand toolbar by keyboard. */}
+                <div className="rounded-lg border border-border bg-muted/30 p-3.5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-semibold">Open a panel</span>
+                    <kbd className="rounded bg-muted px-2 py-1 font-mono text-xs font-semibold">⌘J / Ctrl+J</kbd>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Search this page's right-hand panels (Dashboard, Files, Costs, Integrations…) and open one. Works with the toolbar hidden.
+                  </p>
+                </div>
+
                 {/* Chat: the keys the chat box handles in every product. */}
                 <div>
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2.5">Chat</p>
@@ -912,7 +923,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2.5">Code</p>
                   <div className="space-y-1.5">
                     {[
-                      ['Switch chat tab', '⌥1–5 / Alt+1–5'],
+                      ['Switch chat tab', window.electronAPI ? '⌘1–5 / Ctrl+1–5' : '⌥1–5 / Alt+1–5 (⌘1–5 in the desktop app)'],
                       ['New chat tab', '⌥⇧T / Alt+Shift+T'],
                     ].map(([label, key]) => (
                       <div key={key} className="flex items-center justify-between py-1">

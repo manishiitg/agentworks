@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { WORK_PANELS } from '../productPanels'
 
 describe('Work Dashboard', () => {
   it('reuses the shared dashboard and database views with project-scoped data', () => {
-    const source = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8')
+    const source = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8') + readFileSync('src/products/productPanels.ts', 'utf8')
     const identity = readFileSync('src/products/work/WorkIdentityPanel.tsx', 'utf8')
 
     expect(source).toContain("{ id: 'dashboard', label: 'Dashboard'")
@@ -50,12 +51,8 @@ describe('Work Setup consolidation', () => {
     const integrations = readFileSync('src/products/work/WorkIntegrationsPanel.tsx', 'utf8')
     const gating = readFileSync('src/products/work/workViewGating.ts', 'utf8')
 
-    expect(source).toContain("{ id: 'identity', label: 'Identity'")
-    expect(source).toContain("{ id: 'mcp', label: 'Integrations'")
-    expect(source.indexOf("{ id: 'identity'")).toBeLessThan(source.indexOf("{ id: 'mcp'"))
-    expect(source).not.toContain("{ id: 'bots'")
-    expect(source).not.toContain("{ id: 'models'")
-    expect(source).not.toContain("{ id: 'email'")
+    // Setup is Identity then Integrations; no bots, models or email panels.
+    expect(WORK_PANELS.setup.map(panel => panel.id)).toEqual(['identity', 'mcp'])
     expect(source).toContain("view === 'identity' && <WorkIdentityPanel")
     expect(source).toContain("view === 'mcp' && <WorkIntegrationsPanel")
     expect(source).toContain('isWorkWorkspaceViewEnabled(view, enabledPanels)')

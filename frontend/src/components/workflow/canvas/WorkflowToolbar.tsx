@@ -30,6 +30,7 @@ import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { WorkspaceToolbarFrame } from '../../workspace/WorkspaceToolbarFrame'
+import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarGroup } from '../../workspace/WorkspaceToolbarGroup'
 import { ReportDocumentSwitcher } from '../ReportDocumentSwitcher'
 import { WorkflowActivityButton } from '../../topbar/WorkflowActivityButton'
@@ -181,6 +182,16 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const [notificationState, setNotificationState] = useState<WorkflowNotificationState | 'loading'>('loading')
   // Share is for this workflow's owners (or an admin), multi-user mode only.
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
+  // ⌘/Ctrl+J searches the same panels this toolbar shows (owner, 2026-10-07).
+  const panelSwitcherPanels = useMemo<PanelSwitcherPanel[]>(() => [
+    ...(relayMode ? [] : [{ id: 'report', label: 'Dashboard', group: 'Views' }, { id: 'pulse', label: 'Pulse', group: 'Views' }, { id: 'human-actions', label: 'Human actions', group: 'Views' }]),
+    ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Graph' : view.label, group: 'Views' })),
+    ...operationsWorkspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'workshop' ? 'Triggers' : view.label, group: 'Ops' })),
+    ...(relayMode ? [] : [{ id: 'backup', label: 'Backup', group: 'Ops' }, { id: 'publish', label: 'Publish', group: 'Ops' }, { id: 'notify', label: 'Notifications', group: 'Ops' }]),
+    ...capabilityViewDefinitions.map(view => ({ id: view.id, label: SETUP_TOOLBAR_LABELS[view.id] ?? view.label, group: 'Setup' })),
+    ...(isMultiUser ? [{ id: 'access', label: 'Access', group: 'Setup' }] : []),
+  ], [relayMode, workspaceViewDefinitions, operationsWorkspaceViewDefinitions, capabilityViewDefinitions, isMultiUser])
+  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, id => openWorkspaceView(id as WorkspaceViewId))
   // Lightweight backup-status poll so the toolbar dot reflects health at a glance.
   const refreshBackupState = useCallback(async () => {
     if (!workspacePath) {

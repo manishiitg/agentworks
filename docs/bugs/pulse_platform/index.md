@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 80 | 14 |
 | [Brain](brain/index.md) | 24 | 4 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 25 | 9 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-606](code/sandbox/plat-606.md) | Code CLI shell made read-only by turn admission | fixed on main | P1 | [code/sandbox](code/sandbox/index.md) |
 | [PLAT-605](goals/steps/plat-605.md) | Failed run record has no error or failed step | open | P2 | [goals/steps](goals/steps/index.md) |
-| [PLAT-604](chat/reliability/plat-604.md) | Lost auto-notifications are never reported | open | P2 | [chat/reliability](chat/reliability/index.md) |

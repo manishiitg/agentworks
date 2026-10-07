@@ -20,6 +20,8 @@ import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspaceP
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
+import { WORK_PANELS } from '../productPanels'
+import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import { ReportDocumentSwitcher } from '../../components/workflow/ReportDocumentSwitcher'
@@ -60,28 +62,10 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
 }
 
-const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'plan', label: 'Plan', icon: Route },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'browser', label: 'Browser', icon: Monitor },
-  { id: 'schedules', label: 'Automation', icon: Zap },
-  // Change requests from other users of this Crew; the owner reviews them.
-  { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
-]
-
-const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
-  { id: 'files', label: 'Files', icon: Files },
-  // Code only: a terminal in this workspace, run as your own account and sandboxed to it (see showShell).
-  { id: 'shell', label: 'Terminal', icon: Terminal },
-  { id: 'database', label: 'Database', icon: Database },
-  { id: 'costs', label: 'Costs and usage', icon: DollarSign },
-]
-
-const SETUP_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
-  { id: 'identity', label: 'Identity', icon: Fingerprint },
-  { id: 'mcp', label: 'Integrations', icon: Server },
-]
+// Panel lists live in products/productPanels.ts with every other product's panels.
+const VIEW_BUTTONS = WORK_PANELS.views
+const OPS_BUTTONS = WORK_PANELS.ops
+const SETUP_BUTTONS = WORK_PANELS.setup
 
 // usePendingCrewSuggestions counts suggestions waiting for the owner, for
 // the toolbar badge. Refreshed on view changes and every minute.
@@ -138,6 +122,11 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
+  useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
+    ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Views' })),
+    ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Ops' })),
+    ...visibleSetup.map(item => ({ id: item.id, label: item.label, group: 'Setup' })),
+  ], id => onViewChange(id as WorkWorkspaceView))
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
       {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>

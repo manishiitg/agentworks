@@ -1,7 +1,7 @@
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { BookOpen, BrainCircuit, CalendarClock, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react'
+import { RefreshCw, ShieldCheck } from 'lucide-react'
 import ChatArea, { type ChatAreaRef } from '../../components/ChatArea'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -28,13 +28,15 @@ import { TooltipProvider } from '../../components/ui/tooltip'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { activateTab } from '../../utils/activateTab'
 import { setProductCommands } from '../../commands/registry'
+import { BRAIN_PANELS } from '../productPanels'
+import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { loadWorkProductCommands } from '../work/workData'
 import { toProductCommandDefinitions } from '../work/productCommands'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const SchedulesPage = lazy(() => import('../../components/SchedulesPage'))
 
-const views = [{ id: 'library', label: 'Files', icon: BookOpen }, { id: 'access', label: 'Access', icon: ShieldCheck }, { id: 'models', label: 'Models', icon: BrainCircuit }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }] as const
+const views = BRAIN_PANELS
 const normalizeBrainView = normalizeViewFrom(views.map(view => view.id))
 function readRatio(): number { try { const ratio = Number(localStorage.getItem('knowledgebase:split')); return ratio >= .15 && ratio <= .85 ? ratio : .38 } catch { return .38 } }
 
@@ -79,6 +81,7 @@ export function KnowledgebaseSurface() {
   const [ratio, setRatio] = useState(readRatio)
   const [collapsed, setCollapsed] = useState<'chat' | 'workspace' | null>(null)
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('workspace')
+  useRegisterPanelSwitcher('knowledgebase', views, id => { setView(id as KnowledgebaseView); setMobilePane('workspace'); setCollapsed(current => current === 'workspace' ? null : current) })
   const showProviders = useLLMStore(state => state.showLLMModal)
   const showSchedules = useAppStore(state => state.showSchedulesOverview)
   const adminPage = useAppStore(state => state.adminPage)

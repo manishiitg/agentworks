@@ -40,6 +40,7 @@ declare global {
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher from './components/QuickSwitcher'
+import { PanelSwitcher } from './components/PanelSwitcher'
 
 const queryClient = new QueryClient();
 
@@ -535,6 +536,7 @@ function App() {
   }, [])
 
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
+  const [showPanelSwitcher, setShowPanelSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
 
   
@@ -684,7 +686,15 @@ function App() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
+        setShowPanelSwitcher(false)
         setShowQuickSwitcher(prev => !prev)
+        return
+      }
+      // Cmd/Ctrl+J searches the current product's right-panel views (owner 2026-10-07).
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.code === 'KeyJ') {
+        event.preventDefault()
+        setShowQuickSwitcher(false)
+        setShowPanelSwitcher(prev => !prev)
         return
       }
     }
@@ -753,6 +763,7 @@ function App() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
+        {showPanelSwitcher && <PanelSwitcher onClose={() => setShowPanelSwitcher(false)} />}
         {productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'dominion' ? (

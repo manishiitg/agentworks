@@ -1,20 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { BrainCircuit, KeyRound, Plus, Server, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
+import { VAULT_PANELS } from '../productPanels'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { SettingsCardLayout } from '../../components/ui/SettingsCard'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayFeedbackBoundary } from './gatewayConsoleShared'
 
-export const gatewayPanels = [
-  { id: 'access', label: 'Access', icon: ShieldCheck },
-  { id: 'servers', label: 'Connected MCPs', icon: Server },
-  { id: 'available-mcps', label: 'Available MCPs', icon: Plus },
-  { id: 'secrets', label: 'Secrets', icon: KeyRound },
-  { id: 'people', label: 'People', icon: UsersRound },
-  { id: 'models', label: 'Models', icon: BrainCircuit },
-] as const
+// The list lives in products/productPanels.ts with every other product's panels.
+export const gatewayPanels = VAULT_PANELS
 export type GatewayPanel = (typeof gatewayPanels)[number]['id']
 
 export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSettings, revision, hideHeader = true }: {

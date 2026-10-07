@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { WORK_PANELS } from '../productPanels'
 
 describe('WorkWorkspaceToolbar', () => {
   it('keeps primary views visible and groups Files, Database and Costs under Ops', () => {
@@ -15,19 +16,11 @@ describe('WorkWorkspaceToolbar', () => {
 
     expect(source).not.toContain("current === 'setup' ? null : 'setup'")
     expect(source).toContain("visibleViews.filter(item => item.id !== 'dashboard').map")
-    expect(source.indexOf("const OPS_BUTTONS")).toBeLessThan(source.indexOf("id: 'files', label: 'Files'"))
-    expect(source.indexOf("const OPS_BUTTONS")).toBeLessThan(source.indexOf("id: 'database', label: 'Database'"))
-    expect(source.indexOf("const OPS_BUTTONS")).toBeLessThan(source.indexOf("id: 'costs', label: 'Costs and usage'"))
-    expect(source.indexOf("id: 'costs', label: 'Costs and usage'")).toBeLessThan(source.indexOf('const SETUP_BUTTONS'))
-    expect(source).not.toContain("id: 'history'")
-    expect(source).toContain("id: 'schedules', label: 'Automation'")
-    expect(source).toContain("id: 'memory', label: 'Memory'")
-    expect(source).toContain("id: 'plan', label: 'Plan'")
-    expect(source).toContain("id: 'identity', label: 'Identity'")
-    expect(source).toContain("id: 'mcp', label: 'Integrations'")
+    // The panel lists live in the shared registry (productPanels.ts).
+    expect(WORK_PANELS.ops.map(panel => panel.id)).toEqual(['files', 'shell', 'database', 'costs'])
+    expect(WORK_PANELS.views.map(panel => panel.label)).toEqual(['Dashboard', 'Plan', 'Memory', 'Browser', 'Automation', 'Suggestions'])
+    expect(WORK_PANELS.setup.map(panel => panel.label)).toEqual(['Identity', 'Integrations'])
     expect(source).toContain("'Setup: identity and integrations'")
-    // A Code adds a terminal to Ops (owner only; see showShell).
-    expect(source).toContain("id: 'shell', label: 'Terminal'")
     // The toolbar only shows it when told to: forgetting this prop hid the Terminal button (2026-10-03).
     const surface = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
     expect(surface).toMatch(/<WorkWorkspaceToolbar[^>]*showShell=\{showShell\}/)

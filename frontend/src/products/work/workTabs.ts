@@ -60,16 +60,26 @@ export function workTabToKeepActive(
 export type WorkChatTabShortcut = { kind: 'tab'; index: number } | { kind: 'new' }
 
 /**
- * Code chat tabs use the terminal's keys (PLAT-571, owner 2026-10-06):
- * Alt+1..Alt+5 pick a chat (1 = the primary), Alt+Shift+T opens a new one.
+ * Code chat tabs (PLAT-571): Cmd/Ctrl+1..5 pick a chat (1 = the primary), the
+ * same modifier as Cmd/Ctrl+K (owner 2026-10-07). In a browser tab, Chrome
+ * keeps Cmd/Ctrl+1..8 for its own tabs, so Alt+1..5 stays as the fallback.
+ * Alt+Shift+T opens a new chat (Cmd/Ctrl+Shift+T reopens a browser tab).
  * The physical key is read, because Option changes the character on a Mac.
  */
 export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'code' | 'key'>): WorkChatTabShortcut | null {
-  if (!event.altKey || event.ctrlKey || event.metaKey) return null
   const code = event.code || ''
-  if (event.shiftKey) return code === 'KeyT' || event.key.toLowerCase() === 't' ? { kind: 'new' } : null
   const digit = /^Digit([1-5])$/.exec(code)?.[1] ?? (/^[1-5]$/.test(event.key) ? event.key : undefined)
+  const command = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+  if (command) return digit ? { kind: 'tab', index: Number(digit) - 1 } : null
+  if (!event.altKey || event.ctrlKey || event.metaKey) return null
+  if (event.shiftKey) return code === 'KeyT' || event.key.toLowerCase() === 't' ? { kind: 'new' } : null
   return digit ? { kind: 'tab', index: Number(digit) - 1 } : null
+}
+
+/** The chat-switch keys that work here: the browser keeps Cmd/Ctrl+1..5. */
+export function chatTabSwitchKeys(): { mac: string; other: string } {
+  const desktop = typeof window !== 'undefined' && Boolean(window.electronAPI)
+  return desktop ? { mac: '⌘1–5', other: 'Ctrl+1–5' } : { mac: '⌥1–5', other: 'Alt+1–5' }
 }
 
 /** Find the local projection of the server-owned conversation for this project. */

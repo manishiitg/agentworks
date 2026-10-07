@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-644](plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 |
 | [PLAT-621](plat-621.md) | Shortcut hint on new chats | fixed on main | P3 |
 | [PLAT-617](plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 |
 | [PLAT-607](plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 |

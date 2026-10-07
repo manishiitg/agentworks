@@ -37,6 +37,8 @@ interface WorkflowItem {
   id: string
   label: string
   subtitle: string
+  /** Details kept out of the row but still matched by search. */
+  searchText?: string
   isActive: boolean
   lastAccessedAt: number
   preset: CustomPreset | PredefinedPreset
@@ -49,6 +51,8 @@ interface ChatTabItem {
   id: string
   label: string
   subtitle: string
+  /** Details kept out of the row but still matched by search. */
+  searchText?: string
   isActive: boolean
   lastAccessedAt: number
   tabId: string
@@ -61,6 +65,8 @@ interface ActiveWorkItem {
   id: string
   label: string
   subtitle: string
+  /** Details kept out of the row but still matched by search. */
+  searchText?: string
   isActive: boolean
   lastAccessedAt: number
   session: ActiveSessionInfo
@@ -77,6 +83,8 @@ interface CrewChatItem {
   id: string
   label: string
   subtitle: string
+  /** Details kept out of the row but still matched by search. */
+  searchText?: string
   isActive: boolean
   lastAccessedAt: number
   /** Open chat tab for this Crew; absent for a Crew listed from the directory. */
@@ -133,7 +141,6 @@ const activeSessionStatusLabel = (session: ActiveSessionInfo): string => {
   return sessionRuntimeStatus(session)
 }
 
-const sessionShortId = (sessionId: string): string => sessionId.slice(0, 8)
 
 const normalizeWorkspacePath = (path?: string): string => (path || '').replace(/\/+$/, '')
 
@@ -178,13 +185,16 @@ const itemHasRunningWork = (item: QuickSwitcherItem): boolean => {
   return item.type !== 'active' && item.hasLocalActivity
 }
 
+// The row shows only the state (and a bot origin); the rest is debugging detail
+// that stays searchable through activeSessionSearchText (owner, 2026-10-07).
 const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
   if (!session) return ''
   const source = workflowSessionBotPlatform(session)
-  const sourcePart = source ? ` · ${source}` : ''
-  const current = session.current_execution_name ? ` · ${session.current_execution_name}` : ''
-  return ` · active: ${activeSessionStatusLabel(session)}${sourcePart}${current} · ${sessionShortId(session.session_id)}`
+  return ` · ${activeSessionStatusLabel(session)}${source ? ` · ${source}` : ''}`
 }
+
+const activeSessionSearchText = (session?: ActiveSessionInfo): string =>
+  session ? `${session.current_execution_name || ''} ${session.session_id}` : ''
 
 function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
   const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : item.scope === 'code' ? 'code' : undefined)
@@ -313,6 +323,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           id: `chat:${tab.tabId}`,
           label: tab.name,
           subtitle: `Chat · ${streamingLabel}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          searchText: activeSessionSearchText(activeSession),
           isActive: productSurface === 'agentworks' && isChatMode && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
           tabId: tab.tabId,
@@ -333,6 +344,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           id: `crew:${tab.tabId}`,
           label: project,
           subtitle: `Crew · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          searchText: activeSessionSearchText(activeSession),
           isActive: productSurface === 'work' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
           tabId: tab.tabId,
@@ -352,6 +364,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           label: tab.metadata?.agentProfileProjectTitle || tab.name || 'Code',
           // A side chat (PLAT-571) is named after itself so two chats of one project differ.
           subtitle: `Code${isWorkSideChatTab(tab) ? ` · ${tab.name}` : ''}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          searchText: activeSessionSearchText(activeSession),
           isActive: productSurface === 'code' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
           tabId: tab.tabId,
@@ -407,7 +420,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'workflow' as const,
           id: `workflow:${preset.id}`,
           label: preset.label,
-          subtitle: `${preset.workflowKind === 'relay' ? 'Relay' : 'Automation'} · ${preset.selectedFolder!.filepath}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          subtitle: `${preset.workflowKind === 'relay' ? 'Relay' : 'Automation'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          searchText: `${preset.selectedFolder!.filepath} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === workflowSurfaceForPreset(preset.id) && isWorkflowMode && preset.id === activePresetId,
           lastAccessedAt: recentPresetAccessedAt[preset.id] || (() => {
             const recentIndex = recentPresetOrder.indexOf(preset.id)
@@ -436,7 +450,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'active' as const,
           id: `active:${session.session_id}`,
           label: titleWithoutOrigin(activeSessionLabel(session), origin),
-          subtitle: `${code ? 'Active Code work' : crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current} · ${sessionShortId(session.session_id)}`,
+          subtitle: `${code ? 'Active Code work' : crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
+          searchText: session.session_id,
           activeScopeOnly: coveredByTab || coveredByAutomation,
           isActive: !!tab && tab.tabId === activeTabId && productSurface === (code ? 'code' : crew ? 'work' : 'agentworks'),
           lastAccessedAt: tab?.lastAccessedAt || tab?.createdAt || Date.parse(session.last_activity || session.created_at || '') || 0,
@@ -503,7 +518,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
     const filtered = scoped.filter(item =>
       item.label.toLowerCase().includes(q) ||
-      item.subtitle.toLowerCase().includes(q)
+      item.subtitle.toLowerCase().includes(q) ||
+      ('searchText' in item && !!item.searchText?.toLowerCase().includes(q))
     )
 
     filtered.sort((a, b) => {

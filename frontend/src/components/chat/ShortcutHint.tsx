@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Keyboard } from 'lucide-react'
+import { chatTabSwitchKeys } from '../../products/work/workTabs'
 
 function Key({ children }: { children: ReactNode }) {
   return <kbd className="rounded border border-border bg-background px-1 py-px font-mono text-[10px] text-foreground/80">{children}</kbd>
@@ -15,6 +16,8 @@ export function ShortcutHint({ extra }: { extra?: ReactNode }) {
     <Keyboard className="h-3.5 w-3.5 shrink-0" aria-hidden />
     <span><Key>⌘K</Key> / <Key>Ctrl+K</Key> jump to any product, project or chat</span>
     <span aria-hidden>·</span>
+    <span><Key>⌘J</Key> / <Key>Ctrl+J</Key> open a panel</span>
+    <span aria-hidden>·</span>
     <span><Key>Esc</Key> stop a running chat</span>
     <span aria-hidden>·</span>
     <span><Key>Shift+Enter</Key> new line</span>
@@ -24,9 +27,10 @@ export function ShortcutHint({ extra }: { extra?: ReactNode }) {
 
 /** Code's chat tabs (PLAT-571): Mac and Windows/Linux keys side by side. */
 export function NewTabHint() {
+  const keys = chatTabSwitchKeys()
   return <>
     <span><Key>⌥⇧T</Key> / <Key>Alt+Shift+T</Key> new chat tab</span>
     <span aria-hidden>·</span>
-    <span><Key>⌥1–5</Key> / <Key>Alt+1–5</Key> switch chats</span>
+    <span><Key>{keys.mac}</Key> / <Key>{keys.other}</Key> switch chats</span>
   </>
 }

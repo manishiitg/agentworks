@@ -10,6 +10,7 @@ import { ProductChatLandingCard } from '../../components/chat/ProductChatLanding
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
+import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -103,6 +104,7 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     return chatBusy ? undefined : events?.at(-1)?.id
   })
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'access', normalizeVaultPanel)
+  useRegisterPanelSwitcher('mcp-gateway', gatewayPanels.map(({ id, label }) => ({ id, label })), id => setPanel(id as GatewayPanel))
   useEffect(() => {
     try {
       const requested = normalizeVaultPanel(sessionStorage.getItem('vault.requested-panel'))
