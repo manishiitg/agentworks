@@ -47,6 +47,7 @@ const scopeNames: Record<string, string> = {
   pulse: 'Pulse',
   builder: 'Builder',
   chat: 'Conversations',
+  schedule: 'Schedules',
   tool: 'Tools',
 }
 

@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Product schedule turns are cost scope `schedule`
+
+Turns started by a Code/Crew (any product) schedule, reminder or trigger, and
+their sub-agents, are recorded under scope `schedule` with the schedule's job
+id, name and run, not `chat`. A project's Cost Analysis splits Chat vs
+Schedules and lists each schedule. Goals workflow schedules and Pulse keep
+their scopes; token limits are unchanged. Old rows are not backfilled. Why: a
+30-minute heartbeat schedule showed as its owner's chatting (owner,
+2026-10-07). [PLAT-702](bugs/pulse_platform/code/costs/plat-702.md).
+
 ### 2026-10-07 — Slack channel bot turns count toward the target owner's token limits
 
 A Slack channel turn runs as a bot identity with no user record, so its

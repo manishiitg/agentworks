@@ -57,7 +57,7 @@ describe('buildCostActivityBreakdown', () => {
     }
 
     const result = buildCostActivityBreakdown(summary, timing)
-    expect(result.map(category => category.id)).toEqual(['builder', 'pulse', 'workflow', 'evaluation'])
+    expect(result.map(category => category.id)).toEqual(['builder', 'pulse', 'workflow', 'evaluation', 'schedule'])
     expect(result[0].total.total_cost_usd).toBe(3)
     expect(result[0].executions.map(execution => execution.id)).toEqual(['interactive workflow chat', 'workflow builder'])
     expect(result[1].executions[0].label).toBe('pulse review and fix')

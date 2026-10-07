@@ -61,6 +61,14 @@ type Entry struct {
 	// as a bot identity (UserID, kept for audit) and counts toward the owner
 	// of the workflow, Crew or Code it answers for. Empty means UserID.
 	BillingUserID string `json:"billing_user_id,omitempty"`
+	// SourceID names the product schedule, reminder or trigger that started
+	// this turn (its scheduler job id), SourceLabel its display name and
+	// SourceRunID the one automation run, so a project's Cost Analysis can
+	// list spend per schedule (PLAT-702). Empty for a person's own turn and
+	// for every entry written before this shipped.
+	SourceID    string `json:"source_id,omitempty"`
+	SourceLabel string `json:"source_label,omitempty"`
+	SourceRunID string `json:"source_run_id,omitempty"`
 	// EffectiveModelID is the model the CLI/provider ACTUALLY served
 	// the turn with — may drift from ModelID when the user picked an
 	// alias like "auto" or "cursor-cli", or when a /model swap happened
@@ -311,6 +319,8 @@ type Summary struct {
 	ByModel          map[string]*Aggregate             `json:"by_model"` // model_id
 	ByScope          map[string]*ScopeAggregate        `json:"by_scope,omitempty"`
 	BySourcePlatform map[string]*Aggregate             `json:"by_source_platform,omitempty"`
+	// BySource is spend per product schedule/reminder/trigger (Entry.SourceID).
+	BySource map[string]*SourceAggregate `json:"by_source,omitempty"`
 	// ByWorkflow keys spend by the raw workflow_id it was attributed to
 	// (a Workflow/<name> folder, a crew root, a chat folder). Events with no
 	// workflow_id land under "". Callers that present it fold subpaths and
@@ -340,6 +350,43 @@ type AccountSplitKey struct {
 	// BillingUserID is the entry's BillingUserID: the owner a Slack channel
 	// bot turn (UserID) counts toward; empty for a person's own turn.
 	BillingUserID string
+}
+
+// SourceAggregate is one automation source's spend: its latest label, its
+// scope and how many separate runs produced it.
+type SourceAggregate struct {
+	Aggregate
+	Label    string `json:"label"`
+	Scope    string `json:"scope"`
+	RunCount int    `json:"run_count"`
+	runIDs   map[string]struct{}
+}
+
+func addEntryToSourceBucket(summary *Summary, scope string, e Entry) {
+	sourceID := strings.TrimSpace(e.SourceID)
+	if sourceID == "" {
+		return
+	}
+	if summary.BySource == nil {
+		summary.BySource = make(map[string]*SourceAggregate)
+	}
+	bucket := summary.BySource[sourceID]
+	if bucket == nil {
+		bucket = &SourceAggregate{Scope: scope, runIDs: map[string]struct{}{}}
+		summary.BySource[sourceID] = bucket
+	}
+	bucket.Aggregate.add(e)
+	if label := strings.TrimSpace(e.SourceLabel); label != "" {
+		bucket.Label = label
+	}
+	runID := strings.TrimSpace(e.SourceRunID)
+	if runID == "" {
+		runID = firstConversationExecutionID(e)
+	}
+	if runID != "" {
+		bucket.runIDs[runID] = struct{}{}
+		bucket.RunCount = len(bucket.runIDs)
+	}
 }
 
 // UserAggregate is one actor's spend within one raw workflow ID.
@@ -864,6 +911,7 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 	}
 	scopeBucket.Aggregate.add(e)
 	addEntryToWorkflowBucket(summary, scope, e)
+	addEntryToSourceBucket(summary, scope, e)
 	addEntryToWorkflowUserBucket(summary, scope, e)
 	addEntryToBotAndMCPBuckets(summary, e)
 	addEntryToAccountSplit(summary, e)

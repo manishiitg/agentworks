@@ -1293,6 +1293,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		reqMap["triggered_by"] = firstNonEmptyTrimmed(triggerSource, "cron")
 		applyCrewGuestCaller(reqMap, job.GuestCallerID)
 		reqMap["triggered_by_label"] = automationTriggerLabel(firstNonEmptyTrimmed(triggerSource, "cron"), job.Schedule.Name)
+		applyAutomationCostSource(reqMap, job, runID)
 		reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, job.Profile.Name)
 		scheduleLogf("[PRODUCT-SCHEDULE] %s turn %d/%d for %s", job.ID(), i+1, len(messages), job.UserID)
 		turnResult, err := s.api.startSessionInternalWithResult(runCtx, reqMap, sessionID, job.UserID, nil)
@@ -1342,6 +1343,19 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	}
 	scheduleLogf("[PRODUCT-SCHEDULE] ✅ %s for %s completed in %dms", job.ID(), job.UserID, duration)
 	return sessionID, nil
+}
+
+// applyAutomationCostSource records this run's turns, and their sub-agents,
+// under cost scope "schedule" with the schedule's id and name, so a project's
+// Cost Analysis separates them from the person's own chatting (PLAT-702).
+func applyAutomationCostSource(reqMap map[string]interface{}, job productScheduleJob, runID string) {
+	label := strings.TrimSpace(job.Schedule.Name)
+	if job.AutomationKind == "trigger" {
+		label = "Trigger: " + firstNonEmptyTrimmed(label, job.Schedule.ID)
+	}
+	reqMap["cost_source_id"] = job.ID()
+	reqMap["cost_source_label"] = firstNonEmptyTrimmed(label, job.Schedule.ID)
+	reqMap["cost_source_run_id"] = runID
 }
 
 func queryRequestToMap(req QueryRequest) (map[string]interface{}, error) {

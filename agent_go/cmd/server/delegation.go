@@ -834,13 +834,14 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			withCostModel(string(provider), modelID),
 			withCostAccount(costAccountIDFor(string(provider), connectionID)),
 			withCostAttribution(
-				inferCostScope(parentReq.AgentMode, parentReq.PhaseID),
+				costFirstNonEmpty(scopeForAutomationSource(parentReq.CostSourceID), inferCostScope(parentReq.AgentMode, parentReq.PhaseID)),
 				costWorkspace,
 				"",
 				delegationID,
 			),
 			withCostSourcePlatform(parentReq.BotPlatform),
 			withCostBillingUser(parentReq.tokenOwner),
+			costSourceOption(parentReq),
 		)
 		if err := subAgent.AddObserver(subAgentCostObserver); err != nil {
 			return "", fmt.Errorf("attach delegation cost observer: %w", err)

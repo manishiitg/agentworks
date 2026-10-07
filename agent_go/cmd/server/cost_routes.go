@@ -27,11 +27,30 @@ var (
 	costAccountIDFor             = costobserver.AccountIDFor
 	inferCostScope               = costobserver.InferScope
 	scopeForScheduledTurn        = costobserver.ScopeForScheduledTurn
+	scopeForAutomationSource     = costobserver.ScopeForAutomationSource
 	costFirstNonEmpty            = costobserver.FirstNonEmpty
 	extractCacheTokens           = costobserver.ExtractCacheTokens
 	extractCostAndEffectiveModel = costobserver.ExtractCostAndEffectiveModel
 	toInt                        = costobserver.ToInt
 )
+
+// chatTurnCostScope names the cost scope of a chat/query-path turn: Pulse
+// (scheduler flag), then a product schedule's source, then mode + phase.
+func chatTurnCostScope(req QueryRequest, agentModeForScope, phaseID string) string {
+	if scope := scopeForScheduledTurn(req.PulseLifecycleTurn, req.LLMConfigSource); scope != "" {
+		return scope
+	}
+	if scope := scopeForAutomationSource(req.CostSourceID); scope != "" {
+		return scope
+	}
+	return inferCostScope(agentModeForScope, phaseID)
+}
+
+// costSourceOption carries a product schedule turn's source onto its ledger
+// entries (PLAT-702); a person's own turn names none.
+func costSourceOption(req QueryRequest) costobserver.Option {
+	return costobserver.WithSource(req.CostSourceID, req.CostSourceLabel, req.CostSourceRunID)
+}
 
 // handleCostSummary is the HTTP handler for GET /api/cost/summary.
 // This unfiltered server-wide summary is admin-only; Code reviewers use the

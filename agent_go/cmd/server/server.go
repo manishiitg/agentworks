@@ -946,6 +946,13 @@ type QueryRequest struct {
 	// TriggeredByLabel names who or what started the run, for display only
 	// ("Called by RTS Flow Tester", "Schedule: Daily digest").
 	TriggeredByLabel string `json:"triggered_by_label,omitempty"`
+	// CostSource* name the product schedule, reminder or trigger that sent
+	// this turn (job id, display name, automation run id). Set only by the
+	// product schedule runner; the turn and its sub-agents are then recorded
+	// under cost scope "schedule" instead of chat (PLAT-702).
+	CostSourceID    string `json:"cost_source_id,omitempty"`
+	CostSourceLabel string `json:"cost_source_label,omitempty"`
+	CostSourceRunID string `json:"cost_source_run_id,omitempty"`
 	// Auto-notification flag: when true, this is a background agent completion notification
 	// (not user-initiated). Backend treats it as a synthetic turn so frontend doesn't block input.
 	IsAutoNotification bool `json:"is_auto_notification,omitempty"`
@@ -7552,20 +7559,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		//  1. The scheduler's explicit pulse_lifecycle_turn flag, with the older
 		//     llm_config_source marker retained as compatibility. Pulse may use
 		//     the Builder model, so model selection is not an attribution signal.
-		//  2. Otherwise the agent mode + phase. req.AgentMode is rewritten to
+		//  2. A product schedule/reminder/trigger turn names its source (PLAT-702).
+		//  3. Otherwise the agent mode + phase. req.AgentMode is rewritten to
 		//     "multi-agent" far above purely to route workflow_phase requests
 		//     down the standard agent path, so inferring from it directly
 		//     charged every scheduled workflow AND Pulse turn to "chat".
 		//     isWorkflowPhase is captured before that rewrite and is what the
 		//     inference is supposed to see.
-		costScope := scopeForScheduledTurn(req.PulseLifecycleTurn, req.LLMConfigSource)
-		if costScope == "" {
-			agentModeForScope := req.AgentMode
-			if isWorkflowPhase {
-				agentModeForScope = "workflow_phase"
-			}
-			costScope = inferCostScope(agentModeForScope, workflowPhaseID)
+		agentModeForScope := req.AgentMode
+		if isWorkflowPhase {
+			agentModeForScope = "workflow_phase"
 		}
+		costScope := chatTurnCostScope(req, agentModeForScope, workflowPhaseID)
 		costObs := newCostObserver(
 			api.costLedger,
 			sessionID,
@@ -7581,6 +7586,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			),
 			withCostSourcePlatform(req.BotPlatform),
 			withCostBillingUser(botTokenOwner),
+			costSourceOption(req),
 		)
 		if err := llmAgent.AddObserver(eventObserver); err != nil {
 			sendError(fmt.Sprintf("Failed to attach event observer: %v", err), true)

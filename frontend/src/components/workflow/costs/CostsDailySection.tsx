@@ -9,6 +9,7 @@ import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdo
 import { formatUSD, formatTokens, formatDuration, getRunFolderDisplayName } from './helpers'
 import { buildModelCostRows } from './CostsModelSection'
 import type { CostsData } from './useCostsData'
+import CostsScheduleSection from './CostsScheduleSection'
 
 const recordedCost = (usage: CostAggregate) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(usage.total_cost_usd)
@@ -68,6 +69,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                   </div>
                 </section>
               )}
+
+              <CostsScheduleSection scopedCosts={scopedCosts} />
 
               {/* Daily Costs */}
               {combinedDailyCostSummaries.length > 0 && (

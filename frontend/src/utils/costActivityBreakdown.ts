@@ -8,7 +8,7 @@ export interface ActivityTiming {
 }
 
 export interface CostActivityCategory {
-  id: 'builder' | 'pulse' | 'workflow' | 'evaluation'
+  id: 'builder' | 'pulse' | 'workflow' | 'evaluation' | 'schedule'
   label: string
   description: string
   total: CostAggregate
@@ -151,6 +151,12 @@ const definitions: Array<Omit<CostActivityCategory, 'total' | 'timing' | 'execut
     label: 'Evaluation',
     description: 'Evaluation runs and scoring steps',
     scopes: ['evaluation'],
+  },
+  {
+    id: 'schedule',
+    label: 'Schedules',
+    description: 'Project schedules, reminders and triggers, with their sub-agents',
+    scopes: ['schedule'],
   },
 ]
 

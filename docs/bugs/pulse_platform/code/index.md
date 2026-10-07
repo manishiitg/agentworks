@@ -6,6 +6,7 @@
 |---|---|---|
 | [browser](browser/index.md) | 1 | 0 |
 | [chat](chat/index.md) | 4 | 0 |
+| [costs](costs/index.md) | 1 | 0 |
 | [frontend-chat](frontend-chat/index.md) | 2 | 0 |
 | [instructions](instructions/index.md) | 1 | 0 |
 | [sandbox](sandbox/index.md) | 1 | 0 |

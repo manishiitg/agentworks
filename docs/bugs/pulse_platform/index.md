@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 51 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 33 | 11 |
-| [Code](code/index.md) | 12 | 2 |
+| [Code](code/index.md) | 13 | 2 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-702](code/costs/plat-702.md) | Code and Crew schedule runs show as their own cost scope | fixed on main | P2 | [code/costs](code/costs/index.md) |
 | [PLAT-701](code/schedules/plat-701.md) | Code schedule manifest fails validation on every read | open | P3 | [code/schedules](code/schedules/index.md) |
 | [PLAT-700](chat/restore/plat-700.md) | Restored chats lose their memory until the agent reads the archive | open | P2 | [chat/restore](chat/restore/index.md) |
 | [PLAT-699](chat/stop/plat-699.md) | No Stop button while a Crew or Code chat shows Working | fixed on main | P1 | [chat/stop](chat/stop/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |
 | [PLAT-660](goals/steps/plat-660.md) | Steps still name the removed search_web_llm tool | fixed on main | P2 | [goals/steps](goals/steps/index.md) |
-| [PLAT-659](code/chat/plat-659.md) | Message stuck Queued after a deploy changes the Code definition | fixed on main | P1 | [code/chat](code/chat/index.md) |

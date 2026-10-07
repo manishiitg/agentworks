@@ -27,6 +27,11 @@ const (
 	ScopeBuilder           = "builder"
 	ScopePulse             = "pulse"
 	ScopeWorkflowExecution = "workflow_execution"
+	// ScopeSchedule is a turn started by a product (Code/Crew) schedule,
+	// reminder or trigger, in its chat or its own isolated conversation,
+	// and every sub-agent it delegates to (PLAT-702). Goals workflow
+	// schedules stay workflow_execution/pulse.
+	ScopeSchedule = "schedule"
 	// ScopeUnknown is the last-resort value recorded when a launch path did
 	// not name its scope. Reaching it is a defect and is logged as one.
 	ScopeUnknown = "unknown"
@@ -63,6 +68,9 @@ type Observer struct {
 	executionID    string
 	scope          string
 	sourcePlatform string
+	sourceID       string
+	sourceLabel    string
+	sourceRunID    string
 	launchPath     string
 
 	mu         sync.Mutex
@@ -133,6 +141,26 @@ func WithSourcePlatform(platform string) Option {
 	return func(o *Observer) {
 		o.sourcePlatform = strings.ToLower(strings.TrimSpace(platform))
 	}
+}
+
+// WithSource names the product schedule, reminder or trigger that started
+// the turn: its job id, display name and the one automation run (PLAT-702).
+func WithSource(id, label, runID string) Option {
+	return func(o *Observer) {
+		o.sourceID = strings.TrimSpace(id)
+		o.sourceLabel = strings.TrimSpace(label)
+		o.sourceRunID = strings.TrimSpace(runID)
+	}
+}
+
+// ScopeForAutomationSource returns ScopeSchedule for a chat-path turn that a
+// product schedule, reminder or trigger started (it names a source id), and
+// "" otherwise so the caller keeps its own inference.
+func ScopeForAutomationSource(sourceID string) string {
+	if strings.TrimSpace(sourceID) != "" {
+		return ScopeSchedule
+	}
+	return ""
 }
 
 type sourcePlatformContextKey struct{}
@@ -450,6 +478,9 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 		ExecutionID:    o.executionID,
 		Scope:          o.scope,
 		SourcePlatform: o.sourcePlatform,
+		SourceID:       o.sourceID,
+		SourceLabel:    o.sourceLabel,
+		SourceRunID:    o.sourceRunID,
 		AccountID:      o.accountID,
 		BillingUserID:  o.billingUserID,
 		Phase:          phase,

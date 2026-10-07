@@ -1934,6 +1934,14 @@ export interface CostConversationExecution extends CostAggregate {
   by_model?: Record<string, CostAggregate>
 }
 
+// One product schedule, reminder or trigger's spend (PLAT-702), keyed by its
+// scheduler job id in CostSummary.by_source.
+export interface CostSourceAggregate extends CostAggregate {
+  label: string
+  scope: string
+  run_count: number
+}
+
 export interface CostSummary {
   by_conversation?: Record<string, CostConversation>
   from?: string
@@ -1943,6 +1951,7 @@ export interface CostSummary {
   by_model: Record<string, CostAggregate>
   by_scope?: Record<string, CostScopeAggregate>
   by_source_platform?: Record<string, CostAggregate>
+  by_source?: Record<string, CostSourceAggregate>
 }
 
 // Consolidated cost view across workflows and Crews — mirror of

@@ -55,7 +55,10 @@ CREATE TABLE IF NOT EXISTS cost_events (
     pricing_source TEXT NOT NULL DEFAULT '',
     pricing_version TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
-    operation_metadata_json TEXT NOT NULL DEFAULT '{}'
+    operation_metadata_json TEXT NOT NULL DEFAULT '{}',
+    source_id TEXT NOT NULL DEFAULT '',
+    source_label TEXT NOT NULL DEFAULT '',
+    source_run_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_cost_events_occurred_at ON cost_events(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_cost_events_user_time ON cost_events(user_id, occurred_at);
@@ -130,6 +133,12 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 		db.Close()
 		return nil, fmt.Errorf("costledger: migrate billing_user_id column: %w", err)
 	}
+	for _, column := range []string{"source_id", "source_label", "source_run_id"} {
+		if err := ensureCostEventColumn(db, column, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("costledger: migrate %s column: %w", column, err)
+		}
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_events_billing_user_time ON cost_events(billing_user_id, occurred_at)`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("costledger: index billing_user_id: %w", err)
@@ -176,8 +185,9 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id,
+    source_id, source_label, source_run_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
 		e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
@@ -186,6 +196,7 @@ INSERT OR IGNORE INTO cost_events (
 		e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 		e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
 		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID, e.BillingUserID,
+		e.SourceID, e.SourceLabel, e.SourceRunID,
 	}
 	for attempt := 0; ; attempt++ {
 		_, err = s.db.Exec(insertEvent, args...)
@@ -341,7 +352,8 @@ SELECT event_id, idempotency_key, occurred_at, user_id, workflow_id, session_id,
        requested_provider, requested_model_id, effective_provider, effective_model_id,
        turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
        cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-       pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
+       pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id,
+       source_id, source_label, source_run_id
 FROM cost_events`
 	where := make([]string, 0, 4)
 	args := make([]interface{}, 0, 4)
@@ -387,6 +399,7 @@ FROM cost_events`
 			&e.CacheReadTokens, &e.CacheWriteTokens, &e.TotalCostUSD, &e.Currency,
 			&e.BillingBasis, &e.PricingSource, &e.PricingVersion, &e.ToolName,
 			&metadataJSON, &e.AccountID, &e.BillingUserID,
+			&e.SourceID, &e.SourceLabel, &e.SourceRunID,
 		); err != nil {
 			return nil, fmt.Errorf("costledger: scan SQLite event: %w", err)
 		}
@@ -504,8 +517,9 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id,
+    source_id, source_label, source_run_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 			e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
 			e.AgentMode, e.Component, e.CorrelationID, e.Provider, e.ModelID,
@@ -513,6 +527,7 @@ INSERT OR IGNORE INTO cost_events (
 			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 			e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
 			e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID, e.BillingUserID,
+			e.SourceID, e.SourceLabel, e.SourceRunID,
 		)
 		if err != nil {
 			return MigrationReport{}, fmt.Errorf("costledger: migrate legacy row %d: %w", lineNumber, err)

@@ -97,7 +97,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       const summaryResponse = await agentApi.getCosts(workspacePath, { view: 'summary', days: 30 })
       if (generation !== loadGenerationRef.current) return
       const summaryScopes = summaryResponse.scoped_costs?.by_scope || {}
-      const hasAuthoritativeCosts = ['builder', 'chat', 'pulse', 'workflow_execution', 'evaluation']
+      const hasAuthoritativeCosts = ['builder', 'chat', 'pulse', 'workflow_execution', 'evaluation', 'schedule']
         .some(scope => !!summaryScopes[scope])
       if (hasAuthoritativeCosts) {
         setScopedCosts(summaryResponse.scoped_costs ?? null)
