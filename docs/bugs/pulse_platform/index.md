@@ -15,7 +15,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 30 | 6 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 31 | 7 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 25 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | open | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
-| [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
