@@ -34,6 +34,10 @@ const (
 	Report Kind = "report"
 	// Plan: the graph or its step configuration may have changed.
 	Plan Kind = "plan"
+	// UIControl: an agent queued a right-panel view action for a chat
+	// session. It only wakes that session's tabs to sync with the ui-control
+	// broker; the action itself is claimed there. Owner-only (PublishToUser).
+	UIControl Kind = "ui_control"
 )
 
 // Notice is one change. Workflow is the workspace path ("Workflow/<folder>")
@@ -41,6 +45,10 @@ const (
 type Notice struct {
 	Kind     Kind   `json:"kind"`
 	Workflow string `json:"workflow,omitempty"`
+	// Session names a chat session for session-scoped kinds (ui_control).
+	Session string `json:"session,omitempty"`
+	// User, when set, limits delivery to that user's streams. Never sent.
+	User string `json:"-"`
 }
 
 // Subscriber receives coalesced notices. Wake is signalled (non-blocking)
@@ -125,7 +133,19 @@ func (b *Bus) Subscribers() int {
 // Publish is non-blocking and safe from any goroutine; with no open streams
 // it is a map read.
 func (b *Bus) Publish(kind Kind, workflow string) {
-	n := Notice{Kind: kind, Workflow: workflow}
+	b.publish(Notice{Kind: kind, Workflow: workflow})
+}
+
+// PublishToUser publishes a session-scoped notice that only the given user's
+// streams receive (the stream drops notices addressed to another user).
+func (b *Bus) PublishToUser(kind Kind, user, session string) {
+	if user == "" {
+		return
+	}
+	b.publish(Notice{Kind: kind, Session: session, User: user})
+}
+
+func (b *Bus) publish(n Notice) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for s := range b.subs {

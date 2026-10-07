@@ -10,7 +10,7 @@ describe('workspace UI control transport', () => {
     expect(source).toContain('useEffect(() => { if (latestAction) wake.current?.() }, [latestAction])')
     expect(source).toContain('useEffect(() => { wake.current?.() }, [adapter])')
     expect(source).toContain('useWorkflowStore.subscribe')
-    expect(source).toContain("setInterval(() => { void sync('poll') }, UI_CONTROL_BACKUP_POLL_MS)")
+    expect(source).toContain("liveFeed.subscribe(['ui_control']")
     expect(source).not.toContain('setInterval(() => { void sync() }, 3000)')
   })
 

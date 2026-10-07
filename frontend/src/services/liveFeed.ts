@@ -5,11 +5,13 @@
 import { getApiBaseUrl, getAuthToken } from './api'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
-export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan'
+export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control'
 
 export interface LiveFeedNotice {
   kind: LiveFeedKind
   workflow?: string
+  // Chat session for session-scoped kinds (ui_control); sent to its owner only.
+  session?: string
 }
 
 export type LiveFeedStatus = 'connecting' | 'live' | 'offline'
@@ -17,7 +19,8 @@ export type LiveFeedStatus = 'connecting' | 'live' | 'offline'
 type Listener = {
   kinds: ReadonlySet<LiveFeedKind>
   workflow: string | null
-  onChange: () => void
+  // notice is undefined on a resync (anything may have changed).
+  onChange: (notice?: LiveFeedNotice) => void
 }
 
 // After this many consecutive failed connects the feed reports 'offline' so
@@ -51,7 +54,7 @@ class LiveFeed {
     return () => { this.statusListeners.delete(cb) }
   }
 
-  subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: () => void): () => void {
+  subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: (notice?: LiveFeedNotice) => void): () => void {
     const listener: Listener = { kinds: new Set(kinds), workflow: liveFeedWorkflowRoot(workflow) ?? workflow, onChange }
     this.listeners.add(listener)
     this.ensureOpen()
@@ -102,7 +105,7 @@ class LiveFeed {
       for (const listener of this.listeners) {
         if (!listener.kinds.has(notice.kind)) continue
         if (notice.workflow && listener.workflow && listener.workflow !== notice.workflow) continue
-        listener.onChange()
+        listener.onChange(notice)
       }
     })
     source.onerror = () => {

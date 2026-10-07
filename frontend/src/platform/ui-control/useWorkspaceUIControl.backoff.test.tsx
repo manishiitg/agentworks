@@ -11,6 +11,17 @@ vi.mock('../../services/api', () => ({
   workflowUIControl,
 }))
 vi.mock('../presentations/usePresentationEvents', () => ({ usePresentationEvents: () => [] }))
+type LiveListener = (notice?: { kind: string; session?: string }) => void
+const liveListeners = vi.hoisted(() => new Set<(notice?: { kind: string; session?: string }) => void>())
+vi.mock('../../services/liveFeed', () => ({
+  liveFeed: {
+    getStatus: () => 'live',
+    subscribe: (_kinds: string[], _workflow: string | null, onChange: LiveListener) => {
+      liveListeners.add(onChange)
+      return () => { liveListeners.delete(onChange) }
+    },
+  },
+}))
 
 import { sessionLooksLive, useWorkspaceUIControl } from './useWorkspaceUIControl'
 import { useChatStore } from '../../stores/useChatStore'
@@ -106,6 +117,30 @@ describe('UI control lease for chats without a live session', () => {
     await act(async () => { root.render(<Probe session="live-chat" />) })
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
     expect(bindCalls()).toBe(5)
+  })
+
+  it('syncs at once on a live-feed ui_control notice for its session, without the chat SSE', async () => {
+    const host = document.createElement('div')
+    host.dataset.uiWorkspace = 'w'
+    document.body.appendChild(host)
+    workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => (
+      body.operation === 'bind' ? { binding: 'b', token: 't', workspace: 'w' } : []
+    ))
+    const syncCalls = () => workflowUIControl.mock.calls.filter(([, body]) => body?.operation === 'sync').length
+    await act(async () => { root.render(<Probe session="chat-1" />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    const before = syncCalls()
+    await act(async () => {
+      for (const listener of liveListeners) listener({ kind: 'ui_control', session: 'other-chat' })
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(syncCalls()).toBe(before)
+    await act(async () => {
+      for (const listener of liveListeners) listener({ kind: 'ui_control', session: 'chat-1' })
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(syncCalls()).toBe(before + 1)
+    host.remove()
   })
 
   it('re-binds at once when the server no longer knows its binding (after a restart)', async () => {

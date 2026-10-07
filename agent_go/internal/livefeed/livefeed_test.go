@@ -20,7 +20,7 @@ func TestPublishCoalescesDuplicatesInOrder(t *testing.T) {
 		t.Fatal("subscriber was not woken")
 	}
 	got, resync := s.Drain()
-	want := []Notice{{Report, "Workflow/a"}, {HumanInputs, "Workflow/a"}, {Report, "Workflow/b"}}
+	want := []Notice{{Kind: Report, Workflow: "Workflow/a"}, {Kind: HumanInputs, Workflow: "Workflow/a"}, {Kind: Report, Workflow: "Workflow/b"}}
 	if resync || !reflect.DeepEqual(got, want) {
 		t.Fatalf("Drain = %v resync=%v, want %v", got, resync, want)
 	}

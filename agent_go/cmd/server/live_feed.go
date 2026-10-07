@@ -98,6 +98,24 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// liveFeedNoticeForUser drops notices addressed to another user (ui_control
+// names a chat session, which only its owner may learn about).
+func liveFeedNoticeForUser(n livefeed.Notice, claims *UserClaims) bool {
+	if n.User == "" {
+		return true
+	}
+	return claims != nil && claims.UserID == n.User
+}
+
+// publishUIControlWake wakes the owner's tabs for a session after a UI action
+// is queued, so a tab whose chat stream dropped still syncs at once. Wake-up
+// only: the notice carries the session id, never the action.
+func (api *StreamingAPI) publishUIControlWake(session string) {
+	if active, ok := api.getActiveSession(session); ok && active.UserID != "" {
+		livefeed.Default.PublishToUser(livefeed.UIControl, active.UserID, session)
+	}
+}
+
 // liveFeedAccess caches per-connection workflow visibility. The cache is
 // dropped whenever a manifest changes (access blocks live in workflow.json).
 type liveFeedAccess struct {

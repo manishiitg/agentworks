@@ -65,7 +65,12 @@ never refresh, mark stale, or otherwise touch the right pane. The right pane
 gets its state only from the server (its own fetches plus this feed) and from
 the user's clicks. The one allowed link is explicit agent navigation
 (ui-control `open_workspace_view`), delivered over the chat's SSE. Its lease
-renews every 5 minutes; this used to be a 10s poll.
+renews every 5 minutes; this used to be a 10s poll. Because the chat's SSE can
+be down when the agent queues an action, the broker also publishes a
+`ui_control` notice naming the session to its owner (PLAT-703). The tab bound
+to that session syncs at once; the action itself is still claimed and acked
+through the ui-control endpoint, and the notice carries nothing from it. While
+a tab is bound and this feed is down, its renewal runs every 60s instead.
 
 **Sending a message does not directly refresh the right pane.** A concrete
 workspace write publishes its own notice, and a workflow or Crew chat turn
@@ -108,6 +113,7 @@ These are the kinds, and the refetch each one triggers:
 | `pulse_state` | workflow | Right pane: Pulse (only while open) | `pulse-module-state` |
 | `report` | workflow | Right pane: Report dashboard | re-run the dashboard (`ReportViewer` `refresh()`: document catalog + HTML) |
 | `plan` | workflow, shared crew, or path-free legacy project | Right pane: Graph/Plan while open | refetch `plan.json`, `step_config.json`, and graph triggers |
+| `ui_control` | session owner only (`"session":"<id>"`) | Right pane: the tab bound to that chat session | ui-control `sync`, which claims any queued view action |
 
 A notice never contains the changed data. The client always refetches through
 the existing endpoint, which applies its own access rules. This keeps the
@@ -174,6 +180,8 @@ burst. No file watching is needed.
   - The cache is dropped when `manifestMutationGeneration` changes.
   - `sessions` notices go to every connection; `header-summary` already
     filters the sessions on refetch.
+  - A notice published with `PublishToUser` (only `ui_control`) goes only to
+    that user's connections; the user is never written to the wire.
 - **Headers:** the same as `handleSSEStream`: no write deadline and
   `X-Accel-Buffering: no`.
 
@@ -189,6 +197,7 @@ burst. No file watching is needed.
 | `human_inputs` | `create`/`answer`/`dismiss`/`consumeReportHumanInput` (report_human_inputs.go), plus `dismissDuplicateHumanInput`. The two `pkg/` outliers (`consumeLinkedPulseDecisionTx`, `activateApprovedAdvisorSpecialization`) run inside agent turns and are covered by the turn-completion publish. |
 | `report` | Session/execution terminal status (the same hook as publish-on-session-completion). Writes under `db/reports/` via `writeFileToWorkspace` and the `/api/wp` proxy. Proxied `/api/mutate` and `/api/report-field`. |
 | `scheduler_config` | `SaveSchedulerConfig` (scheduler_config_store.go:43). |
+| `ui_control` | `performUIActionForContract` when the broker accepts a fresh action (`publishUIControlWake`, to the chat session's owner). |
 | `browser_sessions` | The `browser.SessionTracker` mutators (`Touch` on first sight only, `Remove*`, `Close*`, `Clear`). The client computes `age`/`idle` from timestamps instead of polling for them. |
 
 **Writes the feed cannot see.** Coding CLIs and shell `/api/execute` write

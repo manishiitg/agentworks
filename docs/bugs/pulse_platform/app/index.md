@@ -15,6 +15,6 @@
 | [tests](tests/index.md) | 6 | 2 |
 | [tools](tools/index.md) | 1 | 1 |
 | [ui](ui/index.md) | 1 | 0 |
-| [ui-control](ui-control/index.md) | 1 | 0 |
+| [ui-control](ui-control/index.md) | 2 | 0 |
 | [workspace](workspace/index.md) | 1 | 1 |
 | [workspaces](workspaces/index.md) | 1 | 0 |

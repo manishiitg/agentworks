@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	platformskills "github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -470,5 +471,40 @@ func TestObservedUIViewIsAcceptedEvenWhenTheAgentCannotOpenIt(t *testing.T) {
 	// Opening is still limited to the contract: the Code contract has no terminal view to open.
 	if validUIViewForContract(uiContractForScope("_users/manish/Chats/Code/projects/hi"), "shell") {
 		t.Error("an action must not be able to open a view the contract does not list")
+	}
+}
+
+// A tab whose chat SSE dropped waited up to 5 minutes for its backup sync to
+// pick up a queued view action. Submitting also wakes the owner's tabs over
+// the live feed, and the notice never reaches another user's stream.
+func TestPerformUIActionWakesOwnerThroughLiveFeed(t *testing.T) {
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"s-live": {SessionID: "s-live", UserID: "user-a"}}}
+	b := api.uiBroker()
+	b.setScope("s-live", "Workflow/test")
+	if _, err := b.bind("s-live"); err != nil {
+		t.Fatal(err)
+	}
+	sub := livefeed.Default.Subscribe()
+	defer livefeed.Default.Unsubscribe(sub)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := api.performUIAction(ctx, "s-live", "Workflow/test", map[string]interface{}{"view": "flow", "action": "open"}); err != nil {
+		t.Fatal(err)
+	}
+	notices, _ := sub.Drain()
+	var wake *livefeed.Notice
+	for i, n := range notices {
+		if n.Kind == livefeed.UIControl && n.Session == "s-live" {
+			wake = &notices[i]
+		}
+	}
+	if wake == nil {
+		t.Fatalf("no ui_control notice for the session: %+v", notices)
+	}
+	if !liveFeedNoticeForUser(*wake, &UserClaims{UserID: "user-a"}) || liveFeedNoticeForUser(*wake, &UserClaims{UserID: "user-b"}) || liveFeedNoticeForUser(*wake, nil) {
+		t.Fatal("ui_control notice must reach only the session owner")
+	}
+	if raw, _ := json.Marshal(wake); strings.Contains(string(raw), "user-a") || strings.Contains(string(raw), "flow") {
+		t.Fatalf("notice leaks owner or action data: %s", raw)
 	}
 }

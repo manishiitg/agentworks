@@ -101,6 +101,9 @@ func (api *StreamingAPI) performUIActionForContract(ctx context.Context, session
 	}
 	if fresh {
 		api.emitAgentProfileEvent(session, &orchestratorevents.PresentationUpdatedEvent{PresentationID: a.RequestID, Kind: "workflow.ui-action", WorkspacePath: workspace, Title: "Workspace action requested", Payload: map[string]interface{}{"request_id": a.RequestID}})
+		// The chat SSE above can be down (dropped stream, reconnecting tab);
+		// the per-tab live feed wakes the owner's tabs as well.
+		api.publishUIControlWake(session)
 	}
 	if !uiTerminal(a.Status) {
 		timer := time.NewTimer(10 * time.Second)

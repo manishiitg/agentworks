@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '../../stores/useChatStore'
 import { workflowUIControl } from '../../services/api'
+import { liveFeed } from '../../services/liveFeed'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { usePresentationEvents } from '../presentations/usePresentationEvents'
 import { getWorkspaceView, isWorkspaceViewId } from '../../components/workflow/workspaceViews'
@@ -9,8 +10,12 @@ import { applyUIAction, workspaceHost, type UIAction, type UISnapshot } from './
 
 const kinds = ['workflow.ui-action']
 // Lease renewal only (server lease: 6 min). The agent's explicit view
-// commands wake the pane over SSE; the right pane never polls the chat.
+// commands wake the pane over the chat SSE and the per-tab live feed
+// (`ui_control` notice naming this session); the pane never polls the chat.
 export const UI_CONTROL_BACKUP_POLL_MS = 5 * 60_000
+// While bound and the live feed is down, nothing but this timer would pick up
+// a queued action whose chat SSE wake was missed.
+export const UI_CONTROL_BOUND_POLL_MS = 60_000
 type Binding = { binding: string; token: string; workspace: string }
 // Why a sync ran. A dormant lease (its chat has no live agent session) ignores
 // the backup poll and view changes; only SSE wakes, the chat going live, or the
@@ -212,9 +217,22 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
         void sync('view')
       }
     })
-    // SSE presentation events and local view changes are the wake-up paths.
-    // This slow timer only renews the server lease.
-    const timer = setInterval(() => { void sync('poll') }, UI_CONTROL_BACKUP_POLL_MS)
+    // SSE presentation events, live-feed notices and local view changes are the
+    // wake-up paths. This slow timer only renews the server lease (every 5 min),
+    // or every minute while bound with the live feed down.
+    let lastPoll = Date.now()
+    const timer = setInterval(() => {
+      const due = Date.now() - lastPoll >= UI_CONTROL_BACKUP_POLL_MS
+      if (!due && !(binding && liveFeed.getStatus() !== 'live')) return
+      lastPoll = Date.now()
+      void sync('poll')
+    }, UI_CONTROL_BOUND_POLL_MS)
+    // Wake-up only: the notice names the session, the action is claimed by sync.
+    // A resync (no notice) may have dropped one, so a bound tab checks too.
+    const unsubscribeLiveFeed = liveFeed.subscribe(['ui_control'], null, (notice) => {
+      if (!notice) { if (binding) void sync('poll'); return }
+      if (notice.session === session) void sync('wake')
+    })
     // Bind as soon as the chat goes live.
     const unsubscribeLiveness = useChatStore.subscribe((current, previous) => {
       if (binding) return
@@ -227,6 +245,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
       controller.abort()
       clearInterval(timer)
       clearTimeout(retryTimer)
+      unsubscribeLiveFeed()
       unsubscribeViewState()
       unsubscribeLiveness()
       wake.current = null
