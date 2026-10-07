@@ -8,4 +8,5 @@
 | [chat](chat/index.md) | 0 | 0 |
 | [frontend-chat](frontend-chat/index.md) | 2 | 0 |
 | [sandbox](sandbox/index.md) | 1 | 0 |
+| [shell](shell/index.md) | 1 | 1 |
 | [terminal](terminal/index.md) | 1 | 0 |
