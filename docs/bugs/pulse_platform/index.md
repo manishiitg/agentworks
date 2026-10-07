@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 86 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 51 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 31 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 32 | 10 |
 | [Code](code/index.md) | 11 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-699](chat/stop/plat-699.md) | No Stop button while a Crew or Code chat shows Working | fixed on main | P1 | [chat/stop](chat/stop/index.md) |
 | [PLAT-698](app/accounts/plat-698.md) | Slack channel bot usage counts toward the target owner's token limits | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-697](goals/pulse/plat-697.md) | Pulse as the goal owner | open | P1 | [goals/pulse](goals/pulse/index.md) |
 | [PLAT-696](app/ui/plat-696.md) | Remove the old Runtime Health panel and its process endpoints | fixed on main | P3 | [app/ui](app/ui/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-659](code/chat/plat-659.md) | Message stuck Queued after a deploy changes the Code definition | fixed on main | P1 | [code/chat](code/chat/index.md) |
 | [PLAT-658](vault/secrets/plat-658.md) | Rotated secrets ignored by a live chat CLI | open | P1 | [vault/secrets](vault/secrets/index.md) |
 | [PLAT-657](code/chat/plat-657.md) | Closed Code tabs stayed reachable | fixed on main | P2 | [code/chat](code/chat/index.md) |
-| [PLAT-656](ops/local/plat-656.md) | Start script overwrote the shared mcpbridge | fixed on main | P2 | [ops/local](ops/local/index.md) |

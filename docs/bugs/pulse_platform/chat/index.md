@@ -8,4 +8,5 @@
 | [general](general/index.md) | 1 | 0 |
 | [reliability](reliability/index.md) | 22 | 9 |
 | [rendering](rendering/index.md) | 6 | 0 |
+| [stop](stop/index.md) | 1 | 0 |
 | [tabs](tabs/index.md) | 1 | 1 |

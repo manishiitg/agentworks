@@ -15,6 +15,7 @@ import { Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip,
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
+import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -599,7 +600,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // busy-content heuristic. Mounting the cancel control on it made the control
   // flicker several times a second during a run. Gate the control's PRESENCE on
   // this; keep isStreaming for whether the composer accepts input.
-  const isTurnInFlight = isStreaming || (activeTab?.hasRunningBgAgents ?? false)
+  // Also true while the transcript's "Working…" row is shown from the turn's
+  // events or the active-session cache after the tab flags dropped (PLAT-699).
+  const transcriptTurnActive = useTabTurnActive(activeTabId)
+  const isTurnInFlight = isStreaming || (activeTab?.hasRunningBgAgents ?? false) || transcriptTurnActive
   // The flags behind isTurnInFlight still dip for a moment during a run; hold
   // Stop briefly so it does not swap with Send (useHeldTurnInFlight).
   const isTurnShownInFlight = useHeldTurnInFlight(isTurnInFlight, activeTab?.isCompleted ?? false, activeTabId ?? null)

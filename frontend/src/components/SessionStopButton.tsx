@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Loader2, Square } from 'lucide-react'
 import { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
+import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { Button } from './ui/Button'
 
 interface SessionStopButtonProps {
@@ -16,8 +17,11 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
   const [stopping, setStopping] = useState(false)
   const inFlight = useRef(false)
 
+  // The same in-flight signal as the transcript's "Working…" row (PLAT-699).
+  const turnActive = useTabTurnActive(tabId)
+
   const sessionId = tab?.sessionId
-  if (!sessionId || (!tab?.isStreaming && !tab?.hasRunningBgAgents && !stopping)) return null
+  if (!sessionId || (!turnActive && !stopping)) return null
 
   const stopSession = async () => {
     if (inFlight.current) return
