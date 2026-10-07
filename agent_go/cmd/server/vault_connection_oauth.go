@@ -76,7 +76,7 @@ func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool,
 		var refusal struct {
 			Error string `json:"error"`
 		}
-		if json.Unmarshal(body, &refusal) == nil && strings.TrimSpace(refusal.Error) != "" && len(refusal.Error) <= 300 {
+		if json.Unmarshal(body, &refusal) == nil && strings.TrimSpace(refusal.Error) != "" && len(refusal.Error) <= 2000 {
 			return nil, fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, strings.TrimSpace(refusal.Error))
 		}
 		return nil, fmt.Errorf("Vault operation failed (%d)", resp.StatusCode)

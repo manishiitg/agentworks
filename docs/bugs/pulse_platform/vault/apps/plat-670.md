@@ -29,3 +29,7 @@
 
 - Decided (owner 2026-10-07): Google apps, GitHub and Slack stay out of Vault; they use the platform's own integrations. Vault's refusal points there.
 - The add-app box is free text; a picker from the catalog would avoid typos.
+
+## Follow-up (2026-10-07 16:03, Rakesh still saw "Vault operation failed (400)")
+
+The platform passed Vault refusals through only up to 300 characters; the new message with the app list is longer, so people still saw the bare status. The limit is now 2000. A picker of Vault apps instead of free text is being built separately.
