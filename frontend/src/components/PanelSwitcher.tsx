@@ -4,7 +4,7 @@ import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useLLMStore } from '../stores/useLLMStore'
 
-interface PanelItem { key: string; label: string; context?: string; search: string; open: () => void; global?: boolean }
+interface PanelItem { key: string; label: string; context?: string; search: string; open: () => void; global?: boolean; section?: boolean }
 
 /** ⌘/Ctrl+J: search the current product's right-panel views and the tabs
  * inside them (Slack, Models, Gmail…) and open one. Panels and sections come
@@ -23,7 +23,7 @@ export function PanelSwitcher({ onClose }: { onClose: () => void }) {
     const panels = (entry?.panels ?? []).flatMap(panel => [
       { key: panel.id, label: panel.label, context: panel.group, search: `${panel.label} ${panel.id} ${panel.group ?? ''}`, open: show(panel.id) },
       ...(panel.sections ?? []).map(section => ({
-        key: `${panel.id}:${section.id}`, label: section.label, context: panel.label,
+        key: `${panel.id}:${section.id}`, label: section.label, context: panel.label, section: true,
         search: `${section.label} ${section.id} ${section.keywords ?? ''} ${panel.label}`, open: show(panel.id, section.id),
       })),
     ])
@@ -35,8 +35,9 @@ export function PanelSwitcher({ onClose }: { onClose: () => void }) {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
-    // With no query, list the panels themselves; sections appear when searching.
-    if (!q) return items.filter(item => !item.key.includes(':') || item.global)
+    // With no query, list every panel with its tabs indented under it, so the
+    // list also shows what can be typed (owner 2026-10-07).
+    if (!q) return items
     const words = q.split(/\s+/)
     return items
       .filter(item => words.every(word => item.search.toLowerCase().includes(word)))
@@ -71,12 +72,13 @@ export function PanelSwitcher({ onClose }: { onClose: () => void }) {
             : visible.map((item, index) => {
               const Icon = item.global ? Cpu : PanelRight
               return <div key={item.key} role="option" aria-selected={index === selected}
-                className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 ${index === selected ? 'bg-accent' : 'hover:bg-muted/60'}`}
+                className={`flex cursor-pointer items-center gap-3 ${item.section && !query.trim() ? 'py-1.5 pl-11 pr-4' : 'px-4 py-2.5'} ${index === selected ? 'bg-accent' : 'hover:bg-muted/60'}`}
                 onMouseEnter={() => setSelected(index)}
                 onMouseDown={event => { event.preventDefault(); choose(item) }}>
-                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 truncate text-sm font-medium">{item.label}</span>
-                {item.context && <span className="text-[11px] text-muted-foreground">{item.context}</span>}
+                {!(item.section && !query.trim()) && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <span className={`flex-1 truncate ${item.section && !query.trim() ? 'text-xs text-muted-foreground' : 'text-sm font-medium'}`}>{item.label}</span>
+                {/* Indented tabs sit under their panel; while searching, name the panel. */}
+                {item.context && !(item.section && !query.trim()) && <span className="text-[11px] text-muted-foreground">{item.context}</span>}
               </div>
             })}
         </div>

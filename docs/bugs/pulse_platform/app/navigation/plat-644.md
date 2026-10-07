@@ -63,3 +63,5 @@ Verification: type check clean; the product, workflow, switcher and chat tests p
 main before this work (Vault GatewaySurface 14, WorkspacePanelGuideButton 2, workspaceToolbarPlacement 2; the relay
 switcher test passes alone and is flaky in the full run).
 
+With nothing typed, ⌘J now lists every panel with its tabs indented under it (Automation → Schedules, Webhooks,
+Functions…), so the list also shows what can be typed (owner, 2026-10-07).
