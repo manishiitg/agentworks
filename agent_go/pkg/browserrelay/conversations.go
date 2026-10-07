@@ -222,3 +222,25 @@ func conversationID(project, owner string) string {
 	hash := sha256.Sum256([]byte(project + "\x00" + owner))
 	return hex.EncodeToString(hash[:8])
 }
+
+// LiveSessions lists the agent-browser session names of every live extension
+// connection and chat client. A relay-attached helper whose session is not in
+// this list belongs to a connection or chat that has ended (PLAT-662).
+func (m *Manager) LiveSessions() []string {
+	m.mu.Lock()
+	bindings := make([]*Binding, 0, len(m.bindings))
+	for _, b := range m.bindings {
+		bindings = append(bindings, b)
+	}
+	m.mu.Unlock()
+	var sessions []string
+	for _, b := range bindings {
+		b.mu.Lock()
+		sessions = append(sessions, b.session)
+		for _, c := range b.clients {
+			sessions = append(sessions, c.session)
+		}
+		b.mu.Unlock()
+	}
+	return sessions
+}

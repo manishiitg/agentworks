@@ -2342,6 +2342,19 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.schedulePendingCompletionRetry(sessionID)
 	}
 
+	// Reap leftover agent-browser helpers every ~10 minutes (PLAT-662): orphaned
+	// daemons, per-chat helpers whose chat ended, and day-old runtime files.
+	browser.SetHelperLiveSessions(func() []string {
+		var live []string
+		for sessionID, browserSession := range common.BoundBrowserSessions() {
+			if api.sessionHasActiveWork(sessionID) {
+				live = append(live, browserSession)
+			}
+		}
+		return live
+	})
+	browser.StartHelperReaper()
+
 	// Kill orphaned browser processes only for the normal singleton instance.
 	// A named isolated instance must never issue workspace-wide --kill-all/pkill:
 	// the workspace runs natively and those processes may belong to the user's

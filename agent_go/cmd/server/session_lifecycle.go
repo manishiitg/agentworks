@@ -590,6 +590,8 @@ func (api *StreamingAPI) cleanupBrowserSessions(sessionID string) {
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	browser.ReleaseExtensionConversation(cleanupCtx, sessionID)
 	cleanupCancel()
+	// Also end helpers this chat (or any other ended chat) left behind (PLAT-662).
+	defer browser.ReapLeftoverHelpersAsync()
 	if tracker.CountForChat(sessionID) == 0 {
 		return
 	}

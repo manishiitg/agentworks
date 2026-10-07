@@ -921,6 +921,20 @@ func SandboxBrowserSession(sessionID string) string {
 	return PrefixBrowserSessionID(strings.TrimSpace(cfg.BrowserSessionNamespace) + "--browser")
 }
 
+// BoundBrowserSessions maps each session bound to a managed browser to that
+// browser's session name (see SandboxBrowserSession).
+func BoundBrowserSessions() map[string]string {
+	sessionShellConfigsMu.RLock()
+	defer sessionShellConfigsMu.RUnlock()
+	out := make(map[string]string)
+	for sessionID, cfg := range sessionShellConfigs {
+		if cfg != nil && strings.TrimSpace(cfg.BrowserSessionNamespace) != "" {
+			out[sessionID] = PrefixBrowserSessionID(strings.TrimSpace(cfg.BrowserSessionNamespace) + "--browser")
+		}
+	}
+	return out
+}
+
 // ResolveBrowserSessionID ignores agent-chosen names within an ownership boundary.
 // Unbound legacy callers retain their configured session behavior.
 func ResolveBrowserSessionID(sessionID, requested string) string {

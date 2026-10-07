@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
-| [Browser and browser automation](browser/index.md) | 48 | 12 |
+| [Browser and browser automation](browser/index.md) | 48 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
 | [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 73 | 20 |
@@ -45,7 +45,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
 | [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
 | [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | open | P1 | [sandbox/cli](sandbox/cli/index.md) |
-| [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 | [browser/browser](browser/browser/index.md) |
+| [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |
 | [PLAT-660](goals/steps/plat-660.md) | Steps still name the removed search_web_llm tool | fixed on main | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-659](code/chat/plat-659.md) | Message stuck Queued after a deploy changes the Code definition | fixed on main | P1 | [code/chat](code/chat/index.md) |
