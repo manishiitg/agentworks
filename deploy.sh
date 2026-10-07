@@ -400,7 +400,9 @@ deploy_start_notice() {
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
   target="origin/main"
   head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' "$target" 2>/dev/null | cut -c1-90)"
-  changelog="$(deploy_changelog "$(deploy_current_revision)" "$target")"
+  # DEPLOY_CHANGELOG_FROM=<sha> lists changes since that commit instead (for example since an earlier deploy whose
+  # notice was too short).
+  changelog="$(deploy_changelog "${DEPLOY_CHANGELOG_FROM:-$(deploy_current_revision)}" "$target")"
   DEPLOY_NOTICE_STARTED="$(date +%s)"
   deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own.${changelog}"
   trap 'deploy_finish_notice $?' EXIT
