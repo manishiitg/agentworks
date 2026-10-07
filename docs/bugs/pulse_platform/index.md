@@ -21,12 +21,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 8 | 2 |
+| [Vault](vault/index.md) | 9 | 3 |
 
 ## Newest tickets
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | open | P2 | [vault/apps](vault/apps/index.md) |
 | [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | open | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
 | [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
-| [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |

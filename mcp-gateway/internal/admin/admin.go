@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -276,7 +277,8 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, providerName, label, slug string) (store.Connector, error) {
 	p, ok := a.Catalog.Find(providerName)
 	if !ok {
-		return store.Connector{}, errors.New("unknown provider")
+		// A bare "unknown provider" left people guessing (Confida 2026-10-07: "Github" is not in Vault's catalog).
+		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. For an app that is not listed, store its API key as a Vault secret instead", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
 	}
 	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {
 		return store.Connector{}, errors.New("this provider requires upstream OAuth; configure the shared product OAuth service")

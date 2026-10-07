@@ -76,7 +76,29 @@ func Key(name string) string {
 }
 
 // Find returns a provider template by catalog name.
+// The name people type ("Github", "google drive") matches the catalog's
+// spelling ("GitHub", "GoogleDrive") by its normalized key.
 func (c *Catalog) Find(name string) (Provider, bool) {
-	p, ok := c.byName[name]
-	return p, ok
+	if p, ok := c.byName[name]; ok {
+		return p, true
+	}
+	key := Key(name)
+	if key == "" {
+		return Provider{}, false
+	}
+	for _, p := range c.Providers {
+		if p.Key == key {
+			return p, true
+		}
+	}
+	return Provider{}, false
+}
+
+// Names lists the catalog's provider names, sorted.
+func (c *Catalog) Names() []string {
+	names := make([]string, 0, len(c.Providers))
+	for _, p := range c.Providers {
+		names = append(names, p.Name)
+	}
+	return names
 }
