@@ -211,12 +211,32 @@ Decision (owner, 2026-10-07): it becomes a normal pre-run check, like a compile 
 Cost: one code check per run; an AI review only when something changed. Guard against loops: one review per plan
 revision; a run never re-triggers a review for the same revision.
 
+## What leaves Pulse
+
+Pulse today also carries housekeeping: its finalizer runs Backup → Publish → Notify after each pass, a schedule's
+`pulse_mode=basic` means just those three, and the Pulse tab shows recent activity. None of it is goal work.
+
+| Today in Pulse | What it is | Where it goes |
+|---|---|---|
+| Backup | saving workflow state and history | an after-run option of the workflow (and/or a daily job) in Backup/History settings; code only |
+| Publish | refreshing the published dashboard snapshot | an after-run option in Publish settings ("republish after each run") |
+| Notify | run finished / failed / report ready | the run's notification settings; separate from the Goal Lead's daily goal message |
+| Recent activity | log of runs, edits, reviews | the workflow's Activity / History tab; the Goal Lead shows only its own decisions |
+| Plan Drift (Workflow Review) | plan consistency after changes | the pre-run check (phase 0) |
+
+- `pulse_mode` (off / basic / full) goes away: a schedule has after-run checkboxes (backup, publish, notify). The
+  Goal Lead runs on its own triggers, never through a schedule's mode.
+- Backup and publish no longer wait on or depend on an AI pass.
+- Two kinds of messages: run notifications (per run, optional) and the Goal Lead's goal message (daily, per goal).
+- After this "Pulse" as a bundle is gone: Workflow Review before runs, housekeeping after runs, history in Activity,
+  and the Goal Lead owning the goal with QA and Architecture as its skills and sub-agents.
+
 ## Scope and phases
 
 Goals are per workflow today (`soul.md`, `configure_goal_metrics`); nothing links workflows that share a goal. Start
 with one owner per workflow goal; a goal spanning workflows is a later phase.
 
-0. Workflow Review out of Pulse, as a pre-run check (above).
+0. Workflow Review out of Pulse, as a pre-run check; Backup, Publish, Notify and recent activity out of Pulse (above).
 1. Goal check + silence alarm + one message. Pilot: Substack.
 2. Enforce autonomy levels in tools; fix the Goal Work contract text.
 3. Pulse answers decision requests within its levels; goal memory; decision log.
