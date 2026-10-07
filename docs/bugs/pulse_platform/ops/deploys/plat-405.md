@@ -71,3 +71,7 @@ Owner: the deploy notice showed only the newest commit ("we send a very small ch
 ## Dominion catches up (2026-10-07)
 
 Owner handed Dominion to this session ("you can take over"). Dominion was on 1b1f5284 (2026-10-05), 227 commits behind, with only MULTI_USER_MODE of the sandbox settings. Its deploy now also manages `AGENTWORKS_CLI_LANDLOCK=on` and `AGENTWORKS_CLI_FULL=on` (as on Excellence and Confida; Landlock is in the host kernel and the runner is already built per release). Slots and the common build path are left for later (2 users, one day-trading workflow). After the catch-up deploy, `tectonicusadaytrading` needs the 1.0.46 step-description upgrade before its next run (weekdays 09:55, 11:55, 13:55, 15:55 America/New_York).
+
+## Dominion on the shared deploy path (2026-10-07)
+
+Owner: "everything same as excellence/confida", "all should be at par now". Dominion now deploys like Confida: `./deploy.sh dominion` uses the one shared build and `deploy/rootless-linux/products/dominion/` (ports 21000/21001/21080, trader.tectonicmarkets.com, every product surface, CDP off, shared Crew root, Landlock and full CLI from the standard settings). The former own deploy stays as `./deploy.sh dominion-legacy`. Slots come in a second step: provision `dm01..dm05` (opt-in, as on Confida), then add the slot settings and redeploy. Vault is not set up for Dominion yet (host setup as root).

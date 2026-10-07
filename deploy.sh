@@ -17,7 +17,8 @@ Servers:
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
-  dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
+  dominion              trader.tectonicmarkets.com (shared build, like Confida; the owner's testing ground)
+  dominion-legacy       Dominion's former own deploy (builds on the box)
   report [server]       how each server differs from the standard runtime profile (read-only)
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
@@ -44,9 +45,9 @@ server only copies and activates it after verifying its manifest (architecture, 
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 
-dominion optionally takes --activate (stage-only otherwise):
-  ./deploy.sh dominion              # clone/pull, build, stage a release
-  ./deploy.sh dominion --activate   # also flip `current` and restart services
+dominion-legacy optionally takes --activate (stage-only otherwise):
+  ./deploy.sh dominion-legacy              # clone/pull, build, stage a release
+  ./deploy.sh dominion-legacy --activate   # also flip `current` and restart services
 EOF
 }
 
@@ -361,6 +362,7 @@ deploy_label() {
     excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
     all-hetzner) echo "Excellence, Confida and SparkQuill" ;;
     confida) echo "Confida (confida.agentworkshq.com)" ;;
+    dominion) echo "Dominion (trader.tectonicmarkets.com)" ;;
     *) echo "$SERVER" ;;
   esac
 }
@@ -371,7 +373,7 @@ deploy_current_revision() {
   case "$SERVER" in
     rts|video-studio) release="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@${RTS_HOST_IP:-44.253.29.127}" 'readlink /var/lib/video-studio/video-studio/current' 2>/dev/null)" ;;
     excellence) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 'readlink -f /srv/agents/current' 2>/dev/null)" ;;
-    confida|sparkquill) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
+    confida|sparkquill|dominion) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
   esac
   release="$(basename "${release:-}")"
   # Release folders are <sha>-<time> (RTS) or <product>-<sha>-<time> (Hetzner).
@@ -493,7 +495,7 @@ if [[ "$SERVER" == slotcheck ]]; then
       exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
         "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
       ;;
-    excellence|confida|sparkquill)
+    excellence|confida|sparkquill|dominion)
       product="$1"; [[ "$product" == excellence ]] && product=agents
       (
         # shellcheck disable=SC1090
@@ -503,7 +505,7 @@ if [[ "$SERVER" == slotcheck ]]; then
           "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
       )
       ;;
-    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill)" >&2; exit 2 ;;
+    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill, dominion)" >&2; exit 2 ;;
   esac
   exit $?
 fi
@@ -522,7 +524,8 @@ case "$SERVER" in
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
-  confida|sparkquill)
+  confida|sparkquill|dominion)
+    # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
@@ -547,12 +550,13 @@ case "$SERVER" in
     deploy_rootless_product sparkquill
     prune_builds_remote  # once, after all three: a chosen older build must still exist for the next product
     ;;
-  dominion)
+  dominion-legacy)
+    # Dominion's former own deploy (builds on the box); kept until the shared path has run there for a while.
     [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "Dominion has its own deploy path; --build does not apply to it." >&2; exit 2; }
     ACTIVATE_FLAG=""
     if [[ $# -gt 0 ]]; then
       if [[ $# -gt 1 || "$1" != "--activate" ]]; then
-        echo "Server 'dominion' only accepts an optional --activate flag." >&2
+        echo "Server 'dominion-legacy' only accepts an optional --activate flag." >&2
         usage >&2
         exit 2
       fi
