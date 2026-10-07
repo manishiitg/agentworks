@@ -693,3 +693,37 @@ func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *te
 		}
 	})
 }
+
+// PLAT-673: a member with the read-only workflow role still owns their Code
+// project, so its browser is theirs to use. Requiring the workflow role left
+// every Code browser on excellence stuck loading (all status checks 403).
+func TestCodeBrowserNeedsProjectOwnershipNotTheWorkflowRole(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":["code"]}]}`)
+	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    map[string]string{"content": `{"version":"1","id":"code-a","capabilities":{"browser_mode":"auto"}}`},
+		})
+	}))
+	defer workspaceServer.Close()
+	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
+
+	claims := &UserClaims{UserID: "alice", Username: "alice"}
+	if workflowPermissionInfoForClaims(claims).CanWriteWorkflows {
+		t.Fatal("test setup: alice must have the read-only workflow role")
+	}
+	const workspace = "Chats/Code/projects/code-a"
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
+		"code-a-chat": {SessionID: "code-a-chat", UserID: "alice", WorkspacePath: "_users/alice/Chats/Code/projects/code-a"},
+	}}
+	r := httptest.NewRequest(http.MethodGet, "/api/browser/extension", nil)
+	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	if _, err := api.browserWorkspaceAccess(r, workspace, "code", true); err != nil {
+		t.Fatalf("owner with read-only workflow role was refused their Code browser: %v", err)
+	}
+	other := r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "bob", Username: "bob"}))
+	if _, err := api.browserWorkspaceAccess(other, "_users/alice/Chats/Code/projects/code-a", "code", true); err == nil {
+		t.Fatal("another user must not get alice's Code browser")
+	}
+}

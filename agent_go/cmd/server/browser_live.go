@@ -289,10 +289,11 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		}
 	}()
 	canControl := func() bool {
-		if !currentUserCanWriteWorkflows(r) {
+		workspace := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
+		// A project's browser is its owner's; the workflow-write role applies to workflows only (PLAT-673).
+		if !isProjectWorkspacePath(workspace) && !currentUserCanWriteWorkflows(r) {
 			return false
 		}
-		workspace := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 		return api.canControlLiveBrowser(ctx, GetUserFromContext(r.Context()), workspace)
 	}
 	_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})

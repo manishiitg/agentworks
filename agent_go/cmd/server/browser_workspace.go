@@ -84,7 +84,13 @@ func (api *StreamingAPI) browserWorkspaceAccess(r *http.Request, workspace, prof
 	if claims == nil || claims.UserID == "" {
 		return "", fmt.Errorf("Sign in first")
 	}
-	if write && (!currentUserCanWriteWorkflows(r) || !api.canControlLiveBrowser(r.Context(), claims, workspace)) {
+	// The workflow-write role governs workflows only. A Code or Crew project's
+	// browser is its owner's (canControlLiveBrowser checks that): requiring the
+	// workflow role refused every browser check for members with read-only
+	// workflow access in their own Code, so its browser never left the loading
+	// screen (excellence 2026-10-07, PLAT-673).
+	workflowRoleOK := isProjectWorkspacePath(workspace) || currentUserCanWriteWorkflows(r)
+	if write && (!workflowRoleOK || !api.canControlLiveBrowser(r.Context(), claims, workspace)) {
 		return "", fmt.Errorf("Workspace write access required")
 	}
 	if isProjectWorkspacePath(workspace) {
