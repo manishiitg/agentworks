@@ -33,21 +33,14 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
   // A chat on the person's own account neither counts nor is limited, so it shows nothing (owner, 2026-10-07).
   if (!usage || accountProvider === null) return null
   const shown = shownTokenFigures(usage, accountProvider)
-  if (!shown.daily_limit && !shown.weekly_limit) {
-    if (!shown.daily_used && !shown.weekly_used) return null
-    return (
-      <span data-testid="shared-token-usage-chip" title={`Your use of ${shown.scope} (UTC). No limit is set; your own accounts are not counted.`}
-        className="inline-flex h-7 items-center rounded-md border border-border px-2 text-[11px] tabular-nums text-muted-foreground">
-        {formatTokens(shown.daily_used)} today · {formatTokens(shown.weekly_used)} week
-      </span>
-    )
-  }
+  // Only with a limit set on this account or the overall cap (owner, 2026-10-07).
+  if (!shown.daily_limit && !shown.weekly_limit) return null
   const daily = shown.daily_limit ? shown.daily_used / shown.daily_limit : -1
   const weekly = shown.weekly_limit ? shown.weekly_used / shown.weekly_limit : -1
   const showWeekly = weekly > daily
   const label = showWeekly
-    ? `${formatTokens(shown.weekly_used)}/${formatTokens(shown.weekly_limit)} week`
-    : `${formatTokens(shown.daily_used)}/${formatTokens(shown.daily_limit)} today`
+    ? `${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} this week`
+    : `${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} today`
   const tone = shown.state === 'over'
     ? 'border-red-300 text-red-700 dark:border-red-900 dark:text-red-300'
     : shown.state === 'warning'
