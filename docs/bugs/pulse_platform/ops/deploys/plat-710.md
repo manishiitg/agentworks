@@ -33,6 +33,14 @@ the Pi model template was not loaded by the app, and nothing ran there.
   managed installation"). Self-updates now set npm_config_prefix to the prefix the CLI was installed in
   (agent_go/internal/cliupdate). Affects every host with a pinned Node (Confida too); the stray copy was removed on
   Citymall by hand.
+- Pi runs under Landlock: `SANDBOX_EXTRA_SYSTEM_PATHS` grants exec on the managed CLI prefix and Node (first turn
+  failed with "exec: /srv/citymall/tools/bin/pi: Permission denied").
+- Acceptance (2026-10-07, on the box through the gateway on 127.0.0.1:25080): a Brain chat on Pi
+  `citymall/gpt-6-luna` called `mcp__api_bridge__brain_access` (list) and answered "I found that Brain's root folder
+  exists and currently has no subfolders; you have Owner access." Pi's transcript shows model gpt-6-luna, thinking
+  off; the key appears in no file under the docs, logs, temp or configs folders.
+- Admin product defaults set to Pi / citymall/gpt-6-luna for Goals, Crew and Code (Providers page setting, stored
+  in config/provider-account-settings.json).
 
 ## Left
 

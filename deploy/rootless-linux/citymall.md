@@ -83,7 +83,9 @@ to `current/configs/pi-agent`; `PI_CLI_AGENT_TEMPLATE_DIR` points the Pi adapter
 files into every session's private `PI_CODING_AGENT_DIR` (PLAT-711). The files hold no key: the adapter refuses a
 template whose `apiKey` or credential header is not `$CITYMALL_API_KEY`. The key is `CITYMALL_API_KEY` in the
 owner-only `.env` and reaches each Pi through the adapter's provider-key path (the server account), never through
-the template, logs or the repository. A person choosing a higher thinking level for these models gets the gateway's
+the template, logs or the repository. Confined Pi (Landlock) may exec only the managed CLI prefix and its Node, granted by
+`SANDBOX_EXTRA_SYSTEM_PATHS` in `product.env`. The product defaults (Goals, Crew, Code) are Pi on
+`citymall/gpt-6-luna`, set once as admin defaults (Providers page; `PUT /api/provider-accounts/product-defaults`). A person choosing a higher thinking level for these models gets the gateway's
 HTTP 400 on tool calls; leave it off.
 
 ## Sign-in (pending)
