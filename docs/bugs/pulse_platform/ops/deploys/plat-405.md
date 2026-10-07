@@ -63,3 +63,7 @@ data in `_users/default`; switching it on would hide that data). No rollback ste
 [PLAT-405](plat-405.md), fixed on `main`; step 2 (standard profile written by the
 rootless-linux deploy) still to reach Dominion and SparkQuill. Slack notices silent by default, deploys switch over at
 once, stale `.deploying` markers no longer pin releases, drift report.
+
+## Slack notice carries the changelog (2026-10-07)
+
+Owner: the deploy notice showed only the newest commit ("we send a very small changelog"). The start notice now lists every change since the release the server is running (read from its `current` release folder name), one line per commit subject, bookkeeping commits (`Record …`, ticket-only commits) left out, up to 60 lines. If the current release cannot be read, the notice stays as before.

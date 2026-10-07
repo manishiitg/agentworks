@@ -365,14 +365,44 @@ deploy_label() {
   esac
 }
 
+# The commit a server runs now, read from its current release folder's name (read-only; empty when unknown).
+deploy_current_revision() {
+  local release=""
+  case "$SERVER" in
+    rts|video-studio) release="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@${RTS_HOST_IP:-44.253.29.127}" 'readlink /var/lib/video-studio/video-studio/current' 2>/dev/null)" ;;
+    excellence) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 'readlink -f /srv/agents/current' 2>/dev/null)" ;;
+    confida|sparkquill) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
+  esac
+  release="$(basename "${release:-}")"
+  # Release folders are <sha>-<time> (RTS) or <product>-<sha>-<time> (Hetzner).
+  local part
+  for part in ${release//-/ }; do
+    [[ "$part" =~ ^[0-9a-f]{7,40}$ ]] && git -C "$REPO_ROOT" cat-file -e "$part^{commit}" 2>/dev/null && { echo "$part"; return 0; }
+  done
+}
+
+# What changes for people since the server's current release: one line per change, bookkeeping commits left out.
+deploy_changelog() {
+  local from="$1" to="$2" lines count
+  [[ -n "$from" ]] || return 0
+  lines="$(git -C "$REPO_ROOT" log --no-merges --reverse --format='%s' "$from..$to" 2>/dev/null | grep -vE '^(Record |Merge |Use PLAT-[0-9]+ for |PLAT-[0-9]+: ticket)' | awk '!seen[$0]++')"
+  count="$(printf '%s\n' "$lines" | grep -c . || true)"
+  [[ "$count" -gt 0 ]] || return 0
+  printf '\n*What changes* (%s changes since %s):\n' "$count" "${from:0:9}"
+  printf '%s\n' "$lines" | head -n 60 | cut -c1-140 | sed 's/^/• /'
+  [[ "$count" -le 60 ]] || printf '…and %s more\n' "$((count - 60))"
+}
+
 deploy_start_notice() {
   case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) return 0 ;; esac
   [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
-  local head_line
+  local head_line target changelog
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
-  head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' origin/main 2>/dev/null | cut -c1-90)"
+  target="origin/main"
+  head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' "$target" 2>/dev/null | cut -c1-90)"
+  changelog="$(deploy_changelog "$(deploy_current_revision)" "$target")"
   DEPLOY_NOTICE_STARTED="$(date +%s)"
-  deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own."
+  deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own.${changelog}"
   trap 'deploy_finish_notice $?' EXIT
 }
 
