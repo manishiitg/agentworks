@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-694](plat-694.md) | Slack bot removal refusal names the workflow and its owners | fixed on main | P2 |
 | [PLAT-684](plat-684.md) | Stale Slack test for scheduled runs | fixed on main | P3 |
 | [PLAT-668](plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 |

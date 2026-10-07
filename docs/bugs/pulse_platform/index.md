@@ -15,7 +15,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 37 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 33 | 6 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 34 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 27 | 5 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-694](integrations/slack/plat-694.md) | Slack bot removal refusal names the workflow and its owners | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-693](app/accounts/plat-693.md) | Per-account token limits on shared server accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-692](code/instructions/plat-692.md) | Project instructions appended to the generated AGENTS.md | fixed on main | P2 | [code/instructions](code/instructions/index.md) |
 | [PLAT-691](browser/browser/plat-691.md) | Browser recording lost: encoder fell behind | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-652](integrations/mcp/plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
-| [PLAT-650](dominion/deployment/plat-650.md) | Dominion service processes miss provisioned slot groups and block Python Relay runners | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |

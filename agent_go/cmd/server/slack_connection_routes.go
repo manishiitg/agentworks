@@ -495,7 +495,7 @@ func deleteSlackConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		if ref := slackConnectionWorkflowReference(r.Context(), id); ref != "" {
-			http.Error(w, fmt.Sprintf("slack connection is still selected by workflow %q; point the workflow elsewhere first", ref), http.StatusConflict)
+			http.Error(w, fmt.Sprintf("This bot can't be removed yet: workflow %s still uses it. An owner of that workflow must choose another bot in its Integrations → Slack first.", ref), http.StatusConflict)
 			return
 		}
 		if ref := slackConnectionProjectReference(r.Context(), current, id); ref != "" {
@@ -611,10 +611,22 @@ func slackConnectionWorkflowReference(ctx context.Context, connID string) string
 		if strings.TrimSpace(manifest.Capabilities.SlackConnectionID) != connID {
 			continue
 		}
-		if label := strings.TrimSpace(manifest.Label); label != "" {
-			return label
+		name := strings.TrimSpace(manifest.Label)
+		if name == "" {
+			name = manifest.ID
 		}
-		return manifest.ID
+		// Name who can change it: the person removing a bot is often not an owner of the workflow that still uses it
+		// (Confida 2026-10-07).
+		var owners []string
+		for _, id := range manifest.Access.Owners {
+			if rec := directoryUserFor(id, "", ""); rec != nil {
+				owners = append(owners, firstNonEmptyTrimmed(rec.Username, rec.Email))
+			}
+		}
+		if len(owners) > 0 {
+			return fmt.Sprintf("%s (owners: %s)", name, strings.Join(owners, ", "))
+		}
+		return name
 	}
 	return ""
 }
