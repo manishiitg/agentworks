@@ -280,11 +280,52 @@ func (s *Service) effectiveRaw(p Principal, folder string) int {
 }
 func (s *Service) require(p Principal, folder string, role int) error {
 	have := s.effective(p, folder)
+	if have < role {
+		if err := s.explainProjectLimit(p, folder, role); err != nil {
+			return err
+		}
+	}
 	if have < roleReader {
 		return kbErr("NOT_FOUND", "Resource not found.")
 	}
 	if have < role {
 		return kbErr("FORBIDDEN", "The requested operation requires higher folder access.")
+	}
+	return nil
+}
+
+// explainProjectLimit says why a project (workflow, Crew, Code) cannot use a
+// folder its own principal can: Brain limits a project to folders every
+// person who sees its output can read, and Read access is read-only. A bare
+// NOT_FOUND made a workflow agent call RTS/Engineering "an empty shell" when
+// the workflow's two readers had no access to it (RTS 2026-10-07, PLAT-681).
+// Nil when the principal itself lacks the access: the uniform NOT_FOUND stays.
+func (s *Service) explainProjectLimit(p Principal, folder string, role int) error {
+	policy := p.BindingPolicy
+	if policy == nil || s.effectiveRaw(p, folder) < role {
+		return nil
+	}
+	var blocked []string
+	if ids, err := s.identities(); err == nil {
+		for _, id := range policy.Audience {
+			if containsString(policy.Admins, id) {
+				continue
+			}
+			i, ok := ids[id]
+			if !ok || i.Disabled || s.effectiveRaw(Principal{IdentityID: id}, folder) < roleReader {
+				name := id
+				if ok && i.Name != "" {
+					name = i.Name
+				}
+				blocked = append(blocked, name)
+			}
+		}
+	}
+	if len(blocked) > 0 {
+		return kbErr("FORBIDDEN", fmt.Sprintf("%s is not available to this project: people who see its output (%s) cannot read it. Give them Reader on %s, or remove them from the project.", folder, strings.Join(blocked, ", "), folder))
+	}
+	if role > roleReader && !policy.WriteAll {
+		return kbErr("FORBIDDEN", "This project has Read-only Brain access; set it to Read & write to change notes.")
 	}
 	return nil
 }

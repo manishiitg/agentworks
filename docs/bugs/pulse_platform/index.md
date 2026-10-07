@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
-| [Brain](brain/index.md) | 27 | 6 |
+| [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 48 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
 | [Code](code/index.md) | 10 | 1 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-681](brain/access/plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-678](browser/browser/plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 | [browser/browser](browser/browser/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
 | [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | deployed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
-| [PLAT-639](chat/general/plat-639.md) | Queued turn broke the Codex chat: security policy changed | fixed on main | P1 | [chat/general](chat/general/index.md) |

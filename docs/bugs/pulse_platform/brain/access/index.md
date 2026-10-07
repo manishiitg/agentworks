@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-681](plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 |
 | [PLAT-632](plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 |
 | [PLAT-628](plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 |
