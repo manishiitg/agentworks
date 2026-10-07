@@ -520,24 +520,6 @@ func ResolveSlackThreadRoute(ctx context.Context, thread ThreadID, legacy func()
 	return nil
 }
 
-var (
-	slackUnlistedNoticeMu sync.Mutex
-	slackUnlistedNotices  = map[string]time.Time{}
-)
-
-// slackUnlistedNoticeDue rate-limits the "not set up for this channel" reply
-// to once per app and channel per day.
-func slackUnlistedNoticeDue(connectionID, channelID string) bool {
-	slackUnlistedNoticeMu.Lock()
-	defer slackUnlistedNoticeMu.Unlock()
-	key := connectionID + "|" + channelID
-	if last, ok := slackUnlistedNotices[key]; ok && time.Since(last) < 24*time.Hour {
-		return false
-	}
-	slackUnlistedNotices[key] = time.Now()
-	return true
-}
-
 // --- the button prompt ---
 
 // slackPendingPick is a message waiting for its sender to pick a target.

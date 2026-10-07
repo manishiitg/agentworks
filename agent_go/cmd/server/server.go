@@ -2933,10 +2933,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// the platform switch is off.
 	if slackSvc != nil {
 		api.migrateCrewBotScopes(context.Background(), slackSvc)
-		// Explicit Slack channels (PLAT-668): list, once per own bot, the
-		// channels it already answers in, so turning off the old fallback
-		// breaks nothing. Slack calls run off the startup path.
-		go api.migrateSlackOwnBotChannels(context.Background(), slackSvc)
 		botConfig, _ := chatStore.GetBotConnectorConfig(context.Background(), "slack")
 		if slackBotConnectorWantedAtStartup(botConfig, slackSvc) && registerSlackBotConnector(botManager, slackSvc) {
 			log.Printf("✅ Slack bot mode enabled")

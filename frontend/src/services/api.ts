@@ -1582,14 +1582,7 @@ export const agentApi = {
     return apiResponse.data
   },
 
-  // Make this target answer in a channel on a bot (checked with Slack first),
-  // and say whether it answers there without the slug.
-  placeSlackBotChannel: async (id: string, channelId: string, destination: { workspace_path: string; profile_id?: string }, makeDefault: boolean): Promise<SlackUsableBot> => {
-    const apiResponse = await api.put(`/api/human-feedback/slack/connections/${id}/channel-routes/${encodeURIComponent(channelId)}`, { ...destination, default: makeDefault })
-    return apiResponse.data
-  },
-
-  // Attach a target to one of my bots for 1:1 DMs (a Code's DM slug).
+  // Attach a target to one of my bots: it then answers wherever the bot is, by its slug (a Code: DMs only).
   attachSlackBotTarget: async (id: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackUsableBot> => {
     const apiResponse = await api.put(`/api/human-feedback/slack/connections/${id}/targets`, destination)
     return apiResponse.data

@@ -79,19 +79,19 @@ React Flow label background for readable text over the line. Why: labels beside
 loop and branch connectors made it unclear which path their text described.
 [PLAT-680](bugs/pulse_platform/relays/frontend-chat/plat-680.md).
 
-### 2026-10-07 — One Slack bot reaches many targets by slug; channels are explicit
+### 2026-10-07 — Slack membership decides where a bot answers; slugs decide which target
 
-A Slack app (an own bot, or the platform "AgentWorks bot" where a server has one) answers for many workflows, Crews and
-Codes, by two rules. Channels are explicit: a bot answers only in channels added on a target's Slack tab (owner: "we
-should always just direct add which channels the bot answers to"), so nobody is surprised by where it answers; the old
-"an own bot answers for its own target in any channel it is in" fallback is gone, after a one-time startup migration
-listed every such channel on the bot's own target (`[SLACK_CHANNEL_MIGRATION]`, `config/slack-channel-migration.json`).
-Slugs pick the target inside a channel: one target answers without a slug; with several, `@bot <slug> …` picks one
-and no slug asks with buttons, the pick binding the thread. A saved channel default no longer applies to people; it
-remains only for automated messages (own-bot triggers). DMs reach only targets the matched person can reach with
-their own access; Codes answer DMs only, owner only. A slug is never a grant: every message, turn and tool call
-re-checks the channel's list and, on the platform bot, the target's opt-in. `agent_go/cmd/server/slack_slugs.go`,
-`slack_channel_migration.go`, `services/slack_slug_routing.go`. [PLAT-668](bugs/pulse_platform/integrations/slack/plat-668.md).
+A Slack app (an own bot, or the platform "AgentWorks bot" where a server has one) answers in every channel it is a
+member of and in DMs: invite turns it on, kick turns it off, and nothing is set up per channel in AgentWorks. Why:
+Slack workspace admins already control who may add apps to channels, and the owner wants no second setup step.
+Attaching a target to a bot (its own bot, or "one of my bots") is the only grant; every attached target is reachable
+wherever the bot is. Slugs pick the target: a bot with one target answers without a slug; with several,
+`@bot <slug> …` picks one and no slug asks with buttons, the pick binding the thread (DMs the same, plus `list`). Saved
+channel routes stay on disk for own-bot triggers and the platform bot's admin routes, but people's messages no longer
+need them. DMs reach only targets the matched person can reach with their own access; Codes answer DMs only, owner
+only. A slug is never a grant: every message, turn and tool call re-checks the bot's attached targets and, on the
+platform bot, the target's opt-in. `agent_go/cmd/server/slack_slugs.go`, `services/slack_slug_routing.go`.
+[PLAT-668](bugs/pulse_platform/integrations/slack/plat-668.md).
 
 ### 2026-10-07 — A runtime change ends an idle live-input turn instead of waiting for it
 

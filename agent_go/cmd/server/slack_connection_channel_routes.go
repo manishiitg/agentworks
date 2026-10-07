@@ -517,10 +517,11 @@ func (api *StreamingAPI) revokeSlackConnectionChannelSessions(ctx context.Contex
 	})
 }
 
-// putSlackConnectionTargetHandler attaches a target to a bot for DMs: its
-// slug then reaches it in a 1:1 DM, for people who can reach it with their
-// own access (a Code: its owner only). Needs manage access to the bot and
-// write access to the target.
+// putSlackConnectionTargetHandler attaches a target to a bot, the only grant:
+// its slug then reaches it in every channel the bot is in (Run mode) and in a
+// 1:1 DM for people who can reach it with their own access (a Code: DMs only,
+// its owner only). Needs manage access to the bot and write access to the
+// target.
 func putSlackConnectionTargetHandler(api *StreamingAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
@@ -677,7 +678,6 @@ func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
 			}
 		}
 		own := services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}
-		migrated := slackChannelsMigrated(ctx, conn.ID)
 		for _, channel := range listed {
 			id := services.NormalizeSlackChannelID(channel.ID)
 			row := SlackBotChannelResponse{ID: id, Name: channel.Name, IsPrivate: channel.IsPrivate, Targets: []SlackConnectionChannelRouteResponse{}}
@@ -685,7 +685,7 @@ func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
 			allowed, def := []services.SlackTargetRef{}, services.SlackTargetRef{}
 			if found {
 				allowed, def = entry.Allowed(), entry.Default()
-			} else if !own.IsCode() && !migrated {
+			} else if !own.IsCode() {
 				allowed, def = []services.SlackTargetRef{own}, own
 			}
 			for _, target := range allowed {

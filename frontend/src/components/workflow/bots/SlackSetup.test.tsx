@@ -14,7 +14,6 @@ const api = vi.hoisted(() => ({
   getSlackTargetSettings: vi.fn(),
   updateSlackTargetSettings: vi.fn(),
   listSlackBotChannels: vi.fn(),
-  placeSlackBotChannel: vi.fn(),
   removeSlackBotChannelRoute: vi.fn(),
   attachSlackBotTarget: vi.fn(),
   detachSlackBotTarget: vi.fn(),
@@ -80,7 +79,6 @@ beforeEach(() => {
   api.listSlackBotChannels.mockResolvedValue({ bot_name: "", slug: "support", channels: [
     { id: "C0QA0000001", name: "qa-team", answers: false, is_default: false, removable: false, targets: [] },
   ] });
-  api.placeSlackBotChannel.mockResolvedValue({ channel_name: "qa-team" });
 });
 
 afterEach(() => {
@@ -136,14 +134,14 @@ it("shows required scopes, optional scopes, and bot events without opening setup
   expect(checklist.textContent).toContain('Reinstall the Slack app after changing scopes');
 });
 
-it("shows the answering bot, how to reach this workflow by slug, and its channels by name", async () => {
+it("shows the answering bot, its slug, and the channels Slack says it is in", async () => {
   const host = await render(makeBots({ own: ownBot }));
   expect(radio(host, /Its own bot/)).toBeUndefined();
   expect(host.textContent).toContain("Support bot");
   expect(host.textContent).toContain("Ready");
   expect(host.textContent).toContain("Change");
   expect(host.textContent).toContain("@Support bot support your question");
-  expect(host.textContent).toContain("#qa-team");
+  expect(host.textContent).toContain("Answers in every channel @Support bot is in (#qa-team) and in DMs.");
   expect(host.textContent).toContain("/invite @Support bot");
   expect(host.textContent).not.toContain("Save bot");
   expect(host.textContent).not.toContain("@AgentWorks");
@@ -214,7 +212,8 @@ it("says ask an admin only for the platform shared bot", async () => {
   expect(radio(host, /Shared bot/)).toBeUndefined();
 });
 
-it("uses one of my bots and adds a channel picked by name", async () => {
+it("uses one of my bots by attaching this workflow to it", async () => {
+  api.attachSlackBotTarget.mockResolvedValue({});
   const host = await render(makeBots({ myBots: [alphaBot] }));
   await act(async () => { radio(host, /One of my bots/).click(); });
   expect(host.textContent).toContain("Alpha bot");
@@ -223,27 +222,21 @@ it("uses one of my bots and adds a channel picked by name", async () => {
   const use = Array.from(host.querySelectorAll("button")).find(button => button.textContent?.includes("Use this bot"))!;
   await act(async () => { use.click(); });
   await act(async () => {});
-  expect(host.textContent).toContain("@Alpha bot support your question");
-  const add = Array.from(host.querySelectorAll("button")).find(button => button.textContent?.includes("Add channel"))!;
-  await act(async () => { add.click(); });
-  expect(api.placeSlackBotChannel).toHaveBeenCalledWith("slack_alpha", "C0QA0000001", { workspace_path: "Workflow/support" }, false);
+  expect(api.attachSlackBotTarget).toHaveBeenCalledWith("slack_alpha", { workspace_path: "Workflow/support" });
 });
 
-it("answers through one of my bots when it already answers here", async () => {
-  const sharing = { ...alphaBot, channel_routes: [
-    { channel_id: "C0111111111", workspace_path: "Workflow/support", label: "Support" },
-  ] };
+it("answers through one of my bots in every channel the bot is in, with no channel setup", async () => {
+  const sharing = { ...alphaBot, targets: [{ workspace_path: "Workflow/support", slug: "support" }] };
   api.listSlackBotChannels.mockResolvedValue({ bot_name: "Alpha bot", slug: "support", channels: [
-    { id: "C0111111111", name: "support-desk", answers: true, is_default: false, removable: true, targets: [{ channel_id: "C0111111111", workspace_path: "Workflow/alpha", slug: "alpha", is_default: true }, { channel_id: "C0111111111", workspace_path: "Workflow/support", slug: "support", is_default: false }] },
+    { id: "C0111111111", name: "support-desk", answers: true, is_default: false, removable: false, targets: [] },
   ] });
   const host = await render(makeBots({ myBots: [sharing] }));
   expect(host.textContent).toContain("Alpha bot");
-  expect(host.textContent).toContain("support-desk");
-  expect(host.textContent).toContain("shared with alpha");
+  expect(host.textContent).toContain("@Alpha bot support your question");
+  expect(host.textContent).toContain("Answers in every channel @Alpha bot is in (#support-desk) and in DMs.");
+  expect(host.textContent).toContain("With several on one bot, people add the slug, or pick from buttons.");
+  expect(host.textContent).not.toContain("Add channel");
   expect(host.textContent).not.toContain("without the slug");
-  expect(host.textContent).toContain("In a channel shared by several, people add the slug, or pick from buttons.");
-  // This target's permissions show here, not only on the bot's own tab.
-  expect(host.textContent).toContain("everyone here can ask and run it (Run mode)");
 });
 
 it("names a Crew a Crew, not a project", async () => {

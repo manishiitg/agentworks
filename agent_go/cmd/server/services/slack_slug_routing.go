@@ -68,19 +68,6 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 		return slackChannelPick{text: text, route: RevokedSlackRoute()}
 	}
 	if len(set.Targets) == 0 {
-		// A bot answers only in channels added on a target's Slack tab
-		// (PLAT-668). A mention of an own bot elsewhere gets one short
-		// pointer per channel per day; anything else stays silent.
-		if isMention && set.Dedicated {
-			if slackUnlistedNoticeDue(s.connectionID, channelID) {
-				name := channelID
-				if label := strings.TrimSpace(s.GetChannelName(ctx, channelID)); label != "" && !strings.EqualFold(label, channelID) {
-					name = label
-				}
-				return slackChannelPick{reply: fmt.Sprintf("I'm not set up for this channel yet. Ask the owner to add #%s on a Slack tab.", strings.TrimPrefix(name, "#"))}
-			}
-			return slackChannelPick{handled: true}
-		}
 		return slackChannelPick{text: text}
 	}
 	var matches []int
@@ -319,16 +306,24 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 				chosen = index
 			}
 		}
-		if chosen < 0 && set.Default >= 0 && set.Default < len(set.Targets) && reachable(set.Default) {
-			chosen = set.Default
-		}
 	}
 	if chosen < 0 {
-		available := mine()
-		if len(available.Targets) == 0 {
-			return slackDMPick{reply: "Nothing is reachable for you through this bot yet. A workflow's, Crew's or Code's owner turns it on in its Integrations → Slack tab."}
+		// Nothing picked: one reachable target answers; with several, the
+		// bot asks with buttons (as in a channel).
+		var reachableIdx []int
+		for i := range set.Targets {
+			if reachable(i) {
+				reachableIdx = append(reachableIdx, i)
+			}
 		}
-		return slackDMPick{reply: FormatSlackTargetList(available, "for you here")}
+		switch len(reachableIdx) {
+		case 0:
+			return slackDMPick{reply: "Nothing is reachable for you through this bot yet. A workflow's, Crew's or Code's owner turns it on in its Integrations → Slack tab."}
+		case 1:
+			chosen = reachableIdx[0]
+		default:
+			return slackDMPick{text: text, choices: pickTargets(set, reachableIdx)}
+		}
 	}
 	target := set.Targets[chosen]
 	pick := slackDMPick{text: text, route: routes[chosen]}

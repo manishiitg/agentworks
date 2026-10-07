@@ -9,7 +9,7 @@ import { ToggleRow } from '../../ui/ToggleRow'
 import { READ_ONLY_TITLE } from '../../../hooks/useCanWriteWorkflow'
 import type { SlackConnection, SlackTargetSettings, SlackUsableBot } from '../../../services/api-types'
 import { agentApi } from '../../../services/api'
-import { SlackBotChannels } from './SlackBotChannels'
+import { SlackBotWhere } from './SlackBotWhere'
 import { sameBotWorkspacePath } from './slackWorkflowConnection'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
@@ -26,11 +26,11 @@ import { routeId } from './types'
 //     bot this user manages), or the platform bot when the server has one.
 //  2. How people reach it: "@Bot <slug> your question" in a channel, and
 //     "<slug> your question" in a DM, with the slug editable here.
-//  3. Channels: picked by name from the channels the bot is in, each with
-//     one switch, "Answer here without the slug".
+//  3. Where it answers: Slack decides. A bot answers in every channel it is
+//     in and in DMs; with several targets on one bot the slug (or buttons)
+//     picks one. One read-only line, no channel setup here.
 //
-// Everything else (bot tokens, tests, Home tab, permissions, admin routes)
-// sits under Advanced.
+// The bot's own settings stay visible on its own target.
 
 const OWNER_ONLY_TITLE = 'Only an owner can manage this Slack bot'
 
@@ -296,17 +296,17 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
         </FormSection>
       )}
 
-      {answering && !ownBotOnly && target && (
-        <FormSection title="Channels">
+      {answering && target && (
+        <FormSection title="Where it answers">
           {answering.connectionId
-            ? <SlackBotChannels botId={answering.connectionId} botName={answering.name} destination={target} readOnly={readOnly} />
-            : settings && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} settings={settings} onSettings={setSettings} />}
-          {slackRoutes.length > 0 && (
+            ? <SlackBotWhere botId={answering.connectionId} botName={answering.name} destination={target} dmOnly={ownBotOnly} />
+            : settings && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} dmOnly={ownBotOnly} settings={settings} onSettings={setSettings} />}
+          {!ownBotOnly && slackRoutes.length > 0 && (
             <div className="grid gap-2">
               {slackRoutes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground">In a channel shared by several, people add the slug, or pick from buttons.</p>
+          {!ownBotOnly && <p className="text-[11px] text-muted-foreground">With several on one bot, people add the slug, or pick from buttons.</p>}
         </FormSection>
       )}
 
@@ -502,11 +502,8 @@ function MyBotsPicker({ bots, noun, dmOnly, attachedHere, onPick }: {
   }
   const use = async () => {
     if (!picked) return
-    if (!dmOnly) {
-      onPick(picked.id)
-      return
-    }
-    // A Code answers DMs only: attach it to the bot so its slug reaches it.
+    // Attaching a target to a bot is the only grant: it then answers wherever
+    // the bot is (Codes: DMs only), picked by its slug.
     setBusy(true)
     setError(null)
     try {
@@ -537,13 +534,13 @@ function MyBotsPicker({ bots, noun, dmOnly, attachedHere, onPick }: {
         </Button>
       </div>
       {myOtherBots.length === 1 && picked?.owner_label && <p className="text-xs text-muted-foreground">Set up for {picked.owner_label}.</p>}
-      {dmOnly && myOtherBots.filter(attachedHere).map(bot => (
+      {myOtherBots.filter(attachedHere).map(bot => (
         <div key={bot.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="flex-1">Answers DMs through {bot.display_name}</span>
+          <span className="flex-1">Answers {dmOnly ? 'DMs ' : ''}through {bot.display_name}</span>
           <Button
             variant="ghost"
             size="xs"
-            aria-label={`Stop answering DMs through ${bot.display_name}`}
+            aria-label={`Stop answering through ${bot.display_name}`}
             disabled={readOnly || busy}
             onClick={async () => {
               setBusy(true)

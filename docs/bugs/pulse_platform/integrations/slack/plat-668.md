@@ -83,6 +83,13 @@ possibly in a single channel.
   with "everyone here can ask and run it (Run mode)" and who else shares it) plus Add channel. The header names the
   real kind (Crew, workflow or Code).
 
+- Follow-up (owner, 2026-10-07: "why do we need another ui for this"): Slack decides the channels and slugs decide the
+  target. An own bot answers in every channel it is in, for every target attached to it; the explicit-channel rule,
+  its startup migration and the "not set up for this channel" reply are removed (nothing was deployed with them).
+  "One of my bots" attaches the target to the bot. One target answers without a slug; several ask with buttons
+  without one (channels and DMs). The tab's channel list is replaced by one read-only line, "Answers in every channel
+  @SDE is in (#…) and in DMs", read with `users.conversations` on the server.
+
 ## Left
 
 - Live check on RTS after a deploy (nothing is deployed): the workflows' bot plus 3 Crews in one channel, and a Code

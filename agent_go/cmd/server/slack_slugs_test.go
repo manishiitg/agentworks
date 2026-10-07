@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,25 +57,11 @@ var (
 	slugCrew     = services.SlackTargetRef{WorkspacePath: crewRunModeOwnerRoot, ProfileID: "work"}
 )
 
-// Migration: a route saved before slugs (an own bot's channel route, the
-// admin's platform route) is a one-target list that is also the default, and
-// it keeps answering exactly as before.
+// Migration: the admin's platform route saved before slugs is a one-target
+// list that is also the default, and it keeps answering exactly as before.
 func TestSlackSlugsMigratedRouteIsOneTargetDefault(t *testing.T) {
 	w := newBotDryRunWorld(t)
 	ctx := context.Background()
-	app := w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")
-	if _, err := w.slack.SetSlackConnectionChannelRoute(ctx, app.ID, "C0ROUTED01", &services.SlackConnectionRoute{WorkspacePath: "Workflow/shared"}); err != nil {
-		t.Fatal(err)
-	}
-	routed := w.api.slackChannelTargets(ctx, app.ID, "C0ROUTED01")
-	if len(routed.Targets) != 1 || routed.Default != 0 || !routed.Targets[0].Ref.Same(slugWorkflow) {
-		t.Fatalf("own bot's channel route = %+v, want the workflow alone as default", routed)
-	}
-	requireAdmitted(t, w.mention(t, app.ID, "C0ROUTED01"), "workflow")
-	if own := w.api.slackChannelTargets(ctx, app.ID, "C0ANYCHAN1"); len(own.Targets) != 1 || own.Default != 0 || !own.Targets[0].Ref.Same(slugCrew) {
-		t.Fatalf("own bot in an unlisted channel = %+v, want its own crew as default", own)
-	}
-
 	shared := w.platformBot(t)
 	w.adminRoutes(t, map[string]services.ChannelRoute{"C0ADMIN001": {WorkflowID: w.workflowID(t), WorkspacePath: "Workflow/shared", BotGrant: "run"}})
 	platform := w.api.slackChannelTargets(ctx, shared.ID, "C0ADMIN001")
@@ -289,62 +274,25 @@ func TestSlackSlugsSettingsRouteIsRegistered(t *testing.T) {
 	}
 }
 
-// Channels are explicit (owner 2026-10-07): a migrated own bot does not
-// answer in a channel nobody added, a channel with one target answers it
-// without a slug, and a channel with two asks with buttons. Every add is
-// checked with Slack first.
-func TestSlackSlugsExplicitChannels(t *testing.T) {
+// Slack decides the channels, slugs decide the target (owner 2026-10-07): an
+// own bot with one target answers in any channel it is in without a slug;
+// once a second target is attached, the slug picks one and no slug asks with
+// buttons.
+func TestSlackSlugsBotMembershipAndSlugs(t *testing.T) {
 	w := newBotDryRunWorld(t)
 	ctx := context.Background()
 	app := w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")
-	refusal := ""
-	previousCheck := slackChannelAddCheck
-	slackChannelAddCheck = func(_ context.Context, _ *services.SlackService, _ services.SlackConnection, _, _ string) (string, error) {
-		if refusal != "" {
-			return "", fmt.Errorf("%w: %s", services.ErrSlackChannelCheck, refusal)
-		}
-		return "qa-team", nil
-	}
-	previousLister := slackBotChannelLister
-	slackBotChannelLister = func(context.Context, *services.SlackService, string) ([]services.SlackChannelInfo, error) {
-		return []services.SlackChannelInfo{{ID: "C0WASFALLBK", Name: "ci-cd"}}, nil
-	}
-	t.Cleanup(func() { slackChannelAddCheck, slackBotChannelLister = previousCheck, previousLister })
-	put := func(path, profile string) *httptest.ResponseRecorder {
-		body := fmt.Sprintf(`{"workspace_path":%q,"profile_id":%q,"default":false}`, path, profile)
-		req := httptest.NewRequest(http.MethodPut, "/api/human-feedback/slack/connections/"+app.ID+"/channel-routes/C0QATEAM01", strings.NewReader(body))
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}))
-		req = mux.SetURLVars(req, map[string]string{"id": app.ID, "channel": "C0QATEAM01"})
-		rec := httptest.NewRecorder()
-		putSlackConnectionChannelRouteHandler(w.api)(rec, req)
-		return rec
-	}
+	requireAdmitted(t, w.say(t, app.ID, "C0ANYCHAN1", "what changed?"), "crew-aaa")
 
-	// The startup migration lists the channels the bot answered in under
-	// the old fallback; after it, an unlisted channel does not route.
-	w.api.migrateSlackOwnBotChannels(ctx, w.slack)
-	requireAdmitted(t, w.say(t, app.ID, "C0WASFALLBK", "what changed?"), "crew-aaa")
-	if outcome := w.say(t, app.ID, "C0UNLISTED1", "what changed?"); outcome.Admitted {
-		t.Fatalf("an unlisted channel routed: %+v", outcome)
+	if _, err := w.slack.ModifySlackConnection(ctx, app.ID, func(conn *services.SlackConnection) error {
+		conn.Targets = append(conn.Targets, slugWorkflow)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-
-	refusal = "@SDE is not in #qa-team. Invite @SDE first: /invite @SDE"
-	if rec := put("Workflow/shared", ""); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "/invite @SDE") {
-		t.Fatalf("an unchecked channel was saved: %d %s", rec.Code, rec.Body.String())
-	}
-	refusal = ""
-	if rec := put("Workflow/shared", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "qa-team") {
-		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
-	}
-	// One target: it answers, no slug needed.
-	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "what changed?"), "workflow")
-
-	if rec := put(crewRunModeOwnerRoot, "work"); rec.Code != http.StatusOK {
-		t.Fatalf("add the crew: %d %s", rec.Code, rec.Body.String())
-	}
-	// Two targets: the slug picks one; without it, buttons ask.
-	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "shared what changed?"), "workflow")
-	if asked := w.say(t, app.ID, "C0QATEAM01", "what changed?"); asked.Admitted || !strings.Contains(asked.Reason, "buttons") {
+	requireAdmitted(t, w.say(t, app.ID, "C0ANYCHAN2", "shared what changed?"), "workflow")
+	requireAdmitted(t, w.say(t, app.ID, "C0ANYCHAN2", "alpha what changed?"), "crew-aaa")
+	if asked := w.say(t, app.ID, "C0ANYCHAN2", "what changed?"); asked.Admitted || !strings.Contains(asked.Reason, "buttons") {
 		t.Fatalf("two targets and no slug must ask with buttons: %+v", asked)
 	}
 }

@@ -60,25 +60,22 @@ a slug (the target's name, lowercase `[a-z0-9-]`, editable) picks one.
 - **The AgentWorks bot** is the platform (unscoped) connection. A target is reachable from it only after its owner
   turns on "Use the AgentWorks bot" (`config/slack-targets.json` → `targets[].platform_bot`); an admin may limit the
   products (`products`). A target that already had the admin's channel route counts as on until its owner decides.
-- **Channels are explicit**: a bot answers only in channels added on a target's tab. On the platform bot, the admin's
-  route (`allowed_channels`) plus owner-added `channels[<id>].targets` (added only by someone Slack says is a member
-  of the channel); on an own bot, `channel_routes[<id>]` (its destination and `targets`). An unlisted channel gets one
-  "not set up for this channel" reply per channel per day. Own bots that used to answer for their own target in any
-  channel were migrated once at startup (`slack_channel_migration.go`, `[SLACK_CHANNEL_MIGRATION]`,
-  `config/slack-channel-migration.json`); a bot not migrated yet keeps that fallback until it is.
+- **Slack decides the channels**: an own bot answers in every channel it is a member of, for every target attached to
+  it (its own, the targets on its `channel_routes`, and `targets`), and in DMs; invite turns it on, kick turns it off.
+  The platform bot keeps its admin routes (`allowed_channels`) plus owner-added `channels[<id>].targets`.
 - **Picking**: `@bot <slug> …` picks a target only when the word is on the channel's list (otherwise it is message
   text). The thread is bound (`config/slack-threads/<hash>.target.json`); a different slug there is refused. No slug:
-  a channel with one target answers it; with several, one button per target, and the click binds the thread and runs
-  the waiting message (`services/slack_slug_routing.go`). A saved channel default applies only to automated messages
-  (triggers), never to people.
+  one target answers; with several, one button per target, and the click binds the thread and runs the waiting
+  message (`services/slack_slug_routing.go`), in channels and DMs. A channel route's destination applies only to
+  automated messages (triggers), never to people.
 - **DMs** (platform bot and own bots): the sender is matched by Slack email to one account; `<slug> …` picks among the
   targets they can reach with their own access (`slackCanReach`: workflow access, a Crew's owner or shared-with, a
   Code's owner only), remembered for the DM; `list` lists them. An own bot's DM targets are its own, its channel
   targets and `targets` (DM attachments, Codes included).
-- **Slack tab**: the bot ("QA Bot · Ready", its settings visible on its own target), the slug with one example
-  (`@QA Bot <slug> your question`), and the channels list, picked by name from the bot's own channels (`GET
-  /connections/{id}/channels`); `PUT …/channel-routes/{channel}` with `default` checks the channel with Slack (exists,
-  bot and adder are members) before adding it. The platform bot is offered only when the server has one.
+- **Slack tab**: the bot ("QA Bot · Ready", its settings visible on its own target), the slug with one example, and
+  one read-only line naming the channels the bot is in (`GET /connections/{id}/channels`, `users.conversations` on
+  the server). "One of my bots" attaches the target (`PUT /connections/{id}/targets`). The platform bot is offered
+  only when the server has one.
 - **Triggers** run on an own bot's channel route too (`channel_routes[<id>].trigger`, for the channel's default
   target; set with the route tools' `own_bot: true` or `PUT /connections/{id}/channel-routes/{channel}` with
   `trigger`): the event's arrival app picks the route (`slackTriggerRoute`). Files attached to a top-level channel

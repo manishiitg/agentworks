@@ -185,17 +185,13 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 			set.Disabled = true
 			return set
 		}
-		own := services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}
-		var refs []services.SlackTargetRef
-		var def services.SlackTargetRef
-		if entry, ok := conn.ChannelRoutes[channelID]; ok {
-			refs, def = entry.Allowed(), entry.Default()
-		} else if !slackChannelsMigrated(ctx, conn.ID) {
-			// Until this bot's one-time channel migration has run, a channel
-			// it is in answers for its own target, as before (PLAT-668). After
-			// it, a bot answers only in channels added on a target's tab.
-			refs, def = []services.SlackTargetRef{own}, own
-		}
+		// Slack decides the channels and slugs decide the target (owner,
+		// 2026-10-07): an own bot answers in every channel it is a member of
+		// (messages only arrive from those), for every target attached to it:
+		// its own, the targets on its channel routes and its DM attachments.
+		// Codes answer DMs only. A channel route's destination is kept as the
+		// default automated messages (triggers) use; people pick by slug.
+		refs := slackOwnBotTargets(conn)
 		var kept []services.SlackTargetRef
 		for _, ref := range refs {
 			if !ref.IsCode() {
@@ -203,8 +199,8 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 			}
 		}
 		set.Targets = slackNamedTargets(ctx, registry, kept)
-		if !def.Empty() {
-			set.Default = set.Find(def)
+		if entry, ok := conn.ChannelRoutes[channelID]; ok && !entry.Default().Empty() {
+			set.Default = set.Find(entry.Default())
 		}
 		return set
 	}
@@ -243,21 +239,7 @@ func (api *StreamingAPI) slackDMTargets(ctx context.Context, connectionID string
 			set.Disabled = true
 			return set
 		}
-		refs := []services.SlackTargetRef{{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}}
-		channels := make([]string, 0, len(conn.ChannelRoutes))
-		for channel := range conn.ChannelRoutes {
-			channels = append(channels, channel)
-		}
-		sort.Strings(channels)
-		for _, channel := range channels {
-			for _, ref := range conn.ChannelRoutes[channel].Allowed() {
-				refs = appendSlackRef(refs, ref)
-			}
-		}
-		for _, ref := range conn.Targets {
-			refs = appendSlackRef(refs, ref)
-		}
-		set.Targets = slackNamedTargets(ctx, registry, refs)
+		set.Targets = slackNamedTargets(ctx, registry, slackOwnBotTargets(conn))
 		set.Default = 0
 		return set
 	}
@@ -422,4 +404,24 @@ func (api *StreamingAPI) slackDMRouteMatching(ctx context.Context, connectionID,
 		}
 	}
 	return ChannelRoute{}, false
+}
+
+// slackOwnBotTargets lists every target attached to an own bot, its own
+// first: attaching a target to a bot is the only grant (PLAT-668).
+func slackOwnBotTargets(conn services.SlackConnection) []services.SlackTargetRef {
+	refs := []services.SlackTargetRef{{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}}
+	channels := make([]string, 0, len(conn.ChannelRoutes))
+	for channel := range conn.ChannelRoutes {
+		channels = append(channels, channel)
+	}
+	sort.Strings(channels)
+	for _, channel := range channels {
+		for _, ref := range conn.ChannelRoutes[channel].Allowed() {
+			refs = appendSlackRef(refs, ref)
+		}
+	}
+	for _, ref := range conn.Targets {
+		refs = appendSlackRef(refs, ref)
+	}
+	return refs
 }
