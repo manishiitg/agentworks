@@ -37,9 +37,10 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
   if (!shown.daily_limit && !shown.weekly_limit) return null
   const daily = shown.daily_limit ? shown.daily_used / shown.daily_limit : -1
   const weekly = shown.weekly_limit ? shown.weekly_used / shown.weekly_limit : -1
-  const showWeekly = weekly > daily
-  // Short: the closer limit as a percentage; the token figures are in the tooltip (owner, 2026-10-07).
-  const label = `${Math.min(999, Math.round(Math.max(daily, weekly) * 100))}% ${showWeekly ? 'week' : 'today'}`
+  // Short, like Claude Code's usage line: "Day: 32%  Week: 70%" (only the limits that are set); figures and resets in the
+  // tooltip (owner, 2026-10-07).
+  const pct = (v: number) => `${Math.min(999, Math.round(v * 100))}%`
+  const label = [daily >= 0 ? `Day: ${pct(daily)}` : '', weekly >= 0 ? `Week: ${pct(weekly)}` : ''].filter(Boolean).join('  ')
   const tone = shown.state === 'over'
     ? 'border-red-300 text-red-700 dark:border-red-900 dark:text-red-300'
     : shown.state === 'warning'
@@ -51,7 +52,7 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
   detail.push(shown.state === 'over' ? `New messages on ${shown.scope} are paused; switch to another account in Models.` : 'Your own accounts are not limited.')
   return (
     <span data-testid="shared-token-usage-chip" title={detail.join('\n')} aria-label={`Shared-account tokens: ${detail.join(' ')}`}
-      className={`inline-flex h-7 items-center rounded-md border px-2 text-[11px] tabular-nums ${tone}`}>
+      className={`inline-flex h-7 items-center whitespace-pre rounded-md border px-2 text-[11px] tabular-nums ${tone}`}>
       {label}
     </span>
   )
