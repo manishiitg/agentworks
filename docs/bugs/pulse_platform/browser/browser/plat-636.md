@@ -58,3 +58,11 @@ what Claude in Chrome does and what users complain about (anthropics/claude-code
 long agent work is a Chrome window kept open behind the user's work, not minimized. The real-Chrome e2e minimizes the
 shared tab's window, clicks, and asserts the window was restored and the diagnostic recorded; it passes.
 
+## Agent instructions (2026-10-07)
+
+`browser-usage.md`, the `active` parameter description and the extension status message said every action stays in
+the background. They now say: clicks and typing bring their tab forward (and restore a minimized window)
+automatically; `eval document.visibilityState` shows whether the selected tab is visible; if input has no effect while
+the tab reads `hidden`, Chrome's window is behind another app, so the agent asks the person to bring Chrome forward
+instead of retrying; `active: true` is for showing a tab to the person.
+

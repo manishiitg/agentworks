@@ -27,7 +27,7 @@ func GetToolDefinition() llmtypes.Tool {
 					},
 					"active": map[string]interface{}{
 						"type":        "boolean",
-						"description": "Chrome extension only: default false. Keep browser actions and tab selection in the background. Set true explicitly to allow this command to bring its shared tab forward, for example command=tab with the intended tab in args. Permission ends after this call; do not enable routinely.",
+						"description": "Chrome extension only: default false. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward automatically. Set true explicitly to allow this command to bring its shared tab forward, for example command=tab with the intended tab in args. Permission ends after this call; do not enable routinely.",
 					},
 					"session": map[string]interface{}{
 						"type":        "string",

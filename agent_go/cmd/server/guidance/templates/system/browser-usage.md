@@ -2,10 +2,16 @@
 When `agent_browser(command="status")` reports `effective_mode: "extension"`,
 use ordinary `agent_browser` commands without `--cdp`. The connected Chrome
 extension exposes only tabs shared by the current account in this workspace.
-Actions, logical tab selection and new tabs stay in the background by default.
-Set the optional tool parameter `active: true` only when intentionally bringing
-a shared tab forward, for example `command="tab", args=["t1"], active=true`.
-It applies to that call only. Inline `tab tN` actions reuse the selected tab;
+Reads, snapshots, navigation, tab selection and new tabs stay in the background.
+Clicks and typing need a visible page (Chrome ignores input to a hidden tab), so
+the extension brings their tab to the front of its window, and restores a
+minimized window, before sending them. To check whether the selected tab is
+visible, run `eval document.visibilityState` (`visible` or `hidden`). If a click
+or typing has no effect and the tab reads `hidden`, Chrome's window is behind
+another app: say so and ask the person to bring Chrome forward rather than
+retrying. Set the optional tool parameter `active: true` only when intentionally
+bringing a shared tab forward for the person to see, for example
+`command="tab", args=["t1"], active=true`. It applies to that call only. Inline `tab tN` actions reuse the selected tab;
 after switching to a different tab, take a fresh snapshot before using refs.
 Console/errors are scoped to the selected shared tab. Screenshots require an
 explicit project-relative path inside your granted writable workspace, such as
