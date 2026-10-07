@@ -8,6 +8,7 @@
 | [chat](chat/index.md) | 1 | 0 |
 | [chat-reliability](chat-reliability/index.md) | 1 | 0 |
 | [coding-agent-bridge](coding-agent-bridge/index.md) | 1 | 0 |
+| [commands](commands/index.md) | 1 | 1 |
 | [frontend-chat](frontend-chat/index.md) | 5 | 0 |
 | [functions](functions/index.md) | 1 | 0 |
 | [human-decisions](human-decisions/index.md) | 1 | 0 |
