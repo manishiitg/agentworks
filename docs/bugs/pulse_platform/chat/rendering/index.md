@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-649](plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 |
 | [PLAT-580](plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 |
 | [PLAT-572](plat-572.md) | Absolute workspace-docs links are not clickable in chat | fixed on main | P3 |

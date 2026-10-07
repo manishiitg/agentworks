@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 80 | 14 |
 | [Brain](brain/index.md) | 25 | 5 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 25 | 9 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
 | [Code](code/index.md) | 7 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-649](chat/rendering/plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-648](code/chat/plat-648.md) | Code chats (tabs) message each other | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-647](brain/agents/plat-647.md) | Built-in brain skill for steps and chats with Brain access | open | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-646](dominion/deployment/plat-646.md) | Reconcile Dominion product allowlist and enable its Vault service | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-612](chat/reliability/plat-612.md) | Resumed AGY chat shows an empty main terminal while the agent works | deployed | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-611](relays/execution/plat-611.md) | Execute Python Relays with fresh agent calls and custom tools | fixed on main | P2 | [relays/execution](relays/execution/index.md) |
 | [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
-| [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |

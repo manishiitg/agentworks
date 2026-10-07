@@ -1154,6 +1154,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Track processed completion events to avoid stopping on old ones
   const processedCompletionEventsRef = useRef<Set<string>>(new Set())
+  // Sessions with a sent message the server has not acknowledged yet. Until
+  // it does, the session still reports the previous turn as finished; that
+  // status must not end the turn the user just started.
+  const unacknowledgedSendSessionsRef = useRef<Set<string>>(new Set())
 
 
   // Selected preset folder state
@@ -1533,7 +1537,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
     // --- Session status handling ---
     const activity = sessionStreamingState(response)
-    const sessionStatus = activity.status
+    // A status read before the server acknowledged the user's send describes
+    // the previous turn. Settling on it switched the new turn off and on again.
+    const sessionStatus = unacknowledgedSendSessionsRef.current.has(actualSessionId) && activity.status !== 'running'
+      ? undefined
+      : activity.status
     if (tab && sessionStatus) {
       const hasBgAgents = activity.hasRunningBgAgents
       const isSyntheticTurn = activity.isSyntheticTurn
@@ -2943,17 +2951,20 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     chatStore.setTabCompleted(currentTab.tabId, false)
     chatStore.setTabStreaming(currentTab.tabId, true)
 
-    // Reset lastEventIndex so polling starts fresh from the in-memory event store
-    // (critical when continuing a restored session — DB events have different indices than in-memory)
-    if (!fullTurnStreaming) {
-      chatStore.setTabLastEventIndex(tabSessionId, -1)
-    }
+    // Keep the forward event cursor. Restore already fetches a fresh backend
+    // cursor before SSE opens, and a backend restart is healed by the -1
+    // sentinel in processEventsResponse. Resetting it here re-read the whole
+    // session (since=0) on every send: the replay carried every earlier turn's
+    // completion, which ended the new turn in the UI, cleared its streamed
+    // text and re-rendered the history, so the chat flickered and jumped
+    // (PLAT-649).
 
     // SSE connection is established in connectAfterRefresh below (after getActiveSessions)
     // Polling is only used as a fallback if SSE fails (handled by connectSSE's onError)
 
     processedCompletionEventsRef.current.clear()
 
+    unacknowledgedSendSessionsRef.current.add(tabSessionId)
     try {
       // Get active presets for the current mode
       const presetStore = useGlobalPresetStore.getState()
@@ -3249,6 +3260,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         : error)])
       resetStreamingState(currentTab.tabId)
       return false
+    } finally {
+      unacknowledgedSendSessionsRef.current.delete(tabSessionId)
     }
 
   }, [correctAgentMode, selectedModeCategory, getAgentModeFromCategory, isRequiredFolderSelected, finalResponse, effectiveServers, enabledTools, processedCompletionEventsRef, activeTab, scrollToBottom, getActiveSessions, resetStreamingState, connectSSE, handleSSEMessage, handleSSEStatus, buildExecutionOptions, handleSSEFallback, fullTurnStreaming, startForegroundEventCatchUp, knowledgebaseFolderPath])
