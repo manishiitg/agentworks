@@ -118,7 +118,46 @@ func providerSetupCommandFor(provider, action string) (providerSetupCommand, err
 	return spec, nil
 }
 
-var providerSetupANSI = regexp.MustCompile(`\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.`)
+// OSC sequences (ESC ] ... BEL or ESC \) come first: matching only "ESC ]" left
+// Muse's colour queries behind as "10;?11;?4;0;?..." in the usage text.
+var providerSetupANSI = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.|\x07`)
+
+// terminalQueryPattern finds what a full-screen CLI asks its terminal before it
+// draws: cursor position, device attributes, and foreground/background/palette
+// colours.
+var terminalQueryPattern = regexp.MustCompile(`\x1b\[0?6n|\x1b\[0?c|\x1b\](10|11);\?(?:\x07|\x1b\\)|\x1b\]4;([0-9]+);\?(?:\x07|\x1b\\)`)
+
+// terminalQueryReplies answers those queries as a plain terminal would. A
+// read-only usage run has no browser terminal to answer them, and Muse gave up
+// with "cursor position could not be read within a normal duration" instead
+// of printing its usage (excellence 2026-10-07, PLAT-688).
+func terminalQueryReplies(output []byte) string {
+	var b strings.Builder
+	for _, m := range terminalQueryPattern.FindAllSubmatch(output, -1) {
+		q := string(m[0])
+		switch {
+		case strings.HasSuffix(q, "6n"):
+			b.WriteString("\x1b[1;1R")
+		case strings.HasSuffix(q, "c"):
+			b.WriteString("\x1b[?62;22c")
+		case len(m[1]) > 0 && string(m[1]) == "10":
+			b.WriteString("\x1b]10;rgb:ffff/ffff/ffff\x07")
+		case len(m[1]) > 0:
+			b.WriteString("\x1b]11;rgb:0000/0000/0000\x07")
+		default:
+			b.WriteString("\x1b]4;" + string(m[2]) + ";rgb:8080/8080/8080\x07")
+		}
+	}
+	return b.String()
+}
+
+// answerTerminalQueries replies to the queries in output when nobody watches
+// the session in a browser terminal (the read-only usage run).
+func (s *providerSetupSession) answerTerminalQueries(output []byte) {
+	if reply := terminalQueryReplies(output); reply != "" {
+		_ = s.write(reply)
+	}
+}
 
 var providerUsageCommands = map[string]string{
 	"claude-code": "/usage",
@@ -223,6 +262,7 @@ func (s *providerSetupSession) appendOutput(chunk []byte) {
 		s.output = append([]byte(nil), s.output[len(s.output)-providerSetupOutputLimit:]...)
 	}
 	s.updatedAt = time.Now().UTC()
+	readOnly := s.readOnly
 	for subscriber := range s.subscribers {
 		select {
 		case subscriber <- copyChunk:
@@ -232,6 +272,9 @@ func (s *providerSetupSession) appendOutput(chunk []byte) {
 		}
 	}
 	s.mu.Unlock()
+	if readOnly {
+		s.answerTerminalQueries(copyChunk)
+	}
 }
 
 func (s *providerSetupSession) outputText() string {
@@ -804,7 +847,10 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	if !manages {
 		session.mu.Lock()
 		session.readOnly = true
+		started := append([]byte(nil), session.output...)
 		session.mu.Unlock()
+		// Queries printed before the session was marked read-only still need an answer.
+		session.answerTerminalQueries(started)
 		text := collectProviderUsageOutput(session, providerUsageCollectTimeout)
 		api.providerSetupManager().remove(session.id, true)
 		w.Header().Set("Content-Type", "application/json")

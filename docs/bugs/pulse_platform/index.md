@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 49 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
 | [Code](code/index.md) | 10 | 1 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 74 | 20 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 37 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-688](coding-agents/accounts/plat-688.md) | Muse Check usage fails for non-managers | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-685](browser/browser/plat-685.md) | Slot accounts reap their own leftover agent-browser helpers | fixed on main | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-684](integrations/slack/plat-684.md) | Stale Slack test for scheduled runs | fixed on main | P3 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-683](app/accounts/plat-683.md) | Per-user daily and weekly token limits on shared accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-647](brain/agents/plat-647.md) | Built-in brain skill for steps and chats with Brain access | open | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-646](dominion/deployment/plat-646.md) | Reconcile Dominion product allowlist and enable its Vault service | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-645](code/shell/plat-645.md) | Backgrounded shell commands still block the chat's next commands | open | P2 | [code/shell](code/shell/index.md) |
-| [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
