@@ -18,7 +18,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 30 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 25 | 4 |
-| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
+| [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
 | [Vault](vault/index.md) | 8 | 2 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | open | P1 | [sandbox/cli](sandbox/cli/index.md) |
 | [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |
 | [PLAT-660](goals/steps/plat-660.md) | Steps still name the removed search_web_llm tool | fixed on main | P2 | [goals/steps](goals/steps/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | fixed on main | P1 | [sandbox/environment](sandbox/environment/index.md) |
