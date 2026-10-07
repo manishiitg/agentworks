@@ -17,7 +17,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 32 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
-| [Relays](relays/index.md) | 25 | 4 |
+| [Relays](relays/index.md) | 27 | 5 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -27,6 +27,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
+| [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-678](browser/browser/plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 | [browser/browser](browser/browser/index.md) |
 | [PLAT-677](vault/groups/plat-677.md) | Vault group descriptions must not name people | open | P2 | [vault/groups](vault/groups/index.md) |
 | [PLAT-676](coding-agents/muse/plat-676.md) | Muse hooks fail on slots: node Permission denied | in progress | P1 | [coding-agents/muse](coding-agents/muse/index.md) |
@@ -65,5 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
 | [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | deployed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-639](chat/general/plat-639.md) | Queued turn broke the Codex chat: security policy changed | fixed on main | P1 | [chat/general](chat/general/index.md) |
-| [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
-| [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |

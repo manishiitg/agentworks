@@ -60,7 +60,8 @@ export function RelaySourceGraph({ source, calls = noCalls, onBuild, onCode }: {
     const g = new dagre.graphlib.Graph({ multigraph: true })
     g.setGraph({ rankdir: 'TB', nodesep: 65, ranksep: 80 }); g.setDefaultEdgeLabel(() => ({}))
     graph.nodes.forEach(node => g.setNode(node.id, { width: 230, height: 90 }))
-    graph.edges.forEach((edge, i) => g.setEdge(edge.from, edge.to, { width: edge.label ? Math.max(160, edge.label.length * 7) : 0, height: edge.label ? 24 : 0 }, String(i)))
+    // Dagre defaults to labels beside the route; centre them on their connector.
+    graph.edges.forEach((edge, i) => g.setEdge(edge.from, edge.to, { width: edge.label ? Math.max(160, edge.label.length * 7) : 0, height: edge.label ? 24 : 0, labelpos: 'c' }, String(i)))
     if (!graph.errors.length) dagre.layout(g)
     return {
       nodes: graph.nodes.map(annotation => {

@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Relay branch labels sit on their connectors
+
+Centre Relay graph labels on Dagre's routed connector lines, using the existing
+React Flow label background for readable text over the line. Why: labels beside
+loop and branch connectors made it unclear which path their text described.
+[PLAT-680](bugs/pulse_platform/relays/frontend-chat/plat-680.md).
+
 ### 2026-10-07 — One Slack bot reaches many targets by slug; targets opt in to the platform bot
 
 A Slack app (the platform "AgentWorks bot" or an own bot) answers for many workflows, Crews and Codes. A channel holds
