@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
-| [Brain](brain/index.md) | 26 | 6 |
+| [Brain](brain/index.md) | 27 | 6 |
 | [Browser and browser automation](browser/index.md) | 46 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 28 | 10 |
 | [Code](code/index.md) | 10 | 1 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-671](integrations/google/plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 | [integrations/google](integrations/google/index.md) |
 | [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | open | P2 | [vault/apps](vault/apps/index.md) |
 | [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | open | P2 | [integrations/slack](integrations/slack/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | fixed on main | P1 | [brain/storage](brain/storage/index.md) |
 | [PLAT-632](brain/access/plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 | [brain/access](brain/access/index.md) |
 | [PLAT-631](goals/models/plat-631.md) | Workflow model card shows execution effort instead of Builder effort and retained turns ignore effort changes | deployed | P2 | [goals/models](goals/models/index.md) |
-| [PLAT-630](app/workspace/plat-630.md) | View tools that auto-open the right panel give ambiguity errors | open | P2 | [app/workspace](app/workspace/index.md) |

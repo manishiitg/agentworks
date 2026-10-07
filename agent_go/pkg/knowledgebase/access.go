@@ -313,7 +313,7 @@ func (s *Service) resolveFolder(p Principal, args map[string]any, role int) (fol
 	}
 	r, err := s.findFolder(folder, id)
 	if err != nil {
-		return r, err
+		return r, s.explainMissingFolder(p, folder, id, err)
 	}
 	if err = s.require(p, r.Path, role); err != nil {
 		return folderRegistry{}, err
@@ -607,4 +607,26 @@ func (s *Service) accessDiscovery(p Principal, a map[string]any) (any, error) {
 		}
 	}
 	return out, nil
+}
+
+// explainMissingFolder keeps the uniform NOT_FOUND unless the caller can read
+// the nearest existing folder above the missing one: then the folder is
+// simply absent, and saying so reveals nothing it could not list itself. A
+// bare "Resource not found." left a weekly refresh step retrying
+// create_folder under RTS/Engineering, which did not exist (RTS 2026-10-07).
+func (s *Service) explainMissingFolder(p Principal, folder, id string, err error) error {
+	if id != "" || folder == "" || validatePath(folder, false) != nil {
+		return err
+	}
+	missing := strings.Trim(folder, "/")
+	for parent := path.Dir(missing); parent != "." && parent != "/"; missing, parent = parent, path.Dir(parent) {
+		if _, findErr := s.findFolder(parent, ""); findErr != nil {
+			continue
+		}
+		if s.effective(p, parent) < roleReader {
+			return err
+		}
+		return kbErr("NOT_FOUND", fmt.Sprintf("Folder %s does not exist. Create it first: create_folder with folder_path=%s, name=%s.", missing, parent, path.Base(missing)))
+	}
+	return err
 }
