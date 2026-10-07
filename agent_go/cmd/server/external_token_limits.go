@@ -91,7 +91,7 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 	account := func(what string) map[string]any {
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
-	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Without user_id/email it lists every active person; account limits accounts to one shared account. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
+	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
 	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it). With account and no person: the account's default per-person limit for everyone. Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap.")}))
 }
 
@@ -109,6 +109,9 @@ type tokenLimitPersonUsage struct {
 	DailyUsed   int64  `json:"daily_used"`
 	WeeklyUsed  int64  `json:"weekly_used"`
 	State       string `json:"state"`
+	// DailyViaBot/WeeklyViaBot: the part from Slack channel bot turns.
+	DailyViaBot  int64 `json:"daily_via_bot,omitempty"`
+	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
 	// Accounts is each shared account's own figures, keyed by provider.
 	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
 }
@@ -129,7 +132,7 @@ func (api *StreamingAPI) tokenLimitUsageOf(rec *UserRecord, account string) toke
 		}
 		accounts = map[string]*accountTokenUsage{account: one}
 	}
-	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, Accounts: accounts}
+	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, DailyViaBot: u.DailyViaBot, WeeklyViaBot: u.WeeklyViaBot, Accounts: accounts}
 }
 
 func stringsToAny(values []string) []any {
@@ -285,7 +288,11 @@ func (api *StreamingAPI) externalTokenUsageRange(w http.ResponseWriter, people [
 		out = append(out, t)
 	}
 	for key, agg := range summary.ByAccountSplit {
-		t := byUser[key.UserID]
+		billed := key.UserID
+		if key.BillingUserID != "" {
+			billed = key.BillingUserID // a Slack channel bot turn counts to its target's owner
+		}
+		t := byUser[billed]
 		if t == nil || agg == nil || !strings.HasPrefix(key.AccountID, serverAccountIDPrefix) {
 			continue
 		}

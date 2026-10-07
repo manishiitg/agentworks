@@ -970,6 +970,9 @@ type QueryRequest struct {
 	UserInteractiveContinuation bool `json:"user_interactive_continuation,omitempty"`
 	// Internal: user ID for synthetic turn reconstruction (not from JSON)
 	userID string `json:"-"`
+	// Internal: the owner a Slack channel turn's shared-account tokens count
+	// toward (botRouteTokenOwner); sub-agents bill the same person.
+	tokenOwner string `json:"-"`
 }
 
 func buildWorkflowNotificationInstructionsPrompt(runInstructions, pulseInstructions string) string {
@@ -3961,6 +3964,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
 	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	// A Slack channel turn runs as the bot identity; its shared-account
+	// tokens count toward, and are limited by, the target's owner.
+	botTokenOwner := botRouteTokenOwner(r.Context(), currentUserID, accountScope.WorkspacePath)
+	accountScope.TokenOwner = botTokenOwner
+	req.tokenOwner = botTokenOwner
 	// The FINAL account of the turn: a workflow chat that does not override
 	// the manifest runs on the workflow's saved model and account.
 	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
@@ -3975,7 +3983,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		var accountErr error
 		admittedQueryAccount, accountErr = api.admitProviderAccount(r.Context(), accountScope, turnProvider, admitID)
 		if accountErr != nil {
-			http.Error(w, accountErr.Error(), http.StatusForbidden)
+			status := http.StatusForbidden
+			var limitErr *sharedAccountTokenLimitError
+			if botTokenOwner != "" && errors.As(accountErr, &limitErr) {
+				// The bot posts this message in the thread (botSessionFailureMessage).
+				status = http.StatusTooManyRequests
+			}
+			http.Error(w, accountErr.Error(), status)
 			return
 		}
 	}
@@ -5486,7 +5500,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
-	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, queryProviderAccountScope(req, currentUserID, resolvedProfile, isWorkflowPhase, workflowPhaseFolder))
+	resolverScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, isWorkflowPhase, workflowPhaseFolder)
+	resolverScope.TokenOwner = botTokenOwner
+	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, resolverScope)
 	queryInputLaneRelease := releaseInputLane
 	if queryInputLaneRelease != nil {
 		// Ownership moves to the background turn for its full lifetime. Normal
@@ -7564,6 +7580,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				queryID,
 			),
 			withCostSourcePlatform(req.BotPlatform),
+			withCostBillingUser(botTokenOwner),
 		)
 		if err := llmAgent.AddObserver(eventObserver); err != nil {
 			sendError(fmt.Sprintf("Failed to attach event observer: %v", err), true)

@@ -57,6 +57,7 @@ type Observer struct {
 	provider       string
 	modelID        string
 	accountID      string
+	billingUserID  string
 	workflowID     string
 	runID          string
 	executionID    string
@@ -90,6 +91,15 @@ func WithModel(provider, modelID string) Option {
 func WithAccount(accountID string) Option {
 	return func(o *Observer) {
 		o.accountID = strings.TrimSpace(accountID)
+	}
+}
+
+// WithBillingUser names the person whose shared-account token limits this
+// agent's usage counts toward when it is not the agent's user: a Slack
+// channel turn runs as a bot identity and bills the target's owner.
+func WithBillingUser(userID string) Option {
+	return func(o *Observer) {
+		o.billingUserID = strings.TrimSpace(userID)
 	}
 }
 
@@ -441,6 +451,7 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 		Scope:          o.scope,
 		SourcePlatform: o.sourcePlatform,
 		AccountID:      o.accountID,
+		BillingUserID:  o.billingUserID,
 		Phase:          phase,
 		AgentMode:      o.agentMode,
 		Component:      event.Component,

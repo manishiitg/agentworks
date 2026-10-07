@@ -126,6 +126,14 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 		db.Close()
 		return nil, fmt.Errorf("costledger: migrate account_id column: %w", err)
 	}
+	if err := ensureCostEventColumn(db, "billing_user_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: migrate billing_user_id column: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_events_billing_user_time ON cost_events(billing_user_id, occurred_at)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: index billing_user_id: %w", err)
+	}
 	return &Ledger{db: &sqliteLedger{db: db}}, nil
 }
 
@@ -168,8 +176,8 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
 		e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
@@ -177,7 +185,7 @@ INSERT OR IGNORE INTO cost_events (
 		e.EffectiveProvider, e.EffectiveModelID, e.TurnCount, e.LLMCallCount, e.LLMGenerationDurationMS,
 		e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 		e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
-		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID,
+		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID, e.BillingUserID,
 	}
 	for attempt := 0; ; attempt++ {
 		_, err = s.db.Exec(insertEvent, args...)
@@ -333,7 +341,7 @@ SELECT event_id, idempotency_key, occurred_at, user_id, workflow_id, session_id,
        requested_provider, requested_model_id, effective_provider, effective_model_id,
        turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
        cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-       pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
+       pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
 FROM cost_events`
 	where := make([]string, 0, 4)
 	args := make([]interface{}, 0, 4)
@@ -378,7 +386,7 @@ FROM cost_events`
 			&e.PromptTokens, &e.CompletionTokens, &e.ReasoningTokens,
 			&e.CacheReadTokens, &e.CacheWriteTokens, &e.TotalCostUSD, &e.Currency,
 			&e.BillingBasis, &e.PricingSource, &e.PricingVersion, &e.ToolName,
-			&metadataJSON, &e.AccountID,
+			&metadataJSON, &e.AccountID, &e.BillingUserID,
 		); err != nil {
 			return nil, fmt.Errorf("costledger: scan SQLite event: %w", err)
 		}
@@ -496,15 +504,15 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 			e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
 			e.AgentMode, e.Component, e.CorrelationID, e.Provider, e.ModelID,
 			e.EffectiveProvider, e.EffectiveModelID, e.TurnCount, e.LLMCallCount, e.LLMGenerationDurationMS,
 			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 			e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
-			e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID,
+			e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID, e.BillingUserID,
 		)
 		if err != nil {
 			return MigrationReport{}, fmt.Errorf("costledger: migrate legacy row %d: %w", lineNumber, err)
@@ -525,17 +533,20 @@ INSERT OR IGNORE INTO cost_events (
 }
 
 // accountTokens sums one person's tokens per account, on accounts whose ID
-// starts with accountPrefix, since weekStart and the part since dayStart.
+// starts with accountPrefix, since weekStart and the part since dayStart. An
+// entry is the person's when it is billed to them (billing_user_id), or when
+// it names no billing user and they ran it (user_id). Rows written before
+// billing_user_id existed count to user_id, as they always did.
 func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error) {
 	usage := map[string]AccountTokenUsage{}
 	rows, err := s.db.Query(`
 SELECT account_id, occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
-       requested_provider, effective_provider, operation_metadata_json
+       requested_provider, effective_provider, operation_metadata_json, billing_user_id != ''
 FROM cost_events
-WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
+WHERE (billing_user_id = ? OR (billing_user_id = '' AND user_id = ?)) AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 		// No zone suffix: a prefix of every stored RFC3339Nano time in that
 		// second, so an event at 00:00:00.5Z is not sorted before the bound.
-		userID, len(accountPrefix), accountPrefix, weekStart.UTC().Format("2006-01-02T15:04:05"))
+		userID, userID, len(accountPrefix), accountPrefix, weekStart.UTC().Format("2006-01-02T15:04:05"))
 	if err != nil {
 		return usage, fmt.Errorf("costledger: query account tokens: %w", err)
 	}
@@ -544,8 +555,9 @@ WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 	for rows.Next() {
 		var e Entry
 		var accountID, occurredAt, metadataJSON string
+		var viaBot bool
 		if err := rows.Scan(&accountID, &occurredAt, &e.PromptTokens, &e.CompletionTokens, &e.CacheReadTokens, &e.CacheWriteTokens,
-			&e.Provider, &e.EffectiveProvider, &metadataJSON); err != nil {
+			&e.Provider, &e.EffectiveProvider, &metadataJSON, &viaBot); err != nil {
 			return usage, fmt.Errorf("costledger: scan account tokens: %w", err)
 		}
 		if strings.Contains(metadataJSON, "prompt_tokens_include_cache") {
@@ -554,8 +566,14 @@ WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 		tokens := int64(entryInputTokens(e) + e.CompletionTokens)
 		account := usage[accountID]
 		account.Week += tokens
+		if viaBot {
+			account.ViaBotWeek += tokens
+		}
 		if at, err := time.Parse(time.RFC3339Nano, occurredAt); err == nil && !at.Before(day) {
 			account.Day += tokens
+			if viaBot {
+				account.ViaBotDay += tokens
+			}
 		}
 		usage[accountID] = account
 	}
@@ -577,6 +595,9 @@ func normalizeEntry(e *Entry) {
 	}
 	if e.Scope == "" {
 		e.Scope = scopeUnknown
+	}
+	if e.BillingUserID = strings.TrimSpace(e.BillingUserID); e.BillingUserID == strings.TrimSpace(e.UserID) {
+		e.BillingUserID = ""
 	}
 	e.SourcePlatform = normalizeSourcePlatform(e.SourcePlatform)
 	if e.SourcePlatform == "" {

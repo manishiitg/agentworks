@@ -553,6 +553,10 @@ type providerAccountScope struct {
 	Principal     string
 	WorkspacePath string
 	Product       string
+	// TokenOwner is whose shared-account token limits the turn counts toward
+	// when that is not Principal: the target owner of a Slack channel turn
+	// (botRouteTokenOwner). Empty resolves it from ctx, else Principal.
+	TokenOwner string
 }
 
 // providerAccountRun is what admission needs to know about a scope.
@@ -670,7 +674,13 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		}
 		// Per-user token limits count and cap server accounts only: this
 		// account's own limit, then the overall cap (PLAT-683, PLAT-693).
-		if err := api.sharedAccountTokenLimitRefusal(ctx, scope.Principal, provider); err != nil {
+		// A Slack channel turn is limited by its target's owner (PLAT-698).
+		if owner := tokenLimitOwnerForScope(ctx, scope); owner != scope.Principal {
+			if err := api.botRouteTokenLimitRefusal(ctx, owner, provider, run); err != nil {
+				log.Printf("[PROVIDER_ACCOUNT] %s server account refused for %q (%s): owner %q is at a token limit", provider, scope.Principal, run.Product, owner)
+				return nil, err
+			}
+		} else if err := api.sharedAccountTokenLimitRefusal(ctx, scope.Principal, provider); err != nil {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account refused for %q (%s): token limit reached", provider, scope.Principal, run.Product)
 			return nil, err
 		}

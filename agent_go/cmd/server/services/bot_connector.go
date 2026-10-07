@@ -2819,6 +2819,11 @@ func botSessionFailureMessage(err error) string {
 	if err == nil {
 		return "I couldn't start this request. Please try again."
 	}
+	// A shared-account token limit of the target's owner: the server wrote
+	// the message for the channel (account, reset time), so post it as is.
+	if _, limit, ok := strings.Cut(err.Error(), "handleQuery returned status 429: "); ok && strings.TrimSpace(limit) != "" {
+		return strings.TrimSpace(limit)
+	}
 	detail := strings.ToLower(err.Error())
 	if strings.Contains(detail, "workflow access denied") {
 		return "You don't currently have access to this workflow. Ask a workflow owner to share it with your AgentWorks account, then try again."

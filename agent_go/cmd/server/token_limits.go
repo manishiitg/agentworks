@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Per-user daily and weekly token limits on the shared server accounts
@@ -83,6 +86,10 @@ type sharedAccountTokenUsage struct {
 	WeekResetsAt string `json:"week_resets_at"`
 	// State is "ok", "warning" (80% of a limit) or "over".
 	State string `json:"state"`
+	// DailyViaBot and WeeklyViaBot are the part of the used figures that came
+	// from Slack channel bot turns on this person's workflows, Crews or Code.
+	DailyViaBot  int64 `json:"daily_via_bot,omitempty"`
+	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
 	// Accounts is keyed by provider (e.g. "codex-cli"): every shared account
 	// the person used this week or that has a limit for them.
 	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
@@ -99,6 +106,9 @@ type accountTokenUsage struct {
 	Default     *UserTokenLimits `json:"default_limits,omitempty"`
 	Override    *UserTokenLimits `json:"override,omitempty"`
 	State       string           `json:"state"`
+	// DailyViaBot and WeeklyViaBot: see sharedAccountTokenUsage.
+	DailyViaBot  int64 `json:"daily_via_bot,omitempty"`
+	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
 }
 
 type cachedSharedTokenUsage struct {
@@ -145,6 +155,8 @@ func totalAccountTokens(byAccount map[string]costledger.AccountTokenUsage) costl
 	for _, usage := range byAccount {
 		total.Day += usage.Day
 		total.Week += usage.Week
+		total.ViaBotDay += usage.ViaBotDay
+		total.ViaBotWeek += usage.ViaBotWeek
 	}
 	return total
 }
@@ -291,6 +303,7 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	}
 	total := totalAccountTokens(byAccount)
 	out.DailyUsed, out.WeeklyUsed = total.Day, total.Week
+	out.DailyViaBot, out.WeeklyViaBot = total.ViaBotDay, total.ViaBotWeek
 	out.State = tokenLimitState(out.DailyUsed, out.DailyLimit, out.WeeklyUsed, out.WeeklyLimit)
 
 	defaults := serverAccountTokenLimitDefaults(context.Background())
@@ -307,7 +320,7 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	}
 	for provider := range providers {
 		used := byAccount[serverAccountIDPrefix+provider]
-		account := &accountTokenUsage{Label: sharedAccountLabel(provider), DailyUsed: used.Day, WeeklyUsed: used.Week, Default: defaults[provider], Override: overrides[provider]}
+		account := &accountTokenUsage{Label: sharedAccountLabel(provider), DailyUsed: used.Day, WeeklyUsed: used.Week, DailyViaBot: used.ViaBotDay, WeeklyViaBot: used.ViaBotWeek, Default: defaults[provider], Override: overrides[provider]}
 		if limits := effectiveAccountTokenLimits(defaults[provider], overrides[provider]); limits != nil {
 			account.DailyLimit, account.WeeklyLimit = limits.Daily, limits.Weekly
 		}
@@ -326,12 +339,21 @@ type sharedAccountTokenLimitError struct{ message string }
 
 func (e *sharedAccountTokenLimitError) Error() string { return e.message }
 
-// sharedAccountTokenLimitRefusal returns the refusal when principal is at or
-// over the limit of provider's shared account, or their overall cap across
-// every shared account, else nil. A ledger read error is logged and admits:
-// the limit is a budget control, and a broken ledger must not stop every
-// shared turn.
-func (api *StreamingAPI) sharedAccountTokenLimitRefusal(ctx context.Context, principal, provider string) error {
+// tokenLimitHit is the limit a person has reached: one shared account's own
+// (provider set) or the overall cap across every shared account, weekly or
+// daily.
+type tokenLimitHit struct {
+	provider string
+	overall  bool
+	weekly   bool
+	limit    int64
+}
+
+// sharedAccountTokenLimitHit returns the limit principal is at or over on
+// provider's shared account, or their overall cap, else nil. A ledger read
+// error is logged and admits: the limit is a budget control, and a broken
+// ledger must not stop every shared turn.
+func (api *StreamingAPI) sharedAccountTokenLimitHit(ctx context.Context, principal, provider string) *tokenLimitHit {
 	principal, provider = strings.TrimSpace(principal), strings.TrimSpace(provider)
 	if principal == "" {
 		return nil
@@ -357,24 +379,148 @@ func (api *StreamingAPI) sharedAccountTokenLimitRefusal(ctx context.Context, pri
 	// The weekly limit first: when both are reached it is the later reset.
 	if account != nil {
 		used := byAccount[serverAccountIDPrefix+provider]
-		name := sharedAccountLabel(provider)
 		if account.Weekly > 0 && used.Week >= account.Weekly {
-			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used this week's %s tokens on the shared %s account (resets Monday 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(account.Weekly), name)}
+			return &tokenLimitHit{provider: provider, weekly: true, limit: account.Weekly}
 		}
 		if account.Daily > 0 && used.Day >= account.Daily {
-			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used today's %s tokens on the shared %s account (resets 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(account.Daily), name)}
+			return &tokenLimitHit{provider: provider, limit: account.Daily}
 		}
 	}
 	if overall != nil {
 		usage := totalAccountTokens(byAccount)
 		if overall.Weekly > 0 && usage.Week >= overall.Weekly {
-			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your weekly limit of %s tokens on the shared accounts (resets Monday 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(overall.Weekly))}
+			return &tokenLimitHit{overall: true, weekly: true, limit: overall.Weekly}
 		}
 		if overall.Daily > 0 && usage.Day >= overall.Daily {
-			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your daily limit of %s tokens on the shared accounts (resets at 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(overall.Daily))}
+			return &tokenLimitHit{overall: true, limit: overall.Daily}
 		}
 	}
 	return nil
+}
+
+// sharedAccountTokenLimitRefusal returns the refusal when principal is at or
+// over the limit of provider's shared account, or their overall cap across
+// every shared account, else nil.
+func (api *StreamingAPI) sharedAccountTokenLimitRefusal(ctx context.Context, principal, provider string) error {
+	hit := api.sharedAccountTokenLimitHit(ctx, principal, provider)
+	switch {
+	case hit == nil:
+		return nil
+	case !hit.overall && hit.weekly:
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used this week's %s tokens on the shared %s account (resets Monday 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
+	case !hit.overall:
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used today's %s tokens on the shared %s account (resets 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
+	case hit.weekly:
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your weekly limit of %s tokens on the shared accounts (resets Monday 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(hit.limit))}
+	default:
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your daily limit of %s tokens on the shared accounts (resets at 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(hit.limit))}
+	}
+}
+
+// botRouteTokenLimitRefusal is sharedAccountTokenLimitRefusal for a Slack
+// channel turn billed to owner, worded for the people in the channel (who
+// are not the owner and may not have an account). It names the account and
+// the reset, never the owner's email.
+func (api *StreamingAPI) botRouteTokenLimitRefusal(ctx context.Context, owner, provider string, run providerAccountRun) error {
+	hit := api.sharedAccountTokenLimitHit(ctx, owner, provider)
+	if hit == nil {
+		return nil
+	}
+	who := "The owner of " + run.Label
+	if run.Label == "" || run.Label == "this run" {
+		who = "The owner this bot answers for"
+	}
+	when, resets := "today's", "resets 00:00 UTC"
+	if hit.weekly {
+		when, resets = "this week's", "resets Monday 00:00 UTC"
+	}
+	what := fmt.Sprintf("%s %s tokens on the shared %s account", when, formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))
+	if hit.overall {
+		period := "daily"
+		if hit.weekly {
+			period = "weekly"
+		}
+		what = fmt.Sprintf("their %s limit of %s tokens on the shared accounts", period, formatTokenCount(hit.limit))
+	}
+	return &sharedAccountTokenLimitError{fmt.Sprintf("%s has used %s (%s); this channel's bot turns count toward their limit. Try again after the reset, or ask them or an admin to raise it.", who, what, resets)}
+}
+
+// botRouteTokenOwner is whose shared-account token limits a Slack channel
+// turn by principal counts toward: the owner of the workflow (the same
+// active owner a scheduled run uses), Crew or Code (the owner registry) the
+// route answers for. "" for any turn that is not a Slack channel turn of
+// principal, or when no owner resolves (the turn then counts as before).
+// Slack DMs and WhatsApp already run as the person and are not bot routes.
+func botRouteTokenOwner(ctx context.Context, principal, workspacePath string) string {
+	claims := GetUserFromContext(ctx)
+	principal = strings.TrimSpace(principal)
+	if claims == nil || claims.Provider != "bot_route" || principal == "" || strings.TrimSpace(claims.UserID) != principal {
+		return ""
+	}
+	resourceOwner := principal
+	if p := claims.ExecutionPrincipal; p != nil && strings.TrimSpace(p.ResourceOwnerID) != "" {
+		resourceOwner = strings.TrimSpace(p.ResourceOwnerID)
+	}
+	path := strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/")
+	if path == "" {
+		path = strings.Trim(filepath.ToSlash(strings.TrimSpace(claims.BotRouteWorkspacePath)), "/")
+	}
+	owner := ""
+	switch {
+	case path == "":
+	case isCodeProjectPath(path):
+		root := path
+		if !strings.HasPrefix(root, "_users/") {
+			root = workspaceref.PhysicalPath(resourceOwner, path)
+		}
+		owner = resolveProjectOwner(ctx, root)
+	default:
+		if ref, ok := resolveCrewPath(ctx, resourceOwner, path); ok {
+			owner = ref.OwnerID
+		} else if root := livefeed.WorkflowRoot(path); strings.HasPrefix(root, "Workflow/") {
+			if manifest, exists, err := ReadWorkflowManifest(ctx, root); err == nil && exists {
+				owner = workflowExecutionOwnerUserID(manifest)
+			}
+		}
+	}
+	if owner == "" && resourceOwner != principal {
+		owner = resourceOwner
+	}
+	return directoryUserIDForOwner(owner)
+}
+
+// directoryUserIDForOwner maps an owner as a path segment (the sanitized
+// form the owner registry and _users/<owner> hold) to the directory user ID
+// the ledger and the usage views key on; unchanged when none matches.
+func directoryUserIDForOwner(owner string) string {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return ""
+	}
+	if rec := directoryUserFor(owner, "", ""); rec != nil {
+		return rec.ID
+	}
+	if dir, err := loadUserDirectory(); err == nil && dir != nil {
+		for i := range dir.Users {
+			if sanitizeUserIDForPath(dir.Users[i].ID) == owner {
+				return dir.Users[i].ID
+			}
+		}
+	}
+	return owner
+}
+
+// tokenLimitOwnerForScope is the person whose limits a turn in scope counts
+// toward: scope.TokenOwner, else the bot route owner from ctx, else the
+// principal.
+func tokenLimitOwnerForScope(ctx context.Context, scope providerAccountScope) string {
+	if owner := strings.TrimSpace(scope.TokenOwner); owner != "" {
+		return owner
+	}
+	if owner := botRouteTokenOwner(ctx, scope.Principal, scope.WorkspacePath); owner != "" {
+		return owner
+	}
+	return scope.Principal
 }
 
 // formatTokenAmount writes a round limit short ("2M", "2.5M", "500k"), any

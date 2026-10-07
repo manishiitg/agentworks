@@ -144,3 +144,66 @@ func TestTokenLimitsPerSharedAccount(t *testing.T) {
 		t.Fatalf("usage shown: %+v codex=%+v", usage, codex)
 	}
 }
+
+// PLAT-698: a Slack channel turn runs as a bot identity with no user record.
+// Its shared-account tokens count toward the owner of the workflow it answers
+// for, and it is refused (with a message for the channel) when that owner is
+// over a limit. A DM turn still counts to the DM person; a personal account
+// never counts.
+func TestSlackChannelBotTurnCountsTowardTargetOwner(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	env.api.costLedger = ledger
+	resetUsage := func() {
+		sharedTokenUsageCache.Lock()
+		sharedTokenUsageCache.byUser = map[string]cachedSharedTokenUsage{}
+		sharedTokenUsageCache.Unlock()
+	}
+	resetUsage()
+	t.Cleanup(resetUsage)
+	if w := env.do(t, env.api.handleAdminUpdateUser, http.MethodPut, "/api/admin/users/alice", "admin", map[string]interface{}{"token_limits": map[string]int64{"daily": 1000}}, map[string]string{"id": "alice"}); w.Code != http.StatusOK {
+		t.Fatalf("set limit: %d %s", w.Code, w.Body.String())
+	}
+	own := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "oauth_token", "credential": "dummy-private-token"})
+
+	// A channel turn on Alice's workflow W, as the route's bot identity.
+	const bot = "bot-slack-0123abcd"
+	botCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: bot, Username: bot, Provider: "bot_route", BotRouteGrant: "run", BotRouteWorkflowID: "wf-w", BotRouteWorkspacePath: "Workflow/w"})
+	owner := botRouteTokenOwner(botCtx, bot, "Workflow/w")
+	if owner != "alice" {
+		t.Fatalf("bot turn owner = %q, want alice", owner)
+	}
+	record := func(user, billing, accountID string, tokens int) {
+		t.Helper()
+		if err := ledger.Append(costledger.Entry{Timestamp: time.Now().UTC(), UserID: user, BillingUserID: billing, Scope: "chat", SourcePlatform: "slack", Provider: "claude-code", ModelID: "sonnet", AccountID: accountID, LLMCallCount: 1, PromptTokens: tokens}); err != nil {
+			t.Fatal(err)
+		}
+		resetUsage()
+	}
+	// The bot's tokens on her personal account never count; on the shared
+	// account they count to her (the bot identity stays on the row).
+	record(bot, owner, own.ID, 50000)
+	record(bot, owner, "global:claude-code", 1100)
+	usage := env.api.sharedAccountTokenUsageFor(directoryUserFor("alice", "", ""))
+	if usage.DailyUsed != 1100 || usage.DailyViaBot != 1100 || usage.State != "over" {
+		t.Fatalf("alice usage: %+v", usage)
+	}
+	// The next channel turn is refused with the owner's limit, named for the channel.
+	scope := providerAccountScope{Principal: bot, WorkspacePath: "Workflow/w"}
+	_, err = env.api.admitProviderAccount(botCtx, scope, "claude-code", serverDefaultConnectionID("claude-code"))
+	if err == nil || !strings.Contains(err.Error(), "The owner of workflow Weekly report has used their daily limit of 1,000 tokens") || !strings.Contains(err.Error(), "resets 00:00 UTC") {
+		t.Fatalf("channel turn over the owner's limit: %v", err)
+	}
+	// A Slack DM runs as the person (Bob) and counts to Bob, not to the owner.
+	record("bob", "", "global:claude-code", 300)
+	if bob := env.api.sharedAccountTokenUsageFor(directoryUserFor("bob", "", "")); bob.DailyUsed != 300 || bob.DailyViaBot != 0 {
+		t.Fatalf("bob usage: %+v", bob)
+	}
+	if again := env.api.sharedAccountTokenUsageFor(directoryUserFor("alice", "", "")); again.DailyUsed != 1100 {
+		t.Fatalf("a DM turn counted to the owner: %+v", again)
+	}
+}

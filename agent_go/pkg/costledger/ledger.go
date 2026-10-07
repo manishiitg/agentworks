@@ -56,6 +56,11 @@ type Entry struct {
 	// for the server account, else a user account ID. Empty on entries
 	// written before accounts were recorded ("unrecorded account").
 	AccountID string `json:"account_id,omitempty"`
+	// BillingUserID is the person whose shared-account token limits this
+	// entry counts toward when that is not UserID: a Slack channel turn runs
+	// as a bot identity (UserID, kept for audit) and counts toward the owner
+	// of the workflow, Crew or Code it answers for. Empty means UserID.
+	BillingUserID string `json:"billing_user_id,omitempty"`
 	// EffectiveModelID is the model the CLI/provider ACTUALLY served
 	// the turn with — may drift from ModelID when the user picked an
 	// alias like "auto" or "cursor-cli", or when a /model swap happened
@@ -332,6 +337,9 @@ type AccountSplitKey struct {
 	AccountID  string
 	WorkflowID string
 	UserID     string
+	// BillingUserID is the entry's BillingUserID: the owner a Slack channel
+	// bot turn (UserID) counts toward; empty for a person's own turn.
+	BillingUserID string
 }
 
 // UserAggregate is one actor's spend within one raw workflow ID.
@@ -430,10 +438,15 @@ type sqliteStore interface {
 type AccountTokenUsage struct {
 	Day  int64 `json:"day"`
 	Week int64 `json:"week"`
+	// ViaBotDay and ViaBotWeek are the part of Day and Week billed to this
+	// person from Slack channel bot turns (entries with a BillingUserID).
+	ViaBotDay  int64 `json:"via_bot_day,omitempty"`
+	ViaBotWeek int64 `json:"via_bot_week,omitempty"`
 }
 
-// AccountTokens sums userID's tokens on accounts whose ID starts with
-// accountPrefix (for example "global:", the shared server accounts) since
+// AccountTokens sums userID's tokens (their own turns, and bot turns whose
+// BillingUserID names them) on accounts whose ID starts with accountPrefix
+// (for example "global:", the shared server accounts) since
 // weekStart, and the part since dayStart. dayStart must not be before
 // weekStart. The legacy JSONL ledger has no index for this and reports zero.
 func (l *Ledger) AccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error) {
@@ -442,6 +455,8 @@ func (l *Ledger) AccountTokens(userID, accountPrefix string, dayStart, weekStart
 	for _, usage := range byAccount {
 		total.Day += usage.Day
 		total.Week += usage.Week
+		total.ViaBotDay += usage.ViaBotDay
+		total.ViaBotWeek += usage.ViaBotWeek
 	}
 	return total, err
 }
@@ -1101,7 +1116,7 @@ func addEntryToAccountSplit(summary *Summary, e Entry) {
 	if summary.ByAccountSplit == nil {
 		summary.ByAccountSplit = make(map[AccountSplitKey]*Aggregate)
 	}
-	key := AccountSplitKey{Provider: provider, AccountID: strings.TrimSpace(e.AccountID), WorkflowID: strings.TrimSpace(e.WorkflowID), UserID: strings.TrimSpace(e.UserID)}
+	key := AccountSplitKey{Provider: provider, AccountID: strings.TrimSpace(e.AccountID), WorkflowID: strings.TrimSpace(e.WorkflowID), UserID: strings.TrimSpace(e.UserID), BillingUserID: strings.TrimSpace(e.BillingUserID)}
 	bucket := summary.ByAccountSplit[key]
 	if bucket == nil {
 		bucket = &Aggregate{}

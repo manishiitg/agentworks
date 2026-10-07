@@ -23,6 +23,7 @@ var (
 	withCostAttribution          = costobserver.WithAttribution
 	withCostSourcePlatform       = costobserver.WithSourcePlatform
 	withCostAccount              = costobserver.WithAccount
+	withCostBillingUser          = costobserver.WithBillingUser
 	costAccountIDFor             = costobserver.AccountIDFor
 	inferCostScope               = costobserver.InferScope
 	scopeForScheduledTurn        = costobserver.ScopeForScheduledTurn

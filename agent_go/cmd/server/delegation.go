@@ -668,7 +668,9 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 	// credential merely because they reference a workflow folder.
 	// A sub-agent runs in its parent's scope: the parent's workspace decides
 	// which shared accounts it may use.
-	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), delegationProviderAccountScope(subAgentUserID, parentReq))
+	delegationScope := delegationProviderAccountScope(subAgentUserID, parentReq)
+	delegationScope.TokenOwner = parentReq.tokenOwner // a Slack channel turn's sub-agent bills the same owner
+	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), delegationScope)
 	workflowOwnedDelegation := parentReq.AgentMode == "workflow" || parentReq.AgentMode == "workflow_phase" || strings.TrimSpace(parentReq.PhaseID) != ""
 	workflowDecisionScope := strings.TrimSpace(parentReq.SelectedFolder)
 	if workflowOwnedDelegation {
@@ -838,6 +840,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 				delegationID,
 			),
 			withCostSourcePlatform(parentReq.BotPlatform),
+			withCostBillingUser(parentReq.tokenOwner),
 		)
 		if err := subAgent.AddObserver(subAgentCostObserver); err != nil {
 			return "", fmt.Errorf("attach delegation cost observer: %w", err)

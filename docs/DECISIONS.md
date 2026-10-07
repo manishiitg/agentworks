@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Slack channel bot turns count toward the target owner's token limits
+
+A Slack channel turn runs as a bot identity with no user record, so its
+shared-account tokens counted toward nobody. They now count toward, and are
+limited by, the owner of the workflow (its active execution owner), Crew or
+Code (owner registry) the bot answers for: the ledger keeps the bot in
+`user_id` and records the owner in `billing_user_id`. Over the owner's limit
+the bot replies in the thread with the account and reset time. Slack DMs and
+WhatsApp still count to the person; personal accounts never count. Old rows
+are not backfilled. Why: owner, 2026-10-07.
+[PLAT-698](bugs/pulse_platform/app/accounts/plat-698.md).
+
 ### 2026-10-07 — Runtime Health panel and its process list/cleanup routes removed
 
 The account menu's Runtime Health panel is gone, with the routes only it used: workspace
