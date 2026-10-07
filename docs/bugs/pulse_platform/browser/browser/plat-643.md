@@ -1,6 +1,6 @@
 [← browser / browser](index.md)
 
-# PLAT-642: Show the extension version and update status in the browser panel
+# PLAT-643: Show the extension version and update status in the browser panel
 
 | Field | Value |
 |---|---|
