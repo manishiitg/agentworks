@@ -47,6 +47,33 @@ contradict each other, access wired through general Crew sharing, platform rules
 It never edits `soul.md` and never loosens a constraint (existing rule). It must say "I don't know your
 preference" instead of guessing one.
 
+## Reviewers become skills and sub-agents
+
+As a small Crew, the Pulse agent has skills (loaded when needed) and sub-agents (separate runs it starts and reads).
+
+- **Skills, in its own context:** goal check; Product / Goal Work (deciding the next goal-advancing work);
+  Architecture review (judging structure when a structural question comes up). Short `SKILL.md` files, cut down from
+  today's reviewer prompts (about 1,700 lines across gate, fixer, drift, technical, architecture), not copied.
+- **Sub-agents, separate context:** QA / Technical review (fixing steps, re-runs, checking outputs; long and noisy work
+  that would flood the persistent conversation), returning a short result.
+- **Independent check:** whether its own change worked is judged by a separate run, never by the Pulse agent itself
+  (proposer is not the evaluator).
+- Workflow Review is outside Pulse (phase 0).
+
+## Memory: the goal over time
+
+| | Holds | Changed by |
+|---|---|---|
+| `soul.md` | what the goal is: objective, success criteria, constraints | the owner only, via the Builder |
+| Pulse memory | how the goal is managed: owner preferences and answers, decisions and their outcomes, lessons, open bets, what waits on the owner | the Pulse agent |
+
+Built on Crew memory (the workflow already has `memory/` and `MEMORY.md`). Rules:
+
+1. `soul.md` wins. When memory suggests the goal should change, Pulse proposes a `soul.md` edit to the owner.
+2. The owner can see and edit the memory in the Pulse tab.
+3. Every entry names its source: an owner answer, a dated result, or Pulse's own inference (marked as such).
+4. Kept short: consolidated to one line per preference or lesson.
+
 ## Authority: the existing autonomy levels
 
 `pulse.autonomy` already has `run` (default auto), `outward` (default ask) and `change` (default ask); spending
