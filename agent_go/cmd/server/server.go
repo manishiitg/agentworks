@@ -961,6 +961,10 @@ type QueryRequest struct {
 	// the next cron message waits for turn completion instead of racing a tmux
 	// snapshot that may not have flipped to busy yet.
 	DisableLiveInputDelivery bool `json:"disable_live_input_delivery,omitempty"`
+	// RestartCodingCLI asks for the chat's coding CLI to be closed and relaunched when this
+	// message's turn starts: a product chat's runtime selection changed while a turn was running
+	// (PLAT-676). It is applied between turns, never mid-turn; the flag survives the turn queue.
+	RestartCodingCLI bool `json:"restart_coding_cli,omitempty"`
 	// KeepNativeSessionAlive was how a scheduler kept one native coding-CLI
 	// process alive across its consecutive turns (run → Pulse). Every
 	// chat-level turn now retains its CLI (codingAgentRequestAllowsPersistentInteractive),
@@ -4133,6 +4137,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer finishSubmission()
+	}
+	if req.RestartCodingCLI {
+		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
+		// for that turn, then the CLI is relaunched for it. Closing it on arrival killed the running
+		// Muse turn ("muse tmux session ... died before run completion", Excellence 2026-10-07).
+		if api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
+			return
+		}
+		retireProductCodingCLI(sessionID, "product chat: runtime configuration changed")
+		req.RestartCodingCLI = false
 	}
 	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {

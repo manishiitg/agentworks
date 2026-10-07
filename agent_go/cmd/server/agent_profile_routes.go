@@ -1013,15 +1013,26 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		}
 		if restart {
 			query.DisableLiveInputDelivery = true
-			closeCodingCLIAndReleaseTurnMarkers(conversation.SessionID, "product chat: runtime configuration changed")
-			// Closing a provider CLI alone does not remove the transport-neutral
-			// Session.Send target. Unregister it before the new turn is dispatched.
-			if retainedExists {
-				_ = retained.Close()
+			if runningServerAPI != nil && runningServerAPI.conversationTurnOccupied(conversation.SessionID) {
+				// A turn is running: never close its CLI here (PLAT-676, the second message of a chat
+				// killed the first run). handleQuery queues this message and restarts the CLI when it runs.
+				query.RestartCodingCLI = true
+			} else {
+				retireProductCodingCLI(conversation.SessionID, "product chat: runtime configuration changed")
 			}
 		}
 	}
 	return query, nil
+}
+
+// retireProductCodingCLI closes a product chat's coding CLI and its retained Session.Send target, so
+// the next turn relaunches the CLI with the chat's current runtime. Closing a provider CLI alone does
+// not remove the transport-neutral Send target.
+func retireProductCodingCLI(sessionID, reason string) {
+	closeCodingCLIAndReleaseTurnMarkers(sessionID, reason)
+	if retained, ok := mcpagent.LookupSession(sessionID); ok {
+		_ = retained.Close()
+	}
 }
 
 // Fresh browser tabs may carry provisional IDs. An acknowledged continuation

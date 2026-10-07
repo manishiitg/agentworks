@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -529,6 +530,36 @@ func TestProductRuntimeSwitchRetiresDurableSession(t *testing.T) {
 	}
 	if unchanged.DisableLiveInputDelivery {
 		t.Fatal("unchanged selection needlessly disables warm delivery")
+	}
+}
+
+// PLAT-676 (Excellence 2026-10-07): a chat's second message changed its runtime selection while the
+// first Muse turn was running, and preparing it closed the CLI ("muse tmux session ... died before run
+// completion"). The running turn's CLI must survive; the message carries the restart to its own turn.
+func TestProductRuntimeChangeDuringRunningTurnDefersTheRestart(t *testing.T) {
+	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "first", Engine: "codex-cli"}, conversation); err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startRegisteredTestTmuxSession(t, conversation.SessionID, "running-turn-test")
+	api.retainedMainTurns = map[string]time.Time{conversation.SessionID: time.Now()}
+	old := runningServerAPI
+	runningServerAPI = api
+	t.Cleanup(func() { runningServerAPI = old })
+
+	query, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "while running", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !query.RestartCodingCLI || !query.DisableLiveInputDelivery {
+		t.Fatalf("restart=%v disable_live=%v, want the restart carried to the message's own turn", query.RestartCodingCLI, query.DisableLiveInputDelivery)
+	}
+	if _, exists := mcpagent.LookupSession(conversation.SessionID); !exists {
+		t.Fatal("the running turn's CLI session was closed")
 	}
 }
 
