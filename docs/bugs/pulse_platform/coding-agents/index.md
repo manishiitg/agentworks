@@ -11,7 +11,7 @@
 | [cursor](cursor/index.md) | 2 | 0 |
 | [general](general/index.md) | 5 | 0 |
 | [models](models/index.md) | 1 | 1 |
-| [muse](muse/index.md) | 5 | 2 |
+| [muse](muse/index.md) | 6 | 3 |
 | [pi](pi/index.md) | 5 | 1 |
 | [sessions](sessions/index.md) | 20 | 7 |
 | [tools](tools/index.md) | 15 | 4 |
