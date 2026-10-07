@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { Activity } from 'lucide-react'
 import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
+import { GoalStatusCard } from './GoalStatusCard'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
 import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
-import type { PulseAutonomy, PulseFinalCommandState, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
+import type { PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
 
 export interface PulseOverview {
   recorded: number
@@ -29,6 +30,7 @@ interface PulseViewProps {
   finalCommandStates: PulseFinalCommandState[]
   nextRun?: PulseNextRun | null
   goalWork?: PulseGoalWorkItem[]
+  goalStatus?: PulseGoalStatus | null
   autonomy?: PulseAutonomy
   autonomySaving?: boolean
   onChangeAutonomy?: (next: PulseAutonomy) => void
@@ -67,6 +69,7 @@ export default function PulseView({
   finalCommandStates,
   nextRun = null,
   goalWork = [],
+  goalStatus = null,
   autonomy = DEFAULT_PULSE_AUTONOMY,
   autonomySaving = false,
   onChangeAutonomy,
@@ -109,6 +112,7 @@ export default function PulseView({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-3 sm:p-4">
+          {workspacePath && <GoalStatusCard goal={goalStatus} />}
           {workspacePath && (
             <PulseWorkspace
               activeTab={tab}

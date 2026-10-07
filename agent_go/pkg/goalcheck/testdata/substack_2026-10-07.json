@@ -1,0 +1,782 @@
+{
+ "source": "Workflow/substack, owner's local data read with mode=ro&immutable=1 on 2026-10-07: active primary metrics, their pulse_goal_observations rows, and the workflow runs in schedule-runs.json since 2026-09-10 (route from each schedule's route_selections).",
+ "now": "2026-10-07T13:00:00Z",
+ "schedules_paused": true,
+ "metrics": [
+  {
+   "id": "subscriber_delta",
+   "name": "Daily subscriber delta",
+   "role": "primary",
+   "route": "growth_funnel",
+   "unit": "subscribers",
+   "direction": "increase"
+  },
+  {
+   "id": "subscriber_net_new",
+   "name": "Net new subscribers since previous run",
+   "role": "primary",
+   "route": "growth_funnel",
+   "unit": "subscribers",
+   "direction": "increase"
+  }
+ ],
+ "observations": [
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-11/default",
+   "route": "growth_funnel",
+   "value": 1.0,
+   "status": "in_progress",
+   "observed_at": "2026-09-06T04:35:48Z",
+   "recorded_at": "2026-09-09T10:35:49.377202Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-13/default",
+   "route": "growth_funnel",
+   "value": 1.0,
+   "status": "in_progress",
+   "observed_at": "2026-09-07T04:33:39Z",
+   "recorded_at": "2026-09-09T10:35:49.377202Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-16/default",
+   "route": "growth_funnel",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-08T05:28:24Z",
+   "recorded_at": "2026-09-09T10:35:49.377202Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-0/default",
+   "route": "",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-08T06:07:24Z",
+   "recorded_at": "2026-09-08T06:20:23.469617Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-0/default",
+   "route": "growth_funnel",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-12T05:10:44Z",
+   "recorded_at": "2026-09-12T05:31:25.407391Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-34-sched/default",
+   "route": "growth_funnel",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-15T05:14:00Z",
+   "recorded_at": "2026-09-15T05:21:22.485246Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-38-sched/default",
+   "route": "growth_funnel",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-16T05:11:45Z",
+   "recorded_at": "2026-09-16T05:18:50.015962Z"
+  },
+  {
+   "metric": "subscriber_delta",
+   "run_id": "iteration-41-sched/default",
+   "route": "growth_funnel",
+   "value": 0.0,
+   "status": "not_met",
+   "observed_at": "2026-09-17T05:04:40Z",
+   "recorded_at": "2026-09-17T05:10:39.217121Z"
+  },
+  {
+   "metric": "subscriber_net_new",
+   "run_id": "builder-chat-2026-10-07",
+   "route": "growth_funnel",
+   "value": 2.0,
+   "status": "",
+   "observed_at": "2026-10-07T12:00:00Z",
+   "recorded_at": "2026-10-07T12:03:22.933003Z"
+  }
+ ],
+ "runs": [
+  {
+   "run_id": "iteration-84-sched",
+   "started_at": "2026-09-30T10:30:43.513047Z",
+   "finished_at": "2026-09-30T10:31:11.198742Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-83-sched",
+   "started_at": "2026-09-29T10:30:23.065642Z",
+   "finished_at": "2026-09-29T10:31:27.075351Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-81-sched",
+   "started_at": "2026-09-29T05:30:38.661503Z",
+   "finished_at": "2026-09-29T05:31:41.15332Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-80-sched",
+   "started_at": "2026-09-29T04:30:38.601532Z",
+   "finished_at": "2026-09-29T04:36:32.54698Z",
+   "status": "error",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-79-sched",
+   "started_at": "2026-09-29T04:00:38.59044Z",
+   "finished_at": "2026-09-29T04:21:44.12248Z",
+   "status": "success",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-78-sched",
+   "started_at": "2026-09-29T02:45:38.61015Z",
+   "finished_at": "2026-09-29T03:13:21.598788Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-77-sched",
+   "started_at": "2026-09-28T10:30:08.181105Z",
+   "finished_at": "2026-09-28T10:34:07.620122Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-76-sched",
+   "started_at": "2026-09-28T02:45:58.869068Z",
+   "finished_at": "2026-09-28T03:03:54.314977Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-75-sched",
+   "started_at": "2026-09-26T10:30:43.572232Z",
+   "finished_at": "2026-09-26T10:31:12.475637Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-74-sched",
+   "started_at": "2026-09-26T05:30:18.625519Z",
+   "finished_at": "2026-09-26T05:30:50.798424Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-73-sched",
+   "started_at": "2026-09-26T04:30:18.613143Z",
+   "finished_at": "2026-09-26T05:21:01.225593Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-72-sched",
+   "started_at": "2026-09-26T02:45:18.610547Z",
+   "finished_at": "2026-09-26T03:11:00.468621Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-71-sched",
+   "started_at": "2026-09-25T10:30:28.706154Z",
+   "finished_at": "2026-09-25T10:30:59.631677Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-70-sched",
+   "started_at": "2026-09-25T05:30:31.317796Z",
+   "finished_at": "2026-09-25T05:31:16.633701Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-69-sched",
+   "started_at": "2026-09-25T04:30:31.265954Z",
+   "finished_at": "2026-09-25T05:06:54.177856Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-68-sched",
+   "started_at": "2026-09-25T04:00:31.272893Z",
+   "finished_at": "2026-09-25T04:13:09.698433Z",
+   "status": "error",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-67-sched",
+   "started_at": "2026-09-25T02:55:31.260229Z",
+   "finished_at": "2026-09-25T03:25:17.483075Z",
+   "status": "error",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-66-sched",
+   "started_at": "2026-09-24T05:30:40.796832Z",
+   "finished_at": "2026-09-24T05:31:17.771086Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-65-sched",
+   "started_at": "2026-09-24T04:30:40.901395Z",
+   "finished_at": "2026-09-24T04:57:43.997798Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-64-sched",
+   "started_at": "2026-09-24T02:45:40.743417Z",
+   "finished_at": "2026-09-24T03:05:50.132966Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-63-sched",
+   "started_at": "2026-09-23T05:30:53.495506Z",
+   "finished_at": "2026-09-23T05:33:25.794866Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-62-sched",
+   "started_at": "2026-09-23T04:30:52.821612Z",
+   "finished_at": "2026-09-23T04:31:06.940739Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-61-sched",
+   "started_at": "2026-09-23T03:46:41.290342Z",
+   "finished_at": "2026-09-23T04:09:59.016689Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-60-sched",
+   "started_at": "2026-09-22T10:30:34.308234Z",
+   "finished_at": "2026-09-22T10:31:24.190957Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-59-sched",
+   "started_at": "2026-09-22T07:59:52.125005Z",
+   "finished_at": "2026-09-22T08:00:22.265304Z",
+   "status": "error",
+   "routes": [],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-58-sched",
+   "started_at": "2026-09-22T04:30:43.739303Z",
+   "finished_at": "2026-09-22T04:50:20.013425Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-57-sched",
+   "started_at": "2026-09-22T04:00:43.734971Z",
+   "finished_at": "2026-09-22T04:14:19.432694Z",
+   "status": "success",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-56-sched",
+   "started_at": "2026-09-22T02:45:43.76056Z",
+   "finished_at": "2026-09-22T03:09:54.484677Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-55-sched",
+   "started_at": "2026-09-21T10:30:06.038214Z",
+   "finished_at": "2026-09-21T10:31:05.826902Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-54-sched",
+   "started_at": "2026-09-21T05:30:30.992418Z",
+   "finished_at": "2026-09-21T05:31:32.573885Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-53-sched",
+   "started_at": "2026-09-21T04:30:37.476823Z",
+   "finished_at": "2026-09-21T04:34:54.997361Z",
+   "status": "interrupted",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-52-sched",
+   "started_at": "2026-09-21T03:50:59.619497Z",
+   "finished_at": "2026-09-21T03:51:52.134153Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-51-sched",
+   "started_at": "2026-09-20T02:50:40.758365Z",
+   "finished_at": "2026-09-20T02:56:47.540525Z",
+   "status": "error",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-50-sched",
+   "started_at": "2026-09-19T10:30:02.959431Z",
+   "finished_at": "2026-09-19T10:31:04.563298Z",
+   "status": "error",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-49-sched",
+   "started_at": "2026-09-19T07:49:52.63474Z",
+   "finished_at": "2026-09-19T07:50:47.846093Z",
+   "status": "error",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-48-sched",
+   "started_at": "2026-09-18T06:30:30.460622Z",
+   "finished_at": "2026-09-18T06:31:43.214218Z",
+   "status": "success",
+   "routes": [],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-47-sched",
+   "started_at": "2026-09-18T05:30:30.36749Z",
+   "finished_at": "2026-09-18T05:30:53.018775Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-46-sched",
+   "started_at": "2026-09-18T04:30:30.464346Z",
+   "finished_at": "2026-09-18T04:30:58.076042Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-45-sched",
+   "started_at": "2026-09-18T04:00:30.472217Z",
+   "finished_at": "2026-09-18T04:00:50.624024Z",
+   "status": "success",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-44-sched",
+   "started_at": "2026-09-18T02:45:30.471117Z",
+   "finished_at": "2026-09-18T02:45:59.332056Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-43-sched",
+   "started_at": "2026-09-17T10:30:17.083757Z",
+   "finished_at": "2026-09-17T10:30:52.993554Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-42-sched",
+   "started_at": "2026-09-17T05:30:44.274044Z",
+   "finished_at": "2026-09-17T05:31:55.920907Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-41-sched",
+   "started_at": "2026-09-17T04:30:44.290188Z",
+   "finished_at": "2026-09-17T05:08:41.468772Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-40-sched",
+   "started_at": "2026-09-17T02:45:44.268845Z",
+   "finished_at": "2026-09-17T03:10:13.927373Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-39-sched",
+   "started_at": "2026-09-16T10:30:29.409451Z",
+   "finished_at": "2026-09-16T10:31:13.323031Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-38-sched",
+   "started_at": "2026-09-16T04:30:32.601157Z",
+   "finished_at": "2026-09-16T05:14:44.341325Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-37-sched",
+   "started_at": "2026-09-16T02:45:32.593689Z",
+   "finished_at": "2026-09-16T03:07:54.46326Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-36-sched",
+   "started_at": "2026-09-15T10:30:42.981625Z",
+   "finished_at": "2026-09-15T10:31:40.628246Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-35-sched",
+   "started_at": "2026-09-15T06:30:42.912694Z",
+   "finished_at": "2026-09-15T06:31:24.623576Z",
+   "status": "success",
+   "routes": [],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-34-sched",
+   "started_at": "2026-09-15T04:30:32.892929Z",
+   "finished_at": "2026-09-15T05:17:59.367812Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-33-sched",
+   "started_at": "2026-09-15T04:00:32.899489Z",
+   "finished_at": "2026-09-15T04:12:00.304686Z",
+   "status": "success",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-32-sched",
+   "started_at": "2026-09-15T02:45:32.893517Z",
+   "finished_at": "2026-09-15T03:07:18.281737Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-31-sched",
+   "started_at": "2026-09-14T10:30:32.833552Z",
+   "finished_at": "2026-09-14T10:31:26.471848Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-14T05:30:50.660334Z",
+   "finished_at": "2026-09-14T05:32:08.832105Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-30",
+   "started_at": "2026-09-14T04:30:50.652863Z",
+   "finished_at": "2026-09-14T05:18:51.591892Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-29",
+   "started_at": "2026-09-14T02:45:50.643074Z",
+   "finished_at": "2026-09-14T02:55:57.310297Z",
+   "status": "error",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-13T10:30:25.060987Z",
+   "finished_at": "2026-09-13T10:32:14.678531Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-28",
+   "started_at": "2026-09-13T04:35:30.352288Z",
+   "finished_at": "2026-09-13T05:28:31.563808Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-27",
+   "started_at": "2026-09-13T02:55:02.514133Z",
+   "finished_at": "2026-09-13T03:26:31.918677Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-26",
+   "started_at": "2026-09-12T04:30:53.777521Z",
+   "finished_at": "2026-09-12T05:27:42.457893Z",
+   "status": "success",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-25",
+   "started_at": "2026-09-12T02:45:42.03916Z",
+   "finished_at": "2026-09-12T03:09:01.093354Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-24",
+   "started_at": "2026-09-11T10:30:12.437985Z",
+   "finished_at": "2026-09-11T10:31:15.33474Z",
+   "status": "success",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-23",
+   "started_at": "2026-09-11T04:00:50.627596Z",
+   "finished_at": "2026-09-11T04:00:55.526007Z",
+   "status": "error",
+   "routes": [
+    "write_article"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-11T02:45:50.618693Z",
+   "finished_at": "2026-09-11T02:45:55.261151Z",
+   "status": "error",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-10T10:30:50.553778Z",
+   "finished_at": "2026-09-10T10:30:53.423635Z",
+   "status": "error",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-10T05:30:50.479683Z",
+   "finished_at": "2026-09-10T05:30:57.876267Z",
+   "status": "error",
+   "routes": [
+    "publish_review"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-0",
+   "started_at": "2026-09-10T04:30:38.254107Z",
+   "finished_at": "2026-09-10T04:48:23.657033Z",
+   "status": "error",
+   "routes": [
+    "growth_funnel"
+   ],
+   "scheduled": true
+  },
+  {
+   "run_id": "iteration-22",
+   "started_at": "2026-09-10T02:45:17.316626Z",
+   "finished_at": "2026-09-10T03:07:07.114975Z",
+   "status": "success",
+   "routes": [
+    "research"
+   ],
+   "scheduled": true
+  }
+ ]
+}

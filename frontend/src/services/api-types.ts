@@ -619,6 +619,7 @@ export interface PulseModuleStateResponse {
   next_pulse?: PulseNextRun | null
   goal_work?: PulseGoalWorkItem[]
   goal_work_error?: string
+  goal_status?: PulseGoalStatus | null
   autonomy_run?: PulseAutonomyRun
   autonomy?: PulseAutonomy
   focus_areas?: string[]
@@ -637,6 +638,39 @@ export interface PulseAutonomy {
 }
 export type PulseAutonomyKey = keyof PulseAutonomy
 export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { run: 'auto', outward: 'ask', change: 'ask' }
+
+/** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
+export interface PulseGoalAlarm {
+  kind: 'not_measured' | 'no_run' | 'goal_work_skipped' | 'goal_work_not_measuring'
+  days?: number
+  message: string
+}
+
+/** The Goal Lead's goal status: code facts plus the latest daily goal check verdict. */
+export interface PulseGoalStatus {
+  facts: {
+    status: 'no_goal' | 'ok' | 'at_risk' | 'not_measured'
+    summary: string
+    has_goal: boolean
+    key_metric?: string
+    key_value?: number
+    last_measured_at?: string
+    last_run_measured_at?: string
+    days_since_run_measured: number
+    last_run_at?: string
+    alarms: PulseGoalAlarm[]
+    schedules_paused: boolean
+    pause_already_reported?: boolean
+  }
+  latest_check?: {
+    checked_at: string
+    status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'
+    key_number?: string
+    summary: string
+    action_taken?: string
+    decision_id?: string
+  } | null
+}
 
 /** Work Pulse did (or plans) to move the user's goals, and constraint challenges. */
 export interface PulseGoalWorkItem {

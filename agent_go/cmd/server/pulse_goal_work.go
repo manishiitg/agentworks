@@ -259,7 +259,14 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 	if err != nil {
 		return "", err
 	}
+	// The goal check comes first (PLAT-697): the code-computed goal facts ride
+	// along so a pass that reads only this view still sees the silence alarm.
+	var goalStatus interface{}
+	if view, statusErr := computeGoalStatus(ctx, workspacePath, time.Now().UTC()); statusErr == nil {
+		goalStatus = view
+	}
 	out, err := json.MarshalIndent(map[string]interface{}{
+		"goal_status":      goalStatus,
 		"autonomy":         pulseAutonomyForView(ctx, workspacePath),
 		"autonomy_note":    "The user's Pulse permissions: auto means do it yourself and record it; ask means prepare it and create a decision. run covers existing steps, outward covers new posts/messages/contacts, change covers plan, step and schedule edits.",
 		"focus_areas":      pulseFocusAreasForView(ctx, workspacePath),

@@ -2313,6 +2313,12 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 		planDriftDueError = planDriftDueErr.Error()
 		planDriftDueItems = []step_based_workflow.PlanDriftDueItem{}
 	}
+	// Goal status (PLAT-697) leads the Pulse tab; nil when it cannot be read.
+	goalStatus, goalStatusErr := computeGoalStatus(r.Context(), workspacePath, time.Now().UTC())
+	if goalStatusErr != nil {
+		log.Printf("[PULSE] goal status unavailable for %s: %v", workspacePath, goalStatusErr)
+		goalStatus = nil
+	}
 	goalWork, goalWorkErr := listPulseGoalWork(r.Context(), workspacePath, 100)
 	goalWorkError := ""
 	if goalWorkErr != nil {
@@ -2335,6 +2341,7 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 		"next_pulse":                 pulseNextRunView(r.Context(), workspacePath),
 		"goal_work":                  goalWork,
 		"goal_work_error":            goalWorkError,
+		"goal_status":                goalStatus,
 		"autonomy_run":               pulseAutonomyRunForView(r.Context(), workspacePath),
 		"autonomy":                   pulseAutonomyForView(r.Context(), workspacePath),
 		"focus_areas":                pulseFocusAreasForView(r.Context(), workspacePath),
@@ -2712,7 +2719,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 				"additionalProperties": false,
 				"properties": map[string]interface{}{
 					"workspace_path": map[string]interface{}{"type": "string", "description": "Workflow-relative path, e.g. Workflow/social-media."},
-					"view":           map[string]interface{}{"type": "string", "enum": pulseStateViewValues, "description": "Which Pulse state to read: module cadence, the finding backlog, one saved review, the focus coverage agenda, review_notes (latest concise notes, optionally filtered by module and pulse_run_id), goal_work (Goal Work items and constraint challenges, newest first), step_concerns (CONCERNS: lines steps wrote since the previous Pulse; leads, not findings), or step_outputs (each step's own summary of its latest runs side by side, optionally one step_id; shows steps that complete but do no new work)."},
+					"view":           map[string]interface{}{"type": "string", "enum": pulseStateViewValues, "description": "Which Pulse state to read: module cadence, the finding backlog, one saved review, the focus coverage agenda, review_notes (latest concise notes, optionally filtered by module and pulse_run_id), goal_work (Goal Work items and constraint challenges, newest first), goal_status (read first: code-computed goal facts and silence alarm, whether the goal is measured by runs and its route runs, plus the latest goal check), step_concerns (CONCERNS: lines steps wrote since the previous Pulse; leads, not findings), or step_outputs (each step's own summary of its latest runs side by side, optionally one step_id; shows steps that complete but do no new work)."},
 					"pulse_run_id":   map[string]interface{}{"type": "string", "description": "Optional Pulse run id. With view=module, returns that Gate's persisted pass mode; with view=review_notes, selects notes for that exact run."},
 					"module":         map[string]interface{}{"type": "string", "description": "Optional owning-module filter for backlog or review_notes (omit for all modules). Required for view=\"review\" and view=\"focus_agenda\". Ignored for view=\"module\"."},
 					"review_run_id":  map[string]interface{}{"type": "string", "description": "Required for view=\"review\": the review run id from the reviewer's completion notification."},
@@ -2929,6 +2936,8 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 				return readPulseReviewNotesView(ctx, workspacePath, stringToolArg(args, "module"), stringToolArg(args, "pulse_run_id"), intToolArg(args, "limit"))
 			case "goal_work":
 				return readPulseGoalWorkView(ctx, workspacePath, intToolArg(args, "limit"))
+			case "goal_status":
+				return readGoalStatusView(ctx, workspacePath)
 			case "step_concerns":
 				return readStepConcernsView(ctx, workspacePath)
 			case "step_outputs":
@@ -3059,8 +3068,30 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	}
 	executors["record_pulse_fast_request"] = recordPulseFastRequestFromToolArgs
 	categories["record_pulse_fast_request"] = "workflow"
+	goalCheckTool := llmtypes.Tool{
+		Type: "function",
+		Function: &llmtypes.FunctionDefinition{
+			Name:        "record_pulse_goal_check",
+			Description: "Record the goal check (the Goal Lead's first job, PLAT-697): your verdict after reading get_pulse_state(view=\"goal_status\"), soul.md and get_goal_metrics. status: on_track (measured recently, moving or holding as expected, goal work running), at_risk, off_track, or not_measured. It is shown at the top of the Pulse tab. The code-computed alarms are stored with it; a paused workflow's pause is then not reported again until something changes.",
+			Parameters: llmtypes.NewParameters(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"workspace_path": map[string]interface{}{"type": "string", "description": "Workflow-relative path, e.g. Workflow/linkedin."},
+					"pulse_run_id":   map[string]interface{}{"type": "string", "description": "The current Pulse run id."},
+					"status":         map[string]interface{}{"type": "string", "enum": []string{"on_track", "at_risk", "off_track", "not_measured"}},
+					"key_number":     map[string]interface{}{"type": "string", "description": "The key goal number and its date in plain words, e.g. \"+2 subscribers on 7 Oct\"."},
+					"summary":        map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: is the goal measured, moving, and its work running."},
+					"action_taken":   map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
+					"decision_id":    map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
+				},
+				"required": []string{"workspace_path", "status", "summary"},
+			}),
+		},
+	}
+	executors["record_pulse_goal_check"] = recordPulseGoalCheckFromToolArgs
+	categories["record_pulse_goal_check"] = "workflow"
 
-	return []llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool}, executors, categories
+	return []llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool, goalCheckTool}, executors, categories
 }
 
 func stringToolArg(args map[string]interface{}, key string) string {
@@ -3094,7 +3125,7 @@ const (
 
 // pulseStateViewValues is the closed view set shared by the schema enum, the
 // accept check, and the rejection message.
-var pulseStateViewValues = []string{pulseStateViewBacklog, pulseStateViewModule, pulseStateViewReview, pulseStateViewFocusAgenda, "review_notes", "goal_work", "step_concerns", "step_outputs"}
+var pulseStateViewValues = []string{pulseStateViewBacklog, pulseStateViewModule, pulseStateViewReview, pulseStateViewFocusAgenda, "review_notes", "goal_work", "goal_status", "step_concerns", "step_outputs"}
 
 // pulseResultValues is the union of the module and final-command result sets.
 // Each target validates its own subset and names it on rejection; the schema

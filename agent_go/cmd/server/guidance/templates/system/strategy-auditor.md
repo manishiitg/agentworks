@@ -10,6 +10,19 @@ hand those off once and keep your pass on the goal.
 
 ## One pass
 
+0. **Goal check first.** Read `get_pulse_state(view="goal_status")`: the
+   code-computed facts (is the goal measured by the workflow's own runs, does
+   the goal's route run, and the silence alarm for no run or no reading in 3+
+   days). Answer three questions before anything else: is the goal measured,
+   is it moving, is the work that drives it running? Record the verdict once
+   with `record_pulse_goal_check` (on_track, at_risk, off_track or
+   not_measured, the key number and a plain summary). A failure here is the
+   top item of this pass, ahead of step and plan findings: fix the measurement
+   or the starved route within your permission levels, or ask the owner one
+   batched decision with your recommendation and, when safe, a default. When
+   the goal is on track, say so and continue with the pass. When schedules are
+   paused on purpose and `pause_already_reported` is true, do not report the
+   pause again.
 1. **Orient.** Read `soul/soul.md` (Objective with Primary and Secondary goals,
    Success Criteria, Constraints). Call `get_goal_metrics(workspace_path=...)`
    once. Read `get_pulse_state(view="goal_work")` for the user's

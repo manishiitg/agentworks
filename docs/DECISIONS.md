@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Goal check first: daily goal check and silence alarm
+
+Every workflow with a primary goal metric gets a daily goal check, the Goal Lead's first job: code computes
+whether the goal is measured by the workflow's own runs and whether its route runs (silence alarm at 3 days, a
+deliberate pause reported once), and one short Pulse turn judges it. On track ends the turn quietly; otherwise it
+acts within `pulse.autonomy` or asks one batched decision, and sends one Pulse summary. It never runs beside a
+Pulse pass on the same workflow. The status leads the Pulse tab and the Pulse summary. Why: owner, 2026-10-07;
+Substack's goal went unmeasured for 20 days unnoticed.
+[PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — Two kinds of Stop in a chat: the turn, and each background item
 
 The composer Stop only interrupts the coding CLI's current turn (PLAT-699) and

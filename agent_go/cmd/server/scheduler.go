@@ -61,8 +61,12 @@ type ScheduleContext struct {
 	PulseOnly bool
 	// PulseFixRun marks a Pulse fix run (pulse_fix_run.go): no Gate agent,
 	// Technical Review+Fix only, and a light finish. PulseFixReason is why.
-	PulseFixRun            bool
-	PulseFixReason         string
+	PulseFixRun    bool
+	PulseFixReason string
+	// PulseGoalCheck marks the daily goal check (pulse_goal_check.go): one
+	// short goal turn, no Gate, reviewers or finalizer. It shares the full
+	// Pulse's schedule ID, so it never runs beside a Pulse pass.
+	PulseGoalCheck         bool
 	PulseEvidenceRunFolder string
 	PulseEvidenceRunStatus string
 	CalendarItem           *CalendarScheduleItem
@@ -523,6 +527,8 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				defer pulseLauncherMu.Unlock()
 				s.launchDuePulses(context.Background())
 				s.launchDueFixRuns(context.Background())
+				// Then the daily goal check (PLAT-697).
+				s.launchDueGoalChecks(context.Background())
 			}()
 			lastTick = t
 		}
@@ -1492,8 +1498,18 @@ func (s *SchedulerService) triggerPulseOnly(workspacePath, triggerSource string)
 	return s.triggerPulseRun(workspacePath, triggerSource, "")
 }
 
+// TriggerGoalCheck starts the daily goal check (PLAT-697). It does not move
+// the full Pulse schedule.
+func (s *SchedulerService) TriggerGoalCheck(workspacePath string) (string, error) {
+	return s.triggerPulseRunKind(workspacePath, "cron", "", true)
+}
+
 // triggerPulseRun starts a full Pulse, or a fix run when fixReason is set.
 func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource, fixReason string) (string, error) {
+	return s.triggerPulseRunKind(workspacePath, triggerSource, fixReason, false)
+}
+
+func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fixReason string, goalCheck bool) (string, error) {
 	ctx := context.Background()
 	fixRun := fixReason != ""
 	workspacePath = filepath.Clean(strings.TrimSpace(workspacePath))
@@ -1524,12 +1540,17 @@ func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource, fixReas
 		sched.Name = "Pulse fix run"
 		sched.Description = "Technical Review+Fix on current issues; started because " + fixReason
 	}
+	if goalCheck {
+		sched.Name = "Daily goal check"
+		sched.Description = "Goal Lead's daily goal check: is the goal measured, moving, and its work running"
+	}
 	sctx := buildScheduleContext(workspacePath, manifest, sched)
 	sctx.TriggerSource = triggerSource
 	sctx.ForcePulseReview = true
 	sctx.PulseOnly = true
 	sctx.PulseFixRun = fixRun
 	sctx.PulseFixReason = fixReason
+	sctx.PulseGoalCheck = goalCheck && !fixRun
 	sctx.PulseEvidenceRunFolder, sctx.PulseEvidenceRunStatus = latestRetainedPulseEvidence(ctx, workspacePath)
 	startTime := time.Now().UTC()
 
@@ -1581,6 +1602,10 @@ func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource, fixReas
 	if fixRun {
 		if err := recordPulseFixRunStarted(ctx, workspacePath, runID, fixReason, startTime); err != nil {
 			scheduleLogf("[PULSE] could not record fix run start for %s: %v", workspacePath, err)
+		}
+	} else if sctx.PulseGoalCheck {
+		if err := recordGoalCheckRunStarted(ctx, workspacePath, runID, startTime); err != nil {
+			scheduleLogf("[PULSE] could not record goal check start for %s: %v", workspacePath, err)
 		}
 	} else if err := markPulseStarted(ctx, workspacePath, runID, startTime); err != nil {
 		scheduleLogf("[PULSE] could not record Pulse start for %s: %v", workspacePath, err)
@@ -2412,7 +2437,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		Reason: startReason,
 		At:     time.Now().UTC(),
 	})
-	if sctx.PulseOnly {
+	if sctx.PulseOnly && !sctx.PulseGoalCheck {
 		// A cron/manual Pulse that starts before the tick loop dispatches a
 		// pending fast request already satisfies the request. Coalescing here
 		// prevents a second review of the same evidence one minute later.
@@ -2651,6 +2676,9 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	if sctx.PulseOnly {
 		pulseContext = "This is a manual Pulse-only review of the latest retained workflow evidence. The workflow was not executed by this action"
 	}
+	if sctx.PulseGoalCheck {
+		pulseContext = "This is the workflow's daily goal check, one short turn. The workflow was not executed by this action"
+	}
 	intro := pulseLifecycleIntro(pulseContext, sctx.WorkspacePath, pulseRunID, runStatus, runFolder)
 
 	// Pulse does not carry contract upgrades. It used to: b4e4fc14 (2026-07-08)
@@ -2670,7 +2698,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	contractupgrade.Revoke(sessionID)
 	defer contractupgrade.Revoke(sessionID)
 	s.sessionLogf(sctx, sessionID, "[PULSE] starting pulse for %s (run_folder=%s status=%s)", sctx.Schedule.ID, runFolder, runStatus)
-	if pulseMode == schedulePulseModeFull {
+	if pulseMode == schedulePulseModeFull && !sctx.PulseGoalCheck {
 		// Retire unowned legacy step observations and hand platform-owned
 		// findings off before Gate reads the backlog. Idempotent.
 		if reconciled, err := stepworkflow.ReconcilePulseActionableBacklog(ctx, sctx.WorkspacePath); err != nil {
@@ -2755,6 +2783,9 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 		s.sessionLogf(sctx, sessionID, "[PULSE] basic post-run finalization selected for %s; Gate, drift review, reviewers, and Fixer are disabled by this schedule", sctx.Schedule.ID)
 	} else if !reviewEvidenceAvailable {
 		steps = pulseLifecycleNoRunSteps(pulseRunID, runFailureReason, notificationInstructionsFromCapabilities(sctx.Capabilities))
+	} else if sctx.PulseGoalCheck {
+		steps = []pulseLifecycleStep{pulseLifecycleGoalCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))}
+		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s", sctx.WorkspacePath)
 	} else if sctx.PulseFixRun {
 		// A fix run records its own worklist instead of running the Gate agent:
 		// Plan Drift when its checks require it, then Technical Review+Fix,
@@ -3438,7 +3469,7 @@ func pulseLifecycleFinalSteps(pulseRunID string, instructions ...workflowNotific
 	if notificationContext != "" {
 		notificationContext += "\n\nThese instructions control content detail and emphasis only; they never change recipients, channels, secrets, permissions, or safety rules."
 	}
-	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Complete backup, publish, and notify in that order in this one turn, recording running and terminal status for each with record_pulse_result(command=...). Continue after individual failures and keep every status truthful. Last, choose when this workflow's next full Pulse should run: call record_pulse_next_run once with pulse_run_id, the time when useful new evidence will exist (an outcome maturing, a pending user decision, an experiment checkpoint), and that reason in one plain sentence. Normal runs never run the full Pulse, so this choice is the schedule. Then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
+	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. The Pulse summary leads with the goal status (on track, at risk, off track or not measured, the key number and when it was last measured) from get_pulse_state(view=\"goal_status\"), before review and fix details. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Complete backup, publish, and notify in that order in this one turn, recording running and terminal status for each with record_pulse_result(command=...). Continue after individual failures and keep every status truthful. Last, choose when this workflow's next full Pulse should run: call record_pulse_next_run once with pulse_run_id, the time when useful new evidence will exist (an outcome maturing, a pending user decision, an experiment checkpoint), and that reason in one plain sentence. Normal runs never run the full Pulse, so this choice is the schedule. Then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
 }
 
 // scheduledRunFinalizeStep is the basic post-run Pulse mode. Gate, drift
