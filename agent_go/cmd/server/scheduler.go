@@ -2329,6 +2329,12 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		failBeforeHistory(err, "")
 		return "", err
 	}
+	// A run whose identity is over its shared-account token limit fails here
+	// with the reason, like a refused manual turn (PLAT-683).
+	if err := s.api.scheduledRunTokenLimitRefusal(ctx, sctx); err != nil {
+		failBeforeHistory(err, "")
+		return "", err
+	}
 
 	if !sctx.PulseOnly && sctx.WebhookInput == nil {
 		folder := strings.TrimSpace(sctx.CapacityResumeRunFolder)

@@ -16,6 +16,7 @@ import type { WorkRuntimeSelection } from './workTabs'
 import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 import { ProviderChangeNotice } from '../../components/chat/ProviderChangeNotice'
 import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
+import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUsageNotice'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -312,6 +313,7 @@ export function WorkModelsPanel({
             This project is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
           </p>
         )}
+        <SharedTokenUsageNotice className="mb-3" />
         <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}

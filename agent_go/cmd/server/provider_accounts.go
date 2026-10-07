@@ -656,6 +656,11 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
 			return nil, fmt.Errorf("the %s server account is not available to you here (available to: %s). Choose another coding agent in this project's Models panel; your next message uses it", provider, availability.Text)
 		}
+		// Per-user token limits count and cap server accounts only (PLAT-683).
+		if err := api.sharedAccountTokenLimitRefusal(scope.Principal); err != nil {
+			log.Printf("[PROVIDER_ACCOUNT] %s server account refused for %q (%s): token limit reached", provider, scope.Principal, run.Product)
+			return nil, err
+		}
 		return nil, nil
 	}
 	principal := strings.TrimSpace(scope.Principal)

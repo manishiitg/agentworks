@@ -420,7 +420,27 @@ type sqliteStore interface {
 	summarizeWorkflowOverview(from, to, workflowID string) (*Summary, bool, error)
 	migrateLegacyJSONL(path string) (MigrationReport, error)
 	repriceUnpriced(estimate UnpricedEstimator) (int, error)
+	accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error)
 	close() error
+}
+
+// AccountTokenUsage is the tokens one person used on a set of accounts in
+// the current day and week. A token here is input (cached input counted
+// once) plus output; reasoning is part of output for the CLIs that report it.
+type AccountTokenUsage struct {
+	Day  int64 `json:"day"`
+	Week int64 `json:"week"`
+}
+
+// AccountTokens sums userID's tokens on accounts whose ID starts with
+// accountPrefix (for example "global:", the shared server accounts) since
+// weekStart, and the part since dayStart. dayStart must not be before
+// weekStart. The legacy JSONL ledger has no index for this and reports zero.
+func (l *Ledger) AccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error) {
+	if l == nil || l.db == nil || strings.TrimSpace(userID) == "" || accountPrefix == "" {
+		return AccountTokenUsage{}, nil
+	}
+	return l.db.accountTokens(strings.TrimSpace(userID), accountPrefix, dayStart, weekStart)
 }
 
 // UnpricedEstimator prices one recorded LLM call that had no cost, from its

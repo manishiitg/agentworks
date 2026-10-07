@@ -2855,8 +2855,28 @@ export interface AdminUser {
   disabled: boolean
   /** Added by email, no password, and not signed in with SSO yet. */
   invited?: boolean
+  /** Tokens per UTC day / Monday-start week on the shared server accounts; absent = unlimited. */
+  token_limits?: TokenLimits
+  token_usage?: SharedAccountTokenUsage
   created_at?: string
   updated_at?: string
+}
+
+export interface TokenLimits {
+  daily?: number
+  weekly?: number
+}
+
+/** A person's tokens on the shared server accounts against their limits (GET /api/me/token-usage). */
+export interface SharedAccountTokenUsage {
+  timezone: string
+  daily_used: number
+  weekly_used: number
+  daily_limit?: number
+  weekly_limit?: number
+  day_resets_at: string
+  week_resets_at: string
+  state: 'ok' | 'warning' | 'over'
 }
 
 export interface AdminUserWrite {
@@ -2870,6 +2890,8 @@ export interface AdminUserWrite {
   products?: string[]
   code_reviewer?: boolean
   disabled?: boolean
+  /** Replaces both limits; 0 is unlimited. */
+  token_limits?: TokenLimits
 }
 
 export interface AuthResponse {
@@ -3056,6 +3078,10 @@ export const authApi = {
   },
   deleteAdminUser: async (id: string): Promise<void> => {
     await api.delete(`/api/admin/users/${encodeURIComponent(id)}`)
+  },
+  getMyTokenUsage: async (): Promise<SharedAccountTokenUsage> => {
+    const response = await api.get('/api/me/token-usage')
+    return response.data
   },
   changeOwnPassword: async (currentPassword: string, newPassword: string): Promise<void> => {
     await api.post('/api/auth/password', { current_password: currentPassword, new_password: newPassword })

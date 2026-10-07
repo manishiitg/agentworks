@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Per-person token limits on the shared server accounts
+
+An admin may set a daily and a weekly token limit per person (users.json `token_limits`; default unlimited). Only
+tokens on the shared server accounts (`global:<provider>`) count, measured from the cost ledger's account ID; own
+accounts and accounts shared by another user never count and are never limited. Day and week are UTC, the week
+starts Monday. At a limit `admitProviderAccount` refuses the server account for new turns and model starts with a
+message naming the reset; running turns finish. Scheduled runs count toward their execution owner and are refused
+(marked failed with the reason) when they would run on a server account over the limit. Why: one person must not use
+up the shared plan for everyone. `agent_go/cmd/server/token_limits.go`.
+[PLAT-683](bugs/pulse_platform/app/accounts/plat-683.md).
+
 ### 2026-10-07 — Relay branch labels sit on their connectors
 
 Centre Relay graph labels on Dagre's routed connector lines, using the existing

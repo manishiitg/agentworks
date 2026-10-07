@@ -12,6 +12,7 @@ import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
+import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -52,6 +53,60 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
   can_create: r === 'admin' || r === 'creator',
   can_edit: r !== 'viewer',
 })
+
+// The exact stored value, so a blur without an edit never rounds and saves it.
+const shownLimit = (n?: number) => (n ? String(n) : '')
+
+/**
+ * One person's limits on the shared server accounts, with their use today and
+ * this week. Saved on blur or Enter; empty is unlimited.
+ */
+function TokenLimitsCell({ user, disabled, onSave }: {
+  user: AdminUser; disabled: boolean; onSave: (limits: { daily: number; weekly: number }) => void
+}) {
+  const limits = user.token_limits
+  const usage = user.token_usage
+  const [daily, setDaily] = useState(shownLimit(limits?.daily))
+  const [weekly, setWeekly] = useState(shownLimit(limits?.weekly))
+  useEffect(() => { setDaily(shownLimit(limits?.daily)); setWeekly(shownLimit(limits?.weekly)) }, [limits?.daily, limits?.weekly])
+  const parsedDaily = parseTokenAmount(daily)
+  const parsedWeekly = parseTokenAmount(weekly)
+  const invalid = parsedDaily === null || parsedWeekly === null
+  const save = () => {
+    if (invalid) return
+    if (parsedDaily === (limits?.daily || 0) && parsedWeekly === (limits?.weekly || 0)) return
+    onSave({ daily: parsedDaily, weekly: parsedWeekly })
+  }
+  const used = (n: number | undefined, limit: number | undefined) => `${formatTokens(n)}${limit ? ` / ${formatTokens(limit)}` : ''}`
+  const tone = usage?.state === 'over' ? 'text-destructive' : usage?.state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+  const field = (label: string, value: string, set: (v: string) => void) => (
+    <label className="flex items-center gap-1.5">
+      <span className="w-12 text-muted-foreground">{label}</span>
+      <Input
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === 'Enter') save() }}
+        disabled={disabled}
+        placeholder="Unlimited"
+        aria-label={`${label} token limit for ${user.username}`}
+        className="h-7 w-24 text-xs"
+      />
+    </label>
+  )
+  return (
+    <div className="space-y-1 text-xs">
+      {field('Daily', daily, setDaily)}
+      {field('Weekly', weekly, setWeekly)}
+      {invalid && <p className="text-destructive">Use a number like 500k or 5M.</p>}
+      {usage && (
+        <p className={tone} title="Tokens (input + output) on the shared server accounts. Day and week are UTC; weeks start Monday.">
+          Today {used(usage.daily_used, usage.daily_limit)} · week {used(usage.weekly_used, usage.weekly_limit)}
+        </p>
+      )}
+    </div>
+  )
+}
 
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
 
@@ -243,6 +298,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                 <th className="py-1 pr-3 font-semibold">User</th>
                 <th className="py-1 pr-3 font-semibold">Role</th>
                 <th className="py-1 pr-3 font-semibold">Products</th>
+                {!vaultOnly && <th className="py-1 pr-3 font-semibold" title="Tokens on the shared server accounts, per UTC day and Monday-start week. Own accounts are never limited.">Shared-account tokens (UTC)</th>}
                 <th className="py-1 pr-3 font-semibold">Status</th>
                 <th className="py-1 font-semibold text-right">Actions</th>
               </tr>
@@ -306,6 +362,15 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                         )
                       )}
                     </td>
+                    {!vaultOnly && (
+                      <td className="py-2 pr-3 align-top">
+                        <TokenLimitsCell
+                          user={u}
+                          disabled={busy}
+                          onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
+                        />
+                      </td>
+                    )}
                     <td className="py-2 pr-3 align-top text-xs">
                       {u.disabled
                         ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Disabled</Badge>

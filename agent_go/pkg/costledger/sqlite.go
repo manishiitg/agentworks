@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS cost_events (
     operation_metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_cost_events_occurred_at ON cost_events(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_cost_events_user_time ON cost_events(user_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_cost_events_effective_model ON cost_events(effective_model_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_cost_events_workflow_scope ON cost_events(workflow_id, scope, occurred_at);
 CREATE TABLE IF NOT EXISTS cost_event_quarantine (
@@ -521,6 +522,42 @@ INSERT OR IGNORE INTO cost_events (
 		return MigrationReport{}, fmt.Errorf("costledger: commit legacy migration: %w", err)
 	}
 	return report, nil
+}
+
+// accountTokens sums one person's tokens on accounts whose ID starts with
+// accountPrefix since weekStart, and the part of it since dayStart.
+func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error) {
+	var usage AccountTokenUsage
+	rows, err := s.db.Query(`
+SELECT occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
+       requested_provider, effective_provider, operation_metadata_json
+FROM cost_events
+WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
+		// No zone suffix: a prefix of every stored RFC3339Nano time in that
+		// second, so an event at 00:00:00.5Z is not sorted before the bound.
+		userID, len(accountPrefix), accountPrefix, weekStart.UTC().Format("2006-01-02T15:04:05"))
+	if err != nil {
+		return usage, fmt.Errorf("costledger: query account tokens: %w", err)
+	}
+	defer rows.Close()
+	day := dayStart.UTC()
+	for rows.Next() {
+		var e Entry
+		var occurredAt, metadataJSON string
+		if err := rows.Scan(&occurredAt, &e.PromptTokens, &e.CompletionTokens, &e.CacheReadTokens, &e.CacheWriteTokens,
+			&e.Provider, &e.EffectiveProvider, &metadataJSON); err != nil {
+			return usage, fmt.Errorf("costledger: scan account tokens: %w", err)
+		}
+		if strings.Contains(metadataJSON, "prompt_tokens_include_cache") {
+			_ = json.Unmarshal([]byte(metadataJSON), &e.OperationMetadata)
+		}
+		tokens := int64(entryInputTokens(e) + e.CompletionTokens)
+		usage.Week += tokens
+		if at, err := time.Parse(time.RFC3339Nano, occurredAt); err == nil && !at.Before(day) {
+			usage.Day += tokens
+		}
+	}
+	return usage, rows.Err()
 }
 
 func (s *sqliteLedger) close() error {

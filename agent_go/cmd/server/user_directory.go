@@ -77,10 +77,13 @@ type UserRecord struct {
 	// every Code workspace's cost, chats and files, read-only, with each view
 	// audited (code_admin.go), and read that audit log. It grants no write
 	// anywhere and is not admin.
-	CodeReviewer bool   `json:"code_reviewer,omitempty"`
-	Disabled     bool   `json:"disabled,omitempty"`
-	CreatedAt    string `json:"created_at,omitempty"`
-	UpdatedAt    string `json:"updated_at,omitempty"`
+	CodeReviewer bool `json:"code_reviewer,omitempty"`
+	Disabled     bool `json:"disabled,omitempty"`
+	// TokenLimits caps this person's tokens per UTC day and Monday-start
+	// week on the shared server accounts (token_limits.go). Nil is unlimited.
+	TokenLimits *UserTokenLimits `json:"token_limits,omitempty"`
+	CreatedAt   string           `json:"created_at,omitempty"`
+	UpdatedAt   string           `json:"updated_at,omitempty"`
 }
 
 // UserSSO links an account to an external identity provider.
@@ -708,9 +711,11 @@ type userAdminView struct {
 	CodeReviewer bool     `json:"code_reviewer"`
 	Disabled     bool     `json:"disabled"`
 	// Invited: added by email, no password, not signed in with SSO yet.
-	Invited   bool   `json:"invited"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	Invited     bool                     `json:"invited"`
+	TokenLimits *UserTokenLimits         `json:"token_limits,omitempty"`
+	TokenUsage  *sharedAccountTokenUsage `json:"token_usage,omitempty"`
+	CreatedAt   string                   `json:"created_at,omitempty"`
+	UpdatedAt   string                   `json:"updated_at,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -728,7 +733,8 @@ func viewOf(rec UserRecord) userAdminView {
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
 		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
-		Invited: rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
+		Invited:     rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
+		TokenLimits: rec.TokenLimits.normalized(),
 	}
 }
 
@@ -768,8 +774,10 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 		return
 	}
 	out := make([]userAdminView, 0, len(dir.Users))
-	for _, u := range dir.Users {
-		out = append(out, viewOf(u))
+	for i := range dir.Users {
+		view := viewOf(dir.Users[i])
+		view.TokenUsage = api.sharedAccountTokenUsageFor(&dir.Users[i])
+		out = append(out, view)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
 	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs()})
@@ -788,6 +796,8 @@ type userWriteRequest struct {
 	Products     *[]string `json:"products"`
 	CodeReviewer *bool     `json:"code_reviewer"`
 	Disabled     *bool     `json:"disabled"`
+	// TokenLimits replaces both limits when present; zero is unlimited.
+	TokenLimits *UserTokenLimits `json:"token_limits"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -904,6 +914,9 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
+	if req.TokenLimits != nil {
+		rec.TokenLimits = req.TokenLimits.normalized()
+	}
 	dir.Users = append(dir.Users, rec)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
@@ -980,12 +993,15 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
+	if req.TokenLimits != nil {
+		rec.TokenLimits = req.TokenLimits.normalized()
+	}
 	rec.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled)
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized())
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 

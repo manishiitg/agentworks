@@ -4,6 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
+| [accounts](accounts/index.md) | 1 | 0 |
 | [activity](activity/index.md) | 7 | 0 |
 | [chat](chat/index.md) | 26 | 6 |
 | [general](general/index.md) | 3 | 0 |

@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 82 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 48 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-683](app/accounts/plat-683.md) | Per-user daily and weekly token limits on shared accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-682](coding-agents/accounts/plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-681](brain/access/plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
-| [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
