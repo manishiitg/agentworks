@@ -47,3 +47,31 @@ func TestBrainPicksUpDirectEditsInItsFolder(t *testing.T) {
 		}
 	}
 }
+
+// Brain's notes folder lives outside its data folder on servers (Brain/ in the documents tree). Every save went through
+// a journal that only accepted paths inside the data folder, so after the move every save failed and the stuck
+// journal made Brain unavailable (RTS and Excellence, 2026-10-07).
+func TestBrainWorksWithItsFolderOutsideItsData(t *testing.T) {
+	root := t.TempDir()
+	s, err := New(Config{Root: filepath.Join(root, "data"), LiveRoot: filepath.Join(root, "docs", "Brain"), OrganizationID: "org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if err := s.SyncPlatformIdentities(context.Background(), []Identity{{ID: "admin", Name: "Admin"}}); err != nil {
+		t.Fatal(err)
+	}
+	admin := Principal{IdentityID: "admin", IsAdmin: true}
+	folder(t, s, admin, "", "Company")
+	created := create(t, s, admin, "Company", "about.md", "first\n", "about")
+	call(t, s, admin, "update_knowledgebase", map[string]any{"entry_id": created["entry_id"], "expected_version": created["version"], "content": "second\n", "request_id": "edit"})
+	if err := os.WriteFile(filepath.Join(root, "docs", "Brain", "Company", "moved.md"), []byte("from the shell\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := call(t, s, admin, "read_knowledgebase", map[string]any{"path": "Company/moved.md"}); got["content"] != "from the shell\n" {
+		t.Fatalf("a shell edit in the outside folder must be picked up: %v", got)
+	}
+	if got := call(t, s, admin, "read_knowledgebase", map[string]any{"path": "Company/about.md"}); got["content"] != "second\n" {
+		t.Fatalf("saves must work with the folder outside the data root: %v", got)
+	}
+}

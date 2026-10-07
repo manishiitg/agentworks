@@ -283,7 +283,8 @@ func (s *Service) apply(j journal) error {
 			}
 			continue
 		}
-		if !strings.HasPrefix(c.Path, s.cfg.Root+string(filepath.Separator)) {
+		// Brain's own data, or its notes folder, which may live outside it (Brain/ in the documents tree, PLAT-633).
+		if !strings.HasPrefix(c.Path, s.cfg.Root+string(filepath.Separator)) && !strings.HasPrefix(c.Path, s.live+string(filepath.Separator)) {
 			return errors.New("invalid internal journal path")
 		}
 		if c.Delete {

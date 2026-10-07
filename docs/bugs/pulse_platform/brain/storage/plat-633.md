@@ -55,3 +55,9 @@ RTS: the Brain chat could not point backup at `https://github.com/mprealtraining
 ## Brain's own secrets (2026-10-07)
 
 Owner: "in Brain we should not show all platform secrets, just its own"; "Vault = platform secrets and everything is product specific". Brain's secrets live in the shared encrypted secret store under `Brain` (like a Crew's or Code's own secrets). The Brain tab's Secrets view lists, adds/replaces and removes only these (names only; people who own the whole Brain). The Brain chat uses `brain_secrets` instead of the Vault-wide `list_secrets`/`manage_global_secret`. The backup token (`pat_secret`) is looked up in Brain's secrets; one that so far lived only among the platform secrets (RTS: `BRAIN_GITHUB_PAT`) is copied into Brain's store on first use. Test `TestBrainSecretsAreBrainsOwn`. Not deployed.
+
+## Outage on RTS: every save refused after the move (2026-10-07)
+
+RTS, 04:05 UTC: Brain returned 503 ("temporarily unavailable") for listing and search. Cause: Brain's mutation journal accepted only paths inside its data folder, but the notes now live in `Brain/` outside it. Every save (and every disk sync, "invalid internal journal path") was refused, and the refused journal stayed pending, so every later call failed in recovery. The tests kept the notes inside the data folder and missed it. Fixed: the journal accepts the notes folder too; regression test `TestBrainWorksWithItsFolderOutsideItsData`. Excellence was deployed with the bug at 06:20 server time (c15cf2229).
+
+What happened in the folder: the owner's Brain chat reorganized RTS/Latency into RTS/Company, RTS/Engineering, RTS/Operations and RTS/Skills ("ok do optionA") by moving files in the shell; Brain could not record the moves. While diagnosing, the 13 original files were restored from the backup commit (db36150), so they now exist twice (old and new paths); removing the old copies was left to the owner.
