@@ -129,8 +129,9 @@ Pulse never starts one silently. Focus areas change what it attends to, never wh
 
 Per workflow (the Pulse tab, top to bottom): goal status (on track / at risk / off track / not measured, key number,
 trend, last measured); Needs you (each with a recommendation, Accept / Change, waiting time, what it blocks); focus
-areas; what the Pulse did (decision, why, result, undo where possible); the chat; and behind a details tab the QA
-and Architecture findings, Workflow Review results, the editable memory and the full decision log.
+areas; what the Pulse did (decision, why, result, undo where possible); and behind a details tab the QA and
+Architecture findings, Workflow Review results, the editable memory and the full decision log. The conversation is
+in the "<workflow> Pulse" chat tab; the Pulse tab keeps a "Talk to Pulse" box that opens it (as built, below).
 
 Across workflows: one row per goal, sorted by needs-you then off track: goal, status, needs-you count, last measured,
 actions in the last 7 days. The same summary goes out as the daily Slack or email message, answerable there.
@@ -252,7 +253,7 @@ with one owner per workflow goal; a goal spanning workflows is a later phase.
   native session and an API model replays its transcript (the Crew and workflow-ask path). The CLI's own compaction
   bounds it; after 30 days or 90 turns the next goal check starts generation N+1 and goal memory carries over.
 - **Turns.** Daily goal check and the full Pulse's Goal Work (scheduler, same receipts as before), the owner's
-  messages (Pulse tab), `ask_pulse` (old name `ask_goal_lead`, kept for one release; workflow chats and steps,
+  messages (the Pulse tab's box, or relayed by the Builder chat with `ask_pulse`), `ask_pulse` (old name `ask_goal_lead`, kept for one release; workflow chats and steps,
   function call, 20 an hour), Slack, and a failed run (below). Each runs as
   the workflow's execution owner on its Builder runtime as a Pulse turn, held by the phase 2 guard to
   `pulse.autonomy`. Kernel Run mode (Landlock read-only) is not used yet: Goal Work writes drafts under `pulse/work/`.
@@ -261,7 +262,9 @@ with one owner per workflow goal; a goal spanning workflows is a later phase.
   short result back. For a workflow with a goal the full pass runs no Architecture or Technical turn (below).
 - **Focus areas.** `pulse.focus_areas` stays the active list; `pulse.focus_area_details` holds each area's end date,
   check, status, tracking and closing lesson. At most three open; proposals wait for the owner's confirm.
-- **Pulse tab.** Goal status card, focus areas, Needs you, decision log, memory, then the conversation with an input.
+- **Pulse tab.** Goal status card, focus areas, Needs you, decision log, memory, a "Talk to Pulse" box. The
+  conversation was here at first; since 2026-10-08 it is only in the "<workflow> Pulse" chat tab, which the box
+  opens after sending (below).
 - **Slack.** `<workflow-slug>-pulse` on any app that reaches the workflow (`-goal` still works for one release);
   the thread or DM stays bound to it.
 
@@ -305,6 +308,26 @@ owner did not own its workflow. Now that conversation is the only Pulse of such 
   from the cost ledger (no budget field exists, so trend only), runs costing twice the 14-day median, the failure
   share against its 14-day median, and text-matched login/connection hints. `goal-lead-check.md` says what to do with
   each.
+
+## Talking to Pulse: Builder chat threads and the Pulse chat tab (as built)
+
+Owner, 2026-10-08: the Builder must use Pulse as the goal expert in a real exchange, not one-off messages, and the
+conversation belongs in the "<workflow> Pulse" chat tab.
+
+- The Pulse tab shows no conversation; its "Talk to Pulse" box sends straight into Pulse's conversation and opens
+  the Pulse chat tab.
+- The Builder asks Pulse with `ask_pulse` for goal status, why Pulse did something, which option serves the goal,
+  and direction. An ask from a person's Builder chat carries the owner's words: Pulse records lasting direction in
+  goal memory or proposes a focus area.
+- Pulse ends each answer with `question: …` (a fact it needs; the Builder answers in the same `thread_id`) or
+  `decision: …` and `owner_needed: yes|no (why)`. With `no` the Builder acts without asking the owner again and
+  reports in one line; with `yes` it asks the owner once, quoting Pulse. A thread has at most 6 rounds; Pulse asks
+  back in its reply, never by calling the chat.
+- On the owner's approval: at `change=auto` Pulse makes the change; at ask the Builder edits and tells Pulse.
+  ask_pulse turns follow `pulse.autonomy` like every Pulse turn. Tool calls over the session's HTTP tool route are
+  held by the same guard; Pulse is told never to script them from the shell.
+- The Builder chat shows one thread as one "Builder ↔ Pulse: N rounds" block.
+- Slack `<slug>-pulse` still reaches Pulse directly (owner to decide).
 
 ## Risks
 

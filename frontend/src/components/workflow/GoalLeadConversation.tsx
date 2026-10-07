@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { Check, Crosshair, Loader2, MessageSquare, Send, X } from 'lucide-react'
+import { Check, Crosshair, Loader2, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import type { GoalLeadConversation, GoalLeadMessage, PulseFocusArea } from '../../services/api-types'
+import type { PulseFocusArea } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 
-// The Pulse as its own chat kind in the Pulse tab (PLAT-697 phase 4): its
-// focus areas (the Pulse proposes, the owner confirms with one click) and
-// its one persistent conversation, where the owner asks "why did you…" or
-// gives direction. Lasting direction goes to goal memory; goal changes come
-// back as proposed soul.md edits.
+// The Pulse's focus areas in the Pulse tab (PLAT-697 phase 4): the Pulse
+// proposes, the owner confirms with one click. Its conversation is not shown
+// here: the "<workflow> Pulse" chat tab shows it, and the owner talks to Pulse
+// through the Builder chat (owner, 2026-10-08).
 
 function shortDate(value?: string): string {
   if (!value) return ''
@@ -77,68 +76,5 @@ export function FocusAreasCard({ workspacePath, areas, onChanged }: {
         </div>
       </li>)}
     </ul>
-  </section>
-}
-
-const roleLabel = (message: GoalLeadMessage): string => {
-  switch (message.role) {
-    case 'owner': return message.source || 'You'
-    case 'slack': return message.source || 'Slack'
-    case 'ask': return `${message.source || 'A workflow chat'} asked`
-    case 'check': return 'Goal check'
-    case 'goal_work': return 'Goal Work'
-    case 'qa': return 'QA run'
-    case 'ask_builder': return 'Pulse asked the Builder chat'
-    case 'builder_answer': return 'Builder chat'
-    case 'system': return 'Note'
-    default: return 'Pulse'
-  }
-}
-
-export function GoalLeadChat({ workspacePath, conversation, onSent }: {
-  workspacePath: string
-  conversation: GoalLeadConversation | null
-  onSent: () => void
-}) {
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
-  if (!conversation?.has_goal) return null
-  const messages = conversation.messages || []
-
-  const send = async () => {
-    const message = draft.trim()
-    if (!message) return
-    setSending(true)
-    try {
-      const result = await agentApi.sendGoalLeadMessage(workspacePath, message)
-      if (!result.success) throw new Error(result.error || 'Could not send the message.')
-      setDraft('')
-      onSent()
-    } catch (err) {
-      useChatStore.getState().addToast(errorText(err, 'Could not send the message.'), 'error')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return <section aria-label="Pulse conversation" className="rounded-lg border bg-background p-3">
-    <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">Talk to Pulse</h3>
-      {conversation.busy && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />working</span>}</div>
-    <p className="mt-0.5 text-[11px] text-muted-foreground">Ask why it did something or give direction. Direction that should last goes to its memory; a change to the goal comes back as a proposed edit to soul.md.</p>
-    {messages.length > 0 && <ol className="mt-2 max-h-80 space-y-1.5 overflow-y-auto">
-      {messages.map(message => <li key={message.id} className={`rounded-md px-2.5 py-1.5 text-xs ${message.role === 'owner' || message.role === 'slack' ? 'ml-6 bg-primary/10' : 'mr-6 bg-muted/60'}`}>
-        <p className="text-[10px] font-semibold text-muted-foreground">{roleLabel(message)} · {shortDate(message.at)}</p>
-        <p className="mt-0.5 whitespace-pre-line leading-5 text-foreground">{message.text}</p>
-      </li>)}
-    </ol>}
-    <div className="mt-2 flex items-end gap-2">
-      <textarea aria-label="Message to Pulse" value={draft} onChange={event => setDraft(event.target.value)} rows={2}
-        placeholder="Why did you pause the growth runs? / Focus on new subscribers this month."
-        onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send() }}
-        className="min-w-0 flex-1 rounded-md border bg-background p-2 text-xs leading-5" />
-      <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary disabled:opacity-50">
-        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Send</button>
-    </div>
   </section>
 }

@@ -15,6 +15,9 @@ import (
 // workflow. The daily goal check on two consecutive days runs in the same
 // conversation (the second day resumes it instead of starting fresh), and a
 // workflow chat's ask_goal_lead is answered there with a recommendation.
+// The owner talks to Pulse only through their Builder chat (2026-10-08): its
+// ask_pulse is an owner relay, so lasting direction goes to goal memory or a
+// focus-area proposal; a Run chat or a step only gets a recommendation.
 func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	root := t.TempDir()
@@ -73,7 +76,7 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 
 	// A chat of the workflow asks; the answer is the Pulse's
 	// recommendation, from the same conversation.
-	out, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "the Reports Builder chat", "Should I run the growth route again today?", 5*time.Second, "")
+	out, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "the Reports Builder chat", "Should I run the growth route again today?", "", false, 5*time.Second, "")
 	if err != nil {
 		t.Fatalf("ask_goal_lead: %v", err)
 	}
@@ -81,11 +84,10 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 		t.Fatalf("ask_goal_lead = %v", out)
 	}
 	mu.Lock()
-	defer mu.Unlock()
 	if len(sessions) != 3 || sessions[2] != sessions[0] {
 		t.Fatalf("the ask must run in the Pulse conversation: %v", sessions)
 	}
-	if ask := fmt.Sprint(requests[2]["query"]); !strings.Contains(ask, "Answer as a recommendation") || !strings.Contains(ask, "You do not decide for the owner") {
+	if ask := fmt.Sprint(requests[2]["query"]); !strings.Contains(ask, "Answer as a recommendation") || !strings.Contains(ask, "You never decide the owner's preferences") {
 		t.Fatalf("ask turn = %s", ask)
 	}
 
@@ -99,5 +101,111 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 	}
 	if got := strings.Join(roles, ","); got != "check,check,ask,goal_lead" {
 		t.Fatalf("conversation log roles = %s", got)
+	}
+	mu.Unlock()
+
+	// Only a person's Builder chat relays the owner's words.
+	env.api.activeSessionsMux.Lock()
+	if env.api.activeSessions == nil {
+		env.api.activeSessions = map[string]*ActiveSessionInfo{}
+	}
+	env.api.activeSessions["sess-owner-builder"] = &ActiveSessionInfo{SessionID: "sess-owner-builder", WorkshopMode: "workshop"}
+	env.api.activeSessions["sess-owner-run"] = &ActiveSessionInfo{SessionID: "sess-owner-run", WorkshopMode: "run"}
+	env.api.activeSessionsMux.Unlock()
+	owner := &UserClaims{UserID: "owner", Username: "manish"}
+	if label, relay := env.api.goalLeadAskCaller(ctx, ws, "sess-owner-builder", owner); !relay || label != "manish in the Builder chat" {
+		t.Fatalf("Builder chat caller = %q relay=%v", label, relay)
+	}
+	if _, relay := env.api.goalLeadAskCaller(ctx, ws, "sess-owner-run", owner); relay {
+		t.Fatal("a Run chat must not relay the owner's words")
+	}
+
+	// The Builder chat passes the owner's direction; Pulse's turn is told to
+	// record it with its normal tools and the log shows it as the owner's.
+	if _, err := env.api.askGoalLead(ctx, "owner", ws, "sess-owner-builder", "manish in the Builder chat", "Tell Pulse to focus on USA subscribers this week.", "", true, 5*time.Second, ""); err != nil {
+		t.Fatalf("ask_pulse relay: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	relay := fmt.Sprint(requests[len(requests)-1]["query"])
+	for _, want := range []string{"a message from manish in the Builder chat", "record_pulse_goal_memory, source owner_answer", "record_pulse_focus_area action=propose"} {
+		if !strings.Contains(relay, want) {
+			t.Fatalf("relay turn lacks %q:\n%s", want, relay)
+		}
+	}
+	if strings.Contains(relay, "Answer as a recommendation") {
+		t.Fatalf("a relayed owner message is not a recommendation ask:\n%s", relay)
+	}
+	messages, err = listGoalLeadMessages(ctx, ws, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last := messages[len(messages)-2]; last.Role != goalLeadTurnOwner || last.Source != "manish in the Builder chat" {
+		t.Fatalf("relayed message logged as %+v", last)
+	}
+}
+
+// Owner, 2026-10-08: the Builder and Pulse talk in a bounded thread, not in
+// one-off messages, and the Builder trusts Pulse as the goal expert. Round 1:
+// Pulse asks the Builder chat for a fact. Round 2 (same thread_id): Pulse
+// decides with owner_needed: no, the thread closes, and the Builder is told to
+// act without asking the owner; no decision request is created for the owner.
+func TestPulseThreadAsksBackThenDecidesWithoutTheOwner(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	const ws = "Workflow/reports"
+	if err := os.MkdirAll(filepath.Join(root, "Workflow", "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var queries []string
+	previousRunner := goalLeadTurnRunner
+	goalLeadTurnRunner = func(_ context.Context, reqMap map[string]interface{}, _ string, _ string) (internalSessionTurnResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		query := fmt.Sprint(reqMap["query"])
+		queries = append(queries, query)
+		if strings.Contains(query, "Round 2 of at most 6") {
+			return internalSessionTurnResult{FinalResponse: "With 40 USA sign-ups last week the USA segment is the best bet.\n\ndecision: run the growth route for the USA segment today\nowner_needed: no (within run=auto)"}, nil
+		}
+		return internalSessionTurnResult{FinalResponse: "I need one number first.\nquestion: how many USA subscribers joined last week?"}, nil
+	}
+	t.Cleanup(func() { goalLeadTurnRunner = previousRunner })
+	ctx := context.Background()
+
+	first, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "manish in the Builder chat", "Which segment should the growth route target today?", "", true, 5*time.Second, "")
+	if err != nil {
+		t.Fatalf("round 1: %v", err)
+	}
+	result, _ := first["result"].(map[string]interface{})
+	threadID, _ := first["thread_id"].(string)
+	if threadID == "" || result["thread_open"] != true || result["pulse_question"] != "how many USA subscribers joined last week?" ||
+		!strings.Contains(fmt.Sprint(first["next"]), "thread_id=") {
+		t.Fatalf("round 1 = %v", first)
+	}
+
+	second, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "manish in the Builder chat", "40 USA subscribers joined last week.", threadID, true, 5*time.Second, "")
+	if err != nil {
+		t.Fatalf("round 2: %v", err)
+	}
+	result, _ = second["result"].(map[string]interface{})
+	if second["thread_id"] != threadID || second["round"] != 2 || result["thread_open"] != false ||
+		result["decision"] != "run the growth route for the USA segment today" || result["owner_needed"] != "no" {
+		t.Fatalf("round 2 = %v", second)
+	}
+	if next := fmt.Sprint(second["next"]); !strings.Contains(next, "do not ask the owner again") {
+		t.Fatalf("the Builder must act without asking the owner: %s", next)
+	}
+	mu.Lock()
+	if len(queries) != 2 || !strings.Contains(queries[1], "continues your earlier replies in this thread") || !strings.Contains(queries[0], "owner_needed: yes|no") {
+		t.Fatalf("Pulse must see round 2 as a continuation:\n%s", strings.Join(queries, "\n---\n"))
+	}
+	mu.Unlock()
+	if _, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "manish in the Builder chat", "and Dubai?", threadID, true, 5*time.Second, ""); err == nil || !strings.Contains(err.Error(), "concluded") {
+		t.Fatalf("a concluded thread must not take another round: %v", err)
+	}
+	if pending, err := listReportHumanInputs(ctx, ws, "pending", ""); err != nil || len(pending) != 0 {
+		t.Fatalf("no decision request for the owner, got %v %v", pending, err)
 	}
 }

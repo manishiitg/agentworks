@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Loader2, Pencil, ScrollText, UserRound } from 'lucide-react'
+import { Check, Loader2, MessageSquare, Pencil, ScrollText, Send, UserRound } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import type { GoalLeadConversation, PulseDecisionLogEntry, PulseFocusArea, PulseRecommendation, ReportHumanInput } from '../../services/api-types'
+import type { PulseDecisionLogEntry, PulseFocusArea, PulseRecommendation, ReportHumanInput } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openReportHumanInputAnswerInChat } from '../../utils/reportHumanInputChat'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import { FocusAreasCard, GoalLeadChat } from './GoalLeadConversation'
+import { openPulseChatTab } from '../../utils/pulseChatTab'
+import { FocusAreasCard } from './GoalLeadConversation'
 
 // The Pulse's part of the Pulse tab (PLAT-697 phase 3), under the goal
 // status card: Needs you with the Pulse's recommendation (Accept / Change,
 // how long it has waited, what it blocks), the decision log (what it
 // recommended, why, what the owner did, what happened after), and the goal
 // memory the owner can read and edit. The Pulse recommends; only the
-// owner answers.
+// owner answers. The Pulse's conversation is in its own "<workflow> Pulse"
+// chat tab, not here; the "Talk to Pulse" box sends straight into it and opens
+// that tab (owner, 2026-10-08). The Builder chat also talks to Pulse
+// (ask_pulse).
 
 /** "3 days", "5 hours", "a few minutes" since an ISO time. */
 function waitingFor(since: string | undefined, now = Date.now()): string {
@@ -167,12 +171,53 @@ function GoalMemory({ workspacePath, memory, path, onSaved }: { workspacePath: s
   </details>
 }
 
+function errorText(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: unknown } })?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  return err instanceof Error ? err.message : fallback
+}
+
+/** "Talk to Pulse": the message goes into Pulse's conversation; its reply shows in the "<workflow> Pulse" chat tab. */
+export function TalkToPulse({ workspacePath, sessionId }: { workspacePath: string; sessionId: string }) {
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const send = async () => {
+    const message = draft.trim()
+    if (!message) return
+    setSending(true)
+    try {
+      const result = await agentApi.sendGoalLeadMessage(workspacePath, message)
+      if (!result.success) throw new Error(result.error || 'Could not send the message.')
+      setDraft('')
+      await openPulseChatTab(workspacePath, sessionId)
+    } catch (err) {
+      useChatStore.getState().addToast(errorText(err, 'Could not send the message.'), 'error')
+    } finally {
+      setSending(false)
+    }
+  }
+  return <section aria-label="Talk to Pulse" className="rounded-lg border bg-background p-2">
+    <p className="flex items-center gap-1.5 px-0.5 text-[11px] text-muted-foreground"><MessageSquare className="h-3.5 w-3.5 text-primary" />
+      Ask Pulse why, or give it direction. Replies appear in the Pulse chat tab.</p>
+    <div className="mt-1.5 flex items-end gap-2">
+      <textarea aria-label="Message to Pulse" value={draft} onChange={event => setDraft(event.target.value)} rows={1}
+        placeholder="Why did you pause the growth runs? / Focus on new subscribers this month."
+        onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send() }}
+        className="min-w-0 flex-1 resize-none rounded-md border bg-background px-2 py-1.5 text-xs leading-5" />
+      <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary disabled:opacity-50">
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Send</button>
+    </div>
+  </section>
+}
+
 export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
   const [pending, setPending] = useState<ReportHumanInput[]>([])
   const [log, setLog] = useState<PulseDecisionLogEntry[]>([])
   const [memory, setMemory] = useState('')
   const [memoryPath, setMemoryPath] = useState('')
-  const [conversation, setConversation] = useState<GoalLeadConversation | null>(null)
+  const [hasGoal, setHasGoal] = useState(false)
+  const [pulseSession, setPulseSession] = useState('')
   const [focusAreas, setFocusAreas] = useState<PulseFocusArea[]>([])
 
   const load = useCallback(async () => {
@@ -187,20 +232,13 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
       setLog(lead.value.decision_log || [])
       setMemory(lead.value.memory || '')
       setMemoryPath(lead.value.memory_path || '')
-      setConversation(lead.value.conversation || null)
+      setHasGoal(Boolean(lead.value.conversation?.has_goal))
+      setPulseSession(lead.value.conversation?.session_id || '')
       setFocusAreas(lead.value.focus_areas || [])
     }
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
-  // While the Pulse is answering, refresh until its reply is in.
-  const messages = conversation?.messages || []
-  const busy = Boolean(conversation?.busy) || messages[messages.length - 1]?.role === 'owner'
-  useEffect(() => {
-    if (!busy) return
-    const timer = window.setInterval(() => { void load() }, 4000)
-    return () => window.clearInterval(timer)
-  }, [busy, load])
   useLiveRefetch(() => { void load() }, { kinds: ['human_inputs'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0 })
 
   return <div className="mb-3 space-y-3" aria-label="Pulse">
@@ -215,7 +253,6 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
     </section>}
     <DecisionLog entries={log} />
     <GoalMemory workspacePath={workspacePath} memory={memory} path={memoryPath} onSaved={() => void load()} />
-    <GoalLeadChat workspacePath={workspacePath} conversation={conversation}
-      onSent={() => { setConversation(current => current ? { ...current, busy: true } : current); void load() }} />
+    {hasGoal && <TalkToPulse workspacePath={workspacePath} sessionId={pulseSession} />}
   </div>
 }

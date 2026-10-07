@@ -18,9 +18,11 @@ vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../utils/reportHumanInputChat', () => ({ openReportHumanInputAnswerInChat: vi.fn() }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})) }))
+vi.mock('../../utils/pulseChatTab', () => ({ openPulseChatTab: vi.fn(async () => {}) }))
 
 import { agentApi } from '../../services/api'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { openPulseChatTab } from '../../utils/pulseChatTab'
 import { GoalLeadPanel, NeedsYouCard } from './GoalLeadPanel'
 
 // PLAT-697 phase 3: the Pulse recommends, the owner confirms with one click.
@@ -62,10 +64,11 @@ describe('Needs you card', () => {
   })
 })
 
-// PLAT-697 phase 4: the Pulse's conversation sits in the Pulse tab with an
-// input, and its focus-area proposals are confirmed with one click.
-describe('Pulse conversation and focus areas', () => {
-  it('shows the conversation, sends the owner message and confirms a proposed focus area', async () => {
+// Owner, 2026-10-08: the Pulse tab does not show Pulse's conversation (its own
+// "<workflow> Pulse" chat tab does); "Talk to Pulse" sends straight to Pulse and
+// opens that tab. Focus-area proposals are still confirmed with one click.
+describe('Pulse tab: focus areas and Talk to Pulse', () => {
+  it('confirms a proposed focus area, shows no conversation, and sends to Pulse then opens its chat tab', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     const workspace = 'Workflow/substack'
     vi.mocked(agentApi.getGoalLead).mockResolvedValue({
@@ -82,7 +85,7 @@ describe('Pulse conversation and focus areas', () => {
     try {
       await act(async () => root.render(<GoalLeadPanel workspacePath={workspace} />))
       const text = container.textContent || ''
-      expect(text).toContain('Not measured for 20 days')
+      expect(text).not.toContain('Not measured for 20 days')
       expect(text).toContain('Pulse proposes')
       expect(text).toContain('drafts waiting 3 -> 0')
 
@@ -91,6 +94,7 @@ describe('Pulse conversation and focus areas', () => {
       await act(async () => { confirm!.click() })
       expect(agentApi.updateGoalLeadFocusArea).toHaveBeenCalledWith(workspace, { action: 'confirm', id: 'FA-1' })
 
+      expect(text).toContain('Replies appear in the Pulse chat tab')
       const input = container.querySelector('textarea[aria-label="Message to Pulse"]') as HTMLTextAreaElement
       expect(input).toBeTruthy()
       await act(async () => {
@@ -100,6 +104,7 @@ describe('Pulse conversation and focus areas', () => {
       const send = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Send')
       await act(async () => { send!.click() })
       expect(agentApi.sendGoalLeadMessage).toHaveBeenCalledWith(workspace, 'Why did you pause the growth runs?')
+      expect(openPulseChatTab).toHaveBeenCalledWith(workspace, 'schedule-goallead--abc-g1')
     } finally {
       await act(async () => root.unmount())
       container.remove()

@@ -974,10 +974,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if isGoalLeadAsk(target, fn) {
 		// ask_pulse: a turn in the workflow's Pulse conversation.
-		message, _ := args["message"].(string)
 		call.saveIndex()
 		call.persist()
-		go api.runGoalLeadAsk(call, target, caller, strings.TrimSpace(message), timeout)
+		go api.runGoalLeadAsk(call, target, caller, args, timeout)
 		return call, nil
 	}
 	if isWorkflowAsk(target, fn) {

@@ -17,6 +17,20 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Builder chat treats Pulse as the goal expert, in threads; Pulse tab shows no conversation
+
+The Pulse tab no longer shows Pulse's conversation: the "<workflow> Pulse" chat tab does. Its "Talk to Pulse" box
+stays and sends straight into Pulse's conversation (`POST /api/workflow/goal-lead/message`), then opens that chat
+tab. In the Builder chat, goal questions and direction go to Pulse: the Builder asks Pulse with `ask_pulse` and treats it as the goal expert:
+Pulse ends with `decision:` and `owner_needed: yes|no (why)`; with `no` the Builder acts without asking the owner
+again, with `yes` (beyond Pulse's levels, a preference only the owner knows, spending, irreversible, soul.md) it
+asks the owner once, quoting Pulse. One topic is one thread (`thread_id`, at most 6 rounds); Pulse asks back for a
+fact in its reply (`question:`), never by calling the chat, so no new ping-pong path exists. An ask from a person's
+Builder chat is the owner's own words: Pulse records lasting direction in goal memory or proposes a focus area.
+ask_pulse turns follow `pulse.autonomy` like any Pulse turn (full autonomy may act). Why: owner, 2026-10-08: "builder
+is not using pulse as an expert … just exchanging one-off msgs"; the conversation belongs in the Pulse chat tab.
+Slack `<slug>-pulse` stays for now. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-08 — Pulse asks the Builder chat (ask_builder); fixes only at change=auto
 
 The Pulse can ask the workflow's Builder chat (the owner's most recently active one) with `ask_builder`, as a normal

@@ -723,6 +723,17 @@ export type TranscriptItem =
   | { kind: 'tools'; key: string; events: PollingEvent[]; toolCount: number }
   /** Consecutive conversation_thinking events: one collapsible block, like tools. */
   | { kind: 'thinking'; key: string; events: PollingEvent[]; text: string; assistantUpdate?: boolean }
+  /** Every ask_pulse round of one thread between this chat and the workflow's Pulse, as one block. */
+  | { kind: 'pulse_thread'; key: string; events: PollingEvent[]; threadId: string; rounds: PulseThreadRound[] }
+
+/** One ask_pulse round: what the chat sent and what Pulse answered. */
+export interface PulseThreadRound {
+  message: string
+  answer: string
+  decision?: string
+  ownerNeeded?: string
+  status: 'running' | 'ok' | 'error'
+}
 
 const TURN_FAILURE_EVENT_TYPES = new Set(['llm_generation_error', 'conversation_error', 'agent_error', 'context_cancelled'])
 
@@ -1129,7 +1140,83 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
     })
   }
 
-  return items
+  return groupPulseThreads(items)
+}
+
+const PULSE_ASK_TOOLS = new Set(['ask_pulse', 'ask_goal_lead'])
+
+/** Parse a tool payload that may be JSON, or CLI content blocks wrapping JSON. */
+function parseToolJSON(text: string): Record<string, unknown> | null {
+  const attempt = (value: string): unknown => {
+    try { return JSON.parse(value) } catch { return null }
+  }
+  let parsed = attempt(text)
+  if (Array.isArray(parsed)) {
+    const block = parsed.find(entry => entry && typeof entry === 'object' && typeof (entry as { text?: unknown }).text === 'string') as { text: string } | undefined
+    parsed = block ? attempt(block.text) : null
+  }
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+}
+
+function pulseRound(pair: PairedToolCall): { threadId: string; round: PulseThreadRound } {
+  const args = parseToolJSON(pair.args || '') || {}
+  const out = parseToolJSON(pair.result || '') || {}
+  const result = (out.result && typeof out.result === 'object' ? out.result : {}) as Record<string, unknown>
+  const threadId = textField(out.thread_id) || textField(result.thread_id) || textField(args.thread_id) ||
+    /thread_id\\?"\s*:\s*\\?"([^"\\]+)/.exec(pair.result || '')?.[1] || ''
+  return {
+    threadId,
+    round: {
+      message: textField(args.message) || pair.args || '',
+      answer: textField(result.answer) || textField(out.error) || (pair.status === 'running' ? '' : pair.result || ''),
+      decision: textField(result.decision) || undefined,
+      ownerNeeded: textField(result.owner_needed) || undefined,
+      status: pair.status,
+    },
+  }
+}
+
+/**
+ * groupPulseThreads moves every ask_pulse call out of its tool batch into one
+ * block per thread, placed where the thread started: the Builder chat and
+ * Pulse talk in rounds on one topic, and the reader sees that exchange as one
+ * expandable "Builder ↔ Pulse" block rather than scattered tool calls.
+ */
+export function groupPulseThreads(items: TranscriptItem[]): TranscriptItem[] {
+  const out: TranscriptItem[] = []
+  const threads = new Map<string, Extract<TranscriptItem, { kind: 'pulse_thread' }>>()
+  for (const item of items) {
+    if (item.kind !== 'tools') {
+      out.push(item)
+      continue
+    }
+    const asks = pairToolCalls(item.events).filter(pair => PULSE_ASK_TOOLS.has(pair.name))
+    if (asks.length === 0) {
+      out.push(item)
+      continue
+    }
+    const moved = new Set<PollingEvent>()
+    const added: Extract<TranscriptItem, { kind: 'pulse_thread' }>[] = []
+    for (const pair of asks) {
+      pair.events.forEach(event => moved.add(event))
+      const { threadId, round } = pulseRound(pair)
+      const key = threadId || pair.key
+      const existing = threads.get(key)
+      if (existing) {
+        existing.rounds.push(round)
+        existing.events.push(...pair.events)
+        continue
+      }
+      const thread = { kind: 'pulse_thread' as const, key: `pulse-thread-${key}`, events: [...pair.events], threadId, rounds: [round] }
+      threads.set(key, thread)
+      added.push(thread)
+    }
+    const rest = item.events.filter(event => !moved.has(event))
+    const toolCount = countRealToolCalls(rest)
+    if (toolCount > 0) out.push({ ...item, events: rest, toolCount })
+    out.push(...added)
+  }
+  return out
 }
 
 // A step run or a full-workflow run is the workflow's own headline action, not

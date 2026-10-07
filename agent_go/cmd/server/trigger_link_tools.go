@@ -72,6 +72,9 @@ type triggerLinkCaller struct {
 	// Chat is the calling Code chat when it calls a sibling chat; it is set
 	// only from the trusted turn (codeChatsFor).
 	Chat *codeChat
+	// OwnerRelay: an ask_pulse from a person's Builder chat carrying their own
+	// words (goalLeadAskCaller); set only from the trusted session.
+	OwnerRelay bool
 }
 
 // resolveTriggerTarget finds one Crew on the server, or one workflow the user
