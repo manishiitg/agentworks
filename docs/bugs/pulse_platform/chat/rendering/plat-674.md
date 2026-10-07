@@ -30,3 +30,5 @@ make it intelligent.
 
 GitHub verify (`productTips.test.ts`, transcript activity tests, type check). Not seen in the app yet: after a restart,
 a turn that works for more than 10 seconds may show a tip, at most once a day.
+
+Follow-up 2026-10-07: the tip text is one size smaller than the footer (11px), at the owner's request.

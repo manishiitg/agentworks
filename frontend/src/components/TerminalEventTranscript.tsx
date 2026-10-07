@@ -90,7 +90,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
     {working && <>
       <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
       <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
-      {tip && <span data-testid="working-tip" className="truncate text-muted-foreground/70 animate-in fade-in duration-700">· Tip: {tip}</span>}
+      {tip && <span data-testid="working-tip" className="truncate text-[11px] text-muted-foreground/70 animate-in fade-in duration-700">· Tip: {tip}</span>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
       {usage.warning && <span data-testid="transcript-usage-warning" className="truncate font-medium text-amber-500" title="Plan usage is high">
