@@ -15,7 +15,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 32 | 7 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 32 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 25 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
@@ -35,7 +35,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-671](integrations/google/plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 | [integrations/google](integrations/google/index.md) |
 | [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | open | P2 | [vault/apps](vault/apps/index.md) |
-| [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | in progress | P2 | [integrations/slack](integrations/slack/index.md) |
+| [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |

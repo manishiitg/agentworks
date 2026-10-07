@@ -1773,7 +1773,7 @@ func (s *SlackService) handleSocketModeEvent(evt socketmode.Event) {
 		case *slackevents.MessageEvent:
 			s.handleSocketModeMessage(ev)
 		case *slackevents.AppMentionEvent:
-			s.handleAppMentionEvent(ev)
+			s.handleAppMentionEvent(ev, slackMentionFiles(evt))
 		default:
 		}
 	} else {
@@ -1786,7 +1786,13 @@ func (s *SlackService) handleConfiguredSlackTrigger(ev *slackevents.MessageEvent
 	if s.botID != "" && ev.BotID == s.botID {
 		return true
 	}
-	route := s.resolveSlackChannelWorkflow(ev.Channel)
+	var route *ChannelRoute
+	if hooks := currentSlackRoutingHooks(); hooks != nil && hooks.Trigger != nil {
+		// Own bots' channel routes carry triggers too (PLAT-668).
+		route = hooks.Trigger(context.Background(), s.connectionID, ev.Channel)
+	} else {
+		route = s.resolveSlackChannelWorkflow(ev.Channel)
+	}
 	if route == nil || s.triggerHandler == nil || !SlackTriggerMatches(route.Trigger, ev, s.botUserID) {
 		return false
 	}
@@ -1794,7 +1800,7 @@ func (s *SlackService) handleConfiguredSlackTrigger(ev *slackevents.MessageEvent
 		return true
 	}
 	if !s.isDuplicateMessage(ev.Channel + ":" + ev.TimeStamp) {
-		if err := s.triggerHandler(context.Background(), ev.Channel, ev); err != nil {
+		if err := s.triggerHandler(WithSlackTriggerConnection(context.Background(), s.connectionID), ev.Channel, ev); err != nil {
 			log.Printf("[SLACK_TRIGGER] %v", err)
 		}
 	}
@@ -2378,8 +2384,28 @@ func (s *SlackService) isDuplicateMessage(ts string) bool {
 	return false
 }
 
-// handleAppMentionEvent handles @mention events
-func (s *SlackService) handleAppMentionEvent(ev *slackevents.AppMentionEvent) {
+// slackMentionFiles reads the files attached to an app_mention from the raw
+// event: slackevents.AppMentionEvent drops them, so a top-level channel
+// mention with an attachment lost it while thread replies and DMs (message
+// events) kept theirs (PLAT-668).
+func slackMentionFiles(evt socketmode.Event) *slack.Msg {
+	if evt.Request == nil || len(evt.Request.Payload) == 0 {
+		return nil
+	}
+	var envelope struct {
+		Event struct {
+			Files []slack.File `json:"files"`
+		} `json:"event"`
+	}
+	if json.Unmarshal(evt.Request.Payload, &envelope) != nil || len(envelope.Event.Files) == 0 {
+		return nil
+	}
+	return &slack.Msg{Files: envelope.Event.Files}
+}
+
+// handleAppMentionEvent handles @mention events. raw carries the mention's
+// attached files, when it has any.
+func (s *SlackService) handleAppMentionEvent(ev *slackevents.AppMentionEvent, raw *slack.Msg) {
 	if ev.Edited != nil || ev.User == s.botUserID || ev.BotID != "" {
 		return
 	}
@@ -2413,9 +2439,10 @@ func (s *SlackService) handleAppMentionEvent(ev *slackevents.AppMentionEvent) {
 	ctx := context.Background()
 	msg, pick := s.mentionMessage(ctx, ev.User, userEmail, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
 	msg.UserName = userName
-	if !s.deliverChannelPick(ctx, msg, nil, pick) {
+	if !s.deliverChannelPick(ctx, msg, raw, pick) {
 		return
 	}
+	msg.Text = s.appendSlackFileContext(ctx, msg.Text, raw, ev.Channel, userEmail, pick.route)
 	s.messageHandler(msg)
 }
 

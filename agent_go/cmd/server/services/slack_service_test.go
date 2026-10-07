@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/socketmode"
 	"strings"
 	"testing"
 )
@@ -100,5 +101,18 @@ func TestRewriteMentionTagsResolvesNames(t *testing.T) {
 		if got := rewriteMentionTags(tc.text, resolve); got != tc.want {
 			t.Errorf("%s: rewriteMentionTags(%q) = %q, want %q", tc.name, tc.text, got, tc.want)
 		}
+	}
+}
+
+// A top-level @mention with an attachment: slackevents.AppMentionEvent drops
+// the files, so they are read from the raw event (PLAT-668).
+func TestSlackMentionFilesFromRawEvent(t *testing.T) {
+	evt := socketmode.Event{Request: &socketmode.Request{Payload: []byte(`{"event":{"type":"app_mention","text":"<@U1> see","files":[{"id":"F1","name":"report.csv"}]}}`)}}
+	raw := slackMentionFiles(evt)
+	if raw == nil || len(raw.Files) != 1 || raw.Files[0].ID != "F1" {
+		t.Fatalf("files = %+v", raw)
+	}
+	if slackMentionFiles(socketmode.Event{Request: &socketmode.Request{Payload: []byte(`{"event":{"type":"app_mention"}}`)}}) != nil {
+		t.Fatal("a mention without files produced some")
 	}
 }

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | fixed on main |
 | Priority | P2 |
 | Product | integrations |
 | Area | slack |
@@ -57,6 +57,8 @@ possibly in a single channel.
   a Code's tab offers the AgentWorks bot for DMs and "one of my bots" to answer its DMs through an own bot; own-bot
   channel chips list every target in the channel; Access → Slack limits which products may use the AgentWorks bot.
   The dry run takes a slug.
+- Phase 4 (side fixes): files on a top-level channel mention are read from the raw event and downloaded; Slack
+  triggers run on own-bot channel routes (route tools' `own_bot: true`).
 
 ## Left
 
@@ -64,4 +66,4 @@ possibly in a single channel.
   DM slug.
 - The admin Slack page (Access → Slack) still edits the shared bot's admin routes one target per channel; owner-added
   targets show in each target's Slack tab.
-- Phase 4: files on top-level channel mentions; Slack triggers on own-bot channel routes.
+- Own-bot triggers have no UI; they are set with the route tools (`own_bot: true`) or the connections API.

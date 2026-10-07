@@ -246,3 +246,26 @@ func TestSlackSlugsAddChannelNeedsMembership(t *testing.T) {
 	}
 	requireAdmitted(t, w.mention(t, shared.ID, "C0TEAM0001"), "workflow")
 }
+
+// Slack triggers also run on an own bot's channel routes, not only the shared
+// bot's (PLAT-668): the route resolves to the default target with the
+// channel's trigger, for the app the event arrived on.
+func TestSlackSlugsOwnBotChannelTrigger(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	ctx := context.Background()
+	app := w.createApp(t, "Shared-WF", "Workflow/shared", "")
+	trigger := &services.SlackTrigger{Type: "human_message", Contains: "incident", GroupNames: []string{"default"}}
+	if _, err := w.slack.ModifySlackConnection(ctx, app.ID, func(conn *services.SlackConnection) error {
+		conn.ChannelRoutes["C0TRIGGER1"] = services.SlackConnectionRoute{WorkspacePath: "Workflow/shared", Trigger: trigger}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	route, ok, dedicated := w.api.slackTriggerRoute(ctx, app.ID, "C0TRIGGER1")
+	if !ok || !dedicated || route.Trigger == nil || route.WorkflowID != w.workflowID(t) {
+		t.Fatalf("own bot trigger route = %+v ok=%v dedicated=%v", route, ok, dedicated)
+	}
+	if _, ok, _ := w.api.slackTriggerRoute(ctx, app.ID, "C0NOTRIG01"); ok {
+		t.Fatal("a channel without a trigger resolved one")
+	}
+}

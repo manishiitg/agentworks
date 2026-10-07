@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-668](plat-668.md) | Slack slugs: one bot for many Crews and workflows | in progress | P2 |
+| [PLAT-668](plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 |

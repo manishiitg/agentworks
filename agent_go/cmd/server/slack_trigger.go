@@ -53,15 +53,22 @@ func validateSlackTrigger(ctx context.Context, route ChannelRoute) error {
 // as an immutable external-data artifact. Workflow execution reuses the same
 // deterministic request preparation and executor as webhooks.
 func (api *StreamingAPI) dispatchSlackTrigger(ctx context.Context, channel string, event *slackevents.MessageEvent) error {
-	cfg, routes, err := api.slackRoutes(ctx)
+	cfg, _, err := api.slackRoutes(ctx)
 	if err != nil {
 		return err
 	}
-	route, ok := routes[channel]
-	if !services.SlackBotTrafficAllowed(cfg, ok) || !services.SlackTriggerMatches(route.Trigger, event, "") {
+	// The app the event arrived on decides: an own bot's channel route, or
+	// the shared bot's admin route (PLAT-668).
+	arrival := services.SlackTriggerConnection(ctx)
+	route, ok, dedicated := api.slackTriggerRoute(ctx, arrival, channel)
+	if !slackTrafficAllowed(cfg, ok, dedicated) || !services.SlackTriggerMatches(route.Trigger, event, "") {
 		return fmt.Errorf("Slack trigger is inactive or no longer matches")
 	}
-	if event.BotID == "" && !services.SlackRouteAllowsEmail(route, slackTriggerActorEmail(slackConnectionIDForRoute(ctx, route), event.User)) {
+	connID := slackConnectionIDForRoute(ctx, route)
+	if dedicated {
+		connID = arrival
+	}
+	if event.BotID == "" && !services.SlackRouteAllowsEmail(route, slackTriggerActorEmail(connID, event.User)) {
 		return fmt.Errorf("Slack email is blocked or unverifiable")
 	}
 	if route.BotGrant != "run" && route.BotGrant != "owner" {
@@ -95,7 +102,7 @@ func (api *StreamingAPI) dispatchSlackTrigger(ctx context.Context, channel strin
 	}
 	// Accepted delivery runs independently of the Socket Mode callback.
 	go func() {
-		err := api.executeSlackTrigger(context.Background(), route, channel, event, deliveryID, encoded)
+		err := api.executeSlackTrigger(context.Background(), route, connID, channel, event, deliveryID, encoded)
 		snapshot["status"] = "completed"
 		if err != nil {
 			snapshot["status"] = "failed"
@@ -106,12 +113,18 @@ func (api *StreamingAPI) dispatchSlackTrigger(ctx context.Context, channel strin
 	}()
 	return nil
 }
-func (api *StreamingAPI) executeSlackTrigger(ctx context.Context, route ChannelRoute, channel string, event *slackevents.MessageEvent, deliveryID string, payload []byte) error {
+
+// connID is the app the event arrived on (an own bot), or the route's own
+// selection for the shared bot.
+func (api *StreamingAPI) executeSlackTrigger(ctx context.Context, route ChannelRoute, connID, channel string, event *slackevents.MessageEvent, deliveryID string, payload []byte) error {
 	if err := validateSlackTrigger(ctx, route); err != nil {
 		return err
 	}
-	connID := slackConnectionIDForRoute(ctx, route)
-	reader, err := slackServiceForRoute(ctx, route)
+	svc, err := ensureSlackService()
+	if err != nil {
+		return fmt.Errorf("Slack connection unavailable: %w", err)
+	}
+	reader, err := svc.ServiceForConnection(connID)
 	if err != nil {
 		return fmt.Errorf("Slack connection unavailable: %w", err)
 	}

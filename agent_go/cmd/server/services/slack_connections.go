@@ -68,6 +68,9 @@ type SlackConnectionRoute struct {
 	// route saved before slugs is a one-target list that is also the
 	// default.
 	Targets []SlackTargetRef `json:"targets,omitempty"`
+	// Trigger runs the default target's automation on top-level messages in
+	// this channel, as on the shared bot's routes (PLAT-668).
+	Trigger *SlackTrigger `json:"trigger,omitempty"`
 }
 
 // Default names the channel's default target, or an empty ref.
@@ -247,8 +250,12 @@ func normalizeSlackConnectionRoutes(c SlackConnection) map[string]SlackConnectio
 		if channel == "" || (route.WorkspacePath == "" && len(route.Targets) == 0) {
 			continue
 		}
-		if len(route.Targets) == 0 && route.Default().Same(own) {
+		if len(route.Targets) == 0 && route.Trigger == nil && route.Default().Same(own) {
 			continue
+		}
+		if route.Default().Empty() {
+			// A trigger runs the default target; without one it has none.
+			route.Trigger = nil
 		}
 		out[channel] = route
 	}

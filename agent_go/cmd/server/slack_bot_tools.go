@@ -608,6 +608,7 @@ func (api *StreamingAPI) registerSlackBotTools(registrar definitionToolRegistrar
 			properties["bot_grant"] = map[string]interface{}{"type": "string", "enum": []string{"run"}}
 			// Run is the default; Builder must not ask users to choose a grant.
 		}
+		properties["own_bot"] = map[string]interface{}{"type": "boolean", "description": "Apply to this workflow's or crew's own Slack bot (its channel route) instead of the shared bot's routes. Use it to put a trigger on the own bot in a channel; the route's target is this workflow/project and it is the channel's default."}
 		if err := register(name, "Manage only this workflow/project's Slack route. Requires an authenticated interactive owner. Routes use run authority only; do not ask for a grant. Configure trigger on create/update: trusted app/bot source, rich JSON match, shared payload_mappings, and bounded same-channel context. trigger=null clears automation on update. Read get_slack_bot_settings before and after. Slack-origin sessions cannot change grants.", properties, required, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			active, _ := api.getActiveSession(session)
 			if active != nil && (active.BotPlatform != "" || strings.HasPrefix(active.TriggeredBy, "bot:")) {
@@ -636,6 +637,12 @@ func (api *StreamingAPI) registerSlackBotTools(registrar definitionToolRegistrar
 					return "", err
 				}
 			}
+			if ownBot, _ := args["own_bot"].(bool); ownBot {
+				if err := api.mutateOwnBotSlackRoute(ctx, target, name, stringFromRequestMap(args, "channel_id"), triggerProvided); err != nil {
+					return "", err
+				}
+				return `{"success":true}`, nil
+			}
 			if err := api.mutateSlackRoute(ctx, target, name, stringFromRequestMap(args, "channel_id"), "run", triggerProvided); err != nil {
 				return "", err
 			}
@@ -654,4 +661,79 @@ func slackTriggerMatchSchema() map[string]interface{} {
 	}}
 	list := map[string]interface{}{"type": "array", "items": condition, "maxItems": 20}
 	return map[string]interface{}{"type": "object", "additionalProperties": false, "properties": map[string]interface{}{"all": list, "any": list}, "description": "All conditions must match, plus at least one any condition when supplied. Maximum 20 conditions total."}
+}
+
+// mutateOwnBotSlackRoute applies a route tool to the target's own Slack bot:
+// the channel's route on that bot, with the target as its default, carrying
+// an optional trigger (PLAT-668: triggers also run on own bots).
+func (api *StreamingAPI) mutateOwnBotSlackRoute(ctx context.Context, target ChannelRoute, operation, channel string, triggerProvided bool) error {
+	channel = services.NormalizeSlackChannelID(channel)
+	if !slackChannelIDPattern.MatchString(channel) || services.IsSlackDMChannel(channel) {
+		return fmt.Errorf("an exact Slack channel ID is required")
+	}
+	if _, err := requireSlackRouteDestinationOwner(ctx, api, target); err != nil {
+		return err
+	}
+	if len(target.BlockedEmails) > 0 {
+		return fmt.Errorf("blocked_emails apply to the shared bot's routes only")
+	}
+	svc, err := ensureSlackService()
+	if err != nil {
+		return err
+	}
+	ref := services.SlackTargetRefFromRoute(target)
+	var own services.SlackConnection
+	found := false
+	for _, conn := range svc.ListConnections() {
+		if strings.TrimSpace(conn.WorkspacePath) != "" && (services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}).Same(ref) {
+			own, found = conn, true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("this %s has no Slack bot of its own", map[bool]string{true: "crew", false: "workflow"}[ref.ProfileID != ""])
+	}
+	if triggerProvided && target.Trigger != nil {
+		destination, err := api.slackDestinationRoute(ctx, ref.WorkspacePath, ref.ProfileID)
+		if err != nil {
+			return err
+		}
+		destination.Trigger = target.Trigger
+		if err := validateSlackTrigger(ctx, *destination); err != nil {
+			return err
+		}
+	}
+	_, err = svc.ModifySlackConnection(ctx, own.ID, func(conn *services.SlackConnection) error {
+		entry, exists := conn.ChannelRoutes[channel]
+		if exists && !entry.Default().Empty() && !entry.Default().Same(ref) {
+			return fmt.Errorf("channel %s on this bot answers by default for another target; a trigger runs the default", channel)
+		}
+		switch operation {
+		case "create_slack_bot_route", "update_slack_bot_route_permission":
+			if operation == "create_slack_bot_route" && exists && !entry.Default().Empty() && entry.Trigger != nil {
+				return fmt.Errorf("route already exists; use update_slack_bot_route_permission")
+			}
+			entry.WorkspacePath, entry.ProfileID = ref.WorkspacePath, ref.ProfileID
+			if claims := GetUserFromContext(ctx); claims != nil && entry.AddedBy == "" {
+				entry.AddedBy = claims.UserID
+			}
+			if triggerProvided {
+				entry.Trigger = target.Trigger
+			}
+			conn.ChannelRoutes[channel] = entry
+		case "remove_slack_bot_route":
+			if !exists {
+				return fmt.Errorf("route not found")
+			}
+			entry.WorkspacePath, entry.ProfileID, entry.Trigger = "", "", nil
+			conn.ChannelRoutes[channel] = entry
+		default:
+			return fmt.Errorf("unknown route operation")
+		}
+		return nil
+	})
+	if err == nil {
+		api.revokeSlackConnectionChannelSessions(ctx, own.ID, channel)
+	}
+	return err
 }

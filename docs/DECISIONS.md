@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — One Slack bot reaches many targets by slug; targets opt in to the platform bot
+
+A Slack app (the platform "AgentWorks bot" or an own bot) answers for many workflows, Crews and Codes. A channel holds
+an allowed list plus an optional default; `@bot <slug> …` picks from that list and binds the thread; no slug and no
+default asks with buttons. DMs (now also on the platform bot) reach only targets the matched person can reach with
+their own access; Codes answer DMs only, owner only. Nothing reaches a target from the platform bot until its owner
+turns on "Use the AgentWorks bot"; a channel is added only by a member of it. A slug is never a grant: every message,
+turn and tool call re-checks the list and the switch. Routes saved before slugs are a one-target list that is also the
+default. `agent_go/cmd/server/slack_slugs.go`, `services/slack_targets.go`, `services/slack_slug_routing.go`.
+[PLAT-668](bugs/pulse_platform/integrations/slack/plat-668.md).
+
 ### 2026-10-07 — A runtime change ends an idle live-input turn instead of waiting for it
 
 A definition or provider change still applies only between turns, and a CLI that is mid-response keeps its turn

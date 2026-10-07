@@ -82,7 +82,7 @@ func TestSlackHumanTriggerDeduplicatesMessageAndMentionInEitherOrder(t *testing.
 			return nil
 		})
 		mention := func() {
-			service.handleAppMentionEvent(&slackevents.AppMentionEvent{Channel: "C123", User: "UHUMAN", Text: "<@UOWN> incident", TimeStamp: "1.2"})
+			service.handleAppMentionEvent(&slackevents.AppMentionEvent{Channel: "C123", User: "UHUMAN", Text: "<@UOWN> incident", TimeStamp: "1.2"}, nil)
 		}
 		message := func() {
 			service.handleSocketModeMessage(&slackevents.MessageEvent{Channel: "C123", User: "UHUMAN", Text: "<@UOWN> incident", TimeStamp: "1.2"})

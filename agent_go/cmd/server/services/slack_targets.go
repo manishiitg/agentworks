@@ -152,6 +152,24 @@ type SlackRoutingHooks struct {
 	// CanReach reports whether an AgentWorks account can reach a route in a
 	// DM with its own access (owner, reader, shared-with; Code owner only).
 	CanReach func(ctx context.Context, accountID string, route ChannelRoute) bool
+	// Trigger is the route whose saved trigger applies to top-level messages
+	// in a channel on an app (an own bot's channel route, or the shared
+	// bot's admin route), or nil. Optional.
+	Trigger func(ctx context.Context, connectionID, channelID string) *ChannelRoute
+}
+
+type slackTriggerConnectionKey struct{}
+
+// WithSlackTriggerConnection records the app a trigger event arrived on.
+func WithSlackTriggerConnection(ctx context.Context, connectionID string) context.Context {
+	return context.WithValue(ctx, slackTriggerConnectionKey{}, strings.TrimSpace(connectionID))
+}
+
+// SlackTriggerConnection is the app a trigger event arrived on ("" = the
+// default connection).
+func SlackTriggerConnection(ctx context.Context) string {
+	id, _ := ctx.Value(slackTriggerConnectionKey{}).(string)
+	return id
 }
 
 var slackRoutingHooks atomic.Pointer[SlackRoutingHooks]

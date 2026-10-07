@@ -71,6 +71,11 @@ type SlackUsableBotsResponse struct {
 type SlackConnectionChannelRouteRequest struct {
 	WorkspacePath string `json:"workspace_path"`
 	ProfileID     string `json:"profile_id,omitempty"`
+	// Trigger sets automation on top-level messages for the channel's default
+	// target (PLAT-668); ClearTrigger removes it. Saving a trigger for the
+	// bot's own target in a channel creates that channel's route.
+	Trigger      *services.SlackTrigger `json:"trigger,omitempty"`
+	ClearTrigger bool                   `json:"clear_trigger,omitempty"`
 }
 
 func registerSlackConnectionChannelRoutes(r *mux.Router, api *StreamingAPI) {
@@ -274,10 +279,20 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		// Fail at save time, not on the first mention, when the destination
 		// cannot be answered for (e.g. a crew project without a conversation).
-		if _, err := api.slackDestinationRoute(r.Context(), workspacePath, profileID); err != nil {
+		destination, err := api.slackDestinationRoute(r.Context(), workspacePath, profileID)
+		if err != nil {
 			http.Error(w, fmt.Sprintf("cannot answer for %s in Slack: %v", workspacePath, err), http.StatusBadRequest)
 			return
 		}
+		if req.Trigger != nil {
+			withTrigger := *destination
+			withTrigger.Trigger = req.Trigger
+			if err := validateSlackTrigger(r.Context(), withTrigger); err != nil {
+				http.Error(w, fmt.Sprintf("invalid trigger: %v", err), http.StatusBadRequest)
+				return
+			}
+		}
+		triggerChange := req.Trigger != nil || req.ClearTrigger
 		addedBy := ""
 		if claims := GetUserFromContext(r.Context()); claims != nil {
 			addedBy = claims.UserID
@@ -289,16 +304,28 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
 			existing, found := c.ChannelRoutes[channel]
 			if !found {
-				if next.Same(services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}) {
+				if next.Same(services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}) && req.Trigger == nil {
 					return fmt.Errorf("this bot already answers for its own %s in every channel", map[bool]string{true: "crew", false: "workflow"}[profileID != ""])
 				}
-				c.ChannelRoutes[channel] = services.SlackConnectionRoute{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy}
+				c.ChannelRoutes[channel] = services.SlackConnectionRoute{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy, Trigger: req.Trigger}
 				return nil
 			}
 			for _, ref := range existing.Allowed() {
-				if ref.Same(next) {
-					return fmt.Errorf("channel %s already answers for this destination on this bot", channel)
+				if !ref.Same(next) {
+					continue
 				}
+				if triggerChange && existing.Default().Same(next) {
+					existing.Trigger = req.Trigger
+					c.ChannelRoutes[channel] = existing
+					return nil
+				}
+				if triggerChange {
+					return fmt.Errorf("a trigger runs the channel's default target only")
+				}
+				return fmt.Errorf("channel %s already answers for this destination on this bot", channel)
+			}
+			if req.Trigger != nil {
+				return fmt.Errorf("a trigger runs the channel's default target only")
 			}
 			existing.Targets = append(existing.Targets, next)
 			c.ChannelRoutes[channel] = existing

@@ -32,7 +32,44 @@ func (api *StreamingAPI) slackRoutingHooksFor() *services.SlackRoutingHooks {
 		DM:       api.slackDMTargets,
 		Route:    api.slackTargetRoute,
 		CanReach: api.slackCanReach,
+		Trigger: func(ctx context.Context, connectionID, channelID string) *ChannelRoute {
+			route, ok, _ := api.slackTriggerRoute(ctx, connectionID, channelID)
+			if !ok {
+				return nil
+			}
+			return &route
+		},
 	}
+}
+
+// slackTriggerRoute is the route whose saved trigger applies to top-level
+// messages in a channel on an app: an own bot's channel route (its default
+// target, with the route's trigger), else the shared bot's admin route while
+// its target is still switched on. dedicated reports an own bot.
+func (api *StreamingAPI) slackTriggerRoute(ctx context.Context, connectionID, channelID string) (ChannelRoute, bool, bool) {
+	channelID = services.NormalizeSlackChannelID(channelID)
+	conn, found := slackAppConnection(connectionID)
+	if slackOwnBot(conn, found) {
+		entry, ok := conn.ChannelRoutes[channelID]
+		if !conn.Enabled || !ok || entry.Trigger == nil || entry.Default().Empty() || entry.Default().IsCode() {
+			return ChannelRoute{}, false, true
+		}
+		route, err := api.slackDestinationRoute(ctx, entry.WorkspacePath, entry.ProfileID)
+		if err != nil || route == nil {
+			return ChannelRoute{}, false, true
+		}
+		route.Trigger = entry.Trigger
+		return *route, true, true
+	}
+	_, routes, err := api.slackRoutes(ctx)
+	if err != nil {
+		return ChannelRoute{}, false, false
+	}
+	route, ok := routes[channelID]
+	if !ok || (slackRouteHasDestination(route) && !slackLoadTargetsRegistry(ctx).PlatformOptIn(services.SlackTargetRefFromRoute(route), true)) {
+		return ChannelRoute{}, false, false
+	}
+	return route, true, false
 }
 
 // slackAppConnection resolves the connection a listener serves. found=false
@@ -268,7 +305,14 @@ func (api *StreamingAPI) slackTargetRoute(ctx context.Context, connectionID, cha
 		if !conn.Enabled {
 			return nil, fmt.Errorf("this bot is switched off")
 		}
-		return api.slackDestinationRoute(ctx, ref.WorkspacePath, ref.ProfileID)
+		route, err := api.slackDestinationRoute(ctx, ref.WorkspacePath, ref.ProfileID)
+		if err != nil {
+			return nil, err
+		}
+		if entry, ok := conn.ChannelRoutes[channelID]; ok && channelID != "" && entry.Trigger != nil && entry.Default().Same(ref) {
+			route.Trigger = entry.Trigger
+		}
+		return route, nil
 	}
 	registry := slackLoadTargetsRegistry(ctx)
 	var legacy *ChannelRoute
