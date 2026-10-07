@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { KeyRound, Loader2, Plug, Plus, RefreshCw, Trash2, Users, Vault } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, KeyRound, Loader2, Plug, Plus, RefreshCw, Trash2, Users, Vault } from 'lucide-react'
 import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -28,6 +28,62 @@ interface VaultView {
   connector_ids: string[]
   connections?: VaultConnection[]
   secret_names: string[]
+}
+
+interface VaultApp {
+  name: string
+  oauth: boolean
+}
+
+/** The apps Vault can connect (its catalog), loaded once per page and shared by every vault card. */
+let vaultAppsRequest: Promise<VaultApp[]> | null = null
+function loadVaultApps(): Promise<VaultApp[]> {
+  if (!vaultAppsRequest) vaultAppsRequest = agentApi.myVaultsOp({ operation: 'apps' })
+    .then(text => (JSON.parse(text) as { apps?: VaultApp[] }).apps ?? [])
+    .catch(cause => { vaultAppsRequest = null; throw cause })
+  return vaultAppsRequest
+}
+
+/** A searchable list of the apps Vault can connect. Only catalog names can be picked: the server accepts nothing else. */
+function AppPicker({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+  const [apps, setApps] = useState<VaultApp[] | null>(null)
+  const [failed, setFailed] = useState('')
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    let live = true
+    loadVaultApps().then(list => { if (live) setApps(list) }).catch(cause => { if (live) { setApps([]); setFailed(errorText(cause)) } })
+    return () => { live = false }
+  }, [])
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return (apps ?? []).filter(app => !needle || app.name.toLowerCase().includes(needle))
+  }, [apps, query])
+  return (
+    <div className="w-full space-y-1.5">
+      <Input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Search apps, for example Notion" aria-label="Search apps to connect" className="h-8" />
+      {apps === null ? (
+        <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading apps…</div>
+      ) : failed ? (
+        <p className="text-destructive">Could not load the apps: {failed}</p>
+      ) : (
+        <ul role="listbox" aria-label="Apps Vault can connect" className="max-h-48 overflow-y-auto rounded-md border border-border">
+          {shown.length === 0 && <li className="px-3 py-2 text-muted-foreground">No app matches “{query.trim()}”.</li>}
+          {shown.map(app => {
+            const selected = app.name === value
+            return (
+              <li key={app.name} role="option" aria-selected={selected}>
+                <button type="button" onClick={() => onChange(app.name)} className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted ${selected ? 'bg-muted font-medium text-foreground' : 'text-foreground'}`}>
+                  <span className="flex items-center gap-2">{selected ? <Check className="h-3.5 w-3.5 text-primary" /> : <span className="w-3.5" />}{app.name}</span>
+                  {app.oauth && <Badge variant="outline">Sign-in</Badge>}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <p className="text-muted-foreground">Google apps, GitHub and Slack are not here: connect them through their own Integrations. For any other app, save its API key as a secret below.</p>
+    </div>
+  )
 }
 
 type Pending =
@@ -248,9 +304,9 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
           {signIn && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
           {owner && open === 'connection' && (
             <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addConnection() }}>
-              <Input autoFocus value={provider} onChange={event => setProvider(event.target.value)} placeholder="App name, for example Notion" aria-label="App to connect" className="h-8 min-w-0 flex-1" />
+              <AppPicker value={provider} onChange={setProvider} />
               <Input value={label} onChange={event => setLabel(event.target.value)} placeholder="Your name for it (optional)" aria-label="Name for this connection" className="h-8 min-w-0 flex-1" />
-              <Button type="submit" size="sm" disabled={busy || !provider.trim()}>Add</Button>
+              <Button type="submit" size="sm" disabled={busy || !provider.trim()}>{provider ? `Add ${provider}` : 'Pick an app'}</Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); setProvider(''); setLabel('') }}>Cancel</Button>
             </form>
           )}

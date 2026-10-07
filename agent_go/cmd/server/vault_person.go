@@ -56,7 +56,7 @@ func (api *StreamingAPI) vaultActorCanManage(ctx context.Context, person, connec
 
 const manageMyVaultsDescription = "Create vaults and share MCP connections through them. A vault is a bundle of MCP connections that you own and other people can use. " +
 	"You can own at most 5. Only an owner (a vault can have several) adds, removes or updates its connections and decides who may use it; members use it and cannot re-share. " +
-	"Operations: list (your vaults, with members' emails and connection IDs); create {name, description}; inspect {vault_id}; " +
+	"Operations: list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
 	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {vault_id, connection_id} to sign a connection in again; promote {vault_id, name, confirm} to move a sign-in connection that already works in this Crew, Code or workflow (exact name from list_mcp_servers) into your vault with its existing sign-in, no second sign-in (call once without confirm for the explanation, then with confirm=true); " +
@@ -72,7 +72,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "remove_secret", "sync", "remove_connection", "delete"}},
 			"vault_id":      str("The vault's ID from list."),
 			"name":          str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
 			"description":   str("create: what the vault is for."),
@@ -135,6 +135,14 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			return "", err
 		}
 		return withMemberEmails(data), nil
+	case "apps":
+		// The Vault catalog: what connect accepts as provider. The gateway route is the admin catalog, which the host's
+		// service credential reaches; only names and whether a sign-in is needed go to the person, never upstream URLs.
+		data, err := call(http.MethodGet, "/api/admin/catalog", nil)
+		if err != nil {
+			return "", err
+		}
+		return vaultCatalogApps(data)
 	case "create":
 		name := argString(args, "name")
 		if name == "" {
@@ -250,6 +258,32 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		return "Deleted the vault.", nil
 	}
 	return "", errors.New("unknown operation")
+}
+
+// vaultCatalogApps trims the gateway catalog ({providers:[{Name,Key,URL,OAuth}]}) to {apps:[{name,oauth}]}.
+func vaultCatalogApps(data []byte) (string, error) {
+	var catalog struct {
+		Providers []struct {
+			Name  string
+			OAuth bool
+		}
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		return "", errors.New("invalid Vault catalog")
+	}
+	type app struct {
+		Name  string `json:"name"`
+		OAuth bool   `json:"oauth"`
+	}
+	apps := make([]app, 0, len(catalog.Providers))
+	for _, p := range catalog.Providers {
+		if name := strings.TrimSpace(p.Name); name != "" {
+			apps = append(apps, app{Name: name, OAuth: p.OAuth})
+		}
+	}
+	sort.Slice(apps, func(i, j int) bool { return strings.ToLower(apps[i].Name) < strings.ToLower(apps[j].Name) })
+	out, _ := json.Marshal(map[string]any{"apps": apps})
+	return string(out), nil
 }
 
 // vaultConnectionInVault reports whether connectionID is in vaultID and person owns it.

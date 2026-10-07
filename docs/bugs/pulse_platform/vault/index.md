@@ -4,7 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [apps](apps/index.md) | 1 | 1 |
+| [apps](apps/index.md) | 1 | 0 |
 | [groups](groups/index.md) | 1 | 1 |
 | [local](local/index.md) | 1 | 0 |
 | [oauth](oauth/index.md) | 1 | 0 |

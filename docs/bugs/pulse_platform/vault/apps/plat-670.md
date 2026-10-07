@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | fixed on main |
 | Priority | P2 |
 | Product | vault |
 | Area | apps |
@@ -28,8 +28,19 @@
 ## Left
 
 - Decided (owner 2026-10-07): Google apps, GitHub and Slack stay out of Vault; they use the platform's own integrations. Vault's refusal points there.
-- The add-app box is free text; a picker from the catalog would avoid typos.
+- Done: the add-app box is now a searchable picker of Vault's catalog (see below).
 
 ## Follow-up (2026-10-07 16:03, Rakesh still saw "Vault operation failed (400)")
 
 The platform passed Vault refusals through only up to 300 characters; the new message with the app list is longer, so people still saw the bare status. The limit is now 2000. A picker of Vault apps instead of free text is being built separately.
+
+## App picker (2026-10-07, asked by Rakesh on Confida)
+
+My vaults → Add app is a searchable list of the apps Vault can connect, not free
+text, with a "Sign-in" badge on apps that need one; the optional name field
+stays. Under it: Google apps, GitHub and Slack connect through their own
+Integrations; any other app's API key can be saved as a vault secret. The list
+comes from a new `manage_my_vaults` / `POST /api/my-vaults/op` operation `apps`,
+which reads the Vault service catalog (`GET /api/admin/catalog`, reached with the
+host's service credential as the person) and returns only `{apps:[{name,
+oauth}]}`, never upstream URLs. Not deployed.

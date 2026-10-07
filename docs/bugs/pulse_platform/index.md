@@ -21,7 +21,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 10 | 4 |
+| [Vault](vault/index.md) | 10 | 3 |
 
 ## Newest tickets
 
@@ -57,7 +57,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-673](browser/access/plat-673.md) | Code and Crew browser stuck loading for read-only members | fixed on main | P1 | [browser/access](browser/access/index.md) |
 | [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-671](integrations/google/plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 | [integrations/google](integrations/google/index.md) |
-| [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | open | P2 | [vault/apps](vault/apps/index.md) |
+| [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | fixed on main | P2 | [vault/apps](vault/apps/index.md) |
 | [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |

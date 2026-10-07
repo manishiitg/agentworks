@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-670](plat-670.md) | Vault add app: unknown provider for Github | open | P2 |
+| [PLAT-670](plat-670.md) | Vault add app: unknown provider for Github | fixed on main | P2 |

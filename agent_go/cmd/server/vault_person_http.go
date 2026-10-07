@@ -13,7 +13,7 @@ import (
 // workflow chat and stay tool-only. A secret's value is typed here and nowhere else; this handler never logs the body.
 
 var myVaultScreenOperations = map[string]bool{
-	"list": true, "create": true, "inspect": true, "add_member": true, "remove_member": true, "add_owner": true,
+	"list": true, "apps": true, "create": true, "inspect": true, "add_member": true, "remove_member": true, "add_owner": true,
 	"remove_owner": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "delete": true,
 }
 
