@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 84 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
-| [Browser and browser automation](browser/index.md) | 50 | 11 |
+| [Browser and browser automation](browser/index.md) | 51 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 31 | 10 |
 | [Code](code/index.md) | 11 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-695](browser/runtime-health/plat-695.md) | Runtime Health: show the Chrome extension's shared tabs | open | P3 | [browser/runtime-health](browser/runtime-health/index.md) |
 | [PLAT-694](integrations/slack/plat-694.md) | Slack bot removal refusal names the workflow and its owners | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-693](app/accounts/plat-693.md) | Per-account token limits on shared server accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-692](code/instructions/plat-692.md) | Project instructions appended to the generated AGENTS.md | fixed on main | P2 | [code/instructions](code/instructions/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-655](coding-agents/accounts/plat-655.md) | Model picker offers providers a person cannot use | open | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-652](integrations/mcp/plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 | [integrations/mcp](integrations/mcp/index.md) |
-| [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
