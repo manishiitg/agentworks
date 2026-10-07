@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-701](plat-701.md) | Code schedule manifest fails validation on every read | open | P3 |
+| [PLAT-701](plat-701.md) | Code schedule manifest fails validation on every read | fixed on main | P3 |

@@ -1546,7 +1546,10 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	// file through WorkflowManifest drops Crew-only fields such as identity and
 	// authenticated triggers (and can narrow its schedule records). Keep this
 	// path read-only; Crew's product services own all of its migrations/writes.
-	mayPersistManifestMigrations := !isCrewRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	// A Code project's workflow.json is the same product-owned file (PLAT-701):
+	// its schedules carry no group_names, so the rewrite failed validation on
+	// every read, and had it passed it would have dropped the product fields.
+	mayPersistManifestMigrations := !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
@@ -1559,9 +1562,11 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	return &m, true, nil
 }
 
-func isCrewRuntimeManifestWorkspace(workspacePath string) bool {
-	_, _, crew := workspaceref.MustParse(workspacePath).AnyCrewProject()
-	return crew
+func isProductRuntimeManifestWorkspace(workspacePath string) bool {
+	if _, _, crew := workspaceref.MustParse(workspacePath).AnyCrewProject(); crew {
+		return true
+	}
+	return isCodeProjectPath(workspacePath)
 }
 
 func workflowLabelFromWorkspacePath(workspacePath string) string {

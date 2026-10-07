@@ -440,7 +440,8 @@ func TestReadWorkflowManifestPrunesRetiredExecutionDefaultsFields(t *testing.T) 
 }
 
 func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
-	for _, workspacePath := range []string{"_users/user-1/Chats/Work/projects/prodissue-362d6e05", "Chats/Work/projects/prodissue-362d6e05", "Crew/prodissue-362d6e05"} {
+	// Code projects too (PLAT-701): their product schedules have no group_names.
+	for _, workspacePath := range []string{"_users/user-1/Chats/Work/projects/prodissue-362d6e05", "Chats/Work/projects/prodissue-362d6e05", "Crew/prodissue-362d6e05", "_users/user-1/Chats/Code/projects/orbit2-0-53daa320", "Chats/Code/projects/orbit2-0-53daa320"} {
 		t.Run(workspacePath, func(t *testing.T) {
 			manifestJSON := `{
   "schema_version": 1,
@@ -453,6 +454,11 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
   "crew_extension": {"future": true}
 }`
 
+			if strings.Contains(workspacePath, "/Code/") {
+				// Without schedules the rewrite would validate and drop the
+				// product fields, so this pins the skip, not the validator.
+				manifestJSON = strings.Replace(manifestJSON, `[{"id": "daily", "name": "Daily", "messages": ["check"], "isolated": true}]`, `[]`, 1)
+			}
 			workspace := &mockWorkspaceAPI{files: map[string]string{
 				workspacePath + "/workflow.json": manifestJSON,
 			}}
