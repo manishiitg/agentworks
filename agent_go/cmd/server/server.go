@@ -3200,6 +3200,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// "running" forever and lock the UI.
 	api.startCodingTmuxRateLimitWatchdog()
 
+	// Keep the service's own tokens out of the tmux server that hosts the CLIs (PLAT-663).
+	startTmuxServerEnvCheck()
+
 	// Start server in a goroutine
 	go func() {
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {

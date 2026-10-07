@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — The tmux server never keeps the service's own tokens
+
+tmux gives its global environment (the environment of the client that
+started the server) to every pane and prints it to anything on its socket.
+Coding-CLI launches now remove the service-only variables
+(`llmtypes.IsServiceOnlyEnvKey`: server-owned secrets, Supabase, Vault, the
+keyring password, the database, sign-in lists, `AGENTWORKS_CLI_ENV_DENY`)
+from tmux's global environment before `new-session` (Claude, Codex, Cursor,
+Pi), or start tmux without them (Muse, agy, which must stay a bare
+new-session for slottmux). A deny-list, not the slot allowlist: panes on the
+platform's own tmux still rely on the inherited PATH and tool settings. CLI
+logins and the per-chat scope stay with the launch step. The server checks
+and cleans tmux's global environment at startup and every 15 minutes,
+logging names only. [PLAT-663](bugs/pulse_platform/sandbox/cli/plat-663.md).
+
 ### 2026-10-07 — Goal Work's autonomy levels are enforced by the tools
 
 During a scheduled Pulse Goal Work turn the server refuses the tools a

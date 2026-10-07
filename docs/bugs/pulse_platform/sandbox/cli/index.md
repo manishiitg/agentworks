@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-663](plat-663.md) | tmux server environment keeps service credentials | open | P1 |
+| [PLAT-663](plat-663.md) | tmux server environment keeps service credentials | fixed on main | P1 |

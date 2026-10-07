@@ -5,7 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [access](access/index.md) | 9 | 5 |
-| [cli](cli/index.md) | 1 | 1 |
+| [cli](cli/index.md) | 1 | 0 |
 | [confinement](confinement/index.md) | 10 | 1 |
 | [environment](environment/index.md) | 1 | 0 |
 | [general](general/index.md) | 5 | 1 |
