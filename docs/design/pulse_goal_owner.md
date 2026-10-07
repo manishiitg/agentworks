@@ -74,11 +74,34 @@ Required first (both found 2026-10-07 on a0d687b63):
 The full review (Drift, Technical, Architecture) keeps its own self-deciding schedule (at most daily, at least
 weekly).
 
+## Phase 0: Workflow Review leaves Pulse and runs before every run
+
+Plan Drift ("Workflow Review") checks that the plan, steps, references and contracts still fit together. That is a
+change check, not goal work. Inside Pulse it runs on Pulse's clock (late after a change, wasted when nothing
+changed) and, when due, it runs alone and withholds Run/Change from Goal Work, so housekeeping delays the goal.
+
+Decision (owner, 2026-10-07): it becomes a normal pre-run check, like a compile step.
+
+- **Before every run** (run step, run workflow, scheduled run, Pulse-started run): the code-only reference map
+  (`CollectReferenceMap`, flags version) decides whether the plan changed or has new breaks since the last review.
+  Unchanged and clean: the run starts immediately, no AI call.
+- **Changed or broken:** the Workflow Review agent runs first, fixes what it safely can, and the run starts on the
+  reviewed plan. A break it cannot fix stops the run with the reason, and the Builder chat gets the finding (the
+  workflow's agents fix workflows).
+- **Also on change:** after a Builder edit, an upgrade, or a platform rule change (flags version bump), so most runs
+  find it already done.
+- Pulse no longer schedules or waits for Drift. It reads the latest Workflow Review result as one input to "is the
+  goal moving?".
+
+Cost: one code check per run; an AI review only when something changed. Guard against loops: one review per plan
+revision; a run never re-triggers a review for the same revision.
+
 ## Scope and phases
 
 Goals are per workflow today (`soul.md`, `configure_goal_metrics`); nothing links workflows that share a goal. Start
 with one owner per workflow goal; a goal spanning workflows is a later phase.
 
+0. Workflow Review out of Pulse, as a pre-run check (above).
 1. Goal check + silence alarm + one message. Pilot: Substack.
 2. Enforce autonomy levels in tools; fix the Goal Work contract text.
 3. Pulse answers decision requests within its levels; goal memory; decision log.

@@ -27,6 +27,7 @@ subset of the Crew runtime (persistent conversation, schedules, function calls, 
 
 ## Left
 
-Everything; design only. Owned by the Pulse session. First phase: daily goal check + silence alarm + one message,
+Everything; design only. Owned by the Pulse session. Phase 0 (owner, 2026-10-07): Workflow Review (Plan Drift)
+leaves Pulse and runs as a pre-run check before every step/workflow run when the plan changed. Then: daily goal check + silence alarm + one message,
 pilot Substack. Prerequisites: enforce `pulse.autonomy` in tools (prompt-only since PLAT-452) and fix the Goal Work
 contract text that forbids outward/change even when they are auto.
