@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-709](plat-709.md) | Saved recordings unreadable by the slot user who made them | fixed on main | P1 |
+| [PLAT-709](plat-709.md) | Saved recordings unreadable by the slot user who made them | deployed | P1 |

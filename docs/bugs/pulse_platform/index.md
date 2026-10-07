@@ -27,7 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
-| [PLAT-709](browser/recording/plat-709.md) | Saved recordings unreadable by the slot user who made them | fixed on main | P1 | [browser/recording](browser/recording/index.md) |
+| [PLAT-709](browser/recording/plat-709.md) | Saved recordings unreadable by the slot user who made them | deployed | P1 | [browser/recording](browser/recording/index.md) |
 | [PLAT-708](vault/apps/plat-708.md) | Vault: Vercel sign-in fails, registration rejected and authorize opened without a client | fixed on main | P1 | [vault/apps](vault/apps/index.md) |
 | [PLAT-707](coding-agents/codex/plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 | [coding-agents/codex](coding-agents/codex/index.md) |
 | [PLAT-706](coding-agents/accounts/plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P1 |
 | Product | browser |
 | Area | recording |
@@ -30,6 +30,10 @@ RTS, 2026-10-07: an SDE Code project (slot01) recorded `recordings/session-video
 - Missing folders are created with the nearest existing folder's mode, including setgid.
 - Test: `TestFinalizeBrowserArtifactKeepsTheProjectGroupsAccess`.
 
+## Deployed
+
+RTS, Excellence and Confida on 9d92e37 (2026-10-07). The four files saved before the fix on RTS were set to 660 (folder 2770) by hand; the owner confirmed the chat could then attach the video (2026-10-08).
+
 ## Left
 
-Files already saved before the deploy keep 0600; fix them on the server with `chmod 660` (and `chmod 2770` on folders the server created).
+Not checked live in a Crew or workflow folder (the fix copies the folder's own access, read from the code).
