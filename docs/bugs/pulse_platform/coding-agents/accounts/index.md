@@ -6,7 +6,7 @@
 |---|---|---|---|
 | [PLAT-688](plat-688.md) | Muse Check usage fails for non-managers | fixed on main | P2 |
 | [PLAT-682](plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 |
-| [PLAT-666](plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 |
+| [PLAT-666](plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 |
 | [PLAT-655](plat-655.md) | Model picker offers providers a person cannot use | open | P1 |
 | [PLAT-625](plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 |
 | [PLAT-623](plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 |

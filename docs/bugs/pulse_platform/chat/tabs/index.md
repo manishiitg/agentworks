@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-665](plat-665.md) | New chat button needs three clicks | open | P2 |
+| [PLAT-665](plat-665.md) | New chat button needs three clicks | fixed on main | P2 |

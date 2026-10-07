@@ -9,9 +9,9 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 87 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 51 | 11 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 19 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
@@ -62,8 +62,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | fixed on main | P2 | [vault/apps](vault/apps/index.md) |
 | [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
+| [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
+| [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | fixed on main | P2 | [chat/tabs](chat/tabs/index.md) |
 | [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
 | [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | fixed on main | P1 | [sandbox/cli](sandbox/cli/index.md) |
 | [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | fixed on main | P3 | [browser/browser](browser/browser/index.md) |

@@ -16,11 +16,15 @@ export function selectWorkflowTabsForStrip(
   const interactive = candidates
     .filter(tab => tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder')
     .sort((a, b) => {
+      // The active Chat always wins, blank or not. New chat leaves the active
+      // tab blank on purpose; preferring a hidden non-blank duplicate here made
+      // WorkflowChatTabs jump to an older conversation after each click, so a
+      // fresh chat took three clicks (PLAT-665).
+      if (a.tabId === activeTabId) return -1
+      if (b.tabId === activeTabId) return 1
       const aBlank = isBlankWorkflowBuilderTab(a, activePresetId || '', tabEvents)
       const bBlank = isBlankWorkflowBuilderTab(b, activePresetId || '', tabEvents)
       if (aBlank !== bBlank) return aBlank ? 1 : -1
-      if (a.tabId === activeTabId) return -1
-      if (b.tabId === activeTabId) return 1
       return (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt)
     })[0]
   const runTabs = candidates

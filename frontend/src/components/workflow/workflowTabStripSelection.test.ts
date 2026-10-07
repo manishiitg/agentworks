@@ -50,4 +50,16 @@ describe('selectWorkflowTabsForStrip', () => {
     expect(selectWorkflowTabsForStrip([olderChat, currentChat, schedule], 'current-chat', 'twitter-automation', {}))
       .toEqual([currentChat, schedule])
   })
+
+  // PLAT-665: New chat leaves the active Chat blank. A hidden older chat with
+  // events must not take the strip over, or focus jumps to that old chat.
+  it('keeps a blank active Chat after New chat instead of an older chat with events', () => {
+    const builder = { mode: 'workflow' as const, presetQueryId: 'twitter-automation', phaseId: 'workflow-builder' }
+    const olderChat = tab('old-chat', { name: 'Automation Builder', createdAt: 1, metadata: builder })
+    const freshChat = tab('fresh-chat', { name: 'Automation Builder', createdAt: 2, metadata: builder })
+    const events = { 'old-chat-session': [{ id: 'e1', type: 'user_message' }] } as unknown as Parameters<typeof selectWorkflowTabsForStrip>[3]
+
+    expect(selectWorkflowTabsForStrip([olderChat, freshChat], 'fresh-chat', 'twitter-automation', events))
+      .toEqual([freshChat])
+  })
 })

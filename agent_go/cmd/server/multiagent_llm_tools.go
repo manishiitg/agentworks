@@ -54,8 +54,19 @@ var cursorCLIStatusJSON = func(ctx context.Context) ([]byte, error) {
 // quota-gated: a quota-exhausted login still lists models.
 var agyCLIModelsCommand = func(ctx context.Context) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "agy", "models")
-	cmd.Env = minimalChildEnv()
+	cmd.Env = agyCLIProbeEnv()
 	return cmd.CombinedOutput()
+}
+
+// agyCLIProbeEnv is the environment the agy login probe runs with. It carries
+// the same Gemini key variables every agy chat gets (agycli's
+// agySidecarKeyEnvVars): a host in API-key mode (settings modelProvider
+// "gemini" plus GEMINI_API_KEY in the service environment) has no stored
+// Google login, so a probe without the key answered "Please sign in" and
+// Providers showed Needs authentication while every chat worked (PLAT-666,
+// Confida 2026-10-06).
+func agyCLIProbeEnv() []string {
+	return append(minimalChildEnv(), passthroughChildEnv("GEMINI_API_KEY", "GOOGLE_API_KEY")...)
 }
 
 func cursorCLILoginRequiredMessage() string {

@@ -100,22 +100,9 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
     return selectWorkflowTabsForStrip(visible, activeTabId, activePresetId, tabEvents)
   }, [chatTabs, activePresetId, activeTabId, tabEvents])
 
-  // Migrate a browser that persisted the old Workshop + Chat pair: if its
-  // hidden blank Workshop tab is still active, move focus to the retained
-  // conversation so the visible Chat and the rendered transcript agree.
-  useEffect(() => {
-    const persistentChat = activeWorkflowTabs.find(tab =>
-      tab.metadata?.phaseId === 'workflow-builder' && tab.metadata?.isViewOnly !== true,
-    )
-    const current = activeTabId ? chatTabs[activeTabId] : undefined
-    const currentIsInteractiveDuplicate = current?.metadata?.mode === 'workflow' &&
-      current.metadata.presetQueryId === activePresetId &&
-      current.metadata.phaseId === 'workflow-builder' &&
-      current.metadata.isViewOnly !== true
-    if (persistentChat && currentIsInteractiveDuplicate && persistentChat.tabId !== activeTabId) {
-      activateTab(persistentChat.tabId)
-    }
-  }, [activePresetId, activeTabId, activeWorkflowTabs, chatTabs])
+  // The strip always keeps the active Chat (selectWorkflowTabsForStrip), so
+  // focus is never moved to a hidden duplicate here. An effect that did that
+  // sent New chat back to an older conversation (PLAT-665).
 
   // Skip auto-close on initial mount
   const hasRenderedRef = useRef(false)

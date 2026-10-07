@@ -236,6 +236,24 @@ func withAgyModels(t *testing.T, output string, err error) {
 	})
 }
 
+// PLAT-666: agy chats get GEMINI_API_KEY/GOOGLE_API_KEY from the service
+// environment; the login probe must see the same keys, or an API-key-mode host
+// shows Needs authentication while its chats work. Other secrets stay out.
+func TestAgyCLIProbeEnvCarriesTheChatGeminiKeys(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "gemini-test-key")
+	t.Setenv("GOOGLE_API_KEY", "google-test-key")
+	t.Setenv("ANTHROPIC_API_KEY", "must-not-leak")
+	env := strings.Join(agyCLIProbeEnv(), "\n")
+	for _, want := range []string{"GEMINI_API_KEY=gemini-test-key", "GOOGLE_API_KEY=google-test-key"} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("agy probe env is missing %s", strings.SplitN(want, "=", 2)[0])
+		}
+	}
+	if strings.Contains(env, "ANTHROPIC_API_KEY") {
+		t.Fatal("agy probe env leaked an unrelated secret")
+	}
+}
+
 func TestCursorCLIAuthProbeKeepsLastConfirmedLoginOnTransientFailure(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	withFakeExecutable(t, "cursor-agent")
