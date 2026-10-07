@@ -17,6 +17,10 @@ const errorText = (cause: unknown, fallback: string) => {
 
 /** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
 export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount = true, readOnly = false }: { workspacePath: string; onChanged?: () => void; privateAccount?: boolean; readOnly?: boolean }) {
+  // Members saw a disabled button with no reason in Goals, Relay and Crew (Confida 2026-10-07).
+  const lockedReason = privateAccount
+    ? "Only this Code's owner can connect or change its Google accounts."
+    : 'Google accounts for Crews, workflows and Relays are shared, so only an administrator can connect one. Ask an admin, or connect your own Google account in Code.'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [clients, setClients] = useState<{ name: string }[]>([])
   const [source, setSource] = useState('')
@@ -139,7 +143,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
           <ConnectionIcon icon="google" name="Google" size="sm" />
           <span className="min-w-0 flex-1">
             <span className="block break-words text-sm font-medium">{changing ? `Change access for ${changing.email}` : 'Connect a Google account'}</span>
-            <span className="mt-1 block text-xs text-muted-foreground">{!expanded && changedCount ? `${changedCount} unsaved ${changedCount === 1 ? 'change' : 'changes'}` : 'Choose which services your agent can use.'}</span>
+            <span className="mt-1 block text-xs text-muted-foreground">{!expanded && changedCount ? `${changedCount} unsaved ${changedCount === 1 ? 'change' : 'changes'}` : readOnly ? lockedReason : 'Choose which services your agent can use.'}</span>
           </span>
           <ChevronDown className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
@@ -149,7 +153,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
         {privateAccount ? 'Sign in with your own Google account, personal or work. It stays in this Code and works only for you.' : 'An administrator connects Google accounts shared by Crews and workflows on this installation.'} The agent uses it through the server and never sees your password or token.
       </p>
-      {readOnly && <p className="mt-2 text-xs text-muted-foreground">{privateAccount ? "Only this Code's owner can manage its Google accounts." : 'An administrator manages shared Google accounts.'}</p>}
+      {readOnly && <p role="note" className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200">{lockedReason}</p>}
       {sourceError && <p role="alert" className="mt-2 text-xs text-amber-600 dark:text-amber-400">{sourceError}</p>}
       {!changing && <div className="mt-3 space-y-2 rounded-md border border-border p-3">
         <label className="block text-xs font-medium">Google sign-in app
@@ -224,7 +228,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
           </div>
         </div>
         <Button size="sm" disabled={busy || readOnly || (!changing && (!source || configured === null || (source === 'upload' && (!clientName.trim() || !clientFile))))} onClick={() => { void connect() }}>
-          {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}{changing ? 'Sign in again with Google' : 'Connect Google account'}<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+          {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}{readOnly ? (privateAccount ? 'Only the owner can connect' : 'Only an admin can connect') : changing ? 'Sign in again with Google' : 'Connect Google account'}<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
         </Button>
       </div>
       </div>

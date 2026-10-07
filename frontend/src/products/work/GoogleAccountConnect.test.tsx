@@ -105,10 +105,12 @@ describe('GoogleAccountConnect', () => {
   it('blocks account creation and access changes for shared-account readers', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render({ workspacePath: 'Workflow/support', privateAccount: false, readOnly: true })
-    expect(host.textContent).toContain('An administrator manages shared Google accounts')
+    expect(host.textContent).toContain('only an administrator can connect one')
     expect([...host.querySelectorAll('select')].every(select => select.disabled)).toBe(true)
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label$=" access"]')].every(button => button.disabled)).toBe(true)
-    await act(async () => ([...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account') as HTMLButtonElement).click())
+    const locked = [...host.querySelectorAll('button')].find(b => b.textContent === 'Only an admin can connect') as HTMLButtonElement
+    expect(locked.disabled).toBe(true)
+    await act(async () => locked.click())
     await act(async () => changeGoogleAccountAccess({ id: 'shared', email: 'me@example.com' } as GmailConnection, 'Workflow/support'))
     expect(host.textContent).not.toContain('Change access for')
     expect(connect).not.toHaveBeenCalled()

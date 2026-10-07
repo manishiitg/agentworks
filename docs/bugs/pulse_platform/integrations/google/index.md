@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-671](plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 |
 | [PLAT-614](plat-614.md) | Confida Gmail client JSON not set up | open | P3 |
