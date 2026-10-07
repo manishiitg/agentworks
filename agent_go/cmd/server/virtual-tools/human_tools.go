@@ -509,6 +509,11 @@ func handleNotifyUser(ctx context.Context, args map[string]interface{}) (string,
 		return "", fmt.Errorf("notification manager not available")
 	}
 
+	// With the Outward permission at ask (Pulse Goal Work), notify_user still
+	// reaches the user's configured channels, but not recipients the agent picks.
+	if common.OutwardHeld(ctx) && (len(emailListFromArg(args["email_to"])) > 0 || len(emailListFromArg(args["email_cc"])) > 0) {
+		return "", fmt.Errorf("notify_user with email_to or email_cc refused: the Outward permission is ask for this turn (pulse.autonomy.outward). Notify the user's configured channels without them, or create a decision request (create_human_input_request) for sending to anyone else")
+	}
 	dest := NotificationDestinationFromContext(ctx)
 	explicitTo := emailListFromArg(args["email_to"])
 	if to := explicitTo; len(to) > 0 {

@@ -17,6 +17,22 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Goal Work's autonomy levels are enforced by the tools
+
+During a scheduled Pulse Goal Work turn the server refuses the tools a
+`pulse.autonomy` level at ask withholds: Run (step/workflow runs, Crew work),
+Change (Builder plan, step-config and schedule edits) and the Outward actions it
+can identify (Slack writes, Google writes, notifications to other recipients).
+Deleting steps or schedules, replacing the plan and migrations are always
+refused there; a due Plan Drift holds Run and Change. The check is at the
+session's tool dispatch (`bindToolExecutionContext`) keyed by the server's
+session, for that turn only; the catalog is not narrowed, the call is refused
+with a hint to create a decision request. Why: a goal owner acting in the
+owner's name needs real limits (PLAT-697); this reverses the 2026-10-04
+"stated in the prompt" trade-off for Goal Work only, without the per-turn tool
+filtering that PLAT-452 removed. Browser, shell and connected-MCP actions stay
+prompt-held. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — Product schedule turns are cost scope `schedule`
 
 Turns started by a Code/Crew (any product) schedule, reminder or trigger, and

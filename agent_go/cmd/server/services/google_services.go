@@ -370,6 +370,9 @@ func RunGoogleCLIIn(ctx context.Context, connectionID string, args []string, sco
 	} else {
 		finalArgs = append(finalArgs, "--account", access.Account, "--client", access.Client)
 	}
+	if scope.ReadOnly {
+		writeAllowed = false
+	}
 	if !writeAllowed {
 		finalArgs = append(finalArgs, "--readonly")
 	}

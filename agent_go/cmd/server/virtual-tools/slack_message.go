@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -24,6 +25,9 @@ func handleSlackMessage(ctx context.Context, args map[string]interface{}) (strin
 	slackMessageHandler.RUnlock()
 	if send == nil {
 		return "", fmt.Errorf("Slack messaging service unavailable")
+	}
+	if common.OutwardHeld(ctx) {
+		return "", fmt.Errorf("send_slack_message refused: the Outward permission is ask for this turn (pulse.autonomy.outward). Prepare the message and create a decision request (create_human_input_request) for the user to approve it")
 	}
 	return send(ctx, args)
 }

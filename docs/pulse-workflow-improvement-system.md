@@ -109,10 +109,16 @@ remain Gate judgments; choose dates for the protected scheduling behavior.
 
 Scheduled review dispatch is a turn in the Pulse conversation, not a separately
 launched reviewer (the `run_in_background` tool was removed, PLAT-452). The review
-therefore holds the Pulse conversation's tool set: the read-only limits on
-Architecture and Strategy and Goal Work's `pulse.autonomy` levels are stated in
-the review step's text and held by the agent, not enforced by a filtered tool
-set. The owner accepted this trade-off. Architecture and Strategy use the
+therefore holds the Pulse conversation's tool set. Architecture's read-only
+limit is stated in the review step's text and held by the agent. Goal Work's
+`pulse.autonomy` levels are enforced at tool dispatch for the length of its turn
+(PLAT-697 phase 2, `cmd/server/pulse_autonomy_guard.go`): with Run at ask the run
+tools refuse, with Change at ask the Builder plan, step-config and schedule tools
+refuse, with Outward at ask Slack posts, Google writes and notifications to other
+recipients refuse; a due Plan Drift holds Run and Change. The catalog itself is
+never narrowed per turn; the call is refused with a hint to create a decision
+request. Browser, shell and connected-MCP actions are not classified and stay
+held by the agent. Architecture and Strategy use the
 workflow's configured MCP connections and browser setup. Raw implementation
 writes remain blocked by the existing workspace guard, and Run mode's stricter
 write limit remains.

@@ -167,7 +167,7 @@ Built on Crew memory (the workflow already has `memory/` and `MEMORY.md`). Rules
 `pulse.autonomy` already has `run` (default auto), `outward` (default ask) and `change` (default ask); spending
 always asks. Pulse uses these as its authority line; no new permission system.
 
-Required first (both found 2026-10-07 on a0d687b63):
+Required first (both found 2026-10-07 on a0d687b63; the first two are done in phase 2, see PLAT-697):
 
 - **Enforce the levels in the tools.** Since PLAT-452 they are prompt text only ("hold them yourself";
   `background_review_scope.go`). A goal owner deciding in the owner's name needs real checks.

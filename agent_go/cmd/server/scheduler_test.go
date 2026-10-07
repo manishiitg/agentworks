@@ -2044,11 +2044,14 @@ func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
 	}
 }
 
-// Goal Work's permission levels reach its step as text, with the statement that
-// the tools do not enforce them (PLAT-452).
-func TestGoalWorkAutonomyTextCarriesTheLevelsAndTheHonestCaveat(t *testing.T) {
-	text := goalWorkAutonomyText(context.Background(), "Workflow/does-not-exist")
-	for _, want := range []string{"not enforced by the tools", "Run permission", "Outward permission", "Change permission"} {
+// Goal Work's permission levels reach its step as text and as the levels the
+// tools enforce; a due Plan Drift holds Run and Change in both (PLAT-697).
+func TestGoalWorkAutonomyTextMatchesTheEnforcedLevels(t *testing.T) {
+	perms, text := goalWorkAutonomy(context.Background(), "Workflow/does-not-exist", true)
+	if perms.Run || perms.Change {
+		t.Fatalf("a due Plan Drift must hold Run and Change, got %+v", perms)
+	}
+	for _, want := range []string{"The tools hold them", "Run permission: ask", "Outward permission: ask", "Change permission: ask", "Plan Drift is due"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("autonomy text missing %q:\n%s", want, text)
 		}

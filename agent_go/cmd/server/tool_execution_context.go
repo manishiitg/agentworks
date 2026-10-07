@@ -58,6 +58,17 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			log.Printf("[TOOL_OWNERSHIP] rejected %s: caller=%q tool_session=%q authority=%q caller_parent=%q", tool, callerSession, toolSession, authoritySession, mcpclient.GetSessionRegistry().HTTPSessionForMCPSession(callerSession))
 			return nil, fmt.Errorf("%s caller does not own this tool session", tool)
 		}
+		// Pulse Goal Work: the autonomy levels hold on the session's own agent and
+		// its delegated helpers for the turn. Workflow steps the turn started
+		// (child MCP sessions registered to the run) keep their normal tools.
+		goalWorkPerms, goalWorkHeld := goalWorkTurnPermissions(authoritySession)
+		goalWorkHeld = goalWorkHeld && !callerOwnedBySession
+		if goalWorkHeld {
+			if err := goalWorkToolRefusal(tool, goalWorkPerms); err != nil {
+				log.Printf("[PULSE_AUTONOMY] refused %s in session %s: run=%v outward=%v change=%v", tool, authoritySession, goalWorkPerms.Run, goalWorkPerms.Outward, goalWorkPerms.Change)
+				return nil, err
+			}
+		}
 		if claims := GetUserFromContext(ctx); claims != nil && (claims.UserID != bound.UserID || claims.Provider != bound.Provider || claims.BotRouteGrant != bound.BotRouteGrant) {
 			return nil, fmt.Errorf("%s caller identity conflicts with its authenticated session", tool)
 		}
@@ -118,6 +129,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		// root controller. A child may not invent a different browser owner.
 		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)
 		ctx = executor.WithSessionID(ctx, toolSession)
+		if goalWorkHeld && !goalWorkPerms.Outward {
+			ctx = common.WithOutwardHeld(ctx)
+		}
 		if copy.Provider == "bot_route" || copy.Provider == slackDMProvider {
 			validated, err := api.revalidateExecutionPrincipal(ctx, req)
 			if err != nil {

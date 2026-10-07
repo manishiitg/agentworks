@@ -134,6 +134,10 @@ func (c GmailConnection) IsPrivate() bool { return strings.TrimSpace(c.ScopeWork
 type GmailUseScope struct {
 	CodeWorkspace string
 	UserID        string
+	// ReadOnly runs gog read-only whatever the connection grants (a Pulse Goal
+	// Work turn whose Outward permission is ask). It does not affect which
+	// connections are usable.
+	ReadOnly bool
 }
 
 // UsableFrom reports whether conn may be used, listed or managed in scope: a

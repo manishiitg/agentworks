@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// goalWorkPermissions mirror workflow.json pulse.autonomy. Each is true for
+// GoalWorkPermissions mirror workflow.json pulse.autonomy. Each is true for
 // "auto" (Goal Work does it itself) and false for "ask" (it prepares the work
 // and creates a decision). Run defaults to auto; Outward and Change to ask.
-type goalWorkPermissions struct {
+type GoalWorkPermissions struct {
 	// Run: run existing steps and routes, including what they normally do.
 	Run bool
 	// Outward: post, send or contact anyone beyond what existing steps do.
@@ -19,11 +19,11 @@ type goalWorkPermissions struct {
 	Change bool
 }
 
-// pulseAutonomyPermissions reads workflow.json pulse.autonomy. Run is off only
+// PulseAutonomyPermissions reads workflow.json pulse.autonomy. Run is off only
 // for an explicit "ask"; Outward and Change are on only for an explicit
 // "auto". Missing or unreadable settings mean those defaults.
-func pulseAutonomyPermissions(manifestJSON string) goalWorkPermissions {
-	perms := goalWorkPermissions{Run: true}
+func PulseAutonomyPermissions(manifestJSON string) GoalWorkPermissions {
+	perms := GoalWorkPermissions{Run: true}
 	var manifest struct {
 		Pulse *struct {
 			Autonomy *struct {
@@ -45,24 +45,27 @@ func pulseAutonomyPermissions(manifestJSON string) goalWorkPermissions {
 }
 
 // goalWorkPermissionInstructions tells Goal Work what it may do itself and what
-// it must prepare for the user's approval, one sentence per permission.
-func goalWorkPermissionInstructions(perms goalWorkPermissions) string {
+// it must prepare for the user's approval, one sentence per permission. The
+// server refuses the matching tools for an "ask" level during the Goal Work
+// turn (cmd/server/pulse_autonomy_guard.go), so the text and the tools agree.
+func goalWorkPermissionInstructions(perms GoalWorkPermissions) string {
 	parts := []string{}
 	if perms.Run {
 		parts = append(parts, "Run permission: auto. Run existing workflow steps or routes yourself (execute_step, run_full_workflow) when that directly advances the goal or recovers work that did not happen; they do what they normally do, including their usual posts.")
 	} else {
-		parts = append(parts, "Run permission: ask. Do not run workflow steps; prepare the work fully and create a decision asking the user to run it.")
+		parts = append(parts, "Run permission: ask. Do not run workflow steps, routes or Crews (the run tools refuse); prepare the work fully and create a decision request (create_human_input_request) asking the user to run it.")
 	}
 	if perms.Outward {
 		parts = append(parts, "Outward permission: auto. You may post, send or contact people yourself with the workflow's own accounts and tools when it advances the goal, within soul.md limits and the workflow's own caps and dedupe records; verify each action landed and record it where the workflow records its own.")
 	} else {
-		parts = append(parts, "Outward permission: ask. Beyond what existing steps normally do, never post, send or contact anyone yourself: prepare it fully and create a decision for the user to approve.")
+		parts = append(parts, "Outward permission: ask. Beyond what existing steps normally do, never post, send or contact anyone yourself (Slack posts and Google writes are refused; hold it the same way in the browser, shell and connected servers): prepare it fully and create a decision request for the user to approve.")
 	}
 	if perms.Change {
-		parts = append(parts, "Change permission: auto. You may change how the workflow works yourself with the typed Builder tools (step prompts and items, step settings, schedules) when it advances the goal and every soul.md constraint still holds. soul.md goals and constraints are not yours to edit: challenge them through a decision. Never delete steps or schedules; propose that through a decision.")
+		parts = append(parts, "Change permission: auto. You may change how the workflow works yourself with the typed Builder tools (step prompts and items, step settings, schedules) when it advances the goal and every soul.md constraint still holds. soul.md goals and constraints are not yours to edit: challenge them through a decision. Never delete steps or schedules or replace the plan (those tools refuse); propose that through a decision.")
 	} else {
-		parts = append(parts, "Change permission: ask. Never edit the plan, steps, schedules or soul.md; propose them with a ready patch through a decision.")
+		parts = append(parts, "Change permission: ask. Never edit the plan, steps, schedules or soul.md (the Builder edit tools refuse); propose them with a ready patch through a decision request.")
 	}
+	parts = append(parts, "Spending money or buying anything always goes to the user as a decision request.")
 	return strings.Join(parts, " ")
 }
 
@@ -90,11 +93,25 @@ func readOnlyBackgroundToolAllowed(name string) bool {
 	return false
 }
 
-// GoalWorkAutonomyInstructions turns the workflow's pulse.autonomy levels into
-// the permission text Goal Work must follow. Goal Work now runs in the Pulse
-// conversation, whose tools are not filtered per module, so the limits are held
-// by the agent and the text says so (PLAT-452).
-func GoalWorkAutonomyInstructions(manifestJSON string) string {
-	return "These permission levels are not enforced by the tools in this turn; hold them yourself:\n" +
-		goalWorkPermissionInstructions(pulseAutonomyPermissions(manifestJSON))
+// GoalWorkEffectivePermissions are the levels Goal Work holds in this turn:
+// the workflow's pulse.autonomy, with Run and Change withheld while a Plan
+// Drift review is due (the plan is being reconciled; docs/design/pulse_goal_work.md).
+func GoalWorkEffectivePermissions(manifestJSON string, planDriftDue bool) GoalWorkPermissions {
+	perms := PulseAutonomyPermissions(manifestJSON)
+	if planDriftDue {
+		perms.Run = false
+		perms.Change = false
+	}
+	return perms
+}
+
+// GoalWorkAutonomyInstructions is the permission text for a Goal Work turn.
+// The server enforces the same levels on the tools for that turn (PLAT-697
+// phase 2), so a refused call is the level working, not an error to retry.
+func GoalWorkAutonomyInstructions(perms GoalWorkPermissions, planDriftDue bool) string {
+	text := "Your permission levels for this turn (workflow.json pulse.autonomy). The tools hold them: a call refused for a level means prepare the work and create a decision request instead; do not retry it another way.\n"
+	if planDriftDue {
+		text += "Plan Drift is due, so Run and Change are held to ask for this turn whatever the workflow's setting: prepare and research, do not run steps or edit the workflow.\n"
+	}
+	return text + goalWorkPermissionInstructions(perms)
 }
