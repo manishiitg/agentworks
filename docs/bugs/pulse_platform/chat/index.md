@@ -4,6 +4,7 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
+| [frontend-chat](frontend-chat/index.md) | 1 | 0 |
 | [general](general/index.md) | 1 | 0 |
 | [reliability](reliability/index.md) | 22 | 9 |
 | [rendering](rendering/index.md) | 6 | 0 |

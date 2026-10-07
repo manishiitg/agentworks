@@ -39,28 +39,28 @@ export function CodingAgentQuestionCard({ prompt, onAnswer }: {
       setSubmitting(false)
     }
   }
-  return <section className="w-full rounded-xl border border-border bg-card p-4 text-card-foreground" data-testid="coding-agent-question-card">
-    <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+  return <section className="w-full rounded-xl border border-border bg-card p-3 text-card-foreground" data-testid="coding-agent-question-card">
+    <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
       {prompt.state === 'answered' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
       {pending ? 'Clarification needed' : prompt.state === 'answered' ? 'Clarification answered' : 'Clarification closed'}
     </div>
-    {prompt.questions.map((question) => <fieldset key={question.id} className="mb-4 space-y-2" disabled={!pending || submitting || !onAnswer}>
-      <legend className="mb-2 text-sm font-medium">{question.question}</legend>
+    {prompt.questions.map((question) => <fieldset key={question.id} className="mb-3 space-y-1" disabled={!pending || submitting || !onAnswer}>
+      <legend className="mb-1.5 text-[13px] font-medium">{question.question}</legend>
       {question.multiSelect && <p className="mb-2 text-xs text-muted-foreground">{question.maxSelections || (question.minSelections || 0) > 1 ? selectionHint(bounds(question)) : 'Select all that apply.'}</p>}
       {question.options.map((option) => {
         const checked = pending ? (selected[question.id] || []).includes(option.label) : prompt.answers.some((answer) => answer.id === question.id && answer.selectedLabels.includes(option.label))
         const full = question.multiSelect && !checked && (selected[question.id]?.length || 0) + (useOther[question.id] ? 1 : 0) >= bounds(question).max
         const disabled = !pending || submitting || !onAnswer || full
-        return <label key={option.label} className={`flex gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-card ${checked ? 'border-primary/40 bg-primary/10' : 'border-border bg-background/30'} ${disabled ? 'cursor-default' : 'cursor-pointer hover:border-primary/40 hover:bg-muted/40'} ${full ? 'opacity-50' : ''}`}>
+        return <label key={option.label} className={`flex gap-2 rounded-md border px-2.5 py-1.5 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-card ${checked ? 'border-primary/40 bg-primary/10' : 'border-border bg-background/30'} ${disabled ? 'cursor-default' : 'cursor-pointer hover:border-primary/40 hover:bg-muted/40'} ${full ? 'opacity-50' : ''}`}>
           <input className="peer sr-only" type={question.multiSelect ? 'checkbox' : 'radio'} name={`${prompt.provider}:${prompt.promptId}:${question.id}`} value={option.label} checked={checked} disabled={disabled} onChange={() => { if (!question.multiSelect) setUseOther(current => ({ ...current, [question.id]: false })); setSelected((current) => {
             const prior = current[question.id] || []
             const next = question.multiSelect ? (prior.includes(option.label) ? prior.filter((value) => value !== option.label) : [...prior, option.label]) : [option.label]
             return { ...current, [question.id]: next }
           }) }} />
-          <span aria-hidden="true" className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border ${question.multiSelect ? 'rounded' : 'rounded-full'} ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/50'}`}>
+          <span aria-hidden="true" className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center border ${question.multiSelect ? 'rounded' : 'rounded-full'} ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/50'}`}>
             {checked && (question.multiSelect ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />)}
           </span>
-          <span><span className="block font-medium">{option.label}</span>{option.description && <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>}</span>
+          <span><span className="block font-medium">{option.label}</span>{option.description && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{option.description}</span>}</span>
         </label>
       })}
       {question.allowOther && (() => {
@@ -68,13 +68,13 @@ export function CodingAgentQuestionCard({ prompt, onAnswer }: {
         const checked = pending ? !!useOther[question.id] : !!submitted
         const full = question.multiSelect && !checked && (selected[question.id]?.length || 0) >= bounds(question).max
         const disabled = !pending || submitting || !onAnswer || full
-        return <div className={`rounded-lg border px-3 py-2.5 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-card ${checked ? 'border-primary/40 bg-primary/10' : 'border-border bg-background/30'}`}>
-          <label className={`flex items-center gap-2.5 text-sm ${disabled ? 'cursor-default' : 'cursor-pointer'}`}>
+        return <div className={`rounded-md border px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-card ${checked ? 'border-primary/40 bg-primary/10' : 'border-border bg-background/30'}`}>
+          <label className={`flex items-center gap-2 text-xs ${disabled ? 'cursor-default' : 'cursor-pointer'}`}>
             <input className="sr-only" type={question.multiSelect ? 'checkbox' : 'radio'} name={`${prompt.provider}:${prompt.promptId}:${question.id}`} checked={checked} disabled={disabled} onChange={() => {
               setUseOther(current => ({ ...current, [question.id]: !checked }))
               if (!question.multiSelect) setSelected(current => ({ ...current, [question.id]: [] }))
             }} />
-            <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center border ${question.multiSelect ? 'rounded' : 'rounded-full'} ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/50'}`}>
+            <span aria-hidden="true" className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center border ${question.multiSelect ? 'rounded' : 'rounded-full'} ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/50'}`}>
               {checked && (question.multiSelect ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />)}
             </span>
             <span className="font-medium">Other</span>
@@ -84,8 +84,8 @@ export function CodingAgentQuestionCard({ prompt, onAnswer }: {
       })()}
     </fieldset>)}
     {pending ? <div className="flex flex-wrap items-center gap-2">
-      <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send choice'}</button>
-      <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer} className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
+      <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send choice'}</button>
+      <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
     </div>
       : <p className="text-xs text-muted-foreground">{prompt.state === 'answered' ? 'Choice submitted' : 'Question interrupted'}</p>}
     {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation is read-only.</p>}
