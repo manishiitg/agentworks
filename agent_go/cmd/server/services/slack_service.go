@@ -1398,6 +1398,74 @@ func (s *SlackService) SetSlackConnectionChannelRoute(ctx context.Context, connI
 	})
 }
 
+// ModifySlackConnection applies mutate to one scoped connection's channel
+// routes and attached targets (PLAT-668) and persists it; normalization then
+// drops empty and Code channel entries. Authorization is the caller's job.
+func (s *SlackService) ModifySlackConnection(ctx context.Context, connID string, mutate func(*SlackConnection) error) (SlackConnection, error) {
+	connID = strings.TrimSpace(connID)
+	if connID == "" {
+		return SlackConnection{}, fmt.Errorf("slack connection id is required")
+	}
+	return s.modifySlackRegistry(ctx, func(cfg *SlackConfig) (SlackConnection, error) {
+		for i, conn := range cfg.Connections {
+			if conn.ID != connID {
+				continue
+			}
+			if strings.TrimSpace(conn.WorkspacePath) == "" {
+				return SlackConnection{}, fmt.Errorf("the platform bot's targets are managed from each target's Slack tab")
+			}
+			routes := make(map[string]SlackConnectionRoute, len(conn.ChannelRoutes))
+			for channel, route := range conn.ChannelRoutes {
+				route.Targets = append([]SlackTargetRef(nil), route.Targets...)
+				routes[channel] = route
+			}
+			conn.ChannelRoutes = routes
+			conn.Targets = append([]SlackTargetRef(nil), conn.Targets...)
+			if err := mutate(&conn); err != nil {
+				return SlackConnection{}, err
+			}
+			cfg.Connections[i] = conn
+			return conn, nil
+		}
+		return SlackConnection{}, fmt.Errorf("slack connection %q not found", connID)
+	})
+}
+
+// SlackUserInChannel reports whether the Slack user with this email is a
+// member of a channel, asked of Slack with this app's token
+// (users.lookupByEmail, conversations.members). A target's owner adds a
+// channel to the platform bot only if they are in it (PLAT-668).
+func (s *SlackService) SlackUserInChannel(ctx context.Context, email, channelID string) (bool, error) {
+	if s == nil || s.client == nil {
+		return false, fmt.Errorf("the Slack bot is not connected")
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false, fmt.Errorf("your account has no email to look up in Slack")
+	}
+	user, err := s.client.GetUserByEmailContext(ctx, email)
+	if err != nil || user == nil {
+		return false, fmt.Errorf("no Slack user has the email %s (users.lookupByEmail: %v)", email, err)
+	}
+	cursor := ""
+	for page := 0; page < 50; page++ {
+		members, next, err := s.client.GetUsersInConversationContext(ctx, &slack.GetUsersInConversationParameters{ChannelID: channelID, Cursor: cursor, Limit: 1000})
+		if err != nil {
+			return false, fmt.Errorf("conversations.members on %s: %w (invite the bot to the channel first)", channelID, err)
+		}
+		for _, member := range members {
+			if member == user.ID {
+				return true, nil
+			}
+		}
+		if next == "" {
+			return false, nil
+		}
+		cursor = next
+	}
+	return false, nil
+}
+
 // DeleteSlackConnection removes one registry entry. The default connection
 // cannot be deleted; reassign the default first.
 func (s *SlackService) DeleteSlackConnection(ctx context.Context, connID string) error {
@@ -1776,13 +1844,9 @@ func (s *SlackService) handleSlackBotMessage(userID, channelID, threadTS, messag
 	// may append text, and stripping (mention path) removes tags.
 	tagsAnotherUser := slackMessageTagsAnotherUser(text, s.botUserID)
 	userName, userEmail := s.resolveSlackUser(userID)
-	text, presetRoute, handled := s.routeSlackWorkflowMessage(context.Background(), userID, userEmail, channelID, threadTS, text, isThreadReply)
-	if handled {
-		return
-	}
-	text = s.appendSlackFileContext(context.Background(), text, msg, channelID, userEmail, presetRoute)
-
-	s.messageHandler(BotIncomingMessage{
+	ctx := context.Background()
+	pick := s.pickChannelRoute(ctx, userEmail, channelID, threadTS, text, isMention)
+	incoming := BotIncomingMessage{
 		Platform:          "slack",
 		UserID:            userID,
 		UserName:          userName,
@@ -1790,14 +1854,21 @@ func (s *SlackService) handleSlackBotMessage(userID, channelID, threadTS, messag
 		ChannelID:         channelID,
 		ConnectionID:      s.connectionID,
 		ThreadTS:          threadTS,
-		Text:              text,
+		Text:              pick.text,
 		MessageTS:         messageTS,
 		Timestamp:         time.Now(),
 		IsThreadReply:     isThreadReply,
 		IsMention:         isMention,
 		MentionsOtherUser: tagsAnotherUser,
-		PresetWorkflow:    presetRoute,
-	})
+		PresetWorkflow:    pick.route,
+	}
+	if !s.deliverChannelPick(ctx, incoming, msg, pick) {
+		return
+	}
+	incoming.Text = s.appendSlackFileContext(ctx, incoming.Text, msg, channelID, userEmail, pick.route)
+	text = incoming.Text
+
+	s.messageHandler(incoming)
 
 	if isMention {
 		return
@@ -1825,17 +1896,6 @@ func (s *SlackService) handleSlackBotMessage(userID, channelID, threadTS, messag
 		log.Printf("[SLACK_SOCKET] Failed to submit feedback via notification manager: %v", err)
 		return
 	}
-}
-
-func (s *SlackService) routeSlackWorkflowMessage(ctx context.Context, userID, userEmail, channelID, threadTS, text string, isThreadReply bool) (string, *ChannelRoute, bool) {
-	route := s.resolveSlackThreadRoute(ctx, channelID, threadTS)
-	if route == nil {
-		return text, nil, false
-	}
-	if !SlackRouteAllowsEmail(*route, userEmail) {
-		return text, route, true
-	}
-	return text, route, false
 }
 
 // handleSocketModeInteractive handles interactive events (button clicks) from Socket Mode
@@ -1876,6 +1936,19 @@ func (s *SlackService) handleSocketModeInteractive(evt socketmode.Event) {
 		var response string
 
 		actionID := action.ActionID
+
+		// A target button from the slug prompt (PLAT-668).
+		if strings.HasPrefix(actionID, slackPickActionPrefix) {
+			threadTS := callback.Message.ThreadTimestamp
+			if threadTS == "" {
+				threadTS = callback.Message.Timestamp
+			}
+			if IsSlackDMChannel(callback.Channel.ID) {
+				threadTS = callback.Channel.ID
+			}
+			go s.handleSlackPick(context.Background(), callback.Channel.ID, threadTS, callback.User.ID, action.Value)
+			continue
+		}
 
 		// Handle bot connector actions (confirm/cancel)
 		if strings.HasPrefix(actionID, "bot_confirm_") || strings.HasPrefix(actionID, "bot_cancel_") {
@@ -2337,23 +2410,23 @@ func (s *SlackService) handleAppMentionEvent(ev *slackevents.AppMentionEvent) {
 	log.Printf("[SLACK_BOT] AppMention from user=%s channel=%s thread=%s: %s", ev.User, ev.Channel, threadTS, botTruncate(text, 80))
 
 	userName, userEmail := s.resolveSlackUser(ev.User)
-	msg, handled := s.mentionMessage(context.Background(), ev.User, userEmail, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
-	if handled {
+	ctx := context.Background()
+	msg, pick := s.mentionMessage(ctx, ev.User, userEmail, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
+	msg.UserName = userName
+	if !s.deliverChannelPick(ctx, msg, nil, pick) {
 		return
 	}
-	msg.UserName = userName
 	s.messageHandler(msg)
 }
 
-// mentionMessage builds the bot message for a Slack mention, with the route
-// this app resolves for the channel attached. handled reports a message the
-// route already answered (e.g. a blocked sender). The app-mention handler and
-// the bot dry run (DryRunMention) share it.
-func (s *SlackService) mentionMessage(ctx context.Context, userID, userEmail, channelID, threadTS, messageTS, text string, isThreadReply bool) (BotIncomingMessage, bool) {
-	text, presetRoute, handled := s.routeSlackWorkflowMessage(ctx, userID, userEmail, channelID, threadTS, text, isThreadReply)
-	if handled {
-		return BotIncomingMessage{}, true
-	}
+// mentionMessage builds the bot message for a Slack mention, with the target
+// this app picks for it (slug, thread binding or the channel's default)
+// attached. The pick says when the bot answers instead of a turn (a blocked
+// sender, the button prompt, a list). The app-mention handler and the bot dry
+// run (DryRunMention) share it.
+func (s *SlackService) mentionMessage(ctx context.Context, userID, userEmail, channelID, threadTS, messageTS, text string, isThreadReply bool) (BotIncomingMessage, slackChannelPick) {
+	pick := s.pickChannelRoute(ctx, userEmail, channelID, threadTS, text, true)
+	text, presetRoute := pick.text, pick.route
 	return BotIncomingMessage{
 		Platform:       "slack",
 		UserID:         userID,
@@ -2368,15 +2441,21 @@ func (s *SlackService) mentionMessage(ctx context.Context, userID, userEmail, ch
 		IsThreadReply:  isThreadReply,
 		IsMention:      true,
 		PresetWorkflow: presetRoute,
-	}, false
+	}, pick
 }
 
 // DryRunMention builds the message a mention of this app in channelID by
-// userEmail would produce, on a fresh synthetic thread. blocked reports a
-// sender the route refuses.
-func (s *SlackService) DryRunMention(ctx context.Context, userEmail, channelID, text string) (msg BotIncomingMessage, blocked bool) {
+// userEmail would produce, on a fresh synthetic thread ("@bot <slug> ..."
+// picks a target as a real mention does; nothing is bound or posted).
+// blocked reports a sender the route refuses; reply is what the bot would
+// answer instead of a turn (the button prompt, a list).
+func (s *SlackService) DryRunMention(ctx context.Context, userEmail, channelID, text string) (msg BotIncomingMessage, blocked bool, reply string) {
 	threadTS := fmt.Sprintf("dryrun.%d", time.Now().UnixNano())
-	return s.mentionMessage(ctx, "dry-run", strings.TrimSpace(userEmail), strings.ToUpper(strings.TrimSpace(channelID)), threadTS, threadTS, text, false)
+	msg, pick := s.mentionMessage(ctx, "dry-run", strings.TrimSpace(userEmail), strings.ToUpper(strings.TrimSpace(channelID)), threadTS, threadTS, text, false)
+	if reply := dryRunPickReply(pick); reply != "" {
+		return msg, false, reply
+	}
+	return msg, pick.handled, ""
 }
 
 // slackUserMentionTag matches Slack user tags (<@U123>, <@U123|label>).

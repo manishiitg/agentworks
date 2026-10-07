@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 // Slack slugs (docs/design/slack_slugs.md, PLAT-668): one Slack app serves
@@ -499,6 +501,7 @@ func ResolveSlackThreadRoute(ctx context.Context, thread ThreadID, legacy func()
 // slackPendingPick is a message waiting for its sender to pick a target.
 type slackPendingPick struct {
 	msg     BotIncomingMessage
+	raw     *slack.Msg // its files, downloaded once a target is picked
 	choices []SlackTarget
 	at      time.Time
 }
@@ -510,7 +513,7 @@ var (
 	slackPendingPicks   = map[string]slackPendingPick{}
 )
 
-func rememberSlackPendingPick(thread ThreadID, msg BotIncomingMessage, choices []SlackTarget) {
+func rememberSlackPendingPick(thread ThreadID, msg BotIncomingMessage, raw *slack.Msg, choices []SlackTarget) {
 	slackPendingPicksMu.Lock()
 	defer slackPendingPicksMu.Unlock()
 	cutoff := time.Now().Add(-slackPendingPickTTL)
@@ -519,7 +522,7 @@ func rememberSlackPendingPick(thread ThreadID, msg BotIncomingMessage, choices [
 			delete(slackPendingPicks, key)
 		}
 	}
-	slackPendingPicks[slackTargetBindingThread(thread).Key()] = slackPendingPick{msg: msg, choices: choices, at: time.Now()}
+	slackPendingPicks[slackTargetBindingThread(thread).Key()] = slackPendingPick{msg: msg, raw: raw, choices: choices, at: time.Now()}
 }
 
 func takeSlackPendingPick(thread ThreadID) (slackPendingPick, bool) {

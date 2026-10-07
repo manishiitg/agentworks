@@ -45,9 +45,17 @@ possibly in a single channel.
   (`slack_slugs.go`, `services/slack_targets.go`); a DM turn against the targets the app offers and the sender can
   reach.
 
+- Phase 2 (parsing, binding, buttons, DMs, API): a channel mention's first word picks a target only if it is on the
+  channel's allowed list (otherwise it is message text); the thread is bound to the pick
+  (`config/slack-threads/<hash>.target.json`) and every later turn re-checks the binding against the list; a different
+  slug in a bound thread is refused; no slug and no default posts one button per allowed target and the click binds
+  the thread and runs the waiting message. DMs: `<slug> ...` picks among the targets the sender can reach with their
+  own access, the pick is remembered for the DM, `list` lists them; the platform bot now takes DMs. API:
+  `/api/human-feedback/slack/targets` (settings, channels with the Slack member check, admin products) and own-bot
+  `/connections/{id}/targets` (DM attachments, Codes included); own-bot channels list several targets.
+
 ## Left
 
-- Phase 2: `@bot <slug>` parsing, thread binding, the button prompt, platform-bot DMs.
 - Phase 3: the UI (switch, slug, channels with the member check, own bot targets, Codes in DMs) and the dry run with
   a slug.
 - Phase 4: files on top-level channel mentions; Slack triggers on own-bot channel routes.

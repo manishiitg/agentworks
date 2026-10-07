@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
@@ -29,12 +28,23 @@ import (
 //
 // One channel maps to one destination per app.
 
-// SlackConnectionChannelRouteResponse is one channel route on a bot.
+// SlackConnectionChannelRouteResponse is one target allowed in a channel on
+// a bot (a channel with several targets has one entry per target).
 type SlackConnectionChannelRouteResponse struct {
 	ChannelID     string `json:"channel_id"`
 	WorkspacePath string `json:"workspace_path"`
 	ProfileID     string `json:"profile_id,omitempty"`
 	Label         string `json:"label,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+	IsDefault     bool   `json:"is_default"`
+}
+
+// SlackBotTargetResponse is a target attached to a bot for DMs.
+type SlackBotTargetResponse struct {
+	WorkspacePath string `json:"workspace_path"`
+	ProfileID     string `json:"profile_id,omitempty"`
+	Label         string `json:"label,omitempty"`
+	Slug          string `json:"slug,omitempty"`
 }
 
 // SlackUsableBotResponse is one bot the caller can share: a scoped
@@ -47,7 +57,9 @@ type SlackUsableBotResponse struct {
 	WorkspacePath string                                `json:"workspace_path"`
 	ProfileID     string                                `json:"profile_id,omitempty"`
 	OwnerLabel    string                                `json:"owner_label,omitempty"`
+	OwnSlug       string                                `json:"own_slug,omitempty"`
 	ChannelRoutes []SlackConnectionChannelRouteResponse `json:"channel_routes"`
+	Targets       []SlackBotTargetResponse              `json:"targets"`
 }
 
 // SlackUsableBotsResponse is the "bots I can use" payload.
@@ -65,6 +77,8 @@ func registerSlackConnectionChannelRoutes(r *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("/mine", listUsableSlackBotsHandler(api)).Methods("GET")
 	r.HandleFunc("/{id}/channel-routes/{channel}", putSlackConnectionChannelRouteHandler(api)).Methods("PUT", "POST", "OPTIONS")
 	r.HandleFunc("/{id}/channel-routes/{channel}", deleteSlackConnectionChannelRouteHandler(api)).Methods("DELETE")
+	r.HandleFunc("/{id}/targets", putSlackConnectionTargetHandler(api)).Methods("PUT", "POST", "OPTIONS")
+	r.HandleFunc("/{id}/targets", deleteSlackConnectionTargetHandler(api)).Methods("DELETE")
 }
 
 // cleanSlackDestinationPath canonicalizes a destination folder so the
@@ -129,6 +143,8 @@ func slackDestinationLabel(ctx context.Context, workspacePath, profileID string)
 }
 
 func projectUsableSlackBot(ctx context.Context, conn services.SlackConnection) SlackUsableBotResponse {
+	registry := slackLoadTargetsRegistry(ctx)
+	own := slackNamedTarget(ctx, registry, services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})
 	out := SlackUsableBotResponse{
 		ID:            conn.ID,
 		DisplayName:   conn.DisplayName,
@@ -136,18 +152,30 @@ func projectUsableSlackBot(ctx context.Context, conn services.SlackConnection) S
 		Configured:    strings.TrimSpace(conn.BotToken) != "" && strings.TrimSpace(conn.AppToken) != "",
 		WorkspacePath: conn.WorkspacePath,
 		ProfileID:     conn.ProfileID,
-		OwnerLabel:    slackDestinationLabel(ctx, conn.WorkspacePath, conn.ProfileID),
+		OwnerLabel:    own.Label,
+		OwnSlug:       own.Slug,
 		ChannelRoutes: []SlackConnectionChannelRouteResponse{},
+		Targets:       []SlackBotTargetResponse{},
 	}
 	for channel, route := range conn.ChannelRoutes {
-		out.ChannelRoutes = append(out.ChannelRoutes, SlackConnectionChannelRouteResponse{
-			ChannelID:     channel,
-			WorkspacePath: route.WorkspacePath,
-			ProfileID:     route.ProfileID,
-			Label:         slackDestinationLabel(ctx, route.WorkspacePath, route.ProfileID),
-		})
+		def := route.Default()
+		for _, ref := range route.Allowed() {
+			target := slackNamedTarget(ctx, registry, ref)
+			out.ChannelRoutes = append(out.ChannelRoutes, SlackConnectionChannelRouteResponse{
+				ChannelID:     channel,
+				WorkspacePath: ref.WorkspacePath,
+				ProfileID:     ref.ProfileID,
+				Label:         target.Label,
+				Slug:          target.Slug,
+				IsDefault:     !def.Empty() && def.Same(ref),
+			})
+		}
 	}
-	sort.Slice(out.ChannelRoutes, func(i, j int) bool { return out.ChannelRoutes[i].ChannelID < out.ChannelRoutes[j].ChannelID })
+	sort.SliceStable(out.ChannelRoutes, func(i, j int) bool { return out.ChannelRoutes[i].ChannelID < out.ChannelRoutes[j].ChannelID })
+	for _, ref := range conn.Targets {
+		target := slackNamedTarget(ctx, registry, ref)
+		out.Targets = append(out.Targets, SlackBotTargetResponse{WorkspacePath: ref.WorkspacePath, ProfileID: ref.ProfileID, Label: target.Label, Slug: target.Slug})
+	}
 	return out
 }
 
@@ -254,17 +282,30 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 		if claims := GetUserFromContext(r.Context()); claims != nil {
 			addedBy = claims.UserID
 		}
-		updated, err := svc.SetSlackConnectionChannelRoute(r.Context(), conn.ID, channel, &services.SlackConnectionRoute{
-			WorkspacePath: workspacePath,
-			ProfileID:     profileID,
-			AddedBy:       addedBy,
+		next := services.SlackTargetRef{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy}
+		// A channel that already answers for another target gets this one
+		// added to its list (picked with "@bot <slug>", PLAT-668); a new
+		// channel answers for this target by default, as before.
+		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
+			existing, found := c.ChannelRoutes[channel]
+			if !found {
+				if next.Same(services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}) {
+					return fmt.Errorf("this bot already answers for its own %s in every channel", map[bool]string{true: "crew", false: "workflow"}[profileID != ""])
+				}
+				c.ChannelRoutes[channel] = services.SlackConnectionRoute{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy}
+				return nil
+			}
+			for _, ref := range existing.Allowed() {
+				if ref.Same(next) {
+					return fmt.Errorf("channel %s already answers for this destination on this bot", channel)
+				}
+			}
+			existing.Targets = append(existing.Targets, next)
+			c.ChannelRoutes[channel] = existing
+			return nil
 		})
 		if err != nil {
-			status := http.StatusBadRequest
-			if errors.Is(err, services.ErrSlackChannelRouted) {
-				status = http.StatusConflict
-			}
-			http.Error(w, err.Error(), status)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		registerSlackBotConnectorForOwnedConnections(api, svc)
@@ -285,11 +326,49 @@ func deleteSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFun
 			http.Error(w, fmt.Sprintf("channel %s has no route on this bot", channel), http.StatusNotFound)
 			return
 		}
-		if err := requireSlackRouteDestinationWriter(r.Context(), api, existing.WorkspacePath, existing.ProfileID); err != nil && slackDestinationExists(r.Context(), existing.WorkspacePath, existing.ProfileID) {
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
+		// With ?workspace_path= only that target leaves the channel's list;
+		// without, the whole channel route goes.
+		var only *services.SlackTargetRef
+		if raw := strings.TrimSpace(r.URL.Query().Get("workspace_path")); raw != "" {
+			profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
+			ref := services.SlackTargetRef{WorkspacePath: physicalProductSlackScope(r.Context(), profileID, cleanSlackDestinationPath(raw)), ProfileID: profileID}
+			only = &ref
 		}
-		updated, err := svc.SetSlackConnectionChannelRoute(r.Context(), conn.ID, channel, nil)
+		for _, ref := range existing.Allowed() {
+			if only != nil && !ref.Same(*only) {
+				continue
+			}
+			if err := requireSlackRouteDestinationWriter(r.Context(), api, ref.WorkspacePath, ref.ProfileID); err != nil && slackDestinationExists(r.Context(), ref.WorkspacePath, ref.ProfileID) {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
+			if only == nil {
+				delete(c.ChannelRoutes, channel)
+				return nil
+			}
+			route := c.ChannelRoutes[channel]
+			removed := false
+			if def := route.Default(); !def.Empty() && def.Same(*only) {
+				route.WorkspacePath, route.ProfileID, route.AddedBy = "", "", ""
+				removed = true
+			}
+			kept := route.Targets[:0]
+			for _, ref := range route.Targets {
+				if ref.Same(*only) {
+					removed = true
+					continue
+				}
+				kept = append(kept, ref)
+			}
+			route.Targets = kept
+			if !removed {
+				return fmt.Errorf("channel %s does not answer for %s on this bot", channel, only.WorkspacePath)
+			}
+			c.ChannelRoutes[channel] = route
+			return nil
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -324,4 +403,114 @@ func (api *StreamingAPI) revokeSlackConnectionChannelSessions(ctx context.Contex
 		}
 		return true
 	})
+}
+
+// putSlackConnectionTargetHandler attaches a target to a bot for DMs: its
+// slug then reaches it in a 1:1 DM, for people who can reach it with their
+// own access (a Code: its owner only). Needs manage access to the bot and
+// write access to the target.
+func putSlackConnectionTargetHandler(api *StreamingAPI) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		svc, conn, ref, ok := slackConnectionTargetRequest(w, r, api, true)
+		if !ok {
+			return
+		}
+		if _, err := api.slackDestinationRoute(r.Context(), ref.WorkspacePath, ref.ProfileID); err != nil {
+			http.Error(w, fmt.Sprintf("cannot answer for %s in Slack: %v", ref.WorkspacePath, err), http.StatusBadRequest)
+			return
+		}
+		if claims := GetUserFromContext(r.Context()); claims != nil {
+			ref.AddedBy = claims.UserID
+		}
+		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
+			if ref.Same(services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}) {
+				return fmt.Errorf("this is the bot's own target")
+			}
+			for _, existing := range c.Targets {
+				if existing.Same(ref) {
+					return nil
+				}
+			}
+			c.Targets = append(c.Targets, ref)
+			return nil
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		registerSlackBotConnectorForOwnedConnections(api, svc)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(projectUsableSlackBot(r.Context(), updated))
+	}
+}
+
+func deleteSlackConnectionTargetHandler(api *StreamingAPI) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		svc, conn, ref, ok := slackConnectionTargetRequest(w, r, api, false)
+		if !ok {
+			return
+		}
+		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
+			kept := c.Targets[:0]
+			for _, existing := range c.Targets {
+				if !existing.Same(ref) {
+					kept = append(kept, existing)
+				}
+			}
+			c.Targets = kept
+			return nil
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(projectUsableSlackBot(r.Context(), updated))
+	}
+}
+
+// slackConnectionTargetRequest resolves {id} and the target (body on add,
+// query on remove) and checks the caller manages the bot and writes the
+// target (a target that no longer exists may be removed by the bot's manager).
+func slackConnectionTargetRequest(w http.ResponseWriter, r *http.Request, api *StreamingAPI, fromBody bool) (*services.SlackService, services.SlackConnection, services.SlackTargetRef, bool) {
+	svc, id, ok := slackConnectionService(w, r)
+	if !ok {
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	conn, found := svc.GetConnection(id)
+	if !found {
+		http.Error(w, fmt.Sprintf("slack connection %q not found", id), http.StatusNotFound)
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	if strings.TrimSpace(conn.WorkspacePath) == "" {
+		http.Error(w, "the AgentWorks bot reaches targets whose owners turned it on in their Slack tab", http.StatusBadRequest)
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	if err := requireSlackConnectionAccess(r, api, conn); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	var body SlackConnectionChannelRouteRequest
+	if fromBody {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+		}
+	} else {
+		body.WorkspacePath, body.ProfileID = r.URL.Query().Get("workspace_path"), r.URL.Query().Get("profile_id")
+	}
+	ref := slackTargetFromRequest(r.Context(), body.WorkspacePath, body.ProfileID)
+	if ref.Empty() {
+		http.Error(w, "workspace_path is required", http.StatusBadRequest)
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	if err := requireSlackRouteDestinationWriter(r.Context(), api, ref.WorkspacePath, ref.ProfileID); err != nil && (fromBody || slackDestinationExists(r.Context(), ref.WorkspacePath, ref.ProfileID)) {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return nil, services.SlackConnection{}, services.SlackTargetRef{}, false
+	}
+	return svc, conn, ref, true
 }

@@ -864,6 +864,12 @@ func (m *BotConversationManager) workflowRouteForMessage(msg BotIncomingMessage,
 	return m.resolveThreadRoute(botMessageThread(msg))
 }
 
+// slackDirectMessage reports a proven 1:1 Slack DM, where a slug switches the
+// target the conversation talks to (PLAT-668).
+func (msg BotIncomingMessage) slackDirectMessage() bool {
+	return msg.DirectMessage && strings.EqualFold(strings.TrimSpace(msg.Platform), "slack")
+}
+
 // botMessageThread is the platform thread a message belongs to.
 func botMessageThread(msg BotIncomingMessage) ThreadID {
 	thread := ThreadID{Platform: msg.Platform, ChannelID: msg.ChannelID, ThreadTS: msg.ThreadTS, ConnectionID: msg.ConnectionID}
@@ -887,9 +893,10 @@ func (m *BotConversationManager) routeChangeKeepsSession(msg BotIncomingMessage,
 		return false
 	}
 	connector := m.GetConnector(msg.Platform)
-	if connector == nil || connector.Capabilities().Threads {
+	if connector == nil || (connector.Capabilities().Threads && !msg.slackDirectMessage()) {
 		// Threaded platforms have no route-change boundary, and an unknown
-		// platform keeps the established refresh behavior.
+		// platform keeps the established refresh behavior. A Slack DM is one
+		// conversation whose slug can switch targets, so it has one.
 		return false
 	}
 	active.mu.Lock()
@@ -1452,7 +1459,7 @@ func (m *BotConversationManager) handleExistingSession(active *activeBotSession,
 	// route for the next normal message. Treat that as a hard conversation
 	// boundary: continuing the same session would mix workflow files, workshop
 	// mode, and native coding-agent resume state across unrelated routes.
-	if !supportsThreads && !awaiting {
+	if (!supportsThreads || msg.slackDirectMessage()) && !awaiting {
 		incomingRouteKey := botMessageRouteKey(msg)
 		if incomingRouteKey != oldRouteKey {
 			log.Printf("[BOT_MANAGER] Thread-less route changed for session %s (%q → %q) — starting fresh conversation",

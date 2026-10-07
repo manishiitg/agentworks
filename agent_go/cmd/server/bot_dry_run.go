@@ -39,9 +39,13 @@ func (api *StreamingAPI) dryRunSlackMention(ctx context.Context, connectionID, c
 	if strings.TrimSpace(text) == "" {
 		text = "dry run"
 	}
-	msg, blocked := app.DryRunMention(ctx, senderEmail, channelID, text)
+	msg, blocked, reply := app.DryRunMention(ctx, senderEmail, channelID, text)
 	if blocked {
 		return services.BotDryRunOutcome{Reason: "this channel's route blocks the sender's email"}, nil
+	}
+	if reply != "" {
+		// The bot answers instead of a turn (the target buttons, a list).
+		return services.BotDryRunOutcome{Reason: reply, Replies: []string{reply}}, nil
 	}
 	return api.botManager.RunDryRun(ctx, msg, api.admitBotTurn, botDryRunTimeout)
 }
@@ -122,7 +126,7 @@ func (api *StreamingAPI) dryRunSlackDM(ctx context.Context, connectionID, sender
 
 // slackConnectionDryRunHandler is POST /connections/{id}/dry-run: what a
 // mention of this app in a channel would do, without posting or running.
-// Body: {"channel_id": "C...", "sender_email": "...", "text": "..."}.
+// Body: {"channel_id": "C...", "sender_email": "...", "text": "...", "slug": "..."}.
 func slackConnectionDryRunHandler(api *StreamingAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
@@ -148,6 +152,8 @@ func slackConnectionDryRunHandler(api *StreamingAPI) http.HandlerFunc {
 			ChannelID   string `json:"channel_id"`
 			SenderEmail string `json:"sender_email"`
 			Text        string `json:"text"`
+			// Slug picks a target as "@bot <slug> ..." does (PLAT-668).
+			Slug string `json:"slug"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !slackChannelIDPattern.MatchString(services.NormalizeSlackChannelID(body.ChannelID)) {
 			http.Error(w, "an exact Slack channel ID is required (e.g. C1234567890)", http.StatusBadRequest)
@@ -157,6 +163,9 @@ func slackConnectionDryRunHandler(api *StreamingAPI) http.HandlerFunc {
 			if claims := GetUserFromContext(r.Context()); claims != nil {
 				body.SenderEmail = claims.Email
 			}
+		}
+		if slug := strings.TrimSpace(body.Slug); slug != "" {
+			body.Text = strings.TrimSpace(slug + " " + firstNonBlank(strings.TrimSpace(body.Text), "dry run"))
 		}
 		outcome, err := api.dryRunSlackMention(r.Context(), connectionID, body.ChannelID, body.SenderEmail, body.Text)
 		if err != nil {

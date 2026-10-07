@@ -153,14 +153,15 @@ func TestOwnerBotChannelRoutePermissions(t *testing.T) {
 	}
 }
 
-// One channel maps to one destination per bot; the bot's own workflow is
-// not a route; the platform bot cannot be routed here.
-func TestOwnerBotChannelMapsToOneDestination(t *testing.T) {
+// A channel lists several destinations per bot (PLAT-668: the first stays
+// the default, the rest are picked with "@bot <slug>"); the bot's own
+// workflow is not a route; the platform bot cannot be routed here.
+func TestOwnerBotChannelListsDestinations(t *testing.T) {
 	api, alphaApp := ownerBotWorld(t)
 	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", w.Code, w.Body.String())
 	}
-	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/delta"}`); w.Code != http.StatusConflict {
+	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/delta"}`); w.Code != http.StatusOK {
 		t.Fatalf("second destination for C1: %d %s", w.Code, w.Body.String())
 	}
 	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusBadRequest {
@@ -177,7 +178,8 @@ func TestOwnerBotChannelMapsToOneDestination(t *testing.T) {
 		t.Fatalf("route on the platform bot: %d %s", w.Code, w.Body.String())
 	}
 	conn, _ := services.GetSlackService().GetConnection(alphaApp)
-	if len(conn.ChannelRoutes) != 1 || conn.ChannelRoutes["C1111111111"].WorkspacePath != "Workflow/gamma" || conn.ChannelRoutes["C1111111111"].AddedBy != "alice" {
+	route := conn.ChannelRoutes["C1111111111"]
+	if len(conn.ChannelRoutes) != 1 || route.WorkspacePath != "Workflow/gamma" || route.AddedBy != "alice" || len(route.Targets) != 1 || route.Targets[0].WorkspacePath != "Workflow/delta" {
 		t.Fatalf("routes = %+v", conn.ChannelRoutes)
 	}
 }

@@ -3,8 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
@@ -112,4 +116,133 @@ func TestSlackSlugsPlatformBotNeedsOptIn(t *testing.T) {
 	if outcome := w.mention(t, shared.ID, "C0ADMIN001"); outcome.Admitted {
 		t.Fatalf("switching off did not cut the admin's older route: %+v", outcome)
 	}
+}
+
+// teamRegistry: the workflow ("ops") and the crew ("alpha") switched on, both
+// allowed in C0TEAM0001; def names the channel's default (nil for none).
+func teamRegistry(def *services.SlackTargetRef) services.SlackTargetsRegistry {
+	return services.SlackTargetsRegistry{
+		Targets: []services.SlackTargetSettings{
+			{WorkspacePath: slugWorkflow.WorkspacePath, Slug: "ops", Label: "Ops", PlatformBot: true},
+			{WorkspacePath: slugCrew.WorkspacePath, ProfileID: "work", Slug: "alpha", Label: "Alpha", PlatformBot: true},
+		},
+		Channels: map[string]services.SlackPlatformChannel{"C0TEAM0001": {Targets: []services.SlackTargetRef{slugWorkflow, slugCrew}, Default: def}},
+	}
+}
+
+func (w botDryRunWorld) say(t *testing.T, connectionID, channelID, text string) services.BotDryRunOutcome {
+	t.Helper()
+	outcome, err := w.api.dryRunSlackMention(context.Background(), connectionID, channelID, dryRunOwnerEmail, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return outcome
+}
+
+// "@bot <slug> ..." picks one of the channel's allowed targets; a first word
+// that is not an allowed slug is message text and the default answers; with
+// no default the bot asks with buttons. The run-time check refuses a turn
+// whose target was removed from the channel.
+func TestSlackSlugsChannelPickAndAllowedList(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	shared := w.platformBot(t)
+	w.targetsRegistry(t, teamRegistry(&slugWorkflow))
+
+	crew := w.say(t, shared.ID, "C0TEAM0001", "alpha what changed?")
+	requireAdmitted(t, crew, "crew-aaa")
+	if query, _ := crew.Request["query"].(string); strings.Contains(query, "alpha what") {
+		t.Fatalf("the slug stayed in the message: %q", query)
+	}
+	requireAdmitted(t, w.say(t, shared.ID, "C0TEAM0001", "ops what failed today?"), "workflow")
+	text := w.say(t, shared.ID, "C0TEAM0001", "beta is not a slug here")
+	requireAdmitted(t, text, "workflow")
+	if query, _ := text.Request["query"].(string); !strings.Contains(query, "beta is not a slug here") {
+		t.Fatalf("a word that is not an allowed slug was dropped: %q", query)
+	}
+
+	// The crew's slug is no grant where the crew is not allowed.
+	w.adminRoutes(t, map[string]services.ChannelRoute{"C0OTHER001": {WorkflowID: w.workflowID(t), WorkspacePath: "Workflow/shared", BotGrant: "run"}})
+	if outcome := w.say(t, shared.ID, "C0OTHER001", "alpha what changed?"); strings.Contains(outcome.Destination, "crew") {
+		t.Fatalf("a slug reached a target this channel does not allow: %+v", outcome)
+	}
+
+	w.targetsRegistry(t, teamRegistry(nil))
+	prompt := w.say(t, shared.ID, "C0TEAM0001", "hello")
+	if prompt.Admitted || !strings.Contains(prompt.Reason, "ops") || !strings.Contains(prompt.Reason, "alpha") {
+		t.Fatalf("no default should ask with one button per target: %+v", prompt)
+	}
+
+	// Removing the crew from the channel stops its turns at the query
+	// boundary, every turn and tool call.
+	registry := teamRegistry(&slugWorkflow)
+	registry.Channels["C0TEAM0001"] = services.SlackPlatformChannel{Targets: []services.SlackTargetRef{slugWorkflow}, Default: &slugWorkflow}
+	w.targetsRegistry(t, registry)
+	if err := w.api.admitBotTurn(context.Background(), crew.Request, crew.SessionID, crew.UserID, nil); err == nil || !strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("a turn for a target removed from the channel was admitted: %v", err)
+	}
+}
+
+// DMs to the platform bot reach only what the sender can reach with their own
+// access: the owner gets the full chat, a reader Run mode, anyone else
+// nothing. A Code reaches its owner only.
+func TestSlackSlugsDMAccessIsThePersons(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	shared := w.platformBot(t)
+	w.targetsRegistry(t, teamRegistry(&slugWorkflow))
+	w.dmSenders(t, shared, map[string]services.SlackDMSender{"U0OWNER": dmSender(dryRunOwnerEmail), "U0READER": dmSender("reader@example.com"), "U0STRANGER": dmSender("stranger@example.com")})
+	dm := func(sender, text string) services.BotDryRunOutcome {
+		outcome, err := w.api.dryRunSlackDM(context.Background(), shared.ID, sender, "D0DMCHAN01", text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return outcome
+	}
+
+	requireMode(t, dm("U0OWNER", "ops what changed?"), "owner", "full")
+	requireMode(t, dm("U0READER", "ops what changed?"), "reader", "run")
+	if outcome := dm("U0STRANGER", "ops what changed?"); outcome.Admitted || len(outcome.Replies) == 0 {
+		t.Fatalf("a sender without access reached the workflow: %+v", outcome)
+	}
+	if listed := dm("U0READER", "list"); !strings.Contains(listed.Reason, "ops") {
+		t.Fatalf("list did not show what the reader can reach: %+v", listed)
+	}
+
+	code := ChannelRoute{ProfileID: "code", ConversationKey: "code-1", WorkspacePath: "_users/owner/Code/projects/one", WorkspaceUserID: "owner"}
+	if !w.api.slackCanReach(context.Background(), "owner", code) || w.api.slackCanReach(context.Background(), "reader", code) {
+		t.Fatal("a Code must reach its owner and nobody else")
+	}
+}
+
+// A target's owner adds a platform-bot channel only if Slack says they are a
+// member of it; the first target added becomes the channel's default.
+func TestSlackSlugsAddChannelNeedsMembership(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	shared := w.platformBot(t)
+	w.targetsRegistry(t, services.SlackTargetsRegistry{Targets: []services.SlackTargetSettings{{WorkspacePath: "Workflow/shared", PlatformBot: true}}})
+	member := false
+	previous := slackChannelMembership
+	slackChannelMembership = func(_ context.Context, email, _ string) (bool, error) {
+		return member && email == dryRunOwnerEmail, nil
+	}
+	t.Cleanup(func() { slackChannelMembership = previous })
+	add := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/human-feedback/slack/targets/channels/C0TEAM0001", strings.NewReader(`{"workspace_path":"Workflow/shared"}`))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}))
+		req = mux.SetURLVars(req, map[string]string{"channel": "C0TEAM0001"})
+		rec := httptest.NewRecorder()
+		addSlackTargetChannelHandler(w.api)(rec, req)
+		return rec
+	}
+
+	if rec := add(); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-member added the channel: %d %s", rec.Code, rec.Body.String())
+	}
+	if outcome := w.mention(t, shared.ID, "C0TEAM0001"); outcome.Admitted {
+		t.Fatalf("a refused channel answers: %+v", outcome)
+	}
+	member = true
+	if rec := add(); rec.Code != http.StatusOK {
+		t.Fatalf("a member could not add the channel: %d %s", rec.Code, rec.Body.String())
+	}
+	requireAdmitted(t, w.mention(t, shared.ID, "C0TEAM0001"), "workflow")
 }

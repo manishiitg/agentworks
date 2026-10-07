@@ -91,33 +91,49 @@ func (s *SlackService) lookupDMSender(ctx context.Context, userID, channelID str
 
 // directMessage proves a DM and builds its bot message. refusal is the reply
 // the sender gets instead of a turn; ignore means say nothing (other bots).
-func (s *SlackService) directMessage(ctx context.Context, userID, channelID, threadTS, messageTS, text string, isThreadReply bool) (msg BotIncomingMessage, refusal string, ignore bool) {
-	route, dedicated := DedicatedSlackRoute(ctx, s.connectionID, channelID)
-	if !dedicated || route == nil {
-		return msg, "I answer direct messages only as a workflow's or crew's own bot. Mention me in a channel instead.", false
+// With slug routing (PLAT-668) the platform bot takes DMs too, and the
+// message reaches the target its slug (or the DM's remembered pick, or the
+// app's own target) names, among those the sender can reach with their own
+// access; pick carries the binding and any button prompt.
+func (s *SlackService) directMessage(ctx context.Context, userID, channelID, threadTS, messageTS, text string, isThreadReply bool) (msg BotIncomingMessage, refusal string, ignore bool, pick slackDMPick) {
+	hooks := currentSlackRoutingHooks()
+	var route *ChannelRoute
+	if hooks == nil {
+		legacy, dedicated := DedicatedSlackRoute(ctx, s.connectionID, channelID)
+		if !dedicated || legacy == nil {
+			return msg, "I answer direct messages only as a workflow's or crew's own bot. Mention me in a channel instead.", false, pick
+		}
+		route = legacy
 	}
 	sender, err := s.lookupDMSender(ctx, userID, channelID)
 	if err != nil {
 		log.Printf("[SLACK_DM] connection=%s user=%s channel=%s: %v", s.connectionID, userID, channelID, err)
-		return msg, "I couldn't verify this conversation with Slack. The app needs the im:read, im:history and users:read.email scopes; ask its owner to add them and reinstall.", false
+		return msg, "I couldn't verify this conversation with Slack. The app needs the im:read, im:history and users:read.email scopes; ask its owner to add them and reinstall.", false, pick
 	}
 	if sender.IsBot || sender.Deleted {
-		return msg, "", true
+		return msg, "", true, pick
 	}
 	if !sender.OneToOne {
-		return msg, "I act as you only in a 1:1 direct message. Mention me in a channel instead.", false
+		return msg, "I act as you only in a 1:1 direct message. Mention me in a channel instead.", false, pick
 	}
 	if sender.Guest || sender.External || (s.teamID != "" && sender.TeamID != "" && sender.TeamID != s.teamID) {
-		return msg, "Direct messages are for full members of this Slack workspace. Mention me in a channel instead.", false
+		return msg, "Direct messages are for full members of this Slack workspace. Mention me in a channel instead.", false, pick
 	}
 	email := strings.TrimSpace(sender.Email)
-	if !SlackRouteAllowsEmail(*route, email) {
-		return msg, "This bot blocks your email.", false
+	if route != nil && !SlackRouteAllowsEmail(*route, email) {
+		return msg, "This bot blocks your email.", false, pick
 	}
 	accountID, ok := resolveSlackDMUser(email)
 	if !ok {
 		log.Printf("[SLACK_DM] connection=%s user=%s email=%q maps to no single enabled account", s.connectionID, userID, email)
-		return msg, "Your Slack email doesn't match an AgentWorks account, so I can't act as you here. Ask an admin to add it, or mention me in a channel.", false
+		return msg, "Your Slack email doesn't match an AgentWorks account, so I can't act as you here. Ask an admin to add it, or mention me in a channel.", false, pick
+	}
+	if hooks != nil {
+		pick = s.pickDMRoute(ctx, hooks, accountID, channelID, text)
+		text, route = pick.text, pick.route
+		if route != nil && !SlackRouteAllowsEmail(*route, email) {
+			return msg, "This bot blocks your email.", false, slackDMPick{}
+		}
 	}
 	return BotIncomingMessage{
 		Platform:        "slack",
@@ -135,7 +151,7 @@ func (s *SlackService) directMessage(ctx context.Context, userID, channelID, thr
 		IsMention:       true,
 		PresetWorkflow:  route,
 		DirectMessage:   true,
-	}, "", false
+	}, "", false, pick
 }
 
 func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
@@ -160,14 +176,31 @@ func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
 	}
 	ctx := context.Background()
 	text := s.stripMention(ev.Text)
-	msg, refusal, ignore := s.directMessage(ctx, ev.User, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
+	msg, refusal, ignore, pick := s.directMessage(ctx, ev.User, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
 	if ignore {
 		return
 	}
 	thread := ThreadID{Platform: "slack", ChannelID: ev.Channel, ThreadTS: threadTS, ConnectionID: s.connectionID}
+	if refusal == "" {
+		refusal = pick.reply
+	}
+	if pick.bind != nil {
+		// The pick is remembered for the whole DM until another slug is used.
+		if err := SaveSlackThreadTarget(ctx, thread, SlackThreadTarget{Ref: pick.bind.Ref, Slug: pick.bind.Slug, BoundBy: ev.User}); err != nil {
+			log.Printf("[SLACK_DM] remembering %s failed: %v", pick.bind.Slug, err)
+		}
+	}
 	if refusal != "" {
 		if _, err := s.SendThreadMessage(ctx, thread, refusal); err != nil {
 			log.Printf("[SLACK_DM] refusal reply failed: %v", err)
+		}
+		return
+	}
+	if len(pick.choices) > 0 {
+		msg.Text = pick.text
+		rememberSlackPendingPick(ThreadID{Platform: "slack", ChannelID: ev.Channel, ThreadTS: ev.Channel, ConnectionID: s.connectionID}, msg, ev.Message, pick.choices)
+		if _, err := s.SendThreadMessageWithBlocks(ctx, thread, slackPickPrompt(pick.choices, ""), slackPickBlocks(pick.choices)); err != nil {
+			log.Printf("[SLACK_DM] target prompt failed: %v", err)
 		}
 		return
 	}
@@ -182,9 +215,15 @@ func (s *SlackService) DryRunDirectMessage(ctx context.Context, senderSlackID, c
 	// A top-level DM: the conversation is the DM channel itself.
 	channelID = strings.ToUpper(strings.TrimSpace(channelID))
 	messageTS := fmt.Sprintf("dryrun.%d", time.Now().UnixNano())
-	msg, refusal, ignore := s.directMessage(ctx, senderSlackID, channelID, channelID, messageTS, text, false)
+	msg, refusal, ignore, pick := s.directMessage(ctx, senderSlackID, channelID, channelID, messageTS, text, false)
 	if ignore {
 		return msg, "ignored: the sender is a bot or a deleted account"
+	}
+	if refusal == "" {
+		refusal = pick.reply
+	}
+	if refusal == "" && len(pick.choices) > 0 {
+		refusal = dryRunPickReply(slackChannelPick{choices: pick.choices})
 	}
 	return msg, refusal
 }
