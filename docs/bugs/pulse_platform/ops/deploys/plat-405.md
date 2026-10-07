@@ -67,3 +67,7 @@ once, stale `.deploying` markers no longer pin releases, drift report.
 ## Slack notice carries the changelog (2026-10-07)
 
 Owner: the deploy notice showed only the newest commit ("we send a very small changelog"). The start notice now lists every change since the release the server is running (read from its `current` release folder name), one line per commit subject, bookkeeping commits (`Record …`, ticket-only commits) left out, up to 60 lines. If the current release cannot be read, the notice stays as before.
+
+## Dominion catches up (2026-10-07)
+
+Owner handed Dominion to this session ("you can take over"). Dominion was on 1b1f5284 (2026-10-05), 227 commits behind, with only MULTI_USER_MODE of the sandbox settings. Its deploy now also manages `AGENTWORKS_CLI_LANDLOCK=on` and `AGENTWORKS_CLI_FULL=on` (as on Excellence and Confida; Landlock is in the host kernel and the runner is already built per release). Slots and the common build path are left for later (2 users, one day-trading workflow). After the catch-up deploy, `tectonicusadaytrading` needs the 1.0.46 step-description upgrade before its next run (weekdays 09:55, 11:55, 13:55, 15:55 America/New_York).

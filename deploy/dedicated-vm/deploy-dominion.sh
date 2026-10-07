@@ -307,7 +307,8 @@ echo "==> Activating: flipping $CURRENT_LINK -> $RELEASE_DIR and restarting domi
 python3 - /srv/dominion/.env <<'PY'
 import os, pathlib, sys, tempfile
 path = pathlib.Path(sys.argv[1])
-managed = {'AGENT_PRODUCTS': 'dominion,work', 'AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES': 'work'}
+# Coding CLIs run under Landlock in full mode, as on Excellence and Confida (owner, 2026-10-07).
+managed = {'AGENT_PRODUCTS': 'dominion,work', 'AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES': 'work', 'AGENTWORKS_CLI_LANDLOCK': 'on', 'AGENTWORKS_CLI_FULL': 'on'}
 lines = [line for line in path.read_text().splitlines() if line.partition('=')[0] not in managed]
 lines += [f'{key}={value}' for key, value in managed.items()]
 with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, prefix='.env.next.', delete=False) as output:
