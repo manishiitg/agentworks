@@ -14,7 +14,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 37 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 34 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 27 | 5 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-697](goals/pulse/plat-697.md) | Pulse as the goal owner | open | P1 | [goals/pulse](goals/pulse/index.md) |
 | [PLAT-696](app/ui/plat-696.md) | Remove the old Runtime Health panel and its process endpoints | fixed on main | P3 | [app/ui](app/ui/index.md) |
 | [PLAT-695](browser/runtime-health/plat-695.md) | Runtime Health: show the Chrome extension's shared tabs | closed | P3 | [browser/runtime-health](browser/runtime-health/index.md) |
 | [PLAT-694](integrations/slack/plat-694.md) | Slack bot removal refusal names the workflow and its owners | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-657](code/chat/plat-657.md) | Closed Code tabs stayed reachable | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-656](ops/local/plat-656.md) | Start script overwrote the shared mcpbridge | fixed on main | P2 | [ops/local](ops/local/index.md) |
 | [PLAT-655](coding-agents/accounts/plat-655.md) | Model picker offers providers a person cannot use | open | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |

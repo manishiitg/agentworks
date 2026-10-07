@@ -10,3 +10,7 @@
 | [general](general/index.md) | 5 | 1 |
 | [lifecycle](lifecycle/index.md) | 8 | 1 |
 | [reviews](reviews/index.md) | 17 | 6 |
+
+| Ticket | Title | State | Priority |
+|---|---|---|---|
+| [PLAT-697](plat-697.md) | Pulse as the goal owner | open | P1 |
