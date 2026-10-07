@@ -27,6 +27,7 @@ import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegis
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import { SharedTokenUsageChip } from './providers/SharedTokenUsageNotice'
+import { sharedAccountProvider } from '../utils/tokenLimits'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
 import { isChatCompatiblePhase } from '../utils/chatSubmitHelpers'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
@@ -3593,8 +3594,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {attachmentEl}
-                {/* A Code/Crew tab names its account: empty or global:* is a shared server account; anything else is the person's own. */}
-                <SharedTokenUsageChip onSharedAccount={!activeTab?.metadata?.agentProfileConnectionID || activeTab.metadata.agentProfileConnectionID.startsWith('global:')} />
+                {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
+                <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID, currentOption?.provider)} />
                 {/* Status text - removed observer initialization message */}
               </div>
               {/* Show old buttons */}

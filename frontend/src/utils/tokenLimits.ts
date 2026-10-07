@@ -32,3 +32,68 @@ export function resetLabel(iso: string | undefined, weekly: boolean): string {
   const hm = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`
   return weekly ? `Monday ${hm}` : hm
 }
+
+/** One set of shared-account token figures (overall or one account). */
+export interface TokenFigures {
+  daily_used: number
+  weekly_used: number
+  daily_limit?: number
+  weekly_limit?: number
+  state: 'ok' | 'warning' | 'over'
+}
+
+/** The figures a chat shows, with what they count ("the shared Codex account"). */
+export interface ShownTokenFigures extends TokenFigures {
+  scope: string
+}
+
+/**
+ * The provider of the shared server account a chat runs on, from its
+ * connection ID (PLAT-693): `global:<p>` or `server-default:<p>` name it, empty
+ * is the profile's default server account (fallbackProvider), anything else is
+ * the person's own account (null: nothing counts or is limited).
+ */
+export function sharedAccountProvider(connectionId: string | undefined, fallbackProvider?: string): string | null | undefined {
+  const id = (connectionId || '').trim()
+  if (!id) return fallbackProvider || undefined
+  for (const prefix of ['global:', 'server-default:']) {
+    if (id.startsWith(prefix)) return id.slice(prefix.length) || fallbackProvider || undefined
+  }
+  return null
+}
+
+const limitFraction = (f: TokenFigures): number => Math.max(
+  f.daily_limit ? f.daily_used / f.daily_limit : -1,
+  f.weekly_limit ? f.weekly_used / f.weekly_limit : -1,
+)
+
+/**
+ * What to show for a chat on provider's shared account: the account's own
+ * limit or the overall cap across all shared accounts, whichever is nearer
+ * its limit; with no limit, the account's plain use. Without a known
+ * provider, the overall figures.
+ */
+export function shownTokenFigures(
+  usage: TokenFigures & { accounts?: Record<string, TokenFigures & { label?: string }> },
+  provider?: string,
+): ShownTokenFigures {
+  const overall: ShownTokenFigures = { ...usage, scope: 'the shared accounts' }
+  if (!provider) return overall
+  const known = usage.accounts?.[provider]
+  const account: ShownTokenFigures = known
+    ? { ...known, scope: `the shared ${known.label || provider} account` }
+    : { daily_used: 0, weekly_used: 0, state: 'ok', scope: 'this shared account' }
+  const a = limitFraction(account)
+  const o = limitFraction(overall)
+  if (a < 0 && o < 0) return account
+  return a >= o ? account : overall
+}
+
+const SHARED_ACCOUNT_LABELS: Record<string, string> = {
+  'claude-code': 'Claude Code', 'codex-cli': 'Codex', 'cursor-cli': 'Cursor', 'muse-cli': 'Muse', 'pi-cli': 'Pi', 'agy-cli': 'Antigravity',
+}
+
+/** Short name of a shared account, as in "the shared Codex account". */
+export function sharedAccountLabel(provider: string): string {
+  return SHARED_ACCOUNT_LABELS[provider] || provider
+}

@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-693](plat-693.md) | Per-account token limits on shared server accounts | fixed on main | P1 |
 | [PLAT-690](plat-690.md) | MCP tools to view and set shared-account token limits | fixed on main | P2 |
 | [PLAT-683](plat-683.md) | Per-user daily and weekly token limits on shared accounts | fixed on main | P1 |

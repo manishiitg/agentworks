@@ -77,3 +77,7 @@ the shared plan for everyone. There was no per-person cap.
 ## Chat input chip (2026-10-07)
 
 Owner: people should see it where they type. The chat input toolbar shows a small chip next to Attach (e.g. "1.2M/5M today", the tighter of the two limits; amber from 80%, red at the limit; both limits and resets in the tooltip). Hidden when no limit is set. The Models panel notice stays.
+
+## Per-account limits (2026-10-07)
+
+Each shared account now also has its own per-person limit with per-person overrides; the limit above stays as the overall cap. See [PLAT-693](plat-693.md).

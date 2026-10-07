@@ -8,6 +8,7 @@ import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
 import { allowedModelsSummary } from '../../utils/allowedModels'
+import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
 import {
   llmConfigService,
   providerApiErrorText,
@@ -101,6 +102,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [modelsId, setModelsId] = useState<string | null>(null)
   const [sharingDraft, setSharingDraft] = useState<ProviderAccountSharing>({ mode: 'private' })
   const [availabilityDraft, setAvailabilityDraft] = useState<ProviderAvailableTo | null>(null)
+  // The server account's default per-person token limits being edited (PLAT-693).
+  const [limitsDraft, setLimitsDraft] = useState<{ daily: string; weekly: string } | null>(null)
   // Signing in the shared login changes the account everyone allowed uses:
   // confirm, and point to Add my account for a private one.
   const [confirmSharedLogin, setConfirmSharedLogin] = useState<ProviderConnection | null>(null)
@@ -258,6 +261,18 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       setError(status === 409 ? 'The installation sets who can use this account, so it cannot be changed here.' : providerApiErrorText(saveError, 'Could not save who can use it.'))
     } finally { setBusy(false) }
   }
+  const saveTokenLimits = async (draft: { daily: string; weekly: string }) => {
+    const daily = parseTokenAmount(draft.daily)
+    const weekly = parseTokenAmount(draft.weekly)
+    if (daily === null || weekly === null) { setError('Use a number like 500k or 5M, or leave it empty for no limit.'); return }
+    setBusy(true); setError(null)
+    try {
+      await llmConfigService.setServerAccountTokenLimits(provider, { daily, weekly })
+      setConnections(current => current.map(item => item.id === `global:${provider}` ? { ...item, token_limits: daily || weekly ? { daily: daily || undefined, weekly: weekly || undefined } : undefined } : item))
+      setLimitsDraft(null); changed()
+    } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save the limits.')) }
+    finally { setBusy(false) }
+  }
   const inputClass = 'mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
   const secondaryButtonClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
   const badgeClass = 'rounded-md px-1.5 py-0.5 text-[10px] font-medium'
@@ -369,6 +384,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>
               {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsSummary(record.allowed_models)}</p>}
+              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Tokens (input + output) each person may use on this account; overrides per person are in Access → Users. Day and week are UTC; weeks start Monday.">
+                Limit per person: {record.token_limits?.daily || record.token_limits?.weekly
+                  ? [record.token_limits?.daily ? `${formatTokens(record.token_limits.daily)} a day` : '', record.token_limits?.weekly ? `${formatTokens(record.token_limits.weekly)} a week` : ''].filter(Boolean).join(' · ')
+                  : 'none'}
+              </p>}
             </div>
           </div>
           {!disabled && record.can_manage && (
@@ -381,6 +401,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
                 ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
                 ...modelsItem(record),
+                ...(manage ? [{ label: 'Limits', onSelect: () => setLimitsDraft(limitsDraft ? null : { daily: record.token_limits?.daily ? String(record.token_limits.daily) : '', weekly: record.token_limits?.weekly ? String(record.token_limits.weekly) : '' }) }] : []),
               ]} />
             </div>
           )}
@@ -411,6 +432,23 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Done</button>
             </div>
           </div>
+        )}
+        {limitsDraft !== null && record.can_manage && (
+          <form className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveTokenLimits(limitsDraft) }}>
+            <p className="text-xs text-gray-600 dark:text-gray-300">Tokens each person may use on this account (UTC; weeks start Monday). Empty is unlimited. Set a different limit for one person in Access → Users.</p>
+            <div className="flex flex-wrap gap-3">
+              {(['daily', 'weekly'] as const).map(field => (
+                <label key={field} className="text-xs font-medium text-gray-700 dark:text-gray-300">{field === 'daily' ? 'Daily' : 'Weekly'}
+                  <input aria-label={`${field === 'daily' ? 'Daily' : 'Weekly'} token limit per person`} disabled={busy} value={limitsDraft[field]} placeholder="Unlimited"
+                    onChange={event => setLimitsDraft({ ...limitsDraft, [field]: event.target.value })} className={`${inputClass} w-32`} />
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save limits'}</button>
+              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setLimitsDraft(null)}>Cancel</button>
+            </div>
+          </form>
         )}
         {modelsEditor(record)}
         {terminalFor(record)}

@@ -82,8 +82,12 @@ type UserRecord struct {
 	// TokenLimits caps this person's tokens per UTC day and Monday-start
 	// week on the shared server accounts (token_limits.go). Nil is unlimited.
 	TokenLimits *UserTokenLimits `json:"token_limits,omitempty"`
-	CreatedAt   string           `json:"created_at,omitempty"`
-	UpdatedAt   string           `json:"updated_at,omitempty"`
+	// AccountTokenLimits overrides, per shared server account (keyed by
+	// provider, e.g. "codex-cli"), that account's default per-person limits
+	// for this person; a field set here replaces the default's field.
+	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits,omitempty"`
+	CreatedAt          string                      `json:"created_at,omitempty"`
+	UpdatedAt          string                      `json:"updated_at,omitempty"`
 }
 
 // UserSSO links an account to an external identity provider.
@@ -711,11 +715,12 @@ type userAdminView struct {
 	CodeReviewer bool     `json:"code_reviewer"`
 	Disabled     bool     `json:"disabled"`
 	// Invited: added by email, no password, not signed in with SSO yet.
-	Invited     bool                     `json:"invited"`
-	TokenLimits *UserTokenLimits         `json:"token_limits,omitempty"`
-	TokenUsage  *sharedAccountTokenUsage `json:"token_usage,omitempty"`
-	CreatedAt   string                   `json:"created_at,omitempty"`
-	UpdatedAt   string                   `json:"updated_at,omitempty"`
+	Invited            bool                        `json:"invited"`
+	TokenLimits        *UserTokenLimits            `json:"token_limits,omitempty"`
+	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits,omitempty"`
+	TokenUsage         *sharedAccountTokenUsage    `json:"token_usage,omitempty"`
+	CreatedAt          string                      `json:"created_at,omitempty"`
+	UpdatedAt          string                      `json:"updated_at,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -733,8 +738,9 @@ func viewOf(rec UserRecord) userAdminView {
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
 		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
-		Invited:     rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
-		TokenLimits: rec.TokenLimits.normalized(),
+		Invited:            rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
+		TokenLimits:        rec.TokenLimits.normalized(),
+		AccountTokenLimits: normalizedAccountTokenLimits(rec.AccountTokenLimits),
 	}
 }
 
@@ -798,6 +804,10 @@ type userWriteRequest struct {
 	Disabled     *bool     `json:"disabled"`
 	// TokenLimits replaces both limits when present; zero is unlimited.
 	TokenLimits *UserTokenLimits `json:"token_limits"`
+	// AccountTokenLimits sets this person's override for each named shared
+	// account (both fields); an entry with no limit removes the override.
+	// Accounts not named keep their override.
+	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -917,6 +927,10 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	if req.TokenLimits != nil {
 		rec.TokenLimits = req.TokenLimits.normalized()
 	}
+	if err := applyAccountTokenLimits(&rec, req.AccountTokenLimits); err != nil {
+		writeUsersError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	dir.Users = append(dir.Users, rec)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
@@ -996,12 +1010,16 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	if req.TokenLimits != nil {
 		rec.TokenLimits = req.TokenLimits.normalized()
 	}
+	if err := applyAccountTokenLimits(rec, req.AccountTokenLimits); err != nil {
+		writeUsersError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	rec.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized())
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v account_token_limits=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits))
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 

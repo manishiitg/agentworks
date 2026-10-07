@@ -524,12 +524,12 @@ INSERT OR IGNORE INTO cost_events (
 	return report, nil
 }
 
-// accountTokens sums one person's tokens on accounts whose ID starts with
-// accountPrefix since weekStart, and the part of it since dayStart.
-func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error) {
-	var usage AccountTokenUsage
+// accountTokens sums one person's tokens per account, on accounts whose ID
+// starts with accountPrefix, since weekStart and the part since dayStart.
+func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error) {
+	usage := map[string]AccountTokenUsage{}
 	rows, err := s.db.Query(`
-SELECT occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
+SELECT account_id, occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
        requested_provider, effective_provider, operation_metadata_json
 FROM cost_events
 WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
@@ -543,8 +543,8 @@ WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 	day := dayStart.UTC()
 	for rows.Next() {
 		var e Entry
-		var occurredAt, metadataJSON string
-		if err := rows.Scan(&occurredAt, &e.PromptTokens, &e.CompletionTokens, &e.CacheReadTokens, &e.CacheWriteTokens,
+		var accountID, occurredAt, metadataJSON string
+		if err := rows.Scan(&accountID, &occurredAt, &e.PromptTokens, &e.CompletionTokens, &e.CacheReadTokens, &e.CacheWriteTokens,
 			&e.Provider, &e.EffectiveProvider, &metadataJSON); err != nil {
 			return usage, fmt.Errorf("costledger: scan account tokens: %w", err)
 		}
@@ -552,10 +552,12 @@ WHERE user_id = ? AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 			_ = json.Unmarshal([]byte(metadataJSON), &e.OperationMetadata)
 		}
 		tokens := int64(entryInputTokens(e) + e.CompletionTokens)
-		usage.Week += tokens
+		account := usage[accountID]
+		account.Week += tokens
 		if at, err := time.Parse(time.RFC3339Nano, occurredAt); err == nil && !at.Before(day) {
-			usage.Day += tokens
+			account.Day += tokens
 		}
+		usage[accountID] = account
 	}
 	return usage, rows.Err()
 }

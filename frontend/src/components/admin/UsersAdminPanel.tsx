@@ -12,7 +12,8 @@ import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
-import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
+import { formatTokens, parseTokenAmount, sharedAccountLabel } from '../../utils/tokenLimits'
+import { llmConfigService } from '../../services/llm-config-api'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -61,8 +62,11 @@ const shownLimit = (n?: number) => (n ? String(n) : '')
  * One person's limits on the shared server accounts, with their use today and
  * this week. Saved on blur or Enter; empty is unlimited.
  */
-function TokenLimitsCell({ user, disabled, onSave }: {
+function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccount }: {
   user: AdminUser; disabled: boolean; onSave: (limits: { daily: number; weekly: number }) => void
+  /** Providers with a shared server account, for adding a per-person override. */
+  accountProviders: string[]
+  onSaveAccount: (provider: string, limits: { daily: number; weekly: number }) => void
 }) {
   const limits = user.token_limits
   const usage = user.token_usage
@@ -100,9 +104,90 @@ function TokenLimitsCell({ user, disabled, onSave }: {
       {field('Weekly', weekly, setWeekly)}
       {invalid && <p className="text-destructive">Use a number like 500k or 5M.</p>}
       {usage && (
-        <p className={tone} title="Tokens (input + output) on the shared server accounts. Day and week are UTC; weeks start Monday.">
-          Today {used(usage.daily_used, usage.daily_limit)} · week {used(usage.weekly_used, usage.weekly_limit)}
+        <p className={tone} title="Overall: tokens (input + output) on all shared server accounts together. Day and week are UTC; weeks start Monday.">
+          All: today {used(usage.daily_used, usage.daily_limit)} · week {used(usage.weekly_used, usage.weekly_limit)}
         </p>
+      )}
+      <AccountLimitsList user={user} disabled={disabled} accountProviders={accountProviders} onSave={onSaveAccount} />
+    </div>
+  )
+}
+
+/**
+ * One line per shared account (PLAT-693): this person's use against the
+ * account's limit, which is the account default (Providers → Limits) unless
+ * an override is set here. Edit sets the override; empty fields fall back to
+ * the default.
+ */
+function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
+  user: AdminUser; disabled: boolean; accountProviders: string[]
+  onSave: (provider: string, limits: { daily: number; weekly: number }) => void
+}) {
+  const accounts = user.token_usage?.accounts || {}
+  const overrides = user.account_token_limits || {}
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState({ daily: '', weekly: '' })
+  const shown = [...new Set([...Object.keys(accounts), ...Object.keys(overrides)])].sort()
+  const addable = accountProviders.filter((p) => !shown.includes(p))
+  const startEdit = (provider: string) => {
+    const o = overrides[provider]
+    setDraft({ daily: shownLimit(o?.daily), weekly: shownLimit(o?.weekly) })
+    setEditing(provider)
+  }
+  const save = (provider: string) => {
+    const daily = parseTokenAmount(draft.daily)
+    const weekly = parseTokenAmount(draft.weekly)
+    if (daily === null || weekly === null) return
+    onSave(provider, { daily, weekly })
+    setEditing(null)
+  }
+  const part = (n: number | undefined, limit: number | undefined) => `${formatTokens(n)}${limit ? `/${formatTokens(limit)}` : ''}`
+  const rows = editing && !shown.includes(editing) ? [...shown, editing] : shown
+  return (
+    <div className="space-y-0.5">
+      {rows.map((provider) => {
+        const a = accounts[provider]
+        const o = overrides[provider]
+        const def = a?.default_limits
+        const tone = a?.state === 'over' ? 'text-destructive' : a?.state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+        const label = a?.label || sharedAccountLabel(provider)
+        if (editing === provider) {
+          const invalid = parseTokenAmount(draft.daily) === null || parseTokenAmount(draft.weekly) === null
+          return (
+            <div key={provider} className="flex flex-wrap items-center gap-1">
+              <span className="w-16 truncate">{label}</span>
+              {(['daily', 'weekly'] as const).map((field) => (
+                <Input key={field} value={draft[field]} disabled={disabled}
+                  onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') save(provider); if (e.key === 'Escape') setEditing(null) }}
+                  placeholder={def?.[field] ? `Default ${formatTokens(def[field])}` : 'Unlimited'}
+                  aria-label={`${label} ${field} token limit for ${user.username}`} className="h-6 w-20 text-xs" />
+              ))}
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={disabled || invalid} onClick={() => save(provider)}>Save</Button>
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(null)}>Cancel</Button>
+            </div>
+          )
+        }
+        const hasLimit = Boolean(a?.daily_limit || a?.weekly_limit)
+        return (
+          <p key={provider} className={tone}>
+            <button type="button" disabled={disabled} onClick={() => startEdit(provider)} className="underline-offset-2 hover:underline disabled:no-underline"
+              title={`Edit ${user.username}'s limit on the shared ${label} account. Default: ${def?.daily || def?.weekly ? [def?.daily ? `${formatTokens(def.daily)} a day` : '', def?.weekly ? `${formatTokens(def.weekly)} a week` : ''].filter(Boolean).join(', ') : 'none'}.`}>
+              {label}{o ? ' (own limit)' : ''}
+            </button>
+            {': '}
+            {a ? <>today {part(a.daily_used, a.daily_limit)} · week {part(a.weekly_used, a.weekly_limit)}</> : 'no use'}
+            {!hasLimit && a && ' · no limit'}
+          </p>
+        )
+      })}
+      {addable.length > 0 && !editing && (
+        <select aria-label={`Set an account limit for ${user.username}`} disabled={disabled} value=""
+          onChange={(e) => { if (e.target.value) startEdit(e.target.value) }}
+          className="h-6 rounded border border-border bg-background px-1 text-xs text-muted-foreground">
+          <option value="">+ Limit on an account…</option>
+          {addable.map((p) => <option key={p} value={p}>{sharedAccountLabel(p)}</option>)}
+        </select>
       )}
     </div>
   )
@@ -126,6 +211,16 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Providers with a shared server account, for per-person account overrides (PLAT-693).
+  const [accountProviders, setAccountProviders] = useState<string[]>([])
+  useEffect(() => {
+    if (vaultOnly) return
+    let cancelled = false
+    void Promise.resolve().then(() => llmConfigService.getProviderConnections())
+      .then((records) => { if (!cancelled) setAccountProviders([...new Set(records.filter((r) => r.relation === 'server' || r.id.startsWith('global:')).map((r) => r.provider))]) })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [vaultOnly])
 
   const [resetFor, setResetFor] = useState<AdminUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
@@ -368,6 +463,8 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                           user={u}
                           disabled={busy}
                           onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
+                          accountProviders={accountProviders}
+                          onSaveAccount={(provider, limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_token_limits: { [provider]: limits } })) }}
                         />
                       </td>
                     )}

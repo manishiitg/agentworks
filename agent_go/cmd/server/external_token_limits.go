@@ -25,6 +25,11 @@ import (
 //     active admin account, re-checked on every call. It writes through the
 //     admin UI's own handler (PUT /api/admin/users/{id}).
 //
+// Each shared account also has its own per-person limit (PLAT-693): pass
+// account (a provider such as "codex-cli") to read that account's figures, to
+// set a person's override on it, or, with no person, the account's default
+// for everyone.
+//
 // Every call, reads included, goes into the Code review audit log with the
 // token that made it (get_code_audit shows it). Only id, username, email,
 // limits and usage leave the server.
@@ -83,8 +88,11 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 	limit := func(what string) map[string]any {
 		return map[string]any{"type": []any{"integer", "null"}, "minimum": 0, "maximum": 1e15, "description": what + " limit in tokens on the shared server accounts; 0 or null is unlimited; omit to leave it unchanged."}
 	}
-	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Without user_id/email it lists every active person. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date}))
-	add("set_token_limits", "Set a person's daily and/or weekly token limit on the shared server accounts (the admin Users page's limits). Integers; 0 or null is unlimited; an omitted field stays as it is. Identify the person by user_id or email. Returns their new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)")}))
+	account := func(what string) map[string]any {
+		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
+	}
+	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Without user_id/email it lists every active person; account limits accounts to one shared account. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
+	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it). With account and no person: the account's default per-person limit for everyone. Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap.")}))
 }
 
 // tokenLimitPerson is the only shape a person leaves the server in.
@@ -101,15 +109,35 @@ type tokenLimitPersonUsage struct {
 	DailyUsed   int64  `json:"daily_used"`
 	WeeklyUsed  int64  `json:"weekly_used"`
 	State       string `json:"state"`
+	// Accounts is each shared account's own figures, keyed by provider.
+	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
 }
 
 func personOf(rec *UserRecord) tokenLimitPerson {
 	return tokenLimitPerson{UserID: rec.ID, Username: rec.Username, Email: rec.Email}
 }
 
-func (api *StreamingAPI) tokenLimitUsageOf(rec *UserRecord) tokenLimitPersonUsage {
+// tokenLimitUsageOf is rec's usage; a non-empty account keeps only that
+// shared account in Accounts (present even with no use or limit).
+func (api *StreamingAPI) tokenLimitUsageOf(rec *UserRecord, account string) tokenLimitPersonUsage {
 	u := api.sharedAccountTokenUsageFor(rec)
-	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State}
+	accounts := u.Accounts
+	if account != "" {
+		one := accounts[account]
+		if one == nil {
+			one = &accountTokenUsage{Label: sharedAccountLabel(account), State: "ok"}
+		}
+		accounts = map[string]*accountTokenUsage{account: one}
+	}
+	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, Accounts: accounts}
+}
+
+func stringsToAny(values []string) []any {
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		out = append(out, v)
+	}
+	return out
 }
 
 // tokenLimitTarget resolves user_id / email to one directory record; both
@@ -148,8 +176,17 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 		return
 	}
 	named := externalArg(args, "user_id") != "" || externalArg(args, "email") != ""
+	account := strings.TrimSpace(externalArg(args, "account"))
+	if account != "" && !validTokenLimitAccount(account) {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Unknown shared account; pass a provider such as codex-cli.")
+		return
+	}
+	if name == "set_token_limits" && !named && account == "" {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass user_id or email, or account for an account default.")
+		return
+	}
 	if name == "set_token_limits" && !named {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass user_id or email.")
+		api.externalSetAccountDefaultLimits(w, r, account, args)
 		return
 	}
 	var target *UserRecord
@@ -166,7 +203,7 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 		target = rec
 	}
 	if name == "set_token_limits" {
-		api.externalSetTokenLimits(w, r, target, args)
+		api.externalSetTokenLimits(w, r, target, account, args)
 		return
 	}
 	from, to := strings.TrimSpace(externalArg(args, "from")), strings.TrimSpace(externalArg(args, "to"))
@@ -176,6 +213,9 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 	}
 	if from != "" || to != "" {
 		auditTarget += " " + from + ".." + to
+	}
+	if account != "" {
+		auditTarget += " account=" + account
 	}
 	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "read_token_usage", "", "", auditTarget); err != nil {
 		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The Code review audit log is unavailable.")
@@ -200,11 +240,16 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 	dayStart, dayEnd, weekStart, weekEnd := tokenLimitWindows(now)
 	out := make([]tokenLimitPersonUsage, 0, len(people))
 	for _, rec := range people {
-		out = append(out, api.tokenLimitUsageOf(rec))
+		out = append(out, api.tokenLimitUsageOf(rec, account))
+	}
+	defaults := serverAccountTokenLimitDefaults(r.Context())
+	if account != "" {
+		defaults = map[string]*UserTokenLimits{account: defaults[account]}
 	}
 	externalJSON(w, map[string]any{
 		"timezone": tokenLimitTimezone, "accounts": "shared server accounts (account IDs " + serverAccountIDPrefix + "*)",
-		"day_start": dayStart.Format(time.RFC3339), "day_resets_at": dayEnd.Format(time.RFC3339),
+		"account_defaults": defaults,
+		"day_start":        dayStart.Format(time.RFC3339), "day_resets_at": dayEnd.Format(time.RFC3339),
 		"week_start": weekStart.Format(time.RFC3339), "week_resets_at": weekEnd.Format(time.RFC3339),
 		"people": out,
 	})
@@ -276,9 +321,13 @@ func tokenLimitArg(args map[string]any, name string, current int64) (int64, bool
 	return current, false
 }
 
-func (api *StreamingAPI) externalSetTokenLimits(w http.ResponseWriter, r *http.Request, rec *UserRecord, args map[string]any) {
+func (api *StreamingAPI) externalSetTokenLimits(w http.ResponseWriter, r *http.Request, rec *UserRecord, account string, args map[string]any) {
 	current := UserTokenLimits{}
-	if limits := rec.TokenLimits.normalized(); limits != nil {
+	existing := rec.TokenLimits
+	if account != "" {
+		existing = normalizedAccountTokenLimits(rec.AccountTokenLimits)[account]
+	}
+	if limits := existing.normalized(); limits != nil {
 		current = *limits
 	}
 	daily, setDaily := tokenLimitArg(args, "daily", current.Daily)
@@ -287,13 +336,21 @@ func (api *StreamingAPI) externalSetTokenLimits(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass daily and/or weekly.")
 		return
 	}
-	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "set_token_limits", "", "", rec.ID+" daily="+strconv.FormatInt(daily, 10)+" weekly="+strconv.FormatInt(weekly, 10)); err != nil {
+	auditTarget := rec.ID + " daily=" + strconv.FormatInt(daily, 10) + " weekly=" + strconv.FormatInt(weekly, 10)
+	if account != "" {
+		auditTarget += " account=" + account
+	}
+	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "set_token_limits", "", "", auditTarget); err != nil {
 		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The Code review audit log is unavailable.")
 		return
 	}
 	// The admin UI's own write path: same validation, normalization, save
 	// and log line.
-	body, _ := json.Marshal(map[string]any{"token_limits": UserTokenLimits{Daily: daily, Weekly: weekly}})
+	payload := map[string]any{"token_limits": UserTokenLimits{Daily: daily, Weekly: weekly}}
+	if account != "" {
+		payload = map[string]any{"account_token_limits": map[string]UserTokenLimits{account: {Daily: daily, Weekly: weekly}}}
+	}
+	body, _ := json.Marshal(payload)
 	sub := r.Clone(r.Context())
 	sub.Method = http.MethodPut
 	sub.Body = io.NopCloser(bytes.NewReader(body))
@@ -321,5 +378,42 @@ func (api *StreamingAPI) externalSetTokenLimits(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusServiceUnavailable, "users_unavailable", "The limits were saved but the user directory could not be re-read.")
 		return
 	}
-	externalJSON(w, api.tokenLimitUsageOf(dir.byID(rec.ID)))
+	externalJSON(w, api.tokenLimitUsageOf(dir.byID(rec.ID), account))
+}
+
+// externalSetAccountDefaultLimits sets a shared account's default per-person
+// limits through the Providers page's own write path (PATCH
+// /api/provider-connections/global:<provider>).
+func (api *StreamingAPI) externalSetAccountDefaultLimits(w http.ResponseWriter, r *http.Request, account string, args map[string]any) {
+	current := UserTokenLimits{}
+	if limits := serverAccountTokenLimitDefaults(r.Context())[account]; limits != nil {
+		current = *limits
+	}
+	daily, setDaily := tokenLimitArg(args, "daily", current.Daily)
+	weekly, setWeekly := tokenLimitArg(args, "weekly", current.Weekly)
+	if !setDaily && !setWeekly {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass daily and/or weekly.")
+		return
+	}
+	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "set_token_limits", "", "", "account="+account+" default daily="+strconv.FormatInt(daily, 10)+" weekly="+strconv.FormatInt(weekly, 10)); err != nil {
+		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The Code review audit log is unavailable.")
+		return
+	}
+	body, _ := json.Marshal(map[string]any{"token_limits": UserTokenLimits{Daily: daily, Weekly: weekly}})
+	sub := r.Clone(r.Context())
+	sub.Method = http.MethodPatch
+	sub.Body = io.NopCloser(bytes.NewReader(body))
+	sub.URL = &url.URL{Path: "/api/provider-connections/" + url.PathEscape(serverAccountIDPrefix+account)}
+	sub = mux.SetURLVars(sub, map[string]string{"connectionID": serverAccountIDPrefix + account})
+	result := &externalMCPRecorder{header: http.Header{}}
+	api.handleProviderConnection(result, sub)
+	if result.status != 0 && result.status != http.StatusNoContent && result.status != http.StatusOK {
+		msg := strings.TrimSpace(result.body.String())
+		if msg == "" {
+			msg = http.StatusText(result.status)
+		}
+		externalError(w, result.status, "upstream_error", msg)
+		return
+	}
+	externalJSON(w, map[string]any{"account": account, "label": sharedAccountLabel(account), "default_limits": UserTokenLimits{Daily: max(daily, 0), Weekly: max(weekly, 0)}})
 }

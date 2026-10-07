@@ -420,7 +420,7 @@ type sqliteStore interface {
 	summarizeWorkflowOverview(from, to, workflowID string) (*Summary, bool, error)
 	migrateLegacyJSONL(path string) (MigrationReport, error)
 	repriceUnpriced(estimate UnpricedEstimator) (int, error)
-	accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error)
+	accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error)
 	close() error
 }
 
@@ -437,8 +437,20 @@ type AccountTokenUsage struct {
 // weekStart, and the part since dayStart. dayStart must not be before
 // weekStart. The legacy JSONL ledger has no index for this and reports zero.
 func (l *Ledger) AccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (AccountTokenUsage, error) {
+	var total AccountTokenUsage
+	byAccount, err := l.AccountTokensByAccount(userID, accountPrefix, dayStart, weekStart)
+	for _, usage := range byAccount {
+		total.Day += usage.Day
+		total.Week += usage.Week
+	}
+	return total, err
+}
+
+// AccountTokensByAccount is AccountTokens split by account ID (for example
+// "global:codex-cli"), so each shared account can have its own limit.
+func (l *Ledger) AccountTokensByAccount(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error) {
 	if l == nil || l.db == nil || strings.TrimSpace(userID) == "" || accountPrefix == "" {
-		return AccountTokenUsage{}, nil
+		return map[string]AccountTokenUsage{}, nil
 	}
 	return l.db.accountTokens(strings.TrimSpace(userID), accountPrefix, dayStart, weekStart)
 }

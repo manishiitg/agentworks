@@ -5,16 +5,25 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 )
 
 // Per-user daily and weekly token limits on the shared server accounts
 // (PLAT-683, docs/DECISIONS.md 2026-10-07).
+//
+// Each shared account (global:<provider>) has its own per-person default
+// (provider-account-settings.json token_limits) and a person may have an
+// override per account (users.json account_token_limits); only that
+// account's events count, and reaching it refuses only that account. The
+// person's token_limits stay an optional overall cap across all of them
+// (PLAT-693).
 //
 // An admin sets the limits on the person's users.json record. Only tokens a
 // person spends on a server account (ledger account_id "global:<provider>")
@@ -62,7 +71,8 @@ func tokenLimitWindows(now time.Time) (dayStart, dayEnd, weekStart, weekEnd time
 }
 
 // sharedAccountTokenUsage is what the admin page and the person's own
-// Models panel show.
+// Models panel show. The top-level figures are the overall cap across every
+// shared account; Accounts has each shared account's own figures.
 type sharedAccountTokenUsage struct {
 	Timezone     string `json:"timezone"`
 	DailyUsed    int64  `json:"daily_used"`
@@ -73,12 +83,29 @@ type sharedAccountTokenUsage struct {
 	WeekResetsAt string `json:"week_resets_at"`
 	// State is "ok", "warning" (80% of a limit) or "over".
 	State string `json:"state"`
+	// Accounts is keyed by provider (e.g. "codex-cli"): every shared account
+	// the person used this week or that has a limit for them.
+	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
+}
+
+// accountTokenUsage is one shared account's use and effective limits for a
+// person, with the account default and the person's override shown apart.
+type accountTokenUsage struct {
+	Label       string           `json:"label"`
+	DailyUsed   int64            `json:"daily_used"`
+	WeeklyUsed  int64            `json:"weekly_used"`
+	DailyLimit  int64            `json:"daily_limit,omitempty"`
+	WeeklyLimit int64            `json:"weekly_limit,omitempty"`
+	Default     *UserTokenLimits `json:"default_limits,omitempty"`
+	Override    *UserTokenLimits `json:"override,omitempty"`
+	State       string           `json:"state"`
 }
 
 type cachedSharedTokenUsage struct {
-	usage    costledger.AccountTokenUsage
-	dayStart time.Time
-	at       time.Time
+	// byAccount is keyed by ledger account ID ("global:<provider>").
+	byAccount map[string]costledger.AccountTokenUsage
+	dayStart  time.Time
+	at        time.Time
 }
 
 var sharedTokenUsageCache = struct {
@@ -93,24 +120,158 @@ func (api *StreamingAPI) tokenLimitLedger() *costledger.Ledger {
 	return costledger.DefaultLedger()
 }
 
-// sharedAccountTokensUsed is userID's server-account tokens today and this
-// week, cached briefly so the per-turn check stays cheap.
-func (api *StreamingAPI) sharedAccountTokensUsed(userID string, now time.Time) (costledger.AccountTokenUsage, error) {
+// sharedAccountTokensUsed is userID's tokens today and this week on each
+// server account, cached briefly so the per-turn check stays cheap.
+func (api *StreamingAPI) sharedAccountTokensUsed(userID string, now time.Time) (map[string]costledger.AccountTokenUsage, error) {
 	dayStart, _, weekStart, _ := tokenLimitWindows(now)
 	sharedTokenUsageCache.Lock()
 	cached, ok := sharedTokenUsageCache.byUser[userID]
 	sharedTokenUsageCache.Unlock()
 	if ok && cached.dayStart.Equal(dayStart) && now.Sub(cached.at) < sharedTokenUsageTTL {
-		return cached.usage, nil
+		return cached.byAccount, nil
 	}
-	usage, err := api.tokenLimitLedger().AccountTokens(userID, serverAccountIDPrefix, dayStart, weekStart)
+	usage, err := api.tokenLimitLedger().AccountTokensByAccount(userID, serverAccountIDPrefix, dayStart, weekStart)
 	if err != nil {
 		return usage, err
 	}
 	sharedTokenUsageCache.Lock()
-	sharedTokenUsageCache.byUser[userID] = cachedSharedTokenUsage{usage: usage, dayStart: dayStart, at: now}
+	sharedTokenUsageCache.byUser[userID] = cachedSharedTokenUsage{byAccount: usage, dayStart: dayStart, at: now}
 	sharedTokenUsageCache.Unlock()
 	return usage, nil
+}
+
+func totalAccountTokens(byAccount map[string]costledger.AccountTokenUsage) costledger.AccountTokenUsage {
+	var total costledger.AccountTokenUsage
+	for _, usage := range byAccount {
+		total.Day += usage.Day
+		total.Week += usage.Week
+	}
+	return total
+}
+
+// tokenLimitState is "over" at or past a limit, "warning" from 80%, else "ok".
+func tokenLimitState(dailyUsed, dailyLimit, weeklyUsed, weeklyLimit int64) string {
+	state := "ok"
+	for _, pair := range [][2]int64{{dailyUsed, dailyLimit}, {weeklyUsed, weeklyLimit}} {
+		used, limit := pair[0], pair[1]
+		if limit <= 0 {
+			continue
+		}
+		if used >= limit {
+			return "over"
+		}
+		if float64(used) >= tokenLimitWarnFraction*float64(limit) {
+			state = "warning"
+		}
+	}
+	return state
+}
+
+// normalizedAccountTokenLimits drops accounts with no limit; nil when none.
+func normalizedAccountTokenLimits(in map[string]*UserTokenLimits) map[string]*UserTokenLimits {
+	var out map[string]*UserTokenLimits
+	for provider, limits := range in {
+		if limits = limits.normalized(); limits != nil {
+			if out == nil {
+				out = map[string]*UserTokenLimits{}
+			}
+			out[provider] = limits
+		}
+	}
+	return out
+}
+
+// validTokenLimitAccount reports whether provider names a shared server
+// account limits may be set for.
+func validTokenLimitAccount(provider string) bool {
+	for _, known := range supportedLLMProviders {
+		if provider == known {
+			return true
+		}
+	}
+	return false
+}
+
+// applyAccountTokenLimits merges an admin's per-account overrides into rec:
+// each named account's override is replaced, one with no limit removed.
+func applyAccountTokenLimits(rec *UserRecord, requested map[string]*UserTokenLimits) error {
+	if len(requested) == 0 {
+		return nil
+	}
+	next := normalizedAccountTokenLimits(rec.AccountTokenLimits)
+	for provider, limits := range requested {
+		provider = strings.TrimSpace(provider)
+		if !validTokenLimitAccount(provider) {
+			return fmt.Errorf("unknown shared account %q", provider)
+		}
+		if limits = limits.normalized(); limits == nil {
+			delete(next, provider)
+			continue
+		}
+		if next == nil {
+			next = map[string]*UserTokenLimits{}
+		}
+		next[provider] = limits
+	}
+	rec.AccountTokenLimits = normalizedAccountTokenLimits(next)
+	return nil
+}
+
+// accountTokenLimitsSummary is a log line like "codex-cli=5000000/0".
+func accountTokenLimitsSummary(in map[string]*UserTokenLimits) string {
+	in = normalizedAccountTokenLimits(in)
+	if len(in) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(in))
+	for provider := range in {
+		keys = append(keys, provider)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, provider := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d/%d", provider, in[provider].Daily, in[provider].Weekly))
+	}
+	return strings.Join(parts, ",")
+}
+
+// serverAccountTokenLimitDefaults is every shared account's default
+// per-person limits (Providers -> the server account -> Limits).
+func serverAccountTokenLimitDefaults(ctx context.Context) map[string]*UserTokenLimits {
+	settings, err := loadProviderAccountSettings(ctx)
+	if err != nil {
+		log.Printf("[TOKEN_LIMITS] cannot read the shared account limits: %v", err)
+		return nil
+	}
+	return normalizedAccountTokenLimits(settings.TokenLimits)
+}
+
+// effectiveAccountTokenLimits is the person's limits on one shared account:
+// each field of their override replaces the account default's field.
+func effectiveAccountTokenLimits(defaults *UserTokenLimits, override *UserTokenLimits) *UserTokenLimits {
+	out := UserTokenLimits{}
+	if defaults = defaults.normalized(); defaults != nil {
+		out = *defaults
+	}
+	if override = override.normalized(); override != nil {
+		if override.Daily > 0 {
+			out.Daily = override.Daily
+		}
+		if override.Weekly > 0 {
+			out.Weekly = override.Weekly
+		}
+	}
+	return out.normalized()
+}
+
+// sharedAccountLabel is the short name in "the shared Codex account".
+func sharedAccountLabel(provider string) string {
+	if provider == "agy-cli" {
+		return "Antigravity"
+	}
+	label := providerDisplayLabel(provider)
+	label = strings.TrimSuffix(strings.TrimPrefix(label, "OpenAI "), " CLI")
+	return label
 }
 
 // sharedAccountTokenUsageFor reports rec's usage against its limits.
@@ -124,21 +285,37 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	if limits := rec.TokenLimits.normalized(); limits != nil {
 		out.DailyLimit, out.WeeklyLimit = limits.Daily, limits.Weekly
 	}
-	usage, err := api.sharedAccountTokensUsed(rec.ID, now)
+	byAccount, err := api.sharedAccountTokensUsed(rec.ID, now)
 	if err != nil {
 		log.Printf("[TOKEN_LIMITS] cannot read server-account usage for %s: %v", rec.ID, err)
 	}
-	out.DailyUsed, out.WeeklyUsed = usage.Day, usage.Week
-	for _, pair := range [][2]int64{{out.DailyUsed, out.DailyLimit}, {out.WeeklyUsed, out.WeeklyLimit}} {
-		used, limit := pair[0], pair[1]
-		if limit <= 0 {
-			continue
+	total := totalAccountTokens(byAccount)
+	out.DailyUsed, out.WeeklyUsed = total.Day, total.Week
+	out.State = tokenLimitState(out.DailyUsed, out.DailyLimit, out.WeeklyUsed, out.WeeklyLimit)
+
+	defaults := serverAccountTokenLimitDefaults(context.Background())
+	overrides := normalizedAccountTokenLimits(rec.AccountTokenLimits)
+	providers := map[string]bool{}
+	for accountID := range byAccount {
+		providers[strings.TrimPrefix(accountID, serverAccountIDPrefix)] = true
+	}
+	for provider := range defaults {
+		providers[provider] = true
+	}
+	for provider := range overrides {
+		providers[provider] = true
+	}
+	for provider := range providers {
+		used := byAccount[serverAccountIDPrefix+provider]
+		account := &accountTokenUsage{Label: sharedAccountLabel(provider), DailyUsed: used.Day, WeeklyUsed: used.Week, Default: defaults[provider], Override: overrides[provider]}
+		if limits := effectiveAccountTokenLimits(defaults[provider], overrides[provider]); limits != nil {
+			account.DailyLimit, account.WeeklyLimit = limits.Daily, limits.Weekly
 		}
-		if used >= limit {
-			out.State = "over"
-		} else if out.State == "ok" && float64(used) >= tokenLimitWarnFraction*float64(limit) {
-			out.State = "warning"
+		account.State = tokenLimitState(account.DailyUsed, account.DailyLimit, account.WeeklyUsed, account.WeeklyLimit)
+		if out.Accounts == nil {
+			out.Accounts = map[string]*accountTokenUsage{}
 		}
+		out.Accounts[provider] = account
 	}
 	return out
 }
@@ -150,10 +327,12 @@ type sharedAccountTokenLimitError struct{ message string }
 func (e *sharedAccountTokenLimitError) Error() string { return e.message }
 
 // sharedAccountTokenLimitRefusal returns the refusal when principal is at or
-// over a limit, else nil. A ledger read error is logged and admits: the limit
-// is a budget control, and a broken ledger must not stop every shared turn.
-func (api *StreamingAPI) sharedAccountTokenLimitRefusal(principal string) error {
-	principal = strings.TrimSpace(principal)
+// over the limit of provider's shared account, or their overall cap across
+// every shared account, else nil. A ledger read error is logged and admits:
+// the limit is a budget control, and a broken ledger must not stop every
+// shared turn.
+func (api *StreamingAPI) sharedAccountTokenLimitRefusal(ctx context.Context, principal, provider string) error {
+	principal, provider = strings.TrimSpace(principal), strings.TrimSpace(provider)
 	if principal == "" {
 		return nil
 	}
@@ -161,24 +340,53 @@ func (api *StreamingAPI) sharedAccountTokenLimitRefusal(principal string) error 
 	if rec == nil {
 		return nil
 	}
-	limits := rec.TokenLimits.normalized()
-	if limits == nil {
+	overall := rec.TokenLimits.normalized()
+	var account *UserTokenLimits
+	if provider != "" {
+		account = effectiveAccountTokenLimits(serverAccountTokenLimitDefaults(ctx)[provider], normalizedAccountTokenLimits(rec.AccountTokenLimits)[provider])
+	}
+	if overall == nil && account == nil {
 		return nil
 	}
 	now := tokenLimitNow()
-	usage, err := api.sharedAccountTokensUsed(rec.ID, now)
+	byAccount, err := api.sharedAccountTokensUsed(rec.ID, now)
 	if err != nil {
 		log.Printf("[TOKEN_LIMITS] cannot read server-account usage for %s, admitting: %v", rec.ID, err)
 		return nil
 	}
 	// The weekly limit first: when both are reached it is the later reset.
-	if limits.Weekly > 0 && usage.Week >= limits.Weekly {
-		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your weekly limit of %s tokens on the shared accounts (resets Monday 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(limits.Weekly))}
+	if account != nil {
+		used := byAccount[serverAccountIDPrefix+provider]
+		name := sharedAccountLabel(provider)
+		if account.Weekly > 0 && used.Week >= account.Weekly {
+			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used this week's %s tokens on the shared %s account (resets Monday 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(account.Weekly), name)}
+		}
+		if account.Daily > 0 && used.Day >= account.Daily {
+			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used today's %s tokens on the shared %s account (resets 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(account.Daily), name)}
+		}
 	}
-	if limits.Daily > 0 && usage.Day >= limits.Daily {
-		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your daily limit of %s tokens on the shared accounts (resets at 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(limits.Daily))}
+	if overall != nil {
+		usage := totalAccountTokens(byAccount)
+		if overall.Weekly > 0 && usage.Week >= overall.Weekly {
+			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your weekly limit of %s tokens on the shared accounts (resets Monday 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(overall.Weekly))}
+		}
+		if overall.Daily > 0 && usage.Day >= overall.Daily {
+			return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your daily limit of %s tokens on the shared accounts (resets at 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(overall.Daily))}
+		}
 	}
 	return nil
+}
+
+// formatTokenAmount writes a round limit short ("2M", "2.5M", "500k"), any
+// other number with thousands separators.
+func formatTokenAmount(n int64) string {
+	switch {
+	case n >= 1_000_000 && n%100_000 == 0:
+		return strconv.FormatFloat(float64(n)/1_000_000, 'f', -1, 64) + "M"
+	case n >= 1_000 && n < 1_000_000 && n%100 == 0:
+		return strconv.FormatFloat(float64(n)/1_000, 'f', -1, 64) + "k"
+	}
+	return formatTokenCount(n)
 }
 
 // formatTokenCount writes n with thousands separators.
@@ -199,10 +407,21 @@ func (api *StreamingAPI) scheduledRunTokenLimitRefusal(ctx context.Context, sctx
 		return nil
 	}
 	builder, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(sctx.Capabilities.LLMConfig))
-	if builder != nil && builder.Provider != "" && builder.ConnectionID != "" && !strings.HasPrefix(builder.ConnectionID, serverAccountIDPrefix) {
+	if builder != nil && builder.Provider != "" && builder.ConnectionID != "" && !strings.HasPrefix(builder.ConnectionID, serverAccountIDPrefix) && !strings.HasPrefix(builder.ConnectionID, llmguard.ServerDefaultConnectionPrefix) {
 		return nil // the workflow runs on a person's own account
 	}
-	return api.sharedAccountTokenLimitRefusal(sctx.OwnerUserID)
+	// The account the run starts on: the workflow's provider, else the
+	// Goals default. Unknown leaves only the overall cap.
+	provider := ""
+	if builder != nil {
+		provider = builder.Provider
+	}
+	if provider == "" {
+		if defaults, err := effectiveProductDefaults(ctx); err == nil {
+			provider = defaults[productWorkflows].Provider
+		}
+	}
+	return api.sharedAccountTokenLimitRefusal(ctx, sctx.OwnerUserID, provider)
 }
 
 // GET /api/me/token-usage — the caller's server-account usage and limits.

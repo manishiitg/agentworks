@@ -53,6 +53,15 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 		t.Fatalf("partial updates = %d %s", w.Code, w.Body.String())
 	}
 
+	// Per shared account (PLAT-693): a default for everyone on Codex, and
+	// Alice's own override on top of it; her overall cap is untouched.
+	if w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"account": "codex-cli", "daily": 2000}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"default_limits":{"daily":2000}`) {
+		t.Fatalf("account default = %d %s", w.Code, w.Body.String())
+	}
+	if w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "account": "codex-cli", "weekly": 7000}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"codex-cli":{"label":"Codex","daily_used":0,"weekly_used":0,"daily_limit":2000,"weekly_limit":7000,"default_limits":{"daily":2000},"override":{"weekly":7000}`) {
+		t.Fatalf("account override = %d %s", w.Code, w.Body.String())
+	}
+
 	// A reviewer reads (only global: tokens count) but cannot write.
 	reviewer := codeReviewToken("rev", "code:review")
 	w = codeReviewCall(api, reviewer, "get_token_usage", map[string]any{})

@@ -36,6 +36,8 @@ type providerAccountView struct {
 	Source               string                     `json:"source,omitempty"`
 	Availability         *serverAccountAvailability `json:"availability,omitempty"`
 	AvailabilityEditable bool                       `json:"availability_editable,omitempty"`
+	// TokenLimits is a server account's default per-person token limit.
+	TokenLimits *UserTokenLimits `json:"token_limits,omitempty"`
 	// Usable reports whether the caller may select the account for the
 	// requested workflow, Crew, Code or product.
 	Usable bool `json:"usable"`
@@ -178,6 +180,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		view := providerAccountView{
 			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: accountSettings.AllowedModels[provider]},
 			Kind:               kind, Relation: "server", Source: source, Availability: &availability,
+			TokenLimits:          accountSettings.TokenLimits[provider].normalized(),
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,
 			CanManage:            admin,
@@ -238,6 +241,9 @@ type providerConnectionRequest struct {
 	// AllowedModels limits the models that may run on the account; [] means
 	// every model. Absent leaves the current list alone.
 	AllowedModels *[]string `json:"allowed_models"`
+	// TokenLimits is a server account's default per-person daily and weekly
+	// limit (admin only); zeros clear it. Absent leaves it alone.
+	TokenLimits *UserTokenLimits `json:"token_limits"`
 }
 
 func validProviderAccountName(name *string) (string, error) {
@@ -488,12 +494,12 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var request providerConnectionRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || (len(request.AvailableTo) == 0 && request.AllowedModels == nil) {
-		http.Error(w, "available_to or allowed_models is required", http.StatusBadRequest)
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || (len(request.AvailableTo) == 0 && request.AllowedModels == nil && request.TokenLimits == nil) {
+		http.Error(w, "available_to, allowed_models or token_limits is required", http.StatusBadRequest)
 		return
 	}
 	if len(request.AvailableTo) == 0 {
-		api.updateServerAccountAllowedModels(w, r, provider, *request.AllowedModels)
+		api.updateServerAccountSettings(w, r, provider, request.AllowedModels, request.TokenLimits)
 		return
 	}
 	current, err := effectiveServerAccountAvailability(r.Context(), provider)
@@ -553,6 +559,9 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 		}
 		setServerAccountAllowedModels(&settings, provider, models)
 	}
+	if request.TokenLimits != nil {
+		setServerAccountTokenLimits(&settings, provider, request.TokenLimits)
+	}
 	if err := saveProviderAccountSettings(r.Context(), settings); err != nil {
 		http.Error(w, "cannot save provider settings", http.StatusInternalServerError)
 		return
@@ -572,13 +581,30 @@ func setServerAccountAllowedModels(settings *providerAccountSettings, provider s
 	settings.AllowedModels[provider] = models
 }
 
-// updateServerAccountAllowedModels sets which models the provider's server
-// account allows (admin only; the caller checked). Empty means every model.
-func (api *StreamingAPI) updateServerAccountAllowedModels(w http.ResponseWriter, r *http.Request, provider string, requested []string) {
-	models, err := validateAllowedModels(requested)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+// setServerAccountTokenLimits sets the provider's server account default
+// per-person token limits; no limit removes them.
+func setServerAccountTokenLimits(settings *providerAccountSettings, provider string, limits *UserTokenLimits) {
+	if limits = limits.normalized(); limits == nil {
+		delete(settings.TokenLimits, provider)
 		return
+	}
+	if settings.TokenLimits == nil {
+		settings.TokenLimits = map[string]*UserTokenLimits{}
+	}
+	settings.TokenLimits[provider] = limits
+}
+
+// updateServerAccountSettings sets which models the provider's server
+// account allows (empty means every model) and/or its default per-person
+// token limits (admin only; the caller checked). Nil leaves one alone.
+func (api *StreamingAPI) updateServerAccountSettings(w http.ResponseWriter, r *http.Request, provider string, requested *[]string, limits *UserTokenLimits) {
+	var models []string
+	if requested != nil {
+		var err error
+		if models, err = validateAllowedModels(*requested); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	providerAccountSettingsMu.Lock()
 	defer providerAccountSettingsMu.Unlock()
@@ -587,12 +613,26 @@ func (api *StreamingAPI) updateServerAccountAllowedModels(w http.ResponseWriter,
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	setServerAccountAllowedModels(&settings, provider, models)
+	if requested != nil {
+		setServerAccountAllowedModels(&settings, provider, models)
+	}
+	if limits != nil {
+		setServerAccountTokenLimits(&settings, provider, limits)
+	}
 	if err := saveProviderAccountSettings(r.Context(), settings); err != nil {
 		http.Error(w, "cannot save provider settings", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("[PROVIDER_ACCOUNT] %s set the allowed models of the %s server account: %d", GetUserIDFromContext(r.Context()), provider, len(models))
+	if requested != nil {
+		log.Printf("[PROVIDER_ACCOUNT] %s set the allowed models of the %s server account: %d", GetUserIDFromContext(r.Context()), provider, len(models))
+	}
+	if limits != nil {
+		normalized := limits.normalized()
+		if normalized == nil {
+			normalized = &UserTokenLimits{}
+		}
+		log.Printf("[PROVIDER_ACCOUNT] %s set the per-person token limits of the %s server account: daily=%d weekly=%d", GetUserIDFromContext(r.Context()), provider, normalized.Daily, normalized.Weekly)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

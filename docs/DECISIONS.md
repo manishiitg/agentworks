@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Each shared server account has its own per-person token limit
+
+Each shared admin account (`global:<provider>`) has its own per-person daily and
+weekly token default (provider-account-settings.json `token_limits`, set in
+Providers → the account → Limits), and an admin may override it per person per
+account (users.json `account_token_limits`; a field set replaces that field of
+the default). Only that account's ledger events count, and reaching it refuses
+only new turns on that account, naming it; other shared accounts and the
+person's own accounts keep working. The person-wide `token_limits` stays as an
+optional overall cap across all shared accounts, checked as well. Why: owner,
+Excellence: Codex and Muse plans run out at different rates.
+[PLAT-693](bugs/pulse_platform/app/accounts/plat-693.md).
+
 ### 2026-10-07 — A project's own PROJECT_INSTRUCTIONS.md is appended below the platform instructions
 
 Code and Crew projects may keep standing instructions in `PROJECT_INSTRUCTIONS.md` at the project root. On every

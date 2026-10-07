@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 83 | 14 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 84 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 50 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 31 | 10 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-693](app/accounts/plat-693.md) | Per-account token limits on shared server accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-692](code/instructions/plat-692.md) | Project instructions appended to the generated AGENTS.md | fixed on main | P2 | [code/instructions](code/instructions/index.md) |
 | [PLAT-691](browser/browser/plat-691.md) | Browser recording lost: encoder fell behind | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-690](app/accounts/plat-690.md) | MCP tools to view and set shared-account token limits | fixed on main | P2 | [app/accounts](app/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-652](integrations/mcp/plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
 | [PLAT-650](dominion/deployment/plat-650.md) | Dominion service processes miss provisioned slot groups and block Python Relay runners | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
-| [PLAT-649](chat/rendering/plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 | [chat/rendering](chat/rendering/index.md) |

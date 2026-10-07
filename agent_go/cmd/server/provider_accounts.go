@@ -331,6 +331,9 @@ type providerAccountSettings struct {
 	// AllowedModels is, per provider, the models the server account allows;
 	// absent means every model.
 	AllowedModels map[string][]string `json:"allowed_models,omitempty"`
+	// TokenLimits is, per provider, the default per-person daily and weekly
+	// token limit on that server account (PLAT-693); absent is unlimited.
+	TokenLimits map[string]*UserTokenLimits `json:"token_limits,omitempty"`
 }
 
 // The settings are cached in memory like the account registry: loaded once
@@ -364,6 +367,15 @@ func cloneProviderAccountSettings(in providerAccountSettings) providerAccountSet
 		out.AllowedModels = make(map[string][]string, len(in.AllowedModels))
 		for key, value := range in.AllowedModels {
 			out.AllowedModels[key] = append([]string(nil), value...)
+		}
+	}
+	if in.TokenLimits != nil {
+		out.TokenLimits = make(map[string]*UserTokenLimits, len(in.TokenLimits))
+		for key, value := range in.TokenLimits {
+			if value != nil {
+				copied := *value
+				out.TokenLimits[key] = &copied
+			}
 		}
 	}
 	return out
@@ -656,8 +668,9 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
 			return nil, fmt.Errorf("the %s server account is not available to you here (available to: %s). Choose another coding agent in this project's Models panel; your next message uses it", provider, availability.Text)
 		}
-		// Per-user token limits count and cap server accounts only (PLAT-683).
-		if err := api.sharedAccountTokenLimitRefusal(scope.Principal); err != nil {
+		// Per-user token limits count and cap server accounts only: this
+		// account's own limit, then the overall cap (PLAT-683, PLAT-693).
+		if err := api.sharedAccountTokenLimitRefusal(ctx, scope.Principal, provider); err != nil {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account refused for %q (%s): token limit reached", provider, scope.Principal, run.Product)
 			return nil, err
 		}

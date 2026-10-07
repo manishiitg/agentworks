@@ -56,3 +56,13 @@ Test: `TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused`.
 ## Left
 
 - Not deployed.
+
+## Per-account limits (2026-10-07)
+
+Both tools take `account` (a provider such as `codex-cli`) for the per-account
+limits of [PLAT-693](plat-693.md): `get_token_usage` adds each person's
+`accounts` and the `account_defaults`; `set_token_limits` with `account` and a
+person sets their override on that account (`account_token_limits` through the
+same admin handler), with `account` and no person the account's default for
+everyone (through `PATCH /api/provider-connections/global:<provider>`).
+Audited with the account in the target.

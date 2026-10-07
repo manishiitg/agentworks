@@ -49,6 +49,8 @@ export interface ProviderConnection {
   sharing?: ProviderAccountSharing
   /** Models allowed on this account; absent or empty = every model. */
   allowed_models?: string[]
+  /** A server account's default per-person token limits (UTC day / Monday-start week); absent = unlimited. */
+  token_limits?: { daily?: number; weekly?: number }
   // Account view fields. Optional so an older server still reads.
   kind?: ProviderAccountKind
   relation?: ProviderAccountRelation
@@ -302,6 +304,11 @@ export const llmConfigService = {
   // Which models may run on an account: [] = every model. Admins for the
   // admin-managed account (global:<provider>), the owner for a personal one.
   setAccountAllowedModels: async (id: string, models: string[]): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, { allowed_models: models }) },
+
+  // Admin: a server account's default per-person token limits; zeros clear them.
+  setServerAccountTokenLimits: async (provider: string, limits: { daily: number; weekly: number }): Promise<void> => {
+    await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(`global:${provider}`)}`, { token_limits: limits })
+  },
 
   // Admin: who may use a server account. null returns to the installation policy.
   setServerAccountAvailability: async (provider: string, availableTo: ProviderAvailableTo | null): Promise<void> => {

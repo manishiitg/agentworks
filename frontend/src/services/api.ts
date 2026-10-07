@@ -2871,6 +2871,8 @@ export interface AdminUser {
   invited?: boolean
   /** Tokens per UTC day / Monday-start week on the shared server accounts; absent = unlimited. */
   token_limits?: TokenLimits
+  /** Per shared account (provider, e.g. "codex-cli"): this person's override of the account's default limits. */
+  account_token_limits?: Record<string, TokenLimits>
   token_usage?: SharedAccountTokenUsage
   created_at?: string
   updated_at?: string
@@ -2891,6 +2893,20 @@ export interface SharedAccountTokenUsage {
   day_resets_at: string
   week_resets_at: string
   state: 'ok' | 'warning' | 'over'
+  /** Per shared account (provider): its own use and effective limits (PLAT-693). */
+  accounts?: Record<string, SharedAccountUsage>
+}
+
+/** One shared account's use and limits for a person: the account default, their override, and the effective limits. */
+export interface SharedAccountUsage {
+  label: string
+  daily_used: number
+  weekly_used: number
+  daily_limit?: number
+  weekly_limit?: number
+  default_limits?: TokenLimits
+  override?: TokenLimits
+  state: 'ok' | 'warning' | 'over'
 }
 
 export interface AdminUserWrite {
@@ -2906,6 +2922,8 @@ export interface AdminUserWrite {
   disabled?: boolean
   /** Replaces both limits; 0 is unlimited. */
   token_limits?: TokenLimits
+  /** Sets the override of each named shared account (both fields); no limit removes it. */
+  account_token_limits?: Record<string, TokenLimits>
 }
 
 export interface AuthResponse {

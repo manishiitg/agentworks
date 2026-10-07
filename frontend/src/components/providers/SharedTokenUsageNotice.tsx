@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { authApi, type SharedAccountTokenUsage } from '../../services/api'
-import { formatTokens, resetLabel } from '../../utils/tokenLimits'
+import { formatTokens, resetLabel, shownTokenFigures } from '../../utils/tokenLimits'
 
 /**
  * The person's own use of the shared server accounts against the limits an
- * admin set (PLAT-683). Shown only when a limit is set; amber from 80%, red at
- * the limit, when new turns on a server account are refused.
+ * admin set (PLAT-683). Each shared account has its own limit and there may be
+ * an overall cap (PLAT-693): a chat shows the account it uses, or the overall
+ * cap when that is nearer. Amber from 80%, red at the limit, when new turns on
+ * that account are refused.
  */
-function useSharedTokenUsage(limitsOnly = true): SharedAccountTokenUsage | null {
+function useSharedTokenUsage(): SharedAccountTokenUsage | null {
   const [usage, setUsage] = useState<SharedAccountTokenUsage | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -17,66 +19,71 @@ function useSharedTokenUsage(limitsOnly = true): SharedAccountTokenUsage | null 
     const timer = window.setInterval(load, 60_000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [])
-  if (!usage) return null
-  if (usage.daily_limit || usage.weekly_limit) return usage
-  return !limitsOnly && (usage.daily_used || usage.weekly_used) ? usage : null
+  return usage
 }
 
 /**
  * The same usage as a small chip for the chat input's toolbar: the tighter of
- * the two limits, with both in the tooltip. Hidden when no limit is set.
+ * the two limits, with both in the tooltip. Plain use when no limit is set.
+ * accountProvider is the shared account the chat runs on (null: the person's
+ * own account, which shows nothing; undefined: unknown, the overall figures).
  */
-export function SharedTokenUsageChip({ onSharedAccount = true }: { onSharedAccount?: boolean }) {
-  const usage = useSharedTokenUsage(false)
+export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: string | null }) {
+  const usage = useSharedTokenUsage()
   // A chat on the person's own account neither counts nor is limited, so it shows nothing (owner, 2026-10-07).
-  if (!usage || !onSharedAccount) return null
-  if (!usage.daily_limit && !usage.weekly_limit) {
+  if (!usage || accountProvider === null) return null
+  const shown = shownTokenFigures(usage, accountProvider)
+  if (!shown.daily_limit && !shown.weekly_limit) {
+    if (!shown.daily_used && !shown.weekly_used) return null
     return (
-      <span data-testid="shared-token-usage-chip" title="Your use of the shared accounts (UTC). No limit is set; your own accounts are not counted."
+      <span data-testid="shared-token-usage-chip" title={`Your use of ${shown.scope} (UTC). No limit is set; your own accounts are not counted.`}
         className="inline-flex h-7 items-center rounded-md border border-border px-2 text-[11px] tabular-nums text-muted-foreground">
-        {formatTokens(usage.daily_used)} today · {formatTokens(usage.weekly_used)} week
+        {formatTokens(shown.daily_used)} today · {formatTokens(shown.weekly_used)} week
       </span>
     )
   }
-  const daily = usage.daily_limit ? usage.daily_used / usage.daily_limit : -1
-  const weekly = usage.weekly_limit ? usage.weekly_used / usage.weekly_limit : -1
+  const daily = shown.daily_limit ? shown.daily_used / shown.daily_limit : -1
+  const weekly = shown.weekly_limit ? shown.weekly_used / shown.weekly_limit : -1
   const showWeekly = weekly > daily
   const label = showWeekly
-    ? `${formatTokens(usage.weekly_used)}/${formatTokens(usage.weekly_limit)} week`
-    : `${formatTokens(usage.daily_used)}/${formatTokens(usage.daily_limit)} today`
-  const tone = usage.state === 'over'
+    ? `${formatTokens(shown.weekly_used)}/${formatTokens(shown.weekly_limit)} week`
+    : `${formatTokens(shown.daily_used)}/${formatTokens(shown.daily_limit)} today`
+  const tone = shown.state === 'over'
     ? 'border-red-300 text-red-700 dark:border-red-900 dark:text-red-300'
-    : usage.state === 'warning'
+    : shown.state === 'warning'
       ? 'border-amber-500/50 text-amber-700 dark:text-amber-300'
       : 'border-border text-muted-foreground'
-  const detail: string[] = []
-  if (usage.daily_limit) detail.push(`Today: ${formatTokens(usage.daily_used)} of ${formatTokens(usage.daily_limit)} (resets ${resetLabel(usage.day_resets_at, false)})`)
-  if (usage.weekly_limit) detail.push(`This week: ${formatTokens(usage.weekly_used)} of ${formatTokens(usage.weekly_limit)} (resets ${resetLabel(usage.week_resets_at, true)})`)
-  detail.push(usage.state === 'over' ? 'New messages on the shared accounts are paused; your own accounts are not limited.' : 'Shared-account tokens; your own accounts are not limited.')
+  const detail: string[] = [`Tokens on ${shown.scope}.`]
+  if (shown.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} (resets ${resetLabel(usage.day_resets_at, false)})`)
+  if (shown.weekly_limit) detail.push(`This week: ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} (resets ${resetLabel(usage.week_resets_at, true)})`)
+  detail.push(shown.state === 'over' ? `New messages on ${shown.scope} are paused; switch to another account in Models.` : 'Your own accounts are not limited.')
   return (
-    <span data-testid="shared-token-usage-chip" title={detail.join('\n')} aria-label={`Shared-account tokens: ${detail.join('. ')}`}
+    <span data-testid="shared-token-usage-chip" title={detail.join('\n')} aria-label={`Shared-account tokens: ${detail.join(' ')}`}
       className={`inline-flex h-7 items-center rounded-md border px-2 text-[11px] tabular-nums ${tone}`}>
       {label}
     </span>
   )
 }
 
-export function SharedTokenUsageNotice({ className = '' }: { className?: string }) {
+/** The Models panel notice; shown only when the selected account (or the overall cap) has a limit. */
+export function SharedTokenUsageNotice({ className = '', accountProvider }: { className?: string; accountProvider?: string | null }) {
   const usage = useSharedTokenUsage()
-  if (!usage) return null
-  const tone = usage.state === 'over'
+  if (!usage || accountProvider === null) return null
+  const shown = shownTokenFigures(usage, accountProvider)
+  if (!shown.daily_limit && !shown.weekly_limit) return null
+  const tone = shown.state === 'over'
     ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/25 dark:text-red-300'
-    : usage.state === 'warning'
+    : shown.state === 'warning'
       ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
       : 'border-border bg-muted/40 text-muted-foreground'
   const parts: string[] = []
-  if (usage.daily_limit) parts.push(`${formatTokens(usage.daily_used)} of ${formatTokens(usage.daily_limit)} today (resets ${resetLabel(usage.day_resets_at, false)})`)
-  if (usage.weekly_limit) parts.push(`${formatTokens(usage.weekly_used)} of ${formatTokens(usage.weekly_limit)} this week (resets ${resetLabel(usage.week_resets_at, true)})`)
+  if (shown.daily_limit) parts.push(`${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} today (resets ${resetLabel(usage.day_resets_at, false)})`)
+  if (shown.weekly_limit) parts.push(`${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} this week (resets ${resetLabel(usage.week_resets_at, true)})`)
   return (
-    <div role={usage.state === 'ok' ? undefined : 'status'} className={`rounded-lg border px-3 py-2 text-xs ${tone} ${className}`}>
-      <p><span className="font-medium">Shared-account tokens:</span> {parts.join(' · ')}.</p>
-      {usage.state === 'over' && <p className="mt-1">New messages on the shared accounts are paused. Use your own account or ask an admin to raise your limit.</p>}
-      {usage.state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}
+    <div role={shown.state === 'ok' ? undefined : 'status'} className={`rounded-lg border px-3 py-2 text-xs ${tone} ${className}`}>
+      <p><span className="font-medium">Tokens on {shown.scope}:</span> {parts.join(' · ')}.</p>
+      {shown.state === 'over' && <p className="mt-1">New messages on {shown.scope} are paused. Switch to another account here or ask an admin to raise your limit.</p>}
+      {shown.state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}
     </div>
   )
 }

@@ -77,3 +77,70 @@ func TestTokenLimitsCountAndCapServerAccountsOnly(t *testing.T) {
 		t.Fatalf("usage shown: %+v", usage)
 	}
 }
+
+// PLAT-693: each shared account has its own per-person default limit
+// (Providers -> account -> Limits) that a person's override replaces; only
+// that account's tokens count and only that account is refused, while the
+// person's overall cap across all shared accounts still applies.
+func TestTokenLimitsPerSharedAccount(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	env.api.costLedger = ledger
+	resetUsage := func() {
+		sharedTokenUsageCache.Lock()
+		sharedTokenUsageCache.byUser = map[string]cachedSharedTokenUsage{}
+		sharedTokenUsageCache.Unlock()
+	}
+	resetUsage()
+	t.Cleanup(resetUsage)
+	record := func(user, provider string, tokens int) {
+		t.Helper()
+		if err := ledger.Append(costledger.Entry{Timestamp: time.Now().UTC(), UserID: user, Scope: "chat", Provider: provider, ModelID: "m", AccountID: "global:" + provider, LLMCallCount: 1, PromptTokens: tokens}); err != nil {
+			t.Fatal(err)
+		}
+		resetUsage()
+	}
+	admit := func(user, provider string) error {
+		_, err := env.api.admitProviderAccount(context.Background(), providerAccountScope{Principal: user}, provider, "global:"+provider)
+		return err
+	}
+
+	// Codex default: 1,000 a day per person; Alice's override: 5,000.
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/api/provider-connections/global:codex-cli", "admin", map[string]interface{}{"token_limits": map[string]int64{"daily": 1000}}, map[string]string{"connectionID": "global:codex-cli"}); w.Code != http.StatusNoContent {
+		t.Fatalf("set account default: %d %s", w.Code, w.Body.String())
+	}
+	if w := env.do(t, env.api.handleAdminUpdateUser, http.MethodPut, "/api/admin/users/alice", "admin", map[string]interface{}{"account_token_limits": map[string]interface{}{"codex-cli": map[string]int64{"daily": 5000}}}, map[string]string{"id": "alice"}); w.Code != http.StatusOK {
+		t.Fatalf("set override: %d %s", w.Code, w.Body.String())
+	}
+
+	// Bob over the Codex default: Codex is refused and named, Claude is not.
+	record("bob", "codex-cli", 1200)
+	if err := admit("bob", "codex-cli"); err == nil || !strings.Contains(err.Error(), "today's 1k tokens on the shared Codex account") {
+		t.Fatalf("bob codex over the default: %v", err)
+	}
+	if err := admit("bob", "claude-code"); err != nil {
+		t.Fatalf("another shared account refused: %v", err)
+	}
+	// Alice's override beats the default.
+	record("alice", "codex-cli", 1200)
+	if err := admit("alice", "codex-cli"); err != nil {
+		t.Fatalf("override not applied: %v", err)
+	}
+	// Her overall cap still counts every shared account.
+	if w := env.do(t, env.api.handleAdminUpdateUser, http.MethodPut, "/api/admin/users/alice", "admin", map[string]interface{}{"token_limits": map[string]int64{"daily": 2000}}, map[string]string{"id": "alice"}); w.Code != http.StatusOK {
+		t.Fatalf("set overall cap: %d %s", w.Code, w.Body.String())
+	}
+	record("alice", "claude-code", 900)
+	if err := admit("alice", "claude-code"); err == nil || !strings.Contains(err.Error(), "daily limit of 2,000 tokens on the shared accounts") {
+		t.Fatalf("overall cap: %v", err)
+	}
+	usage := env.api.sharedAccountTokenUsageFor(directoryUserFor("alice", "", ""))
+	codex := usage.Accounts["codex-cli"]
+	if codex == nil || codex.DailyUsed != 1200 || codex.DailyLimit != 5000 || codex.Default == nil || codex.Default.Daily != 1000 || usage.DailyUsed != 2100 || usage.State != "over" {
+		t.Fatalf("usage shown: %+v codex=%+v", usage, codex)
+	}
+}
