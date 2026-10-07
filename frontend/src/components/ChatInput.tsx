@@ -3593,7 +3593,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {attachmentEl}
-                <SharedTokenUsageChip />
+                {/* A Code/Crew tab names its account: empty or global:* is a shared server account; anything else is the person's own. */}
+                <SharedTokenUsageChip onSharedAccount={!activeTab?.metadata?.agentProfileConnectionID || activeTab.metadata.agentProfileConnectionID.startsWith('global:')} />
                 {/* Status text - removed observer initialization message */}
               </div>
               {/* Show old buttons */}

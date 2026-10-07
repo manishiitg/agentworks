@@ -7,7 +7,7 @@ import { formatTokens, resetLabel } from '../../utils/tokenLimits'
  * admin set (PLAT-683). Shown only when a limit is set; amber from 80%, red at
  * the limit, when new turns on a server account are refused.
  */
-function useSharedTokenUsage(): SharedAccountTokenUsage | null {
+function useSharedTokenUsage(limitsOnly = true): SharedAccountTokenUsage | null {
   const [usage, setUsage] = useState<SharedAccountTokenUsage | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -17,16 +17,27 @@ function useSharedTokenUsage(): SharedAccountTokenUsage | null {
     const timer = window.setInterval(load, 60_000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [])
-  return usage && (usage.daily_limit || usage.weekly_limit) ? usage : null
+  if (!usage) return null
+  if (usage.daily_limit || usage.weekly_limit) return usage
+  return !limitsOnly && (usage.daily_used || usage.weekly_used) ? usage : null
 }
 
 /**
  * The same usage as a small chip for the chat input's toolbar: the tighter of
  * the two limits, with both in the tooltip. Hidden when no limit is set.
  */
-export function SharedTokenUsageChip() {
-  const usage = useSharedTokenUsage()
-  if (!usage) return null
+export function SharedTokenUsageChip({ onSharedAccount = true }: { onSharedAccount?: boolean }) {
+  const usage = useSharedTokenUsage(false)
+  // A chat on the person's own account neither counts nor is limited, so it shows nothing (owner, 2026-10-07).
+  if (!usage || !onSharedAccount) return null
+  if (!usage.daily_limit && !usage.weekly_limit) {
+    return (
+      <span data-testid="shared-token-usage-chip" title="Your use of the shared accounts (UTC). No limit is set; your own accounts are not counted."
+        className="inline-flex h-7 items-center rounded-md border border-border px-2 text-[11px] tabular-nums text-muted-foreground">
+        {formatTokens(usage.daily_used)} today · {formatTokens(usage.weekly_used)} week
+      </span>
+    )
+  }
   const daily = usage.daily_limit ? usage.daily_used / usage.daily_limit : -1
   const weekly = usage.weekly_limit ? usage.weekly_used / usage.weekly_limit : -1
   const showWeekly = weekly > daily
