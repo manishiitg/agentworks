@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-657](plat-657.md) | Closed Code tabs stayed reachable | fixed on main | P2 |
 | [PLAT-653](plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 |
 | [PLAT-648](plat-648.md) | Code chats (tabs) message each other | fixed on main | P2 |

@@ -1217,6 +1217,11 @@ export const agentApi = {
     return response.data
   },
 
+  /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
+  closeAgentProfileSideChat: async (profileId: string, conversationKey: string): Promise<void> => {
+    await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey })
+  },
+
   startNewAgentProfileConversation: async (
     profileId: string,
     request: AgentProfileConversationRequest,

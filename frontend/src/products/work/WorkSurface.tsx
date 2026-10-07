@@ -566,6 +566,17 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
           if (status !== 404) throw cause
         }
       }
+      // The server forgets the closed tab too, so other chats can no longer
+      // message it and reminders set from it run in the main chat.
+      const closingKey = closing?.metadata?.agentProfileConversationKey
+      if (side && closingKey) {
+        try {
+          await agentApi.closeAgentProfileSideChat(profileId, closingKey)
+        } catch (cause) {
+          const status = (cause as { response?: { status?: number } })?.response?.status
+          if (status !== 404) throw cause
+        }
+      }
       await closeTab(closingTabId, side)
       if (activeTabId === closingTabId) activateTab(canonicalTabId)
     })().catch(() => {

@@ -1032,3 +1032,62 @@ func validateProductConversationContinuation(continuation bool, requested, resol
 	}
 	return nil
 }
+
+// isSideChatConversationKey accepts only a side chat's key, "<projectId>:chat:<id>";
+// the main chat ("<projectId>") and anything else are never closed this way.
+func isSideChatConversationKey(key string) bool {
+	project, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	return ok && project != "" && !strings.Contains(project, ":") && chatID != "" && !strings.Contains(chatID, ":")
+}
+
+// handleCloseAgentProfileSideChat forgets a closed side chat (tab): its
+// registry entry goes, so other chats can no longer message it and reminders
+// set from it run in the main chat. Its transcript is kept. Before this a
+// closed tab stayed reachable (PLAT-648, PLAT-653).
+func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
+	decoder.DisallowUnknownFields()
+	var input AgentProfileConversationRequest
+	if err := decoder.Decode(&input); err != nil {
+		writeAgentProfileError(w, http.StatusBadRequest, "invalid product conversation request: "+err.Error())
+		return
+	}
+	if !isSideChatConversationKey(input.ConversationKey) {
+		writeAgentProfileError(w, http.StatusBadRequest, "only a side chat (tab) can be closed")
+		return
+	}
+	if api.agentProfiles == nil {
+		writeAgentProfileError(w, http.StatusServiceUnavailable, "agent profiles are unavailable")
+		return
+	}
+	userID := productWorkspaceUserID(r.Context())
+	profile, err := api.agentProfiles.Resolve(strings.TrimSpace(mux.Vars(r)["id"]), 0, userID)
+	if err != nil || !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
+		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
+		return
+	}
+	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, input.ConversationKey)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	store := defaultProductConversationRegistryStore()
+	current, hasCurrent, _, err := store.history(r.Context(), userID, profile, binding)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if hasCurrent && api.sessionHasActiveWork(current.SessionID) {
+		writeAgentProfileError(w, http.StatusConflict, "This chat is still working; stop it before closing the tab")
+		return
+	}
+	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

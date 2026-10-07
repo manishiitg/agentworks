@@ -34,3 +34,11 @@ services (Parallel, Exa, Firecrawl) and hit their rate limits: `You've hit the f
 ## Register notes
 
 [PLAT-508](plat-508.md), fixed on main, not deployed. The tool only wrapped free-tier hosted MCP search that hit rate limits. Existing workflows keep a harmless stale name in `enabled_custom_tools`.
+
+## Follow-up (2026-10-07): AGY and Pi in workflow steps
+
+Claude Code (WebSearch), Codex (web search) and Cursor (auto-approved) keep their own web search in mcp_only steps.
+AGY's mcp_only hook denied every native tool, including its own `search_web`, so an AGY step had no web search at
+all; multi-llm-provider-go 3e1cdef allows `search_web` there (every other native tool stays denied), and the builder
+pins it. Pi has no native web search; steps that need research should run on Claude, Codex, Cursor or AGY.
+

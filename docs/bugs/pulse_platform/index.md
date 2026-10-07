@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
-| [Code](code/index.md) | 8 | 1 |
+| [Code](code/index.md) | 9 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 71 | 18 |
 | [Crew](crew/index.md) | 22 | 5 |
 | [Dominion](dominion/index.md) | 3 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-657](code/chat/plat-657.md) | Closed Code tabs stayed reachable | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-656](ops/local/plat-656.md) | Start script overwrote the shared mcpbridge | fixed on main | P2 | [ops/local](ops/local/index.md) |
 | [PLAT-655](coding-agents/accounts/plat-655.md) | Model picker offers providers a person cannot use | open | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
 | [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | in progress | P2 | [brain/curation](brain/curation/index.md) |
 | [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
-| [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | deployed | P2 | [crew/chat](crew/chat/index.md) |
