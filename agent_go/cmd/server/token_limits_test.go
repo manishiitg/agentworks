@@ -145,6 +145,27 @@ func TestTokenLimitsPerSharedAccount(t *testing.T) {
 	}
 }
 
+// PLAT-693 (owner decision 2026-10-07): a person's account override may be
+// unlimited (-1) even when the account has a default, and the admin write path
+// keeps it; an empty (0) override field still falls back to the default.
+func TestAccountTokenOverrideUnlimitedBeatsDefault(t *testing.T) {
+	rec := &UserRecord{ID: "alice"}
+	if err := applyAccountTokenLimits(rec, map[string]*UserTokenLimits{"codex-cli": {Daily: TokenLimitUnlimited}}); err != nil {
+		t.Fatal(err)
+	}
+	override := rec.AccountTokenLimits["codex-cli"]
+	if override == nil || override.Daily != TokenLimitUnlimited {
+		t.Fatalf("unlimited override not saved: %+v", rec.AccountTokenLimits)
+	}
+	defaults := &UserTokenLimits{Daily: 1000, Weekly: 5000}
+	if got := effectiveAccountTokenLimits(defaults, override); got == nil || got.Daily != 0 || got.Weekly != 5000 {
+		t.Fatalf("unlimited daily + empty weekly: %+v, want daily unlimited and weekly 5000 from the default", got)
+	}
+	if got := effectiveAccountTokenLimits(defaults, &UserTokenLimits{Daily: TokenLimitUnlimited, Weekly: TokenLimitUnlimited}); got != nil {
+		t.Fatalf("fully unlimited override: %+v, want no limit", got)
+	}
+}
+
 // PLAT-698: a Slack channel turn runs as a bot identity with no user record.
 // Its shared-account tokens count toward the owner of the workflow it answers
 // for, and it is refused (with a message for the channel) when that owner is

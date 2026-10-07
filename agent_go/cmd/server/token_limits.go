@@ -37,7 +37,11 @@ import (
 // stopped.
 
 // UserTokenLimits is an admin-set cap on server-account tokens. Zero (or
-// absent) is unlimited.
+// absent) is unlimited. In a person's override of one shared account
+// (account_token_limits) a field may also be TokenLimitUnlimited (-1):
+// unlimited even when the account has a default, where 0 falls back to the
+// default (docs/DECISIONS.md 2026-10-07, PLAT-693). Anywhere else -1 is the
+// same as 0.
 type UserTokenLimits struct {
 	Daily  int64 `json:"daily,omitempty"`
 	Weekly int64 `json:"weekly,omitempty"`
@@ -49,6 +53,29 @@ func (l *UserTokenLimits) normalized() *UserTokenLimits {
 		return nil
 	}
 	out := UserTokenLimits{Daily: max(l.Daily, 0), Weekly: max(l.Weekly, 0)}
+	if out.Daily == 0 && out.Weekly == 0 {
+		return nil
+	}
+	return &out
+}
+
+// TokenLimitUnlimited in an account override field means "no limit for this
+// person on this account", beating the account default.
+const TokenLimitUnlimited int64 = -1
+
+// normalizedOverride is normalized for a per-account override: any negative
+// field becomes TokenLimitUnlimited; nil when every field is 0 (all fall back).
+func (l *UserTokenLimits) normalizedOverride() *UserTokenLimits {
+	if l == nil {
+		return nil
+	}
+	field := func(v int64) int64 {
+		if v < 0 {
+			return TokenLimitUnlimited
+		}
+		return v
+	}
+	out := UserTokenLimits{Daily: field(l.Daily), Weekly: field(l.Weekly)}
 	if out.Daily == 0 && out.Weekly == 0 {
 		return nil
 	}
@@ -179,11 +206,12 @@ func tokenLimitState(dailyUsed, dailyLimit, weeklyUsed, weeklyLimit int64) strin
 	return state
 }
 
-// normalizedAccountTokenLimits drops accounts with no limit; nil when none.
+// normalizedAccountTokenLimits drops accounts with no override (every field
+// 0); nil when none. An unlimited field (-1) is kept.
 func normalizedAccountTokenLimits(in map[string]*UserTokenLimits) map[string]*UserTokenLimits {
 	var out map[string]*UserTokenLimits
 	for provider, limits := range in {
-		if limits = limits.normalized(); limits != nil {
+		if limits = limits.normalizedOverride(); limits != nil {
 			if out == nil {
 				out = map[string]*UserTokenLimits{}
 			}
@@ -216,7 +244,7 @@ func applyAccountTokenLimits(rec *UserRecord, requested map[string]*UserTokenLim
 		if !validTokenLimitAccount(provider) {
 			return fmt.Errorf("unknown shared account %q", provider)
 		}
-		if limits = limits.normalized(); limits == nil {
+		if limits = limits.normalizedOverride(); limits == nil {
 			delete(next, provider)
 			continue
 		}
@@ -255,21 +283,31 @@ func serverAccountTokenLimitDefaults(ctx context.Context) map[string]*UserTokenL
 		log.Printf("[TOKEN_LIMITS] cannot read the shared account limits: %v", err)
 		return nil
 	}
-	return normalizedAccountTokenLimits(settings.TokenLimits)
+	var out map[string]*UserTokenLimits
+	for provider, limits := range settings.TokenLimits {
+		if limits = limits.normalized(); limits != nil {
+			if out == nil {
+				out = map[string]*UserTokenLimits{}
+			}
+			out[provider] = limits
+		}
+	}
+	return out
 }
 
 // effectiveAccountTokenLimits is the person's limits on one shared account:
-// each field of their override replaces the account default's field.
+// each set field of their override replaces the account default's field (a
+// limit, or TokenLimitUnlimited for none); a 0 field falls back to the default.
 func effectiveAccountTokenLimits(defaults *UserTokenLimits, override *UserTokenLimits) *UserTokenLimits {
 	out := UserTokenLimits{}
 	if defaults = defaults.normalized(); defaults != nil {
 		out = *defaults
 	}
-	if override = override.normalized(); override != nil {
-		if override.Daily > 0 {
+	if override = override.normalizedOverride(); override != nil {
+		if override.Daily != 0 {
 			out.Daily = override.Daily
 		}
-		if override.Weekly > 0 {
+		if override.Weekly != 0 {
 			out.Weekly = override.Weekly
 		}
 	}

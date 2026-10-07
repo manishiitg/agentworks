@@ -12,7 +12,7 @@ import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
-import { formatTokens, parseTokenAmount, sharedAccountLabel } from '../../utils/tokenLimits'
+import { TOKEN_LIMIT_UNLIMITED, formatTokens, parseOverrideAmount, parseTokenAmount, sharedAccountLabel, shownOverrideLimit } from '../../utils/tokenLimits'
 import { llmConfigService } from '../../services/llm-config-api'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
@@ -117,7 +117,8 @@ function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccou
  * One line per shared account (PLAT-693): this person's use against the
  * account's limit, which is the account default (Providers → Limits) unless
  * an override is set here. Edit sets the override; empty fields fall back to
- * the default.
+ * the default, and "Unlimited" (-1) removes the limit for this person even
+ * when the account has a default.
  */
 function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
   user: AdminUser; disabled: boolean; accountProviders: string[]
@@ -131,12 +132,12 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
   const addable = accountProviders.filter((p) => !shown.includes(p))
   const startEdit = (provider: string) => {
     const o = overrides[provider]
-    setDraft({ daily: shownLimit(o?.daily), weekly: shownLimit(o?.weekly) })
+    setDraft({ daily: shownOverrideLimit(o?.daily), weekly: shownOverrideLimit(o?.weekly) })
     setEditing(provider)
   }
   const save = (provider: string) => {
-    const daily = parseTokenAmount(draft.daily)
-    const weekly = parseTokenAmount(draft.weekly)
+    const daily = parseOverrideAmount(draft.daily)
+    const weekly = parseOverrideAmount(draft.weekly)
     if (daily === null || weekly === null) return
     onSave(provider, { daily, weekly })
     setEditing(null)
@@ -152,7 +153,7 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
         const tone = a?.state === 'over' ? 'text-destructive' : a?.state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
         const label = a?.label || sharedAccountLabel(provider)
         if (editing === provider) {
-          const invalid = parseTokenAmount(draft.daily) === null || parseTokenAmount(draft.weekly) === null
+          const invalid = parseOverrideAmount(draft.daily) === null || parseOverrideAmount(draft.weekly) === null
           return (
             <div key={provider} className="flex flex-wrap items-center gap-1">
               <span className="w-16 truncate">{label}</span>
@@ -161,8 +162,12 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
                   onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
                   onKeyDown={(e) => { if (e.key === 'Enter') save(provider); if (e.key === 'Escape') setEditing(null) }}
                   placeholder={def?.[field] ? `Default ${formatTokens(def[field])}` : 'Unlimited'}
+                  title='A number like 500k or 5M; empty uses the default; "Unlimited" means no limit even with a default'
                   aria-label={`${label} ${field} token limit for ${user.username}`} className="h-6 w-20 text-xs" />
               ))}
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={disabled}
+                title={`No limit for ${user.username} on the shared ${label} account, even when it has a default`}
+                onClick={() => setDraft({ daily: 'Unlimited', weekly: 'Unlimited' })}>Unlimited</Button>
               <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={disabled || invalid} onClick={() => save(provider)}>Save</Button>
               <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(null)}>Cancel</Button>
             </div>
@@ -173,7 +178,7 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
           <p key={provider} className={tone}>
             <button type="button" disabled={disabled} onClick={() => startEdit(provider)} className="underline-offset-2 hover:underline disabled:no-underline"
               title={`Edit ${user.username}'s limit on the shared ${label} account. Default: ${def?.daily || def?.weekly ? [def?.daily ? `${formatTokens(def.daily)} a day` : '', def?.weekly ? `${formatTokens(def.weekly)} a week` : ''].filter(Boolean).join(', ') : 'none'}.`}>
-              {label}{o ? ' (own limit)' : ''}
+              {label}{o ? (o.daily === TOKEN_LIMIT_UNLIMITED && o.weekly === TOKEN_LIMIT_UNLIMITED ? ' (unlimited)' : ' (own limit)') : ''}
             </button>
             {': '}
             {a ? <>today {part(a.daily_used, a.daily_limit)} · week {part(a.weekly_used, a.weekly_limit)}</> : 'no use'}

@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — A person's account override may be Unlimited despite a default
+
+In a person's per-account override (users.json `account_token_limits`), a field
+of `-1` means unlimited for that person on that account even when the account
+has a default; `0` (empty) still falls back to the default. Elsewhere (the
+overall cap, account defaults) `-1` is the same as `0`. Access → Users has an
+"Unlimited" choice; the MCP `set_token_limits` takes `-1`. Why: owner,
+2026-10-07. [PLAT-693](bugs/pulse_platform/app/accounts/plat-693.md).
+
 ### 2026-10-07 — The tmux server never keeps the service's own tokens
 
 tmux gives its global environment (the environment of the client that

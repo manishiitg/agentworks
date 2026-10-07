@@ -2772,6 +2772,7 @@ export interface AdminUser {
   updated_at?: string
 }
 
+/** Tokens per day/week; 0 or absent is unlimited. In an account override, -1 is unlimited even when the account has a default and 0 falls back to it. */
 export interface TokenLimits {
   daily?: number
   weekly?: number

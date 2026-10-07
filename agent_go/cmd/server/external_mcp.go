@@ -129,7 +129,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "get_token_usage" {
-			instructions += " Shared-account token limits: get_token_usage shows each person's tokens on the server's shared accounts today and this week (UTC, Monday weeks) against their daily/weekly limits, or totals for a from/to range; set_token_limits (administrators, users:manage) changes a person's limits (0 or null = unlimited, omitted = unchanged). Every call is recorded in the Code review audit log."
+			instructions += " Shared-account token limits: get_token_usage shows each person's tokens on the server's shared accounts today and this week (UTC, Monday weeks) against their daily/weekly limits, or totals for a from/to range; set_token_limits (administrators, users:manage) changes a person's limits (0 or null = unlimited, omitted = unchanged; in a person's account override 0 falls back to the account default and -1 is unlimited even when the account has a default). Every call is recorded in the Code review audit log."
 			break
 		}
 	}

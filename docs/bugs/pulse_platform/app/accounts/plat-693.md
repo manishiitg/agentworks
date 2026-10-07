@@ -68,6 +68,16 @@ plans that run out at very different rates. Each account needs its own limit.
   overall cap still refuses across accounts; usage view shows default vs
   effective).
 
+- **Unlimited override** (owner 2026-10-07): in a person's account override a
+  field of `-1` (`TokenLimitUnlimited`) is unlimited even when the account has a
+  default; `0`/empty still falls back. `normalizedOverride` keeps `-1` for
+  overrides only (the overall cap and account defaults treat it as `0`);
+  `effectiveAccountTokenLimits` lets a non-zero override field replace the
+  default. UI: the override editor's **Unlimited** button (or typing
+  "Unlimited"), the row reads "(unlimited)". MCP `set_token_limits` with
+  `account` + person accepts `-1` (or "unlimited"). Test:
+  `TestAccountTokenOverrideUnlimitedBeatsDefault`.
+
 ## Left
 
 - Not deployed. Verify live on Excellence after deploy: set a small Codex

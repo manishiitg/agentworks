@@ -24,6 +24,26 @@ export function parseTokenAmount(text: string): number | null {
   return Math.round(parseFloat(m[1]) * scale)
 }
 
+/**
+ * In a person's override of one shared account, a field of -1 is "Unlimited":
+ * no limit for them on that account even when the account has a default; 0
+ * (empty) falls back to the default (PLAT-693).
+ */
+export const TOKEN_LIMIT_UNLIMITED = -1
+
+/** parseTokenAmount for an account override field: also "Unlimited" (or "none", "∞") -> -1. */
+export function parseOverrideAmount(text: string): number | null {
+  const t = text.trim().toLowerCase()
+  if (t === 'unlimited' || t === 'none' || t === '∞' || t === '-1') return TOKEN_LIMIT_UNLIMITED
+  return parseTokenAmount(text)
+}
+
+/** The exact stored override value for editing: "Unlimited", a number, or "" (falls back to the default). */
+export function shownOverrideLimit(n?: number): string {
+  if (n !== undefined && n < 0) return 'Unlimited'
+  return n ? String(n) : ''
+}
+
 /** "00:00 UTC" style reset time shown next to a limit. */
 export function resetLabel(iso: string | undefined, weekly: boolean): string {
   if (!iso) return ''

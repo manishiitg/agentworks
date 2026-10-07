@@ -86,13 +86,13 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 		return props
 	}
 	limit := func(what string) map[string]any {
-		return map[string]any{"type": []any{"integer", "null"}, "minimum": 0, "maximum": 1e15, "description": what + " limit in tokens on the shared server accounts; 0 or null is unlimited; omit to leave it unchanged."}
+		return map[string]any{"type": []any{"integer", "null"}, "minimum": -1, "maximum": 1e15, "description": what + " limit in tokens on the shared server accounts; 0 or null is unlimited (in a person's account override: falls back to the account default); -1 in a person's account override is unlimited even when the account has a default; omit to leave it unchanged."}
 	}
 	account := func(what string) map[string]any {
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
 	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
-	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it). With account and no person: the account's default per-person limit for everyone. Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap.")}))
+	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap.")}))
 }
 
 // tokenLimitPerson is the only shape a person leaves the server in.
@@ -306,7 +306,9 @@ func (api *StreamingAPI) externalTokenUsageRange(w http.ResponseWriter, people [
 	externalJSON(w, map[string]any{"from": summary.From, "to": summary.To, "timezone": tokenLimitTimezone, "accounts": "shared server accounts (account IDs " + serverAccountIDPrefix + "*)", "people": out})
 }
 
-// tokenLimitArg reads daily/weekly: absent = keep, null = 0 (unlimited).
+// tokenLimitArg reads daily/weekly: absent = keep, null = 0 (unlimited, or
+// the account default for a person's account override), -1 or "unlimited" =
+// TokenLimitUnlimited (an account override that beats the default).
 func tokenLimitArg(args map[string]any, name string, current int64) (int64, bool) {
 	v, present := args[name]
 	if !present {
@@ -315,6 +317,11 @@ func tokenLimitArg(args map[string]any, name string, current int64) (int64, bool
 	switch n := v.(type) {
 	case nil:
 		return 0, true
+	case string:
+		if strings.EqualFold(strings.TrimSpace(n), "unlimited") {
+			return TokenLimitUnlimited, true
+		}
+		return current, false
 	case float64:
 		return int64(n), true
 	case json.Number:
@@ -334,8 +341,13 @@ func (api *StreamingAPI) externalSetTokenLimits(w http.ResponseWriter, r *http.R
 	if account != "" {
 		existing = normalizedAccountTokenLimits(rec.AccountTokenLimits)[account]
 	}
-	if limits := existing.normalized(); limits != nil {
-		current = *limits
+	if account != "" {
+		existing = existing.normalizedOverride()
+	} else {
+		existing = existing.normalized()
+	}
+	if existing != nil {
+		current = *existing
 	}
 	daily, setDaily := tokenLimitArg(args, "daily", current.Daily)
 	weekly, setWeekly := tokenLimitArg(args, "weekly", current.Weekly)
