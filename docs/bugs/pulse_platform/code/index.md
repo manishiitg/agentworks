@@ -9,5 +9,6 @@
 | [frontend-chat](frontend-chat/index.md) | 2 | 0 |
 | [instructions](instructions/index.md) | 1 | 0 |
 | [sandbox](sandbox/index.md) | 1 | 0 |
+| [schedules](schedules/index.md) | 1 | 1 |
 | [shell](shell/index.md) | 1 | 1 |
 | [terminal](terminal/index.md) | 1 | 0 |
