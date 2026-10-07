@@ -39,7 +39,11 @@ func (api *StreamingAPI) revalidateExecutionPrincipal(ctx context.Context, req Q
 	if err != nil {
 		return ctx, err
 	}
-	route, found, dedicated := api.slackRouteForConnection(ctx, req.BotConnectionID, req.BotChannelID, routes)
+	expected := services.ChannelRoute{WorkflowID: claims.BotRouteWorkflowID, ProfileID: claims.BotRouteProfileID, ConversationKey: claims.BotRouteConversationKey, WorkspacePath: claims.BotRouteWorkspacePath}
+	// The turn's target must still be on this channel's allowed list on its
+	// arrival app (and, on the platform bot, still switched on): a slug is a
+	// name, never a grant (PLAT-668).
+	route, found, dedicated := api.slackRouteForTurn(ctx, req.BotConnectionID, req.BotChannelID, routes, expected, req)
 	if !found {
 		return ctx, fmt.Errorf("Slack bot route was revoked")
 	}
@@ -56,7 +60,6 @@ func (api *StreamingAPI) revalidateExecutionPrincipal(ctx context.Context, req Q
 	if !claims.SlackTrustedApp && !services.SlackRouteAllowsEmail(route, req.BotUserEmail) {
 		return ctx, fmt.Errorf("Slack email is blocked or unverifiable")
 	}
-	expected := services.ChannelRoute{WorkflowID: claims.BotRouteWorkflowID, ProfileID: claims.BotRouteProfileID, ConversationKey: claims.BotRouteConversationKey, WorkspacePath: claims.BotRouteWorkspacePath}
 	// A Slack thread runs in its own chat of the route's crew
 	// ("<crew>:slack-<hash>"); the route names the crew itself.
 	if sameProjectConversation(route.ConversationKey, expected.ConversationKey) {

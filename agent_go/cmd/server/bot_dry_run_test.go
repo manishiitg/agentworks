@@ -59,7 +59,7 @@ func newBotDryRunWorld(t *testing.T) botDryRunWorld {
 		t.Fatal(err)
 	}
 	fx.profile, fx.api.agentProfiles = profile, registry
-	t.Cleanup(func() { services.SetDedicatedSlackRouteFunc(nil) })
+	t.Cleanup(func() { services.SetDedicatedSlackRouteFunc(nil); services.SetSlackRoutingHooks(nil) })
 	// The fixture pins an LLM the test profile does not offer; a crew
 	// without one uses the profile's default.
 	fx.mock.mu.Lock()

@@ -1324,6 +1324,7 @@ func (s *SlackService) UpdateSlackConnection(ctx context.Context, connID string,
 				// Repairing a crew path's form (logical to physical) is not a
 				// rescope and keeps them.
 				conn.ChannelRoutes = nil
+				conn.Targets = nil
 			}
 			conn.WorkspacePath = nextPath
 			conn.ProfileID = nextProfile
@@ -1827,7 +1828,7 @@ func (s *SlackService) handleSlackBotMessage(userID, channelID, threadTS, messag
 }
 
 func (s *SlackService) routeSlackWorkflowMessage(ctx context.Context, userID, userEmail, channelID, threadTS, text string, isThreadReply bool) (string, *ChannelRoute, bool) {
-	route := s.resolveSlackRoute(ctx, channelID)
+	route := s.resolveSlackThreadRoute(ctx, channelID, threadTS)
 	if route == nil {
 		return text, nil, false
 	}
@@ -1858,7 +1859,11 @@ func (s *SlackService) handleSocketModeInteractive(evt socketmode.Event) {
 		return
 	}
 
-	if route := s.resolveSlackRoute(context.Background(), callback.Channel.ID); route != nil && len(route.BlockedEmails) > 0 && !SlackRouteAllowsEmail(*route, s.resolveUserEmail(callback.User.ID)) {
+	callbackThread := callback.Message.ThreadTimestamp
+	if callbackThread == "" {
+		callbackThread = callback.Message.Timestamp
+	}
+	if route := s.resolveSlackThreadRoute(context.Background(), callback.Channel.ID, callbackThread); route != nil && len(route.BlockedEmails) > 0 && !SlackRouteAllowsEmail(*route, s.resolveUserEmail(callback.User.ID)) {
 		return
 	}
 
@@ -2478,11 +2483,11 @@ func (s *SlackService) resolveSlackUser(userID string) (name, email string) {
 	return name, user.Profile.Email
 }
 
-// resolveSlackRoute routes a message that arrived on this listener: a
-// dedicated (scoped) app serves its own destination, a shared app follows
-// the channel route.
-func (s *SlackService) resolveSlackRoute(ctx context.Context, channelID string) *ChannelRoute {
-	return ResolveSlackRoute(ctx, s.connectionID, channelID, func() *ChannelRoute {
+// resolveSlackThreadRoute routes a message in a thread: its bound target
+// while the channel still allows it, else the channel's default.
+func (s *SlackService) resolveSlackThreadRoute(ctx context.Context, channelID, threadTS string) *ChannelRoute {
+	thread := ThreadID{Platform: "slack", ChannelID: channelID, ThreadTS: threadTS, ConnectionID: s.connectionID}
+	return ResolveSlackThreadRoute(ctx, thread, func() *ChannelRoute {
 		return s.resolveSlackChannelWorkflow(channelID)
 	})
 }

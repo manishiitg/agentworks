@@ -43,6 +43,11 @@ type SlackConnection struct {
 	// on platform (unscoped) connections, which route through the shared
 	// bot's channel routes instead.
 	ChannelRoutes map[string]SlackConnectionRoute `json:"channel_routes,omitempty"`
+	// Targets are more workflows, Crews and Codes its owner attached to this
+	// bot (PLAT-668). Each is reachable by its slug in a 1:1 DM, with the
+	// sender's own access; Codes answer DMs only. Channels list theirs in
+	// ChannelRoutes.
+	Targets []SlackTargetRef `json:"targets,omitempty"`
 }
 
 // SlackConnectionRoute is one channel route on a scoped connection. It names
@@ -57,6 +62,41 @@ type SlackConnectionRoute struct {
 	ProfileID string `json:"profile_id,omitempty"`
 	// AddedBy records who created the route, for audit.
 	AddedBy string `json:"added_by,omitempty"`
+	// Targets are more targets allowed in this channel, picked with
+	// "@bot <slug>" (PLAT-668). The destination above, when set, is the
+	// channel's default; with no destination the bot asks with buttons. A
+	// route saved before slugs is a one-target list that is also the
+	// default.
+	Targets []SlackTargetRef `json:"targets,omitempty"`
+}
+
+// Default names the channel's default target, or an empty ref.
+func (r SlackConnectionRoute) Default() SlackTargetRef {
+	return SlackTargetRef{WorkspacePath: strings.TrimSpace(r.WorkspacePath), ProfileID: strings.TrimSpace(r.ProfileID)}
+}
+
+// Allowed lists every target allowed in the channel, default first.
+func (r SlackConnectionRoute) Allowed() []SlackTargetRef {
+	var out []SlackTargetRef
+	if def := r.Default(); !def.Empty() {
+		out = append(out, def)
+	}
+	for _, target := range r.Targets {
+		if target.Empty() {
+			continue
+		}
+		duplicate := false
+		for _, seen := range out {
+			if seen.Same(target) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			out = append(out, target)
+		}
+	}
+	return out
 }
 
 // SameDestination reports whether the route points at the given scope.
@@ -99,9 +139,11 @@ func (c SlackConnection) masked() SlackConnection {
 	if len(c.ChannelRoutes) > 0 {
 		out.ChannelRoutes = make(map[string]SlackConnectionRoute, len(c.ChannelRoutes))
 		for channel, route := range c.ChannelRoutes {
+			route.Targets = append([]SlackTargetRef(nil), route.Targets...)
 			out.ChannelRoutes[channel] = route
 		}
 	}
+	out.Targets = append([]SlackTargetRef(nil), c.Targets...)
 	out.BotToken = maskSlackToken("xoxb-", c.BotToken)
 	out.AppToken = maskSlackToken("xapp-", c.AppToken)
 	return out
@@ -159,6 +201,7 @@ func normalizeSlackConnections(cfg *SlackConfig) {
 			c.DisplayName = c.ID
 		}
 		c.ChannelRoutes = normalizeSlackConnectionRoutes(c)
+		c.Targets = normalizeSlackConnectionTargets(c)
 		seen[c.ID] = true
 		out = append(out, c)
 	}
@@ -173,25 +216,73 @@ func normalizeSlackConnections(cfg *SlackConfig) {
 }
 
 // normalizeSlackConnectionRoutes keeps only well-formed routes on a scoped
-// connection: canonical channel keys, a destination path, and never the
-// connection's own destination (it already answers there everywhere).
+// connection: canonical channel keys, at least one target, no Codes (they
+// answer DMs only), and never a route that only repeats the connection's own
+// destination (it already answers there everywhere).
 func normalizeSlackConnectionRoutes(c SlackConnection) map[string]SlackConnectionRoute {
 	if c.WorkspacePath == "" || len(c.ChannelRoutes) == 0 {
 		return nil
 	}
+	own := SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}
 	out := make(map[string]SlackConnectionRoute, len(c.ChannelRoutes))
 	for channel, route := range c.ChannelRoutes {
 		channel = NormalizeSlackChannelID(channel)
 		route.WorkspacePath = strings.TrimSpace(route.WorkspacePath)
 		route.ProfileID = strings.TrimSpace(route.ProfileID)
 		route.AddedBy = strings.TrimSpace(route.AddedBy)
-		if channel == "" || route.WorkspacePath == "" || route.SameDestination(c.WorkspacePath, c.ProfileID) {
+		if route.Default().IsCode() {
+			route.WorkspacePath, route.ProfileID = "", ""
+		}
+		var extra []SlackTargetRef
+		for _, target := range route.Targets {
+			target.WorkspacePath = strings.TrimSpace(target.WorkspacePath)
+			target.ProfileID = strings.TrimSpace(target.ProfileID)
+			target.AddedBy = strings.TrimSpace(target.AddedBy)
+			if target.Empty() || target.IsCode() || target.Same(route.Default()) {
+				continue
+			}
+			extra = append(extra, target)
+		}
+		route.Targets = extra
+		if channel == "" || (route.WorkspacePath == "" && len(route.Targets) == 0) {
+			continue
+		}
+		if len(route.Targets) == 0 && route.Default().Same(own) {
 			continue
 		}
 		out[channel] = route
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// normalizeSlackConnectionTargets keeps a scoped connection's attached
+// targets well-formed and distinct, without its own destination.
+func normalizeSlackConnectionTargets(c SlackConnection) []SlackTargetRef {
+	if c.WorkspacePath == "" || len(c.Targets) == 0 {
+		return nil
+	}
+	own := SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}
+	var out []SlackTargetRef
+	for _, target := range c.Targets {
+		target.WorkspacePath = strings.TrimSpace(target.WorkspacePath)
+		target.ProfileID = strings.TrimSpace(target.ProfileID)
+		target.AddedBy = strings.TrimSpace(target.AddedBy)
+		if target.Empty() || target.Same(own) {
+			continue
+		}
+		duplicate := false
+		for _, seen := range out {
+			if seen.Same(target) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			out = append(out, target)
+		}
 	}
 	return out
 }

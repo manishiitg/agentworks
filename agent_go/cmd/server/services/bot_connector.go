@@ -848,7 +848,7 @@ func (m *BotConversationManager) workflowRouteForMessage(msg BotIncomingMessage,
 		return msg.PresetWorkflow
 	}
 	if active != nil && strings.EqualFold(strings.TrimSpace(msg.Platform), "slack") {
-		if route := m.resolveRoute(msg.Platform, msg.ConnectionID, msg.ChannelID); route != nil {
+		if route := m.resolveThreadRoute(botMessageThread(msg)); route != nil {
 			return route
 		}
 		active.mu.Lock()
@@ -861,7 +861,16 @@ func (m *BotConversationManager) workflowRouteForMessage(msg BotIncomingMessage,
 	if active != nil {
 		return botRouteFromActive(active)
 	}
-	return m.resolveRoute(msg.Platform, msg.ConnectionID, msg.ChannelID)
+	return m.resolveThreadRoute(botMessageThread(msg))
+}
+
+// botMessageThread is the platform thread a message belongs to.
+func botMessageThread(msg BotIncomingMessage) ThreadID {
+	thread := ThreadID{Platform: msg.Platform, ChannelID: msg.ChannelID, ThreadTS: msg.ThreadTS, ConnectionID: msg.ConnectionID}
+	if thread.ThreadTS == "" {
+		thread.ThreadTS = msg.ChannelID
+	}
+	return thread
 }
 
 // routeChangeKeepsSession reports whether granting this route must leave the
@@ -1109,7 +1118,9 @@ func (m *BotConversationManager) HandleIncomingMessage(msg BotIncomingMessage) {
 		routeKey := ""
 		if strings.EqualFold(msg.Platform, "slack") {
 			routed := msg
-			routed.PresetWorkflow = m.resolveRoute(msg.Platform, msg.ConnectionID, msg.ChannelID)
+			if routed.PresetWorkflow == nil {
+				routed.PresetWorkflow = m.resolveThreadRoute(probeThreadID)
+			}
 			routeKey = botMessageRouteKey(routed)
 		}
 		if !hasSession {
@@ -3265,15 +3276,15 @@ func (m *BotConversationManager) resolveChannelWorkflow(platform, channelID stri
 	return ResolveChannelRoute(botCfg.AllowedChannels, channelID)
 }
 
-// resolveRoute applies the inbound routing rule for a message's arrival app:
-// a Slack app scoped to a workflow or crew project serves that destination
-// wherever it is invited; any other app follows the channel route.
-func (m *BotConversationManager) resolveRoute(platform, connectionID, channelID string) *ChannelRoute {
-	if !strings.EqualFold(strings.TrimSpace(platform), "slack") {
-		return m.resolveChannelWorkflow(platform, channelID)
+// resolveThreadRoute routes one thread: on Slack the thread's
+// bound target while its channel still allows it, else the channel's default
+// (slack_targets.go).
+func (m *BotConversationManager) resolveThreadRoute(thread ThreadID) *ChannelRoute {
+	if !strings.EqualFold(strings.TrimSpace(thread.Platform), "slack") {
+		return m.resolveChannelWorkflow(thread.Platform, thread.ChannelID)
 	}
-	return ResolveSlackRoute(context.Background(), connectionID, channelID, func() *ChannelRoute {
-		return m.resolveChannelWorkflow(platform, channelID)
+	return ResolveSlackThreadRoute(context.Background(), thread, func() *ChannelRoute {
+		return m.resolveChannelWorkflow(thread.Platform, thread.ChannelID)
 	})
 }
 
@@ -3296,7 +3307,7 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 		}
 		route := presetRoute
 		if route == nil {
-			route = m.resolveRoute(platform, thread.ConnectionID, channelID)
+			route = m.resolveThreadRoute(thread)
 		}
 		if route != nil && route.WorkflowID != "" {
 			req, err := m.workflowTurn(context.Background(), query, *route, thread, dmUserID)
@@ -3325,11 +3336,13 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 	// which wins over "no routing at all" (default multi-agent chat).
 	route := presetRoute
 	if route == nil && channelID != "" {
-		connectionID := ""
+		thread := ThreadID{Platform: platform, ChannelID: channelID}
 		if len(threadIDs) > 0 {
-			connectionID = threadIDs[0].ConnectionID
+			thread = threadIDs[0]
+			thread.Platform = platform
+			thread.ChannelID = channelID
 		}
-		route = m.resolveRoute(platform, connectionID, channelID)
+		route = m.resolveThreadRoute(thread)
 	}
 	if route != nil {
 		req["preset_query_id"] = route.WorkflowID
@@ -3453,7 +3466,7 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 
 func (m *BotConversationManager) buildQueryRequestForActive(active *activeBotSession, query, userID, platform string, threadID ThreadID) map[string]interface{} {
 	if platform == "slack" && m.workflowTurn != nil {
-		route := m.resolveRoute(platform, threadID.ConnectionID, threadID.ChannelID)
+		route := m.resolveThreadRoute(threadID)
 		if route != nil && route.WorkflowID != "" {
 			var meta *chathistory.BotMetadata
 			if active != nil {
@@ -3502,7 +3515,7 @@ func (m *BotConversationManager) buildQueryRequestForActive(active *activeBotSes
 		}
 	}
 	if strings.EqualFold(strings.TrimSpace(platform), "slack") {
-		if route := m.resolveRoute(platform, threadID.ConnectionID, threadID.ChannelID); route != nil {
+		if route := m.resolveThreadRoute(threadID); route != nil {
 			routeGrant = NormalizeBotRouteGrant(route.BotGrant, route.WorkshopMode)
 			workshopMode = WorkshopModeForBotGrant(routeGrant)
 		}

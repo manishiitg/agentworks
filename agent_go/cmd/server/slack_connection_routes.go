@@ -893,5 +893,21 @@ func slackBotConnectorWantedAtStartup(botConfig *chathistory.BotConnectorConfig,
 	if botConfig != nil && (botConfig.BotMode || services.SlackBotConfigHasRoutes(botConfig)) {
 		return true
 	}
-	return slackHasOwnedEnabledConnection(svc)
+	return slackHasOwnedEnabledConnection(svc) || slackPlatformBotHasTargets(context.Background())
+}
+
+// slackPlatformBotHasTargets reports whether any target switched on "Use the
+// AgentWorks bot": the platform bot then needs the bot manager's handler for
+// DMs and owner-added channels (PLAT-668).
+func slackPlatformBotHasTargets(ctx context.Context) bool {
+	registry, err := services.LoadSlackTargetsRegistry(ctx)
+	if err != nil || registry == nil {
+		return false
+	}
+	for _, entry := range registry.Targets {
+		if entry.PlatformBot {
+			return true
+		}
+	}
+	return false
 }

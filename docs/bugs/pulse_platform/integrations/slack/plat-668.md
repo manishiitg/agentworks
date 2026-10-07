@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | in progress |
 | Priority | P2 |
 | Product | integrations |
 | Area | slack |
@@ -34,8 +34,21 @@ possibly in a single channel.
 
 [docs/design/slack_slugs.md](../../../../design/slack_slugs.md).
 
+## Done
+
+- Phase 1 (data model, migration, routing): `config/slack-targets.json` holds each target's slug and its "Use the
+  AgentWorks bot" switch, plus owner-added platform-bot channel targets; an own bot's `channel_routes` entries gain
+  `targets` (more allowed targets; the old destination is the default) and the connection gains `targets` (DM
+  attachments, Codes included). Routes saved before slugs read as a one-target list that is also the default; a
+  target with the admin's older channel route counts as switched on until its owner decides. Every message, turn
+  and tool call resolves the turn's target against the channel's allowed list on its arrival app
+  (`slack_slugs.go`, `services/slack_targets.go`); a DM turn against the targets the app offers and the sender can
+  reach.
+
 ## Left
 
-Everything: build the slug table, multi-target channel routes and their migration, channel and DM parsing, thread
-binding, the button prompt, the UI, the dry run, and the two side fixes (files on top-level mentions, triggers on
-own-bot routes). Verify live on RTS with the workflows' bot and 3 Crews in one channel.
+- Phase 2: `@bot <slug>` parsing, thread binding, the button prompt, platform-bot DMs.
+- Phase 3: the UI (switch, slug, channels with the member check, own bot targets, Codes in DMs) and the dry run with
+  a slug.
+- Phase 4: files on top-level channel mentions; Slack triggers on own-bot channel routes.
+- Live check on RTS after a deploy: the workflows' bot plus 3 Crews in one channel, and a Code DM slug.

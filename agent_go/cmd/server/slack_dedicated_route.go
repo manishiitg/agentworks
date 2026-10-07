@@ -152,8 +152,11 @@ func (api *StreamingAPI) slackRouteForConnection(ctx context.Context, connection
 
 // slackTrafficAllowed gates Slack bot traffic: a dedicated app or saved
 // route authorizes itself; anything else needs the platform switch.
+// With slug routing a found route is on the channel's allowed list, which its
+// owner (or an admin) set, so it authorizes itself too, even before the shared
+// bot's connector config exists.
 func slackTrafficAllowed(cfg *chathistory.BotConnectorConfig, found, dedicated bool) bool {
-	return (dedicated && found) || services.SlackBotTrafficAllowed(cfg, found)
+	return (found && (dedicated || services.SlackRoutingInstalled())) || services.SlackBotTrafficAllowed(cfg, found)
 }
 
 // slackToolRoute resolves the route a Slack tool call acts on. A bot turn
@@ -161,10 +164,34 @@ func slackTrafficAllowed(cfg *chathistory.BotConnectorConfig, found, dedicated b
 // a channel) only ever acts through channel routes.
 func (api *StreamingAPI) slackToolRoute(ctx context.Context, session, channel string, routes map[string]ChannelRoute) (route ChannelRoute, found, dedicated bool) {
 	if execution, ok := api.botExecutionForSession(session); ok {
-		return api.slackRouteForConnection(ctx, execution.Request.BotConnectionID, channel, routes)
+		target := services.ChannelRoute{WorkflowID: execution.Request.PresetQueryID, ProfileID: execution.Request.AgentProfileID, ConversationKey: execution.Request.AgentProfileConversationKey, WorkspacePath: execution.Request.SelectedFolder}
+		return api.slackRouteForTurn(ctx, execution.Request.BotConnectionID, channel, routes, target, execution.Request)
 	}
 	route, found = routes[channel]
 	return route, found, false
+}
+
+// slackRouteForTurn is the route a turn may act on in a channel: the target
+// on the channel's allowed list (on the turn's arrival app) that the turn
+// runs on. With slug routing a channel reaches several targets, so the turn's
+// own target picks among them; a target removed from the list, or switched
+// off, is not found. Without slug routing it is the one-route rule.
+func (api *StreamingAPI) slackRouteForTurn(ctx context.Context, connectionID, channel string, routes map[string]ChannelRoute, expected ChannelRoute, req QueryRequest) (ChannelRoute, bool, bool) {
+	if !services.SlackRoutingInstalled() {
+		return api.slackRouteForConnection(ctx, connectionID, channel, routes)
+	}
+	return api.slackChannelRouteMatching(ctx, connectionID, channel, expected.ProfileID, expected.WorkspacePath, func(route ChannelRoute) bool {
+		candidate := expected
+		// A Slack thread runs in its own chat of the route's crew
+		// ("<crew>:slack-<hash>"); the route names the crew itself.
+		if sameProjectConversation(route.ConversationKey, candidate.ConversationKey) {
+			candidate.ConversationKey = route.ConversationKey
+		}
+		if !sameSlackRouteDestination(route, candidate) {
+			return false
+		}
+		return slackRouteFolderMatches(route, req.SelectedFolder) || strings.TrimSpace(req.SelectedFolder) == ""
+	})
 }
 
 func firstNonBlank(values ...string) string {

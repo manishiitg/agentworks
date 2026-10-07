@@ -60,13 +60,25 @@ func (api *StreamingAPI) revalidateSlackDMPrincipal(ctx context.Context, claims 
 	if userID, ok := slackDMUserForEmail(req.BotUserEmail); !ok || userID != claims.UserID {
 		return ctx, fmt.Errorf("this Slack account no longer maps to an AgentWorks user")
 	}
-	_, routes, err := api.slackRoutes(ctx)
-	if err != nil {
-		return ctx, err
-	}
-	route, found, dedicated := api.slackRouteForConnection(ctx, req.BotConnectionID, req.BotChannelID, routes)
-	if !found || !dedicated {
-		return ctx, fmt.Errorf("direct messages need a workflow's or crew's own Slack bot")
+	var route services.ChannelRoute
+	if services.SlackRoutingInstalled() {
+		// The DM's target must still be one this app offers and the sender
+		// can still reach with their own access (PLAT-668).
+		matched, found := api.slackDMRouteMatching(ctx, req.BotConnectionID, claims.UserID, req)
+		if !found {
+			return ctx, fmt.Errorf("this Slack bot no longer reaches that target for you")
+		}
+		route = matched
+	} else {
+		_, routes, err := api.slackRoutes(ctx)
+		if err != nil {
+			return ctx, err
+		}
+		legacy, found, dedicated := api.slackRouteForConnection(ctx, req.BotConnectionID, req.BotChannelID, routes)
+		if !found || !dedicated {
+			return ctx, fmt.Errorf("direct messages need a workflow's or crew's own Slack bot")
+		}
+		route = legacy
 	}
 	if !services.SlackRouteAllowsEmail(route, req.BotUserEmail) {
 		return ctx, fmt.Errorf("Slack email is blocked")

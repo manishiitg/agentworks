@@ -313,8 +313,13 @@ func (api *StreamingAPI) revokeSlackConnectionChannelSessions(ctx context.Contex
 		if !ok || strings.TrimSpace(binding.Request.BotConnectionID) != connID || !strings.EqualFold(strings.TrimSpace(binding.Request.BotChannelID), channel) {
 			return true
 		}
-		route, found, _ := api.slackRouteForConnection(ctx, connID, channel, nil)
-		if !found || binding.Claims == nil || binding.Claims.ExecutionPrincipal == nil || !sameSlackRouteDestination(route, binding.Claims.ExecutionPrincipal.Target) {
+		if binding.Claims == nil || binding.Claims.ExecutionPrincipal == nil {
+			api.cancelSessionRuntimeWork(key.(string), "Slack channel route changed", runtimePhaseCanceled)
+			return true
+		}
+		target := binding.Claims.ExecutionPrincipal.Target
+		route, found, _ := api.slackRouteForTurn(ctx, connID, channel, nil, target, binding.Request)
+		if !found || !sameSlackRouteDestination(route, target) {
 			api.cancelSessionRuntimeWork(key.(string), "Slack channel route changed", runtimePhaseCanceled)
 		}
 		return true
