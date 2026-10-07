@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-675](plat-675.md) | Report links to a dead localhost port | fixed on main | P2 |
 | [PLAT-674](plat-674.md) | Rare product tips while the agent works | fixed on main | P3 |
 | [PLAT-667](plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 |
 | [PLAT-649](plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 |

@@ -81,3 +81,22 @@ export function consumeSharedReturnPath(oauthState: string): string | null {
   }
   return sharedReturnPath(sessionValue) || sharedReturnPath(fallbackValue)
 }
+
+// The app's own share pages (sharedLink). A link an agent wrote for one of them
+// on another local port (PUBLIC_URL=http://localhost:5173 left in a local .env
+// produced http://localhost:5173/report?path=..., 2026-10-07) opens on the app
+// actually in use instead of a dead port.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+const SHARED_PAGES = new Set(['/report', '/file', '/folder'])
+
+export function repairLocalAppLink(href: string, currentOrigin: string): string {
+  try {
+    const url = new URL(href)
+    const current = new URL(currentOrigin)
+    if (!LOCAL_HOSTS.has(url.hostname) || !LOCAL_HOSTS.has(current.hostname)) return href
+    if (url.origin === current.origin || !SHARED_PAGES.has(url.pathname) || !url.searchParams.has('path')) return href
+    return `${current.origin}${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return href
+  }
+}

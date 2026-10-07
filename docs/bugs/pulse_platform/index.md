@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
 | [Brain](brain/index.md) | 27 | 6 |
 | [Browser and browser automation](browser/index.md) | 47 | 12 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 29 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
 | [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 73 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
@@ -28,6 +28,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
 | [PLAT-676](coding-agents/muse/plat-676.md) | Muse hooks fail on slots: node Permission denied | in progress | P1 | [coding-agents/muse](coding-agents/muse/index.md) |
+| [PLAT-675](chat/rendering/plat-675.md) | Report links to a dead localhost port | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-674](chat/rendering/plat-674.md) | Rare product tips while the agent works | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-673](browser/access/plat-673.md) | Code and Crew browser stuck loading for read-only members | fixed on main | P1 | [browser/access](browser/access/index.md) |
 | [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-636](browser/browser/plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
-| [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |

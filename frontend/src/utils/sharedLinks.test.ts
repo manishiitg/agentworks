@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { consumeSharedReturnPath, isShareableAppOrigin, rememberSharedReturnPath, sharedLink, sharedReportLink, sharedReturnPath, SHARE_RETURN_KEY } from './sharedLinks'
+import { consumeSharedReturnPath, isShareableAppOrigin, rememberSharedReturnPath, repairLocalAppLink, sharedLink, sharedReportLink, sharedReturnPath, SHARE_RETURN_KEY } from './sharedLinks'
 
 describe('Shared file links', () => {
   beforeEach(() => {
@@ -70,5 +70,17 @@ describe('Shared file links', () => {
     expect(consumeSharedReturnPath('oauth-state-2')).toBeNull()
     rememberSharedReturnPath('https://evil.example/file?path=YWJj', 'oauth-state-3')
     expect(consumeSharedReturnPath('oauth-state-3')).toBeNull()
+  })
+})
+
+// A report link an agent wrote for a dead local port (PUBLIC_URL left at
+// localhost:5173) opens on the app in use; other links are never changed.
+describe('repairLocalAppLink', () => {
+  it('moves only local share-page links to the current local origin', () => {
+    const current = 'http://127.0.0.1:18743'
+    expect(repairLocalAppLink('http://localhost:5173/report?path=V29yaw%3D%3D', current)).toBe('http://127.0.0.1:18743/report?path=V29yaw%3D%3D')
+    expect(repairLocalAppLink('http://localhost:5173/settings', current)).toBe('http://localhost:5173/settings')
+    expect(repairLocalAppLink('https://example.com/report?path=x', current)).toBe('https://example.com/report?path=x')
+    expect(repairLocalAppLink('http://localhost:5173/report?path=x', 'https://rts.example.com')).toBe('http://localhost:5173/report?path=x')
   })
 })

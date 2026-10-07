@@ -1,5 +1,5 @@
 import { WorkspaceImage } from './WorkspaceImage'
-import { sharedLink } from '../../utils/sharedLinks'
+import { sharedLink, repairLocalAppLink } from '../../utils/sharedLinks'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -71,7 +71,10 @@ const resolveSafeExternalHref = (href?: string | null): string | null => {
   if (!/^(https?:|mailto:)/i.test(trimmed)) return null
   try {
     const url = new URL(trimmed)
-    if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:') {
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return typeof window === 'undefined' ? url.toString() : repairLocalAppLink(url.toString(), window.location.origin)
+    }
+    if (url.protocol === 'mailto:') {
       return url.toString()
     }
   } catch {
