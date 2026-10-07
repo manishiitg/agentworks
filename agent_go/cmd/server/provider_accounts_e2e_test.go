@@ -209,7 +209,7 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 		t.Fatalf("scheduled W run: %v", err)
 	}
 	// Copying the connection ID into Bob's own workflow grants nothing.
-	if _, err := env.resolveForRun("bob", "Workflow/v", "claude-code", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "workflow Bob's own"}).Error() {
+	if _, err := env.resolveForRun("bob", "Workflow/v", "claude-code", account.ID); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower("workflow Bob's own runs on ")) || !strings.Contains(err.Error(), "personal ") {
 		t.Fatalf("bob used the account outside W: %v", err)
 	}
 	// Carol cannot run W at all, so W's share does not reach her.
@@ -241,7 +241,7 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
 		t.Fatalf("alice made the account private: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "workflow Weekly report"}).Error() {
+	if _, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower("workflow Weekly report runs on ")) || !strings.Contains(err.Error(), "personal ") {
 		t.Fatalf("bob's next W turn after the share was removed: %v", err)
 	}
 	if _, err := env.resolveForRun("alice", "Workflow/w", "claude-code", account.ID); err != nil {
@@ -276,7 +276,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 	if err != nil || keys.CodexCLI == nil || *keys.CodexCLI != "alice-codex-key" {
 		t.Fatalf("bob in his Code: %v", err)
 	}
-	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "this Code"}).Error() {
+	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower("this Code runs on ")) || !strings.Contains(err.Error(), "personal ") {
 		t.Fatalf("carol used an account not shared with her: %v", err)
 	}
 	view, ok := findAccountView(env.list(t, "bob", ""), account.ID)

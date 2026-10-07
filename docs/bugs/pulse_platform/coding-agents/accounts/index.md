@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-682](plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 |
 | [PLAT-666](plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 |
 | [PLAT-655](plat-655.md) | Model picker offers providers a person cannot use | open | P1 |
 | [PLAT-625](plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 |

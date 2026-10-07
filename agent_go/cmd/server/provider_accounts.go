@@ -600,8 +600,38 @@ func providerAccountUnavailable(run providerAccountRun) error {
 // providerAccountNotShared is the denial for an account that exists but is private to its owner
 // (or not shared with this person or place). It says what to do; there is no fallback to another
 // account.
-func providerAccountNotShared(run providerAccountRun) error {
-	return fmt.Errorf("the account %s is set to run on is private to its owner and not shared with you. Ask the owner to share it with %s (Providers, Who can use it), or switch %s to another account in Models", run.Label, run.Label, run.Label)
+// Users saw "the account workflow X is set to run on is private to its owner" and could not tell whose account it was
+// or what to do (excellence 2026-10-07): it now names the owner and the provider.
+func providerAccountNotShared(run providerAccountRun, record storedProviderConnection) error {
+	owner := "its owner"
+	if rec := directoryUserFor(record.OwnerUserID, "", ""); rec != nil {
+		if name := firstNonEmptyTrimmed(rec.Username, rec.Email); name != "" {
+			owner = name
+		}
+	}
+	label := run.Label
+	if label != "" {
+		label = strings.ToUpper(label[:1]) + label[1:]
+	}
+	return fmt.Errorf("%s runs on %s's personal %s account, which only they can use. Ask %s to share it with %s (Providers → the account → Who can use it), or pick another account for it in Models", label, owner, providerAccountProductName(record.Provider), owner, run.Label)
+}
+
+func providerAccountProductName(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "claude-code":
+		return "Claude Code"
+	case "codex-cli":
+		return "Codex"
+	case "cursor-cli":
+		return "Cursor"
+	case "muse-cli":
+		return "Muse"
+	case "pi-cli":
+		return "Pi"
+	case "agy-cli":
+		return "Antigravity"
+	}
+	return provider
 }
 
 // admitProviderAccount decides whether scope may use account id of provider.
@@ -656,7 +686,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			return &record, nil
 		}
 		log.Printf("[PROVIDER_ACCOUNT] account %s (owner %s) denied for %s (%s)", record.ID, record.OwnerUserID, principal, run.Label)
-		return nil, providerAccountNotShared(run)
+		return nil, providerAccountNotShared(run, record)
 	}
 	return nil, providerAccountUnavailable(run)
 }

@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 48 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 30 | 10 |
 | [Code](code/index.md) | 10 | 1 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 73 | 20 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 74 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-682](coding-agents/accounts/plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-681](brain/access/plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
-| [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | deployed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
