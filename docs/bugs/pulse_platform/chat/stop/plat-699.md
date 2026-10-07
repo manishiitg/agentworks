@@ -45,3 +45,7 @@ saying Working while Stop vanished and Send came back.
   window was not read, so whether those turns were really still running or
   the Working row was stale is unconfirmed. If stale, Stop now shows with it
   and stopping ends it; a stale Working row on its own would be a separate fix.
+
+## Follow-up: two kinds of Stop (owner, 2026-10-07)
+
+In a chat, the composer Stop only interrupts what the coding CLI is doing in tmux (`/api/session/cancel-turn`, the same as Escape; each adapter sends its own interrupt) and keeps the session. Steps, workflows and background agents the chat started keep running. The run footer on scheduled/triggered runs keeps the full stop (`/api/session/stop`).

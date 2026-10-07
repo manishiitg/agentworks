@@ -10,8 +10,8 @@ interface SessionStopButtonProps {
   footer?: boolean
 }
 
-// Shared by the composer and scheduled-run footer. This stops the session
-// and background work; Escape remains a separate foreground interrupt.
+// Shared by the composer and scheduled-run footer. The composer's Stop interrupts the current turn (like Escape);
+// the footer's Stop ends the whole scheduled/triggered run and its background work.
 export function SessionStopButton({ tabId, footer = false }: SessionStopButtonProps) {
   const tab = useChatStore(state => state.chatTabs[tabId])
   const [stopping, setStopping] = useState(false)
@@ -28,10 +28,18 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
     inFlight.current = true
     setStopping(true)
     try {
-      await agentApi.stopSession(sessionId, true, !footer)
-      const store = useChatStore.getState()
-      store.setTabStreaming(tabId, false)
-      store.setTabHasRunningBgAgents(tabId, false)
+      // Two stops (owner, 2026-10-07). In a chat, Stop only interrupts what the coding CLI is doing in tmux
+      // (/api/session/cancel-turn, the same as Escape; each adapter sends its own interrupt). Steps, workflows and
+      // background agents the chat started keep running. On a scheduled or triggered run the footer stops the run.
+      if (!footer) {
+        await agentApi.cancelCurrentTurn(sessionId)
+        useChatStore.getState().setTabStreaming(tabId, false)
+      } else {
+        await agentApi.stopSession(sessionId, true, false)
+        const store = useChatStore.getState()
+        store.setTabStreaming(tabId, false)
+        store.setTabHasRunningBgAgents(tabId, false)
+      }
     } catch (error) {
       console.error('[SessionStopButton] Failed to stop session:', error)
       useChatStore.getState().addToast('Could not stop the session. Please try again.', 'error')
