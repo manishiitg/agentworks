@@ -1158,12 +1158,12 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       setMyBotError(`Slack channel ID "${invalid}" is invalid. Use IDs like C1234567890 or G1234567890.`)
       return
     }
-    const taken = channels.map(channel => (bot.channel_routes || []).find(route => route.channel_id === channel)).find(Boolean)
+    // A channel can list several targets (picked with "@bot <slug>");
+    // only a channel that already answers for this one is refused.
+    const taken = channels.map(channel => (bot.channel_routes || []).find(route => route.channel_id === channel
+      && sameBotWorkspacePath(route.workspace_path, myBotDestination.workspace_path) && (route.profile_id || '') === (myBotDestination.profile_id || ''))).find(Boolean)
     if (taken) {
-      const here = sameBotWorkspacePath(taken.workspace_path, myBotDestination.workspace_path) && (taken.profile_id || '') === (myBotDestination.profile_id || '')
-      setMyBotError(here
-        ? `${taken.channel_id} already answers here on ${bot.display_name}.`
-        : `${taken.channel_id} on ${bot.display_name} already answers for ${taken.label || taken.workspace_path}. Remove it there first.`)
+      setMyBotError(`${taken.channel_id} already answers here on ${bot.display_name}.`)
       return
     }
     setMyBotError(null)
@@ -1185,7 +1185,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     setMyBotError(null)
     setMyBotSaving(`remove:${botId}:${channelId}`)
     try {
-      replaceMyBot(await agentApi.removeSlackBotChannelRoute(botId, channelId))
+      replaceMyBot(await agentApi.removeSlackBotChannelRoute(botId, channelId, myBotDestination))
     } catch (err) {
       setMyBotError(serverErrorMessage(err, 'Failed to remove the channel'))
       void loadMyBots()
@@ -1218,6 +1218,8 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     // slack: "One of my bots"
     myOtherBots, myBotRoutesHere: routesHere, newMyBotChannel, setNewMyBotChannel,
     myBotSaving, myBotError, setMyBotError, addMyBotChannel, removeMyBotChannel,
+    // slack: slugs (PLAT-668)
+    slackTarget: myBotDestination, reloadMyBots: loadMyBots,
     // whatsapp
     waStatus, waError, waRoutingError, qrImageURL, qrLoading, qrError,
     waUnpairConfirmSlot, waUnpairingSlot, refreshWaQR, handleUnpairWhatsAppDevice,

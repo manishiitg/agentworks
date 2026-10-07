@@ -12,6 +12,7 @@ import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { SharedSlackBotSettings } from '../../admin/SlackAdminPanel'
 import { RouteChip } from './RouteChips'
+import { SlackSlugsSection } from './SlackSlugsSection'
 import { SlackAppSetupSteps, SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist, SlackTokenHint } from './SlackAppSetupSteps'
 import { routeId } from './types'
 
@@ -78,6 +79,7 @@ type SlackSetupBots = Pick<WorkflowBots,
   | 'expandedChip' | 'setExpandedChip' | 'removeRoute' | 'updateRoute'
   | 'myOtherBots' | 'myBotRoutesHere' | 'newMyBotChannel' | 'setNewMyBotChannel'
   | 'myBotSaving' | 'myBotError' | 'setMyBotError' | 'addMyBotChannel' | 'removeMyBotChannel'
+  | 'slackTarget' | 'reloadMyBots'
 >
 
 export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = false }: {
@@ -128,6 +130,17 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
           instead, where the user is looking (#201 sub-issue 6). */}
       {slackError && !ownFormOpen && <StatusBanner tone="error">{slackError}</StatusBanner>}
       {slackSuccess && <StatusBanner tone="success">{slackSuccess}</StatusBanner>}
+
+      {workflowId && bots.slackTarget?.workspace_path && (
+        <SlackSlugsSection
+          destination={bots.slackTarget}
+          noun={noun}
+          readOnly={readOnly}
+          dmOnly={ownBotOnly}
+          myOtherBots={myOtherBots}
+          onBotsChanged={() => void bots.reloadMyBots?.()}
+        />
+      )}
 
       {ownBotOnly ? (
         <FormSection title={`This ${noun}'s own Slack bot`} actions={headerAction}>
@@ -359,10 +372,20 @@ function SharedBotSection({ bots, noun, ownTitle, shared }: {
 function MyBotChannelChip({ bots, bot, channelId }: { bots: SlackSetupBots; bot: SlackUsableBot; channelId: string }) {
   const { readOnly, myBotSaving, removeMyBotChannel } = bots
   const removing = myBotSaving === `remove:${bot.id}:${channelId}`
+  // Every target this bot answers for in the channel (PLAT-668): picked with
+  // "@bot <slug>", the default answers without one.
+  const inChannel = (bot.channel_routes || []).filter(route => route.channel_id === channelId)
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background p-2 shadow-sm">
       <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Slack" />
-      <div className="min-w-0 flex-1 truncate font-mono text-sm font-semibold text-foreground" title={channelId}>{channelId}</div>
+      <div className="min-w-0 truncate font-mono text-sm font-semibold text-foreground" title={channelId}>{channelId}</div>
+      <span className="flex min-w-0 flex-1 flex-wrap gap-1">
+        {inChannel.map(route => (
+          <span key={`${route.profile_id || ''}|${route.workspace_path}`} title={route.label} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+            {route.slug || route.label || route.workspace_path}{route.is_default ? ' · default' : ''}
+          </span>
+        ))}
+      </span>
       <span className="max-w-[40%] truncate text-xs text-muted-foreground" title={bot.display_name}>{bot.display_name}</span>
       {removing ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : (
         <Button

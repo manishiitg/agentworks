@@ -116,7 +116,7 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
       >
         <ToggleRow
           label="Shared bot enabled"
-          description="Answers @mentions in every channel the shared bot is in, not only routed ones. The shared bot answers in channels only; direct messages work with a workflow's or crew's own bot. Routed channels and own bots keep working when this is off."
+          description="Answers @mentions in every channel the shared bot is in, not only routed ones. Routed channels, DMs to targets whose owners turned on “Use the AgentWorks bot”, and own bots keep working when this is off."
           checked={enabled}
           onCheckedChange={setEnabled}
           disabled={!canManage}
@@ -137,6 +137,8 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
         </div>
         {testResult && <SlackChecksView result={testResult} />}
       </SettingsCard>
+
+      {showWorkflowBots && <PlatformBotProducts canManage={canManage} />}
 
       {showWorkflowBots && <SettingsCard
         icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
@@ -161,5 +163,64 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
         )}
       </SettingsCard>}
     </div>
+  )
+}
+
+const PLATFORM_PRODUCTS: { id: string; label: string }[] = [
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'crew', label: 'Crews' },
+  { id: 'code', label: 'Codes (DMs only)' },
+]
+
+/**
+ * Which products may use the AgentWorks (shared) bot (PLAT-668). Nothing is
+ * reachable until a target's owner turns on "Use the AgentWorks bot" in its
+ * own Slack tab; this limits who may turn it on. None ticked = all.
+ */
+function PlatformBotProducts({ canManage }: { canManage: boolean }) {
+  const [products, setProducts] = useState<string[] | null>(null)
+  const [targetsOn, setTargetsOn] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!canManage) return
+    agentApi.getSlackPlatformBotSettings()
+      .then(settings => { setProducts(settings.products || []); setTargetsOn(settings.targets_on || 0) })
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load'))
+  }, [canManage])
+  if (!canManage || products === null) return error ? <StatusBanner tone="error">{error}</StatusBanner> : null
+  const all = products.length === 0
+  const toggle = async (id: string, checked: boolean) => {
+    const current = all ? PLATFORM_PRODUCTS.map(product => product.id) : products
+    const next = checked ? Array.from(new Set([...current, id])) : current.filter(product => product !== id)
+    setSaving(true)
+    setError(null)
+    try {
+      const saved = await agentApi.updateSlackPlatformBotSettings(next.length === PLATFORM_PRODUCTS.length ? [] : next)
+      setProducts(saved.products || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <SettingsCard
+      icon={<Users className="h-4 w-4 text-muted-foreground" />}
+      title="Who may use the AgentWorks bot"
+      count={targetsOn}
+      description="Owners turn on “Use the AgentWorks bot” in a workflow's, Crew's or Code's Slack tab; people then reach it with @bot <slug> in its channels or by slug in a DM, with their own access."
+    >
+      {PLATFORM_PRODUCTS.map(product => (
+        <ToggleRow
+          key={product.id}
+          label={product.label}
+          checked={all || products.includes(product.id)}
+          onCheckedChange={checked => void toggle(product.id, checked)}
+          disabled={saving}
+        />
+      ))}
+      {error && <StatusBanner tone="error">{error}</StatusBanner>}
+    </SettingsCard>
   )
 }

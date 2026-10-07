@@ -63,6 +63,48 @@ func registerSlackTargetRoutes(router *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("/channels/{channel}", addSlackTargetChannelHandler(api)).Methods("POST", "PUT", "OPTIONS")
 	r.HandleFunc("/channels/{channel}", removeSlackTargetChannelHandler(api)).Methods("DELETE")
 	r.HandleFunc("/platform", slackPlatformBotSettingsHandler(api)).Methods("GET", "PUT", "POST", "OPTIONS")
+	r.HandleFunc("/dry-run", slackTargetDryRunHandler(api)).Methods("POST", "OPTIONS")
+}
+
+// slackTargetDryRunHandler is "Test" on a channel card: a mention of the
+// platform bot in that channel starting with this target's slug, through the
+// real inbound path, stopping before the model. Nothing is posted.
+func slackTargetDryRunHandler(api *StreamingAPI) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		var body struct {
+			WorkspacePath string `json:"workspace_path"`
+			ProfileID     string `json:"profile_id"`
+			ChannelID     string `json:"channel_id"`
+			Text          string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		ctx := r.Context()
+		ref := slackTargetFromRequest(ctx, body.WorkspacePath, body.ProfileID)
+		if err := requireSlackTargetOwner(ctx, api, ref); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		channel := services.NormalizeSlackChannelID(body.ChannelID)
+		if !slackChannelIDPattern.MatchString(channel) || services.IsSlackDMChannel(channel) {
+			http.Error(w, "an exact Slack channel ID is required (e.g. C1234567890)", http.StatusBadRequest)
+			return
+		}
+		named := slackNamedTarget(ctx, slackLoadTargetsRegistry(ctx), ref)
+		text := strings.TrimSpace(named.Slug + " " + firstNonBlank(strings.TrimSpace(body.Text), "dry run"))
+		outcome, err := api.dryRunSlackMention(ctx, "", channel, GetUserFromContext(ctx).Email, text)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeSlackJSON(w, outcome)
+	}
 }
 
 // slackTargetFromRequest canonicalizes the target a request names: a crew's

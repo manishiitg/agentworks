@@ -1100,13 +1100,58 @@ export interface SlackConnection {
   profile_id?: string  // Agent profile for product scopes; empty = workflow/platform
 }
 
-// One channel route on a workflow's or crew's own bot: that channel answers
-// for another workflow or crew the bot's owner can write.
+// One target allowed in a channel on a workflow's or crew's own bot (a
+// channel with several targets has one entry per target; PLAT-668).
 export interface SlackBotChannelRoute {
   channel_id: string
   workspace_path: string
   profile_id?: string
   label?: string
+  slug?: string
+  is_default?: boolean
+}
+
+// A target attached to a bot for 1:1 DMs (Codes included), reached by slug.
+export interface SlackBotTarget {
+  workspace_path: string
+  profile_id?: string
+  label?: string
+  slug?: string
+}
+
+// Slack slugs (PLAT-668): one target allowed in a platform-bot channel.
+export interface SlackTargetChannelTarget {
+  slug: string
+  label: string
+  workspace_path: string
+  profile_id?: string
+  is_default: boolean
+  is_this: boolean
+}
+
+export interface SlackTargetChannel {
+  channel_id: string
+  admin_route: boolean
+  targets: SlackTargetChannelTarget[]
+}
+
+// A workflow's, Crew's or Code's Slack settings: its slug and the
+// "Use the AgentWorks bot" switch (GET/PUT /slack/targets/settings).
+export interface SlackTargetSettings {
+  slug: string
+  label: string
+  platform_bot: boolean
+  platform_available: boolean
+  platform_name?: string
+  product_allowed: boolean
+  can_manage: boolean
+  dm_only: boolean
+  channels: SlackTargetChannel[]
+}
+
+export interface SlackPlatformBotSettings {
+  products: string[]
+  targets_on: number
 }
 
 // A workflow's or crew's own bot the caller manages ("One of my bots").
@@ -1119,7 +1164,9 @@ export interface SlackUsableBot {
   workspace_path: string
   profile_id?: string
   owner_label?: string
+  own_slug?: string
   channel_routes: SlackBotChannelRoute[]
+  targets?: SlackBotTarget[]
 }
 
 export interface SlackUsableBotsResponse {

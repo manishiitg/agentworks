@@ -87,6 +87,8 @@ import type {
   SlackConnectionsResponse,
   SlackUsableBot,
   SlackUsableBotsResponse,
+  SlackTargetSettings,
+  SlackPlatformBotSettings,
   ProjectSlackSelectionResponse,
   SlackTestResponse,
   SlackDryRunResponse,
@@ -1629,8 +1631,57 @@ export const agentApi = {
 
   // Runs a mention of the app in a channel through the real inbound path
   // and stops before the model: nothing is posted, no turn starts.
-  dryRunSlackConnection: async (id: string, channelId: string, text?: string): Promise<SlackDryRunResponse> => {
-    const apiResponse = await api.post(`/api/human-feedback/slack/connections/${id}/dry-run`, { channel_id: channelId, text })
+  dryRunSlackConnection: async (id: string, channelId: string, text?: string, slug?: string): Promise<SlackDryRunResponse> => {
+    const apiResponse = await api.post(`/api/human-feedback/slack/connections/${id}/dry-run`, { channel_id: channelId, text, slug })
+    return apiResponse.data
+  },
+
+  // Slack slugs (PLAT-668): a target's slug and "Use the AgentWorks bot".
+  getSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }): Promise<SlackTargetSettings> => {
+    const apiResponse = await api.get('/api/human-feedback/slack/targets/settings', { params: destination, timeout: 15000 })
+    return apiResponse.data
+  },
+
+  updateSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }, changes: { platform_bot?: boolean; slug?: string }): Promise<SlackTargetSettings> => {
+    const apiResponse = await api.put('/api/human-feedback/slack/targets/settings', { ...destination, ...changes })
+    return apiResponse.data
+  },
+
+  addSlackTargetChannel: async (channelId: string, destination: { workspace_path: string; profile_id?: string }, makeDefault: boolean): Promise<SlackTargetSettings> => {
+    const apiResponse = await api.post(`/api/human-feedback/slack/targets/channels/${encodeURIComponent(channelId)}`, { ...destination, make_default: makeDefault })
+    return apiResponse.data
+  },
+
+  removeSlackTargetChannel: async (channelId: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackTargetSettings> => {
+    const apiResponse = await api.delete(`/api/human-feedback/slack/targets/channels/${encodeURIComponent(channelId)}`, { params: destination })
+    return apiResponse.data
+  },
+
+  // A mention of the AgentWorks bot in a channel starting with this target's
+  // slug, through the real inbound path; nothing is posted.
+  dryRunSlackTarget: async (channelId: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackDryRunResponse> => {
+    const apiResponse = await api.post('/api/human-feedback/slack/targets/dry-run', { ...destination, channel_id: channelId })
+    return apiResponse.data
+  },
+
+  getSlackPlatformBotSettings: async (): Promise<SlackPlatformBotSettings> => {
+    const apiResponse = await api.get('/api/human-feedback/slack/targets/platform', { timeout: 10000 })
+    return apiResponse.data
+  },
+
+  updateSlackPlatformBotSettings: async (products: string[]): Promise<SlackPlatformBotSettings> => {
+    const apiResponse = await api.put('/api/human-feedback/slack/targets/platform', { products })
+    return apiResponse.data
+  },
+
+  // Attach a target to one of my bots for 1:1 DMs (a Code's DM slug).
+  attachSlackBotTarget: async (id: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackUsableBot> => {
+    const apiResponse = await api.put(`/api/human-feedback/slack/connections/${id}/targets`, destination)
+    return apiResponse.data
+  },
+
+  detachSlackBotTarget: async (id: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackUsableBot> => {
+    const apiResponse = await api.delete(`/api/human-feedback/slack/connections/${id}/targets`, { params: destination })
     return apiResponse.data
   },
 
@@ -1646,8 +1697,9 @@ export const agentApi = {
     return apiResponse.data
   },
 
-  removeSlackBotChannelRoute: async (id: string, channelId: string): Promise<SlackUsableBot> => {
-    const apiResponse = await api.delete(`/api/human-feedback/slack/connections/${id}/channel-routes/${encodeURIComponent(channelId)}`)
+  // With a destination only that target leaves the channel's list.
+  removeSlackBotChannelRoute: async (id: string, channelId: string, destination?: { workspace_path: string; profile_id?: string }): Promise<SlackUsableBot> => {
+    const apiResponse = await api.delete(`/api/human-feedback/slack/connections/${id}/channel-routes/${encodeURIComponent(channelId)}`, destination ? { params: destination } : undefined)
     return apiResponse.data
   },
 

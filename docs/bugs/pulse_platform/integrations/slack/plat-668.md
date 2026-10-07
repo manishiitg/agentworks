@@ -44,7 +44,6 @@ possibly in a single channel.
   and tool call resolves the turn's target against the channel's allowed list on its arrival app
   (`slack_slugs.go`, `services/slack_targets.go`); a DM turn against the targets the app offers and the sender can
   reach.
-
 - Phase 2 (parsing, binding, buttons, DMs, API): a channel mention's first word picks a target only if it is on the
   channel's allowed list (otherwise it is message text); the thread is bound to the pick
   (`config/slack-threads/<hash>.target.json`) and every later turn re-checks the binding against the list; a different
@@ -53,10 +52,16 @@ possibly in a single channel.
   own access, the pick is remembered for the DM, `list` lists them; the platform bot now takes DMs. API:
   `/api/human-feedback/slack/targets` (settings, channels with the Slack member check, admin products) and own-bot
   `/connections/{id}/targets` (DM attachments, Codes included); own-bot channels list several targets.
+- Phase 3 (UI, dry run): each target's Slack tab has a "Use the AgentWorks bot" section (switch, editable slug,
+  channel cards with every allowed target and the default, add a channel you are in, Test = dry run with the slug);
+  a Code's tab offers the AgentWorks bot for DMs and "one of my bots" to answer its DMs through an own bot; own-bot
+  channel chips list every target in the channel; Access → Slack limits which products may use the AgentWorks bot.
+  The dry run takes a slug.
 
 ## Left
 
-- Phase 3: the UI (switch, slug, channels with the member check, own bot targets, Codes in DMs) and the dry run with
-  a slug.
+- Live check on RTS after a deploy (nothing is deployed): the workflows' bot plus 3 Crews in one channel, and a Code
+  DM slug.
+- The admin Slack page (Access → Slack) still edits the shared bot's admin routes one target per channel; owner-added
+  targets show in each target's Slack tab.
 - Phase 4: files on top-level channel mentions; Slack triggers on own-bot channel routes.
-- Live check on RTS after a deploy: the workflows' bot plus 3 Crews in one channel, and a Code DM slug.
