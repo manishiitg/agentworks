@@ -53,6 +53,15 @@ id "$PRODUCT" >/dev/null || { echo "Account $PRODUCT is missing." >&2; exit 1; }
 
 slot_name() { printf '%s%02d' "$SLOT_PREFIX" "$1"; }
 
+# A systemd user service inherits groups from its long-lived user manager. A
+# service restart alone does not pick up groups added by usermod (PLAT-650).
+# Leave the restart to the operator so provisioning cannot interrupt live runs.
+print_group_refresh_notice() {
+  echo "The service account's slot groups are configured. Check /proc/<agent-or-workspace-pid>/status, not just id $PRODUCT."
+  echo "For systemd user services: wait for active work to finish, then as root run: systemctl restart user@$(id -u "$PRODUCT").service"
+  echo "Restarting individual user services alone does not refresh their inherited groups. Verify services and run the slot self-test afterward."
+}
+
 cmd_init() {
   command -v setfacl >/dev/null || { echo "Installing the acl package (setfacl)"; DEBIAN_FRONTEND=noninteractive apt-get install -y acl >/dev/null; }
   command -v setfacl >/dev/null || { echo "setfacl is missing and could not be installed." >&2; exit 1; }
@@ -137,7 +146,7 @@ SUDO
   [[ -d "$DOCS/config" ]] && chmod 0700 "$DOCS/config"
   cmd_shared
   echo "Slots 1..$SLOT_COUNT are in place for $PRODUCT."
-  echo "The service account joined the slot groups just now: restart its services (or the user manager) once so they pick that up."
+  print_group_refresh_notice
 }
 
 # Folders every account shares (workflows, downloads, skills): they belong to the service account, and a slot
@@ -158,7 +167,7 @@ cmd_shared() {
     find "$DOCS/$dir" -type d -exec chmod g+s {} +
     echo "shared folder: $DOCS/$dir -> group $group"
   done
-  echo "The service account joined $group just now: restart its services (or the user manager) once."
+  print_group_refresh_notice
 }
 
 # Whether this host gives every slot its own Docker (slot_docker in the slotctl config): "true" or "false".

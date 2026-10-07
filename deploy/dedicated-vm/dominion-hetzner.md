@@ -617,3 +617,15 @@ Dominion-specific, so the open item to check other rootless deployments for
 it (Video Studio) lives in
 [`../ROOTLESS-LINUX-DEPLOYMENT-CHECKLIST.md`](../ROOTLESS-LINUX-DEPLOYMENT-CHECKLIST.md#9-server-logs-must-actually-reach-a-file-the-service-account-can-read),
 not duplicated here.
+
+## Slot group refresh after first provisioning (PLAT-650)
+
+The service account can show all dm slot groups in `id dominion` while its
+long-lived systemd user manager and user services still hold the old groups.
+Check `/proc/<agent-or-workspace-pid>/status`. After waiting for active workflow
+steps/chats to finish, refresh the user manager as root with
+`systemctl restart user@995.service`. Verify the four enabled Dominion services,
+health, actual process groups and the slot self-test. Individual user-service
+restarts alone do not pick up new groups. Do not repair stale groups by opening
+private files or changing the sandbox. See
+[PLAT-650](../../docs/bugs/pulse_platform/dominion/deployment/plat-650.md).

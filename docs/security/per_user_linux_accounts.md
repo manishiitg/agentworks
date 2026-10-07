@@ -46,6 +46,15 @@ session being pasted into.
 
 - Provision once as root, then add people (account + slot in one step).
   Signing in never provisions anything.
+- After initial provisioning adds service-account groups, verify the running
+  agent and workspace processes' `Groups:` in `/proc/<pid>/status`. `id <account>`
+  shows the account database, which can differ from running processes. With
+  systemd user services, wait until active work finishes and refresh the user
+  manager as root (`systemctl restart user@<service-uid>.service`), then verify
+  services and run `./deploy.sh slotcheck <server>`. Restarting individual user
+  services alone retains stale groups. Do not repair this by opening private
+  folders, weakening the sandbox or running user commands as the service account.
+  Incident: [PLAT-650](../bugs/pulse_platform/dominion/deployment/plat-650.md).
 - With slots on, shell commands require a folder guard — unguarded commands
   are refused rather than run as the shared account.
 - Freeing a slot releases the table entry; clear the slot's runtime files

@@ -4,4 +4,4 @@
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [deployment](deployment/index.md) | 2 | 0 |
+| [deployment](deployment/index.md) | 3 | 0 |

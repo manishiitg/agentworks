@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-650](plat-650.md) | Dominion service processes miss provisioned slot groups and block Python Relay runners | deployed | P2 |
 | [PLAT-646](plat-646.md) | Reconcile Dominion product allowlist and enable its Vault service | deployed | P2 |
 | [PLAT-642](plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 |
