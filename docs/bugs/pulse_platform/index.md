@@ -27,8 +27,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-691](browser/browser/plat-691.md) | Browser recording lost: encoder fell behind | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-690](app/accounts/plat-690.md) | MCP tools to view and set shared-account token limits | fixed on main | P2 | [app/accounts](app/accounts/index.md) |
-| [PLAT-690](browser/browser/plat-690.md) | Browser recording lost: encoder fell behind | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-689](chat/frontend-chat/plat-689.md) | Compact agent question cards | fixed on main | P3 | [chat/frontend-chat](chat/frontend-chat/index.md) |
 | [PLAT-688](coding-agents/accounts/plat-688.md) | Muse Check usage fails for non-managers | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-685](browser/browser/plat-685.md) | Slot accounts reap their own leftover agent-browser helpers | fixed on main | P3 | [browser/browser](browser/browser/index.md) |

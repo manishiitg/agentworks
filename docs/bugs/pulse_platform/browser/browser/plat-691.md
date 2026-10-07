@@ -1,6 +1,6 @@
 [← browser / browser](index.md)
 
-# PLAT-690: Browser recording lost: encoder fell behind
+# PLAT-691: Browser recording lost: encoder fell behind
 
 | Field | Value |
 |---|---|
