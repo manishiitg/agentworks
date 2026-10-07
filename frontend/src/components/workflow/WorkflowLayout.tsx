@@ -116,12 +116,12 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolea
         {relayMode ? 'Build your Relay in chat' : 'Start your workflow chat'}
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {relayMode ? 'Describe the input, agents, scripts, and JSON output you want. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
+        {relayMode ? 'Describe what your Relay receives, what it should do, and what it returns. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
       </p>
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
         {relayMode ? <>
           <li>• Add agents with your own system prompts and message templates</li>
-          <li>• {pythonRelay ? 'Write Python logic to call agents and return JSON' : 'Connect them with scripts and define the final JSON output'}</li>
+          <li>• {pythonRelay ? 'Connect agents, tools and decisions, and explain the steps' : 'Connect them with scripts and define the final JSON output'}</li>
           <li>• Run a test with sample JSON and inspect the result and logs</li>
           <li>• Set up API triggers and publish a version</li>
         </> : <>

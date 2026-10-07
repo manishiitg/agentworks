@@ -260,6 +260,13 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 }
 
 func workflowWebhookRoutes(ctx context.Context, workspacePath string) ([]webhookRouteOption, error) {
+	manifest, _, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if isPythonRelay(manifest) {
+		return []webhookRouteOption{}, nil
+	}
 	plan, err := readPlanFromWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err

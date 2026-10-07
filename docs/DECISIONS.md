@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Relays open with a readable overview; Python triggers have no plan targets
+
+Relays are usable through Builder chat without programming. Open Python Relays on
+Overview, backed by Builder-maintained `relay.md` describing inputs, steps, tools
+and results; retain Runs and optional Code. The overview documents the draft and
+is frozen with releases, while `relay.py` remains executable. Why: opening on
+raw Python made the product look like a coding tool.
+[PLAT-637](bugs/pulse_platform/relays/frontend-chat/plat-637.md).
+
+Python Relay function triggers expose no workflow routes or step targets and
+never load a plan for target admission/listing. Reject saved workflow targeting
+instead of ignoring it. Why: Python owns branching, and the shared plan check
+blocked trigger creation on Excellence.
+[PLAT-638](bugs/pulse_platform/relays/triggers/plat-638.md).
+
 ### 2026-10-07 — The Chrome extension shows a hidden tab before clicks and typing
 
 Chrome silently drops input to a tab hidden behind another (the click reports success). Before an `Input.*` command

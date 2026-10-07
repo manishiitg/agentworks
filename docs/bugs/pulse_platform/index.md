@@ -16,7 +16,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
-| [Relays](relays/index.md) | 22 | 4 |
+| [Relays](relays/index.md) | 24 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -26,6 +26,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
+| [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-636](browser/browser/plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
@@ -64,5 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | fixed on main | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
 | [PLAT-600](brain/builder/plat-600.md) | CLI Builder refused its own Brain project tools | fixed on main | P1 | [brain/builder](brain/builder/index.md) |
 | [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
-| [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |

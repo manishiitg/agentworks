@@ -5,11 +5,27 @@ description: Author, test and publish Python Relays with fresh platform agents, 
 
 # Python Relay contract
 
-Read relay.py, workflow.json and variables/variables.json before editing. New Relays
+Read relay.py, relay.md (if present), workflow.json and variables/variables.json before editing. New Relays
 have kind: relay and relay_runtime: python. Keep source separate from workflow plans.
 The only entrypoint is async def run(INPUT, ctx). INPUT is the API caller's JSON object.
 Return a JSON serializable value (128 KiB limit); it becomes the final API response.
 The platform records relay_result.json and relay_trace.json under runs/iteration-N-hook.
+
+## User-facing overview
+
+Users can build Relays without writing code. The right pane defaults to Overview;
+Runs shows recorded steps/results and Code is optional. Explain the Relay in everyday
+language, then implement it using the contract below.
+
+Create or update relay.md with each behaviour change, alongside relay.py. Use a short
+title/purpose and sections for **What goes in**, **What happens**, **What comes back**
+and **Try it**. Name required/optional input fields, describe ordered steps/conditions
+and selected tools/integrations, explain returned fields, and give a safe input/result
+example. Use a small Mermaid flowchart for meaningful chains/branches when helpful.
+Read existing code before describing it; no placeholder steps or secrets. An example
+is illustrative until tested; report actual test results separately. The overview is
+documentation shown for the draft; Python remains the sole execution definition.
+If you only change documentation, preserve implementation and existing triggers.
 
 ## Authoring example
 
@@ -78,8 +94,12 @@ installation uses the existing sandbox dependency mechanism; never install into 
 published snapshot. Preserve Python whitespace and literal escapes.
 
 Configure function triggers through manage_workflow_webhook with required object
-INPUT. Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
+INPUT. Python Relays invoke run(INPUT, ctx) and have no step_id, route_selections or
+payload routing mappings. If no function is saved yet, create one before testing.
+Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
 Inspect get_relay_run(run_id="...") for completion/output/error and recorded calls.
+Direct shell execution is not a platform test and does not verify triggers, agents,
+credentials or publication; report that distinction and the exact failing tool error.
 A failed run is terminal. Testing again creates a new invocation and may repeat effects;
 use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
 DB/KB/learnings closing turns, Pulse or migrations apply to Python Relays.

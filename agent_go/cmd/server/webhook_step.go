@@ -13,6 +13,13 @@ type webhookStepOption struct {
 }
 
 func workflowWebhookSteps(ctx context.Context, path string) ([]webhookStepOption, error) {
+	manifest, _, err := ReadWorkflowManifest(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if isPythonRelay(manifest) {
+		return []webhookStepOption{}, nil
+	}
 	plan, err := readPlanFromWorkspace(ctx, path)
 	if err != nil {
 		return nil, err
@@ -36,6 +43,13 @@ func validateWebhookTarget(ctx context.Context, path, stepID string, routes map[
 	}
 	if len(routes) != 0 {
 		return fmt.Errorf("choose a step or route selections, not both")
+	}
+	manifest, _, err := ReadWorkflowManifest(ctx, path)
+	if err != nil {
+		return err
+	}
+	if isPythonRelay(manifest) {
+		return fmt.Errorf("Python Relays run relay.py; workflow step targets are not supported")
 	}
 	plan, err := readPlanFromWorkspace(ctx, path)
 	if err != nil {

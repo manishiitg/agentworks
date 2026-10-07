@@ -200,7 +200,7 @@ func relaySnapshotFile(relative string) bool {
 }
 
 func relayRuntimeFile(relative string) bool {
-	if relative == "schedule-runs.json" || relative == ".webhook-sequence" {
+	if relative == "schedule-runs.json" || relative == ".webhook-sequence" || relative == "workflow.json.kb-lock" {
 		return true
 	}
 	for _, prefix := range []string{"runs/", "relay_releases/", "chat/", "chats/", "chat_history/", "backup/", "publish/", "planning/revisions/", "planning/changelog/", "variables/changelog/", "knowledgebase/notes/", ".sandbox-cache/", "costs/", "db/", "config/", "webhooks/", "builder/", "session/", "sessions/", "logs/"} {

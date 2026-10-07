@@ -66,10 +66,10 @@ profile:
   built_in: true
   commands:
     - name: build-relay
-      description: Create or refine this Relay Python program
+      description: Build or refine your Relay in chat
       icon: git-branch
       prompt: |
-        Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. Use async def run(INPUT, ctx), fresh ctx.call_agent calls, exact authored prompts, tools and explicit return JSON. Preserve user choices. Test with a supplied example before claiming it works.
+        Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. Use async def run(INPUT, ctx), fresh ctx.call_agent calls, exact authored prompts, tools and explicit return JSON. Preserve user choices. Maintain relay.md as a plain-language overview of inputs, steps, tools and returned result alongside the implementation. Explain it for a user who does not program. Test with a supplied example before claiming it works.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output

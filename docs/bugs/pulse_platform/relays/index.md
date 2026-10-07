@@ -6,9 +6,10 @@
 |---|---|---|
 | [coding-agent-bridge](coding-agent-bridge/index.md) | 3 | 1 |
 | [execution](execution/index.md) | 2 | 0 |
-| [frontend-chat](frontend-chat/index.md) | 5 | 0 |
+| [frontend-chat](frontend-chat/index.md) | 6 | 0 |
 | [integrations](integrations/index.md) | 2 | 1 |
 | [mcp](mcp/index.md) | 2 | 1 |
 | [plans-contracts](plans-contracts/index.md) | 5 | 0 |
 | [scheduler-runs](scheduler-runs/index.md) | 1 | 0 |
 | [security-sandbox](security-sandbox/index.md) | 2 | 1 |
+| [triggers](triggers/index.md) | 1 | 0 |

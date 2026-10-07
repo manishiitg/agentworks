@@ -53,6 +53,8 @@ func TestUnsubscribedStreamGetsNothing(t *testing.T) {
 
 func TestIsPlanPathAcrossProducts(t *testing.T) {
 	for path, want := range map[string]bool{
+		"Workflow/relay/relay.md":                                         true,
+		"Workflow/relay/relay.md.bak":                                     false,
 		"Workflow/relay/relay.py":                                         true,
 		"Workflow/relay/relay.py.bak":                                     false,
 		"Workflow/relay/planning/plan.json":                               true,

@@ -62,14 +62,61 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	manifest := NewWorkflowManifest("Python publish")
 	manifest.Kind, manifest.RelayRuntime = "relay", "python"
 	manifest.CodeLayoutVersion, manifest.Version = 0, "1.0.1"
-	manifest.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
 	raw, _ := json.Marshal(manifest)
 	write("workflow.json", string(raw))
 	write("variables/variables.json", `{"variables":[{"name":"INPUT","type":"object","value":"{}"}]}`)
-	// Validation must compile only: importing this source would raise.
-	write("relay.py", "raise RuntimeError('validation executed source')\nasync def run(INPUT, ctx):\n    return {'value': 1}\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if err := initializePythonRelayWorkspace(ctx, workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the same API handler used by the Builder, with no plan.json.
+	svc := NewSchedulerService(&StreamingAPI{})
+	trigger := workflowWebhookRequest{WorkspacePath: workspacePath, Name: "Process", Enabled: true, Kind: triggerKindFunction, RouteSelections: map[string]string{}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	created := httptest.NewRecorder()
+	svc.saveWorkflowWebhook(created, sharedSecretsRequest("POST", "/api/workflow-webhooks", "", trigger))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("Python trigger creation without a plan: %d %s", created.Code, created.Body.String())
+	}
+	listed := httptest.NewRecorder()
+	svc.listWorkflowWebhooks(listed, sharedSecretsRequest("GET", "/api/workflow-webhooks?workspace_path="+workspacePath, "", nil))
+	var listing struct {
+		Triggers   []workflowWebhookResponse `json:"triggers"`
+		Routes     []webhookRouteOption      `json:"routes"`
+		Steps      []webhookStepOption       `json:"steps"`
+		RouteError string                    `json:"route_error"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &listing); err != nil || listed.Code != 200 || listing.RouteError != "" || len(listing.Triggers) != 1 || len(listing.Routes) != 0 || len(listing.Steps) != 0 {
+		t.Fatalf("Python trigger listing attempted a workflow plan: %d %s %v", listed.Code, listed.Body.String(), err)
+	}
+	// Source code owns branching. Reject workflow targets rather than ignore them,
+	// even for disabled drafts saved via the shared endpoint.
+	trigger.Enabled = false
+	trigger.Function.Name = "invalid_routes"
+	trigger.RouteSelections = map[string]string{"old-step": "old-route"}
+	rejected := httptest.NewRecorder()
+	svc.saveWorkflowWebhook(rejected, sharedSecretsRequest("POST", "/api/workflow-webhooks", "", trigger))
+	if rejected.Code != 400 || !strings.Contains(rejected.Body.String(), "workflow step targets") {
+		t.Fatalf("Python trigger accepted ignored routing: %d %s", rejected.Code, rejected.Body.String())
+	}
+	manifest, _, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || len(manifest.Schedules) != 1 {
+		t.Fatalf("created trigger not persisted: %v", err)
+	}
+	overview, err := os.ReadFile(filepath.Join(docs, workspacePath, "relay.md"))
+	if err != nil || string(overview) != defaultPythonRelayOverview {
+		t.Fatalf("starter overview missing: %s %v", overview, err)
+	}
+	write("relay.md", "# Custom Relay\n\nReturns a value.\n")
+	if err := initializePythonRelayWorkspace(ctx, workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	overview, err = os.ReadFile(filepath.Join(docs, workspacePath, "relay.md"))
+	if err != nil || !strings.Contains(string(overview), "Custom Relay") {
+		t.Fatalf("initialization overwrote the authored overview: %s %v", overview, err)
+	}
+	// Validation must compile only: importing this source would raise.
+	write("relay.py", "raise RuntimeError('validation executed source')\nasync def run(INPUT, ctx):\n    return {'value': 1}\n")
 	if err := directWebhookPreflight(manifest); err != nil {
 		t.Fatalf("Python Relay was gated by workflow contract: %v", err)
 	}
@@ -84,10 +131,11 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v1.Version != "v1" || v1.OutputStep != "" || len(v1.Files) != 3 {
+	if v1.Version != "v1" || v1.OutputStep != "" || len(v1.Files) != 4 {
 		t.Fatalf("Python release includes workflow plan/output contract: %+v", v1)
 	}
 	write("relay.py", defaultPythonRelaySource)
+	write("relay.md", defaultPythonRelayOverview)
 	v2, err := publishRelayRelease(ctx, workspacePath)
 	if err != nil || v2.Version != "v2" {
 		t.Fatalf("publish new draft: %+v %v", v2, err)
@@ -95,6 +143,10 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	frozen, err := os.ReadFile(filepath.Join(docs, relayReleaseWorkspace(workspacePath, "v1"), "relay.py"))
 	if err != nil || !strings.Contains(string(frozen), "'value': 1") {
 		t.Fatalf("published source was rewritten: %s %v", frozen, err)
+	}
+	frozenOverview, err := os.ReadFile(filepath.Join(docs, relayReleaseWorkspace(workspacePath, "v1"), "relay.md"))
+	if err != nil || !strings.Contains(string(frozenOverview), "Custom Relay") {
+		t.Fatalf("published overview was rewritten: %s %v", frozenOverview, err)
 	}
 	releaseWorkspace := relayReleaseWorkspace(workspacePath, "v2")
 	starterFolder, err := allocateWebhookRunFolder(releaseWorkspace, "python-starter")

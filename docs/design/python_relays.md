@@ -5,7 +5,12 @@ Tracked by [PLAT-611](../bugs/pulse_platform/relays/execution/plat-611.md).
 ## Product contract
 
 A Relay is an API callable Python program. Builder chat authors `relay.py` and
-helper files; the right pane shows Source and Calls. New Relays set
+helper files and maintains a plain-language `relay.md` overview. The right pane
+opens on Overview (inputs, steps, tools and result), with Runs for actual execution
+records and an optional Code tab for the exact implementation. Users describe
+behaviour in chat; they do not need to program. The overview is documentation,
+not an execution definition. Missing overviews on existing Relays show chat
+guidance until the Builder reads the code and explains it. New Relays set
 `kind: relay` and `relay_runtime: python` in the shared `workflow.json` manifest.
 `async def run(INPUT, ctx)` accepts one JSON object and returns a JSON value.
 Python owns conditions, loops, transformations and agent chaining. Its returned
@@ -124,7 +129,7 @@ unchanged.
   production adapter and signed HTTP bridge to a Python closure, with two
   messages in one session. Requires a signed-in provider and mcpbridge binary.
 - Focused shared Relay/function/webhook/product/livefeed regressions.
-- Frontend TypeScript and Source/Calls/file-editor tests.
+- Frontend TypeScript and Overview/Runs/Code/file-editor tests.
 
 These checks do not certify every external MCP server, provider or deployment.
 
@@ -132,3 +137,20 @@ MVP custom Python tools must not call `ctx.call_agent` or `ctx.call_mcp` inside
 the tool callback; nested calls fail immediately. Put those calls in `run`, or
 attach an MCP tool directly to the agent. Tools can call their authorized
 external services using ordinary Python clients.
+
+## Non-programmer overview and trigger admission
+
+[PLAT-637](../bugs/pulse_platform/relays/frontend-chat/plat-637.md) makes Overview
+the initial pane, updates onboarding and Builder guidance, and seeds a readable
+companion for the starter. Editing/publishing still use the existing workspace
+and frozen release files, including `relay.md`; no new plan parser or runtime.
+Draft overviews refresh through the existing live feed and file reads.
+
+[PLAT-638](../bugs/pulse_platform/relays/triggers/plat-638.md) fixes shared API
+trigger admission and listing for Python Relays: they expose no workflow step or
+route inventory and must not load `planning/plan.json`. A function invokes the
+Python entrypoint. Workflow step targets and payload routing are rejected,
+including disabled trigger definitions; branching belongs in the Python code.
+Identity, variable checks, trigger authorization and legacy graph validation
+retain their shared paths. Release snapshots exclude the internal manifest lock
+created by those normal saves, allowing the real create/publish/run lifecycle.
