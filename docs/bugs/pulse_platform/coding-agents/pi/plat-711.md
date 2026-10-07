@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | deployed |
 | Priority | P2 |
 | Product | coding-agents |
 | Area | pi |

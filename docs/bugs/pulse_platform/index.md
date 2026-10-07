@@ -11,12 +11,12 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 78 | 21 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 78 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 34 | 6 |
-| [Operations (cost, performance, deploys, logs)](ops/index.md) | 32 | 11 |
+| [Operations (cost, performance, deploys, logs)](ops/index.md) | 32 | 10 |
 | [Relays](relays/index.md) | 27 | 5 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
@@ -28,8 +28,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
 | [PLAT-712](brain/access/plat-712.md) | Brain chat on Pi: brain_browse refused with 'A workflow, Crew or Code session is required' | open | P2 | [brain/access](brain/access/index.md) |
-| [PLAT-711](coding-agents/pi/plat-711.md) | Pi: deployment-supplied providers/models staged into each session | in progress | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
-| [PLAT-710](ops/deploys/plat-710.md) | Citymall: new server with Pi on the Citymall gateway | in progress | P1 | [ops/deploys](ops/deploys/index.md) |
+| [PLAT-711](coding-agents/pi/plat-711.md) | Pi: deployment-supplied providers/models staged into each session | deployed | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
+| [PLAT-710](ops/deploys/plat-710.md) | Citymall: new server with Pi on the Citymall gateway | deployed | P1 | [ops/deploys](ops/deploys/index.md) |
 | [PLAT-709](browser/recording/plat-709.md) | Saved recordings unreadable by the slot user who made them | deployed | P1 | [browser/recording](browser/recording/index.md) |
 | [PLAT-708](vault/apps/plat-708.md) | Vault: Vercel sign-in fails, registration rejected and authorize opened without a client | fixed on main | P1 | [vault/apps](vault/apps/index.md) |
 | [PLAT-707](coding-agents/codex/plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 | [coding-agents/codex](coding-agents/codex/index.md) |

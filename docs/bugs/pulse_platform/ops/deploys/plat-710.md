@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | in progress |
+| State | deployed |
 | Priority | P1 |
 | Product | ops |
 | Area | deploys |
@@ -43,6 +43,8 @@ the Pi model template was not loaded by the app, and nothing ran there.
   in config/provider-account-settings.json).
 
 ## Left
+
+- Live on the box as release citymall-b3d9bc72 (2026-10-07); not reachable publicly until the owner steps below.
 
 - Owner: DNS A record agents.citymall.live -> the box (an Elastic IP: the IP changed once), open 80/443, then
   `sudo certbot --nginx -d agents.citymall.live` and `PUBLIC_CHECKS=true`.
