@@ -57,7 +57,11 @@ func (api *StreamingAPI) upsertSharedWorkflowSecret(ctx context.Context, workflo
 	if err != nil {
 		return err
 	}
-	return api.chatStore.UpsertWorkflowSecret(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath, name, encrypted)
+	if err := api.chatStore.UpsertWorkflowSecret(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath, name, encrypted); err != nil {
+		return err
+	}
+	markWorkflowSecretsChanged(workflowPath)
+	return nil
 }
 
 // deleteSharedWorkflowSecret removes a shared workflow secret. The caller's
@@ -67,6 +71,7 @@ func (api *StreamingAPI) deleteSharedWorkflowSecret(ctx context.Context, workflo
 	if err := api.chatStore.DeleteWorkflowSecret(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath, name); err != nil {
 		return err
 	}
+	markWorkflowSecretsChanged(workflowPath)
 	if callerUserID != "" && callerUserID != chathistory.SharedWorkflowSecretsUserID {
 		if err := api.chatStore.DeleteWorkflowSecret(ctx, callerUserID, workflowPath, name); err != nil {
 			log.Printf("[SECRETS] shared delete of %q for %s succeeded but the legacy per-user copy for %s could not be removed: %v", name, workflowPath, callerUserID, err)

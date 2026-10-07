@@ -7,4 +7,5 @@
 | [local](local/index.md) | 1 | 0 |
 | [oauth](oauth/index.md) | 1 | 0 |
 | [scheduler-runs](scheduler-runs/index.md) | 1 | 0 |
+| [secrets](secrets/index.md) | 1 | 1 |
 | [security-sandbox](security-sandbox/index.md) | 4 | 1 |

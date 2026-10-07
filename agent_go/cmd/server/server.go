@@ -784,6 +784,9 @@ func spaStaticFileHandler(root string) http.Handler {
 // QueryRequest represents an agent query request
 type QueryRequest struct {
 	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
+	// secretsWorkspacePath is the workflow/project whose stored secrets this turn loaded (PLAT-658): a retained CLI
+	// launched with them is not steered once they change.
+	secretsWorkspacePath string
 	// admittedWorkflowPhase records, once and server-side, that this request was admitted as a Workflow phase chat.
 	// handleQuery later rewrites AgentMode from workflow_phase to multi-agent, so checks that run after that point
 	// read this instead of AgentMode (PLAT-608; PLAT-600 was a check that read the rewritten mode). A client cannot set
@@ -4522,6 +4525,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				// Manifest is the source of truth for workflow-selected secrets too.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, resolvedWPath, manifest.Capabilities.SelectedSecrets)
+				req.secretsWorkspacePath = resolvedWPath
 				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &manifest.Capabilities.SelectedSecrets); err != nil {
 					http.Error(w, err.Error(), 403)
 					return
@@ -4663,6 +4667,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, manifestWorkspacePath, caps.SelectedSecrets)
+				req.secretsWorkspacePath = manifestWorkspacePath
 				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
 					http.Error(w, err.Error(), 403)
 					return
@@ -5746,6 +5751,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			noGlobalSecrets := []string{}
 			req.SelectedGlobalSecrets = &noGlobalSecrets
 		}
+		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
@@ -10699,6 +10705,12 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	// provider-specific terminal branch, owns warm delivery. It survives the
 	// wrapped turn and reports the transport that actually accepted the input.
 	tryColdRetainedFallback := true
+	if sessionSecretsChanged(sessionID) {
+		// The CLI still holds the secrets it launched with; typing into it would run on the old values (Excellence
+		// 2026-10-07: rotated Unipile keys "not picked up"). A new turn relaunches it with the current ones.
+		log.Printf("[QUERY->LIVE] Secrets changed since session %s launched; starting a new turn instead of steering", sessionID)
+		return false
+	}
 	if retainedSession, ok := mcpagent.LookupSession(sessionID); ok {
 		if api.closeIdleRetainedTmuxSessionWithoutLiveTerminal(sessionID, retainedSession) {
 			// Continue through cold-terminal compatibility and then the normal

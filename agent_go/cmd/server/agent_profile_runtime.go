@@ -543,6 +543,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		if len(selectedNames) > 0 {
 			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, workspacePath, selectedNames)
+			req.secretsWorkspacePath = workspacePath
 			if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, &selectedNames); err != nil {
 				return nil, err
 			}
