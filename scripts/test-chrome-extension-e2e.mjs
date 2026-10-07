@@ -218,7 +218,11 @@ try {
   await cli('eval', 'console.log("shared-first-tab")');
   await cli('fill', 'tab', sharedTarget, `@${name}`, 'Ada'); await cli('click', 'tab', sharedTarget, `@${save}`);
   await page.locator('#result').filter({ hasText: 'Saved Ada' }).waitFor(); console.log('PASS real snapshot → fill → click');
-  assert.equal(await activeTab(), privateTabId, 'fill and click work without foreground activation');
+  // Chrome drops input to a hidden tab (real Chrome, not this test's Playwright
+  // flags), so input shows its shared tab first; reads stay in the background.
+  assert.equal(await activeTab(), tabId, 'fill and click show their hidden shared tab first');
+  assert.ok((await message({action:'state'})).diagnostics.some(r => r.event === 'tab_shown_for_input' && r.tab_id === tabId), 'input records that it showed the tab');
+  await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   const tabs = await cli('tab'); assert.doesNotMatch(JSON.stringify(tabs), /Unshared private/); console.log('PASS unshared-tab exclusion');
   await popup.evaluate(id => chrome.tabs.ungroup(id), privateTabId);
   await cli('screenshot', 'Chats/Code/projects/extension-e2e/evidence/screenshot.png'); const image = await fetch(`${base}/fixture/image`); assert.equal(image.status, 200); assert.ok((await image.arrayBuffer()).byteLength > 1000); console.log('PASS screenshot through workspace artifact broker');
@@ -246,7 +250,7 @@ try {
   assert.ok(foreignTarget.status===409 || JSON.parse(foreignReply).success===false,'B cannot select A physical target: '+foreignReply);
   const delegated=await fetch(`${base}/fixture/tool?chat=delegate`,{method:'POST',body:JSON.stringify({command:'get',args:['text','#result']})});
   assert.equal(delegated.status,200);assert.match(await delegated.text(),/Saved Primary chat/,'Code delegate inherits A rather than another private chat');
-  assert.equal(await activeTab(),privateTabId,'interleaved chats keep the user foreground tab');
+  await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   console.log('PASS two Code chats isolate tabs, selection and saved snapshot references');
   const recordedTarget = (await cli('tab')).tabs.find(t => t.active).tabId;
   const beforeRecordingTabs = (await cli('tab')).tabs.map(t => t.tabId);
@@ -267,7 +271,7 @@ try {
   const bytes = new Uint8Array(await video.arrayBuffer()); assert.ok(bytes.length > 1000);
   assert.deepEqual([...bytes.slice(0,4)],[0x1a,0x45,0xdf,0xa3]);
   assert.equal((await cli('tab')).tabs.find(t => t.active).tabId,recordedTarget);
-  assert.equal(await activeTab(),privateTabId,'recording never activates a background shared tab');
+  await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   console.log('PASS record start → navigate → interact → record stop publishes a nonempty decodable WebM from the same shared tab');
   const sideRecording=await sideTool('record','stop');assert.ok(sideRecording.frames>0);
   const sideVideo=await fetch(`${base}/fixture/video?chat=two`);assert.equal(sideVideo.status,200,await sideVideo.clone().text());

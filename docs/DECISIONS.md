@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — The Chrome extension shows a hidden tab before clicks and typing
+
+Chrome silently drops input to a tab hidden behind another (the click reports success). Before an `Input.*` command
+the extension makes its shared tab the visible tab of its window. Reads, snapshots, navigation and recording stay in
+the background (PLAT-516). Not `active=true` everywhere (constant tab switching), and not left to the agent (it cannot
+see the failure). [PLAT-636](bugs/pulse_platform/browser/browser/plat-636.md)
+
 ### 2026-10-06 — Brain is a plain Git folder; backup runs with git, not a tool
 
 Brain's notes live as plain files in `Brain/` at the top of the documents tree (moved

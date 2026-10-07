@@ -488,6 +488,12 @@ async function command(message, active = false, clientId = '') {
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
   if (method === 'Page.startScreencast' && [...sessions.values()].some(s => s.tabId === source.tabId && s.capturing && s !== source)) throw new Error('This shared tab is already recording');
   const debuggee = {tabId:source.tabId,...(source.sessionId ? {sessionId:source.sessionId} : {})};
+  // Chrome does not process input in a tab hidden behind another: the first
+  // mouse event waits ~5 s and then reports success, and the click is lost
+  // (Upwork, 2026-10-06). The agent cannot see that, so before a click or key
+  // the shared tab is made the visible tab of its window. Reads, snapshots and
+  // navigation stay in the background (PLAT-516).
+  if (domain === 'Input') await showTabForInput(source.tabId);
   const result = await (setupMethods.has(method) && !source.sessionId ? sendSetupCommand(debuggee, method, params) : chrome.debugger.sendCommand(debuggee, method, params)) || {};
   if (method === 'Page.startScreencast') source.capturing = true;
   if (method === 'Page.stopScreencast') source.capturing = false;
@@ -496,6 +502,14 @@ async function command(message, active = false, clientId = '') {
     sessionSettings.get(source.tabId).set(method, params);
   } else if (!source.sessionId && method.endsWith('.disable')) sessionSettings.get(source.tabId)?.delete(method.replace(/\.disable$/, '.enable'));
   return result;
+}
+async function showTabForInput(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (tab.active) return;
+  await chrome.tabs.update(tabId, { active: true });
+  diagnostic('tab_shown_for_input', tabId);
+  // Give the renderer a frame to become visible before the event arrives.
+  await new Promise(resolve => setTimeout(resolve, 150));
 }
 async function releaseClient(clientId) {
   if (typeof clientId !== 'string' || !/^[a-f0-9]{16}$/.test(clientId)) return;

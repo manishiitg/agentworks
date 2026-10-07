@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 79 | 14 |
 | [Brain](brain/index.md) | 24 | 4 |
-| [Browser and browser automation](browser/index.md) | 43 | 11 |
+| [Browser and browser automation](browser/index.md) | 44 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 24 | 9 |
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
@@ -26,6 +26,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-636](browser/browser/plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
 | [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | fixed on main | P1 | [brain/storage](brain/storage/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-599](browser/browser/plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-598](app/navigation/plat-598.md) | Integrations always opens its overview instead of restoring the last section | deployed | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-597](app/workspaces/plat-597.md) | Workflow deletion partially removes workspace before sandbox permission failure | deployed | P2 | [app/workspaces](app/workspaces/index.md) |
-| [PLAT-596](vault/oauth/plat-596.md) | Apify rejects Excellence callback missing from AgentWorks client metadata | deployed | P2 | [vault/oauth](vault/oauth/index.md) |

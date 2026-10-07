@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-636](plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 |
 | [PLAT-624](plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | fixed on main | P2 |
 | [PLAT-599](plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 |
 | [PLAT-587](plat-587.md) | Record the selected shared Chrome extension tab to a guarded workspace video | fixed on main | P2 |
