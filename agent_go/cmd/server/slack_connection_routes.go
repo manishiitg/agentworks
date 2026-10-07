@@ -86,6 +86,8 @@ func SlackConnectionRoutes(router *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("/{id}/test", testSlackConnectionEntryHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}/dry-run", slackConnectionDryRunHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/project/selection", projectSlackConnectionHandler(api)).Methods("GET", "PUT", "POST", "OPTIONS")
+	// Slack slugs (PLAT-668): /api/human-feedback/slack/targets/...
+	registerSlackTargetRoutes(router, api)
 }
 
 // projectSlackConnection is the single place a connection becomes JSON.
@@ -806,18 +808,6 @@ func slackConnectionIDForRoute(ctx context.Context, route ChannelRoute) string {
 		return ""
 	}
 	return strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
-}
-
-// slackServiceForRoute resolves the live runtime a channel route sends
-// through. Unknown or unavailable selections fail loudly; the default
-// never silently substitutes for an explicit selection.
-func slackServiceForRoute(ctx context.Context, route ChannelRoute) (*services.SlackService, error) {
-	svc, err := ensureSlackService()
-	if err != nil {
-		return nil, err
-	}
-	connID := slackConnectionIDForRoute(ctx, route)
-	return svc.ServiceForConnection(connID)
 }
 
 // slackToolConnectionID resolves the connection a bot-tool send uses. A

@@ -31,6 +31,7 @@ jobs:
           git fetch -q origin main
           base="$(git merge-base HEAD origin/main)"
           git diff --name-only "$base" HEAD > changed.txt
+          echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "files:"; cat changed.txt
           echo "go=$(grep -qE '^(agent_go|workspace)/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "frontend=$(grep -q '^frontend/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -51,6 +52,19 @@ jobs:
           go build ./...
           pkgs="$(sed -n 's#^agent_go/\(.*\)/[^/]*\.go$#./\1#p' ../changed.txt | sort -u)"
           if [ -n "$pkgs" ]; then go vet $pkgs; fi
+
+      # Lint only what this change adds (unused code, vet, ineffassign,
+      # errorlint per agent_go/.golangci.yml); main's existing issues are
+      # not this change's to fix.
+      - name: Go lint (new issues only)
+        if: steps.changed.outputs.go == 'true'
+        uses: golangci/golangci-lint-action@v8
+        env:
+          GOWORK: "off"
+        with:
+          version: v2.13.2
+          working-directory: agent_go
+          args: --new-from-rev=${{ steps.changed.outputs.base }} --timeout=15m ./...
 
       - name: Go tests named in the commit
         if: steps.changed.outputs.go == 'true'

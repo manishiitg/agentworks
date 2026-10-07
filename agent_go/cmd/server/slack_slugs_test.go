@@ -269,3 +269,20 @@ func TestSlackSlugsOwnBotChannelTrigger(t *testing.T) {
 		t.Fatal("a channel without a trigger resolved one")
 	}
 }
+
+// The slug settings API is reachable through the Slack routes the server
+// registers (it once was never wired, so the Slack tab's calls 404ed).
+func TestSlackSlugsSettingsRouteIsRegistered(t *testing.T) {
+	w := newBotDryRunWorld(t)
+	w.platformBot(t)
+	router := mux.NewRouter()
+	SlackConnectionRoutes(router, w.api)
+	req := httptest.NewRequest(http.MethodGet, "/api/human-feedback/slack/targets/settings?workspace_path=Workflow/shared", nil)
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var settings SlackTargetSettingsResponse
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &settings) != nil || settings.Slug == "" || !settings.CanManage {
+		t.Fatalf("GET settings = %d %s", rec.Code, rec.Body.String())
+	}
+}
