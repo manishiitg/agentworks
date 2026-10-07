@@ -72,32 +72,49 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 	}
 	var matches []int
 	slug, rest := "", text
+	// goal: the slug was "<workflow-slug>-goal", the workflow's Goal Lead.
+	goal := false
 	if isMention {
 		if word, remainder := SplitSlackSlugWord(text); word == "list" && remainder == "" {
 			return slackChannelPick{reply: FormatSlackTargetList(set, "in this channel")}
 		}
 		matches, slug, rest = PickSlackSlug(text, set)
+		if len(matches) == 0 {
+			if word, remainder := SplitSlackSlugWord(text); word != "" {
+				if goalMatches := goalLeadSlugMatches(set, word); len(goalMatches) > 0 {
+					matches, slug, rest, goal = goalMatches, word, remainder, true
+				}
+			}
+		}
 	}
 	if bound, found := LoadSlackThreadTarget(ctx, thread); found {
-		index := set.Find(bound.Ref)
+		// A Goal Lead thread rides on its workflow's target.
+		index := set.Find(bound.Ref.Base())
 		if index < 0 {
 			// Removed from the channel's list (or switched off): the thread
 			// stops, it is never handed to another target.
 			return slackChannelPick{text: text, route: RevokedSlackRoute()}
 		}
+		boundGoal := strings.EqualFold(strings.TrimSpace(bound.Ref.Agent), SlackGoalLeadAgent)
 		if len(matches) > 0 {
-			if !containsIndex(matches, index) {
-				return slackChannelPick{reply: fmt.Sprintf("This thread is with `%s`. Start a new thread (mention me in the channel) to talk to `%s`.", set.Targets[index].Slug, slug)}
+			if !containsIndex(matches, index) || goal != boundGoal {
+				return slackChannelPick{reply: fmt.Sprintf("This thread is with `%s`. Start a new thread (mention me in the channel) to talk to `%s`.", firstNonEmptyString(bound.Slug, set.Targets[index].Slug), slug)}
 			}
 			text = rest
 		}
-		return slackChannelPick{text: text, route: slackSetRoute(ctx, hooks, s.connectionID, channelID, set.Targets[index])}
+		route := slackSetRoute(ctx, hooks, s.connectionID, channelID, set.Targets[index])
+		if boundGoal {
+			route = goalLeadRoute(route)
+		}
+		return slackChannelPick{text: text, route: route}
 	}
 	chosen := -1
 	switch {
 	case len(matches) == 1:
 		chosen = matches[0]
 		text = rest
+	case len(matches) > 1 && goal:
+		return slackChannelPick{reply: goalLeadAmbiguousReply(slug)}
 	case len(matches) > 1:
 		return slackChannelPick{text: rest, choices: pickTargets(set, matches), slug: slug}
 	case len(set.Targets) == 1:
@@ -117,6 +134,10 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 	}
 	target := set.Targets[chosen]
 	pick := slackChannelPick{text: text, route: slackSetRoute(ctx, hooks, s.connectionID, channelID, target)}
+	if goal {
+		target = GoalLeadSlackTarget(target)
+		pick.route = goalLeadRoute(pick.route)
+	}
 	if isMention && !IsRevokedSlackRoute(*pick.route) {
 		pick.bind = &target
 		if len(matches) == 1 && strings.TrimSpace(text) == "" {
@@ -292,18 +313,32 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 			matches = append(matches, index)
 		}
 	}
+	// "<workflow-slug>-goal": the workflow's Goal Lead, for people who can
+	// reach the workflow.
+	goal := false
+	if len(matches) == 0 {
+		for _, index := range goalLeadSlugMatches(set, word) {
+			if reachable(index) {
+				matches = append(matches, index)
+			}
+		}
+		goal = len(matches) > 0
+	}
 	thread := ThreadID{Platform: "slack", ChannelID: channelID, ThreadTS: channelID, ConnectionID: s.connectionID}
 	chosen := -1
 	switch {
 	case len(matches) == 1:
 		chosen = matches[0]
 		text = remainder
+	case len(matches) > 1 && goal:
+		return slackDMPick{reply: goalLeadAmbiguousReply(word)}
 	case len(matches) > 1:
 		return slackDMPick{text: remainder, choices: pickTargets(set, matches)}
 	default:
 		if bound, found := LoadSlackThreadTarget(ctx, thread); found {
-			if index := set.Find(bound.Ref); index >= 0 && reachable(index) {
+			if index := set.Find(bound.Ref.Base()); index >= 0 && reachable(index) {
 				chosen = index
+				goal = strings.EqualFold(strings.TrimSpace(bound.Ref.Agent), SlackGoalLeadAgent)
 			}
 		}
 	}
@@ -327,6 +362,10 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 	}
 	target := set.Targets[chosen]
 	pick := slackDMPick{text: text, route: routes[chosen]}
+	if goal {
+		target = GoalLeadSlackTarget(target)
+		pick.route = goalLeadRoute(pick.route)
+	}
 	if len(matches) == 1 {
 		pick.bind = &target
 		if strings.TrimSpace(text) == "" {

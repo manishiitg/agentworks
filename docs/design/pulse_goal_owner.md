@@ -1,6 +1,6 @@
 # Goal Lead: Pulse as the goal owner
 
-Status: phases 0-3 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log); later phases design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: the Goal Lead as its own persistent chat kind, see "Phase 4 as built"); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07): **Goal Lead**, e.g. "Substack Goal Lead". It replaces "Pulse" as the agent users see.
 In user text, "lead" means the Goal Lead only; sales prospects are "prospects" or "contacts" there.
@@ -244,6 +244,24 @@ with one owner per workflow goal; a goal spanning workflows is a later phase.
 4. Pulse on the Crew runtime subset: persistent conversation, chat in the workflow's Pulse tab, Slack slug.
 5. Chat question cards on goal work routed to Pulse first.
 6. Goals spanning several workflows.
+
+## Phase 4 as built
+
+- **Conversation.** One per workflow, stored in its Pulse state (`goal_lead_conversation`): a stable session id
+  (`schedule-goallead--<hash>-g<N>`). Every turn names it as the restored conversation, so a coding CLI resumes its
+  native session and an API model replays its transcript (the Crew and workflow-ask path). The CLI's own compaction
+  bounds it; after 30 days or 90 turns the next goal check starts generation N+1 and goal memory carries over.
+- **Turns.** Daily goal check and the full Pulse's Goal Work (scheduler, same receipts as before), the owner's
+  messages (Pulse tab), `ask_goal_lead` (workflow chats and steps, function call, 20 an hour), Slack. Each runs as
+  the workflow's execution owner on its Builder runtime as a Pulse turn, held by the phase 2 guard to
+  `pulse.autonomy`. Kernel Run mode (Landlock read-only) is not used yet: Goal Work writes drafts under `pulse/work/`.
+- **Skills and sub-agents.** `goal-lead-check.md`, `goal-lead-work.md`, `goal-lead-architecture.md` (about 40 lines
+  each). QA: `record_pulse_qa_request`; the scheduler starts a Pulse fix run when the workflow is free and writes its
+  short result back. The full Pulse's Architecture and Technical reviews are unchanged.
+- **Focus areas.** `pulse.focus_areas` stays the active list; `pulse.focus_area_details` holds each area's end date,
+  check, status, tracking and closing lesson. At most three open; proposals wait for the owner's confirm.
+- **Pulse tab.** Goal status card, focus areas, Needs you, decision log, memory, then the conversation with an input.
+- **Slack.** `<workflow-slug>-goal` on any app that reaches the workflow; the thread or DM stays bound to it.
 
 ## Risks
 

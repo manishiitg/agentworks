@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — The Goal Lead is one persistent conversation per workflow goal
+
+Each workflow with a goal (soul.md plus a primary metric) has one Goal Lead conversation, a chat kind of its own:
+created on its first goal check or when the Pulse tab opens, platform-defined instructions (not editable), shown in
+the Pulse tab, not in the Crew list. The daily goal check and the full Pulse's Goal Work run in it (resuming the same
+session, like a Crew conversation) instead of a fresh session each pass; the owner talks to it in the Pulse tab, the
+workflow's chats and steps ask it with `ask_goal_lead` (an answer is a recommendation), and Slack reaches it as
+`<workflow-slug>-goal` for people with access to the workflow. Every turn runs on the workflow's Builder runtime held
+by the phase 2 tool guard to `pulse.autonomy`. Goal check, Goal Work and Architecture are short skills it loads; QA
+is a separate fix run it requests, whose short result comes back. Focus areas get an end date, a check and a
+status; the Goal Lead proposes, the owner confirms. Why: owner, 2026-10-07 (design "A new chat kind, not a Crew").
+[PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — Workflow Review runs before runs; backup, publish and notify are schedule options
 
 Workflow Review (Plan Drift) is a pre-run check, like a compile step: before every run a code check reads the

@@ -266,13 +266,15 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 		goalStatus = view
 	}
 	out, err := json.MarshalIndent(map[string]interface{}{
-		"goal_status":      goalStatus,
-		"goal_lead":        goalLeadAgentContext(ctx, workspacePath),
-		"autonomy":         pulseAutonomyForView(ctx, workspacePath),
-		"autonomy_note":    "The user's Pulse permissions: auto means do it yourself and record it; ask means prepare it and create a decision. run covers existing steps, outward covers new posts/messages/contacts, change covers plan, step and schedule edits.",
-		"focus_areas":      pulseFocusAreasForView(ctx, workspacePath),
-		"focus_areas_note": "The user's current priorities for Goal Work. Start each pass here; they direct attention, they do not limit what you may consider or override soul.md goals and constraints.",
-		"goal_work":        items,
+		"goal_status":             goalStatus,
+		"goal_lead":               goalLeadAgentContext(ctx, workspacePath),
+		"autonomy":                pulseAutonomyForView(ctx, workspacePath),
+		"autonomy_note":           "The user's Pulse permissions: auto means do it yourself and record it; ask means prepare it and create a decision. run covers existing steps, outward covers new posts/messages/contacts, change covers plan, step and schedule edits.",
+		"focus_areas":             pulseFocusAreasForView(ctx, workspacePath),
+		"focus_areas_note":        "The user's current priorities for Goal Work. Start each pass here; they direct attention, they do not limit what you may consider or override soul.md goals and constraints.",
+		"focus_area_details":      focusAreasForView(ctx, workspacePath),
+		"focus_area_details_note": "Each focus area's lifecycle: end date, its own check, latest tracking, proposals waiting for the owner and recent closes with their lesson. Propose, track and close with record_pulse_focus_area; only the owner confirms.",
+		"goal_work":               items,
 	}, "", "  ")
 	return string(out), err
 }

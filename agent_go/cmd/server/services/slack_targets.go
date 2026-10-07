@@ -30,13 +30,24 @@ type SlackTargetRef struct {
 	ProfileID     string `json:"profile_id,omitempty"`
 	// AddedBy records who attached the target, for audit.
 	AddedBy string `json:"added_by,omitempty"`
+	// Agent names an agent of the target other than its own chat: "goal_lead"
+	// is a workflow's Goal Lead, reached as "<workflow-slug>-goal" (PLAT-697
+	// phase 4). It is never attached on its own; it rides on its workflow.
+	Agent string `json:"agent,omitempty"`
 }
 
 // Same reports whether two refs name the same target.
 func (r SlackTargetRef) Same(other SlackTargetRef) bool {
 	return strings.TrimSpace(r.WorkspacePath) != "" &&
 		SameSlackScopePath(r.WorkspacePath, other.WorkspacePath) &&
-		strings.EqualFold(strings.TrimSpace(r.ProfileID), strings.TrimSpace(other.ProfileID))
+		strings.EqualFold(strings.TrimSpace(r.ProfileID), strings.TrimSpace(other.ProfileID)) &&
+		strings.EqualFold(strings.TrimSpace(r.Agent), strings.TrimSpace(other.Agent))
+}
+
+// Base is the target an agent ref rides on (the ref itself when it has none).
+func (r SlackTargetRef) Base() SlackTargetRef {
+	r.Agent = ""
+	return r
 }
 
 // Empty reports a ref that names nothing.

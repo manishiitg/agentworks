@@ -965,6 +965,14 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		call.saveIndex()
 		call.persist()
 	}
+	if isGoalLeadAsk(target, fn) {
+		// ask_goal_lead: a turn in the workflow's Goal Lead conversation.
+		message, _ := args["message"].(string)
+		call.saveIndex()
+		call.persist()
+		go api.runGoalLeadAsk(call, target, caller, strings.TrimSpace(message), timeout)
+		return call, nil
+	}
 	if isWorkflowAsk(target, fn) {
 		message, _ := args["message"].(string)
 		call.saveIndex()

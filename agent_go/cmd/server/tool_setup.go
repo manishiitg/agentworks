@@ -339,6 +339,12 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[name] = category
 		}
 
+		// The workflow's chats and steps ask its Goal Lead (PLAT-697 phase 4).
+		goalLeadAskTool, goalLeadAskExecutor := createGoalLeadAskTool()
+		allTools = append(allTools, goalLeadAskTool)
+		allExecutors[goalLeadAskTool.Function.Name] = goalLeadAskExecutor
+		toolCategories[goalLeadAskTool.Function.Name] = "workflow"
+
 		pulseWorklistTools, pulseWorklistExecutors, pulseWorklistCategories := createPulseWorklistTools()
 		allTools = append(allTools, pulseWorklistTools...)
 		for name, executor := range pulseWorklistExecutors {

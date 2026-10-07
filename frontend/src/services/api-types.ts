@@ -535,6 +535,42 @@ export interface PulseDecisionLogEntry extends PulseRecommendation {
   recommended: string
 }
 
+/** One line of the Goal Lead conversation shown in the Pulse tab (PLAT-697 phase 4). */
+export interface GoalLeadMessage {
+  id: string
+  at: string
+  role: 'owner' | 'goal_lead' | 'check' | 'goal_work' | 'ask' | 'slack' | 'qa' | 'system' | string
+  source?: string
+  text: string
+  session_id?: string
+}
+
+export interface GoalLeadConversation {
+  has_goal: boolean
+  session_id?: string
+  started_at?: string
+  generation?: number
+  busy: boolean
+  messages: GoalLeadMessage[]
+  error?: string
+}
+
+/** A focus area's lifecycle: proposed by the Goal Lead, confirmed by the owner, tracked, closed. */
+export interface PulseFocusArea {
+  id: string
+  text: string
+  status: 'proposed' | 'active' | 'done' | 'expired' | 'dropped'
+  end_date?: string
+  check?: string
+  why?: string
+  proposed_by?: 'goal_lead' | 'owner' | string
+  progress?: 'moving' | 'stuck' | 'done' | string
+  progress_note?: string
+  tracked_at?: string
+  closed_at?: string
+  lesson?: string
+}
+
 export interface GoalLeadResponse {
   success: boolean
   memory: string
@@ -543,6 +579,8 @@ export interface GoalLeadResponse {
   decision_log: PulseDecisionLogEntry[]
   decision_log_error?: string
   answer_mode?: 'recommend' | 'act'
+  conversation?: GoalLeadConversation
+  focus_areas?: PulseFocusArea[]
   error?: string
 }
 

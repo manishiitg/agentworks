@@ -256,6 +256,11 @@ type WorkflowPulseConfig struct {
 	// more audience strategies like SaaS Builder". Goal Work starts there each
 	// pass; they direct attention, they do not limit what it may consider.
 	FocusAreas []string `json:"focus_areas,omitempty"`
+	// FocusAreaDetails is each focus area's lifecycle (PLAT-697 phase 4,
+	// goal_lead_focus_areas.go): Goal Lead proposals the owner confirms, end
+	// dates, their own checks, daily tracking and closing lessons. FocusAreas
+	// stays the active list.
+	FocusAreaDetails []PulseFocusArea `json:"focus_area_details,omitempty"`
 	// Autonomy holds Goal Work's permission levels. Nil means the defaults:
 	// Run is auto (Goal Work may run existing steps itself); Outward and Change
 	// ask the user.

@@ -47,6 +47,9 @@ var pulseScheduleToolNames = []string{
 	"record_pulse_recommendation",
 	"record_pulse_decision_outcome",
 	"record_pulse_goal_memory",
+	// Phase 4: the Goal Lead's focus areas and QA requests.
+	"record_pulse_focus_area",
+	"record_pulse_qa_request",
 }
 
 // pulseRemovedToolNames must never reappear. Each was folded into one of the

@@ -3031,6 +3031,13 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	executors["record_pulse_recommendation"] = recordPulseRecommendationFromToolArgs
 	executors["record_pulse_decision_outcome"] = recordPulseDecisionOutcomeFromToolArgs
 	executors["record_pulse_goal_memory"] = recordPulseGoalMemoryFromToolArgs
+	// Phase 4: focus areas and QA requests.
+	for _, tool := range createGoalLeadChatKindTools() {
+		goalLeadTools = append(goalLeadTools, tool)
+		categories[tool.Function.Name] = "workflow"
+	}
+	executors["record_pulse_focus_area"] = recordPulseFocusAreaFromToolArgs
+	executors["record_pulse_qa_request"] = recordPulseQARequestFromToolArgs
 
 	return append([]llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool, goalCheckTool}, goalLeadTools...), executors, categories
 }

@@ -1333,6 +1333,9 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"record_pulse_recommendation",
 		"record_pulse_decision_outcome",
 		"record_pulse_goal_memory",
+		// Phase 4: the Goal Lead's focus areas and its QA sub-agent requests.
+		"record_pulse_focus_area",
+		"record_pulse_qa_request",
 		"search_platform",
 		"ask_platform_crew",
 		"read_crew_calls",
@@ -1374,6 +1377,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		tools = append(tools, report...)
 		tools = append(tools, autoImprovement...)
 		tools = append(tools, pulseState...)
+		tools = append(tools, "ask_goal_lead")
 
 	case "run":
 		// RUN: deployed/user-facing runtime for workflow-backed work, Slack, WhatsApp,
@@ -1390,6 +1394,9 @@ func GetToolsForWorkshopMode(mode string) []string {
 		tools = append(tools, "review_workflow_timing")
 		tools = append(tools, "review_workflow_costs")
 		tools = append(tools, "get_workflow_command_guidance") // /review-* commands need this even in run mode
+		// Chats and steps working on the goal may ask the workflow's Goal Lead
+		// for a recommendation (PLAT-697 phase 4).
+		tools = append(tools, "ask_goal_lead")
 
 	default:
 		// Unknown mode — allow everything (no restriction)

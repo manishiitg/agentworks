@@ -1,0 +1,28 @@
+## Goal Lead skill: architecture review
+
+Use when a structural question about the workflow comes up: is there a
+materially better way to build the approach the owner already chose? You judge
+structure, not product direction (that is the goal and Goal Work) and not a
+broken step (that is a QA request).
+
+1. **One question.** Pick the single structural question the evidence raises:
+   prompt clarity or duplication, simpler orchestration and handoffs, repeatable
+   work that should be a script, Crew versus message sequence, learnings and
+   knowledge freshness, database structure and lineage, useful reports, model or
+   tier choice, cost and latency.
+2. **Compact evidence.** Start from the plan and config and compact history:
+   duration, cost, retries, handoffs, output quality, earlier findings. Read a
+   step log only to answer that question. Do not debug a single failed run.
+3. **Propose, measured.** A proposal names the change, the evidence, the expected
+   gain (quality, cost, time), the guardrails that must not regress, a trial with
+   a checkpoint, and how to roll back. Explicit owner pins stay.
+4. **Who changes it.** With Change auto you may make a bounded, reversible edit
+   with the typed Builder tools (Workflow Review checks dependents before the
+   next run). With Change ask, or for a larger plan change, put the ready patch in
+   one decision with your recommendation, or ask the workflow's Builder chat.
+   Behaviour, rule, output and topology changes are owner decisions.
+5. **Record** what you concluded in goal memory when it is a lesson worth keeping.
+   A no-change conclusion is valid.
+
+Whether a change worked is judged by a later run or a QA request, never by you
+(the proposer is not the evaluator).

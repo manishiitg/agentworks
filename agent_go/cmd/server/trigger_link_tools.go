@@ -178,7 +178,13 @@ func (c triggerLinkCaller) isTarget(target triggerTarget) bool {
 		}
 		return same
 	}
-	return target.Manifest != nil && strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.Manifest.ID)
+	same := target.Manifest != nil && strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.Manifest.ID)
+	// The workflow's Goal Lead conversation (ask_goal_lead) is another
+	// participant of the same workflow; only that conversation itself is "self".
+	if same && target.Chat != nil {
+		return c.Chat != nil && c.Chat.Key == target.Chat.Key
+	}
+	return same
 }
 
 // crewTargetMessage is the standard inbound trigger message on a Crew that

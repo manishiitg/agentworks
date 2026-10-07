@@ -131,6 +131,7 @@ import type {
   WorkflowPublishSecretResponse,
   ReportHumanInputResponse,
   GoalLeadResponse,
+  PulseFocusArea,
   ReportHumanInputsResponse,
   PulseModuleStateResponse,
   PulseFindingsResponse,
@@ -2092,6 +2093,21 @@ export const agentApi = {
   saveGoalMemory: async (workspacePath: string, content: string) => {
     const response = await api.put('/api/workflow/goal-memory', { workspace_path: workspacePath, content })
     return response.data as { success: boolean; error?: string }
+  },
+
+  /** The owner's message to the workflow's Goal Lead; the reply appears in the conversation. */
+  sendGoalLeadMessage: async (workspacePath: string, message: string) => {
+    const response = await api.post('/api/workflow/goal-lead/message', { workspace_path: workspacePath, message })
+    return response.data as { success: boolean; error?: string }
+  },
+
+  /** Confirm, reject, add, extend or close a focus area. */
+  updateGoalLeadFocusArea: async (
+    workspacePath: string,
+    body: { action: 'confirm' | 'reject' | 'add' | 'extend' | 'close'; id?: string; text?: string; end_date?: string; check?: string; status?: string; lesson?: string },
+  ) => {
+    const response = await api.post('/api/workflow/goal-lead/focus-areas', { workspace_path: workspacePath, ...body })
+    return response.data as { success: boolean; error?: string; focus_areas?: PulseFocusArea[] }
   },
 
   getPulseContext: async (workspacePath: string) => {

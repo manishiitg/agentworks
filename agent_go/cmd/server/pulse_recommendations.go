@@ -441,6 +441,11 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the autonomy levels. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
 		"outcomes_due":           outcomesDue,
 		"outcomes_note":          "Decisions the owner answered over a day ago with no outcome yet: record what happened after with record_pulse_decision_outcome (from runs and goal readings), and a lesson in goal memory when there is one.",
+		// Phase 4: focus areas and the QA runs the Goal Lead asked for.
+		"focus_areas":      focusAreasForView(ctx, workspacePath),
+		"focus_areas_note": "Focus areas: what matters now, each with an end date and its own check. Track every active one (record_pulse_focus_area action=track), close done or expired ones with a lesson (action=close), and propose one only from evidence or the owner's words (action=propose, at most three open). Proposals wait for the owner's one-click confirm; never treat one as active before that.",
+		"qa_results":       recentGoalLeadQAResults(ctx, workspacePath, 5),
+		"qa_results_note":  "QA runs you asked for with record_pulse_qa_request: a separate run checks and repairs, and its short result is here. Judge the effect on the goal yourself; the run judged the steps.",
 	}
 }
 
@@ -463,6 +468,10 @@ func (api *StreamingAPI) handleGetGoalLead(w http.ResponseWriter, r *http.Reques
 		"memory_path":  workspacePath + "/" + goalMemoryRelPath,
 		"decision_log": entries,
 		"answer_mode":  pulseAnswerMode(r.Context(), workspacePath),
+		// Phase 4: the Goal Lead conversation (created here on first open when
+		// the workflow has a goal) and the focus areas.
+		"conversation": api.goalLeadConversationView(r.Context(), workspacePath),
+		"focus_areas":  focusAreasForView(r.Context(), workspacePath),
 	}
 	if memoryErr != nil {
 		resp["memory_error"] = memoryErr.Error()

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Loader2, Pencil, ScrollText, UserRound } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import type { PulseDecisionLogEntry, PulseRecommendation, ReportHumanInput } from '../../services/api-types'
+import type { GoalLeadConversation, PulseDecisionLogEntry, PulseFocusArea, PulseRecommendation, ReportHumanInput } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openReportHumanInputAnswerInChat } from '../../utils/reportHumanInputChat'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { FocusAreasCard, GoalLeadChat } from './GoalLeadConversation'
 
 // The Goal Lead's part of the Pulse tab (PLAT-697 phase 3), under the goal
 // status card: Needs you with the Goal Lead's recommendation (Accept / Change,
@@ -171,6 +172,8 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
   const [log, setLog] = useState<PulseDecisionLogEntry[]>([])
   const [memory, setMemory] = useState('')
   const [memoryPath, setMemoryPath] = useState('')
+  const [conversation, setConversation] = useState<GoalLeadConversation | null>(null)
+  const [focusAreas, setFocusAreas] = useState<PulseFocusArea[]>([])
 
   const load = useCallback(async () => {
     const [inputs, lead] = await Promise.allSettled([
@@ -184,13 +187,24 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
       setLog(lead.value.decision_log || [])
       setMemory(lead.value.memory || '')
       setMemoryPath(lead.value.memory_path || '')
+      setConversation(lead.value.conversation || null)
+      setFocusAreas(lead.value.focus_areas || [])
     }
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
+  // While the Goal Lead is answering, refresh until its reply is in.
+  const messages = conversation?.messages || []
+  const busy = Boolean(conversation?.busy) || messages[messages.length - 1]?.role === 'owner'
+  useEffect(() => {
+    if (!busy) return
+    const timer = window.setInterval(() => { void load() }, 4000)
+    return () => window.clearInterval(timer)
+  }, [busy, load])
   useLiveRefetch(() => { void load() }, { kinds: ['human_inputs'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0 })
 
   return <div className="mb-3 space-y-3" aria-label="Goal Lead">
+    <FocusAreasCard workspacePath={workspacePath} areas={focusAreas} onChanged={() => void load()} />
     {pending.length > 0 && <section aria-label="Needs you" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
       <div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-amber-600 dark:text-amber-300" />
         <h3 className="text-xs font-semibold">Needs you</h3>
@@ -201,5 +215,7 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
     </section>}
     <DecisionLog entries={log} />
     <GoalMemory workspacePath={workspacePath} memory={memory} path={memoryPath} onSaved={() => void load()} />
+    <GoalLeadChat workspacePath={workspacePath} conversation={conversation}
+      onSent={() => { setConversation(current => current ? { ...current, busy: true } : current); void load() }} />
   </div>
 }

@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | goals |
 | Area | pulse |
-| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-3 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log) |
+| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-4 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log; the Goal Lead as one persistent conversation per workflow with chat, focus areas, ask_goal_lead and a Slack slug) |
 
 ## What happened
 
@@ -56,7 +56,8 @@ goal check turn itself is not yet run live.
   default applied when its time passes) is not built; the owner's answer reaches memory as a straight copy, so a
   reason the owner gives only in chat is not distilled until Pulse adds it.
 - Phase 0 left: see "Phase 0" below.
-- Phases 4-6.
+- Phase 4 left: see "Phase 4" below.
+- Phases 5-6.
 
 ## What and why
 
@@ -140,6 +141,66 @@ Tests: `TestGoalLeadRecommendsAndOnlyTheOwnerAnswers` (a Pulse session's answer 
 stored as Pulse's and the decision stays pending; the owner's Accept answers with the recommended option, marks it
 accepted and writes the owner-answer line to `memory/goal.md`), `GoalLeadPanel.test.tsx` (the Needs you card and
 Accept). Not run live.
+
+## Phase 4: the Goal Lead as its own persistent chat kind (on main, not deployed)
+
+- **One conversation per workflow** with a goal (soul.md plus a primary metric; `workflowHasGoal`), created on the
+  first goal check or when the Pulse tab opens (`cmd/server/goal_lead_conversation.go`). Kept in the workflow's
+  Pulse state (`goal_lead_conversation`, db/db.sqlite): a stable session id `schedule-goallead--<hash>-g<N>` (the
+  `schedule-` prefix keeps it unattended: no workflow-busy lock, never a person's Builder chat, `humanAnswerScope`
+  still refuses it). Platform-defined charter sent as the first turn of each conversation; nobody edits it. Shown
+  in the Pulse tab, not the Crew list.
+- **Continuity.** Every turn uses that session and names it as `restored_conversation_session_id`: a coding CLI
+  resumes its native session (`--resume`), an API model replays its saved transcript; the same path Crew
+  conversations and workflow asks use. All turns are Pulse turns with the same authority, so the session key never
+  changes and native resume is never dropped for a role change. Context growth: the CLI's own compaction; after 30
+  days or 90 turns the next goal check starts generation N+1 (logged in the conversation); goal memory carries what
+  matters. A new turn clears an earlier Stop (PLAT-130 still guards continuations of the stopped turn).
+- **Goal check and Goal Work run in it.** The daily goal check step and the full Pulse's strategic_review turn (and
+  its receipt continuation) run in the Goal Lead conversation instead of the pass's session (`runGoalLeadPassStep`);
+  receipts, the goal-check record and the phase 2 guard are unchanged. Workflows without a goal keep the old
+  strategic_review turn.
+- **Access.** Turns run as the workflow's execution owner on its Builder runtime (model, MCP servers, skills), held
+  on every turn by the phase 2 tool guard to `pulse.autonomy` (Builder typed tools only with change=auto). Kernel
+  Run mode (Landlock read-only) is not used: Goal Work writes drafts under `pulse/work/`, which Run cannot.
+- **Skills and sub-agents.** `goal-lead-check.md`, `goal-lead-work.md`, `goal-lead-architecture.md` (reference
+  docs, about 40 lines each, cut from the goal check prompt, `strategy-auditor.md` and `architecture-review.md`).
+  QA / technical review: `record_pulse_qa_request` records what to check; the tick starts a Pulse fix run (its own
+  session) when the workflow is free and writes its short result (status, technical review result and reason)
+  back to the conversation log and the next turn's context (`goal_lead.qa_results`) (`goal_lead_qa.go`). The full
+  Pulse's Architecture and Technical turns and `strategy-auditor.md` are unchanged (kept for workflows without a
+  goal and `/run-goal-work`).
+- **Talk to it.** The Pulse tab shows the conversation (owner messages, replies, goal checks, Goal Work, asks,
+  Slack, QA results) under the goal status card and the Goal Lead panel, with an input
+  (`POST /api/workflow/goal-lead/message`, write access; the turn runs in the background). The turn's
+  instructions: lasting direction to goal memory, time-boxed direction as a proposed focus area, goal changes as a
+  proposed soul.md edit.
+- **Focus areas** (`goal_lead_focus_areas.go`): `pulse.focus_areas` stays the active list every reader uses;
+  `pulse.focus_area_details` adds end date, check, status (proposed, active, done, expired, dropped), daily
+  tracking and the closing lesson. `record_pulse_focus_area` proposes (at most three open), tracks and closes (the
+  lesson also goes to goal memory); the owner confirms, rejects, adds, extends or drops in the Pulse tab
+  (`POST /api/workflow/goal-lead/focus-areas`). Shown at the top of the Pulse tab under the goal status card.
+- **ask_goal_lead** (`goal_lead_ask.go`): workflow chats (Builder and Run) and steps (with platform stores) ask the
+  workflow's Goal Lead through `startCrewFunctionCall` with a chat target, like `ask_project_chat`: a call id and
+  record, a turn in the Goal Lead conversation, the final reply as the answer, which the turn's text frames as a
+  recommendation. Waits up to `wait_seconds` (default 60); 20 asks per workflow per hour; the Goal Lead cannot ask
+  itself.
+- **Slack**: `<workflow-slug>-goal` on any app that reaches the workflow (channel list or DM targets; Slack
+  membership decides channels), parsed only against the workflow targets there (`services/slack_goal_lead.go`). The
+  thread or DM is bound to it (`SlackTargetRef.Agent = goal_lead`), and its messages are answered by the Goal Lead
+  conversation, not a bot session. Only people with access to the workflow: a DM's account, or a channel sender
+  whose Slack email maps to an account with access (`handleGoalLeadSlack`).
+
+Left / risks:
+
+- Not run live: the goal check in the persistent conversation, owner messages, asks and Slack.
+- Kernel Run mode for the Goal Lead (see Access); shell, browser and MCP actions stay prompt-held as in phase 2.
+- `ask_goal_lead` in steps depends on the step's tool session resolving its workflow (`pulseToolScope`); not
+  checked live. A pending ask is read again with the same message and `submission_id`.
+- Focus areas live in workflow.json (read-modify-write); a Builder save at the same moment could drop one change.
+- An owner message from a co-owner or editor runs as the workflow's execution owner (as schedules do).
+- Slack threads bound to the Goal Lead answer plain replies; the thread history is not replayed into the turn.
+- Tests: `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks`, `GoalLeadPanel.test.tsx`.
 
 ## Phase 0: Workflow Review before runs; housekeeping out of Pulse (on main, not deployed)
 
