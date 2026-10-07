@@ -1,6 +1,9 @@
-# Pulse as the goal owner
+# Goal Lead: Pulse as the goal owner
 
 Status: design, not built. Owner: the Pulse session. Ticket: PLAT-697.
+
+Name (owner, 2026-10-07): **Goal Lead**, e.g. "Substack Goal Lead". It replaces "Pulse" as the agent users see.
+In user text, "lead" means the Goal Lead only; sales prospects are "prospects" or "contacts" there.
 
 ## Why
 
@@ -46,6 +49,91 @@ contradict each other, access wired through general Crew sharing, platform rules
 
 It never edits `soul.md` and never loosens a constraint (existing rule). It must say "I don't know your
 preference" instead of guessing one.
+
+## A new chat kind, not a Crew
+
+| | Crew | Workflow chat (Builder/Run) | Goal Lead |
+|---|---|---|---|
+| Lives in | its own Crew folder | the workflow | the workflow (its Pulse area) |
+| Access | its own folder | Builder read/write, Run read + execute | the workflow: Run by default, Builder typed tools per autonomy |
+| Lifetime | persistent | one chat per task | persistent, one per goal |
+| Memory | Crew memory | the chat only | Crew-style memory beside `soul.md` |
+| Schedules / wake-ups | yes | no | yes |
+| Instructions | the user's | platform + user | platform-defined, the same for all |
+| Created by | the user | the user | automatically when a workflow has a goal |
+| Shown in | Crew list | the workflow's chats | the workflow's Pulse tab |
+| Slack | by slug | no | by slug |
+
+It reuses the Crew runtime pieces (persistent conversation, memory, schedules, function calls, Slack slugs) and the
+workflow chat's access model. It is not a Crew: Crews are user-owned, shared and listed; making the Goal Lead one
+would mean hiding and locking Crew features and routing workflow access through Crew sharing.
+
+### Access to the workflow
+
+Today a Crew links only to its own folder; workflow chats link to the workflow with kernel-enforced roles (Builder
+read/write, Run read-only + server-executed actions; `project_instruction_files.md`).
+
+| Need | How |
+|---|---|
+| Read runs, outputs, db, plan, `soul.md` | the workflow link, read access |
+| Run steps or the workflow | existing run tools; only when `run` is auto |
+| Change plan, steps, schedules | Builder typed tools, only when `change` is auto; otherwise a prepared recommendation |
+| Larger plan changes | ask the workflow's own Builder chat by function call; Workflow Review checks before the next run |
+| Its memory and focus areas | its own runtime folder in the workflow's Pulse area |
+| `soul.md` | read only; edits are proposed to the owner |
+
+The sandbox role (Run by default, Builder tools per action when allowed) enforces the autonomy levels, replacing
+prompt-only enforcement. A later cross-workflow Goal Lead gets read links to each workflow and changes them only by
+asking that workflow's Goal Lead or Builder.
+
+## Job description
+
+For anything the goal needs, the Goal Lead does it within its autonomy, gets the right skill or agent to do it, or
+turns it into one clear ask for the owner. Nothing just sits in a list.
+
+| Area | Owns | Stops at |
+|---|---|---|
+| Measurement | the goal's numbers measured every run; adds missing ones | new tracking steps need `change` |
+| Work running | the goal-driving work actually runs, not starved by another route | schedule changes within `run`; held schedules need the owner |
+| Blockers | finds and chases what is stuck (approvals, failing steps, logins, credits) | owner-only actions become one ask |
+| Resources and budget | spend per goal (credits, tokens, paid tools) | never spends over budget or buys |
+| Accounts and integrations | the logins and connections the goal needs still work | cannot log in for the owner |
+| Experiments | proposes and runs small tests, judged by results | outward tests need `outward` |
+| Workflow improvements | finds what limits the goal; the workflow's agents fix it | plan edits only within `change` |
+| Owner inputs | approvals and questions, batched, with recommendations and deadlines | never decides the owner's preferences |
+| Risks and safety | account safety, cost spikes, bad outputs; pauses when risky | irreversible actions ask |
+| Other workflows | notices effects on this goal (shared credits, same audience) | cross-goal trade-offs are the owner's |
+| Learning | records what worked | `soul.md` stays the owner's |
+| Reporting | daily message and dashboard | |
+
+## Focus areas
+
+`pulse.focus_areas` today only steers attention and is set once and forgotten. The Goal Lead owns their lifecycle:
+
+1. **Proposes** them from the goal check, results, or the owner's words in chat; at most 2-3 active.
+2. **Turns each into work:** what to run, which skills or sub-agents, and a check of its own ("drafts waiting 3 → 0").
+3. **Tracks** each daily: moving, stuck (escalated with a clear ask), or done.
+4. **Closes** it: done (lesson to memory), expired (says why; proposes extend, change or drop), or no longer relevant.
+5. **Learns** from closed focuses.
+
+Every focus has an end date. The owner confirms, changes or rejects proposals with one click and can add his own; the
+Goal Lead never starts one silently. Focus areas change what it attends to, never what it is allowed to do.
+
+| Layer | Answers | Changes | Set by |
+|---|---|---|---|
+| `soul.md` | what the goal is | rarely | owner |
+| Focus areas | what matters now | about weekly | Goal Lead proposes, owner confirms |
+| Memory | what was tried, decided, learned | constantly | Goal Lead |
+
+## Dashboard
+
+Per workflow (the Pulse tab, top to bottom): goal status (on track / at risk / off track / not measured, key number,
+trend, last measured); Needs you (each with a recommendation, Accept / Change, waiting time, what it blocks); focus
+areas; what the Goal Lead did (decision, why, result, undo where possible); the chat; and behind a details tab the QA
+and Architecture findings, Workflow Review results, the editable memory and the full decision log.
+
+Across workflows: one row per goal, sorted by needs-you then off track: goal, status, needs-you count, last measured,
+actions in the last 7 days. The same summary goes out as the daily Slack or email message, answerable there.
 
 ## Reviewers become skills and sub-agents
 

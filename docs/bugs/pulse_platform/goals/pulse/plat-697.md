@@ -1,6 +1,6 @@
 [← goals / pulse](index.md)
 
-# PLAT-697: Pulse as the goal owner
+# PLAT-697: Goal Lead (Pulse as the goal owner)
 
 | Field | Value |
 |---|---|

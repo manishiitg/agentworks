@@ -13,4 +13,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-697](plat-697.md) | Pulse as the goal owner | open | P1 |
+| [PLAT-697](plat-697.md) | Goal Lead (Pulse as the goal owner) | open | P1 |

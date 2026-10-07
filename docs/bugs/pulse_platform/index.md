@@ -31,7 +31,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-700](chat/restore/plat-700.md) | Restored chats lose their memory until the agent reads the archive | open | P2 | [chat/restore](chat/restore/index.md) |
 | [PLAT-699](chat/stop/plat-699.md) | No Stop button while a Crew or Code chat shows Working | fixed on main | P1 | [chat/stop](chat/stop/index.md) |
 | [PLAT-698](app/accounts/plat-698.md) | Slack channel bot usage counts toward the target owner's token limits | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
-| [PLAT-697](goals/pulse/plat-697.md) | Pulse as the goal owner | open | P1 | [goals/pulse](goals/pulse/index.md) |
+| [PLAT-697](goals/pulse/plat-697.md) | Goal Lead (Pulse as the goal owner) | open | P1 | [goals/pulse](goals/pulse/index.md) |
 | [PLAT-696](app/ui/plat-696.md) | Remove the old Runtime Health panel and its process endpoints | fixed on main | P3 | [app/ui](app/ui/index.md) |
 | [PLAT-695](browser/runtime-health/plat-695.md) | Runtime Health: show the Chrome extension's shared tabs | closed | P3 | [browser/runtime-health](browser/runtime-health/index.md) |
 | [PLAT-694](integrations/slack/plat-694.md) | Slack bot removal refusal names the workflow and its owners | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
