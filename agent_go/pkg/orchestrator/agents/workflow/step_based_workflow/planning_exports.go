@@ -185,8 +185,8 @@ func PhaseChatSystemPrompt(phaseId string, templateVars map[string]string) strin
 		"VariableNames":               templateVars["VariableNames"],
 		"IsCodeExecutionMode":         templateVars["IsCodeExecutionMode"],
 		"UseProjectedReferenceSkills": templateVars["UseProjectedReferenceSkills"],
-		"CurrentDate":                 now.Format("2006-01-02"),
-		"CurrentTime":                 now.Format("15:04:05"),
+		"CurrentDate":                 promptDate(now),
+		"CurrentTime":                 promptTime(now),
 	}
 
 	var tmpl = interactiveWorkshopSystemTemplate // default: workflow-builder template

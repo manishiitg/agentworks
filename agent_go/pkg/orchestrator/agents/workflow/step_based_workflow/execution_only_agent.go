@@ -225,8 +225,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 
 	// Get current date and time
 	now := time.Now()
-	currentDate := now.Format("2006-01-02")
-	currentTime := now.Format("15:04:05")
+	currentDate, currentTime := promptClock(now)
 
 	// Build code execution section using common builder
 	useCodeStyleRules := isCodeExecutionMode

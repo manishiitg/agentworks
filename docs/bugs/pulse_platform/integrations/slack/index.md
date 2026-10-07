@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-684](plat-684.md) | Stale Slack test for scheduled runs | fixed on main | P3 |
 | [PLAT-668](plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 |

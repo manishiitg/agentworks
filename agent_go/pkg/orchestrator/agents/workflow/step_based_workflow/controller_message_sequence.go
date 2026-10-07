@@ -1687,8 +1687,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step
 		"KBGuidanceBlock":           BuildStepKBGuidanceWithTarget(kbAccess, "", hcpo.messageSequenceAbsPath(filepath.Join(KnowledgebaseFolderName, KBNotesFolderName))),
 		"MessageSequenceAccessNote": buildMessageSequenceAccessNote(writeAccess, dbAccess),
 		"HasLearnings":              "false",
-		"CurrentDate":               time.Now().Format("2006-01-02"),
-		"CurrentTime":               time.Now().Format("15:04:05"),
+		"CurrentDate":               promptDate(time.Now()),
+		"CurrentTime":               promptTime(time.Now()),
 	}
 	return applySharedKBPrompt(hcpo.GetWorkspacePath(), vars)
 }

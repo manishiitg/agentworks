@@ -14,8 +14,8 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 74 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
-| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
-| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 32 | 6 |
+| [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 37 |
+| [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 33 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 31 | 10 |
 | [Relays](relays/index.md) | 27 | 5 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-684](integrations/slack/plat-684.md) | Stale Slack test for scheduled runs | fixed on main | P3 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-683](app/accounts/plat-683.md) | Per-user daily and weekly token limits on shared accounts | fixed on main | P1 | [app/accounts](app/accounts/index.md) |
 | [PLAT-682](coding-agents/accounts/plat-682.md) | Clearer error when a project runs on someone's private account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-681](brain/access/plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 | [brain/access](brain/access/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-645](code/shell/plat-645.md) | Backgrounded shell commands still block the chat's next commands | open | P2 | [code/shell](code/shell/index.md) |
 | [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |

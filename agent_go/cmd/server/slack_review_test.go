@@ -61,11 +61,14 @@ func TestSlackToolsFollowSessionOriginAndReadOnlyPolicy(t *testing.T) {
 		name               string
 		req                QueryRequest
 		readOnly, mutating bool
+		noSlackTools       bool
 	}{
 		{name: "owner", mutating: true},
 		{name: "reader", readOnly: true},
 		{name: "slack owner", req: QueryRequest{BotPlatform: "slack"}},
-		{name: "schedule", req: QueryRequest{TriggeredBy: "cron"}},
+		// Scheduled runs get no Slack bot tools at all: product.yaml's
+		// scheduled origin has no bot_management capability.
+		{name: "schedule", req: QueryRequest{TriggeredBy: "cron"}, noSlackTools: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := &recordingRegistrar{}
@@ -79,8 +82,8 @@ func TestSlackToolsFollowSessionOriginAndReadOnlyPolicy(t *testing.T) {
 					t.Fatalf("%s present=%v", name, present)
 				}
 			}
-			if _, present := reg.tools["get_slack_bot_settings"]; !present {
-				t.Fatal("missing inspection")
+			if _, present := reg.tools["get_slack_bot_settings"]; present == tc.noSlackTools {
+				t.Fatalf("get_slack_bot_settings present=%v", present)
 			}
 		})
 	}

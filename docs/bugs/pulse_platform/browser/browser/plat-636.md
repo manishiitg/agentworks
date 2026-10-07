@@ -69,3 +69,8 @@ instead of retrying; `active: true` is for showing a tab to the person.
 The built-in `agent-browser` skill's "Verify the outcome" step now says the same: when a click or typing reported
 success but nothing changed, check `document.visibilityState` before blaming the selector or the site.
 
+
+## Follow-up 2026-10-07
+
+The server's diagnostic allow-list (`logExtensionDiagnostic`) did not list the new `tab_shown_for_input` and
+`window_restored_for_input` events, so they were dropped. Both are now allowed (they carry only a tab ID).
