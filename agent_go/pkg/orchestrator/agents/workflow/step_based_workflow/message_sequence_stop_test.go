@@ -59,6 +59,7 @@ func TestMessageSequenceProceedsWhileTheRunIsLive(t *testing.T) {
 // failure was specifically the SECOND item running.
 func TestMessageSequenceHaltIsCheckedBeforeEveryItem(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // go vet: cancel on every path; the loop below cancels mid-run.
 
 	items := []string{"first-post", "second-post", "third-post"}
 	started := []string{}

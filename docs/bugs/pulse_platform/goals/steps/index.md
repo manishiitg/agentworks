@@ -14,6 +14,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-660](plat-660.md) | Steps still name the removed search_web_llm tool | fixed on main | P2 |
 | [PLAT-635](plat-635.md) | Agents get local time in the turn header | open | P2 |
 | [PLAT-610](plat-610.md) | Step conversation log repeats the previous item | open | P2 |
 | [PLAT-605](plat-605.md) | Failed run record has no error or failed step | open | P2 |

@@ -425,6 +425,7 @@ func (m *referenceMap) check() {
 		m.checkText(d.source, d.text, d.isLog, "")
 	}
 	m.checkStepConfig()
+	m.checkRemovedTools()
 	m.checkUnconsumed()
 }
 
@@ -631,6 +632,16 @@ func (m *referenceMap) checkStepConfig() {
 		}
 		if cfg.AgentConfigs == nil {
 			continue
+		}
+		for _, entry := range cfg.AgentConfigs.EnabledCustomTools {
+			name := strings.TrimSpace(entry)
+			if _, after, ok := strings.Cut(name, ":"); ok {
+				name = after
+			}
+			if replacement, removed := removedPlatformTools[name]; removed {
+				m.add(RefMapIssue{Kind: "removed_tool", Severity: refSeverityBreak, Source: "step_config:" + id, Ref: name,
+					Detail: fmt.Sprintf("enabled_custom_tools lists %s, which no longer exists; %s. Remove it from the list.", name, replacement)})
+			}
 		}
 		for _, path := range cfg.AgentConfigs.AdditionalReadPaths {
 			path = strings.Trim(strings.TrimSpace(path), "/")
@@ -1122,4 +1133,31 @@ func refUnique(list []string) []string {
 		}
 	}
 	return out
+}
+
+// removedPlatformTools are platform tools that no longer exist, with what to use
+// instead. A step that still names one makes its agent hunt for a missing tool
+// (a Codex step asked get_api_spec for search_web_llm, 2026-10-07), so the map
+// reports it and Workflow Review removes it.
+var removedPlatformTools = map[string]string{
+	"search_web_llm": "removed in PLAT-508; use the agent's own web search (Claude WebSearch, Codex web search, Cursor web search, AGY search_web)",
+}
+
+var removedToolWord = regexp.MustCompile(`[A-Za-z0-9_]+`)
+
+// checkRemovedTools reports a step whose text (description, items, prompts)
+// names a removed platform tool.
+func (m *referenceMap) checkRemovedTools() {
+	for _, s := range m.order {
+		seen := map[string]bool{}
+		for _, word := range removedToolWord.FindAllString(s.text, -1) {
+			replacement, removed := removedPlatformTools[word]
+			if !removed || seen[word] {
+				continue
+			}
+			seen[word] = true
+			m.add(RefMapIssue{Kind: "removed_tool", Severity: refSeverityBreak, Source: "step:" + s.id, Ref: word,
+				Detail: fmt.Sprintf("the step text names %s, which no longer exists; %s. Rewrite that instruction without the tool name.", word, replacement)})
+		}
+	}
 }

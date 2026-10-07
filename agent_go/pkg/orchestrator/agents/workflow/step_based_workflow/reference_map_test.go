@@ -97,3 +97,42 @@ func TestReferenceMapAcceptsStepIDDependencies(t *testing.T) {
 		t.Fatalf("step id dependencies: %v", got)
 	}
 }
+
+// A step that still names a removed platform tool (search_web_llm, PLAT-508) is
+// reported, from its text and from enabled_custom_tools, so Workflow Review
+// removes it; agents hunted for the missing tool (2026-10-07).
+func TestReferenceMapReportsRemovedTools(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	root := filepath.Join(docs, "Workflow", "wf")
+	for rel, content := range map[string]string{
+		"planning/plan.json":        `{"steps":[{"type":"message_sequence","id":"research","description":"Use search_web_llm to find news.","context_output":"news.json"},{"type":"message_sequence","id":"write","description":"Write the summary.","context_dependencies":["news.json"]}]}`,
+		"planning/step_config.json": `{"steps":[{"id":"research","agent_configs":{"enabled_custom_tools":["workspace_advanced:search_web_llm"]}}]}`,
+	} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := CollectReferenceMap("Workflow/wf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, issue := range report.Issues {
+		if issue.Kind == "removed_tool" {
+			found[issue.Source+" "+issue.Ref] = true
+		}
+	}
+	for _, want := range []string{"step:research search_web_llm", "step_config:research search_web_llm"} {
+		if !found[want] {
+			t.Errorf("missing removed_tool %q; got %v", want, found)
+		}
+	}
+	if found["step:write search_web_llm"] {
+		t.Error("a step that does not name the tool was reported")
+	}
+}

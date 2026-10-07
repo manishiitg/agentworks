@@ -121,6 +121,10 @@ to a `../step/file` path: the platform passes a path with a slash to the script 
 (Upwork `bid-record`, 2026-10-06). That form is only valid when `main.py` resolves relative arguments against
 `STEP_OUTPUT_DIR`.
 
+A `removed_tool` break names a platform tool that no longer exists (for example `search_web_llm`, removed in
+PLAT-508): remove it from the step's `enabled_custom_tools` and rewrite any instruction that names it so the agent uses
+its own web search. Keep the rest of the step unchanged.
+
 ### Workflow-level deletion audit (candidates with no real step_id)
 
 `plan_drift_candidates` may include one entry whose `step_id` is
