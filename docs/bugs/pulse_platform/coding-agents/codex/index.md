@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-707](plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 |
 | [PLAT-504](plat-504.md) | "Selected model is at capacity" (Codex) was only visible in the terminal, not in the chat | fixed on main | - |
 | [PLAT-495](plat-495.md) | A structured Codex step was killed mid-turn by another Codex run's completion in the same folder | fixed on main | - |
 | [PLAT-429](plat-429.md) | A Codex chat in Code said it could not open a panel because "the UI control tools aren't available" | fixed on main | P3 |

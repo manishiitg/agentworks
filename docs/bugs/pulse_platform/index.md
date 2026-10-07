@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 51 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 76 | 19 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 77 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-707](coding-agents/codex/plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 | [coding-agents/codex](coding-agents/codex/index.md) |
 | [PLAT-706](coding-agents/accounts/plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-705](chat/stop/plat-705.md) | Background work pill with per-item Stop in chats | fixed on main | P2 | [chat/stop](chat/stop/index.md) |
 | [PLAT-703](app/ui-control/plat-703.md) | View-tool actions wake the tab through the live feed | fixed on main | P3 | [app/ui-control](app/ui-control/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | fixed on main | P2 | [chat/tabs](chat/tabs/index.md) |
 | [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
-| [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | fixed on main | P1 | [sandbox/cli](sandbox/cli/index.md) |
