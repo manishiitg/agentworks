@@ -106,7 +106,7 @@ func TestReferenceMapReportsRemovedTools(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	root := filepath.Join(docs, "Workflow", "wf")
 	for rel, content := range map[string]string{
-		"planning/plan.json":        `{"steps":[{"type":"message_sequence","id":"research","description":"Use search_web_llm to find news.","context_output":"news.json"},{"type":"message_sequence","id":"write","description":"Write the summary.","context_dependencies":["news.json"]}]}`,
+		"planning/plan.json":        `{"steps":[{"type":"message_sequence","id":"research","description":"Use search_web_llm to find news. generated_at is true UTC (the turn header time is IST; subtract 5 hours 30 minutes).","context_output":"news.json"},{"type":"message_sequence","id":"write","description":"Write the summary. Convert each lead's local meeting time to UTC.","context_dependencies":["news.json"]}]}`,
 		"planning/step_config.json": `{"steps":[{"id":"research","agent_configs":{"enabled_custom_tools":["workspace_advanced:search_web_llm"]}}]}`,
 	} {
 		path := filepath.Join(root, filepath.FromSlash(rel))
@@ -122,10 +122,18 @@ func TestReferenceMapReportsRemovedTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := map[string]bool{}
+	conversions := map[string]bool{}
 	for _, issue := range report.Issues {
 		if issue.Kind == "removed_tool" {
 			found[issue.Source+" "+issue.Ref] = true
 		}
+		if issue.Kind == "header_time_conversion" {
+			conversions[issue.Source] = true
+		}
+	}
+	// PLAT-635: the header gives UTC, so a rule converting it is flagged; converting another time is not.
+	if !conversions["step:research"] || conversions["step:write"] {
+		t.Errorf("header_time_conversion = %v, want step:research only", conversions)
 	}
 	for _, want := range []string{"step:research search_web_llm", "step_config:research search_web_llm"} {
 		if !found[want] {

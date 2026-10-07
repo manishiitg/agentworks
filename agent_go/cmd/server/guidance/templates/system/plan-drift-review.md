@@ -125,6 +125,11 @@ A `removed_tool` break names a platform tool that no longer exists (for example 
 PLAT-508): remove it from the step's `enabled_custom_tools` and rewrite any instruction that names it so the agent uses
 its own web search. Keep the rest of the step unchanged.
 
+A `header_time_conversion` break is a rule telling the agent to convert the turn header's time (for example "the turn
+header time is IST; subtract 5 hours 30 minutes"). The header gives UTC since PLAT-635, so the rule now shifts times
+twice: remove the conversion and keep any requirement that stored times are UTC. If the step converts some other time
+(a lead's local time, a source's timestamp), it is not this break: record why and leave it.
+
 ### Workflow-level deletion audit (candidates with no real step_id)
 
 `plan_drift_candidates` may include one entry whose `step_id` is

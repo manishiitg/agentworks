@@ -33,8 +33,9 @@ const referenceMapFlagsFile = "reference_map_flags.json"
 // referenceMapFlagsVersion changes whenever the flagging rules change, so a
 // workflow whose files did not change is still re-evaluated once under the new
 // rules (PLAT-582 added old unreadable inputs; without this they were never seen
-// on an unchanged workflow; version 4 added removed_tool, 2026-10-07).
-const referenceMapFlagsVersion = 4
+// on an unchanged workflow; version 4 added removed_tool, version 5
+// header_time_conversion, 2026-10-07).
+const referenceMapFlagsVersion = 5
 
 type referenceMapFlag struct {
 	FlaggedAt string   `json:"flagged_at"`

@@ -426,6 +426,7 @@ func (m *referenceMap) check() {
 	}
 	m.checkStepConfig()
 	m.checkRemovedTools()
+	m.checkHeaderTimeConversion()
 	m.checkUnconsumed()
 }
 
@@ -1144,6 +1145,22 @@ var removedPlatformTools = map[string]string{
 }
 
 var removedToolWord = regexp.MustCompile(`[A-Za-z0-9_]+`)
+
+// headerTimeConversion matches a step rule that converts the turn header's time
+// ("the turn header time is IST; subtract 5 hours 30 minutes"). Step prompts give
+// UTC since PLAT-635, so such a rule now converts twice.
+var headerTimeConversion = regexp.MustCompile(`(?i)\b(subtract|add|minus|plus)\s+5\s*(:|h\b|hrs?\b|hours?\b)\s*(and\s+)?30\b|\bheader\b[^.\n]{0,40}\b(IST|local time)\b`)
+
+// checkHeaderTimeConversion reports a step that tells its agent to convert the
+// header time to UTC.
+func (m *referenceMap) checkHeaderTimeConversion() {
+	for _, s := range m.order {
+		if match := headerTimeConversion.FindString(s.text); match != "" {
+			m.add(RefMapIssue{Kind: "header_time_conversion", Severity: refSeverityBreak, Source: "step:" + s.id, Ref: match,
+				Detail: fmt.Sprintf("the step text converts the turn header time (%q), but step prompts already give the time in UTC (PLAT-635), so the conversion is applied twice. Remove the conversion rule; keep any requirement that stored times are UTC.", match)})
+		}
+	}
+}
 
 // checkRemovedTools reports a step whose text (description, items, prompts)
 // names a removed platform tool.

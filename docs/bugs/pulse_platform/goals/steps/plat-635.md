@@ -27,6 +27,7 @@ helper, `promptClock` (`step_based_workflow/prompt_clock.go`). The header now re
 `## Context: 2026-10-07 | 20:45:00 UTC (server local 2026-10-08 02:15 IST)`; the date is the UTC date. Test:
 `TestPromptClockIsUTCWithLocalAlongside`.
 
-Left: existing step descriptions that tell agents to subtract 5:30 now get UTC already and would convert twice.
-Workflow Review should drop those rules (sales outreach `step-research-and-draft-outreach`); until then the step's own
-rule is wrong by 5:30.
+Existing step rules that subtract 5:30 would now convert twice. The reference map flags them as a
+`header_time_conversion` break (flags version 5, so unchanged workflows are re-checked once) and Workflow Review removes
+the rule (`plan-drift-review.md`). Test: `TestReferenceMapReportsRemovedTools`. Live check left: the next Workflow Review
+of sales outreach drops the rule from `step-research-and-draft-outreach`.
