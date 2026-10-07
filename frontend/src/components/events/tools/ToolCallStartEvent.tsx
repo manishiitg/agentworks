@@ -1,6 +1,7 @@
 import React from 'react'
 import type { ToolCallStartEvent } from '../../../generated/event-types'
-import { WorkspaceToolCallDisplay, CodeExecutionToolCallDisplay, SubAgentToolCallDisplay, MCPToolCallDisplay } from './ToolCallSpecialRender'
+import { WorkspaceToolCallDisplay, CodeExecutionToolCallDisplay, SubAgentToolCallDisplay, MCPToolCallDisplay, WebSearchToolCallDisplay } from './ToolCallSpecialRender'
+import { isWebSearchToolCall } from '../../../utils/webSearchToolCall'
 import { useExpandable } from '../useExpandable'
 import { Plus, Minus } from 'lucide-react'
 import { normalizeMCPToolName } from '../../../utils/customToolNames'
@@ -51,6 +52,11 @@ export const ToolCallStartEventDisplay: React.FC<ToolCallStartEventProps> = ({ e
   // If it's a code execution tool, use the specialized component
   if (normalizedToolName && isCodeExecutionTool(normalizedToolName)) {
     return <CodeExecutionToolCallDisplay event={{ ...event, tool_name: normalizedToolName }} />
+  }
+
+  // A coding agent's web search: the compact search card (results arrive on the end event).
+  if (event.tool_name && isWebSearchToolCall(event.tool_name, event.tool_params?.arguments)) {
+    return <WebSearchToolCallDisplay name={event.tool_name} args={event.tool_params?.arguments} status="running" />
   }
 
   // If it's a sub-agent tool, use the specialized component

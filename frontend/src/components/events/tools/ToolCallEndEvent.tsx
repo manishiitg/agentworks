@@ -2,7 +2,8 @@ import React from 'react'
 import type { ToolCallEndEvent } from '../../../generated/events'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { CsvRenderer } from '../../ui/CsvRenderer'
-import { WorkspaceToolCallEndDisplay, CodeExecutionToolCallEndDisplay } from './ToolCallSpecialRender'
+import { WorkspaceToolCallEndDisplay, CodeExecutionToolCallEndDisplay, WebSearchToolCallDisplay } from './ToolCallSpecialRender'
+import { isWebSearchToolCall } from '../../../utils/webSearchToolCall'
 import { CircularProgress, type ContextOnlyTokenUsage } from '../../ui/CircularProgress'
 import { TooltipProvider } from '../../ui/tooltip'
 import { useExpandable } from '../useExpandable'
@@ -80,6 +81,12 @@ export const ToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event
 
   if (normalizedToolName && isCodeExecutionTool(normalizedToolName)) {
     return <ToolCallFailureFrame event={event}><CodeExecutionToolCallEndDisplay event={{ ...event, tool_name: normalizedToolName }} /></ToolCallFailureFrame>
+  }
+
+  // The end event carries no arguments; the search card reads the query from
+  // the result where the agent repeats it (Claude Code does).
+  if (event.tool_name && isWebSearchToolCall(event.tool_name)) {
+    return <WebSearchToolCallDisplay name={event.tool_name} result={event.result} status="ok" />
   }
 
   return <GenericToolCallEndEventDisplay event={event} />

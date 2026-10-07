@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 46 | 12 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 27 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 28 | 10 |
 | [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 72 | 19 |
 | [Crew](crew/index.md) | 23 | 6 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
 | [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-629](goals/plans-contracts/plat-629.md) | Step descriptions move to the standard layout (contract 1.0.46) | fixed on main | P1 | [goals/plans-contracts](goals/plans-contracts/index.md) |
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
-| [PLAT-626](app/tests/plat-626.md) | Record existing main CI failures outside Relay landing regression | open | P2 | [app/tests](app/tests/index.md) |

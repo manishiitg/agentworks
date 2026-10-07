@@ -36,6 +36,8 @@ import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
 import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
+import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
+import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
 // a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
@@ -809,12 +811,69 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
   )
 }
 
+// A web search is something the reader wants to see (what was looked up, what
+// came back), so it gets its own collapsed card instead of hiding inside the
+// "N tool calls" chip. The other calls keep their chip, split around the
+// searches so the order of what happened is preserved.
+type ToolBatchSegment =
+  | { kind: 'search'; pair: PairedToolCall }
+  | { kind: 'tools'; key: string; pairs: PairedToolCall[] }
+
+function segmentToolBatch(batchKey: string, pairs: PairedToolCall[]): ToolBatchSegment[] {
+  const segments: ToolBatchSegment[] = []
+  for (const pair of pairs) {
+    if (isWebSearchToolCall(pair.name, pair.args)) {
+      segments.push({ kind: 'search', pair })
+      continue
+    }
+    const last = segments[segments.length - 1]
+    if (last?.kind === 'tools') last.pairs.push(pair)
+    // The first chip keeps the batch's own key so its open/closed state
+    // survives from before searches were split out.
+    else segments.push({ kind: 'tools', key: segments.length === 0 ? batchKey : `${batchKey}:${pair.key}`, pairs: [pair] })
+  }
+  return segments
+}
+
+const WebSearchCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
+  const [open, toggleOpen] = useDisclosure(`search:${pair.key}`)
+  const failed = useMemo(() => pair.status === 'error' || (pair.result ? formatToolCallResult(pair.result).isError : false), [pair.result, pair.status])
+  const duration = pair.durationNs != null && pair.durationNs > 0 ? formatDurationCompact(pair.durationNs) : null
+  return (
+    <div data-testid="terminal-clear-web-search" className="my-1">
+      <WebSearchToolCallDisplay
+        name={pair.name}
+        args={pair.args}
+        result={pair.result}
+        status={failed ? 'error' : pair.status}
+        duration={duration}
+        open={open}
+        onToggle={toggleOpen}
+      />
+    </div>
+  )
+}
+
 const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }> }> = ({ item }) => {
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
+  const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
+  if (segments.length === 1 && segments[0].kind === 'tools') {
+    return <ToolChip chipKey={item.key} pairs={pairs} toolCount={item.toolCount} />
+  }
+  return (
+    <>
+      {segments.map(segment => segment.kind === 'search'
+        ? <WebSearchCard key={segment.pair.key} pair={segment.pair} />
+        : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
+    </>
+  )
+}
+
+const ToolChip: React.FC<{ chipKey: string; pairs: PairedToolCall[]; toolCount: number }> = ({ chipKey, pairs, toolCount }) => {
   // A conversation should lead with what the agent said, not implementation
   // detail. Even failures stay closed initially: the visible failed count is
   // the signal, and the user chooses when to inspect arguments/results.
-  const [expanded, toggle] = useDisclosure(`batch:${item.key}`)
+  const [expanded, toggle] = useDisclosure(`batch:${chipKey}`)
 
   return (
     <div data-testid="terminal-clear-tool-batch" className="my-1">
@@ -825,7 +884,7 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }> }> 
         data-testid="terminal-clear-tool-batch-toggle"
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>{item.toolCount} tool {item.toolCount === 1 ? 'call' : 'calls'}</span>
+        <span>{toolCount} tool {toolCount === 1 ? 'call' : 'calls'}</span>
         {expanded
           ? <ChevronDown className="h-3 w-3 shrink-0" />
           : <ChevronRight className="h-3 w-3 shrink-0" />}

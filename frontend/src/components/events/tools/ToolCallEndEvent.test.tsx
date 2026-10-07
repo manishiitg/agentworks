@@ -17,6 +17,7 @@ vi.mock('../../ui/tooltip', () => ({
 vi.mock('./ToolCallSpecialRender', () => ({
   WorkspaceToolCallEndDisplay: () => null,
   CodeExecutionToolCallEndDisplay: () => null,
+  WebSearchToolCallDisplay: () => null,
 }))
 
 import type { ToolCallEndEvent } from '../../../generated/events'

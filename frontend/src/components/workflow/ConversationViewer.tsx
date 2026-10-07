@@ -15,6 +15,8 @@ import {
 import { cn } from '@/lib/utils'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { formatToolCallResult } from '../../utils/toolCallFormatting'
+import { isWebSearchToolCall } from '../../utils/webSearchToolCall'
+import { WebSearchToolCallDisplay } from '../events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 
 // Type definitions for conversation structure
 export interface ConversationPart {
@@ -381,7 +383,7 @@ const ConversationTimingSummary: React.FC<{
                         <ConversationToolCallDisplay name={toolArgs.name} arguments={toolArgs.arguments} callId={item.toolCallId} forceExpanded={rowMatches} />
                       )}
                       {toolResult !== undefined && (
-                        <ConversationToolResponseDisplay toolName={item.name} toolCallId={item.toolCallId} content={toolResult} forceExpanded={rowMatches} />
+                        <ConversationToolResponseDisplay toolName={item.name} toolCallId={item.toolCallId} toolArgs={toolArgs?.arguments} content={toolResult} forceExpanded={rowMatches} />
                       )}
                     </div>
                   )}
@@ -567,18 +569,28 @@ export const ConversationToolCallDisplay: React.FC<{
 export const ConversationToolResponseDisplay: React.FC<{
   toolName?: string
   toolCallId?: string
+  /** The call's arguments, when known: a web search shows its query from them. */
+  toolArgs?: string
   content: string
   timing?: ToolCallTiming
   /** Auto-opens the result once (e.g. it matched an active search) without
    * taking away the user's own ability to collapse it again afterward. */
   forceExpanded?: boolean
-}> = ({ toolName, toolCallId, content, timing, forceExpanded }) => {
+}> = ({ toolName, toolCallId, toolArgs, content, timing, forceExpanded }) => {
   const [showContent, setShowContent] = useState(Boolean(forceExpanded))
   useEffect(() => {
     if (forceExpanded) setShowContent(true)
   }, [forceExpanded])
   const resultFormatting = useMemo(() => formatToolCallResult(content), [content])
   const isError = resultFormatting.isError || failedToolTiming(timing)
+
+  if (toolName && isWebSearchToolCall(toolName, toolArgs)) {
+    return (
+      <div className="my-1">
+        <WebSearchToolCallDisplay name={toolName} args={toolArgs} result={content} status={isError ? 'error' : 'ok'} open={showContent} onToggle={() => setShowContent(value => !value)} />
+      </div>
+    )
+  }
 
   const displayContent = resultFormatting.text
 
@@ -630,8 +642,10 @@ export const ConversationMessageDisplay: React.FC<{
   llmCall?: LLMCallTiming
   toolTimingById: Map<string, ToolCallTiming>
   toolTimingByName: Map<string, ToolCallTiming[]>
+  /** Call arguments by tool call id, so a tool response can show what was asked (web search query). */
+  toolArgsById?: Map<string, { name: string; arguments: string }>
   searchQuery?: string
-}> = ({ message, index, showIndex = true, llmCall, toolTimingById, toolTimingByName, searchQuery }) => {
+}> = ({ message, index, showIndex = true, llmCall, toolTimingById, toolTimingByName, toolArgsById, searchQuery }) => {
   const config = roleConfig[message.Role] || roleConfig.system
   const Icon = config.icon
   const lowerQuery = searchQuery?.trim().toLowerCase() || ''
@@ -688,6 +702,7 @@ export const ConversationMessageDisplay: React.FC<{
             key={partIndex}
             toolName={part.Name}
             toolCallId={part.ToolCallID}
+            toolArgs={part.ToolCallID ? toolArgsById?.get(part.ToolCallID)?.arguments : undefined}
             content={part.Content || ''}
             timing={timing}
             forceExpanded={matches}
@@ -886,6 +901,7 @@ export const ConversationViewer: React.FC<ConversationViewerProps> = ({ content,
                 llmCall={messageLLMCallByIndex.get(originalIndex)}
                 toolTimingById={toolTimingById}
                 toolTimingByName={toolTimingByName}
+                toolArgsById={toolArgsById}
                 searchQuery={searchQuery}
               />
             )

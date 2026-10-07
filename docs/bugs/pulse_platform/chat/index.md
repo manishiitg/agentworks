@@ -6,5 +6,5 @@
 |---|---|---|
 | [general](general/index.md) | 1 | 0 |
 | [reliability](reliability/index.md) | 22 | 9 |
-| [rendering](rendering/index.md) | 3 | 0 |
+| [rendering](rendering/index.md) | 4 | 0 |
 | [tabs](tabs/index.md) | 1 | 1 |
