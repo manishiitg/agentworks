@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-705](plat-705.md) | Background work pill with per-item Stop in chats | fixed on main | P2 |
 | [PLAT-699](plat-699.md) | No Stop button while a Crew or Code chat shows Working | fixed on main | P1 |

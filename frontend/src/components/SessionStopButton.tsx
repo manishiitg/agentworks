@@ -17,8 +17,9 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
   const [stopping, setStopping] = useState(false)
   const inFlight = useRef(false)
 
-  // The same in-flight signal as the transcript's "Working…" row (PLAT-699).
-  const turnActive = useTabTurnActive(tabId)
+  // The same in-flight signal as the transcript's "Working…" row (PLAT-699). The composer counts only the CLI's
+  // own turn; background work has its own pill with per-item Stop (PLAT-705). The footer stops the whole run.
+  const turnActive = useTabTurnActive(tabId, footer ? 'any' : 'foreground')
 
   const sessionId = tab?.sessionId
   if (!sessionId || (!turnActive && !stopping)) return null
@@ -58,8 +59,8 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
       size={footer ? 'sm' : 'icon'}
       className={footer ? 'gap-2' : 'h-7 w-7 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}
       data-testid={footer ? 'scheduled-run-stop-button' : 'chat-stop-button'}
-      aria-label={stopping ? 'Stopping session' : 'Stop session and background work'}
-      title="Stop session and background work"
+      aria-label={stopping ? 'Stopping' : footer ? 'Stop run and background work' : 'Stop the current turn'}
+      title={footer ? 'Stop run and background work' : 'Stop the current turn (background work keeps running)'}
     >
       {stopping
         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

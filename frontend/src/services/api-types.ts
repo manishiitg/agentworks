@@ -1447,6 +1447,21 @@ export interface SessionExecutionTreeSummary {
   has_running_tracked_executions: boolean
 }
 
+export interface SessionBackgroundWorkItem {
+  id: string
+  kind: 'step' | 'workflow_run' | 'sub_agent' | 'crew_call'
+  label: string
+  started_at: string
+  can_stop: boolean
+  /** One line on what the item is doing now. */
+  status?: string
+}
+
+export interface SessionBackgroundWorkResponse {
+  session_id: string
+  items: SessionBackgroundWorkItem[]
+}
+
 export interface SessionExecutionTreeResponse {
   session_id: string
   root: SessionExecutionTreeNode

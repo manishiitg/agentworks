@@ -9,5 +9,5 @@
 | [reliability](reliability/index.md) | 22 | 9 |
 | [rendering](rendering/index.md) | 6 | 0 |
 | [restore](restore/index.md) | 1 | 0 |
-| [stop](stop/index.md) | 1 | 0 |
+| [stop](stop/index.md) | 2 | 0 |
 | [tabs](tabs/index.md) | 1 | 1 |

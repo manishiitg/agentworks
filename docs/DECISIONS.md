@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Two kinds of Stop in a chat: the turn, and each background item
+
+The composer Stop only interrupts the coding CLI's current turn (PLAT-699) and
+now shows only while that turn runs: not when only background work runs, and
+not while the turn waits on the user's answer (Send stays). Background work the
+chat started (steps, workflow runs, sub-agents, calls to other chats or Crews)
+shows as a "N running" pill; its list gives each item a live status line and
+its own Stop, which ends only that item and its children
+(`GET /api/sessions/{id}/background-work`,
+`POST /api/sessions/{id}/background-work/{item}/stop`, owner-only). The
+scheduled-run footer still stops the whole run. Why: owner, 2026-10-07.
+[PLAT-705](bugs/pulse_platform/chat/stop/plat-705.md).
+
 ### 2026-10-07 — A person's account override may be Unlimited despite a default
 
 In a person's per-account override (users.json `account_token_limits`), a field

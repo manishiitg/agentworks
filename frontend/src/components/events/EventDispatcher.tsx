@@ -1115,10 +1115,12 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const kindLabel = getBackgroundExecutionKindLabel(undefined)
     const transportLabel = getExecutionTransportLabel({})
     const isRunning = status === 'running' || status === 'active' || status === 'in_progress'
+    // The composer's background-work pill scrolls here from its "Open" link (PLAT-705).
+    const backgroundAgentId = fields.agent_id || undefined
 
     return (
       <CompactWrapper compact={compact}>
-        <div className={`bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
+        <div data-background-agent-id={backgroundAgentId} className={`bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex min-w-0 items-center gap-2">
             <span className={`inline-block w-2 h-2 rounded-full bg-blue-500 ${isRunning ? 'animate-pulse' : 'opacity-60'}`} />
             <div className="min-w-0 flex-1">

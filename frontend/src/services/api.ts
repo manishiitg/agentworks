@@ -70,6 +70,7 @@ import type {
   ReconnectSessionResponse,
   SessionStatusResponse,
   SessionExecutionTreeResponse,
+  SessionBackgroundWorkResponse,
   LLMGuidanceResponse,
   LLMGuidanceRequest,
   HumanFeedbackResponse,
@@ -1146,6 +1147,16 @@ export const agentApi = {
   getSessionStatus: async (sessionId: string): Promise<SessionStatusResponse> => {
     const response = await api.get(`/api/sessions/${sessionId}/status`)
     return response.data
+  },
+
+  // Background work this chat started (steps, workflow runs, sub-agents, chat/Crew calls) and a Stop for one item (PLAT-705).
+  getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/background-work`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data
+  },
+
+  stopSessionBackgroundWork: async (sessionId: string, itemId: string): Promise<void> => {
+    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/background-work/${encodeURIComponent(itemId)}/stop`)
   },
 
   getSessionExecutionTree: async (sessionId: string): Promise<SessionExecutionTreeResponse> => {

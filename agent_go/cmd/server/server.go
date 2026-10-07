@@ -2810,6 +2810,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// child-pane enumeration and controls remain behind runtime diagnostics.
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal", api.handleGetMainTerminal).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal/stream", api.handleMainTerminalStream).Methods("GET")
+	// The chat's own background work and a per-item Stop (PLAT-705); owner-scoped, not diagnostics-only.
+	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/execution-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionExecutionTree)).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/activity-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionActivityTree)).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/dismiss", api.handleDismissSession).Methods("POST", "OPTIONS")

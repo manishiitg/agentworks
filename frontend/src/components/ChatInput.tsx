@@ -14,6 +14,7 @@ const DBG = '[skill-popup]'
 import { Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
+import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
@@ -604,9 +605,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // events or the active-session cache after the tab flags dropped (PLAT-699).
   const transcriptTurnActive = useTabTurnActive(activeTabId)
   const isTurnInFlight = isStreaming || (activeTab?.hasRunningBgAgents ?? false) || transcriptTurnActive
-  // The flags behind isTurnInFlight still dip for a moment during a run; hold
-  // Stop briefly so it does not swap with Send (useHeldTurnInFlight).
-  const isTurnShownInFlight = useHeldTurnInFlight(isTurnInFlight, activeTab?.isCompleted ?? false, activeTabId ?? null)
+  // The composer Stop follows only the CLI's own turn (PLAT-705): background
+  // work the chat started has its own "N running" pill with per-item Stop, and
+  // a turn waiting on the user's answer shows Send, not Stop.
+  const foregroundTurnActive = useTabTurnActive(activeTabId, 'foreground')
+  // The flags behind it still dip for a moment during a run; hold Stop
+  // briefly so it does not swap with Send (useHeldTurnInFlight).
+  const isTurnShownInFlight = useHeldTurnInFlight(foregroundTurnActive, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
   const tabSessionId = activeTab?.sessionId ?? null
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
@@ -2815,6 +2820,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const hasRunFooter = !!activeTab?.metadata?.isBotRun && !activeTab?.metadata?.isScheduledRun
   const showStopButton = !!tabSessionId && isTurnShownInFlight && !hasRunFooter && !terminalViewSelected
   const stopButton = activeTabId ? <SessionStopButton key={activeTabId} tabId={activeTabId} /> : null
+  const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter && !terminalViewSelected
+    ? <BackgroundWorkPill key={`bg-${activeTabId}`} tabId={activeTabId} />
+    : null
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = Boolean(inputText?.trim())
@@ -2868,6 +2876,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               : 'View only — restored conversation'}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
+            {backgroundWorkPill}
             {showStopButton && stopButton}
             {liveTerminalOffered && activeTabId && (
               <Button
@@ -3627,6 +3636,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary
                           button stops the running session. */}
+                      {backgroundWorkPill}
                       {showStopButton ? stopButton : (
                         <Tooltip>
                           <TooltipTrigger asChild>
