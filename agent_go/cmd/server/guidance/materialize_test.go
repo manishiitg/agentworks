@@ -10,6 +10,8 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
+var topicBracePattern = regexp.MustCompile(`((?:[a-z0-9]+-)+)\{([^}]*)\}`)
+
 var builderReferenceReadPattern = regexp.MustCompile(`"name":"builder-reference","path":"(references/[^"]+\.md)"`)
 
 func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
@@ -46,9 +48,18 @@ func TestMegaSkillDiscoveryFitsFormatAndKeepsEveryTopic(t *testing.T) {
 		if strings.ContainsAny(skill.Description, "<>") {
 			t.Fatalf("%s description contains angle brackets rejected by skill validators", skill.Name)
 		}
+		// Topics sharing a first word are written once: pulse-{gate,finalizer}.
+		discoverable := topicBracePattern.ReplaceAllStringFunc(skill.Description, func(group string) string {
+			parts := topicBracePattern.FindStringSubmatch(group)
+			names := strings.Split(parts[2], ",")
+			for i, rest := range names {
+				names[i] = parts[1] + rest
+			}
+			return strings.Join(names, ",")
+		})
 		for _, file := range skill.SupportingFiles {
 			topic := strings.TrimSuffix(strings.TrimPrefix(file.RelPath, "references/"), ".md")
-			if !strings.Contains(skill.Description, topic) {
+			if !strings.Contains(discoverable, topic) {
 				t.Errorf("%s is missing from %s discovery metadata", topic, skill.Name)
 			}
 			if !strings.Contains(skill.Content, file.RelPath) || len(file.Content) == 0 {

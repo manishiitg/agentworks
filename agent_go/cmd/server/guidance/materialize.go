@@ -312,8 +312,10 @@ func buildMegaSkill(spec buildMegaSkillSpec) *llmtypes.Skill {
 	// entire reference catalog into every agent's initial context.
 	// Topics join without spaces: with 60+ topics the separators alone cost a
 	// tenth of the skill format's 1024-character description budget, and every
-	// new topic must stay discoverable without stealing that budget.
-	description := spec.DescriptionIntro + " Topics: " + strings.Join(topics, ",") + "."
+	// new topic must stay discoverable without stealing that budget. Topics
+	// that share a first word are written once with braces
+	// (pulse-{gate,finalizer}); the full names stay in the SKILL.md index.
+	description := spec.DescriptionIntro + " Topics: " + compactTopicList(topics) + "."
 
 	return &llmtypes.Skill{
 		Name:            spec.Name,
@@ -326,4 +328,64 @@ func buildMegaSkill(spec buildMegaSkillSpec) *llmtypes.Skill {
 		},
 		Source: llmtypes.SkillSource{Origin: "builtin"},
 	}
+}
+
+// compactTopicList joins sorted topic names for a skill description, writing
+// topics that share a first word once: pulse-{gate,finalizer}, goal-lead-{check,work}. Every name
+// still reads in full when its braces are expanded, and the description stays
+// within the 1024-character limit as topics are added.
+func compactTopicList(topics []string) string {
+	type group struct {
+		prefix string
+		rests  []string
+	}
+	groups := []*group{}
+	byPrefix := map[string]*group{}
+	for _, topic := range topics {
+		prefix, rest, found := strings.Cut(topic, "-")
+		if !found {
+			groups = append(groups, &group{rests: []string{topic}})
+			continue
+		}
+		if g, ok := byPrefix[prefix]; ok {
+			g.rests = append(g.rests, rest)
+			continue
+		}
+		g := &group{prefix: prefix, rests: []string{rest}}
+		byPrefix[prefix] = g
+		groups = append(groups, g)
+	}
+	parts := make([]string, 0, len(groups))
+	for _, g := range groups {
+		switch {
+		case g.prefix == "":
+			parts = append(parts, g.rests[0])
+		case len(g.rests) == 1:
+			parts = append(parts, g.prefix+"-"+g.rests[0])
+		default:
+			// Factor out every further word the group shares:
+			// goal-lead-{check,work}.
+			prefix, rests := g.prefix+"-", g.rests
+			for {
+				word, _, found := strings.Cut(rests[0], "-")
+				shared := found
+				for _, rest := range rests {
+					if !strings.HasPrefix(rest, word+"-") || rest == word+"-" {
+						shared = false
+					}
+				}
+				if !shared {
+					break
+				}
+				prefix += word + "-"
+				trimmed := make([]string, len(rests))
+				for i, rest := range rests {
+					trimmed[i] = strings.TrimPrefix(rest, word+"-")
+				}
+				rests = trimmed
+			}
+			parts = append(parts, prefix+"{"+strings.Join(rests, ",")+"}")
+		}
+	}
+	return strings.Join(parts, ",")
 }
