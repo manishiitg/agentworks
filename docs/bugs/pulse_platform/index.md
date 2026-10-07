@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 87 | 14 |
-| [Brain](brain/index.md) | 28 | 6 |
+| [Brain](brain/index.md) | 29 | 7 |
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-712](brain/access/plat-712.md) | Brain chat on Pi: brain_browse refused with 'A workflow, Crew or Code session is required' | open | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-711](coding-agents/pi/plat-711.md) | Pi: deployment-supplied providers/models staged into each session | in progress | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
 | [PLAT-710](ops/deploys/plat-710.md) | Citymall: new server with Pi on the Citymall gateway | in progress | P1 | [ops/deploys](ops/deploys/index.md) |
 | [PLAT-709](browser/recording/plat-709.md) | Saved recordings unreadable by the slot user who made them | deployed | P1 | [browser/recording](browser/recording/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-671](integrations/google/plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 | [integrations/google](integrations/google/index.md) |
 | [PLAT-670](vault/apps/plat-670.md) | Vault add app: unknown provider for Github | fixed on main | P2 | [vault/apps](vault/apps/index.md) |
-| [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
