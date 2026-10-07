@@ -1,4 +1,4 @@
-package browser
+package browserreap
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 
 // PLAT-662: the orphan rule (a daemon whose PID no .pid file records) and the
 // stale-file rule, on the layout seen live on 2026-10-07.
-func TestPlanHelperReapOrphansEndedChatsAndStaleFiles(t *testing.T) {
+func TestPlanReapOrphansEndedChatsAndStaleFiles(t *testing.T) {
 	root := t.TempDir()
 	chatDir := filepath.Join(root, "o", "s1d71178cd313dab3")
 	if err := os.MkdirAll(chatDir, 0o700); err != nil {
@@ -40,7 +40,7 @@ func TestPlanHelperReapOrphansEndedChatsAndStaleFiles(t *testing.T) {
 	write(filepath.Join(root, "other.pid"), "4242", 3*24*time.Hour)
 	write(filepath.Join(root, "other.sock"), "", 3*24*time.Hour)
 
-	daemons := []helperDaemon{
+	daemons := []Daemon{
 		{PID: 202, Age: time.Hour, Session: shared, SocketDir: root, CDP: "http://localhost:9222"},
 		{PID: 21123, Age: 4 * time.Hour, Session: shared, SocketDir: root, CDP: "http://localhost:9222"},
 		{PID: 81157, Age: 3 * time.Hour, Session: shared, SocketDir: root, CDP: "http://localhost:9222"},
@@ -50,7 +50,7 @@ func TestPlanHelperReapOrphansEndedChatsAndStaleFiles(t *testing.T) {
 		{PID: 555, Age: time.Hour, Session: "elsewhere", SocketDir: filepath.Join(root, "missing")},
 	}
 	live := func(s string) bool { return s == liveChat }
-	plan := planHelperReap(daemons, []string{root}, live, "", time.Now(), func(pid int) bool { return pid == 4242 })
+	plan := PlanReap(daemons, []string{root}, live, "", time.Now(), func(pid int) bool { return pid == 4242 })
 
 	var orphans []int
 	for _, d := range plan.Orphans {
@@ -70,7 +70,7 @@ func TestPlanHelperReapOrphansEndedChatsAndStaleFiles(t *testing.T) {
 	}
 
 	// Without chat liveness from the server, no chat helper is closed.
-	if p := planHelperReap(daemons, []string{root}, nil, "", time.Now(), func(int) bool { return false }); len(p.Ended) != 0 {
+	if p := PlanReap(daemons, []string{root}, nil, "", time.Now(), func(int) bool { return false }); len(p.Ended) != 0 {
 		t.Fatalf("ended without liveness = %+v", p.Ended)
 	}
 }

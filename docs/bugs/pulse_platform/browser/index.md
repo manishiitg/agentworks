@@ -6,4 +6,4 @@
 |---|---|---|
 | [access](access/index.md) | 1 | 0 |
 | [automation](automation/index.md) | 14 | 5 |
-| [browser](browser/index.md) | 33 | 6 |
+| [browser](browser/index.md) | 34 | 6 |

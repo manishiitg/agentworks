@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-685](plat-685.md) | Slot accounts reap their own leftover agent-browser helpers | fixed on main | P3 |
 | [PLAT-678](plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 |
 | [PLAT-662](plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | fixed on main | P3 |
 | [PLAT-643](plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 |

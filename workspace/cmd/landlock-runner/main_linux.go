@@ -11,10 +11,28 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/browserreap"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 )
 
 func main() {
+	// `landlock-runner reap-browser-helpers`: clean up this account's own leftover agent-browser helpers (orphans and
+	// stale files only). The platform runs it as each slot (PLAT-685); it touches nothing another account owns.
+	if len(os.Args) == 2 && os.Args[1] == security.ReapBrowserHelpersArg {
+		if os.Getuid() == 0 {
+			fmt.Fprintln(os.Stderr, "refused: not run as root")
+			os.Exit(2)
+		}
+		done, err := browserreap.ReapOwnLeftovers(browserreap.DefaultDirs())
+		for _, line := range done {
+			fmt.Println(line)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	configPath := flag.String("config", "", "path to a Landlock policy")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() < 1 {

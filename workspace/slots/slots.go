@@ -22,6 +22,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -222,6 +223,29 @@ func For(userID string) (slot string, enabled bool, err error) {
 		return "", true, ErrNoSlot
 	}
 	return slot, true, nil
+}
+
+// Assigned lists the slots the table gives to a user, sorted. It is empty when the feature is off or (in opt-in
+// mode) the host has no table yet.
+func Assigned() ([]string, error) {
+	if !Enabled() {
+		return nil, nil
+	}
+	table, err := cachedTable()
+	if err != nil {
+		if optIn() && errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []string
+	for slot, holder := range table.Slots {
+		if strings.TrimSpace(holder) != "" && ValidSlot(slot) {
+			out = append(out, slot)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // HomeOf is the slot account's own home folder, from the system's account database ("" when unknown).

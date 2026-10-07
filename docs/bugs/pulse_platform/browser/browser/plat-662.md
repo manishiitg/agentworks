@@ -66,3 +66,5 @@ After the next local restart: check that only one `shared-cdp-<port>` helper per
 (`ps -axo pid,etime,args | grep agent-browser-`, each PID matching `/tmp/.agent-browser/shared-cdp-<port>.pid`), that
 per-chat helpers exit within about 10 minutes after their chat ends, and that the day-old files in `/tmp/.agent-browser`
 are gone. The server log shows each action as `[BROWSER_HELPER_REAPER]`.
+
+Follow-up: slot accounts clean up their own leftover helpers, as the slot ([PLAT-685](plat-685.md)).
