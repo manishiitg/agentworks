@@ -256,7 +256,12 @@ scripts, and browser learnings.
 6. **Verify the outcome.** Check the expected page or business state after the
    action. A successful click command alone is not a success receipt. For a
    toggle, re-identify the same item through its stable surrounding context and
-   inspect its current state before considering any retry.
+   inspect its current state before considering any retry. If a click or typing
+   reported success but nothing changed, run eval document.visibilityState
+   before blaming the selector or the site: Chrome ignores input to a hidden
+   page. With the Chrome extension the tab is brought forward automatically, so
+   "hidden" means Chrome's window is behind another app; ask the person to bring
+   Chrome forward instead of retrying or switching to workarounds.
 
 For example, save "find the card for this action, then its Approve button;
 expect status Approved" rather than "click @e12" or "click the third button".

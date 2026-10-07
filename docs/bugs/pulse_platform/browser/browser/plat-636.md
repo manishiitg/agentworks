@@ -66,3 +66,6 @@ automatically; `eval document.visibilityState` shows whether the selected tab is
 the tab reads `hidden`, Chrome's window is behind another app, so the agent asks the person to bring Chrome forward
 instead of retrying; `active: true` is for showing a tab to the person.
 
+The built-in `agent-browser` skill's "Verify the outcome" step now says the same: when a click or typing reported
+success but nothing changed, check `document.visibilityState` before blaming the selector or the site.
+
