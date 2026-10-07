@@ -107,9 +107,9 @@ unless `manifest.json` has the announced hash, and leaves nothing behind on fail
 
 ## Adding a new product
 
-For the new dedicated Citymall host, see [citymall.md](citymall.md) and
-`setup-citymall-host.sh` for base preparation and the remaining application
-configuration. Citymall is not yet a `deploy.sh` target.
+Citymall runs on a dedicated host of its own (`./deploy.sh citymall`): see [citymall.md](citymall.md) for the
+ProxyJump, the root host preparation (`HOST_SETUP_SCRIPT`), the downloaded shared build (`PREBUILT_DELIVERY=fetch`),
+nginx and the Pi provider template (`products/<p>/pi-agent`).
 
 Copy `products/sparkquill/` as a starting point:
 

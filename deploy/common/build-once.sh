@@ -141,3 +141,32 @@ deliver_build_to_rts() { # name remote_job_dir manifest_sha256
   fi
   ship_build_to_rts "$name" "$job"
 }
+
+# Gets a build onto a product host that cannot read the build host's folder (PREBUILT_DELIVERY=fetch, e.g. Citymall) as
+# dest (<app>/prebuilt/<name>). The host downloads the published release from GitHub and checks the manifest hash read
+# from the build host; without a release (or when that fails) the build is streamed through this machine. Older copies
+# in the same folder are removed first: each release copies what it needs. Needs SSH (the ssh command line to the host).
+deliver_build_to_product_host() { # name dest
+  local name="$1" dest="$2" parent hash tag=""
+  parent="$(dirname "$dest")"
+  "${SSH[@]}" "install -d -m 0700 '$parent' && find '$parent' -mindepth 1 -maxdepth 1 ! -name '$name' -exec rm -rf {} +"
+  if "${SSH[@]}" "test -f '$dest/manifest.json'"; then
+    echo "==> Build $name is already on the host" >&2
+    return 0
+  fi
+  hash="$(build_ssh "sha256sum '$BUILDS_DIR/$name/manifest.json'" | awk '{print $1}')"
+  [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || { echo "Cannot read the manifest hash of $name" >&2; return 1; }
+  tag="$(publish_build_remote "$name")" || tag=""
+  if [[ -n "$tag" ]]; then
+    echo "==> The host downloads build $name from GitHub ($tag)" >&2
+    if "${SSH[@]}" "cat > '$parent/.fetch-build.sh'" < "$REPO_ROOT/deploy/common/fetch-build.sh" \
+       && "${SSH[@]}" "bash '$parent/.fetch-build.sh' '$tag' build.tar.gz '$hash' '$dest'; rc=\$?; rm -f '$parent/.fetch-build.sh'; exit \$rc"; then
+      return 0
+    fi
+  fi
+  echo "==> Streaming build $name to the host through this machine" >&2
+  build_ssh "tar -C '$BUILDS_DIR' -cf - '$name' | gzip -3" \
+    | "${SSH[@]}" "set -e; t=\$(mktemp -d '$parent/.in.XXXXXX'); trap 'rm -rf \"\$t\"' EXIT; tar -xzf - -C \"\$t\"
+      test \"\$(sha256sum \"\$t/$name/manifest.json\" | cut -d' ' -f1)\" = '$hash' || { echo 'streamed build: manifest hash mismatch' >&2; exit 1; }
+      mv \"\$t/$name\" '$dest'"
+}

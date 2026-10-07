@@ -321,6 +321,9 @@ func providerAuthConfigured(provider string, keys *llm.ProviderAPIKeys) (bool, s
 		if piProviderAuthConfigured(keys) {
 			return true, "Provider-specific Pi API key or workspace provider auth"
 		}
+		if deploymentPiKeyConfigured() {
+			return true, "Deployment Pi provider key (PI_CLI_AGENT_TEMPLATE_DIR)"
+		}
 		configured, _ := piCLILocalAuthState()
 		return configured, "Pi provider login or workspace provider auth"
 	case string(llm.ProviderMuseCLI):

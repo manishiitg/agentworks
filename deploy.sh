@@ -14,6 +14,7 @@ Usage: ./deploy.sh <server> [target]
 Servers:
   rts, video-studio     video.realtrainingsys.com
   confida               Confida rootless Linux deployment
+  citymall              agents.citymall.live (Citymall's own AWS host, reached through the Hetzner jump; Pi on Citymall's gateway)
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
@@ -199,9 +200,23 @@ done
 # does not exist (Confida's default ~/.ssh/confida_deploy on a machine that logs in through the ssh agent) ssh must be free to use the agent's keys.
 SSH_IDENTITY=(-i "$SSH_KEY_PATH")
 [[ -r "$SSH_KEY_PATH" ]] && SSH_IDENTITY+=(-o IdentitiesOnly=yes)
-SSH_OPTS=(-p "$SSH_PORT" "${SSH_IDENTITY[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+# SSH_JUMP (product.env, e.g. Citymall): reach a host whose port 22 admits only the jump host. ProxyJump forwards the
+# connection; the key stays on this machine (never copy it to the jump host, never use agent forwarding).
+SSH_JUMP_OPTS=()
+[[ -z "${SSH_JUMP:-}" ]] || SSH_JUMP_OPTS=(-J "$SSH_JUMP")
+SSH_OPTS=(-p "$SSH_PORT" "${SSH_IDENTITY[@]}" ${SSH_JUMP_OPTS[@]+"${SSH_JUMP_OPTS[@]}"} -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new)
 SSH=(ssh "${SSH_OPTS[@]}" "$PRODUCT@$HOST_IP")
-SCP=(scp -P "$SSH_PORT" "${SSH_IDENTITY[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+SCP=(scp -P "$SSH_PORT" "${SSH_IDENTITY[@]}" ${SSH_JUMP_OPTS[@]+"${SSH_JUMP_OPTS[@]}"} -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new)
+
+# HOST_SETUP_SCRIPT (product.env): an idempotent root preparation of a dedicated host (packages, account, units, nginx),
+# run through HOST_SETUP_USER's sudo before every deploy. The product's nginx-site.conf travels with it.
+if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
+  echo "==> [$PRODUCT] Preparing the host as root ($HOST_SETUP_SCRIPT)"
+  nginx_site_b64=""
+  [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
+  ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
+    "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT"
+fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - preflight" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
@@ -211,6 +226,12 @@ if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
   # Build once (or reuse the build of these revisions); the server below only copies and activates it.
   PREBUILT_NAME="$(ensure_prebuilt_build)"
   [[ -n "$PREBUILT_NAME" ]]
+  PREBUILT_PATH="$BUILDS_DIR/$PREBUILT_NAME"
+  # PREBUILT_DELIVERY=fetch: a host that cannot read the build host's folder gets its own copy (GitHub, else streamed).
+  if [[ "${PREBUILT_DELIVERY:-local}" == fetch ]]; then
+    PREBUILT_PATH="$REMOTE_APP/prebuilt/$PREBUILT_NAME"
+    deliver_build_to_product_host "$PREBUILT_NAME" "$PREBUILT_PATH"
+  fi
 else
   [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "--build needs the prebuilt mode (unset DEPLOY_BUILD_MODE=server)" >&2; exit 1; }
 fi
@@ -303,7 +324,7 @@ printf '%s\n' "$PRODUCT" > "$STAGING/product"
 # All three repos are public; to_https_url (above) gives an anonymous HTTPS URL so a fresh account with no SSH deploy key for
 # github.com can still clone (confida hit "Host key verification failed" on the SSH remote form, 2026-09-11).
 if [[ -n "$PREBUILT_NAME" ]]; then
-  printf '%s\n' "$BUILDS_DIR/$PREBUILT_NAME" > "$STAGING/prebuilt"
+  printf '%s\n' "$PREBUILT_PATH" > "$STAGING/prebuilt"
   "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
   echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOST_IP (copy and activate, no compile)"
 else
@@ -322,10 +343,15 @@ fi
 # DEPLOY_DRAIN_SECONDS is how long the switch-over waits for running agent turns to finish (build-and-activate.sh's
 # drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
 # DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
-"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${ACTIVATE_MEMORY_MAX:-6G} -p CPUQuota=${ACTIVATE_CPU_QUOTA:-300%} -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 
 echo "==> [$PRODUCT] Verifying"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
+if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
+  echo "==> [$PRODUCT] Public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)."
+  echo "==> [$PRODUCT] Done."
+  exit 0
+fi
 # Not `curl -f`: whether /api/health is reachable without auth depends on the
 # gateway's own gate model (GATEWAY_DISABLE_PASSWORD_GATE in .env) -- a
 # per-user-JWT deployment like confida exempts it (200), a shared-password
@@ -367,6 +393,7 @@ deploy_label() {
     excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
     all-hetzner) echo "Excellence, Confida and SparkQuill" ;;
     confida) echo "Confida (confida.agentworkshq.com)" ;;
+    citymall) echo "Citymall (agents.citymall.live)" ;;
     dominion) echo "Dominion (trader.tectonicmarkets.com)" ;;
     *) echo "$SERVER" ;;
   esac
@@ -529,8 +556,9 @@ case "$SERVER" in
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
-  confida|sparkquill|dominion)
+  confida|sparkquill|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
+    # Citymall too, on its own host: products/citymall/product.env (SSH_JUMP, HOST_SETUP_SCRIPT, PREBUILT_DELIVERY=fetch).
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
@@ -597,7 +625,7 @@ case "$SERVER" in
     usage
     ;;
   --list)
-    printf '%s\n' rts confida sparkquill excellence all-hetzner dominion
+    printf '%s\n' rts confida sparkquill excellence all-hetzner dominion citymall
     ;;
   "")
     usage >&2

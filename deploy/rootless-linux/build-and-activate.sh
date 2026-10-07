@@ -250,6 +250,12 @@ PY
 # mcp-servers.override.json with only what it does differently.
 mcp_override=()
 [[ -f "$PRODUCT_DIR/mcp-servers.override.json" ]] && mcp_override=("$PRODUCT_DIR/mcp-servers.override.json")
+# A deployment's own Pi providers/models (products/<p>/pi-agent: models.json, settings.json; no keys), staged by the Pi
+# adapter into every session when EXTRA_ENV sets PI_CLI_AGENT_TEMPLATE_DIR=<app>/current/configs/pi-agent (PLAT-711).
+if [[ -d "$PRODUCT_DIR/pi-agent" ]]; then
+  install -d -m 0755 "$BUILD_DIR/configs/pi-agent"
+  install -m 0644 "$PRODUCT_DIR"/pi-agent/*.json "$BUILD_DIR/configs/pi-agent/"
+fi
 python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/configs/mcp_servers_clean.json" "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json" "${mcp_override[@]}"
 chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
@@ -556,6 +562,15 @@ wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
 echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
 wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
 curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo
+# A local reverse proxy in front of the gateway (Citymall's nginx) must answer before the public name exists.
+if [[ -n "${LOCAL_PROXY_CHECK_URL:-}" ]]; then
+  wait_for_url "$LOCAL_PROXY_CHECK_URL"
+  echo "local proxy $LOCAL_PROXY_CHECK_URL: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$LOCAL_PROXY_CHECK_URL")"
+fi
+public_code=000
+if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
+  echo "public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)"
+else
 # Not `curl -f`: whether /api/health is reachable through the gateway without
 # auth depends on its gate model (GATEWAY_DISABLE_PASSWORD_GATE in .env) --
 # see the matching comment in deploy.sh. Only a connection failure or a 5xx
@@ -570,11 +585,14 @@ fi
 for path in "${PUBLIC_CHECK_PATHS[@]:-}"; do
   [[ -z "$path" ]] || curl -fsS -o /dev/null --max-time 10 "https://$DOMAIN$path"
 done
+fi
 for file in install-agentworks.sh version.json; do
   # The agent must serve both assets. A password-gated product returns 401
   # for anonymous public requests to these paths, just like /api/health.
   curl -fsS -o /dev/null --max-time 10 "http://127.0.0.1:$AGENT_PORT/api/downloads/cli/$file"
-  if [[ "$public_code" == 401 ]]; then
+  if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
+    :
+  elif [[ "$public_code" == 401 ]]; then
     cli_public_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$DOMAIN/api/downloads/cli/$file")"
     [[ "$cli_public_code" == 401 ]] || { echo "https://$DOMAIN/api/downloads/cli/$file returned $cli_public_code, expected 401" >&2; exit 1; }
   else

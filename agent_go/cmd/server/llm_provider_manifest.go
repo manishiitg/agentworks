@@ -546,11 +546,16 @@ func fetchAvailablePiCLIModels() *dynamicModelsResponse {
 		CachedAt:           time.Now().UTC().Format(time.RFC3339),
 	}
 	models, err := listPiCLIModelsFn()
+	if err != nil && len(deploymentPiModels(true)) > 0 {
+		// The deployment's own provider is available even when Pi's listing is not.
+		models, err = nil, nil
+	}
 	if err != nil {
 		resp.Source = "cli_available_error"
 		resp.Error = err.Error()
 		return resp
 	}
+	models = withDeploymentPiModels(models, true)
 	resp.Models = models
 	resp.Groups = dynamicModelGroups(models)
 	return resp
@@ -756,6 +761,7 @@ func fetchPiCLIModels(full bool) *dynamicModelsResponse {
 	if _, err := runtimeAvailableForProvider("pi-cli"); err == nil && !full {
 		source = "curated_latest_runtime_available"
 	}
+	models = withDeploymentPiModels(models, false)
 
 	resp := &dynamicModelsResponse{
 		Provider:           "pi-cli",

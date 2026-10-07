@@ -578,7 +578,7 @@ func isConfiguredAdmin(rec *UserRecord) bool {
 // disabled-account rejection after linking the external identity.
 func externalAuthIdentityApproved(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" {
+	if email == "" || !emailDomainAllowed(email) {
 		return false
 	}
 	if adminUsernamesFromEnv()[email] {
@@ -759,7 +759,41 @@ func adminEmailError(dir *userDirectory, email, selfID string) string {
 	if other := dir.byEmail(email); other != nil && other.ID != selfID {
 		return "another account already uses that email"
 	}
+	if !emailDomainAllowed(email) {
+		return "this installation only allows addresses at " + strings.Join(allowedEmailDomains(), ", ")
+	}
 	return ""
+}
+
+// allowedEmailDomains is AUTH_ALLOWED_EMAIL_DOMAINS (comma-separated, e.g.
+// "citymall.live"): when set, only addresses at those domains may sign in
+// with SSO or be added as accounts, admins included. Unset allows any domain.
+func allowedEmailDomains() []string {
+	var domains []string
+	for _, domain := range strings.Split(os.Getenv("AUTH_ALLOWED_EMAIL_DOMAINS"), ",") {
+		if domain = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(domain), "@")); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+	return domains
+}
+
+func emailDomainAllowed(email string) bool {
+	domains := allowedEmailDomains()
+	if len(domains) == 0 {
+		return true
+	}
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	for _, domain := range domains {
+		if host == domain {
+			return true
+		}
+	}
+	return false
 }
 
 func writeUsersJSON(w http.ResponseWriter, status int, v any) {

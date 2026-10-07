@@ -4,5 +4,6 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-710](plat-710.md) | Citymall: new server with Pi on the Citymall gateway | in progress | P1 |
 | [PLAT-426](plat-426.md) | Build a release once and deploy it everywhere (deploys take 5–7 minutes per product because each server builds the same source) | fixed on main | P3 |
 | [PLAT-405](plat-405.md) | Deploy behaviour: drain, Slack notices, release pruning, one runtime profile | fixed on main | P2 |

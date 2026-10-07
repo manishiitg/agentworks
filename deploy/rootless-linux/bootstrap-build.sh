@@ -25,7 +25,9 @@ trap 'rm -rf "$JOB"' EXIT
 # activation script that runs is the one from the very revisions the build was made from.
 if [[ -f "$JOB/prebuilt" ]]; then
   PREBUILT="$(cat "$JOB/prebuilt")"
-  [[ "$PREBUILT" =~ ^/srv/_builds/[0-9a-f]{8}-[0-9]{14}$ ]] || { echo "Unexpected prebuilt path: $PREBUILT" >&2; exit 1; }
+  # The shared build folder, or this product's own downloaded copy (PREBUILT_DELIVERY=fetch, a host of its own).
+  [[ "$PREBUILT" =~ ^/srv/_builds/[0-9a-f]{8}-[0-9]{14}$ || "$PREBUILT" =~ ^/srv/$PRODUCT/prebuilt/[0-9a-f]{8}-[0-9]{14}$ ]] \
+    || { echo "Unexpected prebuilt path: $PREBUILT" >&2; exit 1; }
   bash "$PREBUILT/source/mcp-agent-builder-go/deploy/rootless-linux/build-and-activate.sh" "$PREBUILT/source" "$PRODUCT" --prebuilt "$PREBUILT"
   exit $?
 fi

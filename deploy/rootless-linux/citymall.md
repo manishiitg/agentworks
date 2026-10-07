@@ -1,81 +1,107 @@
-# Citymall host preparation
+# Citymall (agents.citymall.live)
 
-Dedicated host: `ubuntu@52.66.201.227`, Ubuntu 26.04 LTS, Linux x86_64,
-2 CPUs, approximately 4 GB RAM and a 20 GB root volume.
-The operator's SSH key is `~/Downloads/manish.pem` (mode 0600).
-Never copy that private key into the repository or onto the server.
+Citymall's own host: AWS Mumbai, `13.206.199.45` (the IP changed once already; ask Citymall for an Elastic IP),
+Ubuntu 26.04 LTS, x86_64, 2 CPUs, 7 GB RAM, 96 GB disk. Tickets: PLAT-710 (server), PLAT-711 (Pi providers).
 
-Run the base preparation from an owned checkout:
+Products: Goals (`agentworks`), Crew (`work`), Code, Brain (`knowledgebase`) and Vault (`mcp-gateway`). Relays and the
+others are off. Pi is the only coding agent, on Citymall's own AI gateway, model `citymall/gpt-6-luna`
+(`citymall/gpt-5.6-luna` second).
+
+## SSH: through the Hetzner jump, the key stays on the laptop
+
+Port 22 admits only the Hetzner build host. The laptop connects through it with ProxyJump:
 
 ```bash
-ssh -i "$HOME/Downloads/manish.pem" -o BatchMode=yes ubuntu@52.66.201.227 \
-  'sudo -n bash -s' < deploy/rootless-linux/setup-citymall-host.sh
+ssh -i ~/Downloads/manish.pem -o IdentitiesOnly=yes -J root@116.202.210.102:2299 ubuntu@13.206.199.45
+ssh -i ~/Downloads/manish.pem -o IdentitiesOnly=yes -J root@116.202.210.102:2299 citymall@13.206.199.45
 ```
 
-The script installs native build, Python/venv and browser prerequisites;
-creates the unprivileged `citymall` account with home `/srv/citymall`;
-enables its persistent systemd user manager; creates persistent workspace,
-release, tool and log directories; and installs checksum-verified Node 24.21.0.
-The account uses the same public authorized SSH keys as `ubuntu`, so deployment
-can later connect directly as `citymall` using the operator's existing key.
-It has no sudo or privileged Docker group membership.
+The jump only forwards the TCP connection; authentication to the box happens from the laptop. Rule (owner): the key
+`~/Downloads/manish.pem` stays on the laptop. Never copy it, or any key derived from it, to the Hetzner host, this box,
+the repository or a build, and never use agent forwarding (`-A`). `deploy.sh` reads the key path from
+`products/citymall/product.env` (`SSH_KEY_PATH`, default `~/Downloads/manish.pem`, overridable) and the jump from
+`SSH_JUMP`.
 
-Fresh secrets are generated once in the owner-only `/srv/citymall/.env`.
-Repeated preparation preserves them. No other customer's credentials,
-workflow data or provider logins are copied.
+## Deploy
 
-This is host preparation only. No application binaries, application services,
-public site, sign-in provider or provider login are installed or activated yet.
-Citymall is not yet a target in `deploy.sh`.
+```bash
+./deploy.sh citymall
+```
 
-Before application deployment, choose the domain, enabled product surfaces,
-sign-in configuration and initial administrator. Then add a Citymall product
-configuration to the shared rootless pipeline and install its service units,
-Caddy site, managed Chrome and coding CLIs. The shared bootstrap installs its
-pinned Go toolchain on the server. Use ports 25000 (agent), 25001 (workspace)
-and 25080 (loopback gateway), as reserved in the prepared environment.
-Keep credentials and all persisted data outside release directories.
+From an owned checkout, like every rootless product (`deploy_rootless_product` in `deploy.sh`), with three differences
+set in `products/citymall/product.env`:
 
-Validate host-specific namespace confinement, running service environments,
-public HTTPS/authentication and an authenticated app flow before calling the
-application deployed. The existing shared build defaults target a larger host;
-set an appropriate build memory/parallelism budget for this 4 GB machine before
-its first build.
+- `HOST_SETUP_SCRIPT=setup-citymall-host.sh`: first, as root through the ubuntu account's sudo, the idempotent host
+  preparation: packages (including nginx and certbot), the unprivileged `citymall` account (home `/srv/citymall`, no
+  sudo, no docker group), the owner-only `/srv/citymall/.env` (secrets generated once, never replaced), the
+  `citymall-agent`/`-workspace`/`-gateway` systemd `--user` units and the nginx site.
+- `PREBUILT_DELIVERY=fetch`: nothing is compiled on this 2-CPU box and it cannot read the build host's `/srv/_builds`.
+  The shared build (built once on the Hetzner host) is published to `github.com/manishiitg/agentworks-builds` and the box
+  downloads it into `/srv/citymall/prebuilt/<build>`, checking the manifest hash read from the build host; without a
+  published release it is streamed through the laptop. The normal manifest verification and activation follow.
+- `PUBLIC_CHECKS=false` until DNS and HTTPS exist: the deploy checks the loopback services and nginx on
+  `127.0.0.1:80` instead of `https://agents.citymall.live`.
 
-## Citymall AI gateway
+Ports: 25000 agent, 25001 workspace, 25003 Vault, 25080 gateway (all loopback). The activation job is capped at
+3 GB / 1.5 CPUs, each Pi process at a 1.5 GB Node heap (`PI_CLI_NODE_MAX_OLD_SPACE_MB`), and the agent has a 2 GiB
+`GOMEMLIMIT`.
 
-The operator's key is stored in the local macOS Keychain service
-`cm-ai-key-manish`. On the host, keep it as `CITYMALL_API_KEY` in the existing
-mode-0600 `/srv/citymall/.env`; never put it in the product configuration.
-The non-secret Pi template is `products/citymall/pi-models.json`, also staged
-at `/srv/citymall/provider-config/pi-models.json` on the host.
+## nginx
 
-Live checks on 2026-10-01 passed chat, streaming, inline-image vision and image
-generation. The supplied Wikimedia URL could not be downloaded by the gateway;
-the same vision API accepted an inline PNG and described it correctly.
-Isolated invocations of the installed Pi CLI passed a Hindi greeting and a
-native read-tool call that returned the random contents of a test file.
-Use `citymall/gpt-5.6-luna` with thinking off: the gateway rejects function tools
-with its default reasoning setting, but accepts `reasoning_effort: "none"`.
-The template explicitly maps Pi's off level to `none`; simply selecting off
-without that mapping omits the field and still fails tool calls.
+`products/citymall/nginx-site.conf` is installed as `/etc/nginx/sites-available/citymall` (the default site is
+removed), validated with `nginx -t` (the previous site is restored on failure) and reloaded. It listens on port 80 with
+`server_name agents.citymall.live _;`, so it answers on the IP now and on the domain later, and proxies to the
+**gateway** on `127.0.0.1:25080`, never to the agent (25000) directly: the gateway serves the frontend and checks each
+request's user token before anything reaches the agent or the workspace. WebSockets (Upgrade/Connection), SSE
+(`proxy_buffering off`), hour-long read timeouts and 512 MB uploads are configured.
 
-Pi can use this OpenAI Chat Completions endpoint with the `api-key` header.
-The existing Azure adapter routes any GPT-5 model through `/responses`; that
-gateway request returned HTTP 500 during the check, so Azure is not yet a
-working configuration for this endpoint. The image-generation endpoint is
-separate (`/images/v1/mai-image-2.6-flash/generations`) and needs its own application
-adapter/tool integration.
+Ports 80/443 are closed in Citymall's security group, so check it on the box: `curl -sS -o /dev/null -w '%{http_code}'
+http://127.0.0.1/login`. To use the app before DNS, tunnel the gateway: `ssh -L 25080:127.0.0.1:25080 ... citymall@...`
+and open `http://localhost:25080` (cookies are Secure; browsers accept them on localhost only).
 
-This template is not automatically loaded by the application. Pi's AgentWorks
-adapter creates private per-session `PI_CODING_AGENT_DIR` directories. Application
-integration must stage the non-secret model configuration in those directories,
-pass the selected connection's credential through the existing scoped provider
-key path, and qualify a real authenticated app turn before activation. Model
-pricing and exact context/output limits are not established by these checks.
-Model discovery is also unverified: `/chat/v1/models`,
-`/chat/v1/gpt-5.6-luna/models` and `/images/v1/models` returned HTTP 500;
-`/models`, `/v1/models` and `/openai/v1/models` returned HTTP 404.
-Only `gpt-5.6-luna` and `mai-image-2.6-flash` are confirmed accessible. Obtain
-the enabled-deployment list or API specification from the gateway administrator
-before claiming a complete catalog or exposing additional model choices.
+### HTTPS, once DNS points at the box and 80/443 are open
+
+```bash
+sudo certbot --nginx -d agents.citymall.live      # on the box, as ubuntu
+```
+
+Then set `PUBLIC_CHECKS=true` in `products/citymall/product.env` and redeploy. `PUBLIC_URL` is already
+`https://agents.citymall.live` in `.env`, and the runtime config already names that origin.
+
+## Pi on the Citymall gateway
+
+The gateway is OpenAI Chat Completions at
+`https://cm-ai-images-apim.azure-api.net/chat/v1/<deployment>/chat/completions` with an `api-key` header.
+`gpt-6-luna` (answers as `gpt-6-luna-2026-09-22`) and `gpt-5.6-luna` work. Tool calls work only with
+`"reasoning_effort": "none"`: the default reasoning with tools returns HTTP 400 ("use /v1/responses"), and
+`/responses` returns 500, so Codex cannot use this gateway until Citymall enables the Responses API. Model listing
+endpoints return 500/404, so the models are configured explicitly.
+
+`products/citymall/pi-agent/` holds the Pi `models.json` (the `citymall` provider, one `baseUrl` per model,
+thinking `off` mapped to `none`) and `settings.json` (thinking `off` by default for both models). The release copies it
+to `current/configs/pi-agent`; `PI_CLI_AGENT_TEMPLATE_DIR` points the Pi adapter at it and the adapter stages both
+files into every session's private `PI_CODING_AGENT_DIR` (PLAT-711). The files hold no key: the adapter refuses a
+template whose `apiKey` or credential header is not `$CITYMALL_API_KEY`. The key is `CITYMALL_API_KEY` in the
+owner-only `.env` and reaches each Pi through the adapter's provider-key path (the server account), never through
+the template, logs or the repository. A person choosing a higher thinking level for these models gets the gateway's
+HTTP 400 on tool calls; leave it off.
+
+## Sign-in (pending)
+
+Google through Supabase (`AUTH_PROVIDERS=supabase-google`), and only `@citymall.live` addresses
+(`AUTH_ALLOWED_EMAIL_DOMAINS=citymall.live`: SSO and admin-added accounts alike). An admin still adds each person;
+a sign-in never creates an account, except the configured first admin's. Until the owner adds these to
+`/srv/citymall/.env` and redeploys, nobody can sign in through the UI:
+
+- a Supabase project for Citymall with the Google provider enabled. Its Google Cloud OAuth client (Web application)
+  needs the authorized redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`; in Supabase, Authentication
+  -> URL Configuration: Site URL `https://agents.citymall.live`, Redirect URLs `https://agents.citymall.live/auth/callback`.
+  If citymall.live is a Google Workspace domain, an "Internal" consent screen restricts Google itself to it.
+- `SUPABASE_URL=https://<project-ref>.supabase.co`, `SUPABASE_ANON_KEY=...`
+- `ADMIN_USERS=<first admin>@citymall.live`
+
+## Not established yet
+
+Model pricing, exact context/output limits, image input on `gpt-6-luna`, the image-generation endpoint
+(`/images/v1/mai-image-2.6-flash/generations`, needs its own tool integration), managed Chrome (no Chrome on the box;
+browser tools are off until one is installed) and per-user slot accounts (not provisioned).
