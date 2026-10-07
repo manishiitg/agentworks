@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-700](plat-700.md) | Restored chats lose their memory until the agent reads the archive | open | P2 |
+| [PLAT-700](plat-700.md) | Restored chats lose their memory until the agent reads the archive | fixed on main | P2 |

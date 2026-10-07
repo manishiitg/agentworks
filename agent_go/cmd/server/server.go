@@ -7827,6 +7827,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[CONVERSATION] Loaded %d UI-history messages for session %s", len(historyForAgent), sessionID)
 		}
 		api.conversationMux.RUnlock()
+		// The recent dialogue a restarted coding CLI is seeded with (PLAT-700).
+		// After a policy refresh historyForAgent holds only the handoff, so use
+		// the pre-refresh conversation.
+		continuityHistory := historyForAgent
+		if modeChangedThisTurn && len(preModeChangeSnapshot) > 0 {
+			continuityHistory = preModeChangeSnapshot
+		}
 
 		// Note: User message is added by StreamWithEvents internally, no need to add it here
 
@@ -8046,6 +8053,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						chatQuery,
 						restoredConversationPathForFallback,
 						restoredConversationWorkspace,
+						continuityHistory,
 					)
 				} else {
 					chatQuery = appendRestoredConversationContext(chatQuery, restoredConversationPathForFallback)
@@ -8087,6 +8095,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						chatQuery,
 						codingFallbackConversationPath,
 						codingFallbackWorkspace,
+						continuityHistory,
 					)
 					historyToReplay = nil
 					logfWithContext(queryLogCtx, "[CONVERSATION] Native coding-agent continuation unavailable; sending visible archive-read instruction with the current user message for conversation archive %s (in-memory history: %d messages)", codingFallbackConversationPath, len(historyForAgent))
@@ -8108,7 +8117,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, workflowPhaseFolder)
+			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, workflowPhaseFolder, continuityHistory)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background

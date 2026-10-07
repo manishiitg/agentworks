@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -81,8 +82,9 @@ func TestBuildCodingAgentContinuityNoticePointsAtProjectArchive(t *testing.T) {
 	got := buildCodingAgentContinuityNotice(
 		"_users/u/Chats/Work/projects/demo/builder/conversation/2026-09-17/session-chat-conversation.json",
 		"_users/u/Chats/Work/projects/demo",
+		nil,
 	)
-	if !strings.Contains(got, "read its last 10 dialogue turns") || !strings.Contains(got, "Before answering that message") {
+	if !strings.Contains(got, "prints its last 10 dialogue turns") || !strings.Contains(got, "Before answering that message") {
 		t.Fatalf("notice does not require reading the recent turns: %s", got)
 	}
 	if !strings.Contains(got, "builder/conversation/2026-09-17/session-chat-conversation.json") {
@@ -97,6 +99,7 @@ func TestBuildCodingAgentContinuityNoticeNormalizesUserPrefixedProjectPath(t *te
 	got := buildCodingAgentContinuityNotice(
 		"_users/u/Chats/Work/projects/demo/builder/conversation/session.json",
 		"Chats/Work/projects/demo",
+		nil,
 	)
 	if !strings.Contains(got, "at builder/conversation/session.json (relative to the project workspace)") {
 		t.Fatalf("notice path is not relative to the provider cwd: %s", got)
@@ -111,6 +114,7 @@ func TestPrependCodingAgentContinuityNoticeUsesSameVisibleUserTurn(t *testing.T)
 		"when will it get picked up?",
 		"_users/u/Chats/Work/projects/demo/builder/conversation/session.json",
 		"_users/u/Chats/Work/projects/demo",
+		nil,
 	)
 	if !strings.HasPrefix(got, "[AGENTWORKS CONVERSATION CONTINUITY]") {
 		t.Fatalf("combined user turn does not begin with continuity notice: %s", got)
@@ -123,16 +127,26 @@ func TestPrependCodingAgentContinuityNoticeUsesSameVisibleUserTurn(t *testing.T)
 	}
 }
 
-// The notice carries only the archive path and how to read it, never a
-// pasted copy of the dialogue (that made the typed prompt tens of KB).
-func TestCodingAgentContinuityNoticeIsPathOnly(t *testing.T) {
-	got := prependCodingAgentContinuityNotice("what did we work on yesterday", "builder/conversation/c.json", "")
-	for _, want := range []string{"builder/conversation/c.json", ".[-10:][]", "Read further back yourself", "Do not rely on chat-index.json", "[USER MESSAGE]\nwhat did we work on yesterday"} {
+// PLAT-700: a CLI given only the archive path answered "how many messages
+// did I send today" as if the chat had just begun. The notice carries the
+// newest turns (newest last), bounded, and still points at the archive.
+func TestCodingAgentContinuityNoticeCarriesBoundedRecentTurns(t *testing.T) {
+	var history []llmtypes.MessageContent
+	for i := 1; i <= 30; i++ {
+		history = append(history,
+			reconnectMessage(llmtypes.ChatMessageTypeHuman, fmt.Sprintf("question-%02d %s", i, strings.Repeat("q", 2000))),
+			reconnectMessage(llmtypes.ChatMessageTypeAI, fmt.Sprintf("answer-%02d %s end-%02d", i, strings.Repeat("a", 5000), i)))
+	}
+	got := prependCodingAgentContinuityNotice("how many messages did I send today", "builder/conversation/c.json", "", history)
+	for _, want := range []string{"builder/conversation/c.json", ".[-10:][]", "question-26", "answer-30", "end-30", "[USER MESSAGE]\nhow many messages did I send today"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("notice missing %q:\n%s", want, got)
 		}
 	}
-	if len(got) > 1500 {
-		t.Fatalf("notice is %d bytes; it must stay a short path reference", len(got))
+	if strings.Contains(got, "question-25") || strings.Index(got, "question-30") < strings.Index(got, "answer-29") {
+		t.Fatalf("notice must hold only the last 10 turns, newest last:\n%s", got)
+	}
+	if len(got) > continuityExcerptBytes+2048 {
+		t.Fatalf("notice is %d bytes; the excerpt must stay bounded", len(got))
 	}
 }
