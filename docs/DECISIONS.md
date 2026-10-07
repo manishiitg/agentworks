@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Test Relays on Dominion as an admin product
+
+Enable Relays alongside Crew for administrators at trader.tectonicmarkets.com.
+The owner moved Relay integration testing from Excellence to this installation.
+Keep regular accounts on Dominion using the existing server-side admin product
+filter, and preserve the hand-maintained runtime configuration across releases.
+[PLAT-642](bugs/pulse_platform/dominion/deployment/plat-642.md).
+
 ### 2026-10-07 — Relay graphs come from comments inside relay.py
 
 Use standalone `# @relay node {...}` and `# @relay edge {...}` JSON comments in

@@ -19,7 +19,7 @@ up front. Don't repeat that.
 | SSH port | `2299` |
 | Runtime account | `dominion` |
 | Application root | `/srv/dominion` |
-| Product allowlist | `AGENT_PRODUCTS=dominion,work`; `AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work` |
+| Product allowlist | `AGENT_PRODUCTS=dominion,work,relays`; `AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work,relays` |
 
 The host already runs unrelated applications. Dominion must never change their
 containers, bound ports, systemd units, Caddy sites, or firewall rules.
@@ -361,10 +361,12 @@ curl -sS -H "Accept-Encoding: gzip" -D - -o /dev/null \
 # expect: content-encoding: gzip
 ```
 
-The public site shows Dominion to regular accounts. Crew (`work`) is enabled
+The public site shows Dominion to regular accounts. Relay integration testing runs
+here by owner request (PLAT-642); deployment preserves workspace data and exposes
+the shared Relay product only to administrators. Crew (`work`) and Relays (`relays`) are enabled
 only for admins: the frontend product list includes it, while
-`AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work` hides it from non-admin users
-and rejects their product API requests. `AGENT_PRODUCTS=dominion,work` keeps
+`AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work,relays` hides them from non-admin users
+and rejects their product API requests. `AGENT_PRODUCTS=dominion,work,relays` keeps
 Video Studio, Finance, and unrelated profiles unregistered on this host.
 Verify both admin and non-admin access after a release.
 

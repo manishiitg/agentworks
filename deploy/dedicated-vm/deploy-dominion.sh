@@ -272,8 +272,9 @@ if not match:
 surfaces = json.loads(match.group(1))
 if 'dominion' not in surfaces:
     raise SystemExit('FATAL: Dominion runtime config does not include Dominion')
-if 'work' not in surfaces:
-    surfaces.append('work')
+for product in ('work', 'relays'):
+    if product not in surfaces:
+        surfaces.append(product)
 path.write_text(source[:match.start(1)] + json.dumps(surfaces) + source[match.end(1):])
 PY
 grep -Fq '"work"' "$RELEASE_DIR/frontend/runtime-config.js" || { echo 'FATAL: Crew is absent from Dominion runtime config' >&2; exit 1; }
@@ -308,7 +309,7 @@ python3 - /srv/dominion/.env <<'PY'
 import os, pathlib, sys, tempfile
 path = pathlib.Path(sys.argv[1])
 # Coding CLIs run under Landlock in full mode, as on Excellence and Confida (owner, 2026-10-07).
-managed = {'AGENT_PRODUCTS': 'dominion,work', 'AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES': 'work', 'AGENTWORKS_CLI_LANDLOCK': 'on', 'AGENTWORKS_CLI_FULL': 'on'}
+managed = {'AGENT_PRODUCTS': 'dominion,work,relays', 'AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES': 'work,relays', 'AGENTWORKS_CLI_LANDLOCK': 'on', 'AGENTWORKS_CLI_FULL': 'on'}
 lines = [line for line in path.read_text().splitlines() if line.partition('=')[0] not in managed]
 lines += [f'{key}={value}' for key, value in managed.items()]
 with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, prefix='.env.next.', delete=False) as output:
