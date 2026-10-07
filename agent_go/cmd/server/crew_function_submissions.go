@@ -29,10 +29,14 @@ func crewFunctionSubmissionExpired(index crewFunctionSubmissionIndex, now time.T
 	return err == nil && now.Sub(saved) > crewFunctionSubmissionTTL
 }
 
-func crewFunctionSubmissionPath(userID string, caller triggerCaller, submissionID, callerPath string) string {
+// callerChat scopes the ID to one chat when chats of a Code call each other.
+func crewFunctionSubmissionPath(userID string, caller triggerCaller, submissionID, callerPath, callerChat string) string {
 	parts := []string{userID, caller.Type, caller.ID, caller.ProfileID, submissionID}
 	if caller.ProfileID == "code" {
 		parts = append(parts, canonicalCrewWorkspaceRoot(callerPath))
+	}
+	if callerChat != "" {
+		parts = append(parts, "chat", callerChat)
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return "_system/function_submissions/" + hex.EncodeToString(sum[:]) + ".json"
@@ -43,8 +47,18 @@ func crewFunctionSubmissionFingerprint(target triggerTarget, function, argsKey s
 	if target.CrewProfile == "code" {
 		parts = append(parts, target.CrewProfile, target.Path)
 	}
+	if target.Chat != nil {
+		parts = append(parts, "chat", target.Chat.Key)
+	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+func crewFunctionTargetChat(target triggerTarget) string {
+	if target.Chat == nil {
+		return ""
+	}
+	return target.Chat.Key
 }
 
 func crewFunctionArgumentsFingerprint(argsKey string) string {
@@ -52,15 +66,15 @@ func crewFunctionArgumentsFingerprint(argsKey string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func inMemoryCrewFunctionSubmissionLocked(userID string, caller triggerCaller, callerPath, submissionID string, target triggerTarget, function, argsKey string) (*crewFunctionCall, bool, error) {
+func inMemoryCrewFunctionSubmissionLocked(userID string, caller triggerCaller, callerPath, callerChat, submissionID string, target triggerTarget, function, argsKey string) (*crewFunctionCall, bool, error) {
 	for _, call := range crewFunctionCalls.m {
-		if call.UserID != userID || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || call.SubmissionID != submissionID {
+		if call.UserID != userID || call.CallerChat != callerChat || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || call.SubmissionID != submissionID {
 			continue
 		}
 		if caller.ProfileID == "code" && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath) {
 			continue
 		}
-		if call.TargetKind != target.Kind || call.TargetID != target.stampID() || (target.CrewProfile == "code" && call.TargetPath != target.Path) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
+		if call.TargetKind != target.Kind || call.TargetID != target.stampID() || (target.CrewProfile == "code" && call.TargetPath != target.Path) || call.TargetChat != crewFunctionTargetChat(target) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
 			return nil, true, fmt.Errorf("submission_id already belongs to a different function call")
 		}
 		return call, true, nil
@@ -68,8 +82,8 @@ func inMemoryCrewFunctionSubmissionLocked(userID string, caller triggerCaller, c
 	return nil, false, nil
 }
 
-func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller triggerCaller, callerPath, submissionID string, target triggerTarget, function, argsKey string) (*crewFunctionCall, bool, error) {
-	path := crewFunctionSubmissionPath(userID, caller, submissionID, callerPath)
+func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller triggerCaller, callerPath, callerChat, submissionID string, target triggerTarget, function, argsKey string) (*crewFunctionCall, bool, error) {
+	path := crewFunctionSubmissionPath(userID, caller, submissionID, callerPath, callerChat)
 	raw, exists, err := readFileFromWorkspace(ctx, path)
 	if err != nil {
 		return nil, false, err
@@ -88,8 +102,8 @@ func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller tri
 		return nil, true, fmt.Errorf("submission_id already belongs to a different function call")
 	}
 	call := lookupCrewFunctionCall(index.CallID)
-	if call == nil || call.UserID != userID || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || (caller.ProfileID == "code" && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath)) || call.SubmissionID != submissionID ||
-		call.TargetKind != target.Kind || call.TargetID != target.stampID() || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
+	if call == nil || call.UserID != userID || call.CallerChat != callerChat || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || (caller.ProfileID == "code" && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath)) || call.SubmissionID != submissionID ||
+		call.TargetKind != target.Kind || call.TargetID != target.stampID() || call.TargetChat != crewFunctionTargetChat(target) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
 		return nil, true, fmt.Errorf("submission_id belongs to an uncertain call; inspect before retrying")
 	}
 	return call, true, nil
@@ -101,5 +115,5 @@ func saveCrewFunctionSubmission(ctx context.Context, call *crewFunctionCall, cal
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, crewFunctionSubmissionPath(call.UserID, caller, call.SubmissionID, call.CallerPath), string(encoded)+"\n")
+	return writeFileToWorkspace(ctx, crewFunctionSubmissionPath(call.UserID, caller, call.SubmissionID, call.CallerPath, call.CallerChat), string(encoded)+"\n")
 }

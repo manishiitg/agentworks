@@ -304,12 +304,12 @@ func TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID(t *testing.T) {
 		t.Fatal("private Code impersonated a Crew target with the same ID")
 	}
 	crewFunctionCalls.Lock()
-	retried, found, err := inMemoryCrewFunctionSubmissionLocked("owner", codeCaller.Stamp, codePath, "retry-same-id", triggerTarget{Kind: triggerCallerCrew, Path: linkBetaPath, CrewID: "beta", CrewProfile: "work"}, "ask", "{}")
+	retried, found, err := inMemoryCrewFunctionSubmissionLocked("owner", codeCaller.Stamp, codePath, "", "retry-same-id", triggerTarget{Kind: triggerCallerCrew, Path: linkBetaPath, CrewID: "beta", CrewProfile: "work"}, "ask", "{}")
 	crewFunctionCalls.Unlock()
 	if err != nil || !found || retried.ID != "fn-same-project-code" {
 		t.Fatalf("Code's submission ID crossed into Crew: call=%+v found=%v err=%v", retried, found, err)
 	}
-	if crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", codePath) == crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", "_users/another/Chats/Code/projects/private-alpha") {
+	if crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", codePath, "") == crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", "_users/another/Chats/Code/projects/private-alpha", "") {
 		t.Fatal("same-ID Codes under different owners shared a submission index")
 	}
 }

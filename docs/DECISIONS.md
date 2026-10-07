@@ -17,13 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
-### 2026-10-07 — Chats of one Code message each other
+### 2026-10-07 — Chats of one Code ask each other through function calls
 
-A Code chat can list its sibling chats (main + side chats) and send one a message with `message_project_chat`; it runs
-there as a visible turn (queued if busy) and its final reply returns as an auto-notification. It reuses the owner's
-own-chat ask path of the cross-product calls. Sender and project come from the trusted turn; targets only from the
-same user's registry entries of the same Code. Chains cannot loop back, stop at 3 chats, and a Code sends at most 20
-such messages an hour. [PLAT-648](bugs/pulse_platform/code/chat/plat-648.md).
+A Code chat lists its sibling chats (main + side chats) and asks one with `ask_project_chat` (replacing
+`message_project_chat`). The ask is a standard function call: `fn-` call_id, saved record, `get_function_call`,
+progress, a result returned with `return_function_result`, timeout, `submission_id` and joining, and the result comes
+back as the standard call auto-notification (`reply=false` = no notification). It runs as a visible turn in the
+target chat (queued if busy). Loops are stopped only by the shared call-chain guards, with each chat its own
+participant; PLAT-648's own hop limit and hourly rate limit are removed. Sender and project come from the trusted
+turn; targets only from the same user's registry entries of the same Code.
+[PLAT-648](bugs/pulse_platform/code/chat/plat-648.md).
 
 ### 2026-10-07 — Dominion enables every requested product and its own Vault
 

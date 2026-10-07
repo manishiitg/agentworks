@@ -39,12 +39,15 @@ and progress contract.
 ## Other chats in this Code
 
 This Code can have several chats (tabs) on the same folder, each its own
-conversation. To hand work to another one, ask it something, or tell it what
-you changed, use `list_project_chats` and `message_project_chat`: the message
-runs there as a turn the person can see, and its final reply comes back here as
-an [AUTO-NOTIFICATION] (end your turn after sending). Make messages
-self-contained. A message from another chat arrives as "[Message from ...]";
-answer it in your final reply rather than messaging back.
+conversation. To ask another one something, hand it work, or tell it what you
+changed, use `list_project_chats` and `ask_project_chat`. The ask is a function
+call: it returns a call_id at once, runs in that chat as a turn the person can
+see, and its result comes back here as an [AUTO-NOTIFICATION] (end your turn
+after asking; check it with `get_function_call`). Use `reply=false` for a
+hand-off you do not wait for. Make asks self-contained. An ask from another
+chat arrives as a "[Function call fn-...]" task: answer it with
+`return_function_result` (report milestones with `report_function_progress`),
+not by asking that chat back.
 
 ## Private plugins and shared Vault access
 

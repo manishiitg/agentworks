@@ -378,6 +378,12 @@ type crewFunctionCall struct {
 	Joined       int    `json:"joined,omitempty"`
 	SubmissionID string `json:"submission_id,omitempty"`
 	ArgumentsKey string `json:"arguments_key,omitempty"`
+	// A call between two chats of one Code (PLAT-648): the conversation key
+	// and session of each side. Only those two chats are its caller and target.
+	CallerChat        string `json:"caller_chat,omitempty"`
+	CallerChatSession string `json:"caller_chat_session,omitempty"`
+	TargetChat        string `json:"target_chat,omitempty"`
+	TargetChatSession string `json:"target_chat_session,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
 	argsKey string
@@ -568,6 +574,9 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 		"run_id":   c.RunID,
 		"progress": append([]crewFunctionProgress(nil), c.Progress...),
 	}
+	if c.TargetChat != "" {
+		out["target"] = map[string]interface{}{"kind": "chat", "name": c.TargetLabel, "chat": c.TargetChat}
+	}
 	if c.Result != nil {
 		out["result"] = c.Result
 	}
@@ -602,10 +611,11 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 // call_function was still waiting) joins the running call instead of starting
 // a duplicate run (RTS 2026-09-27: one PR reviewed three times at once).
 // Needs crewFunctionCalls locked.
-func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerProfileID, callerID, callerPath, targetKind, targetProfileID, targetID, targetPath, function, argsKey string) *crewFunctionCall {
+func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerProfileID, callerID, callerPath, callerChat, targetKind, targetProfileID, targetID, targetPath, targetChat, function, argsKey string) *crewFunctionCall {
 	for _, call := range crewFunctionCalls.m {
 		call.mu.Lock()
 		same := !call.terminalLocked() && call.UserID == userID &&
+			call.CallerChat == callerChat && call.TargetChat == targetChat &&
 			crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(callerKind, callerProfileID, callerID) &&
 			call.TargetKind == targetKind && call.TargetID == targetID &&
 			(call.CallerProfileID != codeproduct.ProfileID || canonicalCrewWorkspaceRoot(call.CallerPath) == canonicalCrewWorkspaceRoot(callerPath)) &&
@@ -683,15 +693,53 @@ func (c *crewFunctionCall) recordPath() string {
 	return strings.TrimSuffix(c.TargetPath, "/") + "/functions/calls/" + c.ID + ".json"
 }
 
+// crewFunctionChatMarker scopes a chain key to one chat of a Code (PLAT-648),
+// so the chats of one Code are separate participants of a call chain.
+const crewFunctionChatMarker = "#chat:"
+
+func crewFunctionChatChainKey(key, chat string) string {
+	if strings.TrimSpace(chat) == "" {
+		return key
+	}
+	return key + crewFunctionChatMarker + chat
+}
+
+// crewFunctionChainBase is the Code (or Crew/workflow) a chain key names.
+func crewFunctionChainBase(key string) string {
+	if i := strings.Index(key, crewFunctionChatMarker); i >= 0 {
+		return key[:i]
+	}
+	return key
+}
+
+// crewFunctionChainConflict reports whether target is already in the chain:
+// the same participant, or a Code one of whose chats took part (and back).
+func crewFunctionChainConflict(chain []string, targetKey string) bool {
+	for _, key := range chain {
+		if key == targetKey || crewFunctionChainBase(key) == targetKey || key == crewFunctionChainBase(targetKey) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *crewFunctionCall) targetChainKeyLocked() string {
+	return crewFunctionChatChainKey(crewFunctionScopedKey(c.TargetKind, c.TargetProfileID, c.TargetID, c.TargetPath), c.TargetChat)
+}
+
 // crewFunctionChainFor returns the call chain the caller is currently part
-// of: the longest chain among in-flight calls whose target is the caller.
+// of: the longest chain among in-flight calls whose target is the caller. A
+// caller that is not a specific chat (a Code's call_function) is part of the
+// chains of calls into any of its chats.
 func crewFunctionChainFor(callerKey string) (chain []string, root string) {
 	crewFunctionCalls.Lock()
 	defer crewFunctionCalls.Unlock()
+	scoped := strings.Contains(callerKey, crewFunctionChatMarker)
 	for _, call := range crewFunctionCalls.m {
 		call.mu.Lock()
 		inFlight := !call.terminalLocked()
-		matches := crewFunctionScopedKey(call.TargetKind, call.TargetProfileID, call.TargetID, call.TargetPath) == callerKey
+		targetKey := call.targetChainKeyLocked()
+		matches := targetKey == callerKey || (!scoped && crewFunctionChainBase(targetKey) == callerKey)
 		if inFlight && matches && len(call.Chain) > len(chain) {
 			chain, root = append([]string(nil), call.Chain...), call.Root
 		}
@@ -794,11 +842,18 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// encoding/json sorts map keys, so equal arguments give equal keys.
 	argsJSON, _ := json.Marshal(args)
 	argsKey := string(argsJSON)
-	if isWorkflowAsk(target, fn) || isPersonCrewAsk(target, caller, fn) {
+	if isWorkflowAsk(target, fn) || isPersonCrewAsk(target, caller, fn) || target.Chat != nil {
 		message, _ := args["message"].(string)
 		if strings.TrimSpace(message) == "" {
 			return nil, fmt.Errorf("ask needs a message")
 		}
+	}
+	callerChat, callerChatSession, targetChat, targetChatSession := "", "", "", ""
+	if caller.Chat != nil {
+		callerChat, callerChatSession = caller.Chat.Key, caller.Chat.SessionID
+	}
+	if target.Chat != nil {
+		targetChat, targetChatSession = target.Chat.Key, target.Chat.SessionID
 	}
 	submissionID := ""
 	if len(submissionIDs) > 0 {
@@ -811,31 +866,32 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		if len(submissionID) > 128 {
 			return nil, fmt.Errorf("submission_id must be at most 128 characters")
 		}
-		if existing, found, err := lookupCrewFunctionSubmission(ctx, userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), submissionID, target, fn.Name, argsKey); err != nil || found {
+		if existing, found, err := lookupCrewFunctionSubmission(ctx, userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, submissionID, target, fn.Name, argsKey); err != nil || found {
 			return existing, err
 		}
 	}
 	crewFunctionCalls.Lock()
 	var joined *crewFunctionCall
 	if submissionID == "" {
-		joined = joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), fn.Name, argsKey)
+		joined = joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), targetChat, fn.Name, argsKey)
 	}
 	crewFunctionCalls.Unlock()
 	if joined != nil {
 		return joined, nil
 	}
-	callerKey := crewFunctionScopedKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path))
-	targetKey := crewFunctionScopedKey(target.Kind, target.CrewProfile, target.stampID(), target.Path)
+	callerKey := crewFunctionChatChainKey(crewFunctionScopedKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path)), callerChat)
+	targetKey := crewFunctionChatChainKey(crewFunctionScopedKey(target.Kind, target.CrewProfile, target.stampID(), target.Path), targetChat)
 	chain, root := crewFunctionChainFor(callerKey)
 	if len(chain) == 0 {
 		chain = []string{callerKey}
-	} else if chain[len(chain)-1] != callerKey {
+	} else if last := chain[len(chain)-1]; last != callerKey && crewFunctionChainBase(last) != callerKey {
 		chain = append(chain, callerKey)
 	}
-	for _, key := range chain {
-		if key == targetKey {
-			return nil, fmt.Errorf("refused: %s %q is already in this call chain (%s); calling it again would loop", target.Kind, target.Label, strings.Join(chain, " -> "))
+	if crewFunctionChainConflict(chain, targetKey) {
+		if target.Chat != nil {
+			return nil, fmt.Errorf("refused: chat %q already took part in this exchange (%s); your answer goes back to it on its own", target.Label, strings.Join(chain, " -> "))
 		}
+		return nil, fmt.Errorf("refused: %s %q is already in this call chain (%s); calling it again would loop", target.Kind, target.Label, strings.Join(chain, " -> "))
 	}
 	if len(chain) >= crewFunctionMaxDepth {
 		return nil, fmt.Errorf("refused: call depth limit %d reached (%s)", crewFunctionMaxDepth, strings.Join(chain, " -> "))
@@ -850,8 +906,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// A Crew call rides this caller's binding on the Crew; a workflow
 	// function runs its own function trigger.
 	triggerID := fn.TriggerID
-	// A person's ask runs in their own chat, not through a trigger binding.
-	if target.Kind != triggerCallerWorkflow && !isPersonCrewAsk(target, caller, fn) {
+	// A person's ask runs in their own chat, and a sibling chat call in that
+	// chat, not through a trigger binding.
+	if target.Kind != triggerCallerWorkflow && !isPersonCrewAsk(target, caller, fn) && target.Chat == nil {
 		var err error
 		triggerID, _, err = api.connectTriggerTarget(ctx, userID, caller, target)
 		if err != nil {
@@ -867,6 +924,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
 		FreeText:     fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
 		SubmissionID: submissionID, ArgumentsKey: crewFunctionArgumentsFingerprint(argsKey),
+		CallerChat: callerChat, CallerChatSession: callerChatSession, TargetChat: targetChat, TargetChatSession: targetChatSession,
 		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
 	}
@@ -881,7 +939,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	crewFunctionCalls.Lock()
 	if submissionID != "" {
-		if existing, found, err := inMemoryCrewFunctionSubmissionLocked(userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), submissionID, target, fn.Name, argsKey); err != nil || found {
+		if existing, found, err := inMemoryCrewFunctionSubmissionLocked(userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, submissionID, target, fn.Name, argsKey); err != nil || found {
 			crewFunctionCalls.Unlock()
 			return existing, err
 		}
@@ -889,7 +947,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// Re-check under the same lock as the insert: two identical calls racing
 	// past the early check must still start one run.
 	if submissionID == "" {
-		if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), fn.Name, argsKey); joined != nil {
+		if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), targetChat, fn.Name, argsKey); joined != nil {
 			crewFunctionCalls.Unlock()
 			return joined, nil
 		}
@@ -919,6 +977,12 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		call.saveIndex()
 		call.persist()
 		go api.runCrewOwnChatAsk(call, target, strings.TrimSpace(message), timeout)
+		return call, nil
+	}
+	if target.Chat != nil {
+		call.saveIndex()
+		call.persist()
+		go api.runCodeChatCall(call, target, args, timeout)
 		return call, nil
 	}
 	var delivery internalTriggerDeliveryResult
@@ -1167,6 +1231,9 @@ func (api *StreamingAPI) beginCrewFunctionNotification(parentReq QueryRequest, s
 		return nil, "", "", nil, nil, fmt.Errorf("auto-notification is unavailable in this chat")
 	}
 	name := "Function " + call.TargetLabel + "." + call.Function
+	if call.TargetChat != "" {
+		name = "Ask " + call.TargetLabel
+	}
 	executionID := "function-call-" + api.bgAgentRegistry.NextID(name)
 	runCtx, cancel := context.WithTimeout(context.Background(), limit)
 	parentExecutionID := api.currentConversationTurnExecutionID(sessionID)
@@ -1200,6 +1267,9 @@ func (api *StreamingAPI) beginCrewFunctionNotification(parentReq QueryRequest, s
 func completeCrewFunctionNotification(notifier *workshopExecutionBgNotifier, executionID, name string, call *crewFunctionCall) {
 	snapshot := call.snapshot()
 	header := fmt.Sprintf("Function call %s (%s %q, %s)", call.ID, call.TargetKind, call.TargetLabel, call.Function)
+	if call.TargetChat != "" {
+		header = fmt.Sprintf("Function call %s (ask to chat %q of this Code)", call.ID, call.TargetLabel)
+	}
 	if late, _ := snapshot["late"].(bool); late {
 		header += " — late answer, after your wait had timed out"
 	}
@@ -1560,7 +1630,13 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if isCodeSource && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 				return nil, caller, fmt.Errorf("private Code access denied")
 			}
-			if call.TargetProfileID == codeproduct.ProfileID && call.CallerProfileID == codeproduct.ProfileID {
+			if call.TargetChat != "" {
+				// A call between two chats of this same Code (PLAT-648).
+				if call.CallerID != call.TargetID || call.CallerID != caller.Stamp.ID ||
+					canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
+					return nil, caller, fmt.Errorf("private Code access denied")
+				}
+			} else if call.TargetProfileID == codeproduct.ProfileID && call.CallerProfileID == codeproduct.ProfileID {
 				if err := authorizeCodePeerIDs(ctx, userID, ownerID, call.CallerID, call.TargetID); err != nil {
 					return nil, caller, err
 				}
@@ -1568,10 +1644,18 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		return call, caller, nil
 	}
+	// A call between two chats of one Code belongs to exactly those two chats:
+	// this turn's session must be the sending (or receiving) chat.
 	isCaller := func(call *crewFunctionCall, caller triggerLinkCaller) bool {
+		if call.CallerChatSession != "" && call.CallerChatSession != sessionID {
+			return false
+		}
 		return crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}
 	isTargetOf := func(call *crewFunctionCall, caller triggerLinkCaller) bool {
+		if call.TargetChatSession != "" && call.TargetChatSession != sessionID {
+			return false
+		}
 		if call.TargetProfileID == codeproduct.ProfileID && canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 			return false
 		}
@@ -1595,7 +1679,16 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		call.mu.Lock()
 		terminal, runID := call.terminalLocked(), call.RunID
 		call.mu.Unlock()
-		if !terminal && call.TargetKind == triggerCallerCrew && runID != "" {
+		if !terminal && call.TargetChat != "" {
+			// A sibling chat call runs in that chat's own conversation.
+			out["run_status"] = "idle"
+			if api.conversationTurnOccupied(call.TargetChatSession) {
+				out["run_status"] = "busy"
+			}
+			if activity := api.crewFunctionActivity(call.TargetChatSession); activity != nil {
+				out["recent_activity"] = activity
+			}
+		} else if !terminal && call.TargetKind == triggerCallerCrew && runID != "" {
 			state, stateErr := api.readTriggerTargetRun(ctx, userID, call.caller, call.target, call.TriggerID, runID)
 			if stateErr != nil {
 				return "", fmt.Errorf("cannot check function call %s: %w", call.ID, stateErr)
@@ -1659,6 +1752,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		if call.TargetKind != triggerCallerCrew {
 			return "", fmt.Errorf("workflow runs do not accept mid-run messages; use get_function_call for status and progress")
+		}
+		if call.TargetChat != "" {
+			return "", fmt.Errorf("a chat of this Code takes no mid-turn questions; read its progress and recent activity with get_function_call")
 		}
 		question, _ := args["question"].(string)
 		if strings.TrimSpace(question) == "" {

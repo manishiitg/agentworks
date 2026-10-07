@@ -47,6 +47,9 @@ type triggerTarget struct {
 	// shared server-wide, so it may differ from the requester.
 	CrewOwner string
 	Manifest  *WorkflowManifest
+	// Chat is set on a sibling chat of the caller's own Code (PLAT-648):
+	// the call runs as a turn in that chat's existing conversation.
+	Chat *codeChat
 }
 
 // ownerOr returns the Crew target's owner, falling back to userID.
@@ -66,6 +69,9 @@ type triggerLinkCaller struct {
 	Stamp triggerCaller
 	Label string
 	Path  string
+	// Chat is the calling Code chat when it calls a sibling chat; it is set
+	// only from the trusted turn (codeChatsFor).
+	Chat *codeChat
 }
 
 // resolveTriggerTarget finds one Crew on the server, or one workflow the user
@@ -163,8 +169,14 @@ func (c triggerLinkCaller) isTarget(target triggerTarget) bool {
 		return false
 	}
 	if target.Kind == triggerCallerCrew {
-		return strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.CrewID) &&
+		same := strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.CrewID) &&
 			strings.EqualFold(normalizeInternalProfileID(c.Stamp.ProfileID), normalizeInternalProfileID(target.CrewProfile))
+		// A sibling chat of the same Code is another participant; only the
+		// calling chat itself is "self".
+		if same && target.Chat != nil {
+			return c.Chat == nil || c.Chat.Key == target.Chat.Key
+		}
+		return same
 	}
 	return target.Manifest != nil && strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.Manifest.ID)
 }
