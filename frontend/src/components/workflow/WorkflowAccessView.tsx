@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
 import WorkflowSharePopup from './WorkflowSharePopup'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
@@ -48,6 +49,7 @@ export default function WorkflowAccessView({ workspacePath }: WorkflowAccessView
   const visibleTabs = ACCESS_TABS.filter(option => (option.value === 'workflow' && workflowTab) || (option.value === 'users' && usersTab) || (option.value === 'slack' && slackTab))
   const [tab, setTab] = usePersistentTab<AccessTabId>('agentworks.tab.access', 'workflow', ACCESS_TABS.map(option => option.value))
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value
+  useWorkspaceViewTarget('access', target => { if (visibleTabs.some(option => option.value === target)) setTab(target as AccessTabId) })
   useEffect(() => {
     if (activeTab && activeTab !== tab) setTab(activeTab)
   }, [activeTab, tab, setTab])

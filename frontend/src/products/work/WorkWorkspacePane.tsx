@@ -1,26 +1,12 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  Brain,
-  Database,
-  DollarSign,
-  Files,
-  Fingerprint,
-  LayoutDashboard,
-  Lightbulb,
-  Monitor,
-  Route,
-  Server,
-  Terminal,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
-import { WORK_PANELS } from '../productPanels'
+import { WORK_PANELS, WORK_PANEL_SECTIONS } from '../productPanels'
+import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
@@ -122,11 +108,17 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
+  // A Code hides the "Use in AI apps" integration tab (CODE_HIDDEN_INTEGRATION_TABS).
+  const sectionsFor = (id: string) => (WORK_PANEL_SECTIONS[id] ?? []).filter(section => !(isCode && id === 'mcp' && section.id === 'cli'))
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
-    ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Views' })),
-    ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Ops' })),
-    ...visibleSetup.map(item => ({ id: item.id, label: item.label, group: 'Setup' })),
-  ], id => onViewChange(id as WorkWorkspaceView))
+    ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Views', sections: sectionsFor(item.id) })),
+    ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: sectionsFor(item.id) })),
+    ...visibleSetup.map(item => ({ id: item.id, label: item.label, group: 'Setup', sections: sectionsFor(item.id) })),
+  ], (id, section) => {
+    // The Integrations, Identity and Automation panels pick up this target (useWorkspaceViewTarget).
+    if (section) setWorkspaceViewTarget(id === 'schedules' ? 'workshop' : id as 'mcp' | 'identity', section)
+    onViewChange(id as WorkWorkspaceView)
+  })
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
       {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>

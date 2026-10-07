@@ -11,6 +11,7 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
+import { VAULT_PANEL_SECTIONS } from '../productPanels'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -104,7 +105,11 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     return chatBusy ? undefined : events?.at(-1)?.id
   })
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'access', normalizeVaultPanel)
-  useRegisterPanelSwitcher('mcp-gateway', gatewayPanels.map(({ id, label }) => ({ id, label })), id => setPanel(id as GatewayPanel))
+  const [peopleTabRequest, setPeopleTabRequest] = useState<{ tab: 'users' | 'groups'; token: number }>()
+  useRegisterPanelSwitcher('mcp-gateway', gatewayPanels.map(({ id, label }) => ({ id, label, sections: VAULT_PANEL_SECTIONS[id] })), (id, section) => {
+    setPanel(id as GatewayPanel)
+    if (id === 'people' && (section === 'users' || section === 'groups')) setPeopleTabRequest(current => ({ tab: section, token: (current?.token ?? 0) + 1 }))
+  })
   useEffect(() => {
     try {
       const requested = normalizeVaultPanel(sessionStorage.getItem('vault.requested-panel'))
@@ -171,7 +176,7 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     divider={<WorkspaceSplitRail ratio={ratio} onPointerDown={resize} onStep={delta => { if (previewDevice !== 'mobile') updateRatio(ratioRef.current + delta, true) }} className="md:row-start-2"
       previewDevice={previewDevice} onPreviewDeviceChange={device => { setPreviewDevice(device); writeReportPreviewPreference(WORKSPACE, device) }}
       onCollapseChat={() => setChatOpen(false)} onCollapseWorkspace={() => setPanelOpen(false)} />}
-    workspace={<GatewayWorkspacePane base={base} panel={panel} revision={revision} chatBusy={chatBusy}
+    workspace={<GatewayWorkspacePane base={base} panel={panel} revision={revision} chatBusy={chatBusy} peopleTabRequest={peopleTabRequest}
       servers={<GatewayServersPanel chatSessionId={sessionId ?? undefined} base={base} view={panel === 'available-mcps' ? 'available' : 'connected'} onConnected={() => setPanel('servers')} standalone={standalone} onAddCustom={tabId ? addCustomServer : undefined} revision={revision} />} modelSettings={<GatewayModelSettings tabId={tabId} />} />}
   />
 }

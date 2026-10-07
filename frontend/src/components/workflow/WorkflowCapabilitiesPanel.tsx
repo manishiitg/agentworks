@@ -21,6 +21,7 @@ import type { WorkflowCapabilities } from '../../services/api-types'
 import { useMCPStore } from '../../stores/useMCPStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -126,6 +127,14 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
+  // ⌘/Ctrl+J opens this panel on a tab (Slack, Gmail, Secrets, Models…).
+  useWorkspaceViewTarget('mcp', target => {
+    if (mcpTabs.some(option => option.value === target)) { setTab(target as McpTab); setIntegrationMenu(false) }
+    else if (PROJECT_PLUGIN_TABS.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
+  }, section === 'mcp')
+  useWorkspaceViewTarget('identity', target => {
+    if (identityTabs.some(option => option.value === target)) setIdentityTab(target as IdentityTab)
+  }, section === 'identity')
   const copy = SECTION_COPY[section]
   const view = getWorkspaceView(section)
 

@@ -43,3 +43,23 @@
 Frontend type check and lint clean; 71 test files (switcher, Crew/Code, chat, workflow toolbar) pass. Two Crew/Code
 toolbar tests that matched the old arrays' source text now check the registry data. Not yet seen in the running app:
 check Cmd/Ctrl+J, the hide icon and the Ctrl+K rows after the next local restart.
+
+## Sections inside panels (2026-10-07)
+
+Owner: ⌘J could not find "slack", "models" or "gmail", because it listed only top-level panels. The registry now
+also holds each panel's tabs (`PanelSection`, with search keywords): Integrations (Tools & secrets, Brain, Folders,
+Slack, WhatsApp, Google apps incl. Gmail, Use in AI apps, and the MCP / Secrets / Skills / Vault sub-tabs), Identity
+(General, Models, Upgrades), Automation (Schedules, Webhooks, Functions, Bots, Chats), Knowledge, Access, Pulse, and
+Vault People (Users, Groups). Relays and Code list only the tabs their panels show. ⌘J lists panels when empty and
+searches panels and tabs as you type; choosing a tab opens its panel on that tab. It also offers the app-wide
+Providers & models page from every product.
+
+Panels that ignored a requested tab now take one through `useWorkspaceViewTarget`, which applies each target once
+(a remounted panel does not re-apply an old one): workflow Integrations, Identity, Access and Pulse; Crew/Code
+Integrations and Identity. Vault People takes a request prop. Also removed icon imports left unused when the panel
+arrays moved.
+
+Verification: type check clean; the product, workflow, switcher and chat tests pass apart from failures already on
+main before this work (Vault GatewaySurface 14, WorkspacePanelGuideButton 2, workspaceToolbarPlacement 2; the relay
+switcher test passes alone and is flaky in the full run).
+

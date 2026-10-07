@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { Activity } from 'lucide-react'
 import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
@@ -81,6 +82,7 @@ export default function PulseView({
   headerAction,
 }: PulseViewProps) {
   const [tab, setTab] = useState<PulseWorkspaceTab>('for_you')
+  useWorkspaceViewTarget('pulse', target => { if (target === 'for_you' || target === 'platform') setTab(target) })
   return (
     <div className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
       <WorkspaceViewHeader

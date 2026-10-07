@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Fingerprint, FolderOpen, Loader2, Lock, Tag, Target, Trash2 } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
@@ -388,6 +389,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
   const visibleTabs = IDENTITY_TABS.filter(option => isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
+  useWorkspaceViewTarget('identity', target => { if (visibleTabs.some(option => option.value === target)) setTab(target as WorkIdentityTab) })
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
 

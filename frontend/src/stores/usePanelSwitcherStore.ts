@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import type { ProductSurface } from '../products/productSurfaceConfig'
+import type { PanelSection } from '../products/productPanels'
 
-export interface PanelSwitcherPanel { id: string; label: string; group?: string }
-interface PanelSwitcherEntry { panels: PanelSwitcherPanel[]; open: (id: string) => void }
+export interface PanelSwitcherPanel { id: string; label: string; group?: string; sections?: PanelSection[] }
+interface PanelSwitcherEntry { panels: PanelSwitcherPanel[]; open: (id: string, section?: string) => void }
 
 interface PanelSwitcherState {
   /** Panels of each product's right-hand toolbar, registered while it is mounted. */
@@ -36,13 +37,13 @@ export const usePanelSwitcherStore = create<PanelSwitcherState>(set => ({
 }))
 
 /** Registers a product toolbar's panels for the ⌘/Ctrl+J panel search. */
-export function useRegisterPanelSwitcher(surface: ProductSurface | null | undefined, panels: PanelSwitcherPanel[], open: (id: string) => void) {
+export function useRegisterPanelSwitcher(surface: ProductSurface | null | undefined, panels: PanelSwitcherPanel[], open: (id: string, section?: string) => void) {
   const openRef = useRef(open)
   openRef.current = open
-  const key = panels.map(panel => `${panel.id}:${panel.label}:${panel.group || ''}`).join('|')
+  const key = panels.map(panel => `${panel.id}:${panel.label}:${panel.group || ''}:${(panel.sections ?? []).map(section => section.id).join(',')}`).join('|')
   useEffect(() => {
     if (!surface) return
-    const stableOpen = (id: string) => openRef.current(id)
+    const stableOpen = (id: string, section?: string) => openRef.current(id, section)
     usePanelSwitcherStore.getState().register(surface, { panels, open: stableOpen })
     return () => usePanelSwitcherStore.getState().unregister(surface, stableOpen)
     // panels are captured by their content key

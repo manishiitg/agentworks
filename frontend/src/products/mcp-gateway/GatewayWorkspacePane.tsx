@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
-import { BrainCircuit, KeyRound, Plus, Server, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
+import { UserRound, UsersRound } from 'lucide-react'
 import { VAULT_PANELS } from '../productPanels'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { SettingsCardLayout } from '../../components/ui/SettingsCard'
@@ -12,10 +12,13 @@ import { GatewayFeedbackBoundary } from './gatewayConsoleShared'
 export const gatewayPanels = VAULT_PANELS
 export type GatewayPanel = (typeof gatewayPanels)[number]['id']
 
-export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSettings, revision, hideHeader = true }: {
+export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSettings, revision, hideHeader = true, peopleTabRequest }: {
   base: string; servers: ReactNode; panel: GatewayPanel; chatBusy: boolean; modelSettings: ReactNode; revision?: string; hideHeader?: boolean
+  /** ⌘/Ctrl+J opens People on Users or Groups; the token lets the same request repeat. */
+  peopleTabRequest?: { tab: 'users' | 'groups'; token: number }
 }) {
-  const [peopleTab, setPeopleTab] = useState<'users' | 'groups'>('users')
+  const [peopleTab, setPeopleTab] = useState<'users' | 'groups'>(peopleTabRequest?.tab ?? 'users')
+  useEffect(() => { if (peopleTabRequest) setPeopleTab(peopleTabRequest.tab) }, [peopleTabRequest])
   const currentPanel = gatewayPanels.find(item => item.id === panel) ?? gatewayPanels[0]
   return <div className="flex h-full min-h-0 flex-col">
     <WorkspaceViewHeader hideHeader={hideHeader} icon={currentPanel.icon} title={currentPanel.label} showWalkthrough={false}

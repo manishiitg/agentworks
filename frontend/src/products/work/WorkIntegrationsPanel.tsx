@@ -9,6 +9,7 @@ import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceVie
 import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
 import { PROJECT_INTEGRATION_SECTIONS } from '../../components/integrations/integrationSections'
 import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
 import { WorkFoldersSection } from './WorkIdentityPanel'
@@ -116,6 +117,11 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [pluginTab, setPluginTab] = useProjectPluginTab()
   const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
+  // ⌘/Ctrl+J opens this panel on a tab (Slack, Gmail, Secrets…).
+  useWorkspaceViewTarget('mcp', target => {
+    if (visibleTabs.some(option => option.value === target)) { setTab(target as WorkIntegrationTab); setIntegrationMenu(false) }
+    else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
+  })
   const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
