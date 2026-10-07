@@ -624,7 +624,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		}
 		if !availability.AvailableTo.admits(scope.Principal, run.Product) {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
-			return nil, fmt.Errorf("the %s server account is not available to you here (available to: %s)", provider, availability.Text)
+			return nil, fmt.Errorf("the %s server account is not available to you here (available to: %s). Choose another coding agent in this project's Models panel; your next message uses it", provider, availability.Text)
 		}
 		return nil, nil
 	}

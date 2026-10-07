@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
 | [Code](code/index.md) | 8 | 1 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 71 | 18 |
 | [Crew](crew/index.md) | 22 | 5 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-655](coding-agents/accounts/plat-655.md) | Model picker offers providers a person cannot use | open | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-652](integrations/mcp/plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-617](app/navigation/plat-617.md) | Remove old keyboard shortcuts | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | deployed | P2 | [crew/chat](crew/chat/index.md) |
 | [PLAT-615](coding-agents/accounts/plat-615.md) | Private provider setup linked user credentials to the shared server login | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |

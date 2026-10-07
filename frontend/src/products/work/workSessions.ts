@@ -4,6 +4,7 @@ import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
 import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
+import { llmConfigService } from '../../services/llm-config-api'
 import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
 import { crewTemplates, getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
@@ -71,7 +72,13 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
 export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection): Promise<WorkSession> {
   const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
   const options = await loadAgentProfileProviderOptions(product.profileId)
-  const selected = options.find(option => option.default) || options[0]
+  // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
+  // then the first coding agent they may run, so a new project does not start on a refused account (excellence
+  // 2026-10-07). Unknown accounts keep the product default.
+  const accounts = await llmConfigService.getProviderConnections({ product: product.profileId }).catch(() => null)
+  const usable = (option: { provider?: string }) => accounts === null || accounts.some(account => account.provider === option.provider && account.usable !== false)
+  const ordered = [...options.filter(option => option.default), ...options.filter(option => !option.default)]
+  const selected = ordered.find(usable) || ordered[0]
   const reasoningEffort = typeof selected?.options?.reasoning_effort === 'string'
     ? selected.options.reasoning_effort
     : selected?.reasoning_efforts?.[0]

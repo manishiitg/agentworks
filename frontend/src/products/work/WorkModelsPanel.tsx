@@ -158,10 +158,14 @@ export function WorkModelsPanel({
       .map(option => ({ ...option, models: undefined })), modelCatalog),
     [readyProviders, modelCatalog, options],
   )
-  const workProviderIds = useMemo(
-    () => options.map(option => option.provider || option.id),
-    [options],
-  )
+  // Only providers this person may run here: one with a usable account (the server's, if it is available to them,
+  // or one of their own or shared with them). Offering Codex to someone it is closed to saved a model every turn then
+  // refused ("the codex-cli server account is not available to you here", excellence 2026-10-07).
+  const workProviderIds = useMemo(() => {
+    const all = options.map(option => option.provider || option.id)
+    if (accounts === null) return all
+    return all.filter(provider => accounts.some(account => account.provider === provider && account.usable !== false))
+  }, [options, accounts])
 
   const hasStarted = events?.some(event => event.type === 'user_message') ?? false
   const savedSelection = workLLMSelectionFromConfig(projectLLMConfig)
@@ -300,8 +304,14 @@ export function WorkModelsPanel({
 
   // Embedded in the Identity view's Models tab: the shared header owns the
   // title, tabs, and Ask AI, and the tab owns the scroll.
+  const savedProviderUnusable = Boolean(accounts !== null && selectedOption?.provider && !workProviderIds.includes(selectedOption.provider))
   const body = (
     <>
+        {savedProviderUnusable && (
+          <p role="alert" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            This project is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
+          </p>
+        )}
         <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}
