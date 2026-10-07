@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-// TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice drives the
-// real worklist path (module-state DB, plan.json and step_config.json on
-// disk) across four Pulse passes for PLAT-556 decisions 2 and 4 and the
-// success metric: an over-budget step makes Architecture due although Gate
-// skipped it; a due Plan Drift that flagged the same step defers it twice;
-// the third pass runs it scoped away from Drift's steps; a completed review
-// of the unchanged state is not forced again; every pass records a metric.
-func TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice(t *testing.T) {
+// TestPromptBudgetMakesArchitectureDue drives the real worklist path
+// (module-state DB, plan.json and step_config.json on disk) across two Pulse
+// passes for PLAT-556 decision 2 and the success metric: an over-budget step
+// makes Architecture due although Gate skipped it; a completed review of the
+// unchanged state is not forced again; every pass records a metric. (The
+// Plan Drift deferral of decision 4 is retired: Workflow Review runs before
+// runs, PLAT-697 phase 0.)
+func TestPromptBudgetMakesArchitectureDue(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	ctx := context.Background()
@@ -39,11 +39,7 @@ func TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice(t *testing.T)
 	if err := os.WriteFile(filepath.Join(planning, "step_config.json"), []byte(`{"steps":[{"id":"big"},{"id":"s1"},{"id":"s2"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gate := func() []PulseWorklistDecision {
-		return completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-			pulseModulePlanDriftReview: {Module: pulseModulePlanDriftReview, Due: true, Reason: "Steps lack drift receipts."},
-		})
-	}
+	gate := func() []PulseWorklistDecision { return completePulseWorklistDecisions(nil) }
 	arch := func(states []PulseModuleState) PulseModuleState {
 		for _, s := range states {
 			if s.Module == pulseModuleArchitectureReview {
@@ -55,31 +51,17 @@ func TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice(t *testing.T)
 	}
 	evidence := func(s PulseModuleState) string { return strings.Join(s.Evidence, " ") }
 
-	for pass, want := range []string{"architecture_drift_deferrals:1", "architecture_drift_deferrals:2"} {
-		states, err := recordPulseWorklist(ctx, ws, "pulse-"+string(rune('1'+pass)), gate())
-		if err != nil {
-			t.Fatal(err)
-		}
-		a := arch(states)
-		if a.LastDecision != "skipped" || !strings.Contains(evidence(a), want) || !strings.Contains(evidence(a), "prompt_budget_focus:prompt_design") {
-			t.Fatalf("pass %d: want deferred budget-due Architecture with %s, got %s %v", pass+1, want, a.LastDecision, a.Evidence)
-		}
-	}
-	states, err := recordPulseWorklist(ctx, ws, "pulse-3", gate())
+	states, err := recordPulseWorklist(ctx, ws, "pulse-1", gate())
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := arch(states)
-	if a.LastDecision != "due" || !strings.Contains(evidence(a), evidenceArchitectureScoped) || !strings.Contains(evidence(a), "architecture_scope_excludes:big,s1,s2") {
-		t.Fatalf("third pass must run Architecture scoped away from Drift's steps, got %s %v", a.LastDecision, a.Evidence)
+	if a := arch(states); a.LastDecision != "due" || !strings.Contains(evidence(a), "prompt_budget_focus:prompt_design") {
+		t.Fatalf("want budget-due Architecture, got %s %v", a.LastDecision, a.Evidence)
 	}
-	if !pulseArchitectureScopedDuringDrift(ctx, ws, "pulse-3") {
-		t.Fatal("scheduler would not dispatch the scoped Architecture review")
-	}
-	if _, err := markPulseModuleResult(ctx, ws, pulseModuleArchitectureReview, "pulse-3", "done", "Reviewed prompt budget.", nil); err != nil {
+	if _, err := markPulseModuleResult(ctx, ws, pulseModuleArchitectureReview, "pulse-1", "done", "Reviewed prompt budget.", nil); err != nil {
 		t.Fatal(err)
 	}
-	states, err = recordPulseWorklist(ctx, ws, "pulse-4", gate())
+	states, err = recordPulseWorklist(ctx, ws, "pulse-2", gate())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +72,7 @@ func TestPromptBudgetMakesArchitectureDueAndDriftDefersAtMostTwice(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(metrics) != 4 || metrics[0].StepsOverBudget != 1 || metrics[0].LargestDescriptionStepID != "big" || metrics[0].ArchitectureRuns != 1 {
-		t.Fatalf("want 4 metric rows, newest with 1 over-budget step 'big' and 1 Architecture run, got %+v", metrics)
+	if len(metrics) != 2 || metrics[0].StepsOverBudget != 1 || metrics[0].LargestDescriptionStepID != "big" || metrics[0].ArchitectureRuns != 1 {
+		t.Fatalf("want 2 metric rows, newest with 1 over-budget step 'big' and 1 Architecture run, got %+v", metrics)
 	}
 }

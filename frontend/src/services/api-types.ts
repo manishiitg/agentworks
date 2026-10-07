@@ -3447,9 +3447,18 @@ export interface WorkflowNotificationInfoResponse {
 }
 
 // Scheduled Jobs
+/** What runs after a schedule's run (PLAT-697 phase 0); replaces pulse_mode. */
+export interface ScheduleAfterRun {
+  backup: boolean
+  publish: boolean
+  notify: boolean
+}
+
 export interface ScheduledJob {
   kind?: string
   gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
+  after_run?: ScheduleAfterRun
+  /** Legacy, read for one release; kept in step with after_run. */
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   id: string
@@ -3516,6 +3525,7 @@ export interface ScheduledJob {
 }
 
 export interface CreateScheduledJobRequest {
+  after_run?: ScheduleAfterRun
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   run_destination?: 'crew_chat' | 'isolated'
@@ -3552,6 +3562,7 @@ export interface CreateScheduledJobRequest {
 }
 
 export interface UpdateScheduledJobRequest {
+  after_run?: ScheduleAfterRun
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   name?: string
@@ -3678,6 +3689,9 @@ export interface WorkflowManifest {
   run_retention_count?: number
   pulse?: WorkflowPulseConfig
   backup?: WorkflowBackupConfig
+  publish?: { enabled?: boolean; triggers?: WorkflowBackupTriggers }
+  /** After-run options for runs started from a chat (PLAT-697 phase 0). */
+  after_manual_run?: ScheduleAfterRun
   knowledgebase_sources?: KnowledgebaseSource[]
   folder_access?: WorkflowFolderGrant[]
   folder_access_requests?: WorkflowFolderAccessRequest[]
@@ -3864,6 +3878,8 @@ export interface UpdateWorkflowManifestRequest {
   pulse_autonomy_outward?: PulseAutonomyLevel
   pulse_autonomy_change?: PulseAutonomyLevel
   pulse_focus_areas?: string[]
+  /** After-run options for runs started from a chat (PLAT-697 phase 0). */
+  after_manual_run?: ScheduleAfterRun
   run_notification_instructions?: string
   pulse_notification_instructions?: string
   run_notification_channels?: string[]

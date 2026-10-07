@@ -100,17 +100,14 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	create := func(policy workflow.ScheduleRuntimePolicy) (string, error) {
 		return callbacks.CreateSchedule(ctx, path, "Frequent queue", "0 */4 * * *", "UTC", []string{"prod"}, nil, "workshop", nil, "", "run", nil, false, policy)
 	}
-	if _, err := create(workflow.ScheduleRuntimePolicy{}); err == nil {
-		t.Fatal("legacy workflow allowed new inherited schedule")
-	}
+	// PLAT-697 phase 0: a schedule names after_run; without it a new
+	// schedule gets backup, publish and notify, and pulse_mode follows.
 	policy := workflow.ScheduleRuntimePolicy{PulseMode: "basic", PulseModeReason: "Frequent routine processing; backup and summary only"}
 	if _, err := create(policy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := callbacks.CreateCalendarSchedule(ctx, path, "Calendar", "UTC", []string{"prod"}, `[{"date":"2099-01-01","time":"09:00"}]`, "workshop", nil, "", "run", workflow.ScheduleRuntimePolicy{}); err == nil {
-		t.Fatal("calendar accepted missing policy")
-	}
-	if _, err := callbacks.CreateCalendarSchedule(ctx, path, "Calendar", "UTC", []string{"prod"}, `[{"date":"2099-01-01","time":"09:00"}]`, "workshop", nil, "", "run", policy); err != nil {
+	notifyOnly := workflow.ScheduleRuntimePolicy{SetAfterRun: true, AfterRun: workflow.ScheduleAfterRunOptions{Notify: true}}
+	if _, err := callbacks.CreateCalendarSchedule(ctx, path, "Calendar", "UTC", []string{"prod"}, `[{"date":"2099-01-01","time":"09:00"}]`, "workshop", nil, "", "run", notifyOnly); err != nil {
 		t.Fatal(err)
 	}
 	saved, _, err := ReadWorkflowManifest(ctx, path)
@@ -119,6 +116,12 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	}
 	if len(saved.Schedules) != 3 || saved.Schedules[1].PulseModeReason != policy.PulseModeReason || saved.Schedules[2].PulseMode != "basic" {
 		t.Fatalf("policy not persisted: %+v", saved.Schedules)
+	}
+	if a := saved.Schedules[1].AfterRun; a == nil || !a.Backup || !a.Publish || !a.Notify {
+		t.Fatalf("basic schedule after_run = %+v, want all three", a)
+	}
+	if a := saved.Schedules[2].AfterRun; a == nil || a.Backup || a.Publish || !a.Notify {
+		t.Fatalf("calendar after_run = %+v, want notify only", a)
 	}
 	update := func(id string, p *workflow.ScheduleRuntimePolicy) (string, error) {
 		return callbacks.UpdateSchedule(ctx, id, "", "", "", nil, false, nil, false, nil, "", nil, false, nil, "", nil, nil, p)
@@ -141,8 +144,8 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 		t.Fatal("policy migration altered timing/enabled state")
 	}
 	listing, err := callbacks.ListSchedules(ctx, path)
-	if err != nil || !strings.Contains(listing, policy.PulseModeReason) {
-		t.Fatalf("list hides rationale: %v %s", err, listing)
+	if err != nil || !strings.Contains(listing, "backup=false, publish=false, notify=true") {
+		t.Fatalf("list hides the after-run options: %v %s", err, listing)
 	}
 }
 

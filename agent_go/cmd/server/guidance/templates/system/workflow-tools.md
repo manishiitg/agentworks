@@ -141,7 +141,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
   { "id": "...", "name": "...", "description": "...",
     "cron_expression": "0 9 * * 1-5", "timezone": "UTC",
     "enabled": true, "trigger_payload": {},
-    "pulse_mode": "basic", "pulse_mode_reason": "Routine daily processing needs backup and a summary; no review is needed on every occurrence.",
+    "after_run": {"backup": true, "publish": true, "notify": true},
     "group_names": ["confida-prod"],
     "mode": "workshop", "workshop_mode": "workshop" }
   ```
@@ -161,7 +161,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 
 ```
 { "name": "March content calendar", "timezone": "Asia/Kolkata",
-  "pulse_mode": "basic", "pulse_mode_reason": "Each launch batch needs backup and a summary; the workflow's own Pulse schedule reviews outcomes.",
+  "after_run": {"backup": true, "publish": true, "notify": true},
   "group_names": ["group-1"], "mode": "workshop", "workshop_mode": "workshop",
   "calendar_items": [
     { "date": "2026-03-03", "time": "09:00", "description": "Optional note" },
@@ -182,11 +182,7 @@ Workflow schedules always use the workshop builder execution path. Do not create
 
 **Default mode rule:** create workflow schedules with `mode="workshop"`. New schedules should never use `mode="workflow"`.
 
-**Pulse after scheduled runs**: Every cron and calendar schedule must persist `pulse_mode` (`off` or `basic`) and a non-empty `pulse_mode_reason`. New schedules cannot inherit. Updates must leave both fields complete; when changing the mode, supply a fresh reason with it. `full` is retired and rejected: the full Pulse review (Gate, drift, reviewers, Fixer) never runs after a normal run. It runs on the workflow's own Pulse schedule (`workflow.json` `pulse.enabled` + optional `pulse.schedule`), where each Pulse pass chooses its next run time with `record_pulse_next_run`, bounded by once a day and once a week. A legacy `full` reads and saves as `basic`. Do not create `pulse_review_only` schedules or a review cron. `/strategy-auditor` is the one-off review command; `/goal-advisor` is its compatibility alias.
-
-**Choosing `pulse_mode`**: use `basic` for normal schedules: backup, report publication and run-summary notification after every run. Use `off` only when skipping all of that is intentional, including an existing owner-disabled policy; explain that consequence. Review cadence is not a schedule choice any more; when a run produces material evidence (serious failure, plan/schema/evaluation change, abnormal cost), its finalizer can call `record_pulse_fast_request` to bring the next Pulse forward.
-
-**Persist the reason**: `pulse_mode_reason` must explain this schedule's purpose/frequency and why its post-run level fits. Store the explanation on the schedule, not only in chat. For example: `pulse_mode="basic", pulse_mode_reason="Runs approved-queue processing four times daily; each run needs backup and a summary."` Do not copy this example without checking the actual schedule.
+**After each run** (PLAT-697 phase 0): every cron and calendar schedule has `after_run` = `{backup, publish, notify}`, plain platform options with no Pulse pass. backup saves workflow state when it changed; publish refreshes the published report when it changed; notify sends the run summary (routine successes are recorded in the dashboard, failures and status changes go to the channels). Normal schedules turn all three on (the default when you omit it); turn one off only when the owner wants that, and say what is lost. `pulse_mode` is legacy: read for one release when `after_run` is absent (basic = all three, off = none) and kept in step with `after_run` automatically; do not set it. Runs started from a chat use the workflow's `after_manual_run` options. Pulse never runs after a normal run: it runs on the workflow's own Pulse schedule (`workflow.json` `pulse.enabled`), where each pass chooses its next time with `record_pulse_next_run`. Do not create `pulse_review_only` schedules or a review cron. The Workflow Review (Plan Drift) runs before every run on its own: unchanged plans start at once, a changed plan is reviewed first. `/strategy-auditor` is the one-off review command; `/goal-advisor` is its compatibility alias.
 
 ### Back up scheduled workflows
 

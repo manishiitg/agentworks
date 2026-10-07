@@ -63,6 +63,10 @@ type ScheduleContext struct {
 	// Technical Review+Fix only, and a light finish. PulseFixReason is why.
 	PulseFixRun    bool
 	PulseFixReason string
+	// AfterRunBackup and AfterRunPublish select the after-run housekeeping
+	// turn's actions (after_run.go): only those with something to do.
+	AfterRunBackup  bool
+	AfterRunPublish bool
 	// PulseGoalCheck marks the daily goal check (pulse_goal_check.go): one
 	// short goal turn, no Gate, reviewers or finalizer. It shares the full
 	// Pulse's schedule ID, so it never runs beside a Pulse pass.
@@ -305,13 +309,21 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
 	for i := range workflows {
-		if workflows[i].Manifest.MigrateLegacyPulseSchedule() {
+		legacyPulse := workflows[i].Manifest.MigrateLegacyPulseSchedule()
+		// pulse_mode -> after_run (PLAT-697 phase 0): each schedule keeps
+		// exactly the backup, publish and notify its mode did.
+		afterRun := workflows[i].Manifest.MigrateScheduleAfterRun()
+		if legacyPulse || afterRun {
 			if err := WriteWorkflowManifest(ctx, workflows[i].WorkspacePath, workflows[i].Manifest); err != nil {
-				scheduleLogf("[PULSE] Failed to migrate legacy dedicated schedule in %s: %v", workflows[i].WorkspacePath, err)
+				scheduleLogf("[PULSE] Failed to migrate schedules in %s: %v", workflows[i].WorkspacePath, err)
 			} else {
-				scheduleLogf("[PULSE] Migrated legacy dedicated schedule to pulse.enabled in %s", workflows[i].WorkspacePath)
+				scheduleLogf("[PULSE] Migrated schedules in %s (legacy Pulse schedule=%v, after-run options=%v)", workflows[i].WorkspacePath, legacyPulse, afterRun)
 			}
 		}
+	}
+	// After-run options for full runs started from a chat (after_run.go).
+	stepworkflow.AfterWorkflowRunHook = func(workspacePath, runFolder, status, sessionID string) {
+		s.runManualAfterRunOptions(workspacePath, runFolder, status, sessionID)
 	}
 	for _, wf := range workflows {
 		// Reviewer rows are stranded by an interrupted agent process and no
@@ -529,6 +541,9 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				s.launchDueFixRuns(context.Background())
 				// Then the daily goal check (PLAT-697).
 				s.launchDueGoalChecks(context.Background())
+				// Workflow Review after a plan change, so most runs find it
+				// already done (PLAT-697 phase 0). Not a Pulse run.
+				s.launchDueWorkflowReviews(context.Background())
 			}()
 			lastTick = t
 		}
@@ -2446,8 +2461,28 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 
+	// Workflow Review before the run (PLAT-697 phase 0): a code check, and the
+	// review only when the plan changed or has new breaks since the last one.
+	// A break it could not fix stops the run with the reason.
+	var sessionID, runFolder string
+	var execErr error
+	if !sctx.PulseOnly && sctx.WebhookInput == nil && sctx.WorkflowKind != "relay" {
+		gate := s.ensureWorkflowReviewedBeforeRun(ctx, sctx.WorkspacePath, nil, triggerSource)
+		if gate.Notice != "" {
+			s.logf(sctx, "[WORKFLOW REVIEW] %s", gate.Notice)
+		}
+		if !gate.Proceed {
+			execErr = errors.New(gate.BlockReason)
+			if ctx.Err() != nil {
+				execErr = errors.Join(errWorkshopSequenceInterrupted, ctx.Err())
+			}
+		}
+	}
+
 	// Execute
-	sessionID, runFolder, execErr := s.executeJob(ctx, sctx, runID)
+	if execErr == nil {
+		sessionID, runFolder, execErr = s.executeJob(ctx, sctx, runID)
+	}
 	// Execution cancellation must stop work, not the durable record explaining
 	// why it stopped. Preserve scheduler-scoped values while removing cancellation
 	// from all post-execution history and state writes.
@@ -2528,39 +2563,36 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 
-	// Pulse runs after a normal schedule only when its effective pulse mode is
-	// basic or full. Basic performs backup, report publishing, and run-summary
-	// notification only. Full additionally gates, reviews, repairs, and sends
-	// the Pulse summary. workflow.json pulse.enabled supplies the default;
-	// schedule pulse_mode can explicitly override it. There is no independent cron.
-	// Manual one-off Pulse explicitly forces the same lifecycle.
-	// Never affects the run's recorded result.
+	// After the run: a Pulse-only run (full Pulse, fix run, goal check) runs
+	// its Pulse lifecycle; a normal schedule runs its after-run options
+	// (backup, publish, notify; after_run.go), which are code unless backup or
+	// publish has something to do (PLAT-697 phase 0). Never affects the run's
+	// recorded result.
 	// An automated lane that still requires a current contract (currently a
-	// direct webhook) can return the migration sentinel. Pulse then has nothing
-	// to steward: the workflow never executed, so there is no
-	// evidence to gate on, nothing to review, and nothing to publish. All a
-	// pass can do is repeat the banner's instruction. Skip it and leave the
-	// workflow upgrade to the operator's Workshop chat.
+	// direct webhook) can return the migration sentinel. The workflow never
+	// executed, so there is nothing to review, back up or publish. Skip it and
+	// leave the workflow upgrade to the operator's Workshop chat.
 	migrationRequired := errors.Is(execErr, errWorkflowContractMigrationRequired)
 	if migrationRequired {
 		s.sessionLogf(sctx, sessionID, "[PULSE] skipped for %s: this workflow requires a manual contract migration, so it did not run and there is no evidence to review", schedID)
 	}
-	if status != scheduleRunStatusWaitingForCapacity && !migrationRequired && !userInterrupted && runFolder != "" {
-		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found && shouldRunPulseLifecycle(sctx, manifest) {
-			pulseMode := effectiveSchedulePulseMode(sctx, manifest)
-			pulseEvidenceStatus := status
-			if sctx.PulseOnly && strings.TrimSpace(sctx.PulseEvidenceRunStatus) != "" {
-				pulseEvidenceStatus = sctx.PulseEvidenceRunStatus
-			}
-			// Manual Pulse enters its explicit lifecycle state. A normal schedule
-			// continues post-run in the same session against the run it just made.
+	if status != scheduleRunStatusWaitingForCapacity && !migrationRequired && !userInterrupted {
+		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found {
 			if sctx.PulseOnly {
-				s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
-					RunID: runID, To: schedulerstate.StatePulseGate, Reason: "dedicated Pulse review started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
-				})
+				if runFolder != "" && shouldRunPulseLifecycle(sctx, manifest) {
+					pulseEvidenceStatus := status
+					if strings.TrimSpace(sctx.PulseEvidenceRunStatus) != "" {
+						pulseEvidenceStatus = sctx.PulseEvidenceRunStatus
+					}
+					s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
+						RunID: runID, To: schedulerstate.StatePulseGate, Reason: "dedicated Pulse review started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
+					})
+					pulseResult = s.runPulseLifecycle(ctx, sctx, effectiveSchedulePulseMode(sctx, manifest), pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
+				}
+			} else if sctx.WebhookInput == nil {
+				// The housekeeping turn, when needed, resumes the run's own chat.
+				pulseResult = s.runAfterRunOptions(ctx, sctx, manifest, status, errMsg, runFolder, sessionID, runID, time.Since(startTime))
 			}
-			// Pass the run's sessionID so the next message resumes the SAME chat.
-			pulseResult = s.runPulseLifecycle(ctx, sctx, pulseMode, pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
 		}
 	}
 
@@ -2671,7 +2703,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	// own the semantic choices and per-finding lifecycle.
 	pulseContext := "A scheduled run of this workflow just finished"
 	if pulseMode == schedulePulseModeBasic {
-		pulseContext = "A scheduled run of this workflow just finished; its schedule requests basic post-run finalization only"
+		pulseContext = "A run of this workflow just finished; its after-run options need backup or publish, which this one short turn does. This is not a Pulse pass"
 	}
 	if sctx.PulseOnly {
 		pulseContext = "This is a manual Pulse-only review of the latest retained workflow evidence. The workflow was not executed by this action"
@@ -2775,30 +2807,37 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 
 	var steps []pulseLifecycleStep
 	if pulseMode == schedulePulseModeBasic {
-		pulseTiming := ""
-		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found {
-			pulseTiming = pulseScheduleTimingSummary(ctx, sctx.WorkspacePath, manifest)
+		// After-run housekeeping (after_run.go): only the backup and publish
+		// the code check found work for. Notify is sent by code after this
+		// turn; its command is closed after the turn.
+		skip := func(command, reason string) {
+			if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, command, pulseRunID, "skipped", reason); err != nil {
+				s.sessionLogf(sctx, sessionID, "[AFTER RUN] could not mark %s skipped: %v", command, err)
+			}
 		}
-		steps = scheduledRunFinalizeStepWithPulseTiming(scheduleRunID, pulseTiming, notificationInstructionsFromCapabilities(sctx.Capabilities))
-		s.sessionLogf(sctx, sessionID, "[PULSE] basic post-run finalization selected for %s; Gate, drift review, reviewers, and Fixer are disabled by this schedule", sctx.Schedule.ID)
+		if !sctx.AfterRunBackup {
+			skip(pulseFinalCommandBackup, "Not selected for this run, or nothing changed since the last backup.")
+		}
+		if !sctx.AfterRunPublish {
+			skip(pulseFinalCommandPublish, "Not selected for this run, or the published report is current.")
+		}
+		steps = afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish)
+		s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping turn for %s: backup=%v publish=%v", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
 	} else if !reviewEvidenceAvailable {
 		steps = pulseLifecycleNoRunSteps(pulseRunID, runFailureReason, notificationInstructionsFromCapabilities(sctx.Capabilities))
 	} else if sctx.PulseGoalCheck {
 		steps = []pulseLifecycleStep{pulseLifecycleGoalCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))}
 		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s", sctx.WorkspacePath)
 	} else if sctx.PulseFixRun {
-		// A fix run records its own worklist instead of running the Gate agent:
-		// Plan Drift when its checks require it, then Technical Review+Fix,
-		// then the light finish (backup, publish, notify).
+		// A fix run records its own worklist instead of running the Gate agent
+		// and runs Technical Review+Fix only. Workflow Review runs before runs
+		// and backup/publish/notify are per-schedule after-run options
+		// (PLAT-697 phase 0), so neither is part of a fix run.
 		if err := recordPulseFixRunWorklist(ctx, sctx.WorkspacePath, pulseRunID, sctx.PulseFixReason); err != nil {
 			s.sessionLogf(sctx, sessionID, "[PULSE] fix run could not record its worklist: %v", err)
 		} else {
-			if due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, pulseModulePlanDriftReview); err == nil && due {
-				steps = append(steps, pulseLifecyclePlanDriftReviewStep(pulseRunID))
-			}
 			steps = append(steps, pulseLifecycleModuleReviewStep(pulseRunID, pulseModuleTechnicalReview))
 		}
-		steps = append(steps, scheduledRunFinalizeStepWithPulseTiming(scheduleRunID, "", notificationInstructionsFromCapabilities(sctx.Capabilities))...)
 		s.sessionLogf(sctx, sessionID, "[PULSE] fix run selected %d steps for %s: %s", len(steps), sctx.WorkspacePath, sctx.PulseFixReason)
 	} else {
 		gateStep := pulseLifecycleGateStep(pulseRunID, runFolder, runStatus)
@@ -2846,33 +2885,14 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			}
 		}
 		if gateCompleted {
-			// plan_drift_review is an exclusive prerequisite pass. Do not dispatch
-			// another reviewer against a plan this worklist already says is stale.
-			planDriftDue, planDriftDueErr := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, pulseModulePlanDriftReview)
-			if planDriftDueErr != nil {
-				s.sessionLogf(sctx, sessionID, "[PULSE] could not inspect plan_drift_review due-module receipt after Gate; preserving the plan drift review turn: %v", planDriftDueErr)
-				steps = append(steps, pulseLifecyclePlanDriftReviewStep(pulseRunID))
-				planDriftDue = true
-			} else if planDriftDue {
-				steps = append(steps, pulseLifecyclePlanDriftReviewStep(pulseRunID))
-			}
-			// Plan Drift is a prerequisite for Architecture only, which resumes
-			// on the next Pulse cycle rather than judging a plan already known
-			// to drift -- at most twice in a row (PLAT-556), after which it runs
-			// here scoped away from Drift's flagged steps. Technical and Goal Work still run after it (Goal Work
-			// without its Run and Change permissions; the tools refuse them for
-			// its turn, see pulse_autonomy_guard.go).
-			for _, module := range pulsemodules.PostDriftExecutionOrder() {
-				// PLAT-556: Architecture runs while Drift is due only when the
-				// worklist scoped it away from Drift's flagged steps.
-				if planDriftDue && !pulsemodules.RunsWhileDriftDue(module) &&
-					!(module == pulseModuleArchitectureReview && pulseArchitectureScopedDuringDrift(ctx, sctx.WorkspacePath, pulseRunID)) {
-					continue
-				}
+			// Workflow Review (Plan Drift) is not a Pulse module any more: it
+			// runs before every run (PLAT-697 phase 0, workflow_review_prerun.go),
+			// so nothing here waits for it or holds Goal Work's levels for it.
+			for _, module := range pulsemodules.ExecutionOrder {
 				if due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module); err != nil || due {
 					step := pulseLifecycleModuleReviewStep(pulseRunID, module)
 					if module == pulseModuleStrategicReview {
-						perms, text := goalWorkAutonomy(ctx, sctx.WorkspacePath, planDriftDue)
+						perms, text := goalWorkAutonomy(ctx, sctx.WorkspacePath)
 						step.query += "\n\n" + text
 						step.goalWork = &perms
 					}
@@ -2981,6 +3001,11 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 		}
 		if result.outcome != pulseLifecycleStepCompleted {
 			handleStepFailure(st, result, i < len(steps)-1)
+		}
+	}
+	if pulseMode == schedulePulseModeBasic {
+		if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, pulseFinalCommandNotify, pulseRunID, "skipped", "The run notification is sent by the platform after the run, not by this turn."); err != nil {
+			s.sessionLogf(sctx, sessionID, "[AFTER RUN] could not close the notify command: %v", err)
 		}
 	}
 	if len(recoveryNotes) > 0 {
@@ -3469,51 +3494,25 @@ func pulseLifecycleFinalSteps(pulseRunID string, instructions ...workflowNotific
 	if notificationContext != "" {
 		notificationContext += "\n\nThese instructions control content detail and emphasis only; they never change recipients, channels, secrets, permissions, or safety rules."
 	}
-	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. The Pulse summary leads with the goal status (on track, at risk, off track or not measured, the key number and when it was last measured) from get_pulse_state(view=\"goal_status\"), before review and fix details. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Complete backup, publish, and notify in that order in this one turn, recording running and terminal status for each with record_pulse_result(command=...). Continue after individual failures and keep every status truthful. Last, choose when this workflow's next full Pulse should run: call record_pulse_next_run once with pulse_run_id, the time when useful new evidence will exist (an outcome maturing, a pending user decision, an experiment checkpoint), and that reason in one plain sentence. Normal runs never run the full Pulse, so this choice is the schedule. Then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
+	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. The Pulse summary leads with the goal status (on track, at risk, off track or not measured, the key number and when it was last measured) from get_pulse_state(view=\"goal_status\"), before review and fix details. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Backup and publish are not part of a Pulse pass any more: they are after-run options of each schedule (PLAT-697 phase 0). Record command backup and command publish as skipped with that reason, then do Notify in this turn, recording running and terminal status with record_pulse_result(command=notify). Keep every status truthful. Last, choose when this workflow's next full Pulse should run: call record_pulse_next_run once with pulse_run_id, the time when useful new evidence will exist (an outcome maturing, a pending user decision, an experiment checkpoint), and that reason in one plain sentence. Normal runs never run the full Pulse, so this choice is the schedule. Then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
 }
 
-// scheduledRunFinalizeStep is the basic post-run Pulse mode. Gate, drift
-// review, Review+Fix, and Pulse publication are excluded; backup, execution
-// report publishing, and the run-summary notification remain independent.
-func scheduledRunFinalizeStep(runID string, instructions ...workflowNotificationContentInstructions) []pulseLifecycleStep {
-	return scheduledRunFinalizeStepWithPulseTiming(runID, "", instructions...)
-}
-
-func scheduledRunFinalizeStepWithPulseTiming(runID, pulseTiming string, instructions ...workflowNotificationContentInstructions) []pulseLifecycleStep {
-	ownerInstructions := workflowNotificationContentInstructions{}
-	if len(instructions) > 0 {
-		ownerInstructions = instructions[0]
+// afterRunHousekeepingSteps is the one short turn a run's after-run options
+// need when the code check found something to back up or publish
+// (after_run.go). It is not a Pulse pass: no Gate, reviews or fixes, and no
+// notification (the platform sends the run summary in code afterwards).
+func afterRunHousekeepingSteps(runID string, backup, publish bool) []pulseLifecycleStep {
+	var actions []string
+	if backup {
+		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and record its truthful terminal result")
 	}
-	routing := ""
-	if len(ownerInstructions.runSummaryChannels) > 0 {
-		routing += fmt.Sprintf(" Configured run-summary channels: %s; the backend enforces them from notification_kind.", notificationChannelSummary(ownerInstructions.runSummaryChannels))
-	}
-	if len(ownerInstructions.runSummaryRecipients) > 0 {
-		routing += fmt.Sprintf(" The backend addresses email from the workflow's saved run-summary recipients (%s); do not pass email_to.", notificationRecipientSummary(ownerInstructions.runSummaryRecipients))
-	}
-	content := ""
-	if runInstructions := strings.TrimSpace(ownerInstructions.runSummary); runInstructions != "" {
-		content = "\n\nApply these saved run-summary content instructions without changing the facts:\n" + runInstructions
-	}
-	fastPulseDecision := ""
-	if strings.TrimSpace(pulseTiming) != "" {
-		fastPulseDecision = "\n\nPulse timing context: " + pulseTiming + " After completing the ordinary run finalization, decide whether this run created material new evidence that needs an earlier separate Pulse review. For routine/no-change work, or when waiting for the upcoming scheduled review is sufficient, do nothing. For a meaningful workflow/plan/schema/evaluation change, serious regression, or abnormal cost/runtime evidence where waiting is worse, call record_pulse_fast_request exactly once with this run_id, a concrete reason, and bounded artifact references. That only moves the workflow's own Pulse schedule earlier (as soon as its once-a-day guard allows); it never runs review inline or changes any schedule."
+	if publish {
+		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md, exactly as an ordinary run would, and record one truthful terminal result. Never suppress a valid report publish merely because backup was partial or failed")
 	}
 	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf(
-		"WORKFLOW RUN FINALIZER — BACKUP, REPORT PUBLISH, AND NOTIFY ONLY. run_id=%q. "+
-			"This schedule selected basic Pulse, so Gate, drift review, reviewers, and Fixer are intentionally excluded. This is normal, not a missing Pulse pass. Do not run Gate, reviewers, "+
-			"or Fixer, do not read old Pulse findings and present them as new, and do not write builder/improve.html.\n\n"+
-			"Do these in order and record each with record_pulse_result(command=..., result=..., reason=...): "+
-			"(1) run the configured source-hash-gated backup and record its truthful terminal result; "+
-			"(2) independently of whether backup succeeded, read workflow.json's publish.targets. A \"report\" (or any non-\"pulse\") target is this run's own execution "+
-			"output — publish it normally, following publish-strategy.md, exactly as an ordinary run would; it is fresh this "+
-			"run regardless of whether Pulse reviewed anything. The \"pulse\" target specifically has nothing new this pass — "+
-			"no Gate/Review+Fix ran — and must be skipped for that reason alone. If \"pulse\" is the only configured target, "+
-			"mark the whole publish command skipped with that reason. Never suppress a valid report publish merely because backup was partial or failed. Record one truthful terminal result for publish either way; "+
-			"(3) call notify_user exactly once with notification_kind=\"run_summary\" describing plainly and factually what this run "+
-			"itself did (actions taken, errors, outcome) — do not include a Pulse findings/fixes section, since none ran this pass — "+
-			"and include summary_title, summary_status, summary_fields, summary_sections, and summary_route when route-scoped. summary_status must directly say what the workflow is doing now: completed, failed, blocked, waiting_for_user, waiting_for_platform, monitoring, informational, or no_run. Explain any blocker in the title, message, facts, or sections. Then record notify truthfully.%s%s%s%s",
-		runID, routing, finalizerRichEmailInstruction, content, fastPulseDecision,
+		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not a Pulse pass: do not run Gate, reviewers or Fixer, do not present old Pulse findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+
+			"Do only these, in order, recording each with record_pulse_result(command=..., result=..., reason=...) as running and then terminal: %s. The other final commands are already closed. Then stop.",
+		runID, strings.Join(actions, "; "),
 	)}}
 }
 
@@ -5121,13 +5120,13 @@ func lockedScheduleCapabilities(caps WorkflowCapabilities) WorkflowCapabilities 
 // goalWorkAutonomy is the workflow's Goal Work permission levels for the
 // strategic review turn, and the same levels as text. A manifest that cannot be
 // read gives the defaults (run auto, outward and change ask).
-func goalWorkAutonomy(ctx context.Context, workspacePath string, planDriftDue bool) (stepworkflow.GoalWorkPermissions, string) {
+func goalWorkAutonomy(ctx context.Context, workspacePath string) (stepworkflow.GoalWorkPermissions, string) {
 	manifestJSON := ""
 	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found {
 		if encoded, marshalErr := json.Marshal(manifest); marshalErr == nil {
 			manifestJSON = string(encoded)
 		}
 	}
-	perms := stepworkflow.GoalWorkEffectivePermissions(manifestJSON, planDriftDue)
-	return perms, stepworkflow.GoalWorkAutonomyInstructions(perms, planDriftDue)
+	perms := stepworkflow.GoalWorkEffectivePermissions(manifestJSON)
+	return perms, stepworkflow.GoalWorkAutonomyInstructions(perms)
 }

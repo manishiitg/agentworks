@@ -41,7 +41,7 @@ and the claim is refused, report the collision and stop without writing items.
 3. Perform the review yourself in this turn. This manual path is not
    runtime-restricted, so hold the permission levels yourself: write prepared
    work only under `pulse/work/<YYYY-MM-DD>/`; run existing steps only when Run
-   is auto and the plan has no due Plan Drift; never post, send, contact anyone,
+   is auto (a run is checked by the Workflow Review first); never post, send, contact anyone,
    purchase or change external records yourself; never edit the plan, steps,
    schedules, configuration, workflow DB data or reports. Put those to the user
    as ready decisions with `create_human_input_request`. Do not ask a blocking

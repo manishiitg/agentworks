@@ -412,12 +412,12 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 	if len(instructions.pulseSummaryChannels) > 0 {
 		routing = fmt.Sprintf(" Configured Pulse-summary channels: %s; the backend routes by notification_kind.", notificationChannelSummary(instructions.pulseSummaryChannels))
 	}
-	perms, autonomyText := goalWorkAutonomy(ctx, workspacePath, false)
+	perms, autonomyText := goalWorkAutonomy(ctx, workspacePath)
 	pausedRule := ""
 	if paused {
 		// Report only, held by the tools too (PLAT-697 phase 2 guard).
 		perms = stepworkflow.GoalWorkPermissions{}
-		autonomyText = stepworkflow.GoalWorkAutonomyInstructions(perms, false)
+		autonomyText = stepworkflow.GoalWorkAutonomyInstructions(perms)
 		pausedRule = "\n\nSCHEDULES ARE PAUSED ON PURPOSE. Report only: do not run steps or the workflow and do not create decisions (recommending on pending ones and recording outcomes and memory is fine). Say once that the schedules are paused and what that means for the goal (for example how long it has gone unmeasured); this check exists to say it once."
 	}
 	goalLead := "{}"

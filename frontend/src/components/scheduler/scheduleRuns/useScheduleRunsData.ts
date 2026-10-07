@@ -10,7 +10,7 @@ import { selectWorkflowPreset } from '../../../utils/workflowNavigation'
 import { scheduleTabLabel } from '../../../utils/scheduleTabLabel'
 import { resolveWorkflowTabForSession } from '../../../utils/workflowTabResolution'
 import { hydrateExecutionConversation } from '../../../utils/executionConversationRestore'
-import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused } from '../../../services/api-types'
+import type { ScheduleAfterRun, ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused } from '../../../services/api-types'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import {
   WORKFLOW_SCHEDULE_PANEL_LIMIT,
@@ -514,6 +514,16 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     }
   }
 
+  const handleAfterRun = async (job: ScheduledJob, afterRun: ScheduleAfterRun) => {
+    try {
+      const updated = await schedulerApi.updateJob(job.id, { after_run: afterRun })
+      setJobs(previous => previous.map(candidate => candidate.id === job.id ? retainDurationAverage(updated, candidate) : candidate))
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unable to change after-run options'
+      useChatStore.getState().addToast(detail, 'error')
+    }
+  }
+
   // Pause (or resume) every schedule belonging to a single workflow group in one click.
   // If any schedule in the group is enabled, pause them all; otherwise resume all paused ones.
   const handleToggleWorkflowGroupPause = async (group: WorkflowScheduleGroup) => {
@@ -858,6 +868,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     selectedCalendarCell,
     handleToggle,
     handleRunDestination,
+    handleAfterRun,
     handleToggleWorkflowGroupPause,
     handleDelete,
     handleTrigger,

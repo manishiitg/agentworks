@@ -21,7 +21,7 @@ describe('global schedule table', () => {
     } as ScheduledJob
     const trigger = vi.fn()
     const panel = { focusedScheduleId: null as string | null, filteredJobs: [job], presetMap: new Map(), potentialOverlaps: new Map<string, string>(), isSchedulerPaused: true, isReadOnlyUser,
-      triggering: null, handleStopRun: vi.fn(), handleTrigger: trigger, handleToggle: vi.fn(), handleDelete: vi.fn(),
+      triggering: null, handleStopRun: vi.fn(), handleTrigger: trigger, handleToggle: vi.fn(), handleDelete: vi.fn(), handleAfterRun: vi.fn(),
       openActionMenuJobId: null, setOpenActionMenuJobId: vi.fn(),
       expandedRunHistoryJobIds: new Set<string>(), runsByJob: {}, runsLoadingJobIds: new Set<string>(), toggleRunHistory: vi.fn(), openScheduledRun: vi.fn(),
     }
@@ -75,7 +75,7 @@ describe('global schedule table', () => {
     const job = { id: 'daily', name: 'Daily report', schedule_type: 'cron', enabled: true, last_status: 'error', missed_run_count: 1, cron_expression: '0 8 * * *' } as ScheduledJob
     const trigger = vi.fn()
     const panel = { focusedScheduleId: null, filteredJobs: [job], presetMap: new Map(), potentialOverlaps: new Map<string, string>(), isSchedulerPaused: false, isReadOnlyUser: false,
-      triggering: job.id, handleStopRun: vi.fn(), handleTrigger: trigger, handleToggle: vi.fn(), handleDelete: vi.fn(),
+      triggering: job.id, handleStopRun: vi.fn(), handleTrigger: trigger, handleToggle: vi.fn(), handleDelete: vi.fn(), handleAfterRun: vi.fn(),
       openActionMenuJobId: null, setOpenActionMenuJobId: vi.fn(), expandedRunHistoryJobIds: new Set<string>(), runsByJob: {}, runsLoadingJobIds: new Set<string>(), toggleRunHistory: vi.fn(), openScheduledRun: vi.fn(),
     }
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)

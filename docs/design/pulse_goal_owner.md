@@ -1,6 +1,6 @@
 # Goal Lead: Pulse as the goal owner
 
-Status: phases 1-3 built (goal check, silence alarm, one message; enforced autonomy; recommendations on decisions, goal memory in `memory/goal.md`, decision log); later phases design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 0-3 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log); later phases design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07): **Goal Lead**, e.g. "Substack Goal Lead". It replaces "Pulse" as the agent users see.
 In user text, "lead" means the Goal Lead only; sales prospects are "prospects" or "contacts" there.

@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | goals |
 | Area | pulse |
-| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 1-3 on main (goal check; enforced autonomy; recommendations on decisions, goal memory, decision log) |
+| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-3 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log) |
 
 ## What happened
 
@@ -55,7 +55,8 @@ goal check turn itself is not yet run live.
 - Phase 3 (below): not run live; `pulse.autonomy.answer=act` (Pulse answering within its levels, and a safe
   default applied when its time passes) is not built; the owner's answer reaches memory as a straight copy, so a
   reason the owner gives only in chat is not distilled until Pulse adds it.
-- Phases 0 and 4-6.
+- Phase 0 left: see "Phase 0" below.
+- Phases 4-6.
 
 ## What and why
 
@@ -91,8 +92,7 @@ contract text fixed.
   `send_slack_message` and Slack writes, runs Google (`gog`) read-only, and
   refuses `notify_user` to `email_to`/`email_cc`. Each refusal says to create a
   decision request instead.
-- A due Plan Drift holds Run and Change (as `docs/design/pulse_goal_work.md`
-  says) in both the text and the tools; moving Drift out of Pulse is phase 0.
+- (Superseded by phase 0: Workflow Review no longer holds Run or Change.)
 - The tool catalog is not narrowed per turn (that is why PLAT-452 did not keep
   `goalWorkToolAllowed`, a filtered tool list of the removed background agent);
   calls are refused instead.
@@ -140,3 +140,58 @@ Tests: `TestGoalLeadRecommendsAndOnlyTheOwnerAnswers` (a Pulse session's answer 
 stored as Pulse's and the decision stays pending; the owner's Accept answers with the recommended option, marks it
 accepted and writes the owner-answer line to `memory/goal.md`), `GoalLeadPanel.test.tsx` (the Needs you card and
 Accept). Not run live.
+
+## Phase 0: Workflow Review before runs; housekeeping out of Pulse (on main, not deployed)
+
+Workflow Review (Plan Drift) is a pre-run check (`cmd/server/workflow_review_prerun.go`):
+
+- Before every run (scheduled runs in `runJob`; `execute_step` / `run_full_workflow` from any chat, Builder, Run or
+  a Pulse turn, through `workflowReviewPreRunRegistrar`) a code check reads the due set Pulse's Gate used to be
+  forced to act on: `CollectPlanDriftDueItems` (no current drift review, a plan-edit flag, an old contract version,
+  new reference-map breaks under the current flags version) plus plan changes without dependency receipts.
+  Clean: the run starts, no AI call.
+- Otherwise the review runs first: the same reviewer contract (`plan-drift-review.md`) and typed receipts, in its own
+  "Workflow Review" conversation with only the `plan_drift_review` worklist row. A scheduled run waits for it; a chat's
+  run tool returns at once with "Reviewing the workflow before running…", the review shows as a background job of
+  that chat, and its completion notifies the chat to run again. A break the review leaves stops the run with the
+  reason (only runs that touch the broken step); a review that does not finish lets the run go.
+- One review per plan revision (a hash of the due set and plan.json / step_config.json), stored in `planning/workflow_review.json`; the same state
+  is never reviewed twice, so a run never loops. One review per workflow at a time.
+- After changes: a tick launcher reviews workflows with an enabled schedule once the plan has been quiet for 10
+  minutes (Builder edits, contract upgrades and flags-version bumps all change the due set), one at a time.
+- Pulse no longer schedules, waits for or holds anything for it: `pulsemodules.ExecutionOrder` is Goal Work,
+  Architecture, Technical; Gate's worklist records `plan_drift_review` not due; Goal Work keeps its levels; the
+  fix run is Technical only. `get_pulse_state(view="module")` and the Pulse status API carry the latest review
+  (`workflow_review`) as an input.
+
+Backup, publish and notify are each schedule's after-run options (`cmd/server/after_run.go`):
+
+- `after_run: {backup, publish, notify}` on each schedule (and `after_manual_run` for full runs from a chat) replaces
+  `pulse_mode`. Notify is code: a run summary from the run's facts through the normal notification path (failures and
+  status changes to the channels, routine successes recorded in the dashboard only). Backup and publish are skipped in
+  code when the source hash matches the last backup / publish; only when there is something to do does one short
+  housekeeping turn run, limited to those actions (provider steps live in `backup-strategy.md` /
+  `publish-strategy.md`). The full Pulse finalizer no longer backs up or publishes.
+- Migration at server start: basic, and the retired full, → all three on (what the basic finalizer did after a normal
+  run); off → none; a legacy full keeps the workflow's own Pulse on. `pulse_mode` is read for one release where
+  `after_run` is absent and kept in step with it (so older servers and the contract stamp read the same choice).
+  These edits do not write plan changelog entries, so they never start a review. The daily goal check and the full
+  Pulse start from `pulse.enabled`, not `pulse_mode`.
+- UI: three checkboxes per workflow schedule (list and table views) and a "After a manual run" row; the Pulse tab no
+  longer shows backup/publish/notify statuses or a "Workflow Review due" state.
+
+Left / risks:
+
+- Backup and publish to remote providers still need an agent turn when something changed; turning the provider
+  playbooks into code is not done.
+- The code run summary does not apply the workflow's run-summary content instructions, and no longer offers the
+  fast Pulse request after a run.
+- Workflows that never ran Plan Drift (Pulse off) get a full review on their first run after deploy; workflows with
+  enabled schedules are reviewed ahead by the tick launcher (cost on first deploy).
+- A break the review leaves goes to the Workflow Review chat (a Builder-mode chat of the workflow) and the stopped
+  run's error; it is not posted into an existing Builder chat.
+- The Pulse tab has no separate "recent activity" list; nothing moved to an Activity tab.
+- Webhook and Relay deliveries are not reviewed before they run.
+- Not run live. Tests: `TestWorkflowReviewRunsOncePerPlanRevisionBeforeARun`,
+  `TestPulseModeMigratesToAfterRunOptions`, `ScheduleListView.test.tsx`.
+

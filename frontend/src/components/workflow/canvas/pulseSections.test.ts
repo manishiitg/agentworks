@@ -15,7 +15,7 @@ describe('Pulse workspace registry', () => {
 
   it('exposes the complete finalization command set once', () => {
     const commandIds = PULSE_FIXED_COMMANDS.map(command => command.id)
-    expect(commandIds).toEqual(['dashboard', 'backup', 'publish', 'notify'])
+    expect(commandIds).toEqual(['dashboard'])
     expect(new Set(commandIds).size).toBe(commandIds.length)
   })
 

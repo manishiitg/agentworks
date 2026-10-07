@@ -5,9 +5,14 @@ Confirm every due module has a terminal result. Never treat missing as skipped/s
 Pulse state, questions, findings, fixes, and history live in SQLite and are
 shown in the Pulse popup. Do not write a separate presentation artifact in this turn.
 
-Run Backup, Publish, then Notify. Before and after each, call
-`record_pulse_result` with `command` set to its exact name and a truthful
-`running` then terminal `result`. Continue through Notify after individual failures.
+A Pulse pass does not back up or publish (PLAT-697 phase 0): those are
+after-run options of each schedule and run after the workflow's own runs.
+Record `backup` and `publish` with `record_pulse_result(command=...)` as
+`skipped` for that reason, then Notify: `running`, then a truthful terminal
+result.
+
+The rules below for Backup and Publish apply only to the after-run
+housekeeping turn, when its prompt asks for them:
 
 1. **Backup.** Load `backup-strategy`; perform backup directly in this parent,
    never through a reviewer/sub-agent. Skip only when the current source hash is
@@ -37,7 +42,7 @@ Run Backup, Publish, then Notify. Before and after each, call
    A `pulse_summary` leads with Goal Work, in the user's words: what Pulse did
    for them (with the work linked), what needs them, and any rule it is
    challenging. Read `get_pulse_state(view="goal_work")` for the items. Platform
-   upkeep (Drift, Technical, Architecture) follows in a short line unless it
+   upkeep (Technical, Architecture) follows in a short line unless it
    needs the user.
 
    The terminal `record_pulse_result(module=...)` calls are the single source for

@@ -44,7 +44,9 @@ describe('PulseWorkspace information hierarchy', () => {
     // run + change auto, outward ask = the "Edit workflow" stop.
     expect(html).toContain('Also edits steps and schedules. Asks before new posts or messages.')
     expect(html).not.toContain('Always asks you')
-    expect(html).toContain('Workflow Review due')
+    // Workflow Review runs before runs (PLAT-697 phase 0): no "due" state here.
+    expect(html).not.toContain('Workflow Review due')
+    expect(html).not.toContain('Drift due')
     // Platform upkeep and the retired improvement ledger are not on the user's view.
     expect(html).not.toContain('Maintenance issues')
     expect(html).not.toContain('Strategic proposals')

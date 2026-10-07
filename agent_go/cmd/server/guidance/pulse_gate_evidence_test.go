@@ -25,21 +25,16 @@ func TestPulseGateAssessesImpactAndAccumulatesEvidence(t *testing.T) {
 		"All three non-drift reviews may be skipped",
 		"New critical regressions, security/data-loss risks",
 		"Ordinary recovered errors do not override it",
-		"deterministic hard requirement for `plan_change_dependencies` belongs to",
-		"reviewer must inspect each surface and record",
-		"until those structured receipts are complete",
-		"plan_drift_review.due=true",
-		// Plan Drift runs first, not alone: Technical and Goal Work are still
-		// decided on their merits; only Architecture waits (2026-09-25).
-		"Plan Drift runs first, not alone",
-		"Do not skip them because Plan Drift is",
-		"Only Architecture waits for a later cycle",
+		// Workflow Review runs before every run, not in Pulse (PLAT-697
+		// phase 0); no module waits for it.
+		"It runs before every workflow",
+		"no module here waits for it",
 	} {
 		if !strings.Contains(gate, want) {
 			t.Errorf("missing Gate contract: %q", want)
 		}
 	}
-	for _, stale := range []string{"A failed verified deterministic intake cannot be cooled down or skipped", "Select **at most two**", "Plan Drift is an exclusive prerequisite pass"} {
+	for _, stale := range []string{"A failed verified deterministic intake cannot be cooled down or skipped", "Select **at most two**", "Plan Drift is an exclusive prerequisite pass", "Plan Drift runs first, not alone", "plan_drift_review.due=true"} {
 		if strings.Contains(gate, stale) {
 			t.Errorf("stale mandatory runtime review contract: %q", stale)
 		}

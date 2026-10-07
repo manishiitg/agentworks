@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,18 +17,12 @@ import (
 // learning make Architecture due with focus prompt_design / learning_quality.
 // They never block a run or an edit; Architecture still decides what to do.
 //
-// Decision 4: Plan Drift stays the exclusive prerequisite only for the steps
-// it flagged. Architecture may be deferred by Drift at most two Pulse passes
-// in a row; on the third, or immediately when every budget-flagged step is
-// outside Drift's set, it runs in the same pass scoped away from those steps.
+// Decision 4 (Architecture deferred by a due Plan Drift) is retired: Workflow
+// Review runs before runs, not in Pulse (PLAT-697 phase 0).
 
 const (
 	evidencePromptBudgetDue      = "prompt_budget_due:"
 	evidencePromptBudgetReviewed = "prompt_budget_reviewed:"
-	evidenceArchitectureScoped   = "plan_drift_review:architecture_scoped"
-	evidenceArchitectureExcludes = "architecture_scope_excludes:"
-	evidenceArchitectureDeferred = "architecture_drift_deferrals:"
-	maxArchitectureDriftDeferral = 2
 )
 
 const pulsePromptBudgetMetricsSchema = `CREATE TABLE IF NOT EXISTS pulse_prompt_budget_metrics (
@@ -87,35 +80,13 @@ func applyPulseSchedulingRules(ctx context.Context, workspacePath string, decisi
 		log.Printf("[PULSE] prompt budget scan failed for %s: %v", workspacePath, budgetErr)
 		budget = step_based_workflow.PromptBudgetDue{}
 	}
-	previous := previousPulseModuleState(ctx, workspacePath, pulseModuleArchitectureReview)
 	reviewed := promptBudgetStateReviewed(ctx, workspacePath, budget.Fingerprint)
 	decisions = applyPromptBudgetArchitectureDue(decisions, budget, reviewed)
 	decisions, err = applyDisabledPulseReviewModules(ctx, workspacePath, decisions)
 	if err != nil {
 		return nil, err
 	}
-	var driftSteps []string
-	if pulsePlanDriftDue(decisions) {
-		if candidates, err := step_based_workflow.CollectPlanDriftCandidates(ctx, workspacePath); err == nil {
-			for _, c := range candidates {
-				driftSteps = append(driftSteps, c.StepID)
-			}
-		}
-	}
-	return enforcePlanDriftExclusivePassScoped(decisions, previous, budget, driftSteps), nil
-}
-
-func previousPulseModuleState(ctx context.Context, workspacePath, module string) *PulseModuleState {
-	states, err := getPulseModuleStates(ctx, workspacePath)
-	if err != nil {
-		return nil
-	}
-	for i := range states {
-		if normalizePulseModule(states[i].Module) == module {
-			return &states[i]
-		}
-	}
-	return nil
+	return decisions, nil
 }
 
 func pulseEvidenceHas(evidence []string, item string) bool {
@@ -190,52 +161,6 @@ func applyPromptBudgetArchitectureDue(decisions []PulseWorklistDecision, budget 
 	return out
 }
 
-// enforcePlanDriftExclusivePassScoped is enforcePlanDriftExclusivePass with
-// PLAT-556's bounded deferral for Architecture.
-func enforcePlanDriftExclusivePassScoped(decisions []PulseWorklistDecision, previous *PulseModuleState, budget step_based_workflow.PromptBudgetDue, driftSteps []string) []PulseWorklistDecision {
-	if !pulsePlanDriftDue(decisions) {
-		return decisions
-	}
-	out := append([]PulseWorklistDecision(nil), decisions...)
-	for i := range out {
-		if normalizePulseModule(out[i].Module) != pulseModuleArchitectureReview || !out[i].Due {
-			continue
-		}
-		if pulseEvidenceHas(out[i].Evidence, evidenceArchitectureScoped) {
-			continue
-		}
-		prior := 0
-		if previous != nil {
-			if raw, ok := pulseEvidenceValue(previous.Evidence, evidenceArchitectureDeferred); ok {
-				prior, _ = strconv.Atoi(raw)
-			}
-		}
-		flagged := map[string]bool{}
-		for _, id := range driftSteps {
-			flagged[id] = true
-		}
-		budgetOutside := len(budget.PromptDesign) > 0 && pulseEvidenceHas(out[i].Evidence, evidencePromptBudgetDue+budget.Fingerprint)
-		for _, id := range budget.PromptDesign {
-			if flagged[id] {
-				budgetOutside = false
-				break
-			}
-		}
-		if prior >= maxArchitectureDriftDeferral || budgetOutside {
-			why := fmt.Sprintf("deferred by Plan Drift %d pass(es) in a row", prior)
-			if budgetOutside {
-				why = "every budget-flagged step is outside Plan Drift's set"
-			}
-			out[i].Reason = fmt.Sprintf("Runs alongside Plan Drift (%s), scoped away from the steps Plan Drift flagged: %s. %s", why, joinCapped(driftSteps, 30), out[i].Reason)
-			out[i].Evidence = append(normalizePulseEvidence(out[i].Evidence), evidenceArchitectureScoped, evidenceArchitectureExcludes+strings.Join(driftSteps, ","))
-			continue
-		}
-		out[i].Evidence = append(normalizePulseEvidence(out[i].Evidence), evidenceArchitectureDeferred+strconv.Itoa(prior+1))
-	}
-	// The remaining modules follow the original exclusive-prerequisite rule.
-	return enforcePlanDriftExclusivePass(out)
-}
-
 // promptBudgetStateReviewed reports whether Architecture already completed a
 // review in a pass where this exact budget state (fingerprint) made it due.
 // Result rows overwrite module evidence, so the per-pass metric row carries
@@ -258,17 +183,6 @@ func promptBudgetStateReviewed(ctx context.Context, workspacePath, fingerprint s
 		WHERE m.workspace_path=? AND m.budget_fingerprint=? AND m.architecture_budget_due=1
 		  AND a.module=? AND a.result IN ('done','changed')`, normalized, fingerprint, pulseModuleArchitectureReview).Scan(&n)
 	return err == nil && n > 0
-}
-
-// pulseArchitectureScopedDuringDrift reports whether this run's worklist lets
-// Architecture run in a pass where Plan Drift is due.
-func pulseArchitectureScopedDuringDrift(ctx context.Context, workspacePath, pulseRunID string) bool {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil || !ok {
-		return false
-	}
-	state, exists := worklist[pulseModuleArchitectureReview]
-	return exists && state.LastDecision == "due" && pulseEvidenceHas(state.Evidence, evidenceArchitectureScoped)
 }
 
 // PulseConsolidation is one consolidation Architecture applied and verified

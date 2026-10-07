@@ -254,6 +254,9 @@ type UpdateWorkflowManifestRequest struct {
 	PulseAutonomyOutward       *string                                      `json:"pulse_autonomy_outward,omitempty"`
 	PulseAutonomyChange        *string                                      `json:"pulse_autonomy_change,omitempty"`
 	PulseFocusAreas            *[]string                                    `json:"pulse_focus_areas,omitempty"`
+	// AfterManualRun sets the after-run options for runs started from a chat
+	// (PLAT-697 phase 0). Schedules carry their own after_run.
+	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
 	// Notification instruction fields are standalone patches so the Notify
 	// popup can update content guidance without replacing workflow capabilities.
 	RunNotificationInstructions   *string   `json:"run_notification_instructions,omitempty"`
@@ -481,6 +484,10 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			manifest.Pulse = &WorkflowPulseConfig{}
 		}
 		manifest.Pulse.DisabledReviewModules = disabled
+	}
+	if req.AfterManualRun != nil {
+		copied := *req.AfterManualRun
+		manifest.AfterManualRun = &copied
 	}
 	if req.PulseAutonomyRun != nil || req.PulseAutonomyOutward != nil || req.PulseAutonomyChange != nil {
 		if manifest.Pulse == nil {

@@ -20,7 +20,7 @@ const job = (overrides: Partial<ScheduledJob> & { id: string; name: string }): S
   ...overrides,
 })
 
-function stubPanel(filteredJobs: ScheduledJob[]) {
+function stubPanel(filteredJobs: ScheduledJob[], handleAfterRun: (job: ScheduledJob, next: NonNullable<ScheduledJob['after_run']>) => Promise<void> = async () => {}) {
   const noop = () => {}
   const asyncNoop = async () => {}
   return {
@@ -33,6 +33,7 @@ function stubPanel(filteredJobs: ScheduledJob[]) {
     triggering: null,
     handleToggle: asyncNoop,
     handleRunDestination: asyncNoop,
+    handleAfterRun,
     openActionMenuJobId: null,
     setOpenActionMenuJobId: noop,
     handleDelete: asyncNoop,
@@ -46,11 +47,11 @@ function stubPanel(filteredJobs: ScheduledJob[]) {
   }
 }
 
-async function renderList(filteredJobs: ScheduledJob[]) {
+async function renderList(filteredJobs: ScheduledJob[], handleAfterRun?: (job: ScheduledJob, next: NonNullable<ScheduledJob['after_run']>) => Promise<void>) {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<ScheduleListView panel={stubPanel(filteredJobs)} />))
+  await act(async () => root.render(<ScheduleListView panel={stubPanel(filteredJobs, handleAfterRun)} />))
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
@@ -100,6 +101,24 @@ describe('ScheduleListView declutter', () => {
     try {
       expect(host.textContent).toContain('Not run yet')
       expect(host.textContent).not.toContain('Last ran: never')
+    } finally {
+      await unmount()
+    }
+  })
+
+  // PLAT-697 phase 0: backup, publish and notify are a schedule's own
+  // after-run checkboxes, replacing pulse_mode.
+  it('shows the after-run checkboxes and saves a change', async () => {
+    const handleAfterRun = vi.fn(async () => {})
+    const { host, unmount } = await renderList([
+      job({ id: 'a', name: 'Daily', after_run: { backup: true, publish: false, notify: true } }),
+    ], handleAfterRun)
+    try {
+      const group = host.querySelector('[aria-label="After each run of Daily"]')
+      const boxes = Array.from(group?.querySelectorAll('input[type="checkbox"]') ?? []) as HTMLInputElement[]
+      expect(boxes.map(box => box.checked)).toEqual([true, false, true])
+      await act(async () => { boxes[1].click() })
+      expect(handleAfterRun).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), { backup: true, publish: true, notify: true })
     } finally {
       await unmount()
     }

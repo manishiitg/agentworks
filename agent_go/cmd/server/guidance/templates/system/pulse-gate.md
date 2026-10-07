@@ -17,19 +17,18 @@ The canonical modules are:
 - `strategic_review`: **Goal Work**, Pulse's main job. It does work that moves
   the user's goals (work nobody is doing, or the user does not know about),
   follows up earlier Goal Work, and challenges soul.md constraints with
-  evidence. It is never folded into Technical Review, and a due Plan Drift does
-  not block it.
-- `plan_drift_review`: event-triggered, not cadenced — due whenever
-  `get_pulse_state(view="module")`'s `plan_drift_candidates` is non-empty
-  (a canonical plan step has no `drift_review` record, or has one flagged
-  `needs_review: true`). This is a plain fact, not a judgment call: the
-  backend rejects the worklist if a non-empty candidate list is not marked
-  due, so always record its true state rather than guessing.
+  evidence. It is never folded into Technical Review.
+- `plan_drift_review`: the **Workflow Review**. It runs before every workflow
+  run, not in Pulse (PLAT-697 phase 0): unchanged plans start at once, a
+  changed plan is reviewed first. Record it not due with a cooldown (the
+  backend records it not due whatever you send). Its latest result
+  (`get_pulse_state(view="module")` `workflow_review`) is evidence for the other
+  modules, never a reason to hold them.
 
-The role boundary is fixed: Plan Drift preserves an approved plan after a
-change; Architecture proposes a better technical structure; Technical repairs
+The role boundary is fixed: the Workflow Review (before runs) preserves an
+approved plan after a change; Architecture proposes a better technical structure; Technical repairs
 concrete execution failures; Goal Work (strategic_review) moves the user's goals
-forward by doing the work. Drift, Architecture and Technical are platform
+forward by doing the work. Architecture and Technical are platform
 upkeep; Goal Work is what the user relies on Pulse for.
 
 Do not emit retired module names such as `workflow_review`, `llm_ops_review`,
@@ -247,36 +246,10 @@ new impact, an available repair, or a reproduced defect must not reserve the
 review slot or displace eligible Strategic Review. Record the evidence for this
 judgment in the worklist reason/evidence, not a new issue per failed tool call.
 
-The deterministic hard requirement for `plan_change_dependencies` belongs to
-Plan Drift. Set `plan_drift_review.due=true` whenever a
-current-contract change with a durable `change_id` lacks a complete receipt across downstream steps,
-validation, evaluation, reporting, database, and learnings/knowledge. Select
-Plan Drift even when the per-step candidate list is otherwise empty. The failure
-proves missing compatibility coverage, not that all six surfaces need edits; the
-reviewer must inspect each surface and record
-an evidence-backed disposition. A successful Plan Drift pass selected in lieu
-of Technical Review is rejected until those structured receipts are complete.
-Legacy reviewed entries without `change_id`
-are not reopened by this check.
-
-The same boundary applies to `plan_drift_candidates`: a non-empty list means
-`plan_drift_review.due=true` is required, not agentic judgment. It is a
-different fact from `plan_change_dependencies` — the latter is about a plan
-edit's blast radius never having been traced; `plan_drift_candidates` is about
-a step's per-check drift record specifically never having been recorded.
-
-**Plan Drift runs first, not alone.** When it is due, Pulse runs it before
-the other reviewers in the same pass. Decide Technical and Goal Work (Strategic
-Review) on their own merits exactly as if Plan Drift were not due: open issues,
-new step concerns, failed runs and goal evidence still make them due, and they
-run right after Plan Drift in this pass. Do not skip them because Plan Drift is
-due. Only Architecture waits for a later cycle, because judging the design
-against a plan known to be stale gives conclusions from the wrong baseline —
-and only for the steps Drift flagged, and at most two passes in a row. On the
-third pass, or at once when every budget-flagged step is outside Drift's set,
-the worklist keeps Architecture due in the same pass with
-`architecture_scope_excludes:` naming Drift's steps, which it must not touch.
-Mark Architecture due on its merits; the backend applies this rule.
+Plan-change dependency receipts (`plan_change_dependencies`) and
+`plan_drift_candidates` are the Workflow Review's own evidence. It runs before
+the next run, so no module here waits for it: decide Technical, Architecture
+and Goal Work on their own merits.
 
 When DB, knowledgebase, or learnings integrity is selected, explicitly name the
 Stores Health scope in the reason. Stores Health remains a technical lens, not
@@ -425,7 +398,7 @@ backlog must not force another expensive discovery pass. A cooldown or focus
 rotation cannot suppress a new materially harmful miss or a critical regression.
 
 Select each module independently. Multiple modules may be due: the scheduler
-runs Drift Check, QA, Architecture, and Strategy sequentially, with separate
+runs Strategy (Goal Work), Architecture and QA sequentially, with separate
 receipts and recovery. A failed technical review does not cancel the later
 research reviews; they must state any evidence limitations. Do not skip an
 eligible research review solely because another module is due.

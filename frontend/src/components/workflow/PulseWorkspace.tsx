@@ -139,9 +139,6 @@ export function PulseWorkspace({
   onTabChange,
   workspacePath,
   moduleStates,
-  planDriftDue = false,
-  planDriftDueItems = [],
-  planDriftDueError = null,
   reviewFocuses,
   reviewFocusSelections,
   disabledReviewModules = [],
@@ -390,7 +387,9 @@ export function PulseWorkspace({
   }
 
   const openIssueCount = pulseWorkspaceQueueCounts(findings).all
-  const driftBlocksRun = planDriftDue || !!planDriftDueError
+  // Workflow Review runs before every run, not in Pulse (PLAT-697 phase 0): it
+  // never holds Goal Work or the other reviews, so the Pulse tab shows no
+  // "due" state for it, only its latest result under Platform health.
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="Pulse views" className="flex gap-1 rounded-lg border bg-muted/30 p-1">
@@ -398,7 +397,7 @@ export function PulseWorkspace({
           <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${tab === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             {label}
-            {value === 'platform' && (openIssueCount > 0 || planDriftDue) && <span className={`rounded-full px-1.5 py-0.5 text-[9px] tabular-nums ${planDriftDue ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-muted text-muted-foreground'}`}>{planDriftDue ? 'Drift due' : openIssueCount}</span>}
+            {value === 'platform' && openIssueCount > 0 && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] tabular-nums text-muted-foreground">{openIssueCount}</span>}
           </button>
         ))}
       </div>
@@ -416,16 +415,15 @@ export function PulseWorkspace({
           onChangeAutonomy={onChangeAutonomy} onRunGoalWork={() => { void runReviewNow('strategic_review') }}
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}
           playbookFocusAreas={playbookFocuses.flatMap(item => item.focusAreas.map(area => ({ area, source: item.playbookTitle })))}
-          running={manualReviewStarting === 'strategic_review'}
-          runBlockedReason={driftBlocksRun ? 'Workflow Review is due: Goal Work will prepare and research but not run workflow steps or change the workflow.' : undefined} />
-        {(findings.length > 0 || planDriftDue) && (
+          running={manualReviewStarting === 'strategic_review'} />
+        {findings.length > 0 && (
           <button type="button" onClick={() => setTab('platform')} className="w-full rounded-lg border bg-muted/20 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/40">
-            <span className="font-medium text-foreground">Platform health:</span> {pulseFixSummary(fixStats)}{planDriftDue ? ' · Workflow Review due' : ''}
+            <span className="font-medium text-foreground">Platform health:</span> {pulseFixSummary(fixStats)}
           </button>
         )}
       </> : <>
       <p className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground" aria-label="Fix speed">{pulseFixSummary(fixStats)}</p>
-      <PulseReviewOverview platformOnly moduleStates={moduleStates} planDriftDue={planDriftDue} planDriftDueItems={planDriftDueItems} planDriftDueError={planDriftDueError} coverage={mergePulseReviewCoverage(coverage, reviewFocuses, reviewFocusSelections)}
+      <PulseReviewOverview platformOnly moduleStates={moduleStates} planDriftDue={false} planDriftDueItems={[]} planDriftDueError={null} coverage={mergePulseReviewCoverage(coverage, reviewFocuses, reviewFocusSelections)}
         audits={audits} findings={findings} moduleFilter={selectedReviewModule || null} reviewFocusSelections={reviewFocusSelections}
         playbookFocuses={playbookFocuses}
         disabledReviewModules={disabledReviewModules} reviewModuleSaving={reviewModuleSaving} onToggleReviewModule={onToggleReviewModule}
