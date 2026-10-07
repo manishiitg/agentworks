@@ -21,6 +21,8 @@ import (
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
+	// ChatKey is the Code side chat (tab) a project schedule runs in; empty is the main chat.
+	ChatKey              string                      `json:"chat_key,omitempty"`
 	Kind                 string                      `json:"kind,omitempty"`
 	Gmail                *WorkflowGmailTriggerConfig `json:"gmail,omitempty"`
 	StepID               string                      `json:"step_id,omitempty"`

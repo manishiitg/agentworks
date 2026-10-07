@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
-| [Code](code/index.md) | 7 | 1 |
+| [Code](code/index.md) | 8 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
 | [Dominion](dominion/index.md) | 3 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-653](code/chat/plat-653.md) | Code reminders follow their tab; check before scheduling | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-652](integrations/mcp/plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 | [integrations/mcp](integrations/mcp/index.md) |
 | [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
 | [PLAT-650](dominion/deployment/plat-650.md) | Dominion service processes miss provisioned slot groups and block Python Relay runners | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-616](crew/chat/plat-616.md) | Distinguish shared provider account identity from the Crew user and Gmail mailbox | deployed | P2 | [crew/chat](crew/chat/index.md) |
 | [PLAT-615](coding-agents/accounts/plat-615.md) | Private provider setup linked user credentials to the shared server login | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-614](integrations/google/plat-614.md) | Confida Gmail client JSON not set up | open | P3 | [integrations/google](integrations/google/index.md) |
-| [PLAT-613](chat/reliability/plat-613.md) | Confida QA reports a recurring forty-minute reply delay | open | P2 | [chat/reliability](chat/reliability/index.md) |

@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func TestRegisterWorkScheduleToolsReadsPairedUsersProjectManifest(t *testing.T) {
@@ -14,7 +16,7 @@ func TestRegisterWorkScheduleToolsReadsPairedUsersProjectManifest(t *testing.T) 
 
 	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
 	registrar := &recordingRegistrar{}
-	if err := api.registerWorkScheduleTools(registrar, "work", userID, publicPath, false); err != nil {
+	if err := api.registerWorkScheduleTools(registrar, "work", userID, "", publicPath, false); err != nil {
 		t.Fatalf("register Work tools from public conversation path: %v", err)
 	}
 	if _, ok := registrar.tools["list_project_schedules"]; !ok {
@@ -22,7 +24,7 @@ func TestRegisterWorkScheduleToolsReadsPairedUsersProjectManifest(t *testing.T) 
 	}
 
 	other := &recordingRegistrar{}
-	if err := api.registerWorkScheduleTools(other, "work", "another-user", publicPath, false); err == nil {
+	if err := api.registerWorkScheduleTools(other, "work", "another-user", "", publicPath, false); err == nil {
 		t.Fatal("another user's project manifest must not authorize schedule tools")
 	}
 }
@@ -40,7 +42,7 @@ func TestRegisterScheduleToolsForACode(t *testing.T) {
 
 	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
 	registrar := &recordingRegistrar{}
-	if err := api.registerWorkScheduleTools(registrar, "code", owner, publicPath, false); err != nil {
+	if err := api.registerWorkScheduleTools(registrar, "code", owner, "", publicPath, false); err != nil {
 		t.Fatalf("register Code schedule tools: %v", err)
 	}
 	for _, name := range []string{"list_project_schedules", "create_project_schedule", "create_project_trigger"} {
@@ -48,10 +50,10 @@ func TestRegisterScheduleToolsForACode(t *testing.T) {
 			t.Fatalf("%s was not registered for a Code", name)
 		}
 	}
-	if err := api.registerWorkScheduleTools(&recordingRegistrar{}, "work", owner, publicPath, false); err == nil {
+	if err := api.registerWorkScheduleTools(&recordingRegistrar{}, "work", owner, "", publicPath, false); err == nil {
 		t.Fatal("a Code manifest authorized the Crew profile's tools")
 	}
-	if err := api.registerWorkScheduleTools(&recordingRegistrar{}, "code", "editor", publicPath, false); err == nil {
+	if err := api.registerWorkScheduleTools(&recordingRegistrar{}, "code", "editor", "", publicPath, false); err == nil {
 		t.Fatal("another person's Code manifest authorized schedule tools")
 	}
 }
@@ -78,5 +80,28 @@ func TestOneTimeRunAtFromToolArguments(t *testing.T) {
 	}
 	if got, err := oneTimeRunAt(map[string]interface{}{}, now); err != nil || got != "" {
 		t.Fatalf("no one-time argument must mean recurring, got %q, %v", got, err)
+	}
+}
+
+// Owner, 2026-10-07: a reminder set from a Code side chat (tab) runs in that
+// chat and queues with it; anything else runs in the main chat.
+func TestProjectScheduleRunsInItsSideChat(t *testing.T) {
+	job := productScheduleJob{ProjectID: "proj1", Profile: agentprofiles.Profile{ID: "code"}}
+	job.Schedule.ChatKey = "proj1:chat:abc"
+	if got := scheduleChatKey(job); got != "proj1:chat:abc" {
+		t.Fatalf("side chat key = %q", got)
+	}
+	if got := conversationKeyForJob(job); got != "conversation:code:proj1:chat:abc" {
+		t.Fatalf("queue key = %q, want the side chat's own queue", got)
+	}
+	for _, foreign := range []string{"proj2:chat:abc", "proj1", "proj1:chat:", "proj1:chat:a:b", "other"} {
+		job.Schedule.ChatKey = foreign
+		if got := scheduleChatKey(job); got != "" {
+			t.Errorf("chat key %q accepted as %q; only this project's side chats count", foreign, got)
+		}
+	}
+	job.Schedule.ChatKey = ""
+	if got := conversationKeyForJob(job); got != "conversation:code:proj1" {
+		t.Fatalf("main chat queue key = %q", got)
 	}
 }

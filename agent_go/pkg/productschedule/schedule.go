@@ -65,6 +65,11 @@ type Schedule struct {
 	// steering a person's live chat. Its turns are visible from run history,
 	// rather than in the main conversation transcript.
 	Isolated bool `json:"isolated,omitempty" yaml:"isolated,omitempty"`
+
+	// ChatKey is the chat (tab) of the project that created the schedule, as
+	// "<projectId>:chat:<id>" (a Code side chat). Runs go to that chat while it
+	// exists and to the project's main chat otherwise; empty means the main chat.
+	ChatKey string `json:"chat_key,omitempty" yaml:"chat_key,omitempty"`
 }
 
 // Validate checks a definition is runnable.

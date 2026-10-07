@@ -168,7 +168,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"list_project_schedules", "create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule"},
 		Skills:          []string{"work-schedules-and-bots"},
 		UIPanels:        []string{"schedules"},
-		PromptExtension: "Project schedules are enabled in message-only mode. Read the attached `work-schedules-and-bots` skill before managing schedules. A schedule sends one message to the project chat; it is not a workflow execution.",
+		PromptExtension: "Project schedules are enabled in message-only mode. Read the attached `work-schedules-and-bots` skill before managing schedules. A schedule sends one message to the project chat (in a Code, the tab it was set from); it is not a workflow execution. For \"check this in N minutes\", check once first when that is cheap, and never create a reminder and then delete it in the same turn.",
 	},
 	"triggers": {
 		Dependencies:    []string{"schedules"},

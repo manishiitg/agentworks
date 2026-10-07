@@ -1029,7 +1029,8 @@ type productScheduleQueuedRun struct {
 // already unique; main-chat jobs of one project share one conversation.
 func conversationKeyForJob(job productScheduleJob) string {
 	if job.ProjectID != "" && !job.Schedule.Isolated {
-		return "conversation:" + strings.TrimSpace(job.Profile.ID) + ":" + strings.TrimSpace(job.ProjectID)
+		// A schedule set from a side chat queues with that chat, not the main one.
+		return "conversation:" + strings.TrimSpace(job.Profile.ID) + ":" + firstNonEmptyTrimmed(scheduleChatKey(job), job.ProjectID)
 	}
 	return job.ID()
 }
@@ -1199,7 +1200,13 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		title := job.ProjectTitle + " · " + job.Schedule.Name
 		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, job.ConversationKey), title)
 	} else if job.ProjectID != "" {
-		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, job.ProjectID)
+		// A schedule set from a side chat (tab) runs there while that chat
+		// exists; otherwise, and for every other schedule, in the main chat.
+		key := job.ProjectID
+		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
+			key = chatKey
+		}
+		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
 	} else if job.Schedule.Isolated {
 		binding, bindErr = resolveIsolatedScheduleBinding(runCtx, job.UserID, job.Profile)
 	} else {
@@ -1366,6 +1373,7 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 	sched := job.Effective()
 	resp := ScheduledJobResponse{
 		ID:                  job.ID(),
+		ChatKey:             scheduleChatKey(job),
 		Name:                sched.Name,
 		Description:         sched.Description,
 		EntityType:          "product",
@@ -1427,4 +1435,31 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 		resp.LastRunAt = &started
 	}
 	return resp
+}
+
+// scheduleChatKey is the side chat a project schedule was set from, when it is
+// one of this project's chats ("<projectId>:chat:<id>"); "" means the main chat.
+func scheduleChatKey(job productScheduleJob) string {
+	key := strings.TrimSpace(job.Schedule.ChatKey)
+	project := strings.TrimSpace(job.ProjectID)
+	chatID := strings.TrimPrefix(key, project+codeChatSideMarker)
+	if key == "" || project == "" || !strings.HasPrefix(key, project+codeChatSideMarker) || chatID == "" || strings.Contains(chatID, ":") {
+		return ""
+	}
+	return key
+}
+
+// projectChatExists reports whether that chat is still one of the project's
+// chats in the owner's conversation registry.
+func projectChatExists(ctx context.Context, userID, profileID, projectID, chatKey string) bool {
+	chats, err := defaultProductConversationRegistryStore().projectChats(ctx, userID, profileID, projectID)
+	if err != nil {
+		return false
+	}
+	for _, chat := range chats {
+		if chat.ConversationKey == chatKey {
+			return true
+		}
+	}
+	return false
 }

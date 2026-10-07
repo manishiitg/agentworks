@@ -7,13 +7,31 @@ description: Manage {{product}}'s message-only project schedules, authenticated 
 
 ## Project schedules
 
-- A {{product}} schedule contains exactly one message sent to this project's Builder
-  conversation. It is not an AgentWorks workflow, route, phase, or execution.
+- A {{product}} schedule contains exactly one message sent to this project's chat.
+  It is not an AgentWorks workflow, route, phase, or execution. In a Code, a
+  schedule set from a side chat (tab) runs in that tab while it exists, and in
+  the main chat otherwise; one set from the main chat runs in the main chat.
+  `list_project_schedules` shows a side chat's `chat_key`.
 - Use `list_project_schedules` before updating, deleting, or triggering. Use the
   exact returned schedule ID.
-- For creation, provide a clear name, one complete message, a standard
-  five-field cron expression, and an IANA timezone such as `Asia/Kolkata`.
-  Enable it by default unless the user asks to save it paused.
+- For a recurring schedule, provide a clear name, one complete message, a
+  standard five-field cron expression, and an IANA timezone such as
+  `Asia/Kolkata`. Enable it by default unless the user asks to save it paused.
+
+## Reminders ("check this in 15 minutes")
+
+- A reminder is a one-time schedule: `create_project_schedule` with `in_minutes`
+  (or `run_at` for an exact moment) and a self-contained message saying what to
+  check and what to report. It runs once.
+- Check first when it is cheap. If the thing can be checked right now (a deploy,
+  a CI run, a reply), look once before scheduling. If it is already settled,
+  report that instead of creating a reminder, and offer one if the user still
+  wants it ("It already finished at 06:42; want a reminder anyway?").
+- Never create a reminder and then delete it in the same turn. A reminder the
+  user asked for stays unless they agree to remove it; if it turns out to be
+  unneeded, say so and ask.
+- When the reminder fires, do the check and report the result in the chat; do
+  not schedule another one unless the user asked for repeated checks.
 - Use `trigger_project_schedule` only when the user asks to run it now. Report
   the resulting session without inventing a workflow run.
 
