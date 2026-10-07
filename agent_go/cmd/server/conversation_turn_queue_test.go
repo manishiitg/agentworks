@@ -299,3 +299,32 @@ func TestClosingACLIOnPurposeReleasesTheTurnMarkers(t *testing.T) {
 	runningServerAPI = nil
 	closeCodingCLIAndReleaseTurnMarkers("session-2", "no api") // must not panic without an API
 }
+
+// Code chat sde-private, RTS 2026-10-07: a deploy changed the Code definition
+// while a tmux live-input turn held the input lane, and the message queued for
+// the relaunch stayed "Queued" forever although the CLI sat idle at its prompt.
+// An idle CLI's turn is ended after runtimeChangeIdleChecks ticks; a CLI that is
+// mid-response keeps its turn (Excellence 2026-10-03).
+func TestRuntimeChangeEndsOnlyAnIdleLiveTurn(t *testing.T) {
+	original := retainedCLIAtPrompt
+	t.Cleanup(func() { retainedCLIAtPrompt = original })
+	for _, idle := range []bool{false, true} {
+		name := map[bool]string{false: "mid-response waits", true: "idle at prompt runs"}[idle]
+		t.Run(name, func(t *testing.T) {
+			api := newConversationTurnQueueTestAPI(map[string]string{})
+			release := api.lockSessionInputLane("session-1")
+			defer release()
+			canceled := false
+			api.agentCancelFuncs = map[string]context.CancelFunc{"session-1": func() { canceled = true }}
+			api.setConversationTurnRuntimeChange("session-1", true)
+			retainedCLIAtPrompt = func(*StreamingAPI, string) bool { return idle }
+			checks := 0
+			for tick := 1; tick <= runtimeChangeIdleChecks; tick++ {
+				ended := api.endIdleTurnForRuntimeChange("session-1", api.conversationTurnOccupiedBy("session-1"), &checks)
+				if want := idle && tick == runtimeChangeIdleChecks; ended != want || canceled != want {
+					t.Fatalf("tick %d: ended=%v canceled=%v, want %v", tick, ended, canceled, want)
+				}
+			}
+		})
+	}
+}

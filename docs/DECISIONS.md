@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — A runtime change ends an idle live-input turn instead of waiting for it
+
+A definition or provider change still applies only between turns, and a CLI that is mid-response keeps its turn
+(Excellence 2026-10-03). But a tmux live-input turn whose CLI sits idle at its prompt is not "mid-turn": after 3
+watcher ticks (2 s apart) of the provider's idle-composer check, the queue watcher cancels that turn, closes the CLI
+and releases its markers, and the queued message relaunches the CLI with the new runtime. Providers without a pane
+check (Muse) keep waiting. `endIdleTurnForRuntimeChange` in `agent_go/cmd/server/conversation_turn_queue.go`.
+[PLAT-659](bugs/pulse_platform/code/chat/plat-659.md).
+
 ### 2026-10-07 — Chats of one Code ask each other through function calls
 
 A Code chat lists its sibling chats (main + side chats) and asks one with `ask_project_chat` (replacing

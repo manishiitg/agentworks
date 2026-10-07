@@ -665,14 +665,17 @@ type StreamingAPI struct {
 	sessionInputLanesMu sync.Mutex
 	// Durable turns waiting behind that shared lane. Every producer reaches the
 	// same dispatcher; tmux remains an execution transport, never a queue.
-	conversationTurnQueueMu        sync.Mutex
-	conversationTurnQueueOwners    map[string]string
-	conversationTurnQueueDraining  map[string]bool
-	conversationTurnQueueWatching  map[string]bool
-	conversationTurnQueueWaiters   map[string]chan queuedConversationTurnResult
-	conversationTurnQueueCallbacks map[string]func(event *unifiedevents.AgentEvent)
-	internalTurnQueueRead          func(context.Context, string) (string, bool, error)
-	internalTurnQueueWrite         func(context.Context, string, string) error
+	conversationTurnQueueMu       sync.Mutex
+	conversationTurnQueueOwners   map[string]string
+	conversationTurnQueueDraining map[string]bool
+	conversationTurnQueueWatching map[string]bool
+	// Sessions whose queued message waits only to relaunch the CLI with a changed
+	// runtime (definition or provider); see endIdleTurnForRuntimeChange.
+	conversationTurnQueueRuntimeChange map[string]bool
+	conversationTurnQueueWaiters       map[string]chan queuedConversationTurnResult
+	conversationTurnQueueCallbacks     map[string]func(event *unifiedevents.AgentEvent)
+	internalTurnQueueRead              func(context.Context, string) (string, bool, error)
+	internalTurnQueueWrite             func(context.Context, string, string) error
 
 	// Last-seen WorkshopMode per session — used to detect mode toggles between
 	// turns. When the mode changes, native coding-agent resume is skipped for
@@ -4129,8 +4132,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
 		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
 		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
-		// when it runs, this check sees no running turn and relaunches with the new runtime.
-		if api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+		// when it runs, this check sees no running turn and relaunches with the new runtime. A retained CLI that is idle at its
+		// prompt does not count as mid-turn: the queue watcher ends that turn and the message runs (see endIdleTurnForRuntimeChange).
+		if api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
 			return
 		}
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)
@@ -4154,7 +4158,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if retainedDeliveryEligible && !retainedWorkflowCompatible {
-		if runtimeChanged && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+		if runtimeChanged && api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
 			return
 		}
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)

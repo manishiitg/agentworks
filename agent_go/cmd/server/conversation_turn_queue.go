@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
 
 const conversationTurnQueueVersion = 1
@@ -313,6 +315,8 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		return
 	}
 	api.conversationTurnQueueMu.Lock()
+	// The session is free: the next claimed turn applies any runtime change itself.
+	delete(api.conversationTurnQueueRuntimeChange, sessionID)
 	if api.conversationTurnQueueDraining == nil {
 		api.conversationTurnQueueDraining = make(map[string]bool)
 	}
@@ -361,6 +365,7 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 	go func() {
 		ticker := time.NewTicker(conversationTurnQueueWatchInterval)
 		defer ticker.Stop()
+		idleChecks := 0
 		for range ticker.C {
 			api.conversationTurnQueueMu.Lock()
 			queued := api.conversationTurnQueueOwners[sessionID] != ""
@@ -368,7 +373,8 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 			if !queued {
 				break
 			}
-			if api.conversationTurnOccupiedBy(sessionID) != "" {
+			if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
+				api.endIdleTurnForRuntimeChange(sessionID, by, &idleChecks)
 				continue
 			}
 			break
@@ -378,6 +384,85 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 		api.conversationTurnQueueMu.Unlock()
 		api.kickConversationTurnQueue(sessionID)
 	}()
+}
+
+// queueOccupiedConversationTurnForRuntimeChange queues a message that must wait
+// to relaunch the coding CLI with a changed runtime (definition or provider),
+// and marks the session so the queue watcher may end an idle live turn for it.
+func (api *StreamingAPI) queueOccupiedConversationTurnForRuntimeChange(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
+	api.setConversationTurnRuntimeChange(sessionID, true)
+	if api.queueOccupiedConversationTurn(w, r, userID, sessionID, req) {
+		return true
+	}
+	api.setConversationTurnRuntimeChange(sessionID, false)
+	return false
+}
+
+func (api *StreamingAPI) setConversationTurnRuntimeChange(sessionID string, waiting bool) {
+	api.conversationTurnQueueMu.Lock()
+	defer api.conversationTurnQueueMu.Unlock()
+	if !waiting {
+		delete(api.conversationTurnQueueRuntimeChange, sessionID)
+		return
+	}
+	if api.conversationTurnQueueRuntimeChange == nil {
+		api.conversationTurnQueueRuntimeChange = make(map[string]bool)
+	}
+	api.conversationTurnQueueRuntimeChange[sessionID] = true
+}
+
+// runtimeChangeIdleChecks is how many consecutive watcher ticks (2 s apart) must
+// see the retained CLI idle at its prompt before its live turn is ended, so a
+// turn that is just finishing on its own is never cut short.
+const runtimeChangeIdleChecks = 3
+
+// retainedCLIAtPrompt reports whether the chat's main coding CLI is idle at its
+// input prompt, using the provider adapter's own idle-composer check
+// (CodingAgentPaneReady, the signal the retained-turn observer settles turns on).
+// No live pane, a failed capture, or a provider without a pane check (Muse)
+// counts as busy: fail closed. A var so tests can stub tmux.
+var retainedCLIAtPrompt = func(api *StreamingAPI, sessionID string) bool {
+	snapshot, live := api.liveMainCodingTmuxSnapshot(sessionID)
+	provider := llmproviders.Provider(retainedCodingAgentProvider(snapshot))
+	if !live || provider == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
+	defer cancel()
+	pane, err := runTerminalTmuxOutputCommand(ctx, "capture-pane", "-p", "-J", "-t", snapshot.TmuxSession)
+	return err == nil && llmproviders.CodingAgentPaneReady(provider, pane)
+}
+
+// endIdleTurnForRuntimeChange applies the between-turns rule for a message queued
+// only because the runtime changed. In tmux live-input mode one streaming turn
+// stays open while the person keeps typing into the running CLI, so it holds the
+// input lane long after the CLI finished answering. Code chat sde-private on RTS,
+// 2026-10-07: a turn open since 05:40 held the lane, a deploy at 06:39 changed the
+// Code definition, and the message sent at 07:31 stayed "Queued" with "Working…"
+// forever. When the CLI has been idle at its prompt for runtimeChangeIdleChecks
+// ticks, end that turn the way a definition change always does (cancel the turn,
+// close the CLI: interruptWorkflowPolicySession) and release its busy markers as
+// Stop does; the watcher then kicks the queue and the message relaunches the CLI
+// with the new runtime. A CLI that is mid-response keeps the turn: a relaunch
+// mid-turn killed a running Muse turn (Excellence 2026-10-03).
+func (api *StreamingAPI) endIdleTurnForRuntimeChange(sessionID, occupant string, idleChecks *int) bool {
+	api.conversationTurnQueueMu.Lock()
+	waiting := api.conversationTurnQueueRuntimeChange[sessionID]
+	api.conversationTurnQueueMu.Unlock()
+	// A claimed queued turn is already running the message (dispatch_pending).
+	if !waiting || occupant == "dispatch_pending" || api.conversationTurnDispatchPending(sessionID) || !retainedCLIAtPrompt(api, sessionID) {
+		*idleChecks = 0
+		return false
+	}
+	*idleChecks++
+	if *idleChecks < runtimeChangeIdleChecks {
+		return false
+	}
+	*idleChecks = 0
+	logTurnQueue("session %s: the coding CLI is idle at its prompt but its live turn (%s) is still open; ending it so the message queued for a runtime change runs", sessionID, occupant)
+	api.interruptWorkflowPolicySession(sessionID, "")
+	api.releaseStoppedSessionTurnMarkers(sessionID)
+	return true
 }
 
 func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTurn) {

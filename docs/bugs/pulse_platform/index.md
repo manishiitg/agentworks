@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
-| [Code](code/index.md) | 9 | 1 |
+| [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 71 | 18 |
 | [Crew](crew/index.md) | 22 | 5 |
 | [Dominion](dominion/index.md) | 3 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-659](code/chat/plat-659.md) | Message stuck Queued after a deploy changes the Code definition | fixed on main | P1 | [code/chat](code/chat/index.md) |
 | [PLAT-658](vault/secrets/plat-658.md) | Rotated secrets ignored by a live chat CLI | open | P1 | [vault/secrets](vault/secrets/index.md) |
 | [PLAT-657](code/chat/plat-657.md) | Closed Code tabs stayed reachable | fixed on main | P2 | [code/chat](code/chat/index.md) |
 | [PLAT-656](ops/local/plat-656.md) | Start script overwrote the shared mcpbridge | fixed on main | P2 | [ops/local](ops/local/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-621](app/navigation/plat-621.md) | Shortcut hint on new chats | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
 | [PLAT-620](app/integrations/plat-620.md) | Name Connected and Available tabs explicitly as MCPs | fixed on main | P2 | [app/integrations](app/integrations/index.md) |
 | [PLAT-619](brain/backup/plat-619.md) | Deleted paths locked while backup has never run | fixed on main | P1 | [brain/backup](brain/backup/index.md) |
-| [PLAT-618](brain/curation/plat-618.md) | Brain curator: /organize, /dedupe and scheduled tidy-ups | in progress | P2 | [brain/curation](brain/curation/index.md) |
