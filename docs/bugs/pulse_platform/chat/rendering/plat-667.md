@@ -25,13 +25,19 @@ What each agent actually reports (checked against real recorded calls):
   `CallDynamicTool` wrapper `{"toolName":"WebSearch","namespace":"cursor","arguments":{…}}`;
   result `Title: Web search results\nContent: Links:\n1. [title](url)…`
   (from `~/.cursor/chats/*/store.db`; our transcript stream forwards these).
-- **Codex** `web_search` (structured adapter): the start event has empty args,
-  the end event carries no args and no result. The query exists only on the
-  adapter's end chunk, which mcpagent does not put on `tool_call_end`, so in
-  recorded runs (websiteaeo, jobsearch) the call has a name and duration only.
-  Codex's own rollouts hold more (`Extension`/`web.search` items with a result
-  list, `WebSearch` items with `open_page` URLs), but neither the structured
-  nor the tmux-transcript path forwards them today.
+- **Codex** `web_search`: before the provider fix the structured start event
+  had empty args and the end event no args and no result (the query was only on
+  the adapter's end chunk, which mcpagent does not put on `tool_call_end`), and
+  the tmux transcript stream skipped search rows. What Codex records (checked
+  live on codex-cli 0.160.1, 2026-10-07):
+  - `exec --json`: `item.started` `{"type":"web_search","query":"","action":{"type":"other"}}`;
+    `item.completed` adds the query, `action` (`search` with `query`/`queries`,
+    or `open_page`/`openPage` with `url`, or `find_in_page` with `url`,`pattern`)
+    and `results: [{"title","url","domain","snippet",…}]`.
+  - rollout: `event_msg` `item_completed` `{"type":"Extension","kind":"web.search",
+    "query","action","results"}` with `started_at_ms`/`completed_at_ms` (no start
+    row); older builds wrote `{"type":"WebSearch","query","action"}` with no results.
+    A failed page open has a result with a title but no URL.
 - **AGY** `search_web`: args `{"query"}`; the end event carries text only when
   the call fails (the adapter reads tool steps from the conversation DB, which
   holds no result text). No recorded AGY search was found locally.
@@ -51,11 +57,20 @@ What each agent actually reports (checked against real recorded calls):
   for live chats and restored history.
 - `ToolCallStart/EndEvent` (EventDispatcher) and the step-log viewer
   (`ConversationViewer` tool responses and the call timeline) use the same card.
+- Codex (multi-llm-provider-go 585c887, `codexcli_web_search.go`): both the
+  structured adapter and the tmux transcript stream read those structured
+  fields. Args are `{"query", "action"}`; the end result is
+  `Web search results for query: "…"` plus `Links: [{"title","url"}]`, the
+  Claude shape the card already parses, so the card shows the query and the
+  sources even where only the end event's result reaches it. An opened page
+  shows as opened (its URL is the query). No pane or screen parsing.
 
 ## Verification
 
 - Vitest `src/utils/webSearchToolCall.test.ts` (Claude, AGY, Codex, Cursor
-  shapes from real data) plus the existing transcript and tool-end tests, run
+  shapes from real data; the Codex case uses the provider's output for a real
+  0.160.1 search); provider test `TestCodexWebSearchCarriesQueryAndSources`
+  (real exec event and rollout row) plus the existing transcript and tool-end tests, run
   on GitHub via `scripts/verify-remote.sh`.
 - Not checked live in the browser (laptop build/test rule). After the next
   app restart: open a Claude chat that runs a web search, or the salesoutreach
@@ -63,8 +78,8 @@ What each agent actually reports (checked against real recorded calls):
 
 ## Left
 
-- Codex: carry the end-event args (query) onto `tool_call_end`, and map Codex
-  `Extension`/`web.search` and `WebSearch` rollout items (results, `open_page`)
-  in multi-llm-provider-go, so Codex searches show their query and results.
+- Codex: not yet seen live in the chat (needs the next app restart/deploy); run
+  a Codex chat that searches the web and check the card shows the query and
+  sources. Snippets are dropped (the card shows title and link only).
 - AGY: no search result text reaches the event stream; the card shows the
   query only.

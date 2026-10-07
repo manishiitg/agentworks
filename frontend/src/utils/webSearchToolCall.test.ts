@@ -33,6 +33,14 @@ describe('parseWebSearchToolCall', () => {
   })
 
   it('shows a Codex web_search as its query, and a URL "query" as an opened page', () => {
+    // Structured Codex: the start event has no args; the provider's end result
+    // (multi-llm-provider-go codexWebSearchResultText, real 0.160.1 search) carries both.
+    const codexResult = 'Web search results for query: "latest Go release version site:go.dev"\n\n' +
+      'Links: [{"title":"Go 1.27 Release Notes - The Go Programming Language","url":"https://go.dev/doc/go1.27"},' +
+      '{"title":"Release History - The Go Programming Language","url":"https://go.dev/doc/devel/release"}]'
+    const codex = parseWebSearchToolCall({ name: 'web_search', args: '', result: codexResult })
+    expect(codex).toMatchObject({ query: 'latest Go release version site:go.dev', opened: [] })
+    expect(codex?.results.map(r => r.url)).toEqual(['https://go.dev/doc/go1.27', 'https://go.dev/doc/devel/release'])
     expect(parseWebSearchToolCall({ name: 'web_search', args: '{"query":"codex cli release notes"}' }))
       .toMatchObject({ query: 'codex cli release notes', results: [], opened: [] })
     expect(parseWebSearchToolCall({ name: 'web_search', args: '{"query":"https://pi.dev/"}' }))
