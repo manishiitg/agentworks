@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | closed |
 | Priority | P2 |
 | Product | relays |
 | Area | frontend-chat |
@@ -38,7 +38,12 @@ as the product's main interaction, although Builder chat authors the program.
 - Real workspace/Python test covers starter creation, preservation of an authored
   overview and frozen publication alongside source passed with real workspace handlers.
 
+## Superseded
+
+The user rejected a separately maintained Markdown overview. Replaced by
+[PLAT-640](plat-640.md): graph annotations inside relay.py, with no relay.md
+creation, reads or requirement. The earlier implementation is historical.
+
 ## Left
 
-Deploy to Excellence. Existing Relays without an overview require the Builder to
-explain their saved source. No production Relay data edited.
+None for this superseded design; deployment and graph authoring are tracked in PLAT-640.

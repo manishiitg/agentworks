@@ -172,7 +172,7 @@ func IsPlanPath(p string) bool {
 	}
 	rest := parts[rootEnd:]
 	if len(rest) == 1 {
-		return rest[0] == "workflow.json" || (parts[0] == "Workflow" && (rest[0] == "relay.py" || rest[0] == "relay.md"))
+		return rest[0] == "workflow.json" || (parts[0] == "Workflow" && rest[0] == "relay.py")
 	}
 	return len(rest) == 2 && rest[0] == "planning" &&
 		(rest[1] == "plan.json" || rest[1] == "step_config.json")

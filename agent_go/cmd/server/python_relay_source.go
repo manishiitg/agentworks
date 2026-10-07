@@ -12,31 +12,13 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
-const defaultPythonRelaySource = `async def run(INPUT, ctx):
+const defaultPythonRelaySource = `# @relay node {"id":"input","type":"input","label":"Receive a name","description":"Your app can send a name; it defaults to world.","input":{"name":"optional text"}}
+# @relay node {"id":"greeting","type":"script","label":"Create a greeting","description":"Read the name. This starter does not call an agent."}
+# @relay node {"id":"result","type":"output","label":"Return the greeting","output":{"hello":"the supplied name, or world"}}
+# @relay edge {"from":"input","to":"greeting"}
+# @relay edge {"from":"greeting","to":"result"}
+async def run(INPUT, ctx):
     return {"hello": INPUT.get("name", "world")}
-`
-
-// A readable companion to the initial implementation; execution still uses relay.py.
-const defaultPythonRelayOverview = `# Hello world
-
-A simple example to help you get started. Describe your own idea in the builder chat.
-
-## What goes in
-
-An optional **name** from your app. If no name is supplied, the Relay uses "world".
-
-## What happens
-
-1. Read the name.
-2. Return it as a greeting result. This example does not call an agent or use tools.
-
-## What comes back
-
-A JSON response with a **hello** field containing the name.
-
-## Try it
-
-Send {"name": "Ada"} to receive {"hello": "Ada"}.
 `
 
 func isPythonRelay(manifest *WorkflowManifest) bool {
@@ -96,15 +78,7 @@ func initializePythonRelayWorkspace(ctx context.Context, workspacePath string) e
 		if err := writeFileToWorkspace(ctx, path.Join(workspacePath, "relay.py"), defaultPythonRelaySource); err != nil {
 			return err
 		}
-		// Only describe the starter we just created. Existing implementations
-		// without an overview need the Builder to explain their actual behaviour.
-		if _, exists, err := readFileFromWorkspace(ctx, path.Join(workspacePath, "relay.md")); err != nil {
-			return err
-		} else if !exists {
-			if err := writeFileToWorkspace(ctx, path.Join(workspacePath, "relay.md"), defaultPythonRelayOverview); err != nil {
-				return err
-			}
-		}
+
 	}
 	if _, exists, err := readFileFromWorkspace(ctx, path.Join(workspacePath, "variables/variables.json")); err != nil {
 		return err

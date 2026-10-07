@@ -16,7 +16,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
-| [Relays](relays/index.md) | 24 | 4 |
+| [Relays](relays/index.md) | 25 | 4 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 61 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 37 | 8 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
@@ -26,9 +26,10 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-639](chat/general/plat-639.md) | Queued turn broke the Codex chat: security policy changed | fixed on main | P1 | [chat/general](chat/general/index.md) |
 | [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
-| [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
+| [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-636](browser/browser/plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
@@ -65,4 +66,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-603](chat/reliability/plat-603.md) | Duplicate failure notices from a full workflow run | open | P2 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-602](chat/reliability/plat-602.md) | Closing a tab mid-turn loses auto-notify waits | open | P1 | [chat/reliability](chat/reliability/index.md) |
 | [PLAT-601](sandbox/confinement/plat-601.md) | Auto-notify trigger code runs unconfined on the host | fixed on main | P0 | [sandbox/confinement](sandbox/confinement/index.md) |
-| [PLAT-600](brain/builder/plat-600.md) | CLI Builder refused its own Brain project tools | fixed on main | P1 | [brain/builder](brain/builder/index.md) |

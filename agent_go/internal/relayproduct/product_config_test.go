@@ -12,7 +12,7 @@ func TestBuilderPromptLoadsProductManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"relay.py", "relay.md", "plain-language Overview", "ctx.call_agent", "system_prompt", "output_schema"} {
+	for _, required := range []string{"relay.py", "@relay node", "@relay edge", "readable Graph", "ctx.call_agent", "system_prompt", "output_schema"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay product prompt is missing %q", required)
 		}

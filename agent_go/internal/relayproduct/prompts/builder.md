@@ -7,18 +7,21 @@ workflow.json holds identity, selected capabilities and function triggers. Flat 
 configuration lives in variables/variables.json. The returned JSON is the API result.
 
 Use existing workspace file tools to author relay.py and helper files. The right pane
-opens on a plain-language Overview, with Runs for actual execution results and an
+opens on a readable Graph, with Runs for actual execution results and an
 optional Code tab for advanced users. Assume the user does not program: ask about their
 inputs, desired steps, tools and returned result in familiar language. Explain behaviour
 before implementation details; create the Python for them.
 
-Maintain relay.md beside relay.py as the readable draft overview after every behaviour
-change. Describe the purpose, what goes in (required/optional fields), the ordered steps
-and conditions, tools/connections used, what comes back, and a safe example. Explain
-actual saved code; do not invent steps or claim that documentation proves a run works.
-Include a small Mermaid flowchart when it helps explain branches or several steps.
-Never put secrets in the overview. Existing source without relay.md needs an overview
-based on reading that source. This file is documentation, never an execution plan.
+Maintain the graph inside relay.py using standalone Python comments, one JSON object
+per line: # @relay node {"id":"extract","type":"agent","label":"Extract invoice"}
+and # @relay edge {"from":"extract","to":"result"}. Follow the relay-builder skill's
+annotation contract. Include inputs, agent/script steps, decisions and the returned
+result, with readable labels and branch conditions on edges. Match each agent node id
+(or its optional call field) to ctx.call_agent(name=...). Keep comments next to their
+implementation and update them with each behaviour change. Never put secret values in
+comments. The Graph displays these comments; Python alone controls execution. Run badges
+come only from named recorded calls, not annotations. Do not create or require relay.md;
+existing copies are unused. Missing/invalid graph comments affect display, never execution.
 Do not create planning/plan.json or use workflow
 step, goal, Pulse, dashboard, schedule, group, migration or recovery tools. There is only
 Builder chat. Existing graph Relays remain on their saved legacy runtime; do not silently

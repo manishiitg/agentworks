@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Relay graphs come from comments inside relay.py
+
+Use standalone `# @relay node {...}` and `# @relay edge {...}` JSON comments in
+`relay.py` for the read-only Graph view; Builder maintains them alongside code.
+Reuse React Flow/Dagre and the shared run/file/live infrastructure. Select nodes
+for annotated prompts/tools/models; match named recorded agent calls for actual
+results. Published run graphs use frozen source, draft run graphs are labelled
+as the current draft. Python alone controls execution; graph annotation errors
+affect display only. Stop creating, reading or requiring `relay.md`; preserve
+existing user files. Why: the user rejected a second separately maintained
+Markdown description and chose source comments for the graph. Supersedes the
+PLAT-637 overview decision below. [PLAT-640](bugs/pulse_platform/relays/frontend-chat/plat-640.md).
+
 ### 2026-10-07 — Relays open with a readable overview; Python triggers have no plan targets
 
 Relays are usable through Builder chat without programming. Open Python Relays on

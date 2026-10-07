@@ -4,7 +4,8 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-637](plat-637.md) | Show a plain-language Relay overview before implementation code | fixed on main | P2 |
+| [PLAT-640](plat-640.md) | Render Relay graphs from comments in relay.py | fixed on main | P2 |
+| [PLAT-637](plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 |
 | [PLAT-627](plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 |
 | [PLAT-409](plat-409.md) | Ctrl+K omitted Relays | fixed on main | - |
 | [PLAT-398](plat-398.md) | Relay output and workflow toolbar clarity | closed | - |

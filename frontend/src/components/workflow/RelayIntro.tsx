@@ -14,7 +14,7 @@ export function RelayIntro() {
       title="Turn an idea into an API you can reuse"
       description="Describe an agent or a chain of agents in chat. Choose the information it receives and the result it returns, then connect it to your website or product."
       features={[
-        { title: 'Build in chat', description: 'Describe the steps, tools and decisions you need. The builder creates them and shows a readable overview.' },
+        { title: 'Build in chat', description: 'Describe the steps, tools and decisions you need. The builder creates them and shows a visual graph.' },
         { title: 'Test your draft', description: 'Try sample inputs, see what each agent did and review the final result. Refine it in chat.' },
         { title: 'Publish a version', description: 'Call a published version through API triggers while editing the next draft.' },
       ]}

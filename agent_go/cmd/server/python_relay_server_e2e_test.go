@@ -103,17 +103,15 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	if err != nil || len(manifest.Schedules) != 1 {
 		t.Fatalf("created trigger not persisted: %v", err)
 	}
-	overview, err := os.ReadFile(filepath.Join(docs, workspacePath, "relay.md"))
-	if err != nil || string(overview) != defaultPythonRelayOverview {
-		t.Fatalf("starter overview missing: %s %v", overview, err)
+	starter, err := os.ReadFile(filepath.Join(docs, workspacePath, "relay.py"))
+	if err != nil || !strings.Contains(string(starter), "# @relay node") || !strings.Contains(string(starter), "# @relay edge") {
+		t.Fatalf("starter graph comments missing: %s %v", starter, err)
 	}
-	write("relay.md", "# Custom Relay\n\nReturns a value.\n")
+	if _, err := os.Stat(filepath.Join(docs, workspacePath, "relay.md")); !os.IsNotExist(err) {
+		t.Fatalf("initialization still creates a separate Relay overview: %v", err)
+	}
 	if err := initializePythonRelayWorkspace(ctx, workspacePath); err != nil {
 		t.Fatal(err)
-	}
-	overview, err = os.ReadFile(filepath.Join(docs, workspacePath, "relay.md"))
-	if err != nil || !strings.Contains(string(overview), "Custom Relay") {
-		t.Fatalf("initialization overwrote the authored overview: %s %v", overview, err)
 	}
 	// Validation must compile only: importing this source would raise.
 	write("relay.py", "raise RuntimeError('validation executed source')\nasync def run(INPUT, ctx):\n    return {'value': 1}\n")
@@ -131,11 +129,10 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v1.Version != "v1" || v1.OutputStep != "" || len(v1.Files) != 4 {
+	if v1.Version != "v1" || v1.OutputStep != "" || len(v1.Files) != 3 {
 		t.Fatalf("Python release includes workflow plan/output contract: %+v", v1)
 	}
 	write("relay.py", defaultPythonRelaySource)
-	write("relay.md", defaultPythonRelayOverview)
 	v2, err := publishRelayRelease(ctx, workspacePath)
 	if err != nil || v2.Version != "v2" {
 		t.Fatalf("publish new draft: %+v %v", v2, err)
@@ -143,10 +140,6 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	frozen, err := os.ReadFile(filepath.Join(docs, relayReleaseWorkspace(workspacePath, "v1"), "relay.py"))
 	if err != nil || !strings.Contains(string(frozen), "'value': 1") {
 		t.Fatalf("published source was rewritten: %s %v", frozen, err)
-	}
-	frozenOverview, err := os.ReadFile(filepath.Join(docs, relayReleaseWorkspace(workspacePath, "v1"), "relay.md"))
-	if err != nil || !strings.Contains(string(frozenOverview), "Custom Relay") {
-		t.Fatalf("published overview was rewritten: %s %v", frozenOverview, err)
 	}
 	releaseWorkspace := relayReleaseWorkspace(workspacePath, "v2")
 	starterFolder, err := allocateWebhookRunFolder(releaseWorkspace, "python-starter")

@@ -5,27 +5,55 @@ description: Author, test and publish Python Relays with fresh platform agents, 
 
 # Python Relay contract
 
-Read relay.py, relay.md (if present), workflow.json and variables/variables.json before editing. New Relays
+Read relay.py, workflow.json and variables/variables.json before editing. New Relays
 have kind: relay and relay_runtime: python. Keep source separate from workflow plans.
 The only entrypoint is async def run(INPUT, ctx). INPUT is the API caller's JSON object.
 Return a JSON serializable value (128 KiB limit); it becomes the final API response.
 The platform records relay_result.json and relay_trace.json under runs/iteration-N-hook.
 
-## User-facing overview
+## Graph comments in the source
 
-Users can build Relays without writing code. The right pane defaults to Overview;
-Runs shows recorded steps/results and Code is optional. Explain the Relay in everyday
-language, then implement it using the contract below.
+Users build in chat without writing code. The right pane defaults to Graph; Runs shows
+actual agent calls/results and Code is optional. Describe behaviour in everyday language.
+Create and maintain graph comments inside relay.py; do not create or require relay.md.
+Old Markdown files are unused; do not remove a user's existing files without a request.
 
-Create or update relay.md with each behaviour change, alongside relay.py. Use a short
-title/purpose and sections for **What goes in**, **What happens**, **What comes back**
-and **Try it**. Name required/optional input fields, describe ordered steps/conditions
-and selected tools/integrations, explain returned fields, and give a safe input/result
-example. Use a small Mermaid flowchart for meaningful chains/branches when helpful.
-Read existing code before describing it; no placeholder steps or secrets. An example
-is illustrative until tested; report actual test results separately. The overview is
-documentation shown for the draft; Python remains the sole execution definition.
-If you only change documentation, preserve implementation and existing triggers.
+Use a standalone Python comment containing exactly one JSON object per line:
+
+```python
+# @relay node {"id":"input","type":"input","label":"Receive invoice","input":{"text":"required invoice text"}}
+# @relay node {"id":"extract","type":"agent","label":"Extract invoice","description":"Extract supplier, invoice number and amount.","tools":["lookup_customer"],"model":"claude-code:sonnet"}
+# @relay node {"id":"check","type":"decision","label":"Large invoice?","description":"Review amounts over 1000."}
+# @relay node {"id":"review","type":"agent","label":"Review invoice"}
+# @relay node {"id":"result","type":"output","label":"Return invoice","output":{"invoice":"extracted invoice fields"}}
+# @relay edge {"from":"input","to":"extract"}
+# @relay edge {"from":"extract","to":"check"}
+# @relay edge {"from":"check","to":"review","label":"Amount > 1000"}
+# @relay edge {"from":"check","to":"result","label":"Amount <= 1000"}
+# @relay edge {"from":"review","to":"result"}
+```
+
+- Node fields: id (stable, starts with a letter; letters/digits/underscore/hyphen,
+  max 64 characters), type (input, agent, script, decision, output), label (readable).
+  Optional description, input/output (JSON descriptions), system_prompt, user_message,
+  messages (ordered text list), model, tools/skills (text lists), mcp (JSON description).
+  These document saved choices; do not substitute comments for implementation.
+- An agent node's id must match call_agent(name="id"). For a different saved call name,
+  set call to that exact name. Preserve the name when revising its implementation.
+  Loops may record multiple calls with the same name; each appears under that node.
+- Edges use from/to existing node ids and an optional readable condition label.
+  Keep both branch outcomes and loops consistent with actual code. Max 200 nodes/400
+  edges. Unique node ids; no duplicate identical edges. Comments inside strings or
+  docstrings are examples and do not define the graph.
+- Place each node comment beside its code, or group the records above run for a small
+  Relay. Update annotations with every behaviour change. Never include secret values;
+  use placeholders to describe runtime inputs and selected credentials.
+- The parser renders display metadata without importing/executing code. Annotation
+  errors never block a run or publish. Runs overlay only recorded named agent calls;
+  scripts/decisions and unobserved edges have no inferred execution status. Published
+  run graphs use frozen relay.py; draft run graphs show the current draft, labelled so.
+- Existing Python source without annotations: read it and add comments preserving
+  its behaviour when the user requests a graph. No separate plan or Markdown file.
 
 ## Authoring example
 

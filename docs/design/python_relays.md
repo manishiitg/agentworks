@@ -5,12 +5,11 @@ Tracked by [PLAT-611](../bugs/pulse_platform/relays/execution/plat-611.md).
 ## Product contract
 
 A Relay is an API callable Python program. Builder chat authors `relay.py` and
-helper files and maintains a plain-language `relay.md` overview. The right pane
-opens on Overview (inputs, steps, tools and result), with Runs for actual execution
-records and an optional Code tab for the exact implementation. Users describe
-behaviour in chat; they do not need to program. The overview is documentation,
-not an execution definition. Missing overviews on existing Relays show chat
-guidance until the Builder reads the code and explains it. New Relays set
+helper files, and maintains structured graph comments in that same source file.
+The right pane opens on Graph, with Runs for actual execution records and an
+optional Code tab. Users describe behaviour in chat; they do not need to program.
+No `relay.md` is created, read or required. Existing copies remain unused.
+New Relays set
 `kind: relay` and `relay_runtime: python` in the shared `workflow.json` manifest.
 `async def run(INPUT, ctx)` accepts one JSON object and returns a JSON value.
 Python owns conditions, loops, transformations and agent chaining. Its returned
@@ -129,7 +128,8 @@ unchanged.
   production adapter and signed HTTP bridge to a Python closure, with two
   messages in one session. Requires a signed-in provider and mcpbridge binary.
 - Focused shared Relay/function/webhook/product/livefeed regressions.
-- Frontend TypeScript and Overview/Runs/Code/file-editor tests.
+- Frontend TypeScript and Graph/Runs/Code/file-editor tests; annotation parser checks
+  for quoted examples, malformed/duplicate records and dangling edges.
 
 These checks do not certify every external MCP server, provider or deployment.
 
@@ -138,13 +138,55 @@ the tool callback; nested calls fail immediately. Put those calls in `run`, or
 attach an MCP tool directly to the agent. Tools can call their authorized
 external services using ordinary Python clients.
 
-## Non-programmer overview and trigger admission
+## Graph annotations in Python source
 
-[PLAT-637](../bugs/pulse_platform/relays/frontend-chat/plat-637.md) makes Overview
-the initial pane, updates onboarding and Builder guidance, and seeds a readable
-companion for the starter. Editing/publishing still use the existing workspace
-and frozen release files, including `relay.md`; no new plan parser or runtime.
-Draft overviews refresh through the existing live feed and file reads.
+[PLAT-640](../bugs/pulse_platform/relays/frontend-chat/plat-640.md) replaces the
+separate Markdown overview proposed in PLAT-637. Graph comments live beside the
+implementation and are published as part of the exact frozen `relay.py`.
+Execution ignores these display comments; malformed/missing annotations do not
+block running or publishing. Python remains the only execution definition.
+
+One standalone comment per record, with a JSON object on the same line:
+
+```python
+# @relay node {"id":"extract","type":"agent","label":"Extract invoice","tools":["lookup_customer"]}
+# @relay node {"id":"review","type":"agent","label":"Review large invoice"}
+# @relay node {"id":"result","type":"output","label":"Return invoice"}
+# @relay edge {"from":"extract","to":"review","label":"Amount > 1000"}
+# @relay edge {"from":"extract","to":"result","label":"Amount <= 1000"}
+# @relay edge {"from":"review","to":"result"}
+```
+
+Nodes require a unique `id` (starts with a letter, max 64 letters/digits/underscore/
+hyphen), `type` (`input`, `agent`, `script`, `decision`, `output`) and readable
+`label`. Optional fields: `description`, `input`, `output`, `system_prompt`,
+`user_message`, `messages` (ordered text list), `model`, `tools`/`skills` (text
+lists), `mcp`, and `call` (an exact runtime call name when different from the id).
+Edges require `from`/`to` existing node ids, with optional `label` for conditions.
+Up to 200 nodes and 400 edges; identical edges are rejected. Source comments
+inside quoted examples/docstrings do not define graph nodes. An invalid graph
+shows correction guidance rather than a partial diagram.
+
+Reuse the workflow React Flow/Dagre stack, route colours, workspace file reads,
+file editor, run selectors, live feed and frozen release files. Node selection
+shows annotation details. The Builder's product.yaml command, product-owned
+prompt and skill own this format and keep it aligned with the saved code.
+Annotation fields are author descriptions; they are not evaluated or proof of
+the prompts/models used in a run. Never put secret values in comments.
+
+Agent ids (or `call`) match `ctx.call_agent(name=...)`. Runs overlay actual named
+agent calls, status, tool receipts and returned outputs; loops can have several
+calls under one node. Unmatched calls remain in the run list. Script/decision
+nodes and conditional edges have no inferred execution status. Published runs
+render their frozen version's annotations; draft run graphs explicitly show the
+current draft, which may differ from an older test. No graph renderer walks or
+executes the program, and no plan translation or new agent runtime is introduced.
+
+New starters include input/script/output nodes. Existing Python source without
+annotations shows an Add graph in chat action; Builder reads the source and adds
+comments without changing behaviour. Existing legacy graph Relays are unchanged.
+
+## Shared trigger admission
 
 [PLAT-638](../bugs/pulse_platform/relays/triggers/plat-638.md) fixes shared API
 trigger admission and listing for Python Relays: they expose no workflow step or
