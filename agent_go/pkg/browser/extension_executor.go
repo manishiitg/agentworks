@@ -206,6 +206,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if err := validateExtensionRecording(values, isRecording); err != nil {
 			return "", err
 		}
+		values = withDefaultRecordingFPS(values)
 	}
 	if isRecording && command == "tab" && !isTabListRequest(values) {
 		return "", fmt.Errorf("RECORDING_CONTEXT_ACTIVE: stop recording before selecting, creating or closing a tab")

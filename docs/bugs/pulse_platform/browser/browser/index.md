@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-690](plat-690.md) | Browser recording lost: encoder fell behind | fixed on main | P2 |
 | [PLAT-685](plat-685.md) | Slot accounts reap their own leftover agent-browser helpers | fixed on main | P3 |
 | [PLAT-678](plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 |
 | [PLAT-662](plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | fixed on main | P3 |

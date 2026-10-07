@@ -47,6 +47,26 @@ func validateExtensionRecording(args []string, active bool) error {
 	return nil
 }
 
+// defaultRecordingFPS is used when a take does not ask for a frame rate. At
+// agent-browser's 30 fps a .webm take on a 2-vCPU server (RTS) encodes at about
+// real time, so any other load made the encoder fall behind and the whole take
+// was lost ("Recording encoder fell more than 500 ms behind capture", RTS,
+// 2026-10-07). 15 fps is enough for screen recordings.
+const defaultRecordingFPS = "15"
+
+// withDefaultRecordingFPS adds --fps to a record start that has none.
+func withDefaultRecordingFPS(values []string) []string {
+	if len(values) == 0 || values[0] != "start" {
+		return values
+	}
+	for _, v := range values {
+		if v == "--fps" {
+			return values
+		}
+	}
+	return append(append([]string(nil), values...), "--fps", defaultRecordingFPS)
+}
+
 // ReleaseExtensionConversation tears down only this chat's native relay runtime
 // and unfinished recording. It never closes the user's Chrome process.
 func ReleaseExtensionConversation(ctx context.Context, owner string) {

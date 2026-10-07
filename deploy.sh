@@ -258,6 +258,11 @@ else
   "${SSH[@]}" "REMOTE_APP='$REMOTE_APP' python3 -" < "$LOCAL_SCRIPT_DIR/install-ffmpeg.py"
   "${SSH[@]}" "export PATH='$REMOTE_RUNTIME_PATH'; ffmpeg -version | head -n 1"
 fi
+# Browser recordings (.mp4 / .webm) are encoded by agent-browser with this ffmpeg.
+if ! "${SSH[@]}" "export PATH='$REMOTE_RUNTIME_PATH'; enc=\$(ffmpeg -hide_banner -encoders 2>/dev/null); echo \"\$enc\" | grep -qw libx264 && echo \"\$enc\" | grep -qw libvpx"; then
+  echo "FATAL: [$PRODUCT] ffmpeg lacks libx264 or libvpx; browser recordings cannot encode" >&2
+  exit 1
+fi
 
 # Browser automation and every advertised coding provider are installation
 # dependencies, not something an end user is expected to install over SSH.

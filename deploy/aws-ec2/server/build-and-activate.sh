@@ -228,6 +228,9 @@ global_file="$remote_app/.globals-$release_id"
 install -d -m 0755 "$HOME/Downloads" "$remote_app/logs" /data/video-studio/docs/Downloads
 ln -sfn "$remote_app/logs" "$remote_release/logs"
 test -x "$remote_release/bin/video-studio-landlock-runner"
+# Browser recordings (.mp4 / .webm) are encoded by agent-browser with ffmpeg.
+encoders="$(ffmpeg -hide_banner -encoders 2>/dev/null)"
+grep -qw libx264 <<<"$encoders" && grep -qw libvpx <<<"$encoders" || { echo "ffmpeg lacks libx264 or libvpx; browser recordings cannot encode" >&2; exit 1; }
 # This is stronger than checking the host sysctl: it proves that the scoped
 # AppArmor exception and the fallback itself both work for this release.
 "$remote_release/bin/workspace-security.test" -test.run TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy -test.v
