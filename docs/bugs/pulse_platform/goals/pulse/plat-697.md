@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | goals |
 | Area | pulse |
-| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-4 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log; Pulse as one persistent conversation per workflow with chat, focus areas, ask_pulse and a Slack slug; for workflows with a goal it owns QA and Architecture, no separate review turns; the name users see is Pulse, not Goal Lead) |
+| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-4 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log; Pulse as one persistent conversation per workflow with chat, focus areas, ask_pulse and a Slack slug; for workflows with a goal it owns QA and Architecture, no separate review turns; the name users see is Pulse, not Goal Lead; ask_builder lets Pulse ask the Builder chat, and the goal check carries plan changes, owner answers, spend, login hints and spikes) |
 
 ## What happened
 
@@ -60,6 +60,7 @@ goal check turn itself is not yet run live.
 - QA and Architecture owned by Pulse: see that section below (not run live; the run-failure turn, the pass without
   review turns and the hidden panels need a local check by the owner).
 - Rename: `ask_goal_lead` and the `-goal` Slack slug are kept as aliases for one release; remove them after.
+- ask_builder and more goal facts: see that section below (not run live).
 - Phases 5-6.
 
 ## What and why
@@ -246,6 +247,63 @@ Risks:
 - Not run live. Tests: `TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce` (pass order with and
   without a goal; one turn for one failed run over three ticks), `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks`,
   `TestToolSetInvariants`, `GoalLeadPanel.test.tsx`.
+
+## ask_builder and more goal facts (on main, not deployed)
+
+**ask_builder** (`goal_lead_ask_builder.go`): the Pulse asks the workflow's Builder chat, the reverse of `ask_pulse`,
+by the same function-call mechanism (call id and saved record, chain guard, 20 an hour per workflow, waits up to
+120 s, default 90).
+
+- **Target:** the owner's most recently active Builder chat for the workflow (live first, else the latest saved one,
+  the chat the web Builder restores), or a named one of the owner's Builder chats (`builder_session_id`, e.g. the
+  session a plan change came from). None: a question returns `no_builder_chat`; a fix becomes a decision. No chat is
+  created. A Builder chat busy with another turn is refused (ask later).
+- **What the owner sees:** the request runs in that Builder chat as a normal turn ("Pulse (question)" / "Pulse
+  (fix)"), with the reply under it; the Pulse tab logs the ask and the answer. The answer comes back as the call
+  result and is kept in `goal_lead_builder_asks`, so a late answer reaches the next goal check (`builder_asks`).
+- **question:** answers from the chat's own conversation; during that turn the Builder chat's tools are held by the
+  phase 2 guard with Run, Outward and Change at ask, so it changes, runs and sends nothing. Pulse records the answer
+  in goal memory with the new source `builder_answer` ("Builder answer", dated).
+- **fix** (message, evidence, a plain title and why): sent only when the turn holds `pulse.autonomy.change=auto`;
+  the Builder chat's tools are then held to Change only (no run, no send; deletions, plan replacement and
+  migrations stay refused by the guard). At ask (and when there is no Builder chat) it becomes one decision
+  (`strategic_review`, `targeted_fixer` with the request as approved scope) with Pulse's recommendation "Make this
+  fix"; the owner's Accept sends it to the Builder chat through the existing apply-in-chat path. Refused for
+  soul.md, deletions and contract migrations (a narrow text check on the request, plus the guard) and from a
+  failed-run turn (questions only there).
+- **No ping-pong:** the chain guard refuses asking back the chat that asked; ask_builder also refuses when any
+  Builder chat started the exchange with `ask_pulse` (a step that asked may still be followed by a question).
+
+**More goal facts** (`goal_lead_facts.go`, in the goal check context and `get_pulse_state(view="goal_status")`,
+code only, since the last check):
+
+- `plan_changes`: planning/changelog entries (tool, reason, steps, who, session); the skill says to ask_builder about
+  changes touching goal-driving steps or the metric.
+- `owner_answers`: decision requests the owner answered. Owner messages in Builder chats are not collected (their
+  transcripts can be tens of MB per chat); ask_builder covers them.
+- `spend`: the workflow's cost ledger (PLAT-184 `costs/costs.sqlite`), last 7 days against the 7 before, and runs
+  costing at least twice the 14-day median run (`cost_spikes`). Workflows have no budget field, so the trend is
+  reported without one.
+- `error_rate`: failure share since the last check against the 14-day median daily share (`spike`).
+- `login_hints`: runs carry no structured error kind, so a narrow, labelled text match on run errors and
+  `CONCERNS:` lines (401/403, unauthorized, invalid_grant, expired token/session/login, re-authenticate, MCP
+  connection failures).
+
+`goal-lead-check.md` has one short paragraph per fact and one on ask_builder. Test:
+`TestPulseAskBuilderHonoursChangeLevelAndCheckSeesPlanChanges` (fix at change=ask makes a decision whose Accept
+message applies it in the Builder chat; fix at change=auto and a question at ask run in the Builder chat with the
+right tool hold; fix from a failed-run turn refused; a plan change appears in the check context).
+
+Risks:
+
+- The Builder turn's tool hold is keyed on the chat's session for the turn: an owner message queued behind it waits.
+  A busy chat is refused rather than queued, so the hold never lands on the owner's own running turn, but a turn the
+  owner starts in the same moment could still race it.
+- `userWorkflowChat` reads the saved Builder transcripts to pick the latest; slow on workflows with very large
+  transcripts (the same path the bot DMs use).
+- Spend per run groups the ledger's `run_id`; events without one (chats, Pulse turns) count in the weekly totals
+  only. Login hints are text matches and will miss errors worded differently.
+- Not run live.
 
 ## Phase 0: Workflow Review before runs; housekeeping out of Pulse (on main, not deployed)
 

@@ -433,7 +433,9 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 	if entries > goalMemoryMaxEntries*3/4 {
 		note += fmt.Sprintf(" It has %d entries: consolidate it now (record_pulse_goal_memory action=consolidate) to one line per preference or lesson.", entries)
 	}
-	return map[string]interface{}{
+	now := time.Now().UTC()
+	since := goalLeadRunHealthSince(ctx, workspacePath, now)
+	out := map[string]interface{}{
 		"goal_memory":            memory,
 		"goal_memory_note":       note,
 		"answer_mode":            pulseAnswerMode(ctx, workspacePath),
@@ -448,9 +450,18 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		"qa_results_note":  "QA runs you asked for with record_pulse_qa_request: a separate run checks and repairs, and its short result is here. Judge the effect on the goal yourself; the run judged the steps.",
 		// No Technical turn runs after a goal workflow's runs any more: the
 		// failures it caught come here (goal_lead_owns_reviews.go).
-		"run_health":      goalLeadRunHealth(ctx, workspacePath, goalLeadRunHealthSince(ctx, workspacePath, time.Now().UTC())),
+		"run_health":      goalLeadRunHealth(ctx, workspacePath, since),
 		"run_health_note": goalLeadRunHealthNote,
+		// ask_builder: the Builder chat's answers, including late ones.
+		"builder_asks":      recentPulseBuilderAsks(ctx, workspacePath, since, 5),
+		"builder_asks_note": "Your ask_builder calls since your last check and the Builder chat's answers (a late answer lands here). Record what matters in goal memory (source builder_answer, dated).",
 	}
+	// Plan changes, owner answers, spend, login hints and spikes since the last
+	// check (goal_lead_facts.go).
+	for key, value := range goalLeadMoreFacts(ctx, workspacePath, since, now) {
+		out[key] = value
+	}
+	return out
 }
 
 // handleGetGoalLead serves the Pulse tab's goal memory and decision log.
@@ -520,7 +531,7 @@ func (api *StreamingAPI) handlePutGoalMemory(w http.ResponseWriter, r *http.Requ
 func createGoalLeadTools() []llmtypes.Tool {
 	entry := map[string]interface{}{
 		"section": map[string]interface{}{"type": "string", "enum": goalMemorySections},
-		"source":  map[string]interface{}{"type": "string", "enum": []string{"owner_answer", "result", "pulse_inference"}, "description": "owner_answer only for what the owner said; result for a dated result; pulse_inference for your own reading (marked as such)."},
+		"source":  map[string]interface{}{"type": "string", "enum": []string{"owner_answer", "result", "builder_answer", "pulse_inference"}, "description": "owner_answer only for what the owner said; result for a dated result; builder_answer for what the Builder chat answered your ask_builder question; pulse_inference for your own reading (marked as such)."},
 		"text":    map[string]interface{}{"type": "string", "description": "One plain line, at most 300 characters."},
 		"date":    map[string]interface{}{"type": "string", "description": "YYYY-MM-DD the entry is from; defaults to today."},
 	}

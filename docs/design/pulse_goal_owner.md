@@ -1,6 +1,6 @@
 # Pulse as the goal owner
 
-Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section; ask_builder and more goal facts, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07, second decision): users and agents see **Pulse**, e.g. "Substack Pulse". It was called
 "Goal Lead" while phases 0-4 were built; code names (`goal_lead_*` files, tables and types) keep that name.
@@ -291,6 +291,20 @@ owner did not own its workflow. Now that conversation is the only Pulse of such 
 - **Pulse tab.** No Technical or Architecture panels or run-history columns for these workflows; a line says the
   workflow's Pulse handles them. Their output shows in the conversation (QA results, replies) and the decision log.
   Workflow Review and maintenance issues stay.
+
+## ask_builder and more goal facts (as built)
+
+- **ask_builder.** The Pulse asks the workflow's Builder chat (the owner's most recently active one, or a named one
+  of the owner's) by function call, as a normal turn there. `question` changes nothing (the chat's tools are held to
+  ask for the turn); `fix` is sent only at `change=auto` (the chat may change, not run or send), otherwise it becomes
+  one decision with Pulse's recommendation and Accept applies it in the Builder chat. Never for soul.md, deletions
+  or contract migrations, never from a failed-run turn, never back to a Builder chat that asked. No Builder chat: a
+  question says so, a fix becomes a decision. Answers go to goal memory as `builder_answer`.
+- **More facts in the goal check** (code only, since the last check): plan changes from planning/changelog, decisions
+  the owner answered (not Builder chat messages: too costly to scan), spend for the last 7 days against the 7 before
+  from the cost ledger (no budget field exists, so trend only), runs costing twice the 14-day median, the failure
+  share against its 14-day median, and text-matched login/connection hints. `goal-lead-check.md` says what to do with
+  each.
 
 ## Risks
 

@@ -1378,6 +1378,9 @@ func GetToolsForWorkshopMode(mode string) []string {
 		tools = append(tools, autoImprovement...)
 		tools = append(tools, pulseState...)
 		tools = append(tools, "ask_pulse", "ask_goal_lead")
+		// The Pulse asks the workflow's Builder chat; the tool refuses any
+		// other session (PLAT-697).
+		tools = append(tools, "ask_builder")
 
 	case "run":
 		// RUN: deployed/user-facing runtime for workflow-backed work, Slack, WhatsApp,

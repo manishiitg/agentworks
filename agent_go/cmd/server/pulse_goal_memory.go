@@ -50,12 +50,14 @@ var goalMemorySources = map[string]string{
 	"owner_answer":    "owner answer",
 	"result":          "result",
 	"pulse_inference": "Pulse inference",
+	// What the workflow's Builder chat answered an ask_builder question.
+	"builder_answer": "Builder answer",
 }
 
 const goalMemoryHeader = `# Goal memory
 
 How this goal is managed: owner preferences and answers, decisions and their outcomes, lessons, open bets, and what
-waits on the owner. One line per entry: date, [source] (owner answer, result, or Pulse inference), text.
+waits on the owner. One line per entry: date, [source] (owner answer, result, Builder answer, or Pulse inference), text.
 soul/soul.md says what the goal is and wins on any conflict. The Pulse keeps this short; the owner may edit it.`
 
 var goalMemoryMu sync.Mutex
@@ -330,7 +332,7 @@ func goalMemoryEntryFromArgs(args map[string]interface{}) (goalMemoryEntry, erro
 	}
 	source, ok := goalMemorySources[stringToolArg(args, "source")]
 	if !ok {
-		return goalMemoryEntry{}, fmt.Errorf("source must be owner_answer (only what the owner said), result (a dated result) or pulse_inference (your own reading, marked as such)")
+		return goalMemoryEntry{}, fmt.Errorf("source must be owner_answer (only what the owner said), result (a dated result), builder_answer (what the Builder chat answered your ask_builder question) or pulse_inference (your own reading, marked as such)")
 	}
 	text := stringToolArg(args, "text")
 	if text == "" || strings.Contains(text, "\n") || len(text) > 300 {

@@ -88,6 +88,8 @@ const roleLabel = (message: GoalLeadMessage): string => {
     case 'check': return 'Goal check'
     case 'goal_work': return 'Goal Work'
     case 'qa': return 'QA run'
+    case 'ask_builder': return 'Pulse asked the Builder chat'
+    case 'builder_answer': return 'Builder chat'
     case 'system': return 'Note'
     default: return 'Pulse'
   }

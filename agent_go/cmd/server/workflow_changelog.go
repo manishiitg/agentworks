@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -86,46 +87,11 @@ func (api *StreamingAPI) handleGetPlanChangelog(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	folder := path.Join(strings.Trim(workspacePath, "/"), "planning", "changelog")
-	listing, exists, err := listWorkspaceFolder(r.Context(), folder, 1)
+	entries, err := readPlanChangelogEntries(r.Context(), workspacePath)
 	if err != nil {
 		writeAIJSON(w, PlanChangelogResponse{Success: false, Error: err.Error()})
 		return
 	}
-	if !exists {
-		// No changelog folder yet — an empty feed is a valid, non-error state.
-		writeAIJSON(w, PlanChangelogResponse{Success: true, Entries: []planChangelogEntry{}, Count: 0})
-		return
-	}
-
-	var filePaths []string
-	collectWorkspaceFilePaths(listing, &filePaths)
-
-	entries := make([]planChangelogEntry, 0, 64)
-	for _, fullPath := range filePaths {
-		if !strings.HasSuffix(strings.ToLower(fullPath), ".json") {
-			continue
-		}
-		content, fileExists, readErr := readFileFromWorkspace(r.Context(), fullPath)
-		if readErr != nil || !fileExists || strings.TrimSpace(content) == "" {
-			continue
-		}
-		var parsed planChangelogFile
-		if err := json.Unmarshal([]byte(content), &parsed); err != nil {
-			continue // skip malformed changelog files rather than failing the whole feed
-		}
-		fileName := path.Base(fullPath)
-		for _, entry := range parsed.Entries {
-			entry.File = fileName
-			entries = append(entries, entry)
-		}
-	}
-
-	// Newest first. Timestamps are RFC3339 UTC, so a lexical descending sort
-	// is chronological.
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].Timestamp > entries[j].Timestamp
-	})
 
 	// Optional ?limit=N (1..planChangelogMaxEntries) lets change-detection
 	// callers fetch just the head entry instead of the full feed.
@@ -140,6 +106,47 @@ func (api *StreamingAPI) handleGetPlanChangelog(w http.ResponseWriter, r *http.R
 	}
 
 	writeAIJSON(w, PlanChangelogResponse{Success: true, Entries: entries, Count: total})
+}
+
+// readPlanChangelogEntries reads planning/changelog/*.json, newest first. A
+// workflow without a changelog folder has no entries; malformed files are
+// skipped rather than failing the whole feed.
+func readPlanChangelogEntries(ctx context.Context, workspacePath string) ([]planChangelogEntry, error) {
+	folder := path.Join(strings.Trim(workspacePath, "/"), "planning", "changelog")
+	listing, exists, err := listWorkspaceFolder(ctx, folder, 1)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]planChangelogEntry, 0, 64)
+	if !exists {
+		return entries, nil
+	}
+	var filePaths []string
+	collectWorkspaceFilePaths(listing, &filePaths)
+	for _, fullPath := range filePaths {
+		if !strings.HasSuffix(strings.ToLower(fullPath), ".json") {
+			continue
+		}
+		content, fileExists, readErr := readFileFromWorkspace(ctx, fullPath)
+		if readErr != nil || !fileExists || strings.TrimSpace(content) == "" {
+			continue
+		}
+		var parsed planChangelogFile
+		if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+			continue
+		}
+		fileName := path.Base(fullPath)
+		for _, entry := range parsed.Entries {
+			entry.File = fileName
+			entries = append(entries, entry)
+		}
+	}
+	// Newest first. Timestamps are RFC3339 UTC, so a lexical descending sort
+	// is chronological.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].Timestamp > entries[j].Timestamp
+	})
+	return entries, nil
 }
 
 // handlePrunePlanChangelog deletes plan-changelog files older than a cutoff —

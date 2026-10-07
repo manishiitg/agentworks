@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
@@ -72,4 +73,42 @@ func WorkspaceLedger(workspacePath string) (*Ledger, error) {
 	}
 	workspaceLedgers[path] = ledger
 	return ledger, nil
+}
+
+// RunCost is one run's spend in a ledger: every event with that run_id.
+// Events with no run_id (chats, Pulse turns) are grouped under RunID "".
+type RunCost struct {
+	RunID   string
+	FirstAt time.Time
+	CostUSD float64
+}
+
+// RunCostsSince returns spend per run_id for events at or after from, in no
+// particular order. A per-workflow ledger holds only that workflow's events,
+// so this is the workflow's spend per run (the Pulse goal check reads it).
+func (l *Ledger) RunCostsSince(from time.Time) ([]RunCost, error) {
+	if l == nil {
+		return nil, fmt.Errorf("costledger: nil ledger")
+	}
+	store, ok := l.db.(*sqliteLedger)
+	if !ok || store == nil {
+		return nil, fmt.Errorf("costledger: run costs need the SQLite ledger")
+	}
+	rows, err := store.db.Query(`SELECT run_id, MIN(occurred_at), COALESCE(SUM(total_cost_usd), 0) FROM cost_events
+		WHERE occurred_at >= ? GROUP BY run_id`, from.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RunCost{}
+	for rows.Next() {
+		var cost RunCost
+		var first string
+		if err := rows.Scan(&cost.RunID, &first, &cost.CostUSD); err != nil {
+			return nil, err
+		}
+		cost.FirstAt, _ = time.Parse(time.RFC3339Nano, first)
+		out = append(out, cost)
+	}
+	return out, rows.Err()
 }

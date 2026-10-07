@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Pulse asks the Builder chat (ask_builder); fixes only at change=auto
+
+The Pulse can ask the workflow's Builder chat (the owner's most recently active one) with `ask_builder`, as a normal
+turn the owner can watch. A question changes nothing (the chat's tools are held to ask for that turn). A fix request
+is sent only when `pulse.autonomy.change` is auto (the chat may then change, not run or send); at ask it becomes one
+decision with Pulse's recommendation whose Accept applies it in the Builder chat. Never for soul.md, deletions or
+contract migrations, never from a failed-run turn, never back to a Builder chat that asked. The goal check also
+carries plan changes, owner answers, spend trend (no budget field exists), login hints and spikes. Why: owner,
+2026-10-08: the goal's owner should learn why the workflow changed and get fixes made through the workflow's own
+agents. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — For a workflow with a goal, Pulse owns QA and Architecture; users see "Pulse", not "Goal Lead"
 
 A workflow with a goal (soul.md plus a primary metric) has one Pulse: its persistent conversation. The full pass runs

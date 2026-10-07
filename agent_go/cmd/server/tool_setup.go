@@ -346,6 +346,12 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[ask.tool.Function.Name] = "workflow"
 		}
 
+		// The Pulse asks the workflow's Builder chat (PLAT-697).
+		builderAskTool, builderAskExecute := createPulseBuilderAskTool()
+		allTools = append(allTools, builderAskTool)
+		allExecutors[builderAskTool.Function.Name] = builderAskExecute
+		toolCategories[builderAskTool.Function.Name] = "workflow"
+
 		pulseWorklistTools, pulseWorklistExecutors, pulseWorklistCategories := createPulseWorklistTools()
 		allTools = append(allTools, pulseWorklistTools...)
 		for name, executor := range pulseWorklistExecutors {

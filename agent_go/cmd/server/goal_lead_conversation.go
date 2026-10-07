@@ -343,7 +343,8 @@ How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
 - Your authority is pulse.autonomy (run, outward, change), enforced by the tools on every turn. Within it, act and record it; beyond it, prepare the work and ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills, loaded when a turn needs them: the goal check, read_skill(skills=[{"name":"builder-reference","path":"references/goal-lead-check.md"}]); Goal Work, references/goal-lead-work.md; a structural question about the workflow, references/goal-lead-architecture.md.
-- You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill. Larger plan changes go to the workflow's Builder chat or a decision; Workflow Review checks them before the next run.
+- You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
+- The workflow's Builder chat: ask_builder(kind="question") to learn what changed and why or what the owner decided there (record the answer in goal memory, source builder_answer); ask_builder(kind="fix") for a bounded repair with evidence, sent only when change is auto and otherwise turned into one decision with your recommendation. Never for soul.md, deletions or contract migrations. Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath)
 }
@@ -455,6 +456,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	mcpagent.ClearHTTPSessionStopped(sessionID)
 	release := beginGoalWorkTurn(sessionID, perms)
 	defer release()
+	defer markGoalLeadTurnKind(sessionID, turn.Kind)()
 
 	// As the scheduler's own Pulse turns: the principal is the userID, not
 	// claims carried on ctx.

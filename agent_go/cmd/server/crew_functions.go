@@ -965,6 +965,13 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		call.saveIndex()
 		call.persist()
 	}
+	if isPulseBuilderAsk(target, fn) {
+		// ask_builder: a turn in the workflow's Builder chat.
+		call.saveIndex()
+		call.persist()
+		go api.runPulseBuilderAsk(call, target, caller, args, timeout)
+		return call, nil
+	}
 	if isGoalLeadAsk(target, fn) {
 		// ask_pulse: a turn in the workflow's Pulse conversation.
 		message, _ := args["message"].(string)
