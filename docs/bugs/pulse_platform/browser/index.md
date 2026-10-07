@@ -7,4 +7,5 @@
 | [access](access/index.md) | 1 | 0 |
 | [automation](automation/index.md) | 14 | 5 |
 | [browser](browser/index.md) | 35 | 6 |
+| [recording](recording/index.md) | 1 | 0 |
 | [runtime-health](runtime-health/index.md) | 1 | 0 |

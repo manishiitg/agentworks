@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 87 | 14 |
 | [Brain](brain/index.md) | 28 | 6 |
-| [Browser and browser automation](browser/index.md) | 51 | 11 |
+| [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 77 | 20 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-709](browser/recording/plat-709.md) | Saved recordings unreadable by the slot user who made them | fixed on main | P1 | [browser/recording](browser/recording/index.md) |
 | [PLAT-708](vault/apps/plat-708.md) | Vault: Vercel sign-in fails, registration rejected and authorize opened without a client | fixed on main | P1 | [vault/apps](vault/apps/index.md) |
 | [PLAT-707](coding-agents/codex/plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 | [coding-agents/codex](coding-agents/codex/index.md) |
 | [PLAT-706](coding-agents/accounts/plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-668](integrations/slack/plat-668.md) | Slack slugs: one bot for many Crews and workflows | fixed on main | P2 | [integrations/slack](integrations/slack/index.md) |
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | fixed on main | P2 | [chat/tabs](chat/tabs/index.md) |

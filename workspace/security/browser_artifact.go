@@ -142,7 +142,7 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	}
 
 	parent := filepath.Dir(destination)
-	if err := os.MkdirAll(parent, 0755); err != nil {
+	if err := mkdirLikeAncestor(parent); err != nil {
 		return fmt.Errorf("create browser artifact destination directory: %w", err)
 	}
 	canonicalParent := canonicalPath(parent)
@@ -187,6 +187,14 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	if err := tmp.Sync(); err != nil {
 		return fmt.Errorf("sync browser artifact: %w", err)
 	}
+	// CreateTemp makes the file 0600 for this server's account. A slot user's
+	// chat could then not read its own recording (RTS 2026-10-07, PLAT-709), so
+	// the file gets the access its folder gives.
+	if parentInfo, err := os.Stat(parent); err == nil {
+		if err := tmp.Chmod(fileModeForDir(parentInfo.Mode())); err != nil {
+			return fmt.Errorf("set browser artifact permissions: %w", err)
+		}
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close browser artifact: %w", err)
 	}
@@ -195,6 +203,64 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	}
 	removeTmp = false
 	_ = os.Remove(canonicalSource)
+	return nil
+}
+
+// fileModeForDir gives a file the read and write access its folder gives each
+// class: a 2770 project folder makes 0660, a 0755 folder makes 0644.
+func fileModeForDir(dir os.FileMode) os.FileMode {
+	mode := os.FileMode(0o600)
+	if dir&0o040 != 0 {
+		mode |= 0o040
+	}
+	if dir&0o020 != 0 {
+		mode |= 0o020
+	}
+	if dir&0o004 != 0 {
+		mode |= 0o004
+	}
+	return mode
+}
+
+// mkdirLikeAncestor creates missing folders with the permissions (including
+// setgid) of the nearest existing one, so a folder made by this server inside a
+// slot user's project stays writable for that user's group.
+func mkdirLikeAncestor(dir string) error {
+	var missing []string
+	existing := dir
+	for {
+		info, err := os.Stat(existing)
+		if err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("%s is not a directory", existing)
+			}
+			break
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+		missing = append(missing, existing)
+		next := filepath.Dir(existing)
+		if next == existing {
+			break
+		}
+		existing = next
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	mode := os.FileMode(0o755)
+	if info, err := os.Stat(existing); err == nil {
+		mode = info.Mode() & (os.ModePerm | os.ModeSetgid)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		if err := os.Chmod(missing[i], mode); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -142,3 +142,29 @@ func stagedArtifactFile(t *testing.T, extension string, data []byte) string {
 	}
 	return name
 }
+
+// RTS 2026-10-07 (PLAT-709): a recording saved into a slot user's project was
+// 0600 for the server account, so the user's own chat could not read it.
+func TestFinalizeBrowserArtifactKeepsTheProjectGroupsAccess(t *testing.T) {
+	base := t.TempDir()
+	project := filepath.Join(base, "Chats", "Code", "projects", "p1")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(project, 0o2770); err != nil {
+		t.Fatal(err)
+	}
+	source := stagedArtifactFile(t, ".png", append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("image-data")...))
+	destination := filepath.Join(project, "recordings", "take.png")
+	if err := FinalizeBrowserArtifact(source, destination, "screenshot", base, []string{project}, nil, nil); err != nil {
+		t.Fatalf("FinalizeBrowserArtifact() error = %v", err)
+	}
+	dir, _ := os.Stat(filepath.Dir(destination))
+	file, _ := os.Stat(destination)
+	if got := dir.Mode().Perm(); got != 0o770 {
+		t.Fatalf("new folder mode = %v, want the project's 0770", got)
+	}
+	if got := file.Mode().Perm(); got != 0o660 {
+		t.Fatalf("artifact mode = %v, want 0660 so the project group can read it", got)
+	}
+}
