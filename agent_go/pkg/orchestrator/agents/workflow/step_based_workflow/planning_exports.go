@@ -273,10 +273,33 @@ type SchedulerCallbacks struct {
 	NextContractUpgrade func(ctx context.Context, workspacePath string) (target string, label string, err error)
 }
 
+// ScheduleAfterRunOptions is what runs after a schedule's run.
+type ScheduleAfterRunOptions struct {
+	Backup, Publish, Notify bool
+}
+
+// scheduleAfterRunArgument reads an after_run tool argument.
+func scheduleAfterRunArgument(args map[string]interface{}) (ScheduleAfterRunOptions, bool) {
+	raw, ok := args["after_run"].(map[string]interface{})
+	if !ok {
+		return ScheduleAfterRunOptions{}, false
+	}
+	options := ScheduleAfterRunOptions{}
+	options.Backup, _ = raw["backup"].(bool)
+	options.Publish, _ = raw["publish"].(bool)
+	options.Notify, _ = raw["notify"].(bool)
+	return options, true
+}
+
 // ScheduleRuntimePolicy carries typed scheduling behavior that must be
 // enforced by the runtime rather than inferred from a natural-language
 // message or a conveniently spaced cron expression.
 type ScheduleRuntimePolicy struct {
+	// AfterRun is the schedule's after-run options (backup, publish, notify;
+	// PLAT-697 phase 0). SetAfterRun is true when the call supplied it.
+	AfterRun    ScheduleAfterRunOptions
+	SetAfterRun bool
+	// PulseMode and PulseModeReason are legacy, read for one release.
 	PulseModeReason          string
 	PulseMode                string
 	ExecutionMode            string

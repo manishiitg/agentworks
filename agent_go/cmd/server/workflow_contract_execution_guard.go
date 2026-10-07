@@ -57,6 +57,54 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
 }
 
+// workflowReviewPreRunRegistrar runs the Workflow Review pre-run check
+// (PLAT-697 phase 0) in front of execute_step and run_full_workflow in every
+// workflow chat: Builder, Run, and Pulse turns. Clean plans start at once; a
+// changed plan starts the review as a background job of the chat and the run
+// tool returns without starting (workflow_review_prerun.go).
+type workflowReviewPreRunRegistrar struct {
+	definitionRegistrar
+	api           *StreamingAPI
+	sessionID     string
+	workspacePath string
+}
+
+func (r workflowReviewPreRunRegistrar) RegisterCustomTool(
+	name, description string,
+	schema map[string]interface{},
+	execute func(context.Context, map[string]interface{}) (string, error),
+	group string,
+) error {
+	return r.RegisterCustomToolWithTimeout(name, description, schema, execute, 0, group)
+}
+
+func (r workflowReviewPreRunRegistrar) RegisterCustomToolWithTimeout(
+	name, description string,
+	schema map[string]interface{},
+	execute func(context.Context, map[string]interface{}) (string, error),
+	timeout time.Duration,
+	group string,
+) error {
+	if name == "execute_step" || name == "run_full_workflow" {
+		original := execute
+		execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			stepID := ""
+			if name == "execute_step" {
+				stepID, _ = args["step_id"].(string)
+			}
+			proceed, message := r.api.manualRunWorkflowReview(ctx, r.sessionID, r.workspacePath, stepID, name)
+			if !proceed {
+				if strings.HasPrefix(message, "workflow_review_blocked:") {
+					return "", fmt.Errorf("%s", message)
+				}
+				return message, nil
+			}
+			return original(ctx, args)
+		}
+	}
+	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
+}
+
 func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string) error {
 	workspacePath = strings.TrimSpace(workspacePath)
 	if workspacePath == "" {

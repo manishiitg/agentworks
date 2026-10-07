@@ -25,12 +25,13 @@ import {
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
+import { ScheduleAfterRunControls } from './ScheduleAfterRunControls'
 
 type ScheduleListViewProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'filteredJobs' | 'presetMap' | 'showWorkflowIdentityInScheduleRows' | 'isReadOnlyUser'
     | 'handleStopRun' | 'handleTrigger' | 'triggering' | 'handleToggle'
-    | 'handleRunDestination'
+    | 'handleRunDestination' | 'handleAfterRun'
     | 'openActionMenuJobId' | 'setOpenActionMenuJobId' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
     | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
@@ -48,6 +49,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     triggering,
     handleToggle,
     handleRunDestination,
+    handleAfterRun,
     openActionMenuJobId,
     setOpenActionMenuJobId,
     handleDelete,
@@ -187,6 +189,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                       </select>
                     </label>
                   )}
+                  <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={(target, next) => void handleAfterRun(target, next)} />
                 </div>
                 {dependencyNames.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pr-28 text-xs text-info">

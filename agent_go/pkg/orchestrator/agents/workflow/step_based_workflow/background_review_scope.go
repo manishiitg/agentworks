@@ -94,24 +94,18 @@ func readOnlyBackgroundToolAllowed(name string) bool {
 }
 
 // GoalWorkEffectivePermissions are the levels Goal Work holds in this turn:
-// the workflow's pulse.autonomy, with Run and Change withheld while a Plan
-// Drift review is due (the plan is being reconciled; docs/design/pulse_goal_work.md).
-func GoalWorkEffectivePermissions(manifestJSON string, planDriftDue bool) GoalWorkPermissions {
-	perms := PulseAutonomyPermissions(manifestJSON)
-	if planDriftDue {
-		perms.Run = false
-		perms.Change = false
-	}
-	return perms
+// the workflow's pulse.autonomy. Workflow Review no longer withholds Run or
+// Change: it runs before every run (PLAT-697 phase 0), so a run Goal Work
+// starts is reviewed first like any other.
+func GoalWorkEffectivePermissions(manifestJSON string) GoalWorkPermissions {
+	return PulseAutonomyPermissions(manifestJSON)
 }
 
 // GoalWorkAutonomyInstructions is the permission text for a Goal Work turn.
 // The server enforces the same levels on the tools for that turn (PLAT-697
 // phase 2), so a refused call is the level working, not an error to retry.
-func GoalWorkAutonomyInstructions(perms GoalWorkPermissions, planDriftDue bool) string {
+func GoalWorkAutonomyInstructions(perms GoalWorkPermissions) string {
 	text := "Your permission levels for this turn (workflow.json pulse.autonomy). The tools hold them: a call refused for a level means prepare the work and create a decision request instead; do not retry it another way.\n"
-	if planDriftDue {
-		text += "Plan Drift is due, so Run and Change are held to ask for this turn whatever the workflow's setting: prepare and research, do not run steps or edit the workflow.\n"
-	}
+	text += "A run you start is checked by the Workflow Review first, like every run: if the plan changed it is reviewed before it starts, and a run tool may answer that the review is running; wait for its result, then run again.\n"
 	return text + goalWorkPermissionInstructions(perms)
 }

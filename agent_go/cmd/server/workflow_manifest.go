@@ -216,6 +216,11 @@ type WorkflowManifest struct {
 	// publish attempts do not churn workflow.json.
 	Publish *WorkflowPublishConfig `json:"publish,omitempty"`
 
+	// AfterManualRun is the after-run options for full runs started from a
+	// chat (PLAT-697 phase 0); schedules carry their own after_run. Nil uses
+	// the backup and publish configs' after_manual_run triggers.
+	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
+
 	// MalformedConfig lists optional config blocks (e.g. "backup", "publish") that
 	// failed to parse and were dropped so the workflow could still load. Transient
 	// (never serialized): set during ReadWorkflowManifest, used to avoid clobbering
@@ -846,10 +851,12 @@ type WorkflowSchedule struct {
 	// legacy entry enables workflow-level pulse.enabled; migration removes the
 	// obsolete schedule. The scheduler never registers it as an independent cron.
 	PulseReviewOnly bool `json:"pulse_review_only,omitempty"`
-	// PulseMode explicitly selects this schedule's post-run stewardship.
-	// "off" runs no Pulse actions; "basic" runs only backup, report publish,
-	// and the run-summary notification; "full" additionally runs Gate, drift
-	// review, review+fix, and Pulse finalization. Empty is legacy-only.
+	// AfterRun is what runs after this schedule's run: backup, publish and
+	// notify (PLAT-697 phase 0, after_run.go). It replaces pulse_mode.
+	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
+	// PulseMode is the legacy post-run choice, read for one release when
+	// after_run is absent ("off" none; "basic", and the retired "full", all
+	// three) and kept in step with after_run for older servers.
 	PulseMode       string `json:"pulse_mode,omitempty"`
 	PulseModeReason string `json:"pulse_mode_reason,omitempty"`
 	// ExecutionMode is a typed, runtime-enforced operating mode for a scheduled
@@ -1282,9 +1289,11 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if mode != "" && mode != schedulePulseModeOff && mode != schedulePulseModeBasic && mode != schedulePulseModeFull {
 			return fmt.Errorf("schedules[%d].pulse_mode must be off, basic, or full", i)
 		}
-		if m.Kind != "relay" && schedulepolicy.RequiresExplicitPulse(m.Version) {
-			// A persisted legacy "full" is tolerated (it runs as basic); only
-			// authoring paths reject newly setting it.
+		if m.Kind != "relay" && sched.AfterRun == nil && schedulepolicy.RequiresExplicitPulse(m.Version) {
+			// after_run is the explicit choice now (PLAT-697 phase 0); without
+			// it, a legacy pulse_mode is still required. A persisted legacy
+			// "full" is tolerated (it runs as basic); only authoring paths
+			// reject newly setting it.
 			if err := schedulepolicy.ValidatePulse(schedulepolicy.NormalizePulse(sched.PulseMode), sched.PulseModeReason); err != nil {
 				return fmt.Errorf("schedules[%d]: %w", i, err)
 			}
@@ -1708,6 +1717,36 @@ func withoutPulseSettingsManifestChanges(changes []step_based_workflow.PlanField
 	return kept
 }
 
+// withoutScheduleAfterRunFields drops each schedule's after_run, pulse_mode
+// and pulse_mode_reason from a workflow.json text before it is compared for
+// the changelog. Unparseable text is returned unchanged.
+func withoutScheduleAfterRunFields(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	var document map[string]interface{}
+	if json.Unmarshal([]byte(text), &document) != nil {
+		return text
+	}
+	schedules, ok := document["schedules"].([]interface{})
+	if !ok {
+		return text
+	}
+	for _, raw := range schedules {
+		if schedule, ok := raw.(map[string]interface{}); ok {
+			delete(schedule, "after_run")
+			delete(schedule, "pulse_mode")
+			delete(schedule, "pulse_mode_reason")
+		}
+	}
+	delete(document, "after_manual_run")
+	out, err := json.Marshal(document)
+	if err != nil {
+		return text
+	}
+	return string(out)
+}
+
 func workflowManifestChangelogChanges(previous, current string) []step_based_workflow.PlanFieldChange {
 	var before, after interface{}
 	beforeOK := strings.TrimSpace(previous) != ""
@@ -1843,7 +1882,10 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	// that changes only them is not recorded. Otherwise changing a Pulse
 	// setting made the next Pulse spend its pass on a drift review.
 	if !previousExists || previous != string(data) {
-		if changes := withoutPulseSettingsManifestChanges(workflowManifestChangelogChanges(previous, string(data))); len(changes) > 0 {
+		// A schedule's after-run options (and their legacy pulse_mode mirror)
+		// are not part of the plan either (PLAT-697 phase 0): the pulse_mode ->
+		// after_run migration and a checkbox toggle must not start a review.
+		if changes := withoutPulseSettingsManifestChanges(workflowManifestChangelogChanges(withoutScheduleAfterRunFields(previous), withoutScheduleAfterRunFields(string(data)))); len(changes) > 0 {
 			step_based_workflow.LogCanonicalArtifactChange(
 				ctx, workspacePath, "write_workflow_manifest",
 				"Recorded workflow.json field changes for artifact drift review.",

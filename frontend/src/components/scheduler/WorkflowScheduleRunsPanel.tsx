@@ -13,6 +13,7 @@ import { ScheduleCalendarView } from './scheduleRuns/ScheduleCalendarView'
 import { ScheduleGroupsView } from './scheduleRuns/ScheduleGroupsView'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
 import { ScheduleTableView } from './scheduleRuns/ScheduleTableView'
+import { ManualRunAfterRunControls } from './scheduleRuns/ManualRunAfterRunControls'
 import WorkflowAPITriggersView from '../workflow/WorkflowAPITriggersView'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -376,6 +377,9 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                 Clear search and show all schedules
               </button>
             </div>
+          )}
+          {activeView === 'schedules' && entityType === 'workflow' && workflowKind !== 'relay' && workflowScope?.workspacePath && (
+            <ManualRunAfterRunControls workspacePath={workflowScope.workspacePath} disabled={panel.isReadOnlyUser} />
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length > 0 && (
             compact ? <ScheduleTableView panel={panel} entityType={entityType} /> : <ScheduleListView panel={panel} />

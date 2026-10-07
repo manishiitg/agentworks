@@ -21,7 +21,7 @@ import (
 //     which asks goalWorkToolRefusal and refuses with a message that says to
 //     create a decision request instead.
 //   - The tool catalog is never narrowed per turn: the same Pulse conversation
-//     runs Technical review, Plan Drift and Finalize with the full set, and a
+//     runs Gate, the reviews and Finalize with the full set, and a
 //     catalog that changes between turns is how a registered tool became
 //     undiscoverable before (docs/design/agent_tool_surface_single_source.md).
 //     The tools stay visible; the call is refused.
@@ -109,11 +109,11 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 		return fmt.Errorf("%s is not available to Goal Work: deleting steps or schedules, replacing the plan and migrations stay with the user. Create a decision request (create_human_input_request) with the exact change instead", tool)
 	case goalWorkRunTools[tool]:
 		if !perms.Run {
-			return fmt.Errorf("%s refused: Goal Work's Run permission is ask for this turn (pulse.autonomy.run, or a due Plan Drift). Do not run it another way; prepare the work and create a decision request (create_human_input_request) asking the user to run it", tool)
+			return fmt.Errorf("%s refused: Goal Work's Run permission is ask for this turn (pulse.autonomy.run). Do not run it another way; prepare the work and create a decision request (create_human_input_request) asking the user to run it", tool)
 		}
 	case goalWorkChangeTools[tool] || stepworkflow.ScheduleGuardedTool(tool):
 		if !perms.Change {
-			return fmt.Errorf("%s refused: Goal Work's Change permission is ask for this turn (pulse.autonomy.change, or a due Plan Drift). Do not edit the workflow another way; create a decision request (create_human_input_request) with the ready patch instead", tool)
+			return fmt.Errorf("%s refused: Goal Work's Change permission is ask for this turn (pulse.autonomy.change). Do not edit the workflow another way; create a decision request (create_human_input_request) with the ready patch instead", tool)
 		}
 	case goalWorkOutwardTools[tool]:
 		if !perms.Outward {

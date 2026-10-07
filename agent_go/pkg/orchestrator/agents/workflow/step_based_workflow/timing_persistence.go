@@ -649,8 +649,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) finalizeRunMetadata(ctx context.Conte
 		if err := RecordGoalRunFacts(factsCtx, hcpo.GetWorkspacePath(), runFolder, status, startedAt, completedAt); err != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not record goal facts for run %s: %v", runFolder, err))
 		}
+		// After-run options for a run started from a chat (PLAT-697 phase 0).
+		// The server decides; scheduled runs are handled by the scheduler.
+		if hook := AfterWorkflowRunHook; hook != nil {
+			sessionID := hcpo.httpSessionID
+			if sessionID == "" {
+				sessionID = hcpo.sessionID
+			}
+			go hook(hcpo.GetWorkspacePath(), runFolder, status, sessionID)
+		}
 	}
 }
+
+// AfterWorkflowRunHook, when set (by the server at start), runs after a full
+// workflow run finished: the workflow's after-run options for manual runs.
+// It runs in its own goroutine and never affects the run.
+var AfterWorkflowRunHook func(workspacePath, runFolder, status, sessionID string)
 
 func applyRunFinalization(meta map[string]interface{}, status string, startedAt, completedAt time.Time) {
 	if canonical := workflowrun.CanonicalStatus(status); canonical != "" {

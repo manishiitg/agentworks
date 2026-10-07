@@ -1268,8 +1268,9 @@ func TestCreateAndUpdatePulseReviewOnlyScheduleSkipsGroupNamesRequirement(t *tes
 
 func TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer(t *testing.T) {
 	steps := pulseLifecycleSteps()
-	// Goal Work (strategic-review) runs right after Plan Drift; platform upkeep follows.
-	want := []string{"gate", "plan-drift-review", "strategic-review", "architecture-review", "technical-review", "finalize"}
+	// Goal Work (strategic-review) runs first; platform upkeep follows. Workflow
+	// Review is not a Pulse stage: it runs before runs (PLAT-697 phase 0).
+	want := []string{"gate", "strategic-review", "architecture-review", "technical-review", "finalize"}
 	if len(steps) != len(want) {
 		t.Fatalf("stages=%d, want %d", len(steps), len(want))
 	}
@@ -1278,14 +1279,14 @@ func TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer(t *testing.T) {
 			t.Fatalf("stage %d=%q, want %q", i, steps[i].label, label)
 		}
 	}
-	for _, stage := range steps[2:5] {
+	for _, stage := range steps[1:4] {
 		for _, contract := range []string{"do the review yourself", "your own subagents", "Do not render a dashboard"} {
 			if !strings.Contains(stage.query, contract) {
 				t.Fatalf("%s missing %s", stage.label, contract)
 			}
 		}
 	}
-	if !strings.Contains(steps[5].query, "PULSE FINALIZER") {
+	if !strings.Contains(steps[4].query, "PULSE FINALIZER") {
 		t.Fatal("missing finalization")
 	}
 }
@@ -1790,9 +1791,8 @@ func TestPostRunMonitorFinalStepsIncludesSplitNotificationRouting(t *testing.T) 
 
 func TestEveryRunFinalizerRequiresRichGmailWhenConfigured(t *testing.T) {
 	finalizers := map[string]string{
-		"full Pulse":  pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1"), "finalize"),
-		"basic Pulse": scheduledRunFinalizeStep("run-1")[0].query,
-		"no run":      pulseLifecycleNoRunSteps("pulse-run-1", "preflight failed")[0].query,
+		"full Pulse": pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1"), "finalize"),
+		"no run":     pulseLifecycleNoRunSteps("pulse-run-1", "preflight failed")[0].query,
 	}
 	for name, prompt := range finalizers {
 		t.Run(name, func(t *testing.T) {
@@ -2045,16 +2045,19 @@ func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
 }
 
 // Goal Work's permission levels reach its step as text and as the levels the
-// tools enforce; a due Plan Drift holds Run and Change in both (PLAT-697).
+// tools enforce (PLAT-697). Workflow Review no longer holds them.
 func TestGoalWorkAutonomyTextMatchesTheEnforcedLevels(t *testing.T) {
-	perms, text := goalWorkAutonomy(context.Background(), "Workflow/does-not-exist", true)
-	if perms.Run || perms.Change {
-		t.Fatalf("a due Plan Drift must hold Run and Change, got %+v", perms)
+	perms, text := goalWorkAutonomy(context.Background(), "Workflow/does-not-exist")
+	if !perms.Run || perms.Outward || perms.Change {
+		t.Fatalf("defaults are run auto, outward and change ask, got %+v", perms)
 	}
-	for _, want := range []string{"The tools hold them", "Run permission: ask", "Outward permission: ask", "Change permission: ask", "Plan Drift is due"} {
+	for _, want := range []string{"The tools hold them", "Run permission: auto", "Outward permission: ask", "Change permission: ask", "checked by the Workflow Review first"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("autonomy text missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "Plan Drift is due") {
+		t.Errorf("Workflow Review must not hold Goal Work's levels:\n%s", text)
 	}
 }
 
@@ -2069,62 +2072,6 @@ func TestReviewFixContinuationIsParentReceiptReconciliationOnly(t *testing.T) {
 	} {
 		if !strings.Contains(step.query, want) {
 			t.Fatalf("continuation prompt missing %q:\n%s", want, step.query)
-		}
-	}
-}
-
-// TestLightweightFinalizeStepNeverRunsGateOrPublishesFindings pins the
-// content contract of the periodic-mode per-run finalizer: it must forbid
-// Gate/reviewers/Fixer, must not present old findings as new, and must mark
-// publish skipped with a stated reason rather than silently omitting it.
-// TestLightweightFinalizeStepNeverRunsGateOrPublishesFindings pins the
-// content contract of the periodic-mode per-run finalizer: it must forbid
-// Gate/reviewers/Fixer and must not present old findings as new. Publish is
-// deliberately NOT a blanket skip: a "report" (or any non-"pulse") target is
-// this run's own execution output, fresh regardless of whether Pulse
-// reviewed anything, and must still publish normally — only the "pulse"
-// target specifically has nothing new this pass. An earlier version of this
-// prompt skipped publish unconditionally, which would have left a
-// report-publishing workflow's public dashboard stale for the entire gap
-// between periodic Pulse passes — the exact kind of staleness this feature
-// was never meant to introduce.
-func TestLightweightFinalizeStepNeverRunsGateOrPublishesFindings(t *testing.T) {
-	steps := scheduledRunFinalizeStep("run-test")
-	if len(steps) != 1 || steps[0].label != "finalize" {
-		t.Fatalf("steps = %+v, want exactly one \"finalize\" step", steps)
-	}
-	query := steps[0].query
-	for _, want := range []string{
-		"Do not run Gate, reviewers, or Fixer",
-		"This is normal, not a missing Pulse pass",
-		"publish it normally",
-		"is fresh this run regardless of whether Pulse reviewed anything",
-		"The \"pulse\" target specifically has nothing new this pass",
-		"Never suppress a valid report publish merely because backup was partial or failed",
-		"do not include a Pulse findings/fixes section",
-	} {
-		if !strings.Contains(query, want) {
-			t.Fatalf("lightweight finalize prompt missing %q:\n%s", want, query)
-		}
-	}
-}
-
-// The ordinary run finalizer must remain bounded to run-owned side effects.
-// Review cadence belongs to the explicit Pulse schedule and must not be
-// reconsidered or mutated after every workflow execution.
-func TestLightweightFinalizeStepDoesNotMutatePulseSchedule(t *testing.T) {
-	steps := scheduledRunFinalizeStep("run-test")
-	if len(steps) != 1 {
-		t.Fatalf("steps = %+v, want exactly one step", steps)
-	}
-	query := steps[0].query
-	for _, forbidden := range []string{
-		"get_schedule_runs",
-		"update_schedule",
-		"cron_expression",
-	} {
-		if strings.Contains(query, forbidden) {
-			t.Fatalf("lightweight finalize prompt must not contain schedule mutation %q:\n%s", forbidden, query)
 		}
 	}
 }

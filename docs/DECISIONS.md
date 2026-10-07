@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Workflow Review runs before runs; backup, publish and notify are schedule options
+
+Workflow Review (Plan Drift) is a pre-run check, like a compile step: before every run a code check reads the
+plan's drift state; unchanged and clean runs start at once, a changed plan is reviewed first (once per plan
+revision), and a break it cannot fix stops the run with the reason. It also runs ahead after plan changes. Pulse no
+longer schedules, waits for or holds Goal Work for it. Backup, publish and notify leave the Pulse finalizer and
+`pulse_mode`: each schedule has `after_run` checkboxes (plus `after_manual_run`), run after the run as code (an
+agent turn only when backup or publish has something to do). `pulse_mode` is read for one release. Why: owner,
+2026-10-07; housekeeping and plan consistency were delaying goal work, running late after changes and wasted when
+nothing changed. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — A chat's account never changes by itself
 
 A Crew/Code chat has one account. When neither the project's Models choice nor

@@ -59,6 +59,16 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	// Contract upgrades are an interactive boundary: manual Run Workflow / Run
 	// Step requests wait for operator approval, while saved schedules keep
 	// running their existing contract until the operator upgrades it separately.
+	// Workflow Review before every run (PLAT-697 phase 0): every chat, scheduled
+	// or not; a clean plan costs one code check.
+	if strings.TrimSpace(phaseWorkspacePath) != "" {
+		definitionAgent = workflowReviewPreRunRegistrar{
+			definitionRegistrar: definitionAgent,
+			api:                 api,
+			sessionID:           sessionID,
+			workspacePath:       phaseWorkspacePath,
+		}
+	}
 	if shouldGuardWorkflowContractForRun(sessionID, syntheticReq.TriggeredBy) {
 		definitionAgent = workflowContractExecutionGuardRegistrar{
 			definitionRegistrar: definitionAgent,

@@ -10,6 +10,7 @@ vi.mock('./scheduleRuns/useScheduleRunsData', () => ({ useScheduleRunsData: () =
 vi.mock('../../hooks/useCanPauseSchedules', () => ({ useCanPauseSchedules: () => true }))
 vi.mock('./scheduleRuns/ScheduleTableView', () => ({ ScheduleTableView: () => <div data-testid="schedule-table" /> }))
 vi.mock('./scheduleRuns/ScheduleListView', () => ({ ScheduleListView: () => null }))
+vi.mock('./scheduleRuns/ManualRunAfterRunControls', () => ({ ManualRunAfterRunControls: () => null }))
 vi.mock('./scheduleRuns/ScheduleGroupsView', () => ({ ScheduleGroupsView: () => null }))
 vi.mock('./scheduleRuns/ScheduleCalendarView', () => ({ ScheduleCalendarView: () => null }))
 vi.mock('./scheduleRuns/ScheduleOverviewView', () => ({ ScheduleOverviewView: () => null }))

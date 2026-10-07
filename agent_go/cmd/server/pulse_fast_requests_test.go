@@ -37,15 +37,3 @@ func TestFastPulseRequestCoalescesAndConsumes(t *testing.T) {
 		t.Fatalf("pending after delivery = %+v, want nil", pending)
 	}
 }
-
-func TestScheduledRunFinalizerOffersSeparateFastPulseDecision(t *testing.T) {
-	step := scheduledRunFinalizeStepWithPulseTiming("run-one", "The next dedicated Pulse review is scheduled for 2026-08-24T10:00:00Z (in about 4h).")
-	if len(step) != 1 || !strings.Contains(step[0].query, "record_pulse_fast_request exactly once") {
-		t.Fatalf("finalizer must give the agent the bounded fast-Pulse decision: %+v", step)
-	}
-	for _, forbidden := range []string{"update_schedule", "cron_expression"} {
-		if strings.Contains(step[0].query, forbidden) {
-			t.Fatalf("finalizer must not mutate schedules: found %q", forbidden)
-		}
-	}
-}

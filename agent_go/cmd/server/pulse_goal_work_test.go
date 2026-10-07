@@ -101,27 +101,6 @@ func TestPulseFocusAreasNormalizeAndReachGoalWork(t *testing.T) {
 	}
 }
 
-// Found in the live check on 2026-09-23: the Gate's worklist deferred Goal Work
-// whenever Plan Drift was due, although Goal Work must keep running then.
-func TestPlanDriftDueStillLeavesGoalWorkDue(t *testing.T) {
-	decisions := enforcePlanDriftExclusivePass([]PulseWorklistDecision{
-		{Module: pulseModulePlanDriftReview, Due: true, Reason: "plan changed"},
-		{Module: pulseModuleStrategicReview, Due: true, Reason: "new follower data"},
-		{Module: pulseModuleTechnicalReview, Due: true, Reason: "failed run"},
-		{Module: pulseModuleArchitectureReview, Due: true, Reason: "structure"},
-	})
-	due := map[string]bool{}
-	for _, d := range decisions {
-		due[normalizePulseModule(d.Module)] = d.Due
-	}
-	if !due[pulseModulePlanDriftReview] || !due[pulseModuleStrategicReview] || !due[pulseModuleTechnicalReview] {
-		t.Fatalf("Drift, Goal Work and Technical must stay due: %+v", decisions)
-	}
-	if due[pulseModuleArchitectureReview] {
-		t.Fatalf("Architecture must wait for a clean plan: %+v", decisions)
-	}
-}
-
 // Also from the live check: saving a Pulse setting wrote a plan changelog
 // entry, which made the next Pulse spend its pass on a drift review.
 func TestPulseSettingsChangesDoNotTriggerDriftReview(t *testing.T) {

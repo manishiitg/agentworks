@@ -6107,7 +6107,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_schedule",
-		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose review frequency using token cost and accumulated-run evidence. Require pulse_mode and pulse_mode_reason for every schedule: off has no Pulse actions, basic finalizes backup/report/notification only, and full includes Gate, drift review, review+fix, and finalization. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose review frequency using token cost and accumulated-run evidence. Set after_run (backup, publish, notify) for what runs after each run; it defaults to all three. pulse_mode is legacy. Pulse never runs after a normal run, and the Workflow Review runs before every run on its own. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -6160,10 +6160,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "boolean",
 					"description": "Legacy compatibility field only. Do not set true for new workflows: recurring Pulse is workflow-wide workflow.json.pulse.enabled and runs on the workflow's own self-deciding Pulse schedule, never after a normal run. An enabled legacy value is migrated to that setting and is not registered as an independent cron. Omit or false for ordinary schedules.",
 				},
-				"pulse_mode_reason": map[string]interface{}{"type": "string", "minLength": 1, "description": "Explain this schedule's purpose, frequency, review needs and why this Pulse mode fits. Required on create and when changing mode."},
+				"after_run": map[string]interface{}{
+					"type":        "object",
+					"description": "What runs after each run of this schedule, as plain platform code with no Pulse pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on. Replaces pulse_mode.",
+					"properties": map[string]interface{}{
+						"backup":  map[string]interface{}{"type": "boolean"},
+						"publish": map[string]interface{}{"type": "boolean"},
+						"notify":  map[string]interface{}{"type": "boolean"},
+					},
+				},
+				"pulse_mode_reason": map[string]interface{}{"type": "string", "description": "Legacy: kept in step with after_run. Omit."},
 				"pulse_mode": map[string]interface{}{
 					"type": "string", "enum": []string{"off", "basic"},
-					"description": "Required explicit post-run policy; also provide pulse_mode_reason. off: no Pulse actions. basic: backup, report publish, and run-summary notification only. The full Pulse review never runs after a normal run; it runs on the workflow's own self-deciding Pulse schedule (workflow.json pulse). Do not omit or inherit.",
+					"description": "Legacy, read for one release: use after_run. off = none of backup/publish/notify, basic = all three.",
 				},
 				"execution_mode": map[string]interface{}{
 					"type": "string", "enum": []string{"close_only"},
@@ -6205,7 +6214,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Optional local HH:MM deadline after which this dependent occurrence expires instead of running stale.",
 				},
 			},
-			"required": []string{"name", "cron_expression", "timezone", "pulse_mode", "pulse_mode_reason"},
+			"required": []string{"name", "cron_expression", "timezone"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if iwm.schedulerFuncs == nil {
@@ -6276,6 +6285,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			policy := ScheduleRuntimePolicy{}
 			policy.PulseMode, _ = args["pulse_mode"].(string)
 			policy.PulseModeReason, _ = args["pulse_mode_reason"].(string)
+			policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 			policy.ExecutionMode, _ = args["execution_mode"].(string)
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
 			policy.ConcurrencyMode, _ = args["concurrency_mode"].(string)
@@ -6302,12 +6312,21 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_calendar_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_calendar_schedule",
-		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Inspect existing schedules and choose pulse_mode and pulse_mode_reason using review frequency, token cost and accumulated-run evidence. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Set after_run (backup, publish, notify); it defaults to all three. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"pulse_mode":        map[string]interface{}{"type": "string", "enum": []string{"off", "basic"}, "description": "Required explicit post-run policy: off, or basic (backup, report publish, run-summary notification). The full Pulse review runs on the workflow's own Pulse schedule, never after a normal run."},
-				"pulse_mode_reason": map[string]interface{}{"type": "string", "minLength": 1, "description": "Explain the calendar schedule purpose, frequency and review needs."},
+				"after_run": map[string]interface{}{
+					"type":        "object",
+					"description": "What runs after each run of this schedule, as plain platform code with no Pulse pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on. Replaces pulse_mode.",
+					"properties": map[string]interface{}{
+						"backup":  map[string]interface{}{"type": "boolean"},
+						"publish": map[string]interface{}{"type": "boolean"},
+						"notify":  map[string]interface{}{"type": "boolean"},
+					},
+				},
+				"pulse_mode":        map[string]interface{}{"type": "string", "enum": []string{"off", "basic"}, "description": "Legacy, read for one release: use after_run."},
+				"pulse_mode_reason": map[string]interface{}{"type": "string", "description": "Legacy: kept in step with after_run. Omit."},
 				"name":              map[string]interface{}{"type": "string", "description": "Display name for the calendar schedule."},
 				"timezone":          map[string]interface{}{"type": "string", "description": "Required IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata')."},
 				"group_names":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Required variable group names to run."},
@@ -6341,7 +6360,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"after_delay_minutes":   map[string]interface{}{"type": "integer", "minimum": 0, "description": "Delay after every prerequisite terminal receipt."},
 				"dependency_deadline":   map[string]interface{}{"type": "string", "description": "Optional local HH:MM deadline for prerequisite release."},
 			},
-			"required": []string{"name", "timezone", "calendar_items", "group_names", "pulse_mode", "pulse_mode_reason"},
+			"required": []string{"name", "timezone", "calendar_items", "group_names"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if iwm.schedulerFuncs == nil || iwm.schedulerFuncs.CreateCalendarSchedule == nil {
@@ -6398,6 +6417,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			policy := ScheduleRuntimePolicy{}
 			policy.PulseMode, _ = args["pulse_mode"].(string)
 			policy.PulseModeReason, _ = args["pulse_mode_reason"].(string)
+			policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
 			policy.ConcurrencyMode, _ = args["concurrency_mode"].(string)
 			policy.ParallelRiskAcknowledged, _ = args["parallel_risk_acknowledged"].(bool)
@@ -6483,10 +6503,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "boolean",
 					"description": "Legacy compatibility field only. Do not use it to configure Pulse: recurring Pulse is workflow-wide workflow.json.pulse.enabled and runs on the workflow's own self-deciding Pulse schedule, never after a normal run. Omit to leave any legacy value unchanged.",
 				},
-				"pulse_mode_reason": map[string]interface{}{"type": "string", "minLength": 1, "description": "Explain this schedule's purpose, frequency, review needs and why this Pulse mode fits. Required on create and when changing mode."},
+				"after_run": map[string]interface{}{
+					"type":        "object",
+					"description": "What runs after each run of this schedule, as plain platform code with no Pulse pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on. Replaces pulse_mode.",
+					"properties": map[string]interface{}{
+						"backup":  map[string]interface{}{"type": "boolean"},
+						"publish": map[string]interface{}{"type": "boolean"},
+						"notify":  map[string]interface{}{"type": "boolean"},
+					},
+				},
+				"pulse_mode_reason": map[string]interface{}{"type": "string", "description": "Legacy: kept in step with after_run. Omit."},
 				"pulse_mode": map[string]interface{}{
 					"type": "string", "enum": []string{"off", "basic"},
-					"description": "Set this schedule's post-run behavior: off skips all Pulse actions; basic runs backup, report publish, and run-summary notification only. The full Pulse review runs on the workflow's own Pulse schedule, never after a normal run. Omit to preserve its current value (a legacy full is saved as basic).",
+					"description": "Legacy, read for one release: use after_run. Omit to preserve the current value.",
 				},
 				"execution_mode": map[string]interface{}{
 					"type": "string", "description": "Set close_only, or an empty string to clear the backend-enforced execution mode.",
@@ -6648,7 +6677,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if _, ok := args["pulse_mode"]; ok && policy == nil {
 				policy = &ScheduleRuntimePolicy{}
 			}
+			if _, ok := args["after_run"]; ok && policy == nil {
+				policy = &ScheduleRuntimePolicy{}
+			}
 			if policy != nil {
+				policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 				_, policy.SetPulseMode = args["pulse_mode"]
 				_, policy.SetPulseModeReason = args["pulse_mode_reason"]
 				policy.PulseMode, _ = args["pulse_mode"].(string)

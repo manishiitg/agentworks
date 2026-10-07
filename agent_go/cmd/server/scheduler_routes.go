@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -82,9 +83,11 @@ type ScheduledJobResponse struct {
 	PulseReviewOnly          bool       `json:"pulse_review_only,omitempty"`
 	PulseMode                string     `json:"pulse_mode,omitempty"`
 	PulseModeReason          string     `json:"pulse_mode_reason,omitempty"`
-	CreatedAt                string     `json:"created_at,omitempty"`
-	UpdatedAt                string     `json:"updated_at,omitempty"`
-	RunDestination           string     `json:"run_destination,omitempty"`
+	// AfterRun is the schedule's effective after-run options (PLAT-697 phase 0).
+	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
+	CreatedAt      string            `json:"created_at,omitempty"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
+	RunDestination string            `json:"run_destination,omitempty"`
 }
 
 // CreateScheduleRequest is the request body for creating a schedule.
@@ -121,6 +124,7 @@ type CreateScheduleRequest struct {
 	PulseReviewOnly          bool                   `json:"pulse_review_only,omitempty"`
 	PulseMode                string                 `json:"pulse_mode,omitempty"`
 	PulseModeReason          string                 `json:"pulse_mode_reason,omitempty"`
+	AfterRun                 *ScheduleAfterRun      `json:"after_run,omitempty"`
 	RunDestination           string                 `json:"run_destination,omitempty"`
 }
 
@@ -154,6 +158,7 @@ type UpdateScheduleRequest struct {
 	DependencyDeadline       *string                `json:"dependency_deadline,omitempty"`
 	PulseMode                *string                `json:"pulse_mode,omitempty"`
 	PulseModeReason          *string                `json:"pulse_mode_reason,omitempty"`
+	AfterRun                 *ScheduleAfterRun      `json:"after_run,omitempty"`
 }
 
 type TriggerPulseRequest struct {
@@ -223,9 +228,20 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		PulseReviewOnly:          sched.PulseReviewOnly,
 		PulseMode:                sched.PulseMode,
 		PulseModeReason:          sched.PulseModeReason,
+		AfterRun:                 scheduleAfterRunForResponse(manifest, sched),
 		CreatedAt:                manifest.CreatedAt,
 		UpdatedAt:                manifest.UpdatedAt,
 	}
+}
+
+// scheduleAfterRunForResponse is the schedule's effective after-run options,
+// or nil for a schedule that has none (webhooks, Relays).
+func scheduleAfterRunForResponse(manifest *WorkflowManifest, sched WorkflowSchedule) *ScheduleAfterRun {
+	if manifest == nil || manifest.Kind == "relay" || strings.EqualFold(strings.TrimSpace(sched.ScheduleType), "webhook") || sched.PulseReviewOnly {
+		return nil
+	}
+	options := manifest.EffectiveAfterRun(sched)
+	return &options
 }
 
 func runtimeStateForScheduleResult(svc *SchedulerService, result *ScheduleSearchResult, scheduleID string) ScheduleRuntimeState {
@@ -754,6 +770,14 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			PulseMode:                strings.ToLower(strings.TrimSpace(req.PulseMode)),
 			PulseModeReason:          strings.TrimSpace(req.PulseModeReason),
 		}
+		if !strings.EqualFold(strings.TrimSpace(newSched.ScheduleType), "webhook") {
+			policy := stepworkflow.ScheduleRuntimePolicy{}
+			if req.AfterRun != nil {
+				policy.SetAfterRun = true
+				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}
+			}
+			applyScheduleAfterRunPolicy(&newSched, policy, true)
+		}
 
 		if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -937,7 +961,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.ResumePrevious != nil {
 			sched.ResumePrevious = req.ResumePrevious
 		}
-		if req.PulseMode != nil && strings.ToLower(strings.TrimSpace(*req.PulseMode)) != sched.PulseMode && req.PulseModeReason == nil {
+		if req.PulseMode != nil && req.AfterRun == nil && strings.ToLower(strings.TrimSpace(*req.PulseMode)) != sched.PulseMode && req.PulseModeReason == nil && strings.TrimSpace(sched.PulseModeReason) == "" {
 			http.Error(w, "pulse_mode_reason is required when changing pulse_mode", http.StatusBadRequest)
 			return
 		}
@@ -946,6 +970,14 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 		if req.PulseMode != nil {
 			sched.PulseMode = strings.ToLower(strings.TrimSpace(*req.PulseMode))
+		}
+		if req.AfterRun != nil || req.PulseMode != nil {
+			policy := stepworkflow.ScheduleRuntimePolicy{SetPulseMode: req.PulseMode != nil}
+			if req.AfterRun != nil {
+				policy.SetAfterRun = true
+				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}
+			}
+			applyScheduleAfterRunPolicy(sched, policy, false)
 		}
 		if req.ExecutionMode != nil {
 			sched.ExecutionMode = strings.TrimSpace(*req.ExecutionMode)

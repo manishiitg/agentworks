@@ -158,7 +158,7 @@ export default function PulseView({
         <div className="min-w-0">
           <div className="text-xs font-medium text-foreground">{monitorOn ? nextPulseLabel(nextRun) : 'Pulse is off'}</div>
           <div className="truncate text-[11px] text-muted-foreground" title={monitorOn ? nextRun?.reason : undefined}>{monitorOn
-            ? (nextRun?.reason ? `Because ${nextRun.reason}` : 'Pulse runs on its own schedule. Normal runs only back up, publish and notify.')
+            ? (nextRun?.reason ? `Because ${nextRun.reason}` : 'Pulse runs on its own schedule. Backup, publish and notify are each schedule’s after-run options.')
             : 'Turn on to let Pulse review this workflow on its own schedule.'}</div>
         </div>
       </div>

@@ -68,9 +68,9 @@ func TestRegistryIsInternallyConsistent(t *testing.T) {
 	}
 }
 
-func TestExecutionOrderKeepsDriftExclusiveThenArchitectureBeforeTechnical(t *testing.T) {
-	// Goal Work (strategic_review) runs right after Plan Drift; platform upkeep follows.
-	want := []string{PlanDriftReviewID, StrategicReviewID, ArchitectureReviewID, TechnicalReviewID}
+func TestExecutionOrderLeavesWorkflowReviewOutOfPulse(t *testing.T) {
+	// Goal Work runs first; Workflow Review runs before runs, never in a pass.
+	want := []string{StrategicReviewID, ArchitectureReviewID, TechnicalReviewID}
 	if len(ExecutionOrder) != len(want) {
 		t.Fatalf("ExecutionOrder = %v, want %v", ExecutionOrder, want)
 	}
@@ -78,13 +78,6 @@ func TestExecutionOrderKeepsDriftExclusiveThenArchitectureBeforeTechnical(t *tes
 		if ExecutionOrder[i] != want[i] {
 			t.Fatalf("ExecutionOrder = %v, want %v", ExecutionOrder, want)
 		}
-	}
-	postDrift := PostDriftExecutionOrder()
-	if len(postDrift) != 3 || postDrift[0] != StrategicReviewID || postDrift[1] != ArchitectureReviewID || postDrift[2] != TechnicalReviewID {
-		t.Fatalf("PostDriftExecutionOrder = %v", postDrift)
-	}
-	if !RunsWhileDriftDue(StrategicReviewID) || !RunsWhileDriftDue(TechnicalReviewID) || RunsWhileDriftDue(ArchitectureReviewID) {
-		t.Fatal("Goal Work and Technical run after Plan Drift in the same pass; only Architecture waits")
 	}
 }
 

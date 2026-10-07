@@ -117,15 +117,12 @@ var All = []Module{
 		Authority: "propose",
 	},
 	{
-		// Plan Drift Review is event-triggered rather than time-cadenced: it is
-		// due whenever any step has no step_config.json drift_review record, or
-		// one flagged needs_review==true (flagged by the same hook that flags
-		// description_reviewed stale on any persisted plan-step field change),
-		// not on a fixed interval. Evidence from a prior review is preserved on
-		// the flag, not discarded. See validatePlanDriftRouting in
-		// pulse_worklist.go for the deterministic force-due enforcement,
-		// mirroring validateDeterministicIntakeRouting's treatment of
-		// technical_review.
+		// Plan Drift Review ("Workflow Review") is event-triggered rather than
+		// time-cadenced: it is due whenever a step has no current drift_review
+		// record, one flagged needs_review==true by a plan edit, or a new
+		// broken reference. Since PLAT-697 phase 0 it runs before each workflow
+		// run (cmd/server/workflow_review_prerun.go), never in a Pulse pass;
+		// it keeps its module identity for its receipts and history.
 		ID:        PlanDriftReviewID,
 		Label:     "Plan drift review",
 		StepLabel: "plan-drift-review",
@@ -136,37 +133,17 @@ var All = []Module{
 	},
 }
 
-// ExecutionOrder is the canonical reviewer sequence. Plan Drift runs first
-// when due. Strategic Review is Goal Work, Pulse's main job
-// (docs/design/pulse_goal_work.md), so it runs next and is never blocked by a
-// due Plan Drift (it only loses its Run permission then). Technical also runs
-// in the same pass: Plan Drift has already finished and repaired the plan by
-// then, and open issues must not wait a cycle. Architecture waits for the
-// next cycle rather than judging a plan known to drift, but at most two
-// passes in a row (PLAT-556): then, or when its budget-flagged steps are all
-// outside Drift's set, the worklist scopes it away from Drift's steps and it
-// runs in the same pass.
+// ExecutionOrder is the canonical reviewer sequence of a Pulse pass.
+// Strategic Review is Goal Work, Pulse's main job
+// (docs/design/pulse_goal_work.md), so it runs first; platform upkeep follows.
+// Plan Drift ("Workflow Review") is not part of a Pulse pass: it runs before
+// every workflow run (PLAT-697 phase 0, docs/design/pulse_goal_owner.md). It
+// stays a registered module above because its receipts and history keep
+// their identity.
 var ExecutionOrder = []string{
-	PlanDriftReviewID,
 	StrategicReviewID,
 	ArchitectureReviewID,
 	TechnicalReviewID,
-}
-
-// PostDriftExecutionOrder returns the reviewers eligible after Plan Drift, in
-// order, on a clean plan baseline.
-func PostDriftExecutionOrder() []string {
-	return append([]string(nil), ExecutionOrder[1:]...)
-}
-
-// RunsWhileDriftDue reports whether a reviewer still runs, after Plan Drift,
-// in a cycle where Plan Drift is due: Goal Work and Technical do.
-func RunsWhileDriftDue(module string) bool {
-	switch Normalize(module) {
-	case StrategicReviewID, TechnicalReviewID:
-		return true
-	}
-	return false
 }
 
 // PseudoIDs are data-module values that appear in builder/improve.html but are

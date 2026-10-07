@@ -12042,7 +12042,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				if workshopMode == "" {
 					workshopMode = "run"
 				}
-				pulseMode := manifest.EffectivePulseMode(sched)
 				sb.WriteString(fmt.Sprintf("### %s\n", sched.Name))
 				sb.WriteString(fmt.Sprintf("- **ID**: `%s`\n", sched.ID))
 				sb.WriteString(fmt.Sprintf("- **Type**: %s\n", scheduleType))
@@ -12055,12 +12054,8 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				}
 				sb.WriteString(fmt.Sprintf("- **Timezone**: %s\n", sched.Timezone))
 				sb.WriteString(fmt.Sprintf("- **Status**: %s\n", status))
-				sb.WriteString(fmt.Sprintf("- **Pulse**: %s", pulseMode))
-				if strings.TrimSpace(sched.PulseMode) == "" {
-					sb.WriteString(" (workflow default)\n")
-				} else {
-					sb.WriteString(" (schedule override)\n")
-				}
+				afterRun := manifest.EffectiveAfterRun(sched)
+				sb.WriteString(fmt.Sprintf("- **After run**: backup=%v, publish=%v, notify=%v\n", afterRun.Backup, afterRun.Publish, afterRun.Notify))
 				if api.scheduler != nil {
 					state := api.scheduler.GetRuntimeStateForWorkflow(workspacePath, sched.ID)
 					if state.LastStatus != "" {
@@ -12078,7 +12073,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 						sb.WriteString("- **Groups**: all\n")
 					}
 				}
-				sb.WriteString(fmt.Sprintf("- **Pulse**: %s\n- **Pulse reason**: %s\n", manifest.EffectivePulseMode(sched), sched.PulseModeReason))
 				if len(sched.RouteSelections) > 0 {
 					sb.WriteString(fmt.Sprintf("- **Route selections**: %v\n", sched.RouteSelections))
 				}
@@ -12181,6 +12175,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
 			}
+			applyScheduleAfterRunPolicy(&newSched, policy, true)
 			if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
 				return "", err
 			}
@@ -12269,6 +12264,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
 			}
+			applyScheduleAfterRunPolicy(&newSched, policy, true)
 			if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
 				return "", err
 			}
@@ -12373,7 +12369,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				sched.PulseReviewOnly = *pulseReviewOnly
 			}
 			if policy != nil {
-				if policy.SetPulseMode && strings.ToLower(strings.TrimSpace(policy.PulseMode)) != sched.PulseMode && !policy.SetPulseModeReason {
+				if policy.SetPulseMode && !policy.SetAfterRun && strings.ToLower(strings.TrimSpace(policy.PulseMode)) != sched.PulseMode && !policy.SetPulseModeReason && strings.TrimSpace(sched.PulseModeReason) == "" {
 					return "", fmt.Errorf("pulse_mode_reason is required when changing pulse_mode")
 				}
 				if policy.SetPulseModeReason {
@@ -12421,6 +12417,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				if err := validateScheduleRuntimePolicy(*sched); err != nil {
 					return "", err
 				}
+				applyScheduleAfterRunPolicy(sched, *policy, false)
 			}
 			// A stored legacy "full" was not chosen in this request: save it as
 			// basic and keep the workflow's review on its own Pulse schedule.
