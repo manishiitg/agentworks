@@ -79,7 +79,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	readPaths = common.DeduplicateStrings(readPaths)
 
 	// Add skill folder paths to read paths (skills are read-only)
-	effectiveSkills := GetEffectiveSkills(skillStepConfig, hcpo.BaseOrchestrator)
+	effectiveSkills := hcpo.effectiveStepSkills(skillStepConfig)
 	if len(effectiveSkills) > 0 {
 		skillReadPaths, _ := BuildSkillFolderGuardPaths(effectiveSkills)
 		readPaths = append(readPaths, skillReadPaths...)

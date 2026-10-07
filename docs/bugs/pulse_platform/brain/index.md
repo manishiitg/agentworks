@@ -5,6 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [access](access/index.md) | 2 | 1 |
+| [agents](agents/index.md) | 1 | 1 |
 | [backup](backup/index.md) | 1 | 0 |
 | [builder](builder/index.md) | 1 | 0 |
 | [chat](chat/index.md) | 2 | 0 |

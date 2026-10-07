@@ -1369,7 +1369,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 
 	// Add skill folder paths to read paths (skills are read-only)
-	effectiveSkills := GetEffectiveSkills(stepConfig, hcpo.BaseOrchestrator)
+	effectiveSkills := hcpo.effectiveStepSkills(stepConfig)
 	if len(effectiveSkills) > 0 {
 		skillReadPaths, _ := BuildSkillFolderGuardPaths(effectiveSkills)
 		readPaths = append(readPaths, skillReadPaths...)
@@ -2014,7 +2014,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	}
 
 	// Inject supplementary prompts (skills, secrets, browser instructions).
-	effectiveSkills := GetEffectiveSkills(stepConfig, hcpo.BaseOrchestrator)
+	effectiveSkills := hcpo.effectiveStepSkills(stepConfig)
 	if baseAgent := agent.GetBaseAgent(); baseAgent != nil {
 		if baseAgent.Agent() != nil {
 			attachGlobalLearnings := hcpo.resolveLearningsAccess(stepConfig) != LearningsAccessNone

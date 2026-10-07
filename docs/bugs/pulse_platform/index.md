@@ -7,7 +7,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Folder | Tickets | Open |
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 80 | 14 |
-| [Brain](brain/index.md) | 24 | 4 |
+| [Brain](brain/index.md) | 25 | 5 |
 | [Browser and browser automation](browser/index.md) | 45 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 25 | 9 |
 | [Code](code/index.md) | 6 | 1 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-647](brain/agents/plat-647.md) | Built-in brain skill for steps and chats with Brain access | open | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-646](dominion/deployment/plat-646.md) | Reconcile Dominion product allowlist and enable its Vault service | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-645](code/shell/plat-645.md) | Backgrounded shell commands still block the chat's next commands | open | P2 | [code/shell](code/shell/index.md) |
 | [PLAT-644](app/navigation/plat-644.md) | Keyboard: panel search, toolbar minimize, chat tab keys | fixed on main | P2 | [app/navigation](app/navigation/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-610](goals/steps/plat-610.md) | Step conversation log repeats the previous item | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-609](crew/frontend-chat/plat-609.md) | Remove an attached Crew template from its setup row above chat | deployed | P2 | [crew/frontend-chat](crew/frontend-chat/index.md) |
 | [PLAT-608](app/tools/plat-608.md) | product.yaml is the only tool registry; Brain tools renamed to brain_* | in progress | P1 | [app/tools](app/tools/index.md) |
-| [PLAT-607](app/navigation/plat-607.md) | Goals to Relays switch restores a Goal tab and returns to Goals | deployed | P2 | [app/navigation](app/navigation/index.md) |

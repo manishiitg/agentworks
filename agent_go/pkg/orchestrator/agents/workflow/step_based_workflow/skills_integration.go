@@ -21,6 +21,21 @@ func GetEffectiveSkills(stepConfig *AgentConfigs, _ *orchestrator.BaseOrchestrat
 	return nil
 }
 
+// effectiveStepSkills adds the built-in brain skill to a step that has Brain tools (the same condition that gives it
+// brain_browse/brain_read), so it knows how to use Brain well, not only what each tool does.
+func (hcpo *StepBasedWorkflowOrchestrator) effectiveStepSkills(stepConfig *AgentConfigs) []string {
+	out := GetEffectiveSkills(stepConfig, hcpo.BaseOrchestrator)
+	if resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()) == KBAccessNone {
+		return out
+	}
+	for _, name := range out {
+		if name == "brain" {
+			return out
+		}
+	}
+	return append(append([]string(nil), out...), "brain")
+}
+
 // BuildWorkflowSkillPrompt is gone (Phase 3 rewire). Step skills are
 // now attached to the agent via skills.LoadAttachable + AttachSkill in
 // appendSupplementaryPrompts; mcpagent.ensureSystemPrompt renders the

@@ -89,6 +89,8 @@ type featureDefinition struct {
 var featureCatalog = map[string]featureDefinition{
 	"knowledgebase": {
 		Tools: knowledgebase.ToolNames(),
+		// How to use Brain well (browse first, readme, versions, Timeline); built in, pkg/skills/builtin_brain_skill.go.
+		Skills: []string{"brain"},
 		// Bound project guidance is supplied dynamically by the runtime.
 		PromptExtension: "",
 	},
