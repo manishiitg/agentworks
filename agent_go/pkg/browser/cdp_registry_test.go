@@ -165,19 +165,3 @@ func TestGuardCDPTabCreationRejectsUnidentifiedOwnerInsteadOfBypassingTheLimit(t
 		}
 	}
 }
-
-func TestActiveCDPOwnersSnapshot(t *testing.T) {
-	resetCDPRegistryForTest(t)
-	touchCDPOwner(9222, "workflow-b")
-	touchCDPOwner(9222, "workflow-a")
-	snapshot := ActiveCDPOwnersSnapshot()
-	if len(snapshot) != 2 {
-		t.Fatalf("expected 2 owners in snapshot, got %d", len(snapshot))
-	}
-	if snapshot[0]["owner"] != "workflow-a" || snapshot[1]["owner"] != "workflow-b" {
-		t.Fatalf("snapshot should be sorted by owner, got: %v", snapshot)
-	}
-	if snapshot[0]["cdp_port"] != "9222" {
-		t.Fatalf("snapshot should include the port, got: %v", snapshot[0])
-	}
-}

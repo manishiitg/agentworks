@@ -263,12 +263,6 @@ class Matrix:
             sock.close()
         return frames, kinds, console
 
-    def http(self, method, path, body=None):
-        data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(f"http://127.0.0.1:{self.args.port}{path}", data=data, headers=self.headers, method=method)
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.load(response)
-
     def recording_api(self, session, action):
         body = {"workspace_path": self.rel, "action": action, "working_directory": self.rel,
                 "folder_guard": {"enabled": True, "read_paths": [self.rel], "write_paths": [self.rel], "browser_session": session}}
@@ -569,30 +563,10 @@ class Matrix:
                 raise RuntimeError(f"processes left after close: {left}")
         check("close leaves no processes", close_clean)
 
-        # Stop: the app has no stop button in the browser panel; the stop affordances are the runtime-health "browsers" list and its
-        # cleanup (GET /api/browser/processes, POST /api/browser/cleanup {pids}), plus `close`.
-        def stop_listed():
-            ab("open", base + "/page.html", label="e", retries=3)
-            chrome_pid = self.pid("e")
-            listing = self.http("GET", "/api/browser/processes")
-            if chrome_pid not in [process.get("pid") for process in listing.get("processes", [])]:
-                raise RuntimeError(f"Chrome pid {chrome_pid} is not in the browser process list ({listing.get('count')} listed)")
-            return f"Chrome {chrome_pid} listed among {listing.get('count')} browser processes"
-        check("stop: process list shows the session's Chrome (GET /api/browser/processes)", stop_listed)
-
-        def stop_cleanup():
-            chrome_pid = self.pid("e")
-            result = self.http("POST", "/api/browser/cleanup", {"pids": [chrome_pid]})
-            if result.get("killed") != 1:
-                raise RuntimeError(f"cleanup did not kill the browser: {result}")
-            time.sleep(1.5)
-            if chrome_pid in self.processes("e"):
-                raise RuntimeError("Chrome still running after cleanup")
-            ab("open", base + "/page.html", label="e", retries=3)
-            return f"cleanup killed Chrome {chrome_pid}; next command relaunched it (pid {self.pid('e')})"
-        check("stop: POST /api/browser/cleanup {pids} kills it and the session relaunches", stop_cleanup)
-
+        # Stop: the app has no stop button in the browser panel; Stop is `close` (the old runtime-health list/cleanup routes were
+        # removed in PLAT-696; ended browsers are reaped automatically).
         def stop_close():
+            ab("open", base + "/page.html", label="e", retries=3)
             ab("close", label="e")
             time.sleep(1.5)
             if self.processes("e"):
@@ -632,14 +606,6 @@ class Matrix:
             return f"{self.args.cycles} open/close cycles ({retried} open retries after close), {len(pids)} Chrome launches, no processes left, /dev/shm {before[0]}->{after[0]}, scratch files {before[1]}->{after[1]}"
         check(f"{self.args.cycles} open/close cycles: no leaks", cycles)
 
-        def cleanup_api():
-            request = urllib.request.Request(f"http://127.0.0.1:{self.args.port}/api/browser/cleanup", data=json.dumps({"pids": [999999]}).encode(), headers=self.headers)
-            with urllib.request.urlopen(request, timeout=15) as response:
-                result = json.load(response)
-            if result.get("killed") != 0:
-                raise RuntimeError(f"cleanup killed something unexpected: {result}")
-            return "POST /api/browser/cleanup refuses a pid that is not a browser (the app has no separate stop-browser API: Stop is `close`)"
-        check("cleanup API refuses non-browser pids", cleanup_api)
 
     def finish(self):
         for label in list(self.sessions):

@@ -18,7 +18,7 @@ get "no":
 | `GET /api/org-dashboard/notifications` | `GlobalActivityButton`, `WorkflowActivityButton` | 30s each |
 | `GET /api/report-human-inputs[/aggregate]` | `usePendingDecisionCount`, the activity buttons | 30s each |
 | `GET /api/scheduler/config` | `useGlobalSchedulerPaused.ts` | 30s |
-| `GET /api/browser/sessions`, `/api/wp/api/processes`, `/api/wp/api/browser/processes` | `RuntimeHealthControl.tsx` | 30s, even in a hidden tab |
+| ~~`GET /api/browser/sessions`, `/api/wp/api/processes`, `/api/wp/api/browser/processes`~~ | ~~`RuntimeHealthControl.tsx`~~ | Removed 2026-10-07 with the Runtime Health panel (PLAT-696) |
 
 This design has two costs:
 
@@ -50,7 +50,6 @@ The feed exists for two surfaces:
   - the global and workflow activity buttons (notifications and pending
     "needs your input" counts)
   - the scheduler-paused indicator
-  - runtime health (browser sessions)
 - **Right pane (workspace views in `WorkspaceViewHost`):** Pulse, Report,
   Backup, Publish, notifications and decisions. Each view refetches
   only while it is the open view.
@@ -106,7 +105,6 @@ These are the kinds, and the refetch each one triggers:
 | `notifications` | workflow | Header: activity buttons; right pane: notifications | org-dashboard notifications |
 | `human_inputs` | workflow | Header: pending count; right pane: decisions | `report-human-inputs` and the aggregate |
 | `scheduler_config` | global | Header: scheduler-paused indicator | `scheduler/config` |
-| `browser_sessions` | global | Header: runtime health | `browser/sessions` |
 | `pulse_state` | workflow | Right pane: Pulse (only while open) | `pulse-module-state` |
 | `report` | workflow | Right pane: Report dashboard | re-run the dashboard (`ReportViewer` `refresh()`: document catalog + HTML) |
 | `plan` | workflow, shared crew, or path-free legacy project | Right pane: Graph/Plan while open | refetch `plan.json`, `step_config.json`, and graph triggers |
@@ -207,9 +205,9 @@ three ways:
 3. **Safety poll.** A slow poll every 5 minutes, only while the tab is
    visible. It replaces the current 10–30s timers.
 
-Workspace processes (`/api/processes`, `/api/browser/processes`) come from
-`ps` snapshots in a separate service and have nothing to publish. They stay
-polled, but only while the tab is visible and the health menu is open.
+The workspace process lists (`/api/processes`, `/api/browser/processes`) and
+the Runtime Health panel that polled them were removed on 2026-10-07
+(PLAT-696); stale processes and browser helpers are cleaned up automatically.
 
 ### Client
 
@@ -258,8 +256,8 @@ This adds one long-lived connection per tab.
    `human_inputs`, `notifications`. This removes about 80% of the idle
    traffic.
 2. **Pulse.** `pulse_state`. Drop the Pulse timer.
-3. **The rest.** `scheduler_config` and `browser_sessions`. Gate
-   `RuntimeHealthControl` on tab visibility.
+3. **The rest.** `scheduler_config`. (`browser_sessions` was dropped with the
+   Runtime Health panel, PLAT-696.)
 
 Each phase keeps the polling fallback. A phase is done only when the gateway
 log on Dominion shows that endpoint's idle rate near zero.
@@ -282,7 +280,6 @@ read access:
 - `pulse-module-state`
 - `org-dashboard/notifications`
 - `report-human-inputs`
-- `browser/sessions`
 
 `requireWorkspacePath` only validates the path. They should call
 `requireWorkflowVisible` (workflow_access.go:220). This should be tracked

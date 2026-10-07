@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -527,52 +526,6 @@ func (api *StreamingAPI) cancelBackgroundAgents(sessionID string) {
 				sessionID, missingCancel)
 		}
 	}
-}
-
-// handleGetBrowserSessions returns the tracked browser sessions with their owning chat session IDs.
-func (api *StreamingAPI) handleGetBrowserSessions(w http.ResponseWriter, r *http.Request) {
-	tracker := browser.GetSessionTracker()
-	sessions := tracker.ActiveSessions()
-	cdpOwners := browser.ActiveCDPOwnersSnapshot()
-	// Admins see every browser; everyone else sees only browsers of sessions
-	// they may access, so the list does not hand out other users' session IDs
-	// (PLAT-362 D5).
-	if !userAccessForClaims(GetUserFromContext(r.Context())).Admin {
-		visible := func(ids ...string) bool {
-			for _, id := range ids {
-				if strings.TrimSpace(id) != "" && api.canAccessTerminalSession(r, id) {
-					return true
-				}
-			}
-			return false
-		}
-		ownSessions := sessions[:0:0]
-		ownBrowsers := map[string]bool{}
-		for _, s := range sessions {
-			if visible(s["workflow_session"], s["agent_session"]) {
-				ownSessions = append(ownSessions, s)
-				if name := strings.TrimSpace(s["browser_session"]); name != "" {
-					ownBrowsers[name] = true
-				}
-			}
-		}
-		sessions = ownSessions
-		// A CDP owner is a session ID or, for per-Crew and per-workflow
-		// browsers, a browser name; it is the caller's when either is.
-		ownOwners := cdpOwners[:0:0]
-		for _, o := range cdpOwners {
-			if ownBrowsers[strings.TrimSpace(o["owner"])] || visible(o["owner"]) {
-				ownOwners = append(ownOwners, o)
-			}
-		}
-		cdpOwners = ownOwners
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sessions":   sessions,
-		"count":      len(sessions),
-		"cdp_owners": cdpOwners,
-	})
 }
 
 // cleanupBrowserSessions closes all headless browser processes for a session.

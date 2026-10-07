@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Runtime Health panel and its process list/cleanup routes removed
+
+The account menu's Runtime Health panel is gone, with the routes only it used: workspace
+`GET /api/browser/processes`, `POST /api/browser/cleanup`, `GET /api/processes`,
+`POST /api/processes/cleanup`, and the agent server's `GET /api/browser/sessions`. Why: owner
+decision; it was very old, inaccurate on slot servers, its cleanup is now automatic (the
+workspace stale-process sweeper and the browser helper reaper, PLAT-662/685, stay), and the
+list routes showed server processes to every member. This supersedes the 2026-09-30 "not
+changed, noted" line about those list routes and the admin-only proxy entries for the two
+cleanup routes. [PLAT-696](bugs/pulse_platform/app/ui/plat-696.md)
+
 ### 2026-10-07 — Each shared server account has its own per-person token limit
 
 Each shared admin account (`global:<provider>`) has its own per-person daily and

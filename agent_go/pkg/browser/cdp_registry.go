@@ -194,30 +194,6 @@ func otherActiveOwnersLocked(owners map[string]time.Time, ownerID string, prune 
 	return active
 }
 
-// ActiveCDPOwnersSnapshot returns all tracked CDP owners for observability
-// (exposed alongside SessionTracker.ActiveSessions in the debug endpoint).
-func ActiveCDPOwnersSnapshot() []map[string]string {
-	cdpOwnersMu.Lock()
-	defer cdpOwnersMu.Unlock()
-	var result []map[string]string
-	for port, owners := range cdpOwners {
-		for owner, lastUsed := range owners {
-			result = append(result, map[string]string{
-				"cdp_port": strconv.Itoa(port),
-				"owner":    owner,
-				"idle":     time.Since(lastUsed).Round(time.Second).String(),
-			})
-		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i]["cdp_port"] != result[j]["cdp_port"] {
-			return result[i]["cdp_port"] < result[j]["cdp_port"]
-		}
-		return result[i]["owner"] < result[j]["owner"]
-	})
-	return result
-}
-
 // guardCDPReset returns an error when a reset on the shared CDP browser would
 // disrupt other active workflows. Reset kills the shared agent-browser daemon
 // and clears every owner's tab selections on the port, so it is only allowed

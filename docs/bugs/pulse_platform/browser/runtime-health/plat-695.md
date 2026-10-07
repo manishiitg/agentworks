@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | open |
+| State | closed |
 | Priority | P3 |
 | Product | browser |
 | Area | runtime-health |
@@ -27,3 +27,7 @@ Runtime Health counts browsers the server runs (headless/CDP/agent-browser proce
 ## Fix (to do)
 
 Add an "Your Chrome (extension)" row to Runtime Health → Browsers: connection state and shared tab count for the current project, from the same status the Browser panel uses; label the existing rows "On the server".
+
+## Closed
+
+2026-10-07: superseded. The Runtime Health panel was removed (owner decision, [PLAT-696](../../app/ui/plat-696.md)), so there is no panel to add the extension row to.

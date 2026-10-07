@@ -35,7 +35,7 @@ the current behavior. The product remains a single-user, loopback alpha.
   conversation history, streaming, cancellation, Chat tab, composer, split panes,
   workspace toolbar and Mobile/Tablet/Laptop layout controls.
 - The shared navigation uses a thin left rail with the existing product icons.
-  Global pages have return controls; runtime health is under the account menu.
+  Global pages have return controls.
   Relay is included through the main integration.
 - Chat is on the left. The right workspace has Access, Connected MCPs,
   Available MCPs, Secrets, People, Audit, Models and Connect.

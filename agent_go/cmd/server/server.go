@@ -2772,8 +2772,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Observer APIs removed - events are now stored by sessionID, no observers needed
 
-	// Browser session tracking API
-	apiRouter.HandleFunc("/browser/sessions", api.handleGetBrowserSessions).Methods("GET")
+	// Browser APIs
 	apiRouter.HandleFunc("/browser/workspace", api.handleWorkspaceBrowser).Methods("GET", "POST")
 	apiRouter.HandleFunc("/browser/extension", api.handleBrowserExtension).Methods("GET", "POST")
 	apiRouter.HandleFunc("/browser/extension/connect", api.handleBrowserExtensionConnect).Methods("GET")

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
 
@@ -112,16 +110,6 @@ func finishShellProcess(pid int, status string, exitCode *int) {
 	delete(managedProcesses.byPID, pid)
 	managedProcesses.Unlock()
 	removePersistedProcessRecord(currentDocsDir(), pid)
-}
-
-func listManagedProcesses() []ManagedProcess {
-	managedProcesses.RLock()
-	defer managedProcesses.RUnlock()
-	out := make([]ManagedProcess, 0, len(managedProcesses.byPID))
-	for _, record := range managedProcesses.byPID {
-		out = append(out, record)
-	}
-	return out
 }
 
 func persistManagedProcess(record ManagedProcess) error {
@@ -293,37 +281,6 @@ func runWorkflowProcessSweep(docsDir string) {
 	if len(killed) > 0 {
 		log.Printf("[PROCESS_SWEEPER] killed %d stale workflow process(es)", len(killed))
 	}
-}
-
-func ListWorkflowProcesses(c *gin.Context) {
-	docsDir := strings.TrimSpace(c.Query("docs_dir"))
-	if docsDir == "" {
-		docsDir = currentDocsDir()
-	}
-	stale, err := findStaleWorkflowProcesses(docsDir, staleWorkflowProcessAge())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"managed":   listManagedProcesses(),
-		"stale":     stale,
-		"threshold": staleWorkflowProcessAge().String(),
-	})
-}
-
-func CleanupWorkflowProcesses(c *gin.Context) {
-	docsDir := strings.TrimSpace(c.Query("docs_dir"))
-	if docsDir == "" {
-		docsDir = currentDocsDir()
-	}
-	killed, err := cleanupStaleWorkflowProcesses(docsDir, staleWorkflowProcessAge())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "killed": killed})
 }
 
 func cleanupStaleWorkflowProcesses(docsDir string, threshold time.Duration) ([]staleProcessCandidate, error) {

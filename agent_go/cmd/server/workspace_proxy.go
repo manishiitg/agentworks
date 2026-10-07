@@ -171,9 +171,6 @@ func workspaceProxyCrossUserBlock(r *http.Request, callerID string) (status int,
 	if workspaceProxyRefusedRoutes[strings.Trim(rel, "/")] {
 		return http.StatusForbidden, "server-only route", nil
 	}
-	if workspaceProxyAdminOnlyRoutes[strings.Trim(rel, "/")] && !policy.admin {
-		return http.StatusForbidden, "admin-only route", nil
-	}
 	if workspaceProxyURLIsOtherUser(rel, policy.own) {
 		return http.StatusForbidden, "url path", nil
 	}
@@ -335,14 +332,6 @@ var workspaceProxyRefusedRoutes = map[string]bool{
 	// logged-in user could run commands as the server account and read other users' chats. The
 	// UI never calls it; the agent server reaches it directly, not through this proxy.
 	"api/execute": true,
-}
-
-// workspaceProxyAdminOnlyRoutes act on server processes, not on the caller's own files: they kill
-// browsers or workflow processes whoever owns them. The top-bar runtime-health control uses them;
-// on a single-user machine everyone counts as an admin, so it keeps working there.
-var workspaceProxyAdminOnlyRoutes = map[string]bool{
-	"api/browser/cleanup":   true,
-	"api/processes/cleanup": true,
 }
 
 func workspaceProxyJSONHasServerOnlyField(node any) bool {
