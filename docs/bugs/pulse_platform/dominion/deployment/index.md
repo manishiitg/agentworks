@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-642](plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | in progress | P2 |
+| [PLAT-642](plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 |

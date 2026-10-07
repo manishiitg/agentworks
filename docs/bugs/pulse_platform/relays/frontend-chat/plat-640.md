@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| State | fixed on main |
+| State | deployed |
 | Priority | P2 |
 | Product | relays |
 | Area | frontend-chat |
@@ -49,7 +49,14 @@ do not gate running or publishing.
   output and lookup_customer receipt. The preview API rejected any relay.md read.
   Screenshot: /tmp/relay-comment-graph-20261007.jpg.
 
+## Deployment
+
+Deployed and verified on Dominion at trader.tectonicmarkets.com (PLAT-642), release
+29717fea-20261007072134. The real Builder/platform test returned {"hello":"Ada"};
+the browser displayed both the source-comment graph and saved run result.
+
 ## Left
 
-Deploy to the hosted products. Existing source without annotations remains runnable;
-Builder chat can add graph comments while preserving its Python behaviour.
+None for the requested Dominion testing deployment. Existing source without
+annotations remains runnable; Builder chat can add comments while preserving
+Python behaviour. Other installations receive this feature on their next release.

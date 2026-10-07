@@ -13,7 +13,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Code](code/index.md) | 5 | 0 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 70 | 17 |
 | [Crew](crew/index.md) | 22 | 5 |
-| [Dominion](dominion/index.md) | 1 | 1 |
+| [Dominion](dominion/index.md) | 1 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 178 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 29 | 6 |
 | [Operations (cost, performance, deploys, logs)](ops/index.md) | 30 | 10 |
@@ -28,9 +28,9 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
 | [PLAT-643](browser/browser/plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | in progress | P2 | [dominion/deployment](dominion/deployment/index.md) |
+| [PLAT-642](dominion/deployment/plat-642.md) | Enable admin Relay testing on Dominion and deploy source-comment graphs | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-641](schedules/execution/plat-641.md) | Scheduled runs use an active owner, not a former creator | open | P1 | [schedules/execution](schedules/execution/index.md) |
-| [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
+| [PLAT-640](relays/frontend-chat/plat-640.md) | Render Relay graphs from comments in relay.py | deployed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-639](chat/general/plat-639.md) | Queued turn broke the Codex chat: security policy changed | fixed on main | P1 | [chat/general](chat/general/index.md) |
 | [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
 | [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
