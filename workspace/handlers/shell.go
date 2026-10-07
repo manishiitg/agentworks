@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -365,11 +364,6 @@ func ExecuteShellCommand(c *gin.Context) {
 		workspaceDebugLogf("[SHELL_ENV_DEBUG] ExtraEnv keys: %v", keys)
 	}
 
-	// Capture stdout and stderr separately
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
 	if req.ArtifactTransfer != nil {
 		if req.FolderGuard == nil || !req.FolderGuard.Enabled {
 			c.JSON(http.StatusBadRequest, models.APIResponse[models.ExecuteShellResponse]{
@@ -425,18 +419,46 @@ func ExecuteShellCommand(c *gin.Context) {
 		}()
 	}
 
+	// Capture stdout and stderr separately, through pipes this service makes itself (PLAT-645): Wait then returns
+	// when the shell exits, not when the last background job holding the output ends. See shellOutputCapture.
+	stdoutR, stdoutW, pipeErr := os.Pipe()
+	var stderrR, stderrW *os.File
+	if pipeErr == nil {
+		if stderrR, stderrW, pipeErr = os.Pipe(); pipeErr != nil {
+			_ = stdoutR.Close()
+			_ = stdoutW.Close()
+		}
+	}
+	if pipeErr != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse[models.ExecuteShellResponse]{
+			Success: false,
+			Message: "Failed to start command",
+			Error:   pipeErr.Error(),
+			Data:    models.ExecuteShellResponse{Stderr: pipeErr.Error(), ExitCode: -1, Command: fullCommand},
+		})
+		return
+	}
+	cmd.Stdout = stdoutW
+	cmd.Stderr = stderrW
+
 	// Record start time
 	startTime := time.Now()
 
 	// Execute command
-	if err := cmd.Start(); err != nil {
+	startErr := cmd.Start()
+	// The children hold their own copies of the write ends; this process must not, or the readers never see EOF.
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	stdoutCap := newShellOutputCapture(stdoutR)
+	stderrCap := newShellOutputCapture(stderrR)
+	if err := startErr; err != nil {
 		executionTime := time.Since(startTime)
 		c.JSON(http.StatusInternalServerError, models.APIResponse[models.ExecuteShellResponse]{
 			Success: false,
 			Message: "Failed to start command",
 			Error:   err.Error(),
 			Data: models.ExecuteShellResponse{
-				Stdout:          stdoutBuf.String(),
+				Stdout:          "",
 				Stderr:          err.Error(),
 				ExitCode:        -1,
 				ExecutionTimeMs: int(executionTime.Milliseconds()),
@@ -457,6 +479,22 @@ func ExecuteShellCommand(c *gin.Context) {
 	err := cmd.Wait()
 	close(done)
 	executionTime := time.Since(startTime)
+	// A process the command left running in the background still holds its output: return now, tell the caller
+	// what is still running, and stop keeping that output (PLAT-645). Confinement is unchanged: the processes keep
+	// the sandbox, account and process group they were started in.
+	backgroundNotice := ""
+	if !waitShellOutputs(shellBackgroundGrace, stdoutCap, stderrCap) {
+		stdoutCap.detach()
+		stderrCap.detach()
+		slotted := slots.IsWrapped(cmd)
+		var pids []int
+		if !slotted {
+			pids = shellProcessGroupMembers(processRecord.PGID)
+		}
+		backgroundNotice = shellBackgroundNotice(pids, slotted)
+		log.Printf("[SHELL] command_sha256=%s left background process(es) running (pgid=%d pids=%v slotted=%v); returning without waiting for them",
+			commandFingerprint, processRecord.PGID, pids, slotted)
+	}
 
 	// Get exit code
 	exitCode := 0
@@ -467,7 +505,7 @@ func ExecuteShellCommand(c *gin.Context) {
 			finishShellProcess(processRecord.PID, "timeout", &timeoutExitCode)
 			// Build stderr with timeout info prepended so the LLM sees it clearly
 			timeoutMsg := fmt.Sprintf("TIMEOUT: Command killed after %d seconds\n", timeoutSeconds)
-			capturedStderr := stderrBuf.String()
+			capturedStderr := stderrCap.String()
 			if capturedStderr != "" {
 				timeoutMsg += capturedStderr
 			}
@@ -476,7 +514,7 @@ func ExecuteShellCommand(c *gin.Context) {
 				Message: "Command execution timed out",
 				Error:   fmt.Sprintf("Command exceeded timeout of %d seconds", timeoutSeconds),
 				Data: models.ExecuteShellResponse{
-					Stdout:          stdoutBuf.String(),
+					Stdout:          stdoutCap.String(),
 					Stderr:          timeoutMsg,
 					ExitCode:        -1,
 					ExecutionTimeMs: int(executionTime.Milliseconds()),
@@ -492,7 +530,7 @@ func ExecuteShellCommand(c *gin.Context) {
 			// Other execution errors (e.g., command not found)
 			errorExitCode := -1
 			finishShellProcess(processRecord.PID, "failed", &errorExitCode)
-			errorStderr := stderrBuf.String()
+			errorStderr := stderrCap.String()
 			if errorStderr == "" {
 				errorStderr = err.Error()
 			}
@@ -501,7 +539,7 @@ func ExecuteShellCommand(c *gin.Context) {
 				Message: "Failed to execute command",
 				Error:   err.Error(),
 				Data: models.ExecuteShellResponse{
-					Stdout:          stdoutBuf.String(),
+					Stdout:          stdoutCap.String(),
 					Stderr:          errorStderr,
 					ExitCode:        -1,
 					ExecutionTimeMs: int(executionTime.Milliseconds()),
@@ -537,8 +575,8 @@ func ExecuteShellCommand(c *gin.Context) {
 				Message: "Browser artifact transfer failed",
 				Error:   transferErr.Error(),
 				Data: models.ExecuteShellResponse{
-					Stdout:          stdoutBuf.String(),
-					Stderr:          stderrBuf.String(),
+					Stdout:          stdoutCap.String(),
+					Stderr:          stderrCap.String(),
 					ExitCode:        exitCode,
 					ExecutionTimeMs: int(executionTime.Milliseconds()),
 					Command:         fullCommand,
@@ -553,8 +591,8 @@ func ExecuteShellCommand(c *gin.Context) {
 		Success: true,
 		Message: "Command executed successfully",
 		Data: models.ExecuteShellResponse{
-			Stdout:          stdoutBuf.String(),
-			Stderr:          stderrBuf.String(),
+			Stdout:          stdoutCap.String(),
+			Stderr:          stderrCap.String() + backgroundNotice,
 			ExitCode:        exitCode,
 			ExecutionTimeMs: int(executionTime.Milliseconds()),
 			Command:         fullCommand,

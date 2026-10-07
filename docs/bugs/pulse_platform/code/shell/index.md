@@ -4,4 +4,4 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
-| [PLAT-645](plat-645.md) | Backgrounded shell commands still block the chat's next commands | open | P2 |
+| [PLAT-645](plat-645.md) | Backgrounded shell commands still block the chat's next commands | fixed on main | P2 |
