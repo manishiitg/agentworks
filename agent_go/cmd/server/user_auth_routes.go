@@ -223,7 +223,7 @@ func (api *StreamingAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// In single-user mode, return a token for the default user (no login required)
 	if !IsMultiUserMode() {
-		token, err := GenerateJWT(GetDefaultUserID(), "user", "")
+		token, err := GenerateJWT(GetDefaultUserID(), singleUserUsername, "")
 		if err != nil {
 			log.Printf("[AUTH] Failed to generate single-user token: %v", err)
 			http.Error(w, `{"error": "Authentication is not configured"}`, http.StatusInternalServerError)
@@ -233,7 +233,7 @@ func (api *StreamingAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Token: token,
 			User: userInfoWithWorkflowPermissions(UserInfo{
 				ID:       GetDefaultUserID(),
-				Username: "user",
+				Username: singleUserUsername,
 			}),
 		})
 		return

@@ -21,6 +21,10 @@ import (
 // authoritative for permissions: we deliberately persist only the user ID on
 // the connector, then resolve the current username/email/role for every turn so
 // a promotion or demotion takes effect without re-pairing WhatsApp.
+// singleUserUsername is the local user's name in single-user mode: the login
+// token and every server-rebuilt request context for that user carry it.
+const singleUserUsername = "user"
+
 func internalBotRequestContext(ctx context.Context, userID string, reqMaps ...map[string]interface{}) context.Context {
 	if userID == "" || GetUserFromContext(ctx) != nil {
 		return ctx
@@ -29,6 +33,11 @@ func internalBotRequestContext(ctx context.Context, userID string, reqMaps ...ma
 	if record := directoryUserFor(userID, "", ""); record != nil {
 		claims.Username = record.Username
 		claims.Email = record.Email
+	} else if !IsMultiUserMode() && userID == GetDefaultUserID() {
+		// The same person as the single-user login token. A queued chat turn
+		// rebuilt as "default" while its live turn ran as "user" changed the
+		// coding agent's security fingerprint and broke the chat (2026-10-07).
+		claims.Username = singleUserUsername
 	}
 	if len(reqMaps) > 0 {
 		applyBotRouteClaims(claims, reqMaps[0])
