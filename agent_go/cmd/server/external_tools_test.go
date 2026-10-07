@@ -300,7 +300,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) {
+		if tool.mutates && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -346,7 +346,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit"}
+	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}

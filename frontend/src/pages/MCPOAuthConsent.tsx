@@ -18,6 +18,7 @@ const scopeDescriptions: Record<string, string> = {
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Update shared knowledge and prepare or push backups within your folder grants',
   'code:review': 'Review every Code workspace: cost, chats and files, read-only. Every view is recorded in the audit log',
+  'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
 
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
@@ -29,6 +30,7 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Make changes: edit your Crews, Relays and workflows, as far as your role allows', scopes: ['crews:write', 'builder:chat', 'relays:write'] },
   { summary: 'Use shared Brain within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
   { summary: 'Review Code workspaces (read-only, logged)', scopes: ['code:review'] },
+  { summary: 'Set people\'s shared-account token limits (administrator, logged)', scopes: ['users:manage'] },
 ]
 
 export function MCPOAuthConsent() {

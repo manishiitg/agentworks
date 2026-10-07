@@ -208,6 +208,8 @@ func externalTools() ([]externalTool, error) {
 		externalVaultDefinitions(add)
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
+		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
+		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
@@ -426,6 +428,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if isExternalTokenLimitTool(tool.Name) {
+		api.externalTokenLimitCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if tool.Name == "create_workflow" {

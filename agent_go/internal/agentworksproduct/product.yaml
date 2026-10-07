@@ -417,6 +417,9 @@ chat:
       - list_code_chats
       - read_code_chat
       - get_code_audit
+      # Shared-account token limits (get: code:review or users:manage; set: users:manage, admins; audited).
+      - get_token_usage
+      - set_token_limits
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

@@ -255,6 +255,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 403, "forbidden", "code:review is for admins and Code reviewers.")
 			return
 		}
+		if t.Allows("users:manage") && !currentUserIsAdmin(r) {
+			externalError(w, 403, "forbidden", "users:manage is for admins.")
+			return
+		}
 		if !t.AllCrews && len(t.CrewIDs) > 0 {
 			crews, err := listAccessibleCrewProjects(r.Context(), c.UserID, "")
 			if err != nil {
@@ -361,6 +365,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	// also needs code:review; both are re-checked on every call.
 	if isExternalCodeReviewTool(tool.Name) {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
+	}
+	if isExternalTokenLimitTool(tool.Name) {
+		return externalTokenLimitAllowed(c, tool.Name)
 	}
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
