@@ -8,7 +8,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 |---|---|---|
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 80 | 14 |
 | [Brain](brain/index.md) | 26 | 6 |
-| [Browser and browser automation](browser/index.md) | 45 | 11 |
+| [Browser and browser automation](browser/index.md) | 46 | 12 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
 | [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 71 | 18 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |
 | [PLAT-660](goals/steps/plat-660.md) | Steps still name the removed search_web_llm tool | fixed on main | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-659](code/chat/plat-659.md) | Message stuck Queued after a deploy changes the Code definition | fixed on main | P1 | [code/chat](code/chat/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-622](sandbox/environment/plat-622.md) | Shell environment leaks server and account data | fixed on main | P1 | [sandbox/environment](sandbox/environment/index.md) |
-| [PLAT-621](app/navigation/plat-621.md) | Shortcut hint on new chats | fixed on main | P3 | [app/navigation](app/navigation/index.md) |
