@@ -6,12 +6,12 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 80 | 14 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 15 |
 | [Brain](brain/index.md) | 26 | 6 |
 | [Browser and browser automation](browser/index.md) | 46 | 12 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 26 | 9 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 27 | 10 |
 | [Code](code/index.md) | 10 | 1 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 71 | 18 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 72 | 19 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 179 | 38 |
@@ -27,6 +27,9 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | open | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
+| [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | open | P2 | [chat/tabs](chat/tabs/index.md) |
+| [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | open | P2 | [app/ui-control](app/ui-control/index.md) |
 | [PLAT-663](sandbox/cli/plat-663.md) | tmux server environment keeps service credentials | open | P1 | [sandbox/cli](sandbox/cli/index.md) |
 | [PLAT-662](browser/browser/plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 | [browser/browser](browser/browser/index.md) |
 | [PLAT-661](crew/commands/plat-661.md) | Crew custom commands not listed | open | P1 | [crew/commands](crew/commands/index.md) |
@@ -64,6 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-628](brain/access/plat-628.md) | Remove Brain folder bindings; steps describe Brain use | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-627](relays/frontend-chat/plat-627.md) | Update shared landing contract test for Python Relay guide | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-626](app/tests/plat-626.md) | Record existing main CI failures outside Relay landing regression | open | P2 | [app/tests](app/tests/index.md) |
-| [PLAT-625](coding-agents/accounts/plat-625.md) | Code rejects an admitted private Claude login without a deployment token | deployed | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
-| [PLAT-624](browser/browser/plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
-| [PLAT-623](coding-agents/accounts/plat-623.md) | Ankita private Codex API key remained in the shared server login | in progress | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |

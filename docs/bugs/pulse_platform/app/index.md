@@ -13,5 +13,6 @@
 | [reports](reports/index.md) | 7 | 2 |
 | [tests](tests/index.md) | 6 | 2 |
 | [tools](tools/index.md) | 1 | 1 |
+| [ui-control](ui-control/index.md) | 1 | 1 |
 | [workspace](workspace/index.md) | 1 | 1 |
 | [workspaces](workspaces/index.md) | 1 | 0 |
