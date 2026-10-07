@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -134,5 +135,29 @@ func TestCodeChatAskIsAFunctionCall(t *testing.T) {
 	}
 	if again, err := ask(main, side, "sub-1"); err != nil || again.ID != call.ID {
 		t.Fatalf("submission_id did not return the original call: %v, %v", again, err)
+	}
+}
+
+// Owner, 2026-10-07: at most 20 asks an hour between one Code's chats. A
+// resubmitted or joined ask (the same call) counts once.
+func TestCodeChatAskCapPerHour(t *testing.T) {
+	project := codeChatProject{OwnerID: "owner", ProjectID: "cap-test"}
+	now := time.Now()
+	for i := 0; i < codeChatAsksPerHour; i++ {
+		if err := admitCodeChatAsk(project, now); err != nil {
+			t.Fatalf("ask %d refused: %v", i+1, err)
+		}
+		id := "fn-" + strconv.Itoa(i)
+		recordCodeChatAsk(project, id, now)
+		recordCodeChatAsk(project, id, now) // resubmitted: the same call
+	}
+	if err := admitCodeChatAsk(project, now); err == nil {
+		t.Fatal("ask 21 within the hour was admitted")
+	}
+	if err := admitCodeChatAsk(codeChatProject{OwnerID: "owner", ProjectID: "other"}, now); err != nil {
+		t.Fatalf("another Code shares the cap: %v", err)
+	}
+	if err := admitCodeChatAsk(project, now.Add(time.Hour+time.Second)); err != nil {
+		t.Fatalf("cap did not clear after an hour: %v", err)
 	}
 }

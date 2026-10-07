@@ -74,7 +74,9 @@ call record: the reply was the target's last text, held in memory, with its own 
   other Codes or other users; a non-chat caller cannot target a chat. No tokens are involved.
 
 Not covered by the shared guards (as for Crews): a chat that, in each turn resumed by an answer, asks again starts a
-fresh chain each time. The removed per-Code hourly limit used to bound that; the owner chose the shared guards.
+fresh chain each time. Owner, 2026-10-07: cap it at 20 asks an hour between one Code's chats
+(`codeChatAsksPerHour`, counted per call id so a resubmitted or joined ask counts once; in memory, so it resets on
+restart). The 21st ask is refused with a message telling the agent to stop and tell the person.
 
 Verification: `TestCodeChatAskIsAFunctionCall` (replaces `TestCodeChatSiblingsAndLoopGuard`): sibling listing,
 refusal of self, of a chat outside the Code and of a non-chat caller; an ask gets an `fn-` call_id and a saved index,

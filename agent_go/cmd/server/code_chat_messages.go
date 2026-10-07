@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -32,7 +33,60 @@ const (
 	codeChatMainName       = "main"
 	codeChatSideMarker     = ":chat:"
 	codeChatMessageMaxRune = 20000
+	// codeChatAsksPerHour caps asks between one Code's chats (owner, 2026-10-07):
+	// two chats can trade asks forever, because each answer starts a fresh call
+	// chain that the shared loop guards do not count.
+	codeChatAsksPerHour = 20
 )
+
+// codeChatAsks remembers each Code's recent asks between its chats, by call
+// id, so a joined or resubmitted ask (the same call) counts once.
+var codeChatAsks = struct {
+	sync.Mutex
+	byCode map[string][]codeChatAsk
+}{byCode: map[string][]codeChatAsk{}}
+
+type codeChatAsk struct {
+	callID string
+	at     time.Time
+}
+
+func codeChatAskKey(project codeChatProject) string { return project.OwnerID + "/" + project.ProjectID }
+
+func recentCodeChatAsksLocked(key string, now time.Time) []codeChatAsk {
+	kept := codeChatAsks.byCode[key][:0]
+	for _, ask := range codeChatAsks.byCode[key] {
+		if now.Sub(ask.at) < time.Hour {
+			kept = append(kept, ask)
+		}
+	}
+	codeChatAsks.byCode[key] = kept
+	return kept
+}
+
+// admitCodeChatAsk refuses a new ask once this Code's chats made
+// codeChatAsksPerHour asks in the last hour.
+func admitCodeChatAsk(project codeChatProject, now time.Time) error {
+	codeChatAsks.Lock()
+	defer codeChatAsks.Unlock()
+	if len(recentCodeChatAsksLocked(codeChatAskKey(project), now)) >= codeChatAsksPerHour {
+		return fmt.Errorf("refused: this Code's chats already asked each other %d times in the last hour; stop and tell the person what the chats are doing instead of asking again", codeChatAsksPerHour)
+	}
+	return nil
+}
+
+// recordCodeChatAsk counts a call once, however often it is joined or resubmitted.
+func recordCodeChatAsk(project codeChatProject, callID string, now time.Time) {
+	codeChatAsks.Lock()
+	defer codeChatAsks.Unlock()
+	key := codeChatAskKey(project)
+	for _, ask := range recentCodeChatAsksLocked(key, now) {
+		if ask.callID == callID {
+			return
+		}
+	}
+	codeChatAsks.byCode[key] = append(codeChatAsks.byCode[key], codeChatAsk{callID: callID, at: now})
+}
 
 // codeChatTurn, when set (tests), replaces the turn in the target chat.
 var codeChatTurn func(ctx context.Context, call *crewFunctionCall, text string) (internalSessionTurnResult, error)
@@ -333,11 +387,15 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				caller, target := codeChatCaller(project, base), codeChatTarget(project, chat, agentProfileRuntimeWorkspace(userID, base.Path))
+				if err := admitCodeChatAsk(project, time.Now()); err != nil {
+					return "", err
+				}
 				busy := api.conversationTurnOccupied(chat.SessionID)
 				call, err := api.startCrewFunctionCall(ctx, userID, caller, target, defaultAskCrewFunction(), map[string]interface{}{"message": strings.TrimSpace(message), "reply": wantReply}, timeout, submissionID)
 				if err != nil {
 					return "", err
 				}
+				recordCodeChatAsk(project, call.ID, time.Now())
 				out := call.snapshot()
 				addFunctionCallPending(out, call)
 				select {
