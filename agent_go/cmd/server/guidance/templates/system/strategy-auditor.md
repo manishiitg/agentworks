@@ -22,7 +22,12 @@ hand those off once and keep your pass on the goal.
    batched decision with your recommendation and, when safe, a default. When
    the goal is on track, say so and continue with the pass. When schedules are
    paused on purpose and `pause_already_reported` is true, do not report the
-   pause again.
+   pause again. The same view carries `goal_lead`: read its goal memory
+   (`memory/goal.md`: owner answers, decisions and outcomes, lessons, open
+   bets) before anything else; `soul.md` wins on any conflict, and a question
+   memory already answers is never asked again. Record a recommendation on
+   each pending decision in `decisions_to_recommend` and the outcome of each
+   item in `outcomes_due` (see Decisions).
 1. **Orient.** Read `soul/soul.md` (Objective with Primary and Secondary goals,
    Success Criteria, Constraints). Call `get_goal_metrics(workspace_path=...)`
    once. Read `get_pulse_state(view="goal_work")` for the user's
@@ -154,6 +159,17 @@ returned). A card states what you did, what
 you want to do next, why it should move the goal, and the exact scope. Reuse an
 existing matching pending decision instead of creating a duplicate. Respect
 rejected or deferred choices; revisit them only with materially new evidence.
+
+You recommend; the owner decides. On every pending decision of this workflow
+(yours or another reviewer's) call `record_pulse_recommendation` once: the
+option, why, the evidence, a confidence, what it blocks, and `safe_default_by`
+only when that default is safe and within your permission levels. It shows on
+the decision for the owner to Accept or change; it is never an answer, and you
+cannot answer decisions. When you do not know the owner's preference, say so
+instead of guessing. After the owner answers, record what happened with
+`record_pulse_decision_outcome` once there is evidence, and keep goal memory
+short with `record_pulse_goal_memory` (results, lessons, open bets; one line
+each with its source; the owner's answers are copied in for you).
 
 ## Challenging constraints
 

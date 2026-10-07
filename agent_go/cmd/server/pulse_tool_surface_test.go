@@ -42,6 +42,11 @@ var pulseScheduleToolNames = []string{
 	"record_pulse_goal_work",
 	// The Goal Lead's daily goal check verdict (PLAT-697).
 	"record_pulse_goal_check",
+	// Phase 3: a recommendation on a decision (never an answer), the
+	// decision's outcome, and goal memory.
+	"record_pulse_recommendation",
+	"record_pulse_decision_outcome",
+	"record_pulse_goal_memory",
 }
 
 // pulseRemovedToolNames must never reappear. Each was folded into one of the

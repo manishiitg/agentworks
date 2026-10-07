@@ -504,6 +504,46 @@ export interface ReportHumanInput {
 	apply_contract?: ReportHumanInputApplyContract
   /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
   apply_message?: string
+  /** The Goal Lead's recommended answer (PLAT-697), kept apart from the owner's answer. */
+  recommendation?: PulseRecommendation
+}
+
+/** The Goal Lead's recommendation on one decision; also that decision's log entry (PLAT-697). */
+export interface PulseRecommendation {
+  input_id: string
+  option_id?: string
+  option_title?: string
+  answer?: string
+  why: string
+  evidence?: string
+  confidence: 'low' | 'medium' | 'high' | string
+  blocks?: string
+  safe_default_by?: string
+  recommended_by: string
+  recommended_at: string
+  /** '' while waiting; accepted, changed or dismissed once the owner responds. */
+  owner_response?: 'accepted' | 'changed' | 'dismissed' | ''
+  owner_answer?: string
+  responded_at?: string
+  outcome?: string
+  outcome_at?: string
+}
+
+export interface PulseDecisionLogEntry extends PulseRecommendation {
+  question: string
+  decision_status: string
+  recommended: string
+}
+
+export interface GoalLeadResponse {
+  success: boolean
+  memory: string
+  memory_path: string
+  memory_error?: string
+  decision_log: PulseDecisionLogEntry[]
+  decision_log_error?: string
+  answer_mode?: 'recommend' | 'act'
+  error?: string
 }
 
 export interface ReportHumanInputsResponse {

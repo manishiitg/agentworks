@@ -3090,8 +3090,15 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	}
 	executors["record_pulse_goal_check"] = recordPulseGoalCheckFromToolArgs
 	categories["record_pulse_goal_check"] = "workflow"
+	goalLeadTools := createGoalLeadTools()
+	for _, tool := range goalLeadTools {
+		categories[tool.Function.Name] = "workflow"
+	}
+	executors["record_pulse_recommendation"] = recordPulseRecommendationFromToolArgs
+	executors["record_pulse_decision_outcome"] = recordPulseDecisionOutcomeFromToolArgs
+	executors["record_pulse_goal_memory"] = recordPulseGoalMemoryFromToolArgs
 
-	return []llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool, goalCheckTool}, executors, categories
+	return append([]llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool, goalCheckTool}, goalLeadTools...), executors, categories
 }
 
 func stringToolArg(args map[string]interface{}, key string) string {

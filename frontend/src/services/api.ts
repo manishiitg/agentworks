@@ -130,6 +130,7 @@ import type {
   WorkflowNotificationInfoResponse,
   WorkflowPublishSecretResponse,
   ReportHumanInputResponse,
+  GoalLeadResponse,
   ReportHumanInputsResponse,
   PulseModuleStateResponse,
   PulseFindingsResponse,
@@ -2078,6 +2079,19 @@ export const agentApi = {
       params: { workspace_path: workspacePath },
     })
     return response.data as PulseImpactResponse
+  },
+
+  // The Goal Lead's goal memory and decision log (PLAT-697).
+  getGoalLead: async (workspacePath: string) => {
+    const response = await api.get('/api/workflow/goal-lead', {
+      params: { workspace_path: workspacePath },
+    })
+    return response.data as GoalLeadResponse
+  },
+
+  saveGoalMemory: async (workspacePath: string, content: string) => {
+    const response = await api.put('/api/workflow/goal-memory', { workspace_path: workspacePath, content })
+    return response.data as { success: boolean; error?: string }
   },
 
   getPulseContext: async (workspacePath: string) => {

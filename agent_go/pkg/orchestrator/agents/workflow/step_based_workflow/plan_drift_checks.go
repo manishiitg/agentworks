@@ -697,6 +697,8 @@ var planDriftReservedTables = map[string]bool{
 	"pulse_module_state":      true,
 	"pulse_module_audit":      true,
 	"report_field_update_log": true,
+	// The Goal Lead's recommendations and decision log (PLAT-697).
+	"pulse_recommendations": true,
 }
 
 // sqlTableReferencePattern extracts table names referenced by FROM/JOIN/

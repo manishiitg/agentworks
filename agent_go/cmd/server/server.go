@@ -2875,6 +2875,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
+	// The Goal Lead's goal memory, edited by the owner in the Pulse tab (PLAT-697).
+	apiRouter.HandleFunc("/workflow/goal-memory", requireReportHumanInputAccess(true, api.handlePutGoalMemory)).Methods("PUT", "OPTIONS")
 
 	// Workflow running-session API (decoupled from chat session storage).
 	apiRouter.HandleFunc("/workflow/running", api.handleListRunningWorkflows).Methods("GET")

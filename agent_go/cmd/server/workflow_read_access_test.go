@@ -75,6 +75,7 @@ var workflowReadRoutes = []string{
 	"/api/workflow/pulse-agent-metrics",
 	"/api/workflow/pulse-impact",
 	"/api/workflow/pulse-context",
+	"/api/workflow/goal-lead",
 	"/api/workspace/state",
 	"/api/workflow/run-folders",
 	"/api/workflow/learnings/all",

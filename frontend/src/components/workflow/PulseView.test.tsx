@@ -9,6 +9,7 @@ vi.mock("./PulseWorkspace", () => ({
     <button type="button" onClick={() => onTabChange('platform')}>Platform health</button>
   </div>,
 }));
+vi.mock("./GoalLeadPanel", () => ({ GoalLeadPanel: () => null }));
 vi.mock("./SoulViewer", () => ({
   WORKFLOW_SOUL_REFRESH_EVENT: "test-soul-refresh",
 }));

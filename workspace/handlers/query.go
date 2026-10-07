@@ -761,6 +761,7 @@ var reportFieldUpdateReservedTables = map[string]bool{
 	"pulse_module_state":        true,
 	"pulse_module_audit":        true,
 	"report_field_update_log":   true,
+	"pulse_recommendations":     true,
 }
 
 // reportFieldUpdateGuardedColumnSuffixes/Names bound what a report's own

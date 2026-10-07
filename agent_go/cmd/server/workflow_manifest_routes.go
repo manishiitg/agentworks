@@ -505,7 +505,12 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		manifest.Pulse.Autonomy = &WorkflowPulseAutonomy{Run: resolved.Run, Outward: resolved.Outward, Change: resolved.Change}
+		answer := ""
+		if manifest.Pulse.Autonomy != nil && strings.TrimSpace(manifest.Pulse.Autonomy.Answer) != "" {
+			// Kept as set (pulse.autonomy.answer, PLAT-697); an invalid value is dropped.
+			answer, _ = normalizePulseAnswerMode(manifest.Pulse.Autonomy.Answer)
+		}
+		manifest.Pulse.Autonomy = &WorkflowPulseAutonomy{Run: resolved.Run, Outward: resolved.Outward, Change: resolved.Change, Answer: answer}
 	}
 	if req.PulseFocusAreas != nil {
 		areas, areasErr := normalizePulseFocusAreas(*req.PulseFocusAreas)

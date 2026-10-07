@@ -3,6 +3,7 @@ import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { Activity } from 'lucide-react'
 import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
+import { GoalLeadPanel } from './GoalLeadPanel'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
@@ -113,6 +114,7 @@ export default function PulseView({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-3 sm:p-4">
           {workspacePath && <GoalStatusCard goal={goalStatus} />}
+          {workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
           {workspacePath && (
             <PulseWorkspace
               activeTab={tab}

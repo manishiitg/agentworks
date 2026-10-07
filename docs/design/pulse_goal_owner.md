@@ -1,6 +1,6 @@
 # Goal Lead: Pulse as the goal owner
 
-Status: phase 1 (goal check, silence alarm, one message) built; later phases design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 1-3 built (goal check, silence alarm, one message; enforced autonomy; recommendations on decisions, goal memory in `memory/goal.md`, decision log); later phases design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07): **Goal Lead**, e.g. "Substack Goal Lead". It replaces "Pulse" as the agent users see.
 In user text, "lead" means the Goal Lead only; sales prospects are "prospects" or "contacts" there.
@@ -173,8 +173,9 @@ Required first (both found 2026-10-07 on a0d687b63; the first two are done in ph
   `background_review_scope.go`). A goal owner deciding in the owner's name needs real checks.
 - **Fix the contradiction.** The fixed Goal Work contract (scheduler.go ~3211) says "never act outward or edit the
   workflow yourself" even when `outward` / `change` are auto.
-- `humanAnswerScope` refuses answers from background agents. Allow Pulse to answer decision requests within its
-  levels, recorded as Pulse's answer, never as the owner's.
+- `humanAnswerScope` refuses answers from background agents. Phase 3 (owner, 2026-10-07): recommendations first.
+  Pulse attaches a recommendation (recorded as Pulse's, never as an answer) and the owner accepts or changes it;
+  `humanAnswerScope` still refuses Pulse. Answering within its levels waits for `pulse.autonomy.answer=act`.
 
 ## Triggers
 

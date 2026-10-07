@@ -221,6 +221,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read("/workflow/pulse-agent-metrics", api.handleGetPulseAgentMetrics)
 	read("/workflow/pulse-impact", api.handleGetPulseImpact)
 	read("/workflow/pulse-context", api.handleGetPulseContext)
+	read("/workflow/goal-lead", api.handleGetGoalLead)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)
 	read("/workflow/learnings/all", api.handleGetAllStepLearnings)

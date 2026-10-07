@@ -334,6 +334,11 @@ type WorkflowPulseAutonomy struct {
 	// Change: edit the plan, step settings and schedules. soul.md goals and
 	// constraints always go to the user. Default ask.
 	Change string `json:"change,omitempty"`
+	// Answer: what the Goal Lead does with a decision request (PLAT-697
+	// phase 3). "recommend" (default): it attaches a recommendation and the
+	// owner confirms. "act" is reserved for a later phase and behaves as
+	// recommend.
+	Answer string `json:"answer,omitempty"`
 }
 
 // PulseAutonomyLevels is the resolved setting with defaults applied.
@@ -406,6 +411,9 @@ func resolvePulseAutonomy(a *WorkflowPulseAutonomy) (PulseAutonomyLevels, error)
 	}
 	change, err := normalizePulseAutonomyAskDefault("change", a.Change)
 	if err != nil {
+		return PulseAutonomyLevels{}, err
+	}
+	if _, err := normalizePulseAnswerMode(a.Answer); err != nil {
 		return PulseAutonomyLevels{}, err
 	}
 	return PulseAutonomyLevels{Run: run, Outward: outward, Change: change}, nil

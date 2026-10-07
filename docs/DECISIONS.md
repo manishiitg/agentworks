@@ -30,6 +30,20 @@ account, which moved chats onto the shared account on their second message.
 Models shows the account in use and its limits. Why: owner, 2026-10-07.
 [PLAT-706](bugs/pulse_platform/coding-agents/accounts/plat-706.md).
 
+### 2026-10-07 — The Goal Lead recommends on decisions; the owner confirms; goal memory beside soul.md
+
+On a workflow's decision requests, Pulse (the daily goal check and Goal Work) attaches a recommendation (option,
+why, evidence, confidence, what it blocks, a safe default only when safe and within the autonomy levels), stored as
+Pulse's and apart from the answer. Pulse never answers: `humanAnswerScope` still refuses it. The owner accepts or
+changes it with one click in the Pulse tab. `pulse.autonomy.answer` (`recommend` default, `act` reserved) is the
+future switch; only `recommend` exists. Goal memory lives in the workflow's memory area as `memory/goal.md` (one
+dated line per owner answer, decision and outcome, lesson, bet, each marked owner answer / result / Pulse
+inference), separate from the Builder's `MEMORY.md`; owner answers are copied in by code, Pulse adds and
+consolidates the rest, and soul.md wins on conflict. Recommendations double as the decision log, with outcomes
+filled in by a later goal check. Why: owner, 2026-10-07: confident wrong answers in his name are the main risk, so
+the Goal Lead earns autonomy by being right first, and the same question must not be asked twice.
+[PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — Goal check first: daily goal check and silence alarm
 
 Every workflow with a primary goal metric gets a daily goal check, the Goal Lead's first job: code computes

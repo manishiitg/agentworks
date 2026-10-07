@@ -254,7 +254,12 @@ func readGoalStatusView(ctx context.Context, workspacePath string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	out, err := json.MarshalIndent(view, "", "  ")
+	// Phase 3: goal memory, decisions to recommend on and outcomes to record
+	// ride along, so a turn that reads only this view reads memory first.
+	out, err := json.MarshalIndent(struct {
+		*GoalStatusView
+		GoalLead map[string]interface{} `json:"goal_lead"`
+	}{view, goalLeadAgentContext(ctx, workspacePath)}, "", "  ")
 	return string(out), err
 }
 
@@ -413,18 +418,26 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 		// Report only, held by the tools too (PLAT-697 phase 2 guard).
 		perms = stepworkflow.GoalWorkPermissions{}
 		autonomyText = stepworkflow.GoalWorkAutonomyInstructions(perms, false)
-		pausedRule = "\n\nSCHEDULES ARE PAUSED ON PURPOSE. Report only: do not run steps or the workflow and do not create decisions. Say once that the schedules are paused and what that means for the goal (for example how long it has gone unmeasured); this check exists to say it once."
+		pausedRule = "\n\nSCHEDULES ARE PAUSED ON PURPOSE. Report only: do not run steps or the workflow and do not create decisions (recommending on pending ones and recording outcomes and memory is fine). Say once that the schedules are paused and what that means for the goal (for example how long it has gone unmeasured); this check exists to say it once."
+	}
+	goalLead := "{}"
+	if encoded, err := json.Marshal(goalLeadAgentContext(ctx, workspacePath)); err == nil {
+		goalLead = string(encoded)
 	}
 	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`PULSE DAILY GOAL CHECK. pulse_run_id=%q. One short turn; no Gate, reviewers or finalizer follow. You are the workflow's Goal Lead: the goal comes first.
 
 Code-computed goal facts (the silence alarm; already current, do not recompute them):
 %s
 
-1. Read soul/soul.md's objective and get_goal_metrics once. Decide: is the goal measured, is it moving, is the work that drives it running?
-2. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary) and stop. No notification.
-3. Otherwise act within the permission levels below, smallest useful step first. Run auto: you may run the existing goal-driving step or route once when it is clearly what the goal needs and every constraint holds. Outward and Change follow their own level; at ask, prepare it. Then, if the owner is needed, create ONE batched create_human_input_request(source="strategic_review", input_id="goal-check-<date>") that names the problem in one line, your recommendation, and a safe default with the date it applies when one exists; the owner confirms recommendations. Reuse a pending goal-check decision instead of creating another. Never guess the owner's preference: say you do not know it.
-4. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when you created one.
-5. Then call notify_user once with notification_kind="pulse_summary": the title leads with the goal status, the first lines say the status, key number and when it was last measured, then what you did and what you need. This is the one goal message; do not send a run summary.%s%s
+Goal Lead context: goal memory (memory/goal.md), pending decisions to recommend on, and answered decisions whose outcome is still to record:
+%s
 
-%s`, pulseRunID, facts, routing, finalizerRichEmailInstruction, autonomyText) + pausedRule}
+1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Decide: is the goal measured, is it moving, is the work that drives it running?
+2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so.
+3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary) and stop. No notification.
+4. Otherwise act within the permission levels below, smallest useful step first. Run auto: you may run the existing goal-driving step or route once when it is clearly what the goal needs and every constraint holds. Outward and Change follow their own level; at ask, prepare it. Then, if the owner is needed, create ONE batched create_human_input_request(source="strategic_review", input_id="goal-check-<date>") that names the problem in one line, and attach your recommendation to it with record_pulse_recommendation (with a safe default by a time only when one is safe); the owner confirms recommendations. Reuse a pending goal-check decision instead of creating another. Never guess the owner's preference: say you do not know it.
+5. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when you created one.
+6. Then call notify_user once with notification_kind="pulse_summary": the title leads with the goal status, the first lines say the status, key number and when it was last measured, then what you did, your recommendations waiting on the owner, and what you need. This is the one goal message; do not send a run summary.%s%s
+
+%s`, pulseRunID, facts, goalLead, routing, finalizerRichEmailInstruction, autonomyText) + pausedRule}
 }

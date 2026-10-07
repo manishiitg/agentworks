@@ -80,6 +80,9 @@ type ReportHumanInput struct {
 	// ApplyMessage is computed for list responses only (never stored): the
 	// Builder chat message that applies an answered decision.
 	ApplyMessage string `json:"apply_message,omitempty"`
+	// Recommendation is the Goal Lead's recommended answer (PLAT-697 phase
+	// 3), kept apart from the owner's answer; list responses only.
+	Recommendation *PulseRecommendation `json:"recommendation,omitempty"`
 }
 
 type ReportHumanInputCreateRequest struct {
@@ -273,6 +276,7 @@ func ensureReportHumanInputSchema(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_report_human_input_events_lookup
 			ON report_human_input_events(workspace_path, input_id, id)`,
+		pulseRecommendationsSchema,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
@@ -584,7 +588,22 @@ func listReportHumanInputs(ctx context.Context, workspacePath, status, source st
 		}
 		inputs = append(inputs, *input)
 	}
-	return inputs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(inputs) > 0 {
+		recs, err := pulseRecommendationsByInput(ctx, db, normalized)
+		if err != nil {
+			return nil, err
+		}
+		for i := range inputs {
+			if rec := recs[inputs[i].ID]; rec != nil {
+				rec.OptionTitle = reportHumanInputOptionTitle(inputs[i].Options, rec.OptionID)
+				inputs[i].Recommendation = rec
+			}
+		}
+	}
+	return inputs, nil
 }
 
 func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, req ReportHumanInputAnswerRequest) (*ReportHumanInput, error) {
@@ -664,6 +683,14 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if err := step_based_workflow.SyncPulseImprovementDecisionTx(ctx, tx, input.ID, selected, false, "", now); err != nil {
 		return nil, err
 	}
+	// The owner accepted or changed the Goal Lead's recommendation (PLAT-697).
+	ownerAnswer := selected
+	if ownerAnswer == "" {
+		ownerAnswer = note
+	}
+	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "", ownerAnswer, now); err != nil {
+		return nil, err
+	}
 	// The current row already owns the answer. The append-only audit trail keeps
 	// provenance, not a second permanent copy of potentially sensitive free text.
 	details, _ := json.Marshal(map[string]interface{}{
@@ -680,7 +707,12 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return getReportHumanInputByID(ctx, db, normalized, input.ID)
+	answered, err := getReportHumanInputByID(ctx, db, normalized, input.ID)
+	if err == nil {
+		// Goal memory: the owner's answer, copied in by code (PLAT-697).
+		afterOwnerAnswer(ctx, db, answered)
+	}
+	return answered, err
 }
 
 func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string, req ReportHumanInputAnswerRequest) (*ReportHumanInput, error) {
@@ -729,6 +761,9 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 		return nil, err
 	} else if affected == 0 {
 		return nil, fmt.Errorf("input_id %q was consumed or claimed by another writer before it could be dismissed", inputID)
+	}
+	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "dismissed", "", now); err != nil {
+		return nil, err
 	}
 	if err := writeReportHumanInputEvent(ctx, tx, normalized, reportHumanInputEvent{
 		InputID: input.ID, EventType: "dismissed", Status: "dismissed", ActorID: req.AnsweredBy,

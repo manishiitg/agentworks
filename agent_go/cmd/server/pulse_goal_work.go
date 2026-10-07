@@ -267,6 +267,7 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 	}
 	out, err := json.MarshalIndent(map[string]interface{}{
 		"goal_status":      goalStatus,
+		"goal_lead":        goalLeadAgentContext(ctx, workspacePath),
 		"autonomy":         pulseAutonomyForView(ctx, workspacePath),
 		"autonomy_note":    "The user's Pulse permissions: auto means do it yourself and record it; ask means prepare it and create a decision. run covers existing steps, outward covers new posts/messages/contacts, change covers plan, step and schedule edits.",
 		"focus_areas":      pulseFocusAreasForView(ctx, workspacePath),
