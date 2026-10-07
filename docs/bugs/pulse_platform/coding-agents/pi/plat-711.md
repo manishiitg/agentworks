@@ -23,6 +23,9 @@ service HOME was never seen: a deployment could not run Pi on its own OpenAI-com
   must be `$<PROVIDER>_API_KEY`, the variable the adapter injects from the scoped provider credential (server env or
   a Pi account's underlying-provider key); `!command` values are refused. Launch-arg redaction covers any
   `<PROVIDER>_API_KEY`. Test: TestPiAgentTemplateStagedIntoSessionDirAndRefusesLiteralKeys.
+- multi-llm-provider-go a7fcb3c: the template's models are in the Pi model catalog, so the app accepts them as a
+  chat's model (without it a Code/Brain chat on citymall/gpt-6-luna was refused: "model is not offered for engine
+  pi-cli").
 - agent_go: the template's models lead the Pi model picker (first is the default) and a template provider key in the
   server environment makes the Pi server account configured (Pi's own --list-models cannot see it).
 - Citymall's template (deploy/rootless-linux/products/citymall/pi-agent): gpt-6-luna first, gpt-5.6-luna second,
