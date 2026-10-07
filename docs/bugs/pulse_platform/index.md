@@ -9,7 +9,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 81 | 14 |
 | [Brain](brain/index.md) | 27 | 6 |
 | [Browser and browser automation](browser/index.md) | 47 | 12 |
-| [Chat delivery (streaming, steering, restore)](chat/index.md) | 28 | 10 |
+| [Chat delivery (streaming, steering, restore)](chat/index.md) | 29 | 10 |
 | [Code](code/index.md) | 10 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 72 | 19 |
 | [Crew](crew/index.md) | 23 | 6 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-674](chat/rendering/plat-674.md) | Rare product tips while the agent works | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-673](browser/access/plat-673.md) | Code and Crew browser stuck loading for read-only members | fixed on main | P1 | [browser/access](browser/access/index.md) |
 | [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |
 | [PLAT-671](integrations/google/plat-671.md) | Google apps: say why Connect is disabled for members | fixed on main | P2 | [integrations/google](integrations/google/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
 | [PLAT-634](brain/general/plat-634.md) | Brain missing from the local product switcher | fixed on main | P2 | [brain/general](brain/general/index.md) |
 | [PLAT-633](brain/storage/plat-633.md) | Brain as a normal Git folder; backup through the terminal | fixed on main | P1 | [brain/storage](brain/storage/index.md) |
-| [PLAT-632](brain/access/plat-632.md) | Admin's projects limited to explicitly granted Brain folders | open | P1 | [brain/access](brain/access/index.md) |

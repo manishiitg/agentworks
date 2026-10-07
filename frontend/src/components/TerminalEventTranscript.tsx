@@ -1,3 +1,4 @@
+import { useRareWorkingTip } from './chat/useRareWorkingTip'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
@@ -83,11 +84,13 @@ const ACTIVITY_TEXT: Record<string, string> = {
 const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryContext }) => {
   const activity = context?.activity
   const working = activity !== undefined && activity.state !== 'ready'
+  const tip = useRareWorkingTip(working && activity?.label === 'running')
   const usage = context?.usage
   return <div data-testid="transcript-activity-footer" className="flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
     {working && <>
       <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
       <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
+      {tip && <span data-testid="working-tip" className="truncate text-muted-foreground/70 animate-in fade-in duration-700">· Tip: {tip}</span>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
       {usage.warning && <span data-testid="transcript-usage-warning" className="truncate font-medium text-amber-500" title="Plan usage is high">

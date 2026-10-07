@@ -41,6 +41,7 @@ import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher from './components/QuickSwitcher'
 import { PanelSwitcher } from './components/PanelSwitcher'
+import { markFeatureUsed } from './utils/featureUsage'
 
 const queryClient = new QueryClient();
 
@@ -687,6 +688,7 @@ function App() {
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
         setShowPanelSwitcher(false)
+        markFeatureUsed('quick-switcher')
         setShowQuickSwitcher(prev => !prev)
         return
       }
@@ -694,6 +696,7 @@ function App() {
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.code === 'KeyJ') {
         event.preventDefault()
         setShowQuickSwitcher(false)
+        markFeatureUsed('panel-switcher')
         setShowPanelSwitcher(prev => !prev)
         return
       }

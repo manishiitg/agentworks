@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-674](plat-674.md) | Rare product tips while the agent works | fixed on main | P3 |
 | [PLAT-667](plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 |
 | [PLAT-649](plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 |
 | [PLAT-580](plat-580.md) | Stop/Send button flickers during a run | fixed on main | P2 |

@@ -1,3 +1,4 @@
+import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
@@ -639,6 +640,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       const action = workChatTabShortcut(event)
       if (!action) return
       event.preventDefault()
+      markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
         void openSideChatRef.current()
         return

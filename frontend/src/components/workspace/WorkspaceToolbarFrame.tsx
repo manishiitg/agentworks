@@ -2,6 +2,7 @@ import type { HTMLAttributes } from 'react'
 import { PanelTopClose, PanelTopOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
+import { markFeatureUsed } from '../../utils/featureUsage'
 
 const frameClass = 'inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm'
 const toggleClass = 'grid h-7 w-7 place-items-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
@@ -21,7 +22,7 @@ export function WorkspaceToolbarFrame({ className, children, ...props }: HTMLAtt
   }
   return <div className={cn(frameClass, className)} {...props}>
     {children}
-    <button type="button" className={toggleClass} aria-label="Hide toolbar" title="Hide toolbar · ⌘J / Ctrl+J opens any panel" onClick={() => setMinimized(true)}>
+    <button type="button" className={toggleClass} aria-label="Hide toolbar" title="Hide toolbar · ⌘J / Ctrl+J opens any panel" onClick={() => { markFeatureUsed('toolbar-hide'); setMinimized(true) }}>
       <PanelTopClose className="h-4 w-4" />
     </button>
   </div>
