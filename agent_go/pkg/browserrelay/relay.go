@@ -44,6 +44,10 @@ type Status struct {
 	Tabs             int      `json:"tabs"`
 	ConnectionID     string   `json:"connection_id,omitempty"`
 	TabTitles        []string `json:"tab_titles,omitempty"`
+	// ExtensionVersion is what the connected Browser Bridge reports in its
+	// diagnostics; LatestVersion is the one this server ships for download.
+	ExtensionVersion string `json:"extension_version,omitempty"`
+	LatestVersion    string `json:"latest_extension_version,omitempty"`
 }
 type Binding struct {
 	mu                                 sync.Mutex
@@ -53,6 +57,7 @@ type Binding struct {
 	chatClients                        bool
 	profile                            string
 	tabTitles                          []string
+	version                            string
 	label                              string
 	expires                            time.Time
 	extension, cdp                     *websocket.Conn
@@ -359,6 +364,7 @@ func (m *Manager) Status(user, scope string) Status {
 	if b := m.bindings[key(user, scope)]; b != nil {
 		status = b.Status()
 	}
+	status.LatestVersion = LatestExtensionVersion()
 	for bindingKey, b := range m.bindings {
 		if strings.HasPrefix(bindingKey, user+"\x00") && b.Status().Connected {
 			status.AccountConnected = true
@@ -370,7 +376,7 @@ func (m *Manager) Status(user, scope string) Status {
 func (b *Binding) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...)}
+	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...), ExtensionVersion: b.version}
 }
 func (b *Binding) Session() string { return b.session }
 func (b *Binding) Profile() string { return b.profile }
@@ -712,6 +718,11 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 				}
 			}
 		case "diagnostic":
+			if validExtensionVersion(e.Version) {
+				b.mu.Lock()
+				b.version = e.Version
+				b.mu.Unlock()
+			}
 			if time.Since(diagnosticWindow) >= time.Minute {
 				diagnosticWindow, diagnosticCount = time.Now(), 0
 			}

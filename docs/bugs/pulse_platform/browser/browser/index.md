@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-642](plat-642.md) | Show the extension version and update status in the browser panel | fixed on main | P2 |
 | [PLAT-636](plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 |
 | [PLAT-624](plat-624.md) | Code side chats cannot share an extension browser controlled by another project chat | fixed on main | P2 |
 | [PLAT-599](plat-599.md) | Stalled extension renderer probes block CDP controls and sandbox launches stale CLI | fixed on main | P2 |

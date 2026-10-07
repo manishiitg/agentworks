@@ -6,6 +6,18 @@ import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding
 
 export interface ChromeExtensionStatus {
   selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
+  extension_version?: string; latest_extension_version?: string
+}
+
+/** True when dotted version a is older than b; unknown versions are not "older". */
+export function extensionVersionOlder(a?: string, b?: string): boolean {
+  if (!a || !b) return false
+  const left = a.split('.').map(Number), right = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const x = left[i] || 0, y = right[i] || 0
+    if (x !== y) return x < y
+  }
+  return false
 }
 const emptyStatus: ChromeExtensionStatus = { selected: false, connected: false, tabs: 0 }
 
@@ -118,6 +130,7 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
         <span className="flex items-center gap-2 text-sm font-medium"><span className={`h-2 w-2 rounded-full ${status.connected ? 'bg-emerald-500' : 'bg-amber-500'}`} />{status.connected ? 'Connected' : 'Disconnected'}</span>
         {status.connected && <Button size="xs" variant="ghost" disabled={busy} onClick={() => setReconnect(true)}>Reconnect</Button>}
       </div>
+      {status.connected && <ExtensionVersionLine status={status} download={download} />}
       <p className="mt-1 break-words text-xs text-muted-foreground">{status.connected ? status.tabs > 0 ? `${status.tabs} shared ${status.tabs === 1 ? 'tab is' : 'tabs are'} ready for your agent.` : 'Your agent can create its own tabs. Sharing an already-open tab is optional.' : 'Browser actions are paused until you reconnect.'}</p>
     </div>}
     {setup && status.account_connected && !reconnect && !pairing ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
@@ -172,5 +185,17 @@ export function ChromeExtensionConnection({ connection }: { connection: ChromeEx
         {resetting ? <div className="flex flex-wrap gap-2"><Button size="sm" variant="destructive" disabled={busy} onClick={() => { void copy(true); setResetting(false); setReconnect(true) }}>Reset all connections</Button><Button size="sm" variant="ghost" onClick={() => setResetting(false)}>Cancel</Button></div> : <Button size="sm" variant="outline" disabled={busy} onClick={() => setResetting(true)}><RefreshCw />Reset connection code</Button>}
       </div>
     </details>
+  </div>
+}
+
+function ExtensionVersionLine({ status, download }: { status: ChromeExtensionStatus; download: string }) {
+  const installed = status.extension_version, latest = status.latest_extension_version
+  const outdated = extensionVersionOlder(installed, latest)
+  if (!installed) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge version unknown{latest ? ` · latest is ${latest}` : ''}</p>
+  if (!outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge {installed} · up to date</p>
+  return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
+    <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge {installed} · update to {latest}</p>
+    <p className="mt-1 leading-relaxed text-muted-foreground">Download it, replace the files in your unpacked extension folder, then click reload on Browser Bridge in your browser's extensions page.</p>
+    <Button asChild size="xs" variant="outline" className="mt-2"><a href={download} download><Download />Download {latest}</a></Button>
   </div>
 }
