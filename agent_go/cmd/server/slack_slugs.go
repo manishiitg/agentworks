@@ -190,9 +190,10 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 		var def services.SlackTargetRef
 		if entry, ok := conn.ChannelRoutes[channelID]; ok {
 			refs, def = entry.Allowed(), entry.Default()
-		} else {
-			// A channel the owner never listed answers for the bot's own
-			// target, as before slugs.
+		} else if !slackChannelsMigrated(ctx, conn.ID) {
+			// Until this bot's one-time channel migration has run, a channel
+			// it is in answers for its own target, as before (PLAT-668). After
+			// it, a bot answers only in channels added on a target's tab.
 			refs, def = []services.SlackTargetRef{own}, own
 		}
 		var kept []services.SlackTargetRef

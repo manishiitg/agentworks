@@ -393,6 +393,13 @@ func createSlackConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), status)
 			return
 		}
+		if strings.TrimSpace(conn.WorkspacePath) != "" {
+			// A new bot answers only in channels added on a target's tab;
+			// it never had the old any-channel fallback (PLAT-668).
+			if err := markSlackChannelsMigrated(r.Context(), conn.ID); err != nil {
+				log.Printf("[SLACK_CHANNEL_MIGRATION] %s: record new bot: %v", conn.ID, err)
+			}
+		}
 		registerSlackBotConnectorForOwnedConnections(api, svc)
 		w.WriteHeader(http.StatusCreated)
 		writeSlackConnection(w, svc, conn)

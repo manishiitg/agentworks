@@ -33,7 +33,6 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [channel, setChannel] = useState('')
-  const [makeDefault, setMakeDefault] = useState(false)
   const [tests, setTests] = useState<Record<string, string>>({})
 
   if (!settings.platform_available) return null
@@ -88,7 +87,7 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
               <span className="flex min-w-0 flex-1 flex-wrap gap-1">
                 {card.targets.map(target => (
                   <span key={`${target.profile_id || ''}|${target.workspace_path}`} title={target.label} className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${target.is_this ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                    {target.slug}{target.is_default ? ' · no slug needed' : ''}
+                    {target.slug}
                   </span>
                 ))}
               </span>
@@ -116,15 +115,11 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
               disabled={!canManage || !!busy}
               className="h-8 min-w-0 flex-1 font-mono text-xs"
             />
-            <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              <input type="checkbox" checked={makeDefault} onChange={e => setMakeDefault(e.target.checked)} disabled={!canManage || !!busy} />
-              Answer here without the slug
-            </label>
             <Button
               variant="outline"
               size="sm"
               onClick={() => void run('add', async () => {
-                const next = await agentApi.addSlackTargetChannel(channel, destination, makeDefault)
+                const next = await agentApi.addSlackTargetChannel(channel, destination, false)
                 setChannel('')
                 return next
               })}

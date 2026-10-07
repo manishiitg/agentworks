@@ -508,10 +508,34 @@ func ResolveSlackThreadRoute(ctx context.Context, thread ThreadID, legacy func()
 		}
 		return slackSetRoute(ctx, hooks, thread.ConnectionID, routeChannel, set.Targets[index])
 	}
-	if set.Default >= 0 && set.Default < len(set.Targets) {
+	if routeChannel == "" && set.Default >= 0 && set.Default < len(set.Targets) {
+		// A DM with nothing picked: the app's own target, as before.
 		return slackSetRoute(ctx, hooks, thread.ConnectionID, routeChannel, set.Targets[set.Default])
 	}
+	if routeChannel != "" && len(set.Targets) == 1 {
+		// A channel with one target answers there; with several, an unbound
+		// thread has no target (people pick with a slug or the buttons).
+		return slackSetRoute(ctx, hooks, thread.ConnectionID, routeChannel, set.Targets[0])
+	}
 	return nil
+}
+
+var (
+	slackUnlistedNoticeMu sync.Mutex
+	slackUnlistedNotices  = map[string]time.Time{}
+)
+
+// slackUnlistedNoticeDue rate-limits the "not set up for this channel" reply
+// to once per app and channel per day.
+func slackUnlistedNoticeDue(connectionID, channelID string) bool {
+	slackUnlistedNoticeMu.Lock()
+	defer slackUnlistedNoticeMu.Unlock()
+	key := connectionID + "|" + channelID
+	if last, ok := slackUnlistedNotices[key]; ok && time.Since(last) < 24*time.Hour {
+		return false
+	}
+	slackUnlistedNotices[key] = time.Now()
+	return true
 }
 
 // --- the button prompt ---

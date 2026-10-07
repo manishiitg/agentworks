@@ -103,7 +103,7 @@ func TestSlackSlugsPlatformBotNeedsOptIn(t *testing.T) {
 		{WorkspacePath: slugWorkflow.WorkspacePath, PlatformBot: true},
 		{WorkspacePath: slugCrew.WorkspacePath, ProfileID: "work", PlatformBot: true},
 	}})
-	requireAdmitted(t, w.mention(t, shared.ID, "C0TEAM0001"), "workflow")
+	requireAdmitted(t, w.say(t, shared.ID, "C0TEAM0001", "shared what failed?"), "workflow")
 
 	w.targetsRegistry(t, services.SlackTargetsRegistry{Channels: channel, Targets: []services.SlackTargetSettings{
 		{WorkspacePath: slugWorkflow.WorkspacePath, PlatformBot: false},
@@ -141,9 +141,10 @@ func (w botDryRunWorld) say(t *testing.T, connectionID, channelID, text string) 
 }
 
 // "@bot <slug> ..." picks one of the channel's allowed targets; a first word
-// that is not an allowed slug is message text and the default answers; with
-// no default the bot asks with buttons. The run-time check refuses a turn
-// whose target was removed from the channel.
+// that is not an allowed slug is message text. With 2+ targets and no slug
+// the bot asks with buttons even when a default is saved (the default is for
+// automated messages only). The run-time check refuses a turn whose target
+// was removed from the channel.
 func TestSlackSlugsChannelPickAndAllowedList(t *testing.T) {
 	w := newBotDryRunWorld(t)
 	shared := w.platformBot(t)
@@ -155,16 +156,16 @@ func TestSlackSlugsChannelPickAndAllowedList(t *testing.T) {
 		t.Fatalf("the slug stayed in the message: %q", query)
 	}
 	requireAdmitted(t, w.say(t, shared.ID, "C0TEAM0001", "ops what failed today?"), "workflow")
-	text := w.say(t, shared.ID, "C0TEAM0001", "beta is not a slug here")
-	requireAdmitted(t, text, "workflow")
-	if query, _ := text.Request["query"].(string); !strings.Contains(query, "beta is not a slug here") {
-		t.Fatalf("a word that is not an allowed slug was dropped: %q", query)
+	if asked := w.say(t, shared.ID, "C0TEAM0001", "beta is not a slug here"); asked.Admitted || !strings.Contains(asked.Reason, "buttons") {
+		t.Fatalf("two targets and no slug must ask with buttons, saved default or not: %+v", asked)
 	}
 
 	// The crew's slug is no grant where the crew is not allowed.
 	w.adminRoutes(t, map[string]services.ChannelRoute{"C0OTHER001": {WorkflowID: w.workflowID(t), WorkspacePath: "Workflow/shared", BotGrant: "run"}})
-	if outcome := w.say(t, shared.ID, "C0OTHER001", "alpha what changed?"); strings.Contains(outcome.Destination, "crew") {
-		t.Fatalf("a slug reached a target this channel does not allow: %+v", outcome)
+	text := w.say(t, shared.ID, "C0OTHER001", "alpha what changed?")
+	requireAdmitted(t, text, "workflow")
+	if query, _ := text.Request["query"].(string); !strings.Contains(query, "alpha what changed?") {
+		t.Fatalf("a slug this channel does not allow was not kept as message text: %q", query)
 	}
 
 	w.targetsRegistry(t, teamRegistry(nil))
@@ -288,25 +289,29 @@ func TestSlackSlugsSettingsRouteIsRegistered(t *testing.T) {
 	}
 }
 
-// One of my bots, as the Slack tab does it (RTS 2026-10-07: QA Bot serving
-// several targets): a channel is checked with Slack before it is saved, the
-// bot's own target keeps answering there by slug, and "Answer here without
-// the slug" moves the channel's default.
-func TestSlackSlugsOwnBotChannelPlacement(t *testing.T) {
+// Channels are explicit (owner 2026-10-07): a migrated own bot does not
+// answer in a channel nobody added, a channel with one target answers it
+// without a slug, and a channel with two asks with buttons. Every add is
+// checked with Slack first.
+func TestSlackSlugsExplicitChannels(t *testing.T) {
 	w := newBotDryRunWorld(t)
 	ctx := context.Background()
 	app := w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")
 	refusal := ""
-	previous := slackChannelAddCheck
-	slackChannelAddCheck = func(_ context.Context, _ *services.SlackService, conn services.SlackConnection, email, channel string) (string, error) {
+	previousCheck := slackChannelAddCheck
+	slackChannelAddCheck = func(_ context.Context, _ *services.SlackService, _ services.SlackConnection, _, _ string) (string, error) {
 		if refusal != "" {
 			return "", fmt.Errorf("%w: %s", services.ErrSlackChannelCheck, refusal)
 		}
 		return "qa-team", nil
 	}
-	t.Cleanup(func() { slackChannelAddCheck = previous })
-	put := func(makeDefault bool) *httptest.ResponseRecorder {
-		body := fmt.Sprintf(`{"workspace_path":"Workflow/shared","default":%v}`, makeDefault)
+	previousLister := slackBotChannelLister
+	slackBotChannelLister = func(context.Context, *services.SlackService, string) ([]services.SlackChannelInfo, error) {
+		return []services.SlackChannelInfo{{ID: "C0WASFALLBK", Name: "ci-cd"}}, nil
+	}
+	t.Cleanup(func() { slackChannelAddCheck, slackBotChannelLister = previousCheck, previousLister })
+	put := func(path, profile string) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"workspace_path":%q,"profile_id":%q,"default":false}`, path, profile)
 		req := httptest.NewRequest(http.MethodPut, "/api/human-feedback/slack/connections/"+app.ID+"/channel-routes/C0QATEAM01", strings.NewReader(body))
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "aman", Email: dryRunOwnerEmail}))
 		req = mux.SetURLVars(req, map[string]string{"id": app.ID, "channel": "C0QATEAM01"})
@@ -315,27 +320,32 @@ func TestSlackSlugsOwnBotChannelPlacement(t *testing.T) {
 		return rec
 	}
 
+	// The startup migration lists the channels the bot answered in under
+	// the old fallback; after it, an unlisted channel does not route.
+	w.api.migrateSlackOwnBotChannels(ctx, w.slack)
+	requireAdmitted(t, w.say(t, app.ID, "C0WASFALLBK", "what changed?"), "crew-aaa")
+	if outcome := w.say(t, app.ID, "C0UNLISTED1", "what changed?"); outcome.Admitted {
+		t.Fatalf("an unlisted channel routed: %+v", outcome)
+	}
+
 	refusal = "@SDE is not in #qa-team. Invite @SDE first: /invite @SDE"
-	if rec := put(false); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "/invite @SDE") {
+	if rec := put("Workflow/shared", ""); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "/invite @SDE") {
 		t.Fatalf("an unchecked channel was saved: %d %s", rec.Code, rec.Body.String())
 	}
 	refusal = ""
-	if rec := put(false); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "qa-team") {
+	if rec := put("Workflow/shared", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "qa-team") {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 	}
-	set := w.api.slackChannelTargets(ctx, app.ID, "C0QATEAM01")
-	if len(set.Targets) != 2 || set.Default < 0 || !set.Targets[set.Default].Ref.Same(slugCrew) {
-		t.Fatalf("channel = %+v, want the bot's own crew as default plus the workflow by slug", set)
-	}
-	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "shared what changed?"), "workflow")
-	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "what changed?"), "crew-aaa")
+	// One target: it answers, no slug needed.
+	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "what changed?"), "workflow")
 
-	if rec := put(true); rec.Code != http.StatusOK {
-		t.Fatalf("make default: %d %s", rec.Code, rec.Body.String())
+	if rec := put(crewRunModeOwnerRoot, "work"); rec.Code != http.StatusOK {
+		t.Fatalf("add the crew: %d %s", rec.Code, rec.Body.String())
 	}
-	set = w.api.slackChannelTargets(ctx, app.ID, "C0QATEAM01")
-	if len(set.Targets) != 2 || set.Default < 0 || !set.Targets[set.Default].Ref.Same(slugWorkflow) {
-		t.Fatalf("channel = %+v, want the workflow as default and the crew still by slug", set)
+	// Two targets: the slug picks one; without it, buttons ask.
+	requireAdmitted(t, w.say(t, app.ID, "C0QATEAM01", "shared what changed?"), "workflow")
+	if asked := w.say(t, app.ID, "C0QATEAM01", "what changed?"); asked.Admitted || !strings.Contains(asked.Reason, "buttons") {
+		t.Fatalf("two targets and no slug must ask with buttons: %+v", asked)
 	}
 }
 

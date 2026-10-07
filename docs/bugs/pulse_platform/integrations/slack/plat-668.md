@@ -70,6 +70,19 @@ possibly in a single channel.
   Bot first: /invite @QA Bot"), and the person adding it is too. A target added to a channel the bot already answers
   in keeps the bot's own target there by slug. Tokens, tests, Home tab and admin routes moved under Advanced.
 
+- Follow-up (owner on RTS, 2026-10-07: "show, not hide", "always just direct add which channels the bot answers
+  to", "make this more simpler"): two rules. Channels are explicit: a bot answers only in channels added on a
+  target's tab; an unlisted channel gets one "I'm not set up for this channel yet" reply per channel per day. A
+  one-time startup migration (`slack_channel_migration.go`) lists, per enabled own bot, every channel it is in on its
+  own target (the access the old fallback gave), logs each with `[SLACK_CHANNEL_MIGRATION]` and records the bot in
+  `config/slack-channel-migration.json`; a bot Slack cannot be asked about keeps the fallback and is retried on the
+  next start; bots created later start explicit. The platform bot had no such fallback (an unrouted channel is
+  refused). Slugs pick inside a channel: one target answers, several ask with buttons without a slug; the saved
+  default is kept only for automated messages (triggers) and is no longer shown. The tab is: the bot ("QA Bot ·
+  Ready", its settings visible on its own target), the slug with one copyable example, and the channels list (each
+  with "everyone here can ask and run it (Run mode)" and who else shares it) plus Add channel. The header names the
+  real kind (Crew, workflow or Code).
+
 ## Left
 
 - Live check on RTS after a deploy (nothing is deployed): the workflows' bot plus 3 Crews in one channel, and a Code

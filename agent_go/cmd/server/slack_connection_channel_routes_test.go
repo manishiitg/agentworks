@@ -153,9 +153,8 @@ func TestOwnerBotChannelRoutePermissions(t *testing.T) {
 	}
 }
 
-// A channel lists several destinations per bot (PLAT-668: the first stays
-// the default, the rest are picked with "@bot <slug>"); the bot's own
-// workflow is not a route; the platform bot cannot be routed here.
+// A channel lists several destinations per bot, picked with "@bot <slug>"
+// (PLAT-668); the platform bot cannot be routed here.
 func TestOwnerBotChannelListsDestinations(t *testing.T) {
 	api, alphaApp := ownerBotWorld(t)
 	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusOK {
@@ -167,7 +166,9 @@ func TestOwnerBotChannelListsDestinations(t *testing.T) {
 	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate route: %d %s", w.Code, w.Body.String())
 	}
-	if w := putChannelRoute(api, "alice", alphaApp, "C2222222222", `{"workspace_path":"Workflow/alpha"}`); w.Code != http.StatusBadRequest {
+	// Channels are explicit (PLAT-668): the bot's own workflow is listed
+	// per channel like any other target.
+	if w := putChannelRoute(api, "alice", alphaApp, "C2222222222", `{"workspace_path":"Workflow/alpha"}`); w.Code != http.StatusOK {
 		t.Fatalf("route to the bot's own workflow: %d %s", w.Code, w.Body.String())
 	}
 	if w := putChannelRoute(api, "alice", alphaApp, "not-a-channel", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusBadRequest {
@@ -179,7 +180,7 @@ func TestOwnerBotChannelListsDestinations(t *testing.T) {
 	}
 	conn, _ := services.GetSlackService().GetConnection(alphaApp)
 	route := conn.ChannelRoutes["C1111111111"]
-	if len(conn.ChannelRoutes) != 1 || route.WorkspacePath != "Workflow/gamma" || route.AddedBy != "alice" || len(route.Targets) != 1 || route.Targets[0].WorkspacePath != "Workflow/delta" {
+	if len(conn.ChannelRoutes) != 2 || route.WorkspacePath != "Workflow/gamma" || route.AddedBy != "alice" || len(route.Targets) != 1 || route.Targets[0].WorkspacePath != "Workflow/delta" {
 		t.Fatalf("routes = %+v", conn.ChannelRoutes)
 	}
 }

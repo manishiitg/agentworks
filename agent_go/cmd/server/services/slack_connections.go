@@ -219,14 +219,13 @@ func normalizeSlackConnections(cfg *SlackConfig) {
 }
 
 // normalizeSlackConnectionRoutes keeps only well-formed routes on a scoped
-// connection: canonical channel keys, at least one target, no Codes (they
-// answer DMs only), and never a route that only repeats the connection's own
-// destination (it already answers there everywhere).
+// connection: canonical channel keys, at least one target and no Codes (they
+// answer DMs only). A route naming only the bot's own target is kept: a bot
+// answers only in channels listed here (PLAT-668).
 func normalizeSlackConnectionRoutes(c SlackConnection) map[string]SlackConnectionRoute {
 	if c.WorkspacePath == "" || len(c.ChannelRoutes) == 0 {
 		return nil
 	}
-	own := SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}
 	out := make(map[string]SlackConnectionRoute, len(c.ChannelRoutes))
 	for channel, route := range c.ChannelRoutes {
 		channel = NormalizeSlackChannelID(channel)
@@ -248,9 +247,6 @@ func normalizeSlackConnectionRoutes(c SlackConnection) map[string]SlackConnectio
 		}
 		route.Targets = extra
 		if channel == "" || (route.WorkspacePath == "" && len(route.Targets) == 0) {
-			continue
-		}
-		if len(route.Targets) == 0 && route.Trigger == nil && route.Default().Same(own) {
 			continue
 		}
 		if route.Default().Empty() {

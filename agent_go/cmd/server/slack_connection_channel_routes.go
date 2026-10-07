@@ -97,15 +97,11 @@ var slackChannelAddCheck = func(ctx context.Context, svc *services.SlackService,
 	return runtime.CheckChannelForAdd(ctx, conn.DisplayName, email, channel)
 }
 
-// placeSlackChannelTarget makes next answer in a channel on a bot and sets
-// whether it is the channel's default. A channel the bot never listed starts
-// from the bot's own target as its default, which stays allowed by slug.
+// placeSlackChannelTarget makes next answer in a channel on a bot. A channel
+// lists exactly the targets added to it (PLAT-668); makeDefault only sets the
+// internal default automated messages (triggers) use, never removes it.
 func placeSlackChannelTarget(c *services.SlackConnection, channel string, next services.SlackTargetRef, makeDefault bool) {
-	own := services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}
-	entry, found := c.ChannelRoutes[channel]
-	if !found && !own.IsCode() {
-		entry = services.SlackConnectionRoute{WorkspacePath: own.WorkspacePath, ProfileID: own.ProfileID}
-	}
+	entry := c.ChannelRoutes[channel]
 	allowed := false
 	for _, ref := range entry.Allowed() {
 		if ref.Same(next) {
@@ -130,9 +126,6 @@ func placeSlackChannelTarget(c *services.SlackConnection, channel string, next s
 			entry.Targets = append(entry.Targets, previous)
 		}
 		entry.WorkspacePath, entry.ProfileID, entry.Trigger = next.WorkspacePath, next.ProfileID, nil
-	case !makeDefault && isDefault:
-		entry.Targets = append(entry.Targets, next)
-		entry.WorkspacePath, entry.ProfileID, entry.Trigger = "", "", nil
 	}
 	if entry.AddedBy == "" {
 		entry.AddedBy = next.AddedBy
@@ -399,9 +392,6 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 		updated, err := svc.ModifySlackConnection(r.Context(), conn.ID, func(c *services.SlackConnection) error {
 			existing, found := c.ChannelRoutes[channel]
 			if !found {
-				if next.Same(services.SlackTargetRef{WorkspacePath: c.WorkspacePath, ProfileID: c.ProfileID}) && req.Trigger == nil {
-					return fmt.Errorf("this bot already answers for its own %s in every channel", map[bool]string{true: "crew", false: "workflow"}[profileID != ""])
-				}
 				c.ChannelRoutes[channel] = services.SlackConnectionRoute{WorkspacePath: workspacePath, ProfileID: profileID, AddedBy: addedBy, Trigger: req.Trigger}
 				return nil
 			}
@@ -687,6 +677,7 @@ func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
 			}
 		}
 		own := services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}
+		migrated := slackChannelsMigrated(ctx, conn.ID)
 		for _, channel := range listed {
 			id := services.NormalizeSlackChannelID(channel.ID)
 			row := SlackBotChannelResponse{ID: id, Name: channel.Name, IsPrivate: channel.IsPrivate, Targets: []SlackConnectionChannelRouteResponse{}}
@@ -694,7 +685,7 @@ func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
 			allowed, def := []services.SlackTargetRef{}, services.SlackTargetRef{}
 			if found {
 				allowed, def = entry.Allowed(), entry.Default()
-			} else if !own.IsCode() {
+			} else if !own.IsCode() && !migrated {
 				allowed, def = []services.SlackTargetRef{own}, own
 			}
 			for _, target := range allowed {

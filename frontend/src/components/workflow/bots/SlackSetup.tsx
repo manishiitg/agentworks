@@ -130,7 +130,9 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
     canManageWorkflowSlack, hasProfileTarget, slackSelection,
     workflowRoutes, routeError, myOtherBots, myBotRoutesHere,
   } = bots
-  const noun = ownBotOnly ? 'Code' : hasProfileTarget ? 'project' : 'workflow'
+  // The target's real kind (a Crew, a Code or a workflow), never "project".
+  const targetProfile = (bots.slackTarget?.profile_id || '').toLowerCase()
+  const noun = ownBotOnly || targetProfile === 'code' ? 'Code' : targetProfile === 'work' || hasProfileTarget ? 'Crew' : 'workflow'
   const own = slackSelection.own
   const shared = (slackOriginal.connections || []).find(conn => conn.is_default) || null
   const slackRoutes = workflowRoutes.filter(route => route.kind === 'slack')
@@ -266,15 +268,8 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
       )}
 
       {answering && settings && target && (
-        <FormSection title={`How people reach this ${noun}`}>
-          {!ownBotOnly && <CopyLine label="In a channel" text={`@${answering.name} ${slug || 'slug'} your question`} />}
-          <CopyLine label="In a DM" text={`${slug || 'slug'} your question`} />
-          <p className="text-[11px] text-muted-foreground">
-            {ownBotOnly ? <>DM <b>@{answering.name}</b>; </> : <>Where it answers without the slug, <code className="font-mono">@{answering.name} your question</code> works too. In a DM, </>}
-            <code className="font-mono">list</code> shows everything you can reach.
-          </p>
+        <FormSection title="Slug">
           <div className="flex items-center gap-2">
-            <span className="w-20 shrink-0 text-xs text-muted-foreground">Slug</span>
             <Input
               aria-label="Slack slug"
               value={slugDraft}
@@ -289,6 +284,7 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
               </Button>
             )}
           </div>
+          <CopyLine label="Example" text={ownBotOnly ? `${slug || 'slug'} your question` : `@${answering.name} ${slug || 'slug'} your question`} />
           {slugError && <p className="text-xs text-red-600 dark:text-red-400">{slugError}</p>}
         </FormSection>
       )}
@@ -298,28 +294,19 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
           {answering.connectionId
             ? <SlackBotChannels botId={answering.connectionId} botName={answering.name} destination={target} readOnly={readOnly} />
             : settings && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} settings={settings} onSettings={setSettings} />}
+          {slackRoutes.length > 0 && (
+            <div className="grid gap-2">
+              {slackRoutes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground">In a channel shared by several, people add the slug, or pick from buttons.</p>
         </FormSection>
       )}
 
-      {answering && (
-        <details className="rounded-md border border-border px-3 py-2 text-sm">
-          <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground">Advanced</summary>
-          <div className="mt-3 space-y-3">
-            {own && !showChooser && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={false} onEdit={editing => { setEditing(editing); if (editing) { setMode('own'); setChanging(true) } }} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />}
-            {!own && viaBot && <p className="text-xs text-muted-foreground">{viaBot.display_name} is set up for {viaBot.owner_label || 'another workflow'}; its tokens, test and Home tab are in that one's Slack tab.</p>}
-            {platformOn && settings && target && ownBotOnly && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} dmOnly settings={settings} onSettings={setSettings} />}
-            {!ownBotOnly && slackRoutes.length > 0 && (
-              <section className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Admin channel routes on the shared bot</h3>
-                <div className="grid gap-2">
-                  {slackRoutes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
-                </div>
-              </section>
-            )}
-            {!ownBotOnly && <p className="text-xs text-muted-foreground">Triggers (automation on channel messages) are set by asking the Builder; it uses the Slack route tools.</p>}
-          </div>
-        </details>
+      {own && !showChooser && (
+        <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={false} onEdit={editing => { setEditing(editing); if (editing) { setMode('own'); setChanging(true) } }} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />
       )}
+      {platformOn && settings && target && ownBotOnly && <SlackSlugsSection destination={target} noun={noun} readOnly={readOnly} dmOnly settings={settings} onSettings={setSettings} />}
       {routeError && <StatusBanner tone="error">{routeError}</StatusBanner>}
 
       {!workflowId && <p className="text-xs text-muted-foreground">Select a {noun} to set up Slack.</p>}

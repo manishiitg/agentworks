@@ -68,6 +68,19 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 		return slackChannelPick{text: text, route: RevokedSlackRoute()}
 	}
 	if len(set.Targets) == 0 {
+		// A bot answers only in channels added on a target's Slack tab
+		// (PLAT-668). A mention of an own bot elsewhere gets one short
+		// pointer per channel per day; anything else stays silent.
+		if isMention && set.Dedicated {
+			if slackUnlistedNoticeDue(s.connectionID, channelID) {
+				name := channelID
+				if label := strings.TrimSpace(s.GetChannelName(ctx, channelID)); label != "" && !strings.EqualFold(label, channelID) {
+					name = label
+				}
+				return slackChannelPick{reply: fmt.Sprintf("I'm not set up for this channel yet. Ask the owner to add #%s on a Slack tab.", strings.TrimPrefix(name, "#"))}
+			}
+			return slackChannelPick{handled: true}
+		}
 		return slackChannelPick{text: text}
 	}
 	var matches []int
@@ -100,8 +113,11 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 		text = rest
 	case len(matches) > 1:
 		return slackChannelPick{text: rest, choices: pickTargets(set, matches), slug: slug}
-	case set.Default >= 0 && set.Default < len(set.Targets):
-		chosen = set.Default
+	case len(set.Targets) == 1:
+		// One target in the channel: it answers, no slug needed. With
+		// several, people add the slug or pick from buttons; a saved
+		// default never applies to people (owner, 2026-10-07).
+		chosen = 0
 	case !isMention:
 		// A plain reply in a thread no target holds starts nothing.
 		return slackChannelPick{text: text}

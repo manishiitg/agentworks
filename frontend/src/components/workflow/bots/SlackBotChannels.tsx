@@ -2,16 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { Hash, Loader2, Lock, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
-import { Switch } from '../../ui/Switch'
 import { agentApi } from '../../../services/api'
 import type { SlackBotChannel } from '../../../services/api-types'
 import { slackErrorText, type SlackDestination } from './SlackSlugsSection'
 
-// The channels where one target answers through one bot (PLAT-668). Channels
-// are picked by name from the ones the bot is already in (listed server-side
-// with the bot token); each has one switch, "Answer here without the slug".
-// Every add is checked with Slack first: the channel exists, the bot and the
-// person adding it are members.
+// The channels where one target answers through one bot (PLAT-668). A bot
+// answers only in channels added here. Channels are picked by name from the
+// ones the bot is in (listed server-side with the bot token), and every add is
+// checked with Slack first: the channel exists, the bot and the person adding
+// it are members.
 
 const CHANNEL_RE = /^[CG][A-Z0-9]{2,}$/
 
@@ -47,12 +46,12 @@ export function SlackBotChannels({ botId, botName, destination, readOnly }: {
   }, [botId, destinationKey])
   useEffect(() => { void load() }, [load])
 
-  const place = async (channelId: string, makeDefault: boolean, key: string) => {
+  const place = async (channelId: string, key: string) => {
     setBusy(key)
     setError(null)
     setNotice(null)
     try {
-      const saved = await agentApi.placeSlackBotChannel(botId, channelId, destination, makeDefault)
+      const saved = await agentApi.placeSlackBotChannel(botId, channelId, destination, false)
       if (saved.channel_name) setNotice(`Answers in #${saved.channel_name}.`)
       await load()
       return true
@@ -82,33 +81,19 @@ export function SlackBotChannels({ botId, botName, destination, readOnly }: {
   const answering = channels.filter(channel => channel.answers)
   const addable = channels.filter(channel => !channel.answers && channel.name)
   const pick = addable.find(channel => channel.id === picked) || addable[0]
-  // A channel where someone already answers plain @mentions keeps them; a
-  // channel with no default gets this target as its default.
-  const defaultFor = (channel: SlackBotChannel) => !channel.targets.some(target => target.is_default)
 
   return (
     <div className="space-y-2">
-      {answering.length === 0 && <p className="text-xs text-muted-foreground">Not in any channel yet.</p>}
+      {answering.length === 0 && <p className="text-xs text-muted-foreground">No channels yet.</p>}
       {answering.map(channel => {
         const others = channel.targets.filter(target => !(target.workspace_path === destination.workspace_path && (target.profile_id || '') === (destination.profile_id || '')))
         return (
           <div key={channel.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2 text-sm">
             {channel.is_private ? <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Private channel" /> : <Hash className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Channel" />}
             <span className="font-semibold text-foreground" title={channel.id}>{channel.name || channel.id}</span>
-            {others.length > 0 && (
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={others.map(target => target.label || target.slug).join(', ')}>
-                also {others.map(target => target.slug).join(', ')}
-              </span>
-            )}
-            <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              Answer here without the slug
-              <Switch
-                checked={channel.is_default}
-                onCheckedChange={checked => void place(channel.id, checked, `default:${channel.id}`)}
-                disabled={readOnly || !!busy}
-                aria-label={`Answer in ${channelLabel(channel)} without the slug`}
-              />
-            </label>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={others.map(target => target.label || target.slug).join(', ')}>
+              everyone here can ask and run it (Run mode){others.length > 0 ? ` · shared with ${others.map(target => target.label || target.slug).join(', ')}` : ''}
+            </span>
             {channel.removable && (
               <Button
                 type="button"
@@ -137,7 +122,7 @@ export function SlackBotChannels({ botId, botName, destination, readOnly }: {
           {addable.length === 0 && <option value="">No other channels</option>}
           {addable.map(channel => <option key={channel.id} value={channel.id}>{channelLabel(channel)}</option>)}
         </select>
-        <Button variant="outline" size="sm" onClick={() => pick && void place(pick.id, defaultFor(pick), 'add')} disabled={readOnly || !!busy || !pick}>
+        <Button variant="outline" size="sm" onClick={() => pick && void place(pick.id, 'add')} disabled={readOnly || !!busy || !pick}>
           {busy === 'add' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           Add channel
         </Button>
@@ -164,7 +149,7 @@ export function SlackBotChannels({ botId, botName, destination, readOnly }: {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void place(pasted, false, 'paste').then(ok => { if (ok) setPasted('') })}
+            onClick={() => void place(pasted, 'paste').then(ok => { if (ok) setPasted('') })}
             disabled={readOnly || !!busy || !CHANNEL_RE.test(pasted)}
           >
             Add

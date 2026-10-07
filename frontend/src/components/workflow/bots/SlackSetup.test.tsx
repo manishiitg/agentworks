@@ -143,7 +143,6 @@ it("shows the answering bot, how to reach this workflow by slug, and its channel
   expect(host.textContent).toContain("Ready");
   expect(host.textContent).toContain("Change");
   expect(host.textContent).toContain("@Support bot support your question");
-  expect(host.textContent).toContain("support your question");
   expect(host.textContent).toContain("#qa-team");
   expect(host.textContent).toContain("/invite @Support bot");
   expect(host.textContent).not.toContain("Save bot");
@@ -227,7 +226,7 @@ it("uses one of my bots and adds a channel picked by name", async () => {
   expect(host.textContent).toContain("@Alpha bot support your question");
   const add = Array.from(host.querySelectorAll("button")).find(button => button.textContent?.includes("Add channel"))!;
   await act(async () => { add.click(); });
-  expect(api.placeSlackBotChannel).toHaveBeenCalledWith("slack_alpha", "C0QA0000001", { workspace_path: "Workflow/support" }, true);
+  expect(api.placeSlackBotChannel).toHaveBeenCalledWith("slack_alpha", "C0QA0000001", { workspace_path: "Workflow/support" }, false);
 });
 
 it("answers through one of my bots when it already answers here", async () => {
@@ -240,8 +239,19 @@ it("answers through one of my bots when it already answers here", async () => {
   const host = await render(makeBots({ myBots: [sharing] }));
   expect(host.textContent).toContain("Alpha bot");
   expect(host.textContent).toContain("support-desk");
-  expect(host.textContent).toContain("also alpha");
-  expect(host.textContent).toContain("Answer here without the slug");
+  expect(host.textContent).toContain("shared with alpha");
+  expect(host.textContent).not.toContain("without the slug");
+  expect(host.textContent).toContain("In a channel shared by several, people add the slug, or pick from buttons.");
+  // This target's permissions show here, not only on the bot's own tab.
+  expect(host.textContent).toContain("everyone here can ask and run it (Run mode)");
+});
+
+it("names a Crew a Crew, not a project", async () => {
+  const bots = { ...makeBots({ own: ownBot }), hasProfileTarget: true, slackTarget: { workspace_path: "Crew/sde", profile_id: "work" } } as React.ComponentProps<typeof SlackSetup>["bots"];
+  api.getSlackTargetSettings.mockResolvedValue({ ...noPlatformBot, can_manage: false });
+  const host = await render(bots);
+  expect(host.querySelector('[aria-label="Slack slug"]')?.getAttribute("title")).toBe("Only the Crew's owner can change the slug");
+  expect(host.textContent).not.toContain("this project");
 });
 
 it("never offers the platform bot on a server without one", async () => {
