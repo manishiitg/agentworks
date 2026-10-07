@@ -27,5 +27,5 @@
 
 ## Left
 
-- GitHub, Google and Slack in Vault need per-app OAuth clients (decision for the owner).
+- Decided (owner 2026-10-07): Google apps, GitHub and Slack stay out of Vault; they use the platform's own integrations. Vault's refusal points there.
 - The add-app box is free text; a picker from the catalog would avoid typos.

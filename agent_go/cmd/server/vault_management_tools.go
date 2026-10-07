@@ -26,7 +26,7 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 			"operation":   map[string]any{"type": "string", "enum": []string{"list", "create", "update", "list_members", "add_member", "remove_member"}},
 			"group_id":    externalString("Existing group ID, or a new unique ID for create."),
 			"name":        map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
-			"description": map[string]any{"type": "string", "maxLength": 2000},
+			"description": map[string]any{"type": "string", "maxLength": 2000, "description": "Shown to every member of the group. Say what the group is for; never name people, emails or who is excluded (membership is the member list)."},
 			"user_id":     externalString("Exact active platform user ID returned by list_users."),
 		}, "operation")},
 		{Name: "manage_vault_secret_access", Category: "vault", Description: "List Vault secret names (optionally assigned to group_id), or set group access with operation=set, group_id, name and allowed. Values are never returned or accepted. Add/rotate values in Vault's secure Secrets panel.", Parameters: object(map[string]any{

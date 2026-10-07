@@ -198,9 +198,6 @@ func (a *Admin) CreateGroupWithDescription(id, name, description string) error {
 	if utf8.RuneCountInString(description) > store.MaxGroupDescriptionLength {
 		return errors.New("group description must be at most 1000 characters")
 	}
-	if err := a.descriptionNamesNobody(description); err != nil {
-		return err
-	}
 	a.Store.AddGroup(store.Group{ID: id, WorkspaceID: a.WorkspaceID, Name: name, Description: description})
 	return nil
 }
@@ -281,7 +278,7 @@ func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, provide
 	p, ok := a.Catalog.Find(providerName)
 	if !ok {
 		// A bare "unknown provider" left people guessing (Confida 2026-10-07: "Github" is not in Vault's catalog).
-		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. For an app that is not listed, store its API key as a Vault secret instead", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
+		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. Google apps, GitHub and Slack are connected through their own integrations (Integrations), not Vault; for another app, store its API key as a Vault secret", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
 	}
 	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {
 		return store.Connector{}, errors.New("this provider requires upstream OAuth; configure the shared product OAuth service")
@@ -474,9 +471,6 @@ func (a *Admin) UpdateGroup(id string, name, description *string) error {
 		trimmed := strings.TrimSpace(*description)
 		if utf8.RuneCountInString(trimmed) > store.MaxGroupDescriptionLength {
 			return errors.New("group description must be at most 1000 characters")
-		}
-		if err := a.descriptionNamesNobody(trimmed); err != nil {
-			return err
 		}
 		description = &trimmed
 	}
@@ -1102,27 +1096,4 @@ func csvSafe(value string) string {
 		return "'" + value
 	}
 	return value
-}
-
-var descriptionEmail = regexp.MustCompile(`(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}`)
-
-// descriptionNamesNobody refuses a group description that names people. Every
-// member sees it, so membership rules belong in grants, not in prose: an agent
-// once described a group as "...excluding <two usernames>", and members asked
-// who those people were (Confida 2026-10-07).
-func (a *Admin) descriptionNamesNobody(description string) error {
-	if descriptionEmail.MatchString(description) {
-		return errors.New("a group description is shown to every member; do not put email addresses in it")
-	}
-	lower := strings.ToLower(description)
-	for _, u := range a.Store.ListUsers(a.WorkspaceID) {
-		local, _, _ := strings.Cut(strings.ToLower(u.Email), "@")
-		if len(local) < 5 {
-			continue
-		}
-		if regexp.MustCompile(`(^|[^a-z0-9._-])` + regexp.QuoteMeta(local) + `($|[^a-z0-9_-])`).MatchString(lower) {
-			return fmt.Errorf("a group description is shown to every member; do not name people in it (found %q). Say what the group is for; membership is set by adding or removing members", local)
-		}
-	}
-	return nil
 }
