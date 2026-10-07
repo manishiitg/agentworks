@@ -188,7 +188,13 @@ func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionI
 	// scopes); the success handler moves every member onto that login.
 	var group string
 	var members []string
+	display := name
 	if servers, listErr := listPlaceMCPServers(userID); listErr == nil {
+		for _, server := range servers {
+			if server.Name == name && server.Catalog != "" {
+				display = server.Catalog
+			}
+		}
 		if storeDir, dirErr := placeMCPDir(userID); dirErr == nil {
 			for _, server := range servers {
 				if server.Name == name {
@@ -223,9 +229,10 @@ func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionI
 	}
 	notificationID := "private-oauth:" + name + ":" + newSteerMessageID()
 	start, discovery, err := api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
-		Name:       internal,
-		Config:     cfg,
-		ClientFile: placeMCPClientFile(dir, userID, name),
+		Name:        internal,
+		DisplayName: display,
+		Config:      cfg,
+		ClientFile:  placeMCPClientFile(dir, userID, name),
 		Notify: func(success bool, detail string) {
 			api.notifyPlaceOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
 		},

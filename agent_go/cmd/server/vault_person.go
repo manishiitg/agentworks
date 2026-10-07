@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Person-owned vaults (PLAT-507): a vault is a bundle of MCP connections that any person can create and share. Its owners
@@ -142,7 +144,13 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		if err != nil {
 			return "", err
 		}
-		return vaultCatalogApps(data)
+		// Mark OAuth apps whose sign-in cannot start on its own here (PLAT-708), so people know before they pick one.
+		needsAdminSetup := func(string) bool { return false }
+		if config, e := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger); e == nil {
+			redirect := deriveOAuthRedirectURIFromEnv()
+			needsAdminSetup = func(name string) bool { return oauthNeedsAdminSetup(config, name, redirect) }
+		}
+		return vaultCatalogApps(data, needsAdminSetup)
 	case "create":
 		name := argString(args, "name")
 		if name == "" {
@@ -260,8 +268,9 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 	return "", errors.New("unknown operation")
 }
 
-// vaultCatalogApps trims the gateway catalog ({providers:[{Name,Key,URL,OAuth}]}) to {apps:[{name,oauth}]}.
-func vaultCatalogApps(data []byte) (string, error) {
+// vaultCatalogApps trims the gateway catalog ({providers:[{Name,Key,URL,OAuth}]}) to {apps:[{name,oauth,needs_admin_setup}]},
+// apps that need an admin's setup last.
+func vaultCatalogApps(data []byte, needsAdminSetup func(name string) bool) (string, error) {
 	var catalog struct {
 		Providers []struct {
 			Name  string
@@ -272,16 +281,22 @@ func vaultCatalogApps(data []byte) (string, error) {
 		return "", errors.New("invalid Vault catalog")
 	}
 	type app struct {
-		Name  string `json:"name"`
-		OAuth bool   `json:"oauth"`
+		Name            string `json:"name"`
+		OAuth           bool   `json:"oauth"`
+		NeedsAdminSetup bool   `json:"needs_admin_setup,omitempty"`
 	}
 	apps := make([]app, 0, len(catalog.Providers))
 	for _, p := range catalog.Providers {
 		if name := strings.TrimSpace(p.Name); name != "" {
-			apps = append(apps, app{Name: name, OAuth: p.OAuth})
+			apps = append(apps, app{Name: name, OAuth: p.OAuth, NeedsAdminSetup: p.OAuth && needsAdminSetup(name)})
 		}
 	}
-	sort.Slice(apps, func(i, j int) bool { return strings.ToLower(apps[i].Name) < strings.ToLower(apps[j].Name) })
+	sort.Slice(apps, func(i, j int) bool {
+		if apps[i].NeedsAdminSetup != apps[j].NeedsAdminSetup {
+			return !apps[i].NeedsAdminSetup
+		}
+		return strings.ToLower(apps[i].Name) < strings.ToLower(apps[j].Name)
+	})
 	out, _ := json.Marshal(map[string]any{"apps": apps})
 	return string(out), nil
 }

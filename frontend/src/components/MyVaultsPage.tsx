@@ -33,7 +33,11 @@ interface VaultView {
 interface VaultApp {
   name: string
   oauth: boolean
+  /** Sign-in cannot be set up automatically on this server (PLAT-708); the server lists these last. */
+  needs_admin_setup?: boolean
 }
+
+const needsAdminSetupHint = "Sign-in can't be set up automatically here; an admin can register an OAuth app for it, or use an API key as a Vault secret"
 
 /** The apps Vault can connect (its catalog), loaded once per page and shared by every vault card. */
 let vaultAppsRequest: Promise<VaultApp[]> | null = null
@@ -74,7 +78,9 @@ function AppPicker({ value, onChange }: { value: string; onChange: (name: string
               <li key={app.name} role="option" aria-selected={selected}>
                 <button type="button" onClick={() => onChange(app.name)} className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted ${selected ? 'bg-muted font-medium text-foreground' : 'text-foreground'}`}>
                   <span className="flex items-center gap-2">{selected ? <Check className="h-3.5 w-3.5 text-primary" /> : <span className="w-3.5" />}{app.name}</span>
-                  {app.oauth && <Badge variant="outline">Sign-in</Badge>}
+                  {app.needs_admin_setup
+                    ? <Badge variant="outline" title={needsAdminSetupHint} className="border-warning/30 bg-warning/10 text-warning">Needs admin setup</Badge>
+                    : app.oauth && <Badge variant="outline">Sign-in</Badge>}
                 </button>
               </li>
             )
@@ -183,6 +189,8 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   const addConnection = async () => {
     if (!provider.trim()) return
     const result = await run({ operation: 'connect', provider: provider.trim(), label: label.trim() }, 'App added. Sign in to finish.')
+    // A sign-in that could not be set up changes which apps need an admin; reload the list next time.
+    vaultAppsRequest = null
     if (result !== null) { setProvider(''); setLabel(''); setOpen(null); setSignIn(signInNote(result)) }
   }
 

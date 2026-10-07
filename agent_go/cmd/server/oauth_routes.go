@@ -496,6 +496,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 // (public-only for a personal server), and what to do once connected.
 type oauthFlowTarget struct {
 	Name           string
+	DisplayName    string // what a person calls the app ("Vercel"); Name when empty
 	Config         mcpclient.MCPServerConfig
 	ClientFile     string
 	Discoverer     oauth.Discoverer
@@ -531,7 +532,13 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		if regErr != nil {
 			// Fall through to the prompt: a hand-registered client_id still works.
 			api.logger.Error(fmt.Sprintf("Dynamic client registration failed for %s (redirect %s): %v", serverName, redirectURI, regErr), regErr)
+			// A provider's rejection (not a network error) marks the app "Needs admin setup" in Vault's Add app.
+			var rejected *oauth.RegistrationError
+			if errors.As(regErr, &rejected) {
+				setRegistrationFailure(serverConfig.OAuth.RegistrationEndpoint, redirectURI, rejected.Reason())
+			}
 		} else {
+			setRegistrationFailure(serverConfig.OAuth.RegistrationEndpoint, redirectURI, "")
 			serverConfig.OAuth.ClientID = client.ClientID
 			serverConfig.OAuth.ClientSecret = client.ClientSecret
 			api.logger.Info(fmt.Sprintf("🪪 Using DCR client_id for %s: %s", serverName, client.ClientID))
@@ -544,7 +551,11 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		api.logger.Info(fmt.Sprintf("No client_id for %s, returning needs_client_id response", serverName))
 		message := fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName)
 		if regErr != nil {
-			message = registrationFailedMessage(serverName, regErr)
+			display := target.DisplayName
+			if display == "" {
+				display = serverName
+			}
+			message = registrationFailedMessage(display, regErr)
 		}
 		return nil, &OAuthDiscoveryResponse{
 			Status:            "needs_client_id",

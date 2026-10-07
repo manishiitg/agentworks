@@ -52,9 +52,30 @@ Two faults:
 - Test: `TestFailedRegistrationReturnsNoAuthorizeURL` (agent_go), and
   `TestRegisterClientRejectionKeepsTheProviderReason` (mcpagent).
 
+## Follow-up: "Needs admin setup" in Add app (owner decision, 2026-10-07)
+
+Apps whose sign-in cannot start on its own stay in Vault → Add app but carry a
+"Needs admin setup" badge (tooltip: "Sign-in can't be set up automatically here; an admin
+can register an OAuth app for it, or use an API key as a Vault secret") and sort last. They
+can still be picked; the error above explains.
+
+- The `apps` operation returns `needs_admin_setup: true` for an OAuth app with no
+  configured client (none in the config, no deployment sign-in app) when it has no
+  `registration_endpoint`, needs a hand-registered confidential client, or already
+  rejected this server's callback.
+- Rejections are remembered in `<tokens root>/_platform/registration_failures.json`, keyed
+  by registration endpoint + callback, written where the RegistrationError is logged in
+  `runOAuthFlow` (provider rejections only, not network errors); a later successful
+  registration removes the entry, and a configured client overrides it.
+- Workflow/Crew connect messages name the catalog app ("Vercel"), not the internal server name.
+- Test: `TestFailedRegistrationReturnsNoAuthorizeURL` now also checks the apps list marks
+  and sorts Vercel, and that a configured client clears the mark.
+
 ## Left
 
 - Vercel itself cannot be connected from a hosted server unless Vercel approves our
-  callback or an admin enters a Vercel OAuth client by hand. Consider hiding Vercel in the
-  Add app picker for hosted deployments, or asking Vercel to approve the AgentWorks callback.
+  callback or an admin enters a Vercel OAuth client by hand. Asking Vercel to approve the
+  AgentWorks callback is the remaining option.
+- A server only learns of a rejection after someone tries; until then Vercel shows as a
+  normal sign-in app there.
 - Not deployed.

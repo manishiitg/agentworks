@@ -15,8 +15,10 @@ import (
 
 // PLAT-708 (Confida, 2026-10-07): Vercel rejected our registration for a hosted callback, yet the person was
 // linked to vercel.com/oauth/authorize with no client and saw "The app ID is invalid". A failed registration must
-// return no authorize URL at all, and say why in words.
+// return no authorize URL at all, say why in words, and mark the app "Needs admin setup" in Vault's Add app until a
+// client is configured.
 func TestFailedRegistrationReturnsNoAuthorizeURL(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	register := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -29,7 +31,8 @@ func TestFailedRegistrationReturnsNoAuthorizeURL(t *testing.T) {
 		AuthURL: "https://vercel.com/oauth/authorize", TokenURL: "https://api.vercel.com/login/oauth/token",
 		RegistrationEndpoint: register.URL, TokenFile: filepath.Join(t.TempDir(), "token.json"),
 	}}
-	start, discovery, err := api.runOAuthFlow("", "https://app.example.com/api/oauth/callback", oauthFlowTarget{
+	const callback = "https://app.example.com/api/oauth/callback"
+	start, discovery, err := api.runOAuthFlow("", callback, oauthFlowTarget{
 		Name: "Vercel", Config: cfg, ClientFile: filepath.Join(t.TempDir(), "client.json"), Notify: func(bool, string) {},
 	})
 	if err != nil || start != nil || discovery == nil || discovery.Status != "needs_client_id" {
@@ -42,5 +45,22 @@ func TestFailedRegistrationReturnsNoAuthorizeURL(t *testing.T) {
 	want := "Vercel sign-in couldn't be set up automatically: the provider rejected the app registration: The provided redirect URIs are not approved for use by this authorization server (invalid_redirect_uri). An admin can register an OAuth app for it, or store its API key as a Vault secret."
 	if discovery.Message != want {
 		t.Fatalf("message = %q\nwant      %q", discovery.Message, want)
+	}
+
+	// The Add app list: Vercel is marked and sorted after an app that signs in on its own; a client clears the mark.
+	catalog := []byte(`{"providers":[{"Name":"Vercel","OAuth":true},{"Name":"Zeta","OAuth":true}]}`)
+	config := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{
+		"Vercel": cfg,
+		"Zeta":   {URL: "https://mcp.zeta.example", OAuth: &oauth.OAuthConfig{AuthURL: "https://zeta.example/a", TokenURL: "https://zeta.example/t", RegistrationEndpoint: "https://zeta.example/r"}},
+	}}
+	apps, err := vaultCatalogApps(catalog, func(name string) bool { return oauthNeedsAdminSetup(config, name, callback) })
+	if want := `{"apps":[{"name":"Zeta","oauth":true},{"name":"Vercel","oauth":true,"needs_admin_setup":true}]}`; err != nil || apps != want {
+		t.Fatalf("apps = %s (%v)\nwant   %s", apps, err, want)
+	}
+	configured := *cfg.OAuth
+	configured.ClientID = "admin-registered"
+	config.MCPServers["Vercel"] = mcpclient.MCPServerConfig{URL: cfg.URL, OAuth: &configured}
+	if oauthNeedsAdminSetup(config, "Vercel", callback) {
+		t.Fatal("a configured client must clear Needs admin setup")
 	}
 }
