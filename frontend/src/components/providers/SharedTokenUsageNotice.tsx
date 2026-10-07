@@ -38,9 +38,8 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
   const daily = shown.daily_limit ? shown.daily_used / shown.daily_limit : -1
   const weekly = shown.weekly_limit ? shown.weekly_used / shown.weekly_limit : -1
   const showWeekly = weekly > daily
-  const label = showWeekly
-    ? `${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} this week`
-    : `${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} today`
+  // Short: the closer limit as a percentage; the token figures are in the tooltip (owner, 2026-10-07).
+  const label = `${Math.min(999, Math.round(Math.max(daily, weekly) * 100))}% ${showWeekly ? 'week' : 'today'}`
   const tone = shown.state === 'over'
     ? 'border-red-300 text-red-700 dark:border-red-900 dark:text-red-300'
     : shown.state === 'warning'
