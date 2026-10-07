@@ -17,7 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
-<<<<<<< HEAD
+### 2026-10-07 — Step prompts give the time in UTC
+
+Workflow step prompts show the current date and time in UTC, with the server's
+local time alongside, instead of bare server-local time. Why: workflows taught
+every step to convert the local (IST) header to UTC, a platform quirk worked
+around in each prompt. Step rules that still subtract 5:30 must go.
+[PLAT-635](bugs/pulse_platform/goals/steps/plat-635.md).
+
 ### 2026-10-07 — Per-person token limits on the shared server accounts
 
 An admin may set a daily and a weekly token limit per person (users.json `token_limits`; default unlimited). Only
@@ -28,15 +35,6 @@ message naming the reset; running turns finish. Scheduled runs count toward thei
 (marked failed with the reason) when they would run on a server account over the limit. Why: one person must not use
 up the shared plan for everyone. `agent_go/cmd/server/token_limits.go`.
 [PLAT-683](bugs/pulse_platform/app/accounts/plat-683.md).
-=======
-### 2026-10-07 — Step prompts give the time in UTC
-
-Workflow step prompts show the current date and time in UTC, with the server's
-local time alongside, instead of bare server-local time. Why: workflows taught
-every step to convert the local (IST) header to UTC, a platform quirk worked
-around in each prompt. Step rules that still subtract 5:30 must go.
-[PLAT-635](bugs/pulse_platform/goals/steps/plat-635.md).
->>>>>>> 49782c3e7 (PLAT-635, PLAT-636, PLAT-683: UTC step clock, allow extension input diagnostics, fix stale Slack test)
 
 ### 2026-10-07 — Relay branch labels sit on their connectors
 
