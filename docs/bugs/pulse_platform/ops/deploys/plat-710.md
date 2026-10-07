@@ -28,6 +28,11 @@ the Pi model template was not loaded by the app, and nothing ran there.
   accounts are refused outside the domain, admins included).
 - Sized for 7 GB: activation job 3G/150%, Pi Node heap 1.5 GB, agent GOMEMLIMIT 2 GiB.
 - deploy/rootless-linux/citymall.md describes all of it.
+- The app's daily CLI updater ran `codex update` (npm install -g) into Node's own prefix: a second codex in
+  tools/node/bin, ahead of the managed tools/bin on PATH, failed the second deploy ("codex resolves outside the
+  managed installation"). Self-updates now set npm_config_prefix to the prefix the CLI was installed in
+  (agent_go/internal/cliupdate). Affects every host with a pinned Node (Confida too); the stray copy was removed on
+  Citymall by hand.
 
 ## Left
 

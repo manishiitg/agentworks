@@ -32,7 +32,7 @@ func updateGlobalCLI(ctx context.Context, p Provider, _ string, _ Result) (strin
 	if !ok {
 		return "", "", fmt.Errorf("no global update command for %s", p.Name)
 	}
-	env := updateEnv()
+	env := append(updateEnv(), npmPrefixEnv(executable)...)
 	if _, err := run(ctx, updateWorkingDir(executable), env, executable, args...); err != nil {
 		return "", "", fmt.Errorf("update %s: %w", p.Name, err)
 	}
@@ -86,6 +86,23 @@ func findGlobalCLI(p Provider) (string, error) {
 		return filepath.Clean(absolute), nil
 	}
 	return "", errCLINotInstalled
+}
+
+// npmPrefixEnv keeps an npm-installed CLI's self-update ("codex update" runs
+// npm install -g) in the prefix the CLI was installed into. Without it npm
+// used its own default prefix, Node's folder: on Citymall that put a second
+// codex in tools/node/bin, ahead of the managed tools/bin on PATH, and the
+// next deploy refused it ("codex resolves outside the managed installation").
+func npmPrefixEnv(executable string) []string {
+	dir := filepath.Dir(executable)
+	if filepath.Base(dir) != "bin" {
+		return nil
+	}
+	prefix := filepath.Dir(dir)
+	if info, err := os.Stat(filepath.Join(prefix, "lib", "node_modules")); err != nil || !info.IsDir() {
+		return nil
+	}
+	return []string{"npm_config_prefix=" + prefix}
 }
 
 func updateWorkingDir(executable string) string {
