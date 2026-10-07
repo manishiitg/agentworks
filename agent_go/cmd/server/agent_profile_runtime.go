@@ -896,6 +896,9 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerBrainScheduleTool(registrar, userID); err != nil {
 			return err
 		}
+		if err := api.registerBrainSecretsTool(registrar, userID); err != nil {
+			return err
+		}
 	}
 	if !readOnly && activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "mcp") {
 		if err := api.registerWorkMCPSelectionTool(registrar, userID, workspacePath); err != nil {

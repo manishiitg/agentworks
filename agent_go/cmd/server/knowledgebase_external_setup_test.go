@@ -62,7 +62,8 @@ func TestKnowledgebaseExternalMCPBackupSetupAndUserWriteAccess(t *testing.T) {
 	if configured, err := service.BackupConfigured(); err != nil || !configured {
 		t.Fatal("external setup did not persist", configured, err)
 	}
-	requireRemoteError(t, call(admin, "manage_knowledgebase_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/other.git", "request_id": "mcp-backup-redirect"}), "backup redirect", "BACKUP_REMOTE_CHANGED")
+	// The destination may change (PLAT-633); a new username still needs its own token.
+	requireRemoteError(t, call(admin, "manage_knowledgebase_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/other.git", "request_id": "mcp-backup-redirect"}), "backup redirect with a new username but no token", "INVALID_ARGUMENT")
 
 	inspect := func() map[string]any {
 		return result(admin, "brain_access", map[string]any{"action": "inspect", "folder_path": "Payments/Checkout"})

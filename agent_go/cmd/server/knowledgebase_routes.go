@@ -384,15 +384,6 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 
 // knowledgebaseBackupSecret reads a platform (global) secret for a backup destination that names one. Only the
 // administrator who sets backup up can name a secret, and only an unrestricted administrator can configure it.
-func knowledgebaseBackupSecret(name string) (string, bool) {
-	for _, secret := range getGlobalSecrets() {
-		if secret.Name == name {
-			return secret.Value, secret.Value != ""
-		}
-	}
-	return "", false
-}
-
 // sameKnowledgebaseConfig compares everything except the secret resolver (a function, always the same one).
 func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
 	return a.Root == b.Root && a.LiveRoot == b.LiveRoot && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&

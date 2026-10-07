@@ -51,3 +51,7 @@ Next (agreed): a dedicated `brain` slot account owns `Brain/` (shared group with
 ## Changing the backup repository (2026-10-06)
 
 RTS: the Brain chat could not point backup at `https://github.com/mprealtrainingsys/brain.git` (BACKUP_REMOTE_CHANGED, "changing the destination requires operator reconciliation"), a rule from the receipt-based backup. With Brain as a plain Git folder, an app-set destination can now be changed (the token secret is kept unless a new one is given), and the folder's `origin` follows at once. A destination set by the deployment's environment stays operator-only. Not deployed.
+
+## Brain's own secrets (2026-10-07)
+
+Owner: "in Brain we should not show all platform secrets, just its own"; "Vault = platform secrets and everything is product specific". Brain's secrets live in the shared encrypted secret store under `Brain` (like a Crew's or Code's own secrets). The Brain tab's Secrets view lists, adds/replaces and removes only these (names only; people who own the whole Brain). The Brain chat uses `brain_secrets` instead of the Vault-wide `list_secrets`/`manage_global_secret`. The backup token (`pat_secret`) is looked up in Brain's secrets; one that so far lived only among the platform secrets (RTS: `BRAIN_GITHUB_PAT`) is copied into Brain's store on first use. Test `TestBrainSecretsAreBrainsOwn`. Not deployed.
