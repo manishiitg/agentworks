@@ -73,3 +73,7 @@ the shared plan for everyone. There was no per-person cap.
 - The 80% warning is shown in the Models panel only, not as a chat banner.
 - Live input typed into an already running server-account session is not
   re-checked (it is part of the running turn).
+
+## Chat input chip (2026-10-07)
+
+Owner: people should see it where they type. The chat input toolbar shows a small chip next to Attach (e.g. "1.2M/5M today", the tighter of the two limits; amber from 80%, red at the limit; both limits and resets in the tooltip). Hidden when no limit is set. The Models panel notice stays.

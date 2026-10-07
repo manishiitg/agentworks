@@ -26,6 +26,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
+import { SharedTokenUsageChip } from './providers/SharedTokenUsageNotice'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
 import { isChatCompatiblePhase } from '../utils/chatSubmitHelpers'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
@@ -3592,6 +3593,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {attachmentEl}
+                <SharedTokenUsageChip />
                 {/* Status text - removed observer initialization message */}
               </div>
               {/* Show old buttons */}
