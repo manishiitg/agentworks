@@ -22,7 +22,13 @@ possibly in a single channel.
 - No slug in a channel without a default: the bot asks with one button per allowed target; the pick binds the thread.
 - DMs reach only this app's slugs, and only targets the person can access.
 - Applies to own bots and to the shared admin bot (whose DMs stay off).
-- Targets are workflows and Crews alike.
+- Targets are workflows and Crews alike, and Codes (DMs only, owner only).
+- Two ways to connect with the same routing: the platform bot (one per server, set up by an admin; the default) and own
+  bots (for another Slack workspace or a custom name). The platform bot accepts DMs.
+- Opt-in per target: nothing is reachable from Slack until its owner turns on "Use the AgentWorks bot"; turning it off
+  cuts access at once.
+- Slugs are target names (editable); a clash is resolved with buttons.
+- A channel is added by the target's owner, only if they are a member of it.
 
 ## Design
 

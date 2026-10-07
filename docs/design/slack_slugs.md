@@ -1,88 +1,86 @@
-# Slack slugs: one Slack app for many workflows and Crews
+# Slack slugs: one Slack app for many workflows, Crews and Codes
 
 Ticket: [PLAT-668](../bugs/pulse_platform/integrations/slack/plat-668.md). Owner decisions 2026-10-07.
 
 ## Why
 
-A free Slack workspace caps the number of installed apps (about 10). Today each Slack app either answers for one
-target (its "own bot") or is reused per channel ("one of my bots"), and **a channel reaches exactly one target**. A team
-that wants one bot serving several workflows and Crews, possibly in one channel (RTS: the workflows' bot plus 3
-Crews), cannot do it, and in a DM the bot always answers for its own target. WhatsApp already solves this with
-`@slug` routing; Slack should work the same way.
+A free Slack workspace caps the number of installed apps (about 10). Today each Slack app answers for one target (its
+"own bot") or is reused per channel ("one of my bots"), a channel reaches exactly one target, a DM always reaches the
+bot's own target, and a Code can only use its own bot. So every workflow, Crew or Code that wants Slack tends to cost an
+app. On RTS the owner wants one bot serving the workflows plus 3 Crews, possibly in one channel, and Codes in DMs.
 
-## Today (for reference)
+## Two ways to connect, one routing model
 
-- Socket Mode apps, tokens pasted from a generated manifest (`config/slack-config.json`, encrypted).
-- "Who answers?": its own bot (scoped to one workflow or Crew), one of my bots (an own bot plus `channel_routes`
-  pointing a channel to this target), or the admin shared bot (`bot-connectors.json` → `slack.allowed_channels`).
-- Channel turns run as the route in Run mode; a DM to an own bot runs as the AgentWorks user matched by email, with
-  that user's own access. The shared bot refuses DMs.
-- WhatsApp: a per-pairing slug → `ChannelRoute` map (auto-filled, editable), an active slug per chat, and "a saved slug
-  never confers access" (the person's access is checked).
+| | Platform bot (default) | Own bot |
+|---|---|---|
+| Slack app | one per server, set up once by an admin (today's shared bot) | created by a user, tokens pasted (today's own bot) |
+| Slack workspace | the admin's | any workspace the user controls (a client's, another team's) |
+| Reaches | targets whose owners turned on "Use the AgentWorks bot" | the targets its owner attached to it |
 
-## Design
+Both use the same slug routing below. An own bot is for a different Slack workspace or a custom bot name and icon.
 
-Targets are **workflows and Crews alike** (and a Code project, DMs only, as today). Everything below applies to own
-bots and to the shared admin bot.
+## Opt-in per target
 
-### 1. A slug table per Slack app
+Nothing is reachable from Slack by default. A workflow, Crew or Code is reachable from the platform bot only after its
+owner turns on **Slack → Use the AgentWorks bot** in its Integrations tab (one switch, no Slack app, no tokens). Turning
+it off cuts all Slack access at once, including threads already bound to it (every turn and tool call is re-checked).
+An admin controls whether the platform bot is enabled and may limit which products can use it.
 
-- Each Slack app connection gets `slugs: { <slug>: ChannelRoute }`.
-- A target that uses the app gets a slug: its own target, and every target that picks it through "one of my bots".
-  The default slug is the target's name, lowercased (`[a-z0-9-]`, the WhatsApp rule); the owner can rename it. Slugs
-  are unique per app.
-- The shared bot's slugs are managed by an admin, alongside its channel routes.
+| Target | DM | Channel |
+|---|---|---|
+| Workflow | people with access to it, each with their own access (owner full, reader Run) | channels its owner added, Run mode as the route |
+| Crew | the owner and people it is shared with, each with their own access | channels its owner added, Run mode as the route |
+| Code | the owner only, main chat (PLAT-571) | never |
 
-### 2. Channels reach several targets
+## Slugs
 
-- A channel route becomes **channel → allowed slugs + an optional default slug** (instead of one target).
-- Migration: every existing channel route becomes a list of one slug that is also the default, so current setups
-  behave exactly as before.
-- Someone in the channel can only reach the slugs on that channel's list.
+- A slug is the target's name, lowercased to `[a-z0-9-]` (the WhatsApp rule); the owner can edit it. It is a name,
+  never a grant: what it resolves to depends on who asks (DM) or where (channel).
+- If two targets a person can reach share a slug, the bot asks which one with buttons.
+- `list` replies with the slugs available here (this person in a DM, this channel's list in a channel).
 
-### 3. Picking a target in a channel
+## Channels
 
-- **Syntax:** `@bot <slug> …`. If the first word after the bot mention matches one of the channel's allowed slugs,
-  it picks that target and is removed from the message; otherwise the whole text is the message.
-- **The thread is bound** to the picked target (stored with the thread's durable session binding). Follow-ups in the
-  thread go to the same target without a slug. A different slug in a bound thread is refused with a pointer to start a
-  new thread.
-- **No slug:** the channel's default target answers; with no default, the bot replies in the thread with **one button
-  per allowed target**, and picking one binds the thread (Socket Mode interactivity, already enabled).
-- Runs as today: as the route, Run mode, `blocked_emails` honoured, the run-time revalidation of the route on every
-  tool call (now including "this slug is still allowed in this channel").
+- A target's owner adds a channel in its Slack tab, but only a channel they are a member of (checked through Slack,
+  `conversations.members` against the owner's email). Admins can still manage the platform bot's routes.
+- A channel route becomes **channel → allowed targets + an optional default**. Existing routes migrate to a one-target
+  list that is also the default, so current setups behave the same.
+- **Pick with `@bot <slug> …`**: the first word after the mention, if it is one of the channel's allowed slugs, picks
+  the target and is removed from the message; otherwise the whole text is the message.
+- **The thread is bound** to the picked target (stored with the thread's durable session binding and revalidated every
+  turn). Follow-ups need no slug. A different slug in a bound thread is refused with a pointer to start a new thread.
+- **No slug:** the channel's default answers; with no default, the bot replies in the thread with one button per allowed
+  target, and the pick binds the thread.
+- Runs as today: as the route, Run mode, `blocked_emails` honoured, and the route revalidated on every tool call (now
+  also "this target is still allowed in this channel and still opted in").
 
-### 4. Picking a target in a DM
+## DMs
 
-- `@bot <slug> …` or a message starting with `<slug>` picks the target; the choice is **remembered for that DM** until
-  another slug is used. `list` replies with the slugs available to this person.
-- **Scope:** only this app's slugs, and of those only targets the matched AgentWorks user can access (checked as the
-  person on every message, like WhatsApp). The shared bot keeps refusing DMs.
-- With nothing picked yet, the app's own target answers (today's behaviour); a bot with no own target lists the slugs.
+- The sender is matched by Slack email to exactly one AgentWorks account, as today (guests, external Slack Connect users
+  and other teams refused; group DMs refused).
+- `@bot <slug> …` or a message starting with a slug picks the target; the choice is remembered for that DM until
+  another slug is used. With nothing picked, the bot lists what the person can reach (an own bot with its own target
+  answers for that target, as today).
+- The platform bot now accepts DMs (today it refuses them). Access is the person's own access, checked every message.
 
-### 5. Setup UI
+## Own bots
 
-- The bot's Slack tab gets a **Slugs** list (target, slug, rename, remove).
-- Each channel card shows its **allowed slugs** and **default**; adding a target to a channel is a multi-select.
-- "One of my bots" in a workflow's or Crew's Slack tab adds that target's slug to the chosen app and lets the owner pick
-  the channels it may answer in.
-- The dry run accepts a slug and a channel, so "Save & test" proves the route.
+The same model, scoped to the bot: its slugs are the targets its owner attached (its own target plus any picked with
+"one of my bots", now including Codes for DMs). The same channel lists, binding and DM rules apply.
 
-### 6. Fixed along the way
+## Setup UI
 
-- Files attached to a top-level channel @mention are downloaded like thread replies and DMs (the `app_mention` path
-  never called `appendSlackFileContext`).
-- Slack triggers also work on own-bot channel routes, not only the shared bot's.
+- Each target's Slack tab: a **Use the AgentWorks bot** switch (with its slug, editable), its channels, or an own bot.
+- Channel cards show the allowed targets and the default.
+- Admin: the platform bot's tokens, enable switch and which products may use it.
+- The dry run takes a slug and a channel or DM, so "Save & test" proves the route.
 
-## Security
+## Fixed along the way
 
-- A slug is a name, never a grant: channel access comes from the channel's allowed list (set by the bot's owner or an
-  admin); DM access is the person's own access to the target.
-- Slug parsing happens before routing; a slug not on the channel's list is treated as message text, never as a target.
-- Thread bindings record the slug and are revalidated on every turn; removing a slug from a channel stops its threads.
+- Files attached to a top-level channel @mention are downloaded like thread replies and DMs.
+- Slack triggers also work on own-bot channel routes.
 
 ## Out of scope
 
-- OAuth "Add to Slack" install, Events API (Socket Mode stays).
-- DMs to the shared bot.
+- An OAuth "Add to Slack" install, the Events API (Socket Mode stays).
 - Several targets answering in one thread.
