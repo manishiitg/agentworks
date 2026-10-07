@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — Chats of one Code message each other
+
+A Code chat can list its sibling chats (main + side chats) and send one a message with `message_project_chat`; it runs
+there as a visible turn (queued if busy) and its final reply returns as an auto-notification. It reuses the owner's
+own-chat ask path of the cross-product calls. Sender and project come from the trusted turn; targets only from the
+same user's registry entries of the same Code. Chains cannot loop back, stop at 3 chats, and a Code sends at most 20
+such messages an hour. [PLAT-648](bugs/pulse_platform/code/chat/plat-648.md).
+
 ### 2026-10-07 — Dominion enables every requested product and its own Vault
 
 Persist Dominion's full product list through the managed .env settings, including

@@ -189,6 +189,35 @@ func (store productConversationRegistryStore) liveSessionIDs(ctx context.Context
 	return live, nil
 }
 
+// projectChats returns a project's main chat and its side chats
+// ("<project>:chat:<id>", PLAT-571), not its isolated automation chats.
+func (store productConversationRegistryStore) projectChats(ctx context.Context, userID, profileID, projectID string) ([]ProductConversationRecord, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" || strings.Contains(projectID, ":") {
+		return nil, fmt.Errorf("project id is required")
+	}
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	var chats []ProductConversationRecord
+	main := productConversationRegistryEntryKey(profileID, projectID)
+	side := main + ":chat:"
+	for entryKey, record := range document.Entries {
+		if strings.TrimSpace(record.SessionID) == "" {
+			continue
+		}
+		if entryKey == main || (strings.HasPrefix(entryKey, side) && len(entryKey) > len(side) && !strings.Contains(entryKey[len(side):], ":")) {
+			chats = append(chats, record)
+		}
+	}
+	return chats, nil
+}
+
 // switchTo makes an earlier conversation the slot's live one again; the one
 // it replaces joins the previous list. A session not in that list is
 // accepted only when the caller verified it is this slot's (a chat rotated

@@ -850,6 +850,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
+	// The chats (tabs) of one Code message each other (PLAT-648).
+	if !readOnly && activeWorkProject && resolved.Definition.ID == codeproduct.ProfileID {
+		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
+			return err
+		}
+	}
 	// Someone using another user's Crew can leave its owner a suggestion:
 	// a reader in their own chat, or a guest whose call runs as the owner.
 	if readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {

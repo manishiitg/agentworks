@@ -599,6 +599,9 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         agentProfileMCPSelectionInitialized: true,
       }, conversation.session_id)
       chatStore.renameTab(tabId, name)
+      // The server knows the tab by this name too, so the other chats of the
+      // Code can address it ("Chat 2") with message_project_chat (PLAT-648).
+      void agentApi.renameChatHistorySession(conversation.session_id, name, primary.metadata?.agentProfileWorkspace).catch(() => undefined)
       chatStore.setTabConfig(tabId, {
         selectedServers: primary.config.selectedServers,
         selectedSkills: primary.config.selectedSkills,
