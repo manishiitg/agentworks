@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-708](plat-708.md) | Vault: Vercel sign-in fails, registration rejected and authorize opened without a client | fixed on main | P1 |
 | [PLAT-670](plat-670.md) | Vault add app: unknown provider for Github | fixed on main | P2 |

@@ -99,10 +99,17 @@ function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : 'Something went wrong'
 }
 
-// The sign-in link for a connection, if the server's reply holds one.
+// The sign-in link for a connection: only the reply's auth_url. Any other URL in it (a callback, an endpoint) is not
+// a sign-in page, and linking it sent people to a provider page with no app (PLAT-708).
 function signInUrl(text: string): string {
-  const match = text.replace(/\\u0026/g, '&').match(/https?:\/\/[^\s"\\]+/)
-  return match ? match[0] : ''
+  const match = text.replace(/\\u0026/g, '&').match(/"auth_url"\s*:\s*"(https?:\/\/[^"\\]+)"/)
+  return match ? match[1] : ''
+}
+
+// What to show after adding an app: its sign-in link, or the server's words when there is none to give.
+function signInNote(text: string): { url: string; text: string } {
+  const url = signInUrl(text)
+  return { url, text: url ? '' : text }
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -150,7 +157,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   const [secretValue, setSecretValue] = useState('')
   const [replacing, setReplacing] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [signIn, setSignIn] = useState('')
+  const [signIn, setSignIn] = useState<{ url: string; text: string }>({ url: '', text: '' })
   const [pending, setPending] = useState<Pending>(null)
 
   const run = useCallback(async (args: Record<string, unknown>, done: string): Promise<string | null> => {
@@ -176,7 +183,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   const addConnection = async () => {
     if (!provider.trim()) return
     const result = await run({ operation: 'connect', provider: provider.trim(), label: label.trim() }, 'App added. Sign in to finish.')
-    if (result !== null) { setProvider(''); setLabel(''); setOpen(null); setSignIn(signInUrl(result)) }
+    if (result !== null) { setProvider(''); setLabel(''); setOpen(null); setSignIn(signInNote(result)) }
   }
 
   const saveSecret = async () => {
@@ -286,7 +293,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
                     key={connection.id}
                     actions={owner && (
                       <>
-                        <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: connection.id }, 'Sign-in link ready'); if (r) setSignIn(signInUrl(r)) }}>{needsSignIn ? 'Sign in' : 'Sign in again'}</Button>
+                        <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: connection.id }, 'Sign-in link ready'); if (r) setSignIn(signInNote(r)) }}>{needsSignIn ? 'Sign in' : 'Sign in again'}</Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" title="Refresh this app's tools" aria-label={`Refresh ${name}`} disabled={busy} onClick={() => void run({ operation: 'sync', connection_id: connection.id }, `${name} refreshed`)}><RefreshCw className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" title="Remove this app" aria-label={`Remove ${name}`} disabled={busy} onClick={() => setPending({ kind: 'connection', id: connection.id, name })}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </>
@@ -301,7 +308,8 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
               })}
             </ul>
           )}
-          {signIn && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
+          {signIn.url && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn.url} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
+          {signIn.text && <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-warning">{signIn.text}</p>}
           {owner && open === 'connection' && (
             <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addConnection() }}>
               <AppPicker value={provider} onChange={setProvider} />

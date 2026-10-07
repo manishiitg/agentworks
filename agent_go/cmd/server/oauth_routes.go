@@ -130,10 +130,11 @@ type MCPConnectRequest struct {
 
 // OAuthDiscoveryResponse is returned when the server doesn't support DCR and needs a client_id
 type OAuthDiscoveryResponse struct {
+	// It deliberately carries no auth_url: clients open any auth_url they are
+	// handed, and an authorize URL without a client_id only shows the person
+	// the provider's "app ID is invalid" page (Vercel, PLAT-708).
 	Status          string   `json:"status"` // "needs_client_id"
 	ServerName      string   `json:"server_name"`
-	AuthURL         string   `json:"auth_url,omitempty"`         // Discovered authorization endpoint
-	TokenURL        string   `json:"token_url,omitempty"`        // Discovered token endpoint
 	Resource        string   `json:"resource,omitempty"`         // RFC 8707 resource indicator
 	ScopesSupported []string `json:"scopes_supported,omitempty"` // Discovered scopes
 	Message         string   `json:"message"`
@@ -438,7 +439,6 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 	if requiresRegisteredMCPClientSecret(serverName) && (serverConfig.OAuth.ClientID == "" || !hasRegisteredMCPClientSecret(serverConfig.OAuth)) {
 		return nil, &OAuthDiscoveryResponse{
 			Status: "needs_client_id", ServerName: serverName,
-			AuthURL: serverConfig.OAuth.AuthURL, TokenURL: serverConfig.OAuth.TokenURL,
 			Resource: serverConfig.OAuth.Resource, NeedsClientSecret: true,
 			RedirectURI: redirectURI,
 			Message:     "Create an OAuth app with this AgentWorks server's /api/oauth/callback redirect URL, then enter its client ID and secret.",
@@ -524,11 +524,13 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 	// A server with no client_id in config either issues one through Dynamic
 	// Client Registration or needs one registered by hand. Try DCR first, so
 	// only the genuinely manual servers reach the prompt below.
+	var regErr error
 	if serverConfig.OAuth.ClientID == "" && serverConfig.OAuth.RegistrationEndpoint != "" {
-		client, regErr := api.ensureRegisteredClientAt(target.ClientFile, target.Discoverer, serverName, serverConfig.OAuth.RegistrationEndpoint, redirectURI)
+		var client *registeredClient
+		client, regErr = api.ensureRegisteredClientAt(target.ClientFile, target.Discoverer, serverName, serverConfig.OAuth.RegistrationEndpoint, redirectURI)
 		if regErr != nil {
 			// Fall through to the prompt: a hand-registered client_id still works.
-			api.logger.Error(fmt.Sprintf("Dynamic client registration failed for %s: %v", serverName, regErr), regErr)
+			api.logger.Error(fmt.Sprintf("Dynamic client registration failed for %s (redirect %s): %v", serverName, redirectURI, regErr), regErr)
 		} else {
 			serverConfig.OAuth.ClientID = client.ClientID
 			serverConfig.OAuth.ClientSecret = client.ClientSecret
@@ -536,17 +538,20 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		}
 	}
 
-	// Instead of hard-failing, return a discovery response prompting for client_id
+	// No client: never build an authorize URL. Return a prompt for a
+	// hand-registered client_id, saying why automatic setup failed.
 	if serverConfig.OAuth.ClientID == "" {
 		api.logger.Info(fmt.Sprintf("No client_id for %s, returning needs_client_id response", serverName))
+		message := fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName)
+		if regErr != nil {
+			message = registrationFailedMessage(serverName, regErr)
+		}
 		return nil, &OAuthDiscoveryResponse{
 			Status:            "needs_client_id",
 			ServerName:        serverName,
-			AuthURL:           serverConfig.OAuth.AuthURL,
-			TokenURL:          serverConfig.OAuth.TokenURL,
 			Resource:          serverConfig.OAuth.Resource,
 			ScopesSupported:   serverConfig.OAuth.Scopes,
-			Message:           fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName),
+			Message:           message,
 			RedirectURI:       redirectURI,
 			NeedsClientSecret: requiresRegisteredMCPClientSecret(serverName),
 		}, nil
@@ -1286,6 +1291,17 @@ func getUserClientFilePath(userID, serverName string) string {
 // invalid_redirect_uri failure later in the flow.
 func (api *StreamingAPI) ensureRegisteredClient(userID, serverName, registrationEndpoint, redirectURI string) (*registeredClient, error) {
 	return api.ensureRegisteredClientAt(expandPath(getUserClientFilePath(userID, serverName)), oauth.Discoverer{}, serverName, registrationEndpoint, redirectURI)
+}
+
+// registrationFailedMessage is what a person sees when a provider would not
+// issue a client automatically: the provider's own reason and the two ways on.
+func registrationFailedMessage(app string, err error) string {
+	reason := err.Error()
+	var rejected *oauth.RegistrationError
+	if errors.As(err, &rejected) {
+		reason = "the provider rejected the app registration: " + rejected.Reason()
+	}
+	return fmt.Sprintf("%s sign-in couldn't be set up automatically: %s. An admin can register an OAuth app for it, or store its API key as a Vault secret.", app, reason)
 }
 
 // ensureRegisteredClientAt caches a dynamic client registration in clientFile

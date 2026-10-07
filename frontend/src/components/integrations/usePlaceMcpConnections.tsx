@@ -91,12 +91,13 @@ export function usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAs
 
   const signIn = async (name: string, client?: { clientId: string; clientSecret?: string }) => {
     const result = await placeMcpApi.connect(workspacePath, name, client, chatSessionId)
-    if (result.auth_url) {
+    // needs_client_id first: an authorize URL without a client only shows the provider's "app ID is invalid" page.
+    if (result.status === 'needs_client_id') {
+      setClientPrompt({ server: name, redirectUri: result.redirect_uri })
+      setMessage(result.message ?? null)
+    } else if (result.auth_url) {
       setClientPrompt(null)
       window.open(result.auth_url, '_blank', 'noopener')
-    } else if (result.status === 'needs_client_id') {
-      setClientPrompt({ server: name, redirectUri: result.redirect_uri })
-      setMessage(null)
     } else if (result.message) {
       setMessage(result.message)
     }

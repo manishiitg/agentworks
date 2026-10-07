@@ -33,8 +33,6 @@ export interface OAuthStartResponse {
 export interface OAuthDiscoveryResponse {
   status: 'needs_client_id';
   server_name: string;
-  auth_url?: string;
-  token_url?: string;
   resource?: string;
   scopes_supported?: string[];
   message: string;

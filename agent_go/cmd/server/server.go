@@ -13408,8 +13408,9 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				return "", fmt.Errorf("failed to start OAuth for %q: %w", name, err)
 			}
 			if discoveryResp != nil {
-				return fmt.Sprintf("%s Auth URL: %s — Token URL: %s. Once the user gives you their OAuth app's client_id, call install_mcp_server again with client_id set.",
-					discoveryResp.Message, discoveryResp.AuthURL, discoveryResp.TokenURL), nil
+				// No sign-in link without a client: an authorize URL with no client_id fails at the provider (PLAT-708).
+				return fmt.Sprintf("%s Do not give the user a sign-in link. If they register an OAuth app (callback URL %s) and give you its client_id, call install_mcp_server again with client_id set.",
+					discoveryResp.Message, discoveryResp.RedirectURI), nil
 			}
 			return fmt.Sprintf("%q needs OAuth sign-in. Give the user this link to open in their browser — the connection finishes automatically once they authorize, no further action from you needed: %s", name, startResp.AuthURL), nil
 		},

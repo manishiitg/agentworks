@@ -305,11 +305,15 @@ func (api *StreamingAPI) vaultSignInLink(ctx context.Context, person, connection
 	if err != nil {
 		return "", err
 	}
-	var result any = start
 	if discovery != nil {
-		result = discovery
+		// No usable client: there is no sign-in link to give. Say why in words with no URL in them, because the
+		// Vault screen links the first URL it finds (PLAT-708). A new connection stays added; a sign-in fails.
+		if prefix == "" {
+			return "", errors.New(discovery.Message)
+		}
+		return prefix + "Connection " + c.ID + " is not signed in. " + discovery.Message, nil
 	}
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(start)
 	if err != nil {
 		return "", err
 	}

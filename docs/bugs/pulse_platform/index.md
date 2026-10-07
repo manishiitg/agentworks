@@ -21,12 +21,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 10 | 3 |
+| [Vault](vault/index.md) | 11 | 3 |
 
 ## Newest tickets
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-708](vault/apps/plat-708.md) | Vault: Vercel sign-in fails, registration rejected and authorize opened without a client | fixed on main | P1 | [vault/apps](vault/apps/index.md) |
 | [PLAT-707](coding-agents/codex/plat-707.md) | Codex Crew turn hangs after the first chunk | open | P2 | [coding-agents/codex](coding-agents/codex/index.md) |
 | [PLAT-706](coding-agents/accounts/plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-705](chat/stop/plat-705.md) | Background work pill with per-item Stop in chats | fixed on main | P2 | [chat/stop](chat/stop/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-667](chat/rendering/plat-667.md) | Show web searches as a search card in the chat | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-666](coding-agents/accounts/plat-666.md) | Providers shows Needs Authentication for a working account | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-665](chat/tabs/plat-665.md) | New chat button needs three clicks | fixed on main | P2 | [chat/tabs](chat/tabs/index.md) |
-| [PLAT-664](app/ui-control/plat-664.md) | Agent cannot drive the panel when the workflow is open in more than one tab | fixed on main | P2 | [app/ui-control](app/ui-control/index.md) |
