@@ -7,4 +7,5 @@
 | [ci](ci/index.md) | 1 | 1 |
 | [cost](cost/index.md) | 21 | 7 |
 | [deploys](deploys/index.md) | 2 | 0 |
+| [local](local/index.md) | 1 | 0 |
 | [performance](performance/index.md) | 6 | 2 |

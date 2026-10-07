@@ -2270,20 +2270,29 @@ done
 export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR
 
 # Build mcpbridge binary (required for CLI provider MCP bridge)
-# Install from local source to pick up latest fixes (e.g., virtual tool scoping)
+# Install from local source to pick up latest fixes (e.g., virtual tool scoping).
+# Each checkout installs its own copy under agent_go/.bin and points its server
+# at it with MCP_BRIDGE_BINARY, so an isolated test instance started from a
+# worktree never replaces the bridge another running app uses (2026-10-07: a
+# test instance overwrote the shared ~/go/bin/mcpbridge).
+MCPBRIDGE_BIN_DIR="${SCRIPT_DIR}/.bin"
+mkdir -p "$MCPBRIDGE_BIN_DIR"
 echo "🔨 Building mcpbridge binary from local source..."
-(cd "${SCRIPT_DIR}/../../mcpagent" && go install ./cmd/mcpbridge/) 2>&1
+(cd "${SCRIPT_DIR}/../../mcpagent" && GOBIN="$MCPBRIDGE_BIN_DIR" go install ./cmd/mcpbridge/) 2>&1
 if [ $? -eq 0 ]; then
-    echo "✅ mcpbridge binary installed from local source: $(which mcpbridge || echo ~/go/bin/mcpbridge)"
+    echo "✅ mcpbridge binary installed from local source: $MCPBRIDGE_BIN_DIR/mcpbridge"
 else
     # Fallback to published module if local build fails
     echo "⚠️  Local build failed, falling back to published release..."
-    GOWORK=off go install github.com/manishiitg/mcpagent/cmd/mcpbridge@latest 2>&1
+    GOWORK=off GOBIN="$MCPBRIDGE_BIN_DIR" go install github.com/manishiitg/mcpagent/cmd/mcpbridge@latest 2>&1
     if [ $? -eq 0 ]; then
-        echo "✅ mcpbridge binary installed from published release: $(which mcpbridge || echo ~/go/bin/mcpbridge)"
+        echo "✅ mcpbridge binary installed from published release: $MCPBRIDGE_BIN_DIR/mcpbridge"
     else
         echo "⚠️  Failed to install mcpbridge (CLI provider MCP bridge will not work)"
     fi
+fi
+if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then
+    export MCP_BRIDGE_BINARY="$MCPBRIDGE_BIN_DIR/mcpbridge"
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
