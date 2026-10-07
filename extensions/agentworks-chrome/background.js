@@ -505,11 +505,16 @@ async function command(message, active = false, clientId = '') {
 }
 async function showTabForInput(tabId) {
   const tab = await chrome.tabs.get(tabId);
-  if (tab.active) return;
-  await chrome.tabs.update(tabId, { active: true });
-  diagnostic('tab_shown_for_input', tabId);
+  // A minimized window hides every tab in it, so restore it first. A window
+  // that is open but behind other apps is left where it is: raising Chrome
+  // over the user's work on every click is what PLAT-636 avoids.
+  const window = await chrome.windows.get(tab.windowId);
+  const restore = window.state === 'minimized';
+  if (tab.active && !restore) return;
+  if (restore) { await chrome.windows.update(tab.windowId, { state: 'normal' }); diagnostic('window_restored_for_input', tabId); }
+  if (!tab.active) { await chrome.tabs.update(tabId, { active: true }); diagnostic('tab_shown_for_input', tabId); }
   // Give the renderer a frame to become visible before the event arrives.
-  await new Promise(resolve => setTimeout(resolve, 150));
+  await new Promise(resolve => setTimeout(resolve, restore ? 300 : 150));
 }
 async function releaseClient(clientId) {
   if (typeof clientId !== 'string' || !/^[a-f0-9]{16}$/.test(clientId)) return;

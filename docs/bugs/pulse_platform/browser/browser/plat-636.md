@@ -48,3 +48,13 @@ by reloading the extension and re-running the Upwork step.
 ## Rollout
 
 Ships with the next deploy. Each user reloads Browser Bridge (0.4.7) in Chrome.
+
+## Minimized windows (0.4.8, 2026-10-07)
+
+A minimized Chrome window hides every tab in it, so showing the tab is not enough. Before an `Input.*` command the
+extension now also restores a minimized window to normal (`window_restored_for_input` diagnostic, 300 ms wait). A
+window that is open but behind other apps is left where it is: raising Chrome over the user's work on every click is
+what Claude in Chrome does and what users complain about (anthropics/claude-code#89148). The recommended setup for
+long agent work is a Chrome window kept open behind the user's work, not minimized. The real-Chrome e2e minimizes the
+shared tab's window, clicks, and asserts the window was restored and the diagnostic recorded; it passes.
+

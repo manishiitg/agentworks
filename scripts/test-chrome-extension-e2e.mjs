@@ -223,6 +223,13 @@ try {
   assert.equal(await activeTab(), tabId, 'fill and click show their hidden shared tab first');
   assert.ok((await message({action:'state'})).diagnostics.some(r => r.event === 'tab_shown_for_input' && r.tab_id === tabId), 'input records that it showed the tab');
   await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
+  // A minimized window hides the tab too: input restores it first.
+  const sharedWindow = await popup.evaluate(async id => (await chrome.tabs.get(id)).windowId, tabId);
+  await popup.evaluate(id => chrome.windows.update(id, {state:'minimized'}), sharedWindow);
+  await cli('click', 'tab', sharedTarget, `@${save}`);
+  assert.notEqual(await popup.evaluate(async id => (await chrome.windows.get(id)).state, sharedWindow), 'minimized', 'input restores a minimized window');
+  assert.ok((await message({action:'state'})).diagnostics.some(r => r.event === 'window_restored_for_input' && r.tab_id === tabId), 'input records that it restored the window');
+  await popup.evaluate(id => chrome.tabs.update(id, {active:true}), privateTabId);
   const tabs = await cli('tab'); assert.doesNotMatch(JSON.stringify(tabs), /Unshared private/); console.log('PASS unshared-tab exclusion');
   await popup.evaluate(id => chrome.tabs.ungroup(id), privateTabId);
   await cli('screenshot', 'Chats/Code/projects/extension-e2e/evidence/screenshot.png'); const image = await fetch(`${base}/fixture/image`); assert.equal(image.status, 200); assert.ok((await image.arrayBuffer()).byteLength > 1000); console.log('PASS screenshot through workspace artifact broker');
