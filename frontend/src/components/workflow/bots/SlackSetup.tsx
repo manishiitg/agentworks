@@ -268,22 +268,29 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
       )}
 
       {answering && settings && target && (
-        <FormSection title="Slug">
-          <div className="flex items-center gap-2">
-            <Input
-              aria-label="Slack slug"
-              value={slugDraft}
-              onChange={e => setSlugDraft(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-              disabled={!canEditSlug || slugSaving}
-              title={canEditSlug ? undefined : `Only the ${noun}'s owner can change the slug`}
-              className="h-8 max-w-[14rem] font-mono text-xs"
-            />
-            {slugDraft !== slug && (
-              <Button variant="outline" size="sm" onClick={() => void saveSlug()} disabled={!canEditSlug || slugSaving || !slugDraft}>
-                {slugSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
-              </Button>
-            )}
-          </div>
+        <FormSection
+          title="Slug"
+          description={ownBotOnly
+            ? `A short name for this ${noun}. In a DM, start your message with it.`
+            : `A short name for this ${noun}. In a channel shared with others, put it after @${answering.name} to reach this one; in a DM, start with it.`}
+          actions={
+            <div className="flex items-center gap-2">
+              <Input
+                aria-label="Slack slug"
+                value={slugDraft}
+                onChange={e => setSlugDraft(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                disabled={!canEditSlug || slugSaving}
+                title={canEditSlug ? undefined : `Only the ${noun}'s owner can change the slug`}
+                className="h-8 w-40 font-mono text-xs"
+              />
+              {slugDraft !== slug && (
+                <Button variant="outline" size="sm" onClick={() => void saveSlug()} disabled={!canEditSlug || slugSaving || !slugDraft}>
+                  {slugSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+                </Button>
+              )}
+            </div>
+          }
+        >
           <CopyLine label="Example" text={ownBotOnly ? `${slug || 'slug'} your question` : `@${answering.name} ${slug || 'slug'} your question`} />
           {slugError && <p className="text-xs text-red-600 dark:text-red-400">{slugError}</p>}
         </FormSection>

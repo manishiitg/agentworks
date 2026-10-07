@@ -90,3 +90,5 @@ possibly in a single channel.
 - The admin Slack page (Access → Slack) still edits the shared bot's admin routes one target per channel; owner-added
   targets show in each target's Slack tab.
 - Own-bot triggers have no UI; they are set with the route tools (`own_bot: true`) or the connections API.
+
+Follow-up 2026-10-07: the Slack tab shows the slug field on the same line as its title, with one sentence on what the slug is for.
