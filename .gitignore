@@ -25,6 +25,8 @@ bin/*
 *.cert
 *.pwd
 *secret*
+# The ticket folder sandbox/secrets holds only ticket docs; its generated index must be committed (CI tickets check).
+!docs/bugs/pulse_platform/sandbox/secrets/
 *credential*
 *password*
 !scripts/*secret*.sh
