@@ -1072,6 +1072,13 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       {/* Virtualized: the tree inherited this from EventHierarchy. A flat list
           that rendered every event would regress long sessions badly. */}
       <Virtuoso
+        // Virtuoso reads initialTopMostItemIndex only when it mounts. A chat
+        // opened while its history is still loading mounted at index 0 and then
+        // jumped to the bottom once rows arrived (0 -> 40,328 -> 45,948 px,
+        // 2026-10-07). Remount once, while the list is still empty, when the
+        // starting position is known, so it opens at the bottom (or the saved
+        // reading position) without a visible jump.
+        key={initialPosition ? 'positioned' : 'loading'}
         ref={virtuosoRef}
         data={listData}
         components={transcriptComponents}

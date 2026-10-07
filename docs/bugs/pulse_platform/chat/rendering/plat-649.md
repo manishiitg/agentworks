@@ -70,3 +70,13 @@ Sampler, same chat after a page reload (compact restore), one short send:
   chat; check the owner's chat again after this lands.
 - Opening a chat still replaces the scroll container once (seen on the owner's
   window); not changed here.
+
+## Opening a chat jumped from the top (2026-10-07)
+
+The "left" item: opening a long chat painted it from the top and then jumped to the bottom (owner's window: scrollTop
+0 -> 40,328 -> 45,948). Cause: the formatted transcript's Virtuoso reads `initialTopMostItemIndex` only when it
+mounts, and a chat opened while its history was still loading mounted with no rows, so at index 0; the bottom
+position computed once rows arrived was ignored. Fix: the Virtuoso is keyed on whether its starting position is known,
+so it remounts once, while still empty, and opens at the bottom (or the saved reading position). A transcript that
+already has rows on its first render is unaffected.
+
