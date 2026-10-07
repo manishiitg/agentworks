@@ -718,10 +718,12 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 				}
 			}
 		case "diagnostic":
+			// b.mu is already held for this whole switch. Locking it again here
+			// deadlocked the reader on the first versioned diagnostic, and then
+			// every Manager.Status caller behind it (RTS, 2026-10-07: all
+			// browser and tool calls hung for 58 minutes).
 			if validExtensionVersion(e.Version) {
-				b.mu.Lock()
 				b.version = e.Version
-				b.mu.Unlock()
 			}
 			if time.Since(diagnosticWindow) >= time.Minute {
 				diagnosticWindow, diagnosticCount = time.Now(), 0

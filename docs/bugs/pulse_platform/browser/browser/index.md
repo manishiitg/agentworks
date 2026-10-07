@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-678](plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 |
 | [PLAT-662](plat-662.md) | Leftover agent-browser drivers after CDP workflow runs | open | P3 |
 | [PLAT-643](plat-643.md) | Show the extension version and update status in the browser panel | fixed on main | P2 |
 | [PLAT-636](plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 |

@@ -48,7 +48,7 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	if !reply.Diagnostics {
 		t.Fatal("server did not negotiate the optional diagnostics channel")
 	}
-	extension.WriteJSON(envelope{Type: "diagnostic", Event: "command_started", Method: "Page.navigate", TabID: 123, RequestID: "42"})
+	extension.WriteJSON(envelope{Type: "diagnostic", Event: "command_started", Method: "Page.navigate", TabID: 123, RequestID: "42", Version: "0.4.8"})
 	extension.WriteJSON(envelope{Type: "tabs", Tabs: 1})
 	if m.Lookup("bob", "project-one") != nil || m.Lookup("alice", "project-two") != nil {
 		t.Fatal("cross-account or cross-workspace lookup")
@@ -60,6 +60,10 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 			t.Fatal("tab announcement not received")
 		}
 		time.Sleep(time.Millisecond)
+	}
+	// A versioned diagnostic must not lock the binding twice (RTS deadlock, 2026-10-07).
+	if got := b.Status().ExtensionVersion; got != "0.4.8" {
+		t.Fatalf("extension version = %q, want 0.4.8", got)
 	}
 	if _, _, err := b.AcquireClient(context.Background(), "code-chat", false); err == nil || !strings.Contains(err.Error(), "CHROME_EXTENSION_UPDATE_REQUIRED") {
 		t.Fatal("old extension did not fail closed for Code multi-chat", err)
