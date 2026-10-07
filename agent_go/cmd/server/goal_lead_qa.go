@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// QA as the Goal Lead's sub-agent (PLAT-697 phase 4, design "Reviewers become
+// QA as the Pulse's sub-agent (PLAT-697 phase 4, design "Reviewers become
 // skills and sub-agents"): technical review and repair is long, noisy work
-// that would flood the persistent conversation, so the Goal Lead does not do
+// that would flood the persistent conversation, so the Pulse does not do
 // it there. record_pulse_qa_request records what to check; the scheduler starts
 // a separate Pulse fix run (Technical Review+Fix, its own session) when the
 // workflow is free, and when that run ends writes its short result back into
-// the Goal Lead conversation's log and into the next turn's context
-// (goal_lead.qa_results). The fix run judges the steps; the Goal Lead judges
+// the Pulse conversation's log and into the next turn's context
+// (goal_lead.qa_results). The fix run judges the steps; the Pulse judges
 // the effect on the goal (the proposer is not the evaluator).
 
 const goalLeadQARequestsSchema = `CREATE TABLE IF NOT EXISTS goal_lead_qa_requests (
@@ -122,7 +122,7 @@ func recentGoalLeadQAResults(ctx context.Context, workspacePath string, limit in
 
 // launchGoalLeadQARequests runs on every scheduler tick with the other Pulse
 // launchers: it starts a fix run for a pending request and reports a finished
-// one back to the Goal Lead conversation.
+// one back to the Pulse conversation.
 func (s *SchedulerService) launchGoalLeadQARequests(ctx context.Context) {
 	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
 		return
@@ -163,14 +163,14 @@ func (s *SchedulerService) advanceGoalLeadQARequests(ctx context.Context, worksp
 			if s.runningPulseRuns() >= maxConcurrentPulseRuns {
 				return
 			}
-			runID, err := s.TriggerPulseFixRun(workspacePath, "the Goal Lead asked: "+req.Reason)
+			runID, err := s.TriggerPulseFixRun(workspacePath, "the Pulse asked: "+req.Reason)
 			if err != nil {
 				// The workflow or another Pulse is running; a later tick retries.
 				continue
 			}
 			_, _ = db.ExecContext(ctx, `UPDATE goal_lead_qa_requests SET status='started', run_id=? WHERE id=?`, runID, req.ID)
 			_ = insertGoalLeadMessage(ctx, db, GoalLeadMessage{Role: "qa", Source: "started", Text: "QA run started for: " + req.Reason}, now)
-			scheduleLogf("[GOAL LEAD] QA run %s started for %s: %s", runID, workspacePath, req.Reason)
+			scheduleLogf("[PULSE] QA run %s started for %s: %s", runID, workspacePath, req.Reason)
 		case "started":
 			entry, found := findScheduleRun(ctx, workspacePath, req.RunID)
 			if !found {

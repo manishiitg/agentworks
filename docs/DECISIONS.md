@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — For a workflow with a goal, Pulse owns QA and Architecture; users see "Pulse", not "Goal Lead"
+
+A workflow with a goal (soul.md plus a primary metric) has one Pulse: its persistent conversation. The full pass runs
+Gate, Goal Work in that conversation and Finalize, with no Architecture or Technical turn
+(`pulsemodules.PassOrder`); Architecture is its skill and QA a fix run it requests. Automatic fix runs no longer
+start for these workflows; instead code wakes the conversation once per failed run for a short turn, and its goal
+check reads failed runs, `CONCERNS:` lines and open issues (`run_health`), asking for QA when a failure threatens the
+goal. The Pulse tab shows no Technical or Architecture panels for them. Workflows without a goal are unchanged. The
+name users and agents see is Pulse ("Substack Pulse"); code keeps `goal_lead` names; `ask_pulse` replaces
+`ask_goal_lead` and the Slack slug is `<workflow-slug>-pulse`, with the old names accepted for one release. Why:
+owner, 2026-10-07: the separate reviews duplicated the goal's owner, which did not really own its workflow; and the
+owner prefers the name Pulse. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-07 — The Goal Lead is one persistent conversation per workflow goal
 
 Each workflow with a goal (soul.md plus a primary metric) has one Goal Lead conversation, a chat kind of its own:

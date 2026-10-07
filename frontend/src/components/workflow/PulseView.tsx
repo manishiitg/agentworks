@@ -138,6 +138,7 @@ export default function PulseView({
               focusAreas={focusAreas}
               focusSaving={focusSaving}
               onSaveFocusAreas={onSaveFocusAreas}
+              goalLeadOwnsReviews={!!goalStatus?.goal_lead}
             />
           )}
         </div>

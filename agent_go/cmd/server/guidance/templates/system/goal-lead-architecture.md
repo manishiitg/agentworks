@@ -1,7 +1,10 @@
-## Goal Lead skill: architecture review
+## Pulse skill: architecture review
 
-Use when a structural question about the workflow comes up: is there a
-materially better way to build the approach the owner already chose? You judge
+For a workflow with a goal this is the only architecture review: the full Pulse
+pass runs no separate Architecture turn. Use it when your checks raise a
+structural question (a step that is slow, costly or retried, repeated handoff
+trouble, prompts over their budget): is there a materially better way to build
+the approach the owner already chose? You judge
 structure, not product direction (that is the goal and Goal Work) and not a
 broken step (that is a QA request).
 

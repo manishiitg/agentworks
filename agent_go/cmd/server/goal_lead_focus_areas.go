@@ -17,10 +17,10 @@ import (
 // memory (what was learned). Stored in the existing pulse.focus_areas of
 // workflow.json, which stays the list of active areas every reader already
 // uses (Goal Work's view, the settings editor); pulse.focus_area_details adds
-// each area's lifecycle: proposed by the Goal Lead or added by the owner, an
+// each area's lifecycle: proposed by the Pulse or added by the owner, an
 // end date, its own check, daily tracking, and how it closed (with a lesson).
 //
-//   - The Goal Lead proposes (record_pulse_focus_area action=propose); it never
+//   - The Pulse proposes (record_pulse_focus_area action=propose); it never
 //     starts one silently. The owner confirms, rejects or adds one in the Pulse
 //     tab; confirming adds the text to pulse.focus_areas.
 //   - At most goalLeadMaxActiveFocusAreas are active or proposed at once.
@@ -135,7 +135,7 @@ func parseFocusEndDate(value string, now time.Time) (string, error) {
 
 // focusAreaChange is one change to a workflow's focus areas.
 type focusAreaChange struct {
-	Action   string // propose, track, close (Goal Lead); confirm, reject, add, extend, close (owner)
+	Action   string // propose, track, close (Pulse); confirm, reject, add, extend, close (owner)
 	ID       string
 	Text     string
 	EndDate  string

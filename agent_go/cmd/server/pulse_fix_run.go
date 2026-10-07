@@ -17,7 +17,8 @@ import (
 // a workflow has something to fix: an open workflow issue, a new step concern,
 // or a failed scheduled run. A stable workflow with nothing to fix gets none,
 // so Pulse is fast while there are problems and quiet once there are not.
-// Fix runs never move the full Pulse schedule.
+// Fix runs never move the full Pulse schedule. A workflow with a goal gets
+// fix runs only when its Pulse conversation asks (goal_lead_qa.go).
 
 const (
 	pulseFixRunScheduleID = "pulse-fix-run"
@@ -224,6 +225,13 @@ func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
 			continue
 		}
 		workspacePath := item.WorkspacePath
+		// A workflow with a goal gets no automatic fix run: its Pulse
+		// conversation is woken once per failed run and asks for QA itself
+		// (goal_lead_owns_reviews.go, PLAT-697).
+		if workflowHasGoal(ctx, workspacePath) {
+			s.wakeGoalLeadOnRunFailures(ctx, workspacePath, now)
+			continue
+		}
 		lastFix, fixesLastDay, err := pulseFixRunHistory(ctx, workspacePath, now)
 		if err != nil {
 			scheduleLogf("[PULSE] cannot read fix-run history for %s: %v", workspacePath, err)

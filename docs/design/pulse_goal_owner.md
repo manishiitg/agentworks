@@ -1,9 +1,9 @@
-# Goal Lead: Pulse as the goal owner
+# Pulse as the goal owner
 
-Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: the Goal Lead as its own persistent chat kind, see "Phase 4 as built"); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
 
-Name (owner, 2026-10-07): **Goal Lead**, e.g. "Substack Goal Lead". It replaces "Pulse" as the agent users see.
-In user text, "lead" means the Goal Lead only; sales prospects are "prospects" or "contacts" there.
+Name (owner, 2026-10-07, second decision): users and agents see **Pulse**, e.g. "Substack Pulse". It was called
+"Goal Lead" while phases 0-4 were built; code names (`goal_lead_*` files, tables and types) keep that name.
 
 ## Why
 
@@ -52,7 +52,7 @@ preference" instead of guessing one.
 
 ## A new chat kind, not a Crew
 
-| | Crew | Workflow chat (Builder/Run) | Goal Lead |
+| | Crew | Workflow chat (Builder/Run) | Pulse |
 |---|---|---|---|
 | Lives in | its own Crew folder | the workflow | the workflow (its Pulse area) |
 | Access | its own folder | Builder read/write, Run read + execute | the workflow: Run by default, Builder typed tools per autonomy |
@@ -65,7 +65,7 @@ preference" instead of guessing one.
 | Slack | by slug | no | by slug |
 
 It reuses the Crew runtime pieces (persistent conversation, memory, schedules, function calls, Slack slugs) and the
-workflow chat's access model. It is not a Crew: Crews are user-owned, shared and listed; making the Goal Lead one
+workflow chat's access model. It is not a Crew: Crews are user-owned, shared and listed; making the Pulse one
 would mean hiding and locking Crew features and routing workflow access through Crew sharing.
 
 ### Access to the workflow
@@ -83,12 +83,12 @@ read/write, Run read-only + server-executed actions; `project_instruction_files.
 | `soul.md` | read only; edits are proposed to the owner |
 
 The sandbox role (Run by default, Builder tools per action when allowed) enforces the autonomy levels, replacing
-prompt-only enforcement. A later cross-workflow Goal Lead gets read links to each workflow and changes them only by
-asking that workflow's Goal Lead or Builder.
+prompt-only enforcement. A later cross-workflow Pulse gets read links to each workflow and changes them only by
+asking that workflow's Pulse or Builder.
 
 ## Job description
 
-For anything the goal needs, the Goal Lead does it within its autonomy, gets the right skill or agent to do it, or
+For anything the goal needs, the Pulse does it within its autonomy, gets the right skill or agent to do it, or
 turns it into one clear ask for the owner. Nothing just sits in a list.
 
 | Area | Owns | Stops at |
@@ -108,7 +108,7 @@ turns it into one clear ask for the owner. Nothing just sits in a list.
 
 ## Focus areas
 
-`pulse.focus_areas` today only steers attention and is set once and forgotten. The Goal Lead owns their lifecycle:
+`pulse.focus_areas` today only steers attention and is set once and forgotten. The Pulse owns their lifecycle:
 
 1. **Proposes** them from the goal check, results, or the owner's words in chat; at most 2-3 active.
 2. **Turns each into work:** what to run, which skills or sub-agents, and a check of its own ("drafts waiting 3 → 0").
@@ -117,19 +117,19 @@ turns it into one clear ask for the owner. Nothing just sits in a list.
 5. **Learns** from closed focuses.
 
 Every focus has an end date. The owner confirms, changes or rejects proposals with one click and can add his own; the
-Goal Lead never starts one silently. Focus areas change what it attends to, never what it is allowed to do.
+Pulse never starts one silently. Focus areas change what it attends to, never what it is allowed to do.
 
 | Layer | Answers | Changes | Set by |
 |---|---|---|---|
 | `soul.md` | what the goal is | rarely | owner |
-| Focus areas | what matters now | about weekly | Goal Lead proposes, owner confirms |
-| Memory | what was tried, decided, learned | constantly | Goal Lead |
+| Focus areas | what matters now | about weekly | Pulse proposes, owner confirms |
+| Memory | what was tried, decided, learned | constantly | Pulse |
 
 ## Dashboard
 
 Per workflow (the Pulse tab, top to bottom): goal status (on track / at risk / off track / not measured, key number,
 trend, last measured); Needs you (each with a recommendation, Accept / Change, waiting time, what it blocks); focus
-areas; what the Goal Lead did (decision, why, result, undo where possible); the chat; and behind a details tab the QA
+areas; what the Pulse did (decision, why, result, undo where possible); the chat; and behind a details tab the QA
 and Architecture findings, Workflow Review results, the editable memory and the full decision log.
 
 Across workflows: one row per goal, sorted by needs-you then off track: goal, status, needs-you count, last measured,
@@ -221,16 +221,16 @@ Pulse today also carries housekeeping: its finalizer runs Backup → Publish →
 |---|---|---|
 | Backup | saving workflow state and history | an after-run option of the workflow (and/or a daily job) in Backup/History settings; code only |
 | Publish | refreshing the published dashboard snapshot | an after-run option in Publish settings ("republish after each run") |
-| Notify | run finished / failed / report ready | the run's notification settings; separate from the Goal Lead's daily goal message |
-| Recent activity | log of runs, edits, reviews | the workflow's Activity / History tab; the Goal Lead shows only its own decisions |
+| Notify | run finished / failed / report ready | the run's notification settings; separate from the Pulse's daily goal message |
+| Recent activity | log of runs, edits, reviews | the workflow's Activity / History tab; the Pulse shows only its own decisions |
 | Plan Drift (Workflow Review) | plan consistency after changes | the pre-run check (phase 0) |
 
 - `pulse_mode` (off / basic / full) goes away: a schedule has after-run checkboxes (backup, publish, notify). The
-  Goal Lead runs on its own triggers, never through a schedule's mode.
+  Pulse runs on its own triggers, never through a schedule's mode.
 - Backup and publish no longer wait on or depend on an AI pass.
-- Two kinds of messages: run notifications (per run, optional) and the Goal Lead's goal message (daily, per goal).
+- Two kinds of messages: run notifications (per run, optional) and the Pulse's goal message (daily, per goal).
 - After this "Pulse" as a bundle is gone: Workflow Review before runs, housekeeping after runs, history in Activity,
-  and the Goal Lead owning the goal with QA and Architecture as its skills and sub-agents.
+  and the Pulse owning the goal with QA and Architecture as its skills and sub-agents.
 
 ## Scope and phases
 
@@ -252,16 +252,45 @@ with one owner per workflow goal; a goal spanning workflows is a later phase.
   native session and an API model replays its transcript (the Crew and workflow-ask path). The CLI's own compaction
   bounds it; after 30 days or 90 turns the next goal check starts generation N+1 and goal memory carries over.
 - **Turns.** Daily goal check and the full Pulse's Goal Work (scheduler, same receipts as before), the owner's
-  messages (Pulse tab), `ask_goal_lead` (workflow chats and steps, function call, 20 an hour), Slack. Each runs as
+  messages (Pulse tab), `ask_pulse` (old name `ask_goal_lead`, kept for one release; workflow chats and steps,
+  function call, 20 an hour), Slack, and a failed run (below). Each runs as
   the workflow's execution owner on its Builder runtime as a Pulse turn, held by the phase 2 guard to
   `pulse.autonomy`. Kernel Run mode (Landlock read-only) is not used yet: Goal Work writes drafts under `pulse/work/`.
 - **Skills and sub-agents.** `goal-lead-check.md`, `goal-lead-work.md`, `goal-lead-architecture.md` (about 40 lines
   each). QA: `record_pulse_qa_request`; the scheduler starts a Pulse fix run when the workflow is free and writes its
-  short result back. The full Pulse's Architecture and Technical reviews are unchanged.
+  short result back. For a workflow with a goal the full pass runs no Architecture or Technical turn (below).
 - **Focus areas.** `pulse.focus_areas` stays the active list; `pulse.focus_area_details` holds each area's end date,
   check, status, tracking and closing lesson. At most three open; proposals wait for the owner's confirm.
 - **Pulse tab.** Goal status card, focus areas, Needs you, decision log, memory, then the conversation with an input.
-- **Slack.** `<workflow-slug>-goal` on any app that reaches the workflow; the thread or DM stays bound to it.
+- **Slack.** `<workflow-slug>-pulse` on any app that reaches the workflow (`-goal` still works for one release);
+  the thread or DM stays bound to it.
+
+## QA and Architecture owned by Pulse (as built)
+
+Owner decision (2026-10-07): for a workflow with a goal (a goal plus a primary metric, `workflowHasGoal`), the full
+pass ran its own Architecture and Technical turns next to the goal's conversation: duplication, and the goal's
+owner did not own its workflow. Now that conversation is the only Pulse of such a workflow.
+
+- **Pass order.** `pulsemodules.PassOrder(hasGoal)`: Gate, Goal Work (in the conversation), Finalize. Gate is told
+  Architecture and Technical are not its to select, and its worklist records them not due
+  (`keepGoalLeadReviewsOutOfPulse`); one a backend rule still makes due (a pending recovery, the prompt budget, a
+  protected boundary) is closed as skipped by code, which also clears its recovery. Workflows without a goal keep
+  Goal Work, Architecture, Technical.
+- **Architecture** is the conversation's skill (`goal-lead-architecture.md`), used when its checks raise a
+  structural question.
+- **QA** runs only when the conversation asks (`record_pulse_qa_request` -> a fix run, result back into it). The
+  automatic fix runs (open issues, new step concerns, failed runs) no longer start for these workflows.
+- **Safety net.** Code decides a run failed (a workflow run, not a Pulse pass, with status error, failed or
+  interrupted in the last day); the tick gives the conversation one short turn for it, at most once per failed run
+  (`goal_lead_run_failures`), with Run, Outward and Change held: it asks for QA when the failure blocks or threatens
+  the goal, and says in one line why the others can wait. The goal check's context carries `run_health` since the
+  last check: failed runs with their error, steps' `CONCERNS:` lines, the open issue count and schedule run health,
+  what Technical read after runs; its skill says to request QA for a failure that threatens the goal and note the
+  others.
+- **Fast requests** still start an earlier full pass, which for these workflows is Goal Work in the conversation.
+- **Pulse tab.** No Technical or Architecture panels or run-history columns for these workflows; a line says the
+  workflow's Pulse handles them. Their output shows in the conversation (QA results, replies) and the decision log.
+  Workflow Review and maintenance issues stay.
 
 ## Risks
 

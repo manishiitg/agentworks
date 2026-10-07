@@ -8,11 +8,11 @@ import { openReportHumanInputAnswerInChat } from '../../utils/reportHumanInputCh
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { FocusAreasCard, GoalLeadChat } from './GoalLeadConversation'
 
-// The Goal Lead's part of the Pulse tab (PLAT-697 phase 3), under the goal
-// status card: Needs you with the Goal Lead's recommendation (Accept / Change,
+// The Pulse's part of the Pulse tab (PLAT-697 phase 3), under the goal
+// status card: Needs you with the Pulse's recommendation (Accept / Change,
 // how long it has waited, what it blocks), the decision log (what it
 // recommended, why, what the owner did, what happened after), and the goal
-// memory the owner can read and edit. The Goal Lead recommends; only the
+// memory the owner can read and edit. The Pulse recommends; only the
 // owner answers.
 
 /** "3 days", "5 hours", "a few minutes" since an ISO time. */
@@ -84,12 +84,12 @@ export function NeedsYouCard({ input, workspacePath, onAnswered }: {
     </div>
     <h4 className="mt-1 text-sm font-semibold leading-snug text-foreground">{input.question}</h4>
     {rec ? <div className="mt-2 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-2 text-xs">
-      <p><span className="font-semibold text-foreground">Goal Lead recommends: </span>{recommendedLabel(input, rec)}
+      <p><span className="font-semibold text-foreground">Pulse recommends: </span>{recommendedLabel(input, rec)}
         <span className="text-muted-foreground"> · {rec.confidence} confidence</span></p>
       <p className="mt-1 leading-5 text-muted-foreground">{rec.why}</p>
       {rec.evidence && <details className="mt-1"><summary className="cursor-pointer text-[11px] font-medium text-foreground/80">Evidence</summary>
         <p className="mt-1 whitespace-pre-line text-[11px] text-muted-foreground">{rec.evidence}</p></details>}
-      {rec.safe_default_by && <p className="mt-1 text-[11px] text-muted-foreground">Safe default if you do not answer: this option by {new Date(rec.safe_default_by).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. The Goal Lead does not apply it on its own yet.</p>}
+      {rec.safe_default_by && <p className="mt-1 text-[11px] text-muted-foreground">Safe default if you do not answer: this option by {new Date(rec.safe_default_by).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. The Pulse does not apply it on its own yet.</p>}
     </div> : <p className="mt-2 text-xs text-muted-foreground">No recommendation yet; the next goal check adds one.</p>}
     <div className="mt-2 flex flex-wrap items-center gap-2">
       {rec && <button type="button" onClick={accept} disabled={busy}
@@ -124,7 +124,7 @@ function DecisionLog({ entries }: { entries: PulseDecisionLogEntry[] }) {
   if (entries.length === 0) return null
   const shown = all ? entries : entries.slice(0, 5)
   return <section aria-label="Decision log" className="rounded-lg border bg-background p-3">
-    <div className="flex items-center gap-2"><ScrollText className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">What the Goal Lead recommended</h3></div>
+    <div className="flex items-center gap-2"><ScrollText className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">What Pulse recommended</h3></div>
     <ul className="mt-1 divide-y">
       {shown.map(entry => <li key={entry.input_id} className="py-2 text-xs">
         <p className="font-medium text-foreground">{entry.question || entry.input_id}</p>
@@ -157,7 +157,7 @@ function GoalMemory({ workspacePath, memory, path, onSaved }: { workspacePath: s
   }
   return <details className="rounded-lg border bg-background px-3 py-2 text-xs">
     <summary className="cursor-pointer font-semibold">Goal memory <span className="font-normal text-muted-foreground">· {entries} entries</span></summary>
-    <p className="mt-1 text-[11px] text-muted-foreground">What the Goal Lead remembers about how you want this goal managed: your answers, decisions and results, lessons, open bets. Your goal in soul.md always wins. Stored in {path || 'memory/goal.md'}.</p>
+    <p className="mt-1 text-[11px] text-muted-foreground">What Pulse remembers about how you want this goal managed: your answers, decisions and results, lessons, open bets. Your goal in soul.md always wins. Stored in {path || 'memory/goal.md'}.</p>
     <textarea aria-label="Goal memory" value={draft} onChange={event => setDraft(event.target.value)} rows={10}
       placeholder="Nothing yet. Your answers to decisions are added here automatically."
       className="mt-2 w-full rounded-md border bg-background p-2 font-mono text-[11px] leading-5" />
@@ -193,7 +193,7 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
-  // While the Goal Lead is answering, refresh until its reply is in.
+  // While the Pulse is answering, refresh until its reply is in.
   const messages = conversation?.messages || []
   const busy = Boolean(conversation?.busy) || messages[messages.length - 1]?.role === 'owner'
   useEffect(() => {
@@ -203,7 +203,7 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
   }, [busy, load])
   useLiveRefetch(() => { void load() }, { kinds: ['human_inputs'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0 })
 
-  return <div className="mb-3 space-y-3" aria-label="Goal Lead">
+  return <div className="mb-3 space-y-3" aria-label="Pulse">
     <FocusAreasCard workspacePath={workspacePath} areas={focusAreas} onChanged={() => void load()} />
     {pending.length > 0 && <section aria-label="Needs you" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
       <div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-amber-600 dark:text-amber-300" />

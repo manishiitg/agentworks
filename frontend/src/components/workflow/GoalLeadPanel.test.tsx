@@ -23,7 +23,7 @@ import { agentApi } from '../../services/api'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { GoalLeadPanel, NeedsYouCard } from './GoalLeadPanel'
 
-// PLAT-697 phase 3: the Goal Lead recommends, the owner confirms with one click.
+// PLAT-697 phase 3: the Pulse recommends, the owner confirms with one click.
 describe('Needs you card', () => {
   it('shows the recommendation, waiting time and what it blocks, and Accept answers with the recommended option', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -44,7 +44,7 @@ describe('Needs you card', () => {
     try {
       await act(async () => root.render(<NeedsYouCard input={input} workspacePath={workspace} />))
       const text = container.textContent || ''
-      expect(text).toContain('Goal Lead recommends: Resume growth runs')
+      expect(text).toContain('Pulse recommends: Resume growth runs')
       expect(text).toContain('Waiting 3 days')
       expect(text).toContain("Blocks: Friday's growth run")
       expect(text).toContain('Change')
@@ -62,9 +62,9 @@ describe('Needs you card', () => {
   })
 })
 
-// PLAT-697 phase 4: the Goal Lead's conversation sits in the Pulse tab with an
+// PLAT-697 phase 4: the Pulse's conversation sits in the Pulse tab with an
 // input, and its focus-area proposals are confirmed with one click.
-describe('Goal Lead conversation and focus areas', () => {
+describe('Pulse conversation and focus areas', () => {
   it('shows the conversation, sends the owner message and confirms a proposed focus area', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     const workspace = 'Workflow/substack'
@@ -83,7 +83,7 @@ describe('Goal Lead conversation and focus areas', () => {
       await act(async () => root.render(<GoalLeadPanel workspacePath={workspace} />))
       const text = container.textContent || ''
       expect(text).toContain('Not measured for 20 days')
-      expect(text).toContain('Goal Lead proposes')
+      expect(text).toContain('Pulse proposes')
       expect(text).toContain('drafts waiting 3 -> 0')
 
       const confirm = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Confirm')
@@ -91,7 +91,7 @@ describe('Goal Lead conversation and focus areas', () => {
       await act(async () => { confirm!.click() })
       expect(agentApi.updateGoalLeadFocusArea).toHaveBeenCalledWith(workspace, { action: 'confirm', id: 'FA-1' })
 
-      const input = container.querySelector('textarea[aria-label="Message to the Goal Lead"]') as HTMLTextAreaElement
+      const input = container.querySelector('textarea[aria-label="Message to Pulse"]') as HTMLTextAreaElement
       expect(input).toBeTruthy()
       await act(async () => {
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Why did you pause the growth runs?')

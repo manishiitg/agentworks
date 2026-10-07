@@ -10,7 +10,7 @@ import (
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 )
 
-// PLAT-697 phase 3 (owner, 2026-10-07): the Goal Lead recommends, the owner
+// PLAT-697 phase 3 (owner, 2026-10-07): the Pulse recommends, the owner
 // decides. A Pulse turn may attach a recommendation to a decision but cannot
 // answer it; the owner's Accept answers with the recommended option, marks the
 // recommendation accepted in the decision log and copies the answer into goal
@@ -73,7 +73,7 @@ func TestGoalLeadRecommendsAndOnlyTheOwnerAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(memory, `[owner answer] Asked "Resume the growth runs?", the owner chose "Resume growth runs" (the Goal Lead's recommendation).`) {
+	if !strings.Contains(memory, `[owner answer] Asked "Resume the growth runs?", the owner chose "Resume growth runs" (the Pulse's recommendation).`) {
 		t.Fatalf("goal memory has no owner-answer line:\n%s", memory)
 	}
 }

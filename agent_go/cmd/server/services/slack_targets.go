@@ -31,7 +31,7 @@ type SlackTargetRef struct {
 	// AddedBy records who attached the target, for audit.
 	AddedBy string `json:"added_by,omitempty"`
 	// Agent names an agent of the target other than its own chat: "goal_lead"
-	// is a workflow's Goal Lead, reached as "<workflow-slug>-goal" (PLAT-697
+	// is a workflow's Pulse, reached as "<workflow-slug>-pulse" (PLAT-697
 	// phase 4). It is never attached on its own; it rides on its workflow.
 	Agent string `json:"agent,omitempty"`
 }

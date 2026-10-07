@@ -146,6 +146,24 @@ var ExecutionOrder = []string{
 	TechnicalReviewID,
 }
 
+// GoalLeadExecutionOrder is the full pass of a workflow with a goal (PLAT-697,
+// "QA and Architecture owned by the Pulse"): only Goal Work, in the
+// workflow's Pulse conversation. Architecture is that conversation's skill and
+// QA (Technical Review+Fix) runs only when it asks for it, so neither runs as
+// its own turn in the pass.
+var GoalLeadExecutionOrder = []string{
+	StrategicReviewID,
+}
+
+// PassOrder is the module order of a full Pulse pass: ExecutionOrder for a
+// workflow without a goal, GoalLeadExecutionOrder for one with a goal.
+func PassOrder(hasGoal bool) []string {
+	if hasGoal {
+		return GoalLeadExecutionOrder
+	}
+	return ExecutionOrder
+}
+
 // PseudoIDs are data-module values that appear in builder/improve.html but are
 // not scheduled review modules. run_summary covers Gate and run rows; fixes
 // and decisions belong to their actual Technical or Strategic

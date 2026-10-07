@@ -15,7 +15,7 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// Goal Lead phase 1 (PLAT-697, docs/design/pulse_goal_owner.md): the goal
+// Pulse phase 1 (PLAT-697, docs/design/pulse_goal_owner.md): the goal
 // check comes first. Code computes the cheap facts (is the goal measured, does
 // the goal-driving work run, the silence alarm; pkg/goalcheck). One short
 // agent turn a day judges them: "on track" ends the turn, otherwise it acts
@@ -85,6 +85,9 @@ type GoalStatusView struct {
 	Facts       goalcheck.Facts `json:"facts"`
 	LatestCheck *PulseGoalCheck `json:"latest_check,omitempty"`
 	Note        string          `json:"note"`
+	// GoalLead: the workflow's Pulse conversation owns QA and architecture
+	// (set for the Pulse tab only).
+	GoalLead bool `json:"goal_lead,omitempty"`
 }
 
 func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
@@ -424,16 +427,16 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 	if encoded, err := json.Marshal(goalLeadAgentContext(ctx, workspacePath)); err == nil {
 		goalLead = string(encoded)
 	}
-	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`PULSE DAILY GOAL CHECK. pulse_run_id=%q. One short turn; no Gate, reviewers or finalizer follow. You are the workflow's Goal Lead: the goal comes first.
+	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`PULSE DAILY GOAL CHECK. pulse_run_id=%q. One short turn; no Gate, reviewers or finalizer follow. You are the workflow's Pulse: the goal comes first.
 
 Code-computed goal facts (the silence alarm; already current, do not recompute them):
 %s
 
-Goal Lead context: goal memory (memory/goal.md), pending decisions to recommend on, answered decisions whose outcome is still to record, focus areas, and QA results that came back:
+Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, answered decisions whose outcome is still to record, focus areas, QA results that came back, and run health (failed runs, steps' CONCERNS: lines, open issues since your last check):
 %s
 
 1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Decide: is the goal measured, is it moving, is the work that drives it running?
-2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so. For each active focus area in focus_areas, call record_pulse_focus_area(action="track") with moving, stuck (and the one clear ask) or done; close a done or expired one with action="close" and a one-line lesson (for an expired one, say why and propose extend, change or drop). A step that looks broken is a record_pulse_qa_request, not work for this turn.
+2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so. For each active focus area in focus_areas, call record_pulse_focus_area(action="track") with moving, stuck (and the one clear ask) or done; close a done or expired one with action="close" and a one-line lesson (for an expired one, say why and propose extend, change or drop). Read run_health: no separate Technical review runs after this workflow's runs, so you are its safety net. For a failed run or step that blocks or threatens the goal, call record_pulse_qa_request once with the run, step and symptom; note the other failures and concerns in one line in your summary. Do not repair steps in this turn.
 3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary) and stop. No notification.
 4. Otherwise act within the permission levels below, smallest useful step first. Run auto: you may run the existing goal-driving step or route once when it is clearly what the goal needs and every constraint holds. Outward and Change follow their own level; at ask, prepare it. Then, if the owner is needed, create ONE batched create_human_input_request(source="strategic_review", input_id="goal-check-<date>") that names the problem in one line, and attach your recommendation to it with record_pulse_recommendation (with a safe default by a time only when one is safe); the owner confirms recommendations. Reuse a pending goal-check decision instead of creating another. Never guess the owner's preference: say you do not know it.
 5. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when you created one.

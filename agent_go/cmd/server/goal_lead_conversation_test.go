@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// PLAT-697 phase 4: the Goal Lead is one persistent conversation per
+// PLAT-697 phase 4: the Pulse is one persistent conversation per
 // workflow. The daily goal check on two consecutive days runs in the same
 // conversation (the second day resumes it instead of starting fresh), and a
 // workflow chat's ask_goal_lead is answered there with a recommendation.
@@ -33,7 +33,7 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 		defer mu.Unlock()
 		sessions = append(sessions, sessionID)
 		requests = append(requests, reqMap)
-		if strings.Contains(fmt.Sprint(reqMap["query"]), "GOAL LEAD TURN: [Function call") {
+		if strings.Contains(fmt.Sprint(reqMap["query"]), "PULSE TURN: [Function call") {
 			return internalSessionTurnResult{FinalResponse: "I recommend running the growth route today: it has not run for 11 days. Posting more often is the owner's call."}, nil
 		}
 		return internalSessionTurnResult{FinalResponse: "Not measured for 20 days; asked the owner to resume the growth runs."}, nil
@@ -57,10 +57,10 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 
 	mu.Lock()
 	if len(sessions) != 2 || sessions[0] != sessions[1] || !isGoalLeadSessionID(sessions[0]) {
-		t.Fatalf("sessions = %v, want one Goal Lead conversation on both days", sessions)
+		t.Fatalf("sessions = %v, want one Pulse conversation on both days", sessions)
 	}
 	first, second := fmt.Sprint(requests[0]["query"]), fmt.Sprint(requests[1]["query"])
-	if !strings.Contains(first, "You are the Reports Goal Lead") || strings.Contains(second, "You are the Reports Goal Lead") {
+	if !strings.Contains(first, "You are the Reports Pulse") || strings.Contains(second, "You are the Reports Pulse") {
 		t.Fatalf("the charter must open the conversation once:\nday 1: %s\nday 2: %s", first, second)
 	}
 	if !strings.Contains(second, "daily goal check, 2026-10-08") || !strings.Contains(second, `pulse_run_id="run-day-2"`) {
@@ -71,7 +71,7 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 	}
 	mu.Unlock()
 
-	// A chat of the workflow asks; the answer is the Goal Lead's
+	// A chat of the workflow asks; the answer is the Pulse's
 	// recommendation, from the same conversation.
 	out, err := env.api.askGoalLead(ctx, "owner", ws, "sess-builder", "the Reports Builder chat", "Should I run the growth route again today?", 5*time.Second, "")
 	if err != nil {
@@ -83,7 +83,7 @@ func TestGoalLeadCheckContinuesItsConversationAndAnswersAsks(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(sessions) != 3 || sessions[2] != sessions[0] {
-		t.Fatalf("the ask must run in the Goal Lead conversation: %v", sessions)
+		t.Fatalf("the ask must run in the Pulse conversation: %v", sessions)
 	}
 	if ask := fmt.Sprint(requests[2]["query"]); !strings.Contains(ask, "Answer as a recommendation") || !strings.Contains(ask, "You do not decide for the owner") {
 		t.Fatalf("ask turn = %s", ask)

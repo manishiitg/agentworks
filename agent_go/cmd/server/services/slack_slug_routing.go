@@ -72,7 +72,7 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 	}
 	var matches []int
 	slug, rest := "", text
-	// goal: the slug was "<workflow-slug>-goal", the workflow's Goal Lead.
+	// goal: the slug was "<workflow-slug>-pulse", the workflow's Pulse.
 	goal := false
 	if isMention {
 		if word, remainder := SplitSlackSlugWord(text); word == "list" && remainder == "" {
@@ -88,7 +88,7 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 		}
 	}
 	if bound, found := LoadSlackThreadTarget(ctx, thread); found {
-		// A Goal Lead thread rides on its workflow's target.
+		// A Pulse thread rides on its workflow's target.
 		index := set.Find(bound.Ref.Base())
 		if index < 0 {
 			// Removed from the channel's list (or switched off): the thread
@@ -313,7 +313,7 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 			matches = append(matches, index)
 		}
 	}
-	// "<workflow-slug>-goal": the workflow's Goal Lead, for people who can
+	// "<workflow-slug>-pulse": the workflow's Pulse, for people who can
 	// reach the workflow.
 	goal := false
 	if len(matches) == 0 {

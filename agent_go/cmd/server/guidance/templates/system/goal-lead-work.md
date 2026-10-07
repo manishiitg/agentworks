@@ -1,4 +1,4 @@
-## Goal Lead skill: Goal Work (product)
+## Pulse skill: Goal Work (product)
 
 Decide and do the next goal-advancing work: work that moves the primary goal
 and that nobody is doing, or the owner does not know about. Plan compatibility,
@@ -9,7 +9,9 @@ architecture skill, a QA request).
    `get_goal_metrics` once and `get_pulse_state(view="goal_work")`: the active
    focus areas (start there), your earlier items and the autonomy levels. Read a
    few recent real outputs as their recipient would, and
-   `get_pulse_state(view="step_concerns")` for outcome concerns.
+   `get_pulse_state(view="step_concerns")` for outcome concerns. A failed run or
+   step in `run_health` (goal_status view) that blocks the goal is a
+   `record_pulse_qa_request`, not Goal Work.
 2. **Follow up.** For each earlier `done` item whose `check_at` has passed, set
    `effect` (`worked`, `no_effect`, `unclear`) with a short note through
    `record_pulse_goal_work(item_id=...)`. Missing measurement is `unclear`, never

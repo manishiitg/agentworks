@@ -128,8 +128,8 @@ type ChannelRoute struct {
 	WorkshopMode    string `json:"workshop_mode,omitempty"`
 	BotGrant        string `json:"bot_grant,omitempty"`
 	SendFullDetails bool   `json:"send_full_details,omitempty"`
-	// GoalLead routes the message to the workflow's Goal Lead conversation
-	// instead of a workflow chat (Slack "<workflow-slug>-goal", PLAT-697).
+	// GoalLead routes the message to the workflow's Pulse conversation
+	// instead of a workflow chat (Slack "<workflow-slug>-pulse", PLAT-697).
 	GoalLead bool `json:"goal_lead,omitempty"`
 }
 
@@ -1106,7 +1106,7 @@ func (m *BotConversationManager) threadHasOtherBot(thread ThreadID, ownRouteKey 
 
 // HandleIncomingMessage processes a message from any platform (async path)
 func (m *BotConversationManager) HandleIncomingMessage(msg BotIncomingMessage) {
-	// A workflow's Goal Lead ("<workflow-slug>-goal") answers in its own
+	// A workflow's Pulse ("<workflow-slug>-pulse") answers in its own
 	// persistent conversation, not in a bot session of this thread
 	// (slack_goal_lead.go).
 	if m.handleGoalLeadMessage(msg) {

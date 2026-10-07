@@ -40,14 +40,14 @@ var pulseScheduleToolNames = []string{
 	"record_pulse_fast_request",
 	// Goal Work items and constraint challenges (docs/design/pulse_goal_work.md).
 	"record_pulse_goal_work",
-	// The Goal Lead's daily goal check verdict (PLAT-697).
+	// The Pulse's daily goal check verdict (PLAT-697).
 	"record_pulse_goal_check",
 	// Phase 3: a recommendation on a decision (never an answer), the
 	// decision's outcome, and goal memory.
 	"record_pulse_recommendation",
 	"record_pulse_decision_outcome",
 	"record_pulse_goal_memory",
-	// Phase 4: the Goal Lead's focus areas and QA requests.
+	// Phase 4: the Pulse's focus areas and QA requests.
 	"record_pulse_focus_area",
 	"record_pulse_qa_request",
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// The Goal Lead answers decision requests as recommendations first (PLAT-697
+// The Pulse answers decision requests as recommendations first (PLAT-697
 // phase 3, owner 2026-10-07). On a workflow with a goal, the Pulse and daily
 // goal-check turns attach a structured recommendation to each pending
 // decision: the option, why, the evidence, a confidence, what it blocks and,
@@ -54,7 +54,7 @@ const pulseRecommendationsSchema = `CREATE TABLE IF NOT EXISTS pulse_recommendat
 	PRIMARY KEY (workspace_path, input_id)
 )`
 
-// PulseRecommendation is the Goal Lead's recommended answer to one decision
+// PulseRecommendation is the Pulse's recommended answer to one decision
 // request, and that decision's log entry.
 type PulseRecommendation struct {
 	InputID       string `json:"input_id"`
@@ -237,7 +237,7 @@ func recordPulseRecommendationFromToolArgs(ctx context.Context, args map[string]
 		return "", fmt.Errorf("decision %q was not found in %s", inputID, normalized)
 	}
 	if input.Source == "user_suggestion" {
-		return "", fmt.Errorf("a user suggestion is not a decision for the Goal Lead to recommend on")
+		return "", fmt.Errorf("a user suggestion is not a decision for the Pulse to recommend on")
 	}
 	if input.Status != "pending" {
 		return "", fmt.Errorf("decision %q is %s; recommend only on pending decisions", inputID, input.Status)
@@ -317,13 +317,13 @@ func recordPulseRecommendationFromToolArgs(ctx context.Context, args map[string]
 	}
 	msg := "Recommendation recorded. The owner confirms it with Accept or changes it; it is not an answer and nothing is applied until the owner answers."
 	if pulseAnswerMode(ctx, normalized) == "act" {
-		msg += " (pulse.autonomy.answer=act is not available yet; the Goal Lead recommends.)"
+		msg += " (pulse.autonomy.answer=act is not available yet; the Pulse recommends.)"
 	}
 	return msg, nil
 }
 
 // recordPulseDecisionOutcomeFromToolArgs backs record_pulse_decision_outcome:
-// what happened after a decision the Goal Lead recommended on.
+// what happened after a decision the Pulse recommended on.
 func recordPulseDecisionOutcomeFromToolArgs(ctx context.Context, args map[string]interface{}) (string, error) {
 	workspacePath := stringToolArg(args, "workspace_path")
 	inputID := stringToolArg(args, "input_id")
@@ -350,7 +350,7 @@ func recordPulseDecisionOutcomeFromToolArgs(ctx context.Context, args map[string
 		return "", err
 	}
 	if n, _ := result.RowsAffected(); n == 0 {
-		return "", fmt.Errorf("decision %q has no Goal Lead recommendation in %s", inputID, normalized)
+		return "", fmt.Errorf("decision %q has no Pulse recommendation in %s", inputID, normalized)
 	}
 	return "Outcome recorded in the decision log. Add a lesson to goal memory when there is one.", nil
 }
@@ -441,11 +441,15 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the autonomy levels. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
 		"outcomes_due":           outcomesDue,
 		"outcomes_note":          "Decisions the owner answered over a day ago with no outcome yet: record what happened after with record_pulse_decision_outcome (from runs and goal readings), and a lesson in goal memory when there is one.",
-		// Phase 4: focus areas and the QA runs the Goal Lead asked for.
+		// Phase 4: focus areas and the QA runs the Pulse asked for.
 		"focus_areas":      focusAreasForView(ctx, workspacePath),
 		"focus_areas_note": "Focus areas: what matters now, each with an end date and its own check. Track every active one (record_pulse_focus_area action=track), close done or expired ones with a lesson (action=close), and propose one only from evidence or the owner's words (action=propose, at most three open). Proposals wait for the owner's one-click confirm; never treat one as active before that.",
 		"qa_results":       recentGoalLeadQAResults(ctx, workspacePath, 5),
 		"qa_results_note":  "QA runs you asked for with record_pulse_qa_request: a separate run checks and repairs, and its short result is here. Judge the effect on the goal yourself; the run judged the steps.",
+		// No Technical turn runs after a goal workflow's runs any more: the
+		// failures it caught come here (goal_lead_owns_reviews.go).
+		"run_health":      goalLeadRunHealth(ctx, workspacePath, goalLeadRunHealthSince(ctx, workspacePath, time.Now().UTC())),
+		"run_health_note": goalLeadRunHealthNote,
 	}
 }
 
@@ -468,7 +472,7 @@ func (api *StreamingAPI) handleGetGoalLead(w http.ResponseWriter, r *http.Reques
 		"memory_path":  workspacePath + "/" + goalMemoryRelPath,
 		"decision_log": entries,
 		"answer_mode":  pulseAnswerMode(r.Context(), workspacePath),
-		// Phase 4: the Goal Lead conversation (created here on first open when
+		// Phase 4: the Pulse conversation (created here on first open when
 		// the workflow has a goal) and the focus areas.
 		"conversation": api.goalLeadConversationView(r.Context(), workspacePath),
 		"focus_areas":  focusAreasForView(r.Context(), workspacePath),
@@ -511,7 +515,7 @@ func (api *StreamingAPI) handlePutGoalMemory(w http.ResponseWriter, r *http.Requ
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
-// createGoalLeadTools are the Goal Lead's phase 3 writes: a recommendation on
+// createGoalLeadTools are the Pulse's phase 3 writes: a recommendation on
 // a decision (never an answer), a decision's outcome, and goal memory.
 func createGoalLeadTools() []llmtypes.Tool {
 	entry := map[string]interface{}{
@@ -523,7 +527,7 @@ func createGoalLeadTools() []llmtypes.Tool {
 	return []llmtypes.Tool{
 		{Type: "function", Function: &llmtypes.FunctionDefinition{
 			Name:        "record_pulse_recommendation",
-			Description: "The Goal Lead's recommended answer to one pending decision request on this workflow (PLAT-697): the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe (high confidence) and within the autonomy levels. It is shown on the decision in Needs you; the owner accepts it with one click or changes it. It is never an answer: you cannot answer decisions, and nothing is applied until the owner answers. Re-recording replaces your earlier recommendation. Say you do not know the owner's preference instead of guessing it; goal memory holds what the owner already said.",
+			Description: "The Pulse's recommended answer to one pending decision request on this workflow (PLAT-697): the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe (high confidence) and within the autonomy levels. It is shown on the decision in Needs you; the owner accepts it with one click or changes it. It is never an answer: you cannot answer decisions, and nothing is applied until the owner answers. Re-recording replaces your earlier recommendation. Say you do not know the owner's preference instead of guessing it; goal memory holds what the owner already said.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -542,7 +546,7 @@ func createGoalLeadTools() []llmtypes.Tool {
 		}},
 		{Type: "function", Function: &llmtypes.FunctionDefinition{
 			Name:        "record_pulse_decision_outcome",
-			Description: "Record what happened after a decision the Goal Lead recommended on and the owner answered (the decision log's result, shown in the Pulse tab): the effect on the goal and the work, from runs and goal readings, in one plain sentence.",
+			Description: "Record what happened after a decision the Pulse recommended on and the owner answered (the decision log's result, shown in the Pulse tab): the effect on the goal and the work, from runs and goal readings, in one plain sentence.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

@@ -80,7 +80,7 @@ type ReportHumanInput struct {
 	// ApplyMessage is computed for list responses only (never stored): the
 	// Builder chat message that applies an answered decision.
 	ApplyMessage string `json:"apply_message,omitempty"`
-	// Recommendation is the Goal Lead's recommended answer (PLAT-697 phase
+	// Recommendation is the Pulse's recommended answer (PLAT-697 phase
 	// 3), kept apart from the owner's answer; list responses only.
 	Recommendation *PulseRecommendation `json:"recommendation,omitempty"`
 }
@@ -683,7 +683,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if err := step_based_workflow.SyncPulseImprovementDecisionTx(ctx, tx, input.ID, selected, false, "", now); err != nil {
 		return nil, err
 	}
-	// The owner accepted or changed the Goal Lead's recommendation (PLAT-697).
+	// The owner accepted or changed the Pulse's recommendation (PLAT-697).
 	ownerAnswer := selected
 	if ownerAnswer == "" {
 		ownerAnswer = note

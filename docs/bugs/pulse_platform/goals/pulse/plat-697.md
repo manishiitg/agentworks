@@ -1,6 +1,6 @@
 [← goals / pulse](index.md)
 
-# PLAT-697: Goal Lead (Pulse as the goal owner)
+# PLAT-697: Pulse as the goal owner
 
 | Field | Value |
 |---|---|
@@ -8,7 +8,7 @@
 | Priority | P1 |
 | Product | goals |
 | Area | pulse |
-| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-4 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log; the Goal Lead as one persistent conversation per workflow with chat, focus areas, ask_goal_lead and a Slack slug) |
+| Summary | Pulse becomes the goal owner: daily goal check, answers goal questions within its autonomy, goal memory; built on a small Crew-runtime subset. Phases 0-4 on main (Workflow Review before runs and backup/publish/notify as schedule options; goal check; enforced autonomy; recommendations on decisions, goal memory, decision log; Pulse as one persistent conversation per workflow with chat, focus areas, ask_pulse and a Slack slug; for workflows with a goal it owns QA and Architecture, no separate review turns; the name users see is Pulse, not Goal Lead) |
 
 ## What happened
 
@@ -57,6 +57,9 @@ goal check turn itself is not yet run live.
   reason the owner gives only in chat is not distilled until Pulse adds it.
 - Phase 0 left: see "Phase 0" below.
 - Phase 4 left: see "Phase 4" below.
+- QA and Architecture owned by Pulse: see that section below (not run live; the run-failure turn, the pass without
+  review turns and the hidden panels need a local check by the owner).
+- Rename: `ask_goal_lead` and the `-goal` Slack slug are kept as aliases for one release; remove them after.
 - Phases 5-6.
 
 ## What and why
@@ -109,7 +112,7 @@ contract text fixed.
 
 Owner decision (2026-10-07): recommendations first. Pulse does not answer decisions yet; the owner confirms.
 
-- **Recommendation on every decision request.** `record_pulse_recommendation` attaches the Goal Lead's
+- **Recommendation on every decision request.** `record_pulse_recommendation` attaches the Pulse's
   recommendation to a pending decision on the workflow: the option (or a free-text answer when there are no
   options), why, the evidence, confidence, what it blocks, and `safe_default_by` only with high confidence and when
   applying it needs no level held at ask (a workflow change needs `change=auto`). Stored apart from the answer in
@@ -125,12 +128,12 @@ Owner decision (2026-10-07): recommendations first. Pulse does not answer decisi
 - **Goal memory** in the workflow's memory area: `memory/goal.md`, next to the Builder's `MEMORY.md` (project
   memory, untouched). Sections: owner preferences and answers, decisions and outcomes, lessons, open bets, waiting
   on the owner; one line per entry, `- YYYY-MM-DD [owner answer | result | Pulse inference] text`. Every owner
-  answer is copied in by code (question, chosen option, note, and whether it accepted or overruled the Goal Lead).
+  answer is copied in by code (question, chosen option, note, and whether it accepted or overruled the Pulse).
   Pulse adds results, lessons and bets with `record_pulse_goal_memory(action=add)` and rewrites it with
   `action=consolidate` (at most 60 entries; it is told to consolidate past 45). The goal check, `goal_status` and
   `goal_work` views carry it (`goal_lead`) so Pulse reads it first; soul.md wins on conflict. The owner reads and
   edits it in the Pulse tab (`GET /api/workflow/goal-lead`, `PUT /api/workflow/goal-memory`, write access).
-- **Decision log.** The same rows: what the Goal Lead recommended, why, what the owner did, and the result, which a
+- **Decision log.** The same rows: what the Pulse recommended, why, what the owner did, and the result, which a
   later goal check records with `record_pulse_decision_outcome` (answered decisions over a day old are listed in
   `outcomes_due`). Shown in the Pulse tab under the goal status card.
 - **Pulse tab.** Under the goal status card: Needs you (each pending decision with the recommendation, Accept and
@@ -142,7 +145,7 @@ stored as Pulse's and the decision stays pending; the owner's Accept answers wit
 accepted and writes the owner-answer line to `memory/goal.md`), `GoalLeadPanel.test.tsx` (the Needs you card and
 Accept). Not run live.
 
-## Phase 4: the Goal Lead as its own persistent chat kind (on main, not deployed)
+## Phase 4: the Pulse as its own persistent chat kind (on main, not deployed)
 
 - **One conversation per workflow** with a goal (soul.md plus a primary metric; `workflowHasGoal`), created on the
   first goal check or when the Pulse tab opens (`cmd/server/goal_lead_conversation.go`). Kept in the workflow's
@@ -157,7 +160,7 @@ Accept). Not run live.
   days or 90 turns the next goal check starts generation N+1 (logged in the conversation); goal memory carries what
   matters. A new turn clears an earlier Stop (PLAT-130 still guards continuations of the stopped turn).
 - **Goal check and Goal Work run in it.** The daily goal check step and the full Pulse's strategic_review turn (and
-  its receipt continuation) run in the Goal Lead conversation instead of the pass's session (`runGoalLeadPassStep`);
+  its receipt continuation) run in the Pulse conversation instead of the pass's session (`runGoalLeadPassStep`);
   receipts, the goal-check record and the phase 2 guard are unchanged. Workflows without a goal keep the old
   strategic_review turn.
 - **Access.** Turns run as the workflow's execution owner on its Builder runtime (model, MCP servers, skills), held
@@ -171,7 +174,7 @@ Accept). Not run live.
   Pulse's Architecture and Technical turns and `strategy-auditor.md` are unchanged (kept for workflows without a
   goal and `/run-goal-work`).
 - **Talk to it.** The Pulse tab shows the conversation (owner messages, replies, goal checks, Goal Work, asks,
-  Slack, QA results) under the goal status card and the Goal Lead panel, with an input
+  Slack, QA results) under the goal status card and the Pulse panel, with an input
   (`POST /api/workflow/goal-lead/message`, write access; the turn runs in the background). The turn's
   instructions: lasting direction to goal memory, time-boxed direction as a proposed focus area, goal changes as a
   proposed soul.md edit.
@@ -180,27 +183,69 @@ Accept). Not run live.
   tracking and the closing lesson. `record_pulse_focus_area` proposes (at most three open), tracks and closes (the
   lesson also goes to goal memory); the owner confirms, rejects, adds, extends or drops in the Pulse tab
   (`POST /api/workflow/goal-lead/focus-areas`). Shown at the top of the Pulse tab under the goal status card.
-- **ask_goal_lead** (`goal_lead_ask.go`): workflow chats (Builder and Run) and steps (with platform stores) ask the
-  workflow's Goal Lead through `startCrewFunctionCall` with a chat target, like `ask_project_chat`: a call id and
-  record, a turn in the Goal Lead conversation, the final reply as the answer, which the turn's text frames as a
-  recommendation. Waits up to `wait_seconds` (default 60); 20 asks per workflow per hour; the Goal Lead cannot ask
+- **ask_pulse** (`goal_lead_ask.go`): workflow chats (Builder and Run) and steps (with platform stores) ask the
+  workflow's Pulse through `startCrewFunctionCall` with a chat target, like `ask_project_chat`: a call id and
+  record, a turn in the Pulse conversation, the final reply as the answer, which the turn's text frames as a
+  recommendation. Waits up to `wait_seconds` (default 60); 20 asks per workflow per hour; the Pulse cannot ask
   itself.
-- **Slack**: `<workflow-slug>-goal` on any app that reaches the workflow (channel list or DM targets; Slack
+- **Slack**: `<workflow-slug>-pulse` (was `-goal`, still accepted) on any app that reaches the workflow (channel list or DM targets; Slack
   membership decides channels), parsed only against the workflow targets there (`services/slack_goal_lead.go`). The
-  thread or DM is bound to it (`SlackTargetRef.Agent = goal_lead`), and its messages are answered by the Goal Lead
+  thread or DM is bound to it (`SlackTargetRef.Agent = goal_lead`), and its messages are answered by the Pulse
   conversation, not a bot session. Only people with access to the workflow: a DM's account, or a channel sender
   whose Slack email maps to an account with access (`handleGoalLeadSlack`).
 
 Left / risks:
 
 - Not run live: the goal check in the persistent conversation, owner messages, asks and Slack.
-- Kernel Run mode for the Goal Lead (see Access); shell, browser and MCP actions stay prompt-held as in phase 2.
-- `ask_goal_lead` in steps depends on the step's tool session resolving its workflow (`pulseToolScope`); not
+- Kernel Run mode for the Pulse (see Access); shell, browser and MCP actions stay prompt-held as in phase 2.
+- `ask_pulse` in steps depends on the step's tool session resolving its workflow (`pulseToolScope`); not
   checked live. A pending ask is read again with the same message and `submission_id`.
 - Focus areas live in workflow.json (read-modify-write); a Builder save at the same moment could drop one change.
 - An owner message from a co-owner or editor runs as the workflow's execution owner (as schedules do).
-- Slack threads bound to the Goal Lead answer plain replies; the thread history is not replayed into the turn.
+- Slack threads bound to the Pulse answer plain replies; the thread history is not replayed into the turn.
 - Tests: `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks`, `GoalLeadPanel.test.tsx`.
+
+## QA and Architecture owned by Pulse; the name is Pulse (on main, not deployed)
+
+Owner decisions (2026-10-07): for workflows with a goal, QA and Architecture belong to the workflow's Pulse
+conversation only; and users and agents see "Pulse", not "Goal Lead" (code names keep `goal_lead`).
+
+- **Pass order** (`pulsemodules.PassOrder`, `goal_lead_owns_reviews.go`): a workflow with a goal (soul.md plus a
+  primary metric) runs Gate, Goal Work in its Pulse conversation, Finalize; no Architecture or Technical turn. Gate
+  is told so and its worklist records both not due; a row a backend rule still makes due (recovery, prompt budget,
+  protected boundary) is closed as skipped by code after Gate, which clears its recovery. Workflows without a goal:
+  unchanged (Goal Work, Architecture, Technical).
+- **Architecture** is the conversation's skill (`goal-lead-architecture.md`, now saying it is the only architecture
+  review such a workflow gets). **QA** runs only on `record_pulse_qa_request` (fix run, result back into the
+  conversation). The automatic fix runs (`launchDueFixRuns`: open issues, new concerns, failed runs) skip these
+  workflows.
+- **Safety net.** Each tick, for these workflows, code looks for workflow runs (not Pulse passes) that failed
+  (error, failed, interrupted) in the last day and were not seen yet (`goal_lead_run_failures`); new ones get one
+  short Pulse turn (`run_failed`, Run/Outward/Change held): request QA when the failure blocks or threatens the goal,
+  otherwise one line why it can wait. At most once per failed run. The goal check's and Goal Work's context
+  (`goal_lead.run_health`) carries failed runs with their error, steps' `CONCERNS:` lines, the open issue count and
+  schedule run health since the last goal check; `goal-lead-check.md` has a "Failed runs" section with the rule.
+- **Fast requests** (`record_pulse_fast_request`) still start an earlier full pass, which for these workflows is Goal
+  Work in the conversation; nothing else schedules Technical or Architecture for them.
+- **Pulse tab.** The status API's `goal_status.goal_lead` hides the Technical and Architecture cards, their detail
+  and run-history columns for these workflows; a line says the workflow's Pulse handles QA and architecture and that
+  results show in its conversation. Workflow Review and the maintenance issue list stay.
+- **Name.** UI (panel, conversation, Needs you, focus areas, decision log), charter, turn headers (`PULSE TURN`),
+  skills, tool descriptions and notifications say Pulse (e.g. "Substack Pulse"). `ask_goal_lead` is now `ask_pulse`;
+  `ask_goal_lead` stays as a working alias for one release. Slack: `<workflow-slug>-pulse`; `-goal` still works for
+  one release.
+
+Risks:
+
+- A failure the Pulse turn judges harmless gets no repair until its goal check or a later failure asks for QA;
+  before, a fix run started within 90 minutes. Open issues no longer trigger fix runs on their own for these
+  workflows.
+- `run_health` reads the run's error text and `CONCERNS:` lines, not per-step error logs; the turn reads the run
+  folder when it needs more.
+- A failed run during a full pass gets both the pass's Goal Work turn and the short failure turn.
+- Not run live. Tests: `TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce` (pass order with and
+  without a goal; one turn for one failed run over three ticks), `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks`,
+  `TestToolSetInvariants`, `GoalLeadPanel.test.tsx`.
 
 ## Phase 0: Workflow Review before runs; housekeeping out of Pulse (on main, not deployed)
 

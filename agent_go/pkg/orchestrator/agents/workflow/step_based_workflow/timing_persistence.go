@@ -637,7 +637,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) finalizeRunMetadata(ctx context.Conte
 	}); err != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to finalize run metadata %s: %v", runFolder, err))
 	}
-	// Goal Lead after-run facts (PLAT-697): code only, never fails the run.
+	// Pulse after-run facts (PLAT-697): code only, never fails the run.
 	if !hcpo.isRelayExecution() {
 		factsCtx := ctx
 		if factsCtx == nil || factsCtx.Err() != nil {

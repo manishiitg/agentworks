@@ -2082,7 +2082,7 @@ export const agentApi = {
     return response.data as PulseImpactResponse
   },
 
-  // The Goal Lead's goal memory and decision log (PLAT-697).
+  // The Pulse's goal memory and decision log (PLAT-697).
   getGoalLead: async (workspacePath: string) => {
     const response = await api.get('/api/workflow/goal-lead', {
       params: { workspace_path: workspacePath },
@@ -2095,7 +2095,7 @@ export const agentApi = {
     return response.data as { success: boolean; error?: string }
   },
 
-  /** The owner's message to the workflow's Goal Lead; the reply appears in the conversation. */
+  /** The owner's message to the workflow's Pulse; the reply appears in the conversation. */
   sendGoalLeadMessage: async (workspacePath: string, message: string) => {
     const response = await api.post('/api/workflow/goal-lead/message', { workspace_path: workspacePath, message })
     return response.data as { success: boolean; error?: string }

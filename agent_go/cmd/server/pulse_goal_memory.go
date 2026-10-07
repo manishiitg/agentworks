@@ -56,7 +56,7 @@ const goalMemoryHeader = `# Goal memory
 
 How this goal is managed: owner preferences and answers, decisions and their outcomes, lessons, open bets, and what
 waits on the owner. One line per entry: date, [source] (owner answer, result, or Pulse inference), text.
-soul/soul.md says what the goal is and wins on any conflict. The Goal Lead keeps this short; the owner may edit it.`
+soul/soul.md says what the goal is and wins on any conflict. The Pulse keeps this short; the owner may edit it.`
 
 var goalMemoryMu sync.Mutex
 
@@ -230,7 +230,7 @@ func saveGoalMemoryContent(workspacePath, content string) error {
 
 // rememberOwnerAnswer is the code distillation of an owner's answer: a straight
 // copy of the chosen option (and note), marked as the owner's, and whether it
-// followed or overruled the Goal Lead's recommendation.
+// followed or overruled the Pulse's recommendation.
 func rememberOwnerAnswer(workspacePath string, input *ReportHumanInput, rec *PulseRecommendation) error {
 	if input == nil || input.Source == "user_suggestion" || !strings.HasPrefix(input.WorkspacePath, "Workflow/") {
 		return nil
@@ -248,9 +248,9 @@ func rememberOwnerAnswer(workspacePath string, input *ReportHumanInput, rec *Pul
 	if rec != nil {
 		switch rec.OwnerResponse {
 		case "accepted":
-			text += " (the Goal Lead's recommendation)"
+			text += " (the Pulse's recommendation)"
 		case "changed":
-			text += fmt.Sprintf(" (overruled the Goal Lead, who recommended %q)", rec.recommendedLabel(input.Options))
+			text += fmt.Sprintf(" (overruled the Pulse, who recommended %q)", rec.recommendedLabel(input.Options))
 		}
 	}
 	text += "."

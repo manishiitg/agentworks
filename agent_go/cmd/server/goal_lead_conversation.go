@@ -20,11 +20,11 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// The Goal Lead as its own chat kind (PLAT-697 phase 4,
+// The Pulse as its own chat kind (PLAT-697 phase 4,
 // docs/design/pulse_goal_owner.md "A new chat kind, not a Crew").
 //
 // Each workflow with a goal (soul.md plus a primary metric) has one persistent
-// Goal Lead conversation, created lazily on its first goal check or when the
+// Pulse conversation, created lazily on its first goal check or when the
 // Pulse tab first opens. It is built from existing parts:
 //
 //   - Like a Crew's conversation: one stable session id per workflow (kept in
@@ -43,8 +43,8 @@ import (
 //     turn of each conversation; nothing the owner edits.
 //
 // Turns: the daily goal check and the full Pulse's Goal Work (scheduler), the
-// owner's messages in the Pulse tab, ask_goal_lead from the workflow's chats
-// and steps, and Slack (<workflow-slug>-goal). The conversation is shown in the
+// owner's messages in the Pulse tab, ask_pulse from the workflow's chats
+// and steps, and Slack (<workflow-slug>-pulse). The conversation is shown in the
 // Pulse tab (goal_lead_messages), not in the Crew list.
 
 const (
@@ -82,6 +82,8 @@ const (
 	goalLeadTurnOwner    = "owner"
 	goalLeadTurnAsk      = "ask"
 	goalLeadTurnSlack    = "slack"
+	// goalLeadTurnRunFailed: a workflow run failed (goal_lead_owns_reviews.go).
+	goalLeadTurnRunFailed = "run_failed"
 )
 
 type goalLeadConversation struct {
@@ -142,7 +144,7 @@ func readGoalLeadConversation(ctx context.Context, db *sql.DB) (*goalLeadConvers
 	return &conv, nil
 }
 
-// ensureGoalLeadConversation returns the workflow's Goal Lead conversation,
+// ensureGoalLeadConversation returns the workflow's Pulse conversation,
 // creating it on first use. With rotate, an old or long conversation that is
 // not busy is replaced by the next generation.
 func ensureGoalLeadConversation(ctx context.Context, workspacePath, workflowKey string, now time.Time, rotate bool, busy func(string) bool) (goalLeadConversation, error) {
@@ -177,7 +179,7 @@ func ensureGoalLeadConversation(ctx context.Context, workspacePath, workflowKey 
 		return goalLeadConversation{}, err
 	}
 	if current != nil {
-		_ = insertGoalLeadMessage(ctx, db, GoalLeadMessage{Role: "system", Text: fmt.Sprintf("A new Goal Lead conversation started: the last one had %d turns since %s. Goal memory carries what matters.", current.Turns, shortStoredDate(current.StartedAt)), SessionID: next.SessionID}, now)
+		_ = insertGoalLeadMessage(ctx, db, GoalLeadMessage{Role: "system", Text: fmt.Sprintf("A new Pulse conversation started: the last one had %d turns since %s. Goal memory carries what matters.", current.Turns, shortStoredDate(current.StartedAt)), SessionID: next.SessionID}, now)
 	}
 	return next, nil
 }
@@ -258,7 +260,7 @@ func bumpGoalLeadTurns(ctx context.Context, workspacePath, sessionID string, now
 	_, _ = db.ExecContext(ctx, `UPDATE goal_lead_conversation SET turns = turns + 1, last_turn_at = ? WHERE id = 1 AND session_id = ?`, formatStoredTime(now), sessionID)
 }
 
-// workflowHasGoal: the Goal Lead exists for a workflow with a primary goal
+// workflowHasGoal: the Pulse exists for a workflow with a primary goal
 // metric and a soul.md.
 func workflowHasGoal(ctx context.Context, workspacePath string) bool {
 	ledger, err := stepworkflow.LoadPulseImpactLedger(ctx, workspacePath, 1)
@@ -279,7 +281,7 @@ func workflowHasGoal(ctx context.Context, workspacePath string) bool {
 	return err == nil && exists
 }
 
-// goalLeadTurn is one turn of the Goal Lead conversation.
+// goalLeadTurn is one turn of the Pulse conversation.
 type goalLeadTurn struct {
 	Kind string
 	// From names who sent an owner, ask or Slack turn.
@@ -298,7 +300,7 @@ type goalLeadTurn struct {
 	CallID string
 }
 
-// goalLeadNow is the clock of Goal Lead turns (tests move it a day).
+// goalLeadNow is the clock of Pulse turns (tests move it a day).
 var goalLeadNow = time.Now
 
 // goalLeadTurnRunner, when set (tests), replaces the real turn.
@@ -335,13 +337,13 @@ func goalLeadTurnsInFlight(workspacePath string) int {
 // goalLeadCharter is the platform-defined instruction, the same for every
 // workflow, sent as the first turn of each conversation.
 func goalLeadCharter(label, workspacePath string) string {
-	return fmt.Sprintf(`GOAL LEAD. You are the %s Goal Lead: the platform's persistent owner of this workflow's goal (workspace_path=%q). This is your one continuing conversation for the goal. The daily goal check, Goal Work, the owner's messages from the Pulse tab, questions from the workflow's chats and steps (ask_goal_lead), Slack messages and QA results all arrive here as turns. These instructions are the same for every workflow; nobody edits them.
+	return fmt.Sprintf(`PULSE. You are the %s Pulse: the platform's persistent owner of this workflow's goal (workspace_path=%q). This is your one continuing conversation for the goal. The daily goal check, Goal Work, the owner's messages from the Pulse tab, questions from the workflow's chats and steps (ask_pulse), failed runs, Slack messages and QA results all arrive here as turns. These instructions are the same for every workflow; nobody edits them.
 
 How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
 - Your authority is pulse.autonomy (run, outward, change), enforced by the tools on every turn. Within it, act and record it; beyond it, prepare the work and ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills, loaded when a turn needs them: the goal check, read_skill(skills=[{"name":"builder-reference","path":"references/goal-lead-check.md"}]); Goal Work, references/goal-lead-work.md; a structural question about the workflow, references/goal-lead-architecture.md.
-- QA and technical review are not done in this conversation: call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. Larger plan changes go to the workflow's Builder chat or a decision; Workflow Review checks them before the next run.
+- You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill. Larger plan changes go to the workflow's Builder chat or a decision; Workflow Review checks them before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath)
 }
@@ -356,11 +358,13 @@ func goalLeadTurnQuery(label, workspacePath string, firstTurn bool, turn goalLea
 	from := firstNonEmptyTrimmed(turn.From, "the owner")
 	switch turn.Kind {
 	case goalLeadTurnCheck:
-		fmt.Fprintf(&b, "GOAL LEAD TURN: daily goal check, %s, workspace_path=%q. Load the goal-check skill (references/goal-lead-check.md) when you need the full procedure.\n\n%s", date, workspacePath, turn.Body)
+		fmt.Fprintf(&b, "PULSE TURN: daily goal check, %s, workspace_path=%q. Load the goal-check skill (references/goal-lead-check.md) when you need the full procedure.\n\n%s", date, workspacePath, turn.Body)
 	case goalLeadTurnGoalWork:
-		fmt.Fprintf(&b, "GOAL LEAD TURN: Goal Work in the full Pulse, %s, workspace_path=%q. Load the Goal Work skill (references/goal-lead-work.md).\n\n%s", date, workspacePath, turn.Body)
+		fmt.Fprintf(&b, "PULSE TURN: Goal Work in the full Pulse, %s, workspace_path=%q. Load the Goal Work skill (references/goal-lead-work.md).\n\n%s", date, workspacePath, turn.Body)
+	case goalLeadTurnRunFailed:
+		fmt.Fprintf(&b, "PULSE TURN: a run of this workflow failed, %s, workspace_path=%q. The goal-check skill (references/goal-lead-check.md, \"Failed runs\") has the rule.\n\n%s\n\n%s", date, workspacePath, turn.Body, autonomyText)
 	case goalLeadTurnAsk:
-		fmt.Fprintf(&b, `GOAL LEAD TURN: [Function call %s] %s, working on this workflow (workspace_path=%q), asks the Goal Lead (ask_goal_lead), %s:
+		fmt.Fprintf(&b, `PULSE TURN: [Function call %s] %s, working on this workflow (workspace_path=%q), asks the Pulse (ask_pulse), %s:
 
 %s
 
@@ -372,7 +376,7 @@ Answer as a recommendation: what you recommend and why, the evidence and your co
 		if turn.Kind == goalLeadTurnSlack {
 			where = "on Slack; your reply is posted in their thread"
 		}
-		fmt.Fprintf(&b, `GOAL LEAD TURN: a message from %s %s, %s, workspace_path=%q:
+		fmt.Fprintf(&b, `PULSE TURN: a message from %s %s, %s, workspace_path=%q:
 
 %s
 
@@ -383,7 +387,7 @@ Reply briefly and plainly. When they ask why you did something, answer from this
 	return b.String()
 }
 
-// runGoalLeadTurn runs one turn in the workflow's Goal Lead conversation and
+// runGoalLeadTurn runs one turn in the workflow's Pulse conversation and
 // returns the reply and the conversation's session id. The turn runs as the
 // workflow's execution owner, holds the session's tools to the autonomy
 // levels, and is logged for the Pulse tab.
@@ -399,7 +403,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	now := goalLeadNow().UTC()
 	conv, err := ensureGoalLeadConversation(ctx, workspacePath, firstNonEmptyTrimmed(manifest.ID, workspacePath), now, turn.Rotate, api.conversationTurnOccupied)
 	if err != nil {
-		return "", "", fmt.Errorf("goal lead conversation: %w", err)
+		return "", "", fmt.Errorf("pulse conversation: %w", err)
 	}
 	sessionID := conv.SessionID
 	defer goalLeadTurnStarted(workspacePath)()
@@ -410,21 +414,21 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	}
 	label := firstNonEmptyTrimmed(manifest.Label, workspacePath)
 	sctx := buildScheduleContext(workspacePath, manifest, WorkflowSchedule{
-		ID: manualWorkflowPulseScheduleID, Name: label + " Goal Lead", ScheduleType: "cron", Mode: "workshop", WorkshopMode: "workshop",
-		Description: "The workflow's persistent Goal Lead conversation",
+		ID: manualWorkflowPulseScheduleID, Name: label + " Pulse", ScheduleType: "cron", Mode: "workshop", WorkshopMode: "workshop",
+		Description: "The workflow's persistent Pulse conversation",
 	})
 	if strings.TrimSpace(sctx.OwnerUserID) == "" {
-		return "", sessionID, fmt.Errorf("workflow %s has no owner for its Goal Lead to run as", workspacePath)
+		return "", sessionID, fmt.Errorf("workflow %s has no owner for its Pulse to run as", workspacePath)
 	}
 	reqMap := sched.buildWorkshopRequest(ctx, sctx)
 	// A Pulse turn on the workflow's Builder runtime: the same authority and
 	// session key on every turn, so the native session is resumed, never
 	// relaunched for a role change.
 	markPulseLifecycleTurn(reqMap)
-	reqMap["session_title"] = label + " Goal Lead"
-	reqMap["triggered_by_label"] = "Goal Lead"
+	reqMap["session_title"] = label + " Pulse"
+	reqMap["triggered_by_label"] = "Pulse"
 	if turn.Kind == goalLeadTurnOwner || turn.Kind == goalLeadTurnSlack || turn.Kind == goalLeadTurnAsk {
-		reqMap["triggered_by_label"] = "Goal Lead: from " + firstNonEmptyTrimmed(turn.From, "the owner")
+		reqMap["triggered_by_label"] = "Pulse: from " + firstNonEmptyTrimmed(turn.From, "the owner")
 	}
 	if conv.Turns > 0 || api.workflowAskSessionExists(sessionID, workspacePath) {
 		reqMap["restored_conversation_session_id"] = sessionID
@@ -464,7 +468,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	reply := strings.TrimSpace(result.FinalResponse)
 	logCtx := context.WithoutCancel(ctx)
 	if err != nil {
-		_ = appendGoalLeadMessage(logCtx, workspacePath, GoalLeadMessage{Role: "system", Source: turn.Kind, Text: "The Goal Lead's turn did not finish: " + err.Error(), SessionID: sessionID})
+		_ = appendGoalLeadMessage(logCtx, workspacePath, GoalLeadMessage{Role: "system", Source: turn.Kind, Text: "The Pulse's turn did not finish: " + err.Error(), SessionID: sessionID})
 		return reply, sessionID, err
 	}
 	role := "goal_lead"
@@ -478,7 +482,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 }
 
 // runGoalLeadPassStep runs a scheduled Pulse step (the goal check, Goal Work
-// and its receipt continuation) in the Goal Lead conversation instead of the
+// and its receipt continuation) in the Pulse conversation instead of the
 // pass's own session.
 func (s *SchedulerService) runGoalLeadPassStep(ctx context.Context, sctx *ScheduleContext, st pulseLifecycleStep) pulseLifecycleStepRunResult {
 	kind := goalLeadTurnGoalWork
@@ -487,10 +491,10 @@ func (s *SchedulerService) runGoalLeadPassStep(ctx context.Context, sctx *Schedu
 	}
 	_, sessionID, err := s.api.runGoalLeadTurn(ctx, sctx.WorkspacePath, goalLeadTurn{Kind: kind, Body: st.query, Perms: st.goalWork, Rotate: st.label != "review-fix-continuation"})
 	if err != nil {
-		s.sessionLogf(sctx, sessionID, "[GOAL LEAD] %s turn did not finish: %v", st.label, err)
+		s.sessionLogf(sctx, sessionID, "[PULSE] %s turn did not finish: %v", st.label, err)
 		return pulseLifecycleStepResultForError(err)
 	}
-	s.sessionLogf(sctx, sessionID, "[GOAL LEAD] %s turn done for %s", st.label, sctx.WorkspacePath)
+	s.sessionLogf(sctx, sessionID, "[PULSE] %s turn done for %s", st.label, sctx.WorkspacePath)
 	return pulseLifecycleStepRunResult{outcome: pulseLifecycleStepCompleted}
 }
 
@@ -533,7 +537,7 @@ func (api *StreamingAPI) goalLeadConversationView(ctx context.Context, workspace
 }
 
 // handlePostGoalLeadMessage takes the owner's message from the Pulse tab and
-// runs it as a turn in the Goal Lead conversation. It returns at once; the
+// runs it as a turn in the Pulse conversation. It returns at once; the
 // reply appears in the conversation.
 func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -581,7 +585,7 @@ func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *htt
 		ctx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
 		defer cancel()
 		if _, _, err := api.runGoalLeadTurn(ctx, workspacePath, goalLeadTurn{Kind: goalLeadTurnOwner, From: from, Body: message, Logged: true}); err != nil {
-			log.Printf("[GOAL LEAD] owner message turn for %s failed: %v", workspacePath, err)
+			log.Printf("[PULSE] owner message turn for %s failed: %v", workspacePath, err)
 		}
 	}()
 	w.Header().Set("Content-Type", "application/json")

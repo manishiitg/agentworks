@@ -257,7 +257,7 @@ type WorkflowPulseConfig struct {
 	// pass; they direct attention, they do not limit what it may consider.
 	FocusAreas []string `json:"focus_areas,omitempty"`
 	// FocusAreaDetails is each focus area's lifecycle (PLAT-697 phase 4,
-	// goal_lead_focus_areas.go): Goal Lead proposals the owner confirms, end
+	// goal_lead_focus_areas.go): Pulse proposals the owner confirms, end
 	// dates, their own checks, daily tracking and closing lessons. FocusAreas
 	// stays the active list.
 	FocusAreaDetails []PulseFocusArea `json:"focus_area_details,omitempty"`
@@ -344,7 +344,7 @@ type WorkflowPulseAutonomy struct {
 	// Change: edit the plan, step settings and schedules. soul.md goals and
 	// constraints always go to the user. Default ask.
 	Change string `json:"change,omitempty"`
-	// Answer: what the Goal Lead does with a decision request (PLAT-697
+	// Answer: what the Pulse does with a decision request (PLAT-697
 	// phase 3). "recommend" (default): it attaches a recommendation and the
 	// owner confirms. "act" is reserved for a later phase and behaves as
 	// recommend.

@@ -2248,6 +2248,10 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 	if goalStatusErr != nil {
 		log.Printf("[PULSE] goal status unavailable for %s: %v", workspacePath, goalStatusErr)
 		goalStatus = nil
+	} else if goalStatus != nil {
+		// A workflow with a goal: its Pulse conversation owns QA and
+		// architecture, so the tab shows no separate review panels for them.
+		goalStatus.GoalLead = workflowHasGoal(r.Context(), workspacePath)
 	}
 	goalWork, goalWorkErr := listPulseGoalWork(r.Context(), workspacePath, 100)
 	goalWorkError := ""
@@ -2839,6 +2843,11 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 			// Workflow Review runs before runs, never in a Pulse pass (PLAT-697
 			// phase 0): whatever Gate decided for it, it is not due here.
 			decisions = keepWorkflowReviewOutOfPulse(decisions)
+			// A goal workflow's Pulse conversation owns QA and architecture
+			// (PLAT-697): its pass runs neither as a turn.
+			if workflowHasGoal(ctx, normalized) {
+				decisions = keepGoalLeadReviewsOutOfPulse(decisions)
+			}
 			states, err := recordPulseWorklistOnceWithShadowAndMode(ctx, normalized, pulseRunID, mode, modeReason, decisions, shadowResult)
 			if err != nil {
 				return "", err
@@ -3006,7 +3015,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "record_pulse_goal_check",
-			Description: "Record the goal check (the Goal Lead's first job, PLAT-697): your verdict after reading get_pulse_state(view=\"goal_status\"), soul.md and get_goal_metrics. status: on_track (measured recently, moving or holding as expected, goal work running), at_risk, off_track, or not_measured. It is shown at the top of the Pulse tab. The code-computed alarms are stored with it; a paused workflow's pause is then not reported again until something changes.",
+			Description: "Record the goal check (the Pulse's first job, PLAT-697): your verdict after reading get_pulse_state(view=\"goal_status\"), soul.md and get_goal_metrics. status: on_track (measured recently, moving or holding as expected, goal work running), at_risk, off_track, or not_measured. It is shown at the top of the Pulse tab. The code-computed alarms are stored with it; a paused workflow's pause is then not reported again until something changes.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

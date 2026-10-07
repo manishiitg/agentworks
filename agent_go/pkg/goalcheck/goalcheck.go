@@ -1,4 +1,4 @@
-// Package goalcheck holds the Goal Lead's code-only goal facts and silence
+// Package goalcheck holds the Pulse's code-only goal facts and silence
 // alarm (PLAT-697 phase 1, docs/design/pulse_goal_owner.md). It is pure: the
 // caller loads metric definitions, observations and runs, and Evaluate says
 // whether the goal is measured, whether the work that drives it runs, and

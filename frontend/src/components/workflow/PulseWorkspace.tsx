@@ -152,6 +152,7 @@ export function PulseWorkspace({
   focusAreas = [],
   focusSaving = false,
   onSaveFocusAreas,
+  goalLeadOwnsReviews = false,
 }: {
   activeTab?: PulseWorkspaceTab
   onTabChange?: (tab: PulseWorkspaceTab) => void
@@ -174,6 +175,9 @@ export function PulseWorkspace({
   focusAreas?: string[]
   focusSaving?: boolean
   onSaveFocusAreas?: (areas: string[]) => Promise<boolean>
+  /** A workflow with a goal: its Pulse conversation owns QA and architecture
+   * (PLAT-697), so their results show there, not as separate review panels. */
+  goalLeadOwnsReviews?: boolean
 }) {
   const loadVersion = useRef(0)
   const [findings, setFindings] = useState<PulseFindingLifecycle[]>([])
@@ -336,12 +340,13 @@ export function PulseWorkspace({
     )
   }, [reviewFocusSelections, moduleFilter])
 
-  const reviewRunHistory = useMemo(() => REVIEW_HISTORY_MODULES.map((module) => ({
+  const reviewRunHistory = useMemo(() => REVIEW_HISTORY_MODULES.filter((module) => !goalLeadOwnsReviews
+    || (module.id !== 'technical_review' && module.id !== 'architecture_review')).map((module) => ({
     ...module,
     runs: reviews
       .filter((review) => normalizePulseWorkspaceModule(review.module) === module.id)
       .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at)),
-  })), [reviews])
+  })), [reviews, goalLeadOwnsReviews])
 
   const matchingFindings = useMemo(
     () => {
@@ -423,7 +428,7 @@ export function PulseWorkspace({
         )}
       </> : <>
       <p className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground" aria-label="Fix speed">{pulseFixSummary(fixStats)}</p>
-      <PulseReviewOverview platformOnly moduleStates={moduleStates} planDriftDue={false} planDriftDueItems={[]} planDriftDueError={null} coverage={mergePulseReviewCoverage(coverage, reviewFocuses, reviewFocusSelections)}
+      <PulseReviewOverview platformOnly goalLeadOwnsReviews={goalLeadOwnsReviews} moduleStates={moduleStates} planDriftDue={false} planDriftDueItems={[]} planDriftDueError={null} coverage={mergePulseReviewCoverage(coverage, reviewFocuses, reviewFocusSelections)}
         audits={audits} findings={findings} moduleFilter={selectedReviewModule || null} reviewFocusSelections={reviewFocusSelections}
         playbookFocuses={playbookFocuses}
         disabledReviewModules={disabledReviewModules} reviewModuleSaving={reviewModuleSaving} onToggleReviewModule={onToggleReviewModule}

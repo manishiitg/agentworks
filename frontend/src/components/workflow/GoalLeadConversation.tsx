@@ -4,8 +4,8 @@ import { agentApi } from '../../services/api'
 import type { GoalLeadConversation, GoalLeadMessage, PulseFocusArea } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 
-// The Goal Lead as its own chat kind in the Pulse tab (PLAT-697 phase 4): its
-// focus areas (the Goal Lead proposes, the owner confirms with one click) and
+// The Pulse as its own chat kind in the Pulse tab (PLAT-697 phase 4): its
+// focus areas (the Pulse proposes, the owner confirms with one click) and
 // its one persistent conversation, where the owner asks "why did you…" or
 // gives direction. Lasting direction goes to goal memory; goal changes come
 // back as proposed soul.md edits.
@@ -55,7 +55,7 @@ export function FocusAreasCard({ workspacePath, areas, onChanged }: {
           <div className="min-w-0">
             <p className="font-medium text-foreground">{area.text}</p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {area.status === 'proposed' ? 'Goal Lead proposes' : 'Active'}
+              {area.status === 'proposed' ? 'Pulse proposes' : 'Active'}
               {area.end_date && <> · until {shortDate(area.end_date)}</>}
               {area.check && <> · check: {area.check}</>}
             </p>
@@ -89,7 +89,7 @@ const roleLabel = (message: GoalLeadMessage): string => {
     case 'goal_work': return 'Goal Work'
     case 'qa': return 'QA run'
     case 'system': return 'Note'
-    default: return 'Goal Lead'
+    default: return 'Pulse'
   }
 }
 
@@ -119,8 +119,8 @@ export function GoalLeadChat({ workspacePath, conversation, onSent }: {
     }
   }
 
-  return <section aria-label="Goal Lead conversation" className="rounded-lg border bg-background p-3">
-    <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">Talk to the Goal Lead</h3>
+  return <section aria-label="Pulse conversation" className="rounded-lg border bg-background p-3">
+    <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">Talk to Pulse</h3>
       {conversation.busy && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />working</span>}</div>
     <p className="mt-0.5 text-[11px] text-muted-foreground">Ask why it did something or give direction. Direction that should last goes to its memory; a change to the goal comes back as a proposed edit to soul.md.</p>
     {messages.length > 0 && <ol className="mt-2 max-h-80 space-y-1.5 overflow-y-auto">
@@ -130,7 +130,7 @@ export function GoalLeadChat({ workspacePath, conversation, onSent }: {
       </li>)}
     </ol>}
     <div className="mt-2 flex items-end gap-2">
-      <textarea aria-label="Message to the Goal Lead" value={draft} onChange={event => setDraft(event.target.value)} rows={2}
+      <textarea aria-label="Message to Pulse" value={draft} onChange={event => setDraft(event.target.value)} rows={2}
         placeholder="Why did you pause the growth runs? / Focus on new subscribers this month."
         onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send() }}
         className="min-w-0 flex-1 rounded-md border bg-background p-2 text-xs leading-5" />

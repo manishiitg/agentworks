@@ -541,7 +541,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				s.launchDueFixRuns(context.Background())
 				// Then the daily goal check (PLAT-697).
 				s.launchDueGoalChecks(context.Background())
-				// QA runs the Goal Lead asked for (PLAT-697 phase 4).
+				// QA runs the Pulse asked for (PLAT-697 phase 4).
 				s.launchGoalLeadQARequests(context.Background())
 				// Workflow Review after a plan change, so most runs find it
 				// already done (PLAT-697 phase 0). Not a Pulse run.
@@ -1559,7 +1559,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 	}
 	if goalCheck {
 		sched.Name = "Daily goal check"
-		sched.Description = "Goal Lead's daily goal check: is the goal measured, moving, and its work running"
+		sched.Description = "Pulse's daily goal check: is the goal measured, moving, and its work running"
 	}
 	sctx := buildScheduleContext(workspacePath, manifest, sched)
 	sctx.TriggerSource = triggerSource
@@ -2828,12 +2828,12 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	} else if !reviewEvidenceAvailable {
 		steps = pulseLifecycleNoRunSteps(pulseRunID, runFailureReason, notificationInstructionsFromCapabilities(sctx.Capabilities))
 	} else if sctx.PulseGoalCheck {
-		// The goal check runs in the workflow's persistent Goal Lead
+		// The goal check runs in the workflow's persistent Pulse
 		// conversation (PLAT-697 phase 4), not in this pass's own session.
 		check := pulseLifecycleGoalCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))
 		check.goalLead = true
 		steps = []pulseLifecycleStep{check}
-		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s, in the Goal Lead conversation", sctx.WorkspacePath)
+		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s, in the Pulse conversation", sctx.WorkspacePath)
 	} else if sctx.PulseFixRun {
 		// A fix run records its own worklist instead of running the Gate agent
 		// and runs Technical Review+Fix only. Workflow Review runs before runs
@@ -2846,6 +2846,10 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 		}
 		s.sessionLogf(sctx, sessionID, "[PULSE] fix run selected %d steps for %s: %s", len(steps), sctx.WorkspacePath, sctx.PulseFixReason)
 	} else {
+		// A workflow with a goal: its Pulse conversation owns QA and
+		// architecture, so the pass runs only Goal Work after Gate
+		// (goal_lead_owns_reviews.go, PLAT-697).
+		hasGoal := workflowHasGoal(ctx, sctx.WorkspacePath)
 		gateStep := pulseLifecycleGateStep(pulseRunID, runFolder, runStatus)
 		if sctx.Schedule.PulseReviewOnly {
 			folders, foldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
@@ -2854,6 +2858,9 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 				folders = nil
 			}
 			gateStep = pulseLifecycleBacklogGateStep(pulseRunID, pulseReviewBacklogSummary(folders))
+		}
+		if hasGoal {
+			gateStep.query += goalLeadGateNote
 		}
 		gateCompleted := false
 		for attempt := 1; attempt <= 2; attempt++ {
@@ -2894,23 +2901,27 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			// Workflow Review (Plan Drift) is not a Pulse module any more: it
 			// runs before every run (PLAT-697 phase 0, workflow_review_prerun.go),
 			// so nothing here waits for it or holds Goal Work's levels for it.
-			for _, module := range pulsemodules.ExecutionOrder {
-				if due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module); err != nil || due {
-					step := pulseLifecycleModuleReviewStep(pulseRunID, module)
-					if module == pulseModuleStrategicReview {
-						perms, text := goalWorkAutonomy(ctx, sctx.WorkspacePath)
-						if workflowHasGoal(ctx, sctx.WorkspacePath) {
-							// Goal Work is the Goal Lead's: it runs in its
-							// persistent conversation with its own skill
-							// (PLAT-697 phase 4).
-							step = goalLeadGoalWorkStep(pulseRunID)
-							step.goalLead = true
-						}
-						step.query += "\n\n" + text
-						step.goalWork = &perms
-					}
-					steps = append(steps, step)
+			if hasGoal {
+				// A recovery, the prompt budget or a protected boundary can
+				// still make Architecture or Technical due; close them so
+				// nothing waits on a turn this pass does not run.
+				if err := closeGoalLeadOwnedModules(ctx, sctx.WorkspacePath, pulseRunID); err != nil {
+					s.sessionLogf(sctx, sessionID, "[PULSE] could not close the reviews the Pulse conversation owns: %v", err)
 				}
+			}
+			// Goal Work runs first; for a goal workflow it is the only module
+			// turn and runs in the persistent Pulse conversation (PLAT-697).
+			moduleSteps := pulsePassModuleSteps(pulseRunID, hasGoal, func(module string) bool {
+				due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module)
+				return err != nil || due
+			})
+			for _, step := range moduleSteps {
+				if pulsemodules.ForStepLabel(step.label) == pulseModuleStrategicReview {
+					perms, text := goalWorkAutonomy(ctx, sctx.WorkspacePath)
+					step.query += "\n\n" + text
+					step.goalWork = &perms
+				}
+				steps = append(steps, step)
 			}
 			steps = append(steps, pulseLifecycleFinalSteps(pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))...)
 			if len(steps) > 0 && !isPulseLifecycleFinalStep(steps[0].label) {
@@ -2929,7 +2940,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	// autonomy levels only while it runs (pulse_autonomy_guard.go).
 	runHeldStep := func(st pulseLifecycleStep) pulseLifecycleStepRunResult {
 		if st.goalLead {
-			// The Goal Lead conversation holds its own tools for the turn.
+			// The Pulse conversation holds its own tools for the turn.
 			return s.runGoalLeadPassStep(ctx, sctx, st)
 		}
 		if st.goalWork != nil {
@@ -3093,7 +3104,7 @@ type pulseLifecycleStep struct {
 	// goalWork, when set, are the autonomy levels the server enforces on the
 	// Pulse session's tools for the length of this turn (Goal Work only).
 	goalWork *stepworkflow.GoalWorkPermissions
-	// goalLead runs the turn in the workflow's Goal Lead conversation
+	// goalLead runs the turn in the workflow's Pulse conversation
 	// (goal_lead_conversation.go) instead of the pass's own session.
 	goalLead bool
 }

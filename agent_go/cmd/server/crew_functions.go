@@ -966,7 +966,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		call.persist()
 	}
 	if isGoalLeadAsk(target, fn) {
-		// ask_goal_lead: a turn in the workflow's Goal Lead conversation.
+		// ask_pulse: a turn in the workflow's Pulse conversation.
 		message, _ := args["message"].(string)
 		call.saveIndex()
 		call.persist()

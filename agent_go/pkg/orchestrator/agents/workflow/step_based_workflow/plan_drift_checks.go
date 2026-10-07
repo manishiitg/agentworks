@@ -697,9 +697,9 @@ var planDriftReservedTables = map[string]bool{
 	"pulse_module_state":      true,
 	"pulse_module_audit":      true,
 	"report_field_update_log": true,
-	// The Goal Lead's recommendations and decision log (PLAT-697).
+	// The Pulse's recommendations and decision log (PLAT-697).
 	"pulse_recommendations": true,
-	// The Goal Lead's conversation, its Pulse-tab log and its QA requests
+	// The Pulse's conversation, its Pulse-tab log and its QA requests
 	// (PLAT-697 phase 4).
 	"goal_lead_conversation": true,
 	"goal_lead_messages":     true,

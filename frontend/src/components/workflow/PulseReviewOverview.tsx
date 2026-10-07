@@ -47,10 +47,13 @@ function FocusDetails({ items, findings }: { items: PulseReviewFocus[]; findings
   </div>
 }
 
-export function PulseReviewOverview({ platformOnly = false, moduleStates, planDriftDue = false, planDriftDueItems = [], planDriftDueError = null, coverage, audits, findings, moduleFilter, onSelectModule, reviewFocusSelections = [], playbookFocuses = [], disabledReviewModules = [], reviewModuleSaving = null, onToggleReviewModule, runningReviewModule = null, onRunReviewModule, strategySupplement }: {
+export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews = false, moduleStates, planDriftDue = false, planDriftDueItems = [], planDriftDueError = null, coverage, audits, findings, moduleFilter, onSelectModule, reviewFocusSelections = [], playbookFocuses = [], disabledReviewModules = [], reviewModuleSaving = null, onToggleReviewModule, runningReviewModule = null, onRunReviewModule, strategySupplement }: {
   /** Platform health tab: Drift, Technical and Architecture only. Goal Work
    * (strategic_review) has its own "For you" view. */
   platformOnly?: boolean;
+  /** A workflow with a goal: its Pulse conversation owns QA and architecture
+   * (PLAT-697), so they get no panels of their own here. */
+  goalLeadOwnsReviews?: boolean;
   moduleStates: PulseModuleState[]; coverage: PulseReviewFocus[]; audits: PulseReviewAudit[];
   planDriftDue?: boolean; planDriftDueItems?: PulsePlanDriftDueItem[]; planDriftDueError?: string | null;
   findings: PulseFindingLifecycle[]; moduleFilter: string | null;
@@ -67,7 +70,8 @@ export function PulseReviewOverview({ platformOnly = false, moduleStates, planDr
     { id: 'architecture_review', label: 'Architecture', description: 'Better prompts, orchestration, learning, knowledge, data and reports.', Icon: Blocks },
     { id: 'strategic_review', label: 'Strategy', description: 'Progress toward the goal and recommendations.', Icon: Lightbulb },
   ]
-  const selected = areas.find(area => area.id === moduleFilter)
+  const ownedByPulse = (id: string) => goalLeadOwnsReviews && (id === 'technical_review' || id === 'architecture_review')
+  const selected = areas.find(area => area.id === moduleFilter && !ownedByPulse(area.id))
   const latestAuditFor = (module: string) => audits.find(item => normalizePulseWorkspaceModule(item.module) === module && item.result !== 'skipped')
   const stateFor = (module: string) => moduleStates.find(item => normalizePulseWorkspaceModule(item.module) === module)
   const coverageFor = (module: string) => coverage.filter(item => normalizePulseWorkspaceModule(item.module) === module)
@@ -129,9 +133,11 @@ export function PulseReviewOverview({ platformOnly = false, moduleStates, planDr
       </section>}
       <section aria-labelledby="pulse-platform-heading">
         <div className="mb-2"><h3 id="pulse-platform-heading" className="text-sm font-semibold">Platform health &amp; stability</h3><p className="mt-1 text-xs text-muted-foreground">Maintenance Pulse handles in the background to keep the workflow correct and reliable. Goal Work does not wait for it.</p></div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {areas.filter(area => ['technical_review', 'architecture_review'].includes(area.id)).map(area => reviewCard(area))}
-        </div>
+        {goalLeadOwnsReviews
+          ? <p className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground" aria-label="QA and architecture">QA and architecture for this workflow are handled by its Pulse: it asks for a QA run when a failure threatens the goal, and checks the structure when its checks raise a question. Their results appear in the Pulse conversation above.</p>
+          : <div className="grid gap-2 md:grid-cols-2">
+            {areas.filter(area => ['technical_review', 'architecture_review'].includes(area.id)).map(area => reviewCard(area))}
+          </div>}
         {liveDriftDue && <div className="mt-2 flex w-full flex-wrap items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-left text-amber-900 dark:text-amber-100" aria-label="Workflow Review due">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">

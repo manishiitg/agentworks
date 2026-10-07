@@ -504,11 +504,11 @@ export interface ReportHumanInput {
 	apply_contract?: ReportHumanInputApplyContract
   /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
   apply_message?: string
-  /** The Goal Lead's recommended answer (PLAT-697), kept apart from the owner's answer. */
+  /** The Pulse's recommended answer (PLAT-697), kept apart from the owner's answer. */
   recommendation?: PulseRecommendation
 }
 
-/** The Goal Lead's recommendation on one decision; also that decision's log entry (PLAT-697). */
+/** The Pulse's recommendation on one decision; also that decision's log entry (PLAT-697). */
 export interface PulseRecommendation {
   input_id: string
   option_id?: string
@@ -535,7 +535,7 @@ export interface PulseDecisionLogEntry extends PulseRecommendation {
   recommended: string
 }
 
-/** One line of the Goal Lead conversation shown in the Pulse tab (PLAT-697 phase 4). */
+/** One line of the Pulse conversation shown in the Pulse tab (PLAT-697 phase 4). */
 export interface GoalLeadMessage {
   id: string
   at: string
@@ -555,7 +555,7 @@ export interface GoalLeadConversation {
   error?: string
 }
 
-/** A focus area's lifecycle: proposed by the Goal Lead, confirmed by the owner, tracked, closed. */
+/** A focus area's lifecycle: proposed by the Pulse, confirmed by the owner, tracked, closed. */
 export interface PulseFocusArea {
   id: string
   text: string
@@ -727,7 +727,7 @@ export interface PulseGoalAlarm {
   message: string
 }
 
-/** The Goal Lead's goal status: code facts plus the latest daily goal check verdict. */
+/** The Pulse's goal status: code facts plus the latest daily goal check verdict. */
 export interface PulseGoalStatus {
   facts: {
     status: 'no_goal' | 'ok' | 'at_risk' | 'not_measured'
@@ -743,6 +743,8 @@ export interface PulseGoalStatus {
     schedules_paused: boolean
     pause_already_reported?: boolean
   }
+  /** The workflow has a goal, so its Pulse conversation owns QA and architecture (PLAT-697): no separate review panels. */
+  goal_lead?: boolean
   latest_check?: {
     checked_at: string
     status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'
