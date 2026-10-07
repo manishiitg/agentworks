@@ -5,6 +5,7 @@
 | Folder | Tickets | Open |
 |---|---|---|
 | [apps](apps/index.md) | 1 | 1 |
+| [groups](groups/index.md) | 1 | 1 |
 | [local](local/index.md) | 1 | 0 |
 | [oauth](oauth/index.md) | 1 | 0 |
 | [scheduler-runs](scheduler-runs/index.md) | 1 | 0 |

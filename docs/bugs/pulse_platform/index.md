@@ -21,12 +21,13 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 14 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
 | [SparkQuill](sparkquill/index.md) | 2 | 1 |
-| [Vault](vault/index.md) | 9 | 3 |
+| [Vault](vault/index.md) | 10 | 4 |
 
 ## Newest tickets
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-677](vault/groups/plat-677.md) | Vault group descriptions must not name people | open | P2 | [vault/groups](vault/groups/index.md) |
 | [PLAT-676](coding-agents/muse/plat-676.md) | Muse hooks fail on slots: node Permission denied | in progress | P1 | [coding-agents/muse](coding-agents/muse/index.md) |
 | [PLAT-675](chat/rendering/plat-675.md) | Report links to a dead localhost port | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-674](chat/rendering/plat-674.md) | Rare product tips while the agent works | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-638](relays/triggers/plat-638.md) | Allow Python Relay platform runs without workflow plan artifacts | fixed on main | P2 | [relays/triggers](relays/triggers/index.md) |
 | [PLAT-637](relays/frontend-chat/plat-637.md) | Show a plain-language Relay overview before implementation code | closed | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-636](browser/browser/plat-636.md) | Extension input lost on hidden tabs | fixed on main | P1 | [browser/browser](browser/browser/index.md) |
-| [PLAT-635](goals/steps/plat-635.md) | Agents get local time in the turn header | open | P2 | [goals/steps](goals/steps/index.md) |
