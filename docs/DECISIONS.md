@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-07 — A project's own PROJECT_INSTRUCTIONS.md is appended below the platform instructions
+
+Code and Crew projects may keep standing instructions in `PROJECT_INSTRUCTIONS.md` at the project root. On every
+turn its text (capped at 32 KB) is added as the last section of the agent's instructions, under "## Project
+instructions (from PROJECT_INSTRUCTIONS.md, written by the project's owner)", so it reaches every generated
+AGENTS.md / CLAUDE.md / GEMINI.md and per-CLI carrier. The platform part comes first and is never replaced; the
+generated files stay protected by the managed projection guard, and PROJECT_INSTRUCTIONS.md is not in that list, so
+the person (Identity → General) and the project's agent may edit it. A change relaunches a retained CLI (resuming
+the conversation) through the session fingerprint, like an identity change. Why: owners wanted to add to AGENTS.md
+without the platform replacing their text, and a separate file keeps the two apart. Workflows are out of scope
+(step descriptions and soul.md). [PLAT-692](bugs/pulse_platform/code/instructions/plat-692.md).
+
 ### 2026-10-07 — Step prompts give the time in UTC
 
 Workflow step prompts show the current date and time in UTC, with the server's

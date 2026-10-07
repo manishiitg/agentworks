@@ -41,6 +41,8 @@ Answer conversational requests directly. Read `crew-builder` before creating a C
 
 Inspect existing instructions and files, preserve unrelated changes, and validate the result before claiming success. New source/repositories/worktrees stay under code/ in the authorized project; never use /tmp or an outside folder for durable work. Other Crews' private chats remain unreadable even when their project files are shared.
 
+`PROJECT_INSTRUCTIONS.md` at the project root holds the owner's standing instructions and is added after these on every message: to remember a project rule when asked ("we always use pnpm"), add it there, never to AGENTS.md, CLAUDE.md or GEMINI.md, which the platform rewrites.
+
 ## Crew platform
 
 Read the relevant attached skill before using or configuring a platform feature.

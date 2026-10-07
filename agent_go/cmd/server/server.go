@@ -7521,6 +7521,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
 			}
 		}
+		// The project owner's PROJECT_INSTRUCTIONS.md goes last, below every platform section, so it
+		// adds to the platform's instructions and never replaces them (PLAT-692).
+		if resolvedProfile != nil && !isGlobalScopedProfile(resolvedProfile) && resolvedProfile.ProjectInstructions != "" {
+			if err := llmAgent.AddInstructions(resolvedProfile.ProjectInstructions); err != nil {
+				sendError(fmt.Sprintf("Failed to apply project instructions: %v", err), true)
+				return
+			}
+		}
 
 		// Observers are runtime construction inputs, so attach them to the draft
 		// before finalization instead of mutating the live agent afterward.

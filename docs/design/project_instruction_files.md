@@ -97,6 +97,17 @@ Codex and Muse, so the block is the carrier. For Claude that needs a binary that
 prompt through `--system-prompt-file` instead, and deploys keep exactly one managed copy
 of each CLI (see PLAT-371).
 
+## The project's own instructions (PLAT-692)
+
+Code and Crew projects may keep a `PROJECT_INSTRUCTIONS.md` at the project root. The profile resolver
+(`agent_profile_runtime.go`) reads it every turn and the query path adds it as the LAST instruction section
+(`pkg/projectinstructions`), so it lands at the end of the session block in each CLI's carrier, after every
+platform section agent_go assembles (mcpagent's runtime tool routing/tool manifest still follow it). It is capped
+at 32 KB with a truncation note, and text that would close the managed block early is neutralised. It is an
+ordinary project file: not in the managed projection guard, editable in Identity → General and by the agent. Its
+hash joins the session fingerprint, so a retained CLI relaunches with resume when it changes. Crew readers get it
+but cannot edit it.
+
 ## Owner and reader
 
 A Crew has two roles. The owner (Builder) has full tools. A reader (Run: a

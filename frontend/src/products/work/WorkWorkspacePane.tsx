@@ -337,6 +337,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><CodeShellPanel projectId={projectId} /></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
+          shared={Boolean(shared)}
           projectId={projectId}
           projectTitle={projectTitle}
           projectDescription={projectDescription}

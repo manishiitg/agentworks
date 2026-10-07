@@ -10,7 +10,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Brain](brain/index.md) | 28 | 6 |
 | [Browser and browser automation](browser/index.md) | 50 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 31 | 10 |
-| [Code](code/index.md) | 10 | 1 |
+| [Code](code/index.md) | 11 | 1 |
 | [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 75 | 20 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-692](code/instructions/plat-692.md) | Project instructions appended to the generated AGENTS.md | fixed on main | P2 | [code/instructions](code/instructions/index.md) |
 | [PLAT-691](browser/browser/plat-691.md) | Browser recording lost: encoder fell behind | fixed on main | P2 | [browser/browser](browser/browser/index.md) |
 | [PLAT-690](app/accounts/plat-690.md) | MCP tools to view and set shared-account token limits | fixed on main | P2 | [app/accounts](app/accounts/index.md) |
 | [PLAT-689](chat/frontend-chat/plat-689.md) | Compact agent question cards | fixed on main | P3 | [chat/frontend-chat](chat/frontend-chat/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-651](brain/agents/plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 | [brain/agents](brain/agents/index.md) |
 | [PLAT-650](dominion/deployment/plat-650.md) | Dominion service processes miss provisioned slot groups and block Python Relay runners | deployed | P2 | [dominion/deployment](dominion/deployment/index.md) |
 | [PLAT-649](chat/rendering/plat-649.md) | Builder chat flickers and jumps when a message is sent | fixed on main | P1 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-648](code/chat/plat-648.md) | Code chats (tabs) message each other | fixed on main | P2 | [code/chat](code/chat/index.md) |

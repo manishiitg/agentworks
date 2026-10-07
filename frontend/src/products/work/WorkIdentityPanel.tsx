@@ -23,6 +23,7 @@ import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
+import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
@@ -360,8 +361,10 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
+  /** A Crew opened by a reader: the project instructions editor is the owner's. */
+  shared?: boolean
   /** The project's id. */
   projectId?: string
   projectTitle: string
@@ -426,6 +429,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
+        {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'models' && <div className="space-y-4">
           <WorkModelsPanel
             tabId={tabId}

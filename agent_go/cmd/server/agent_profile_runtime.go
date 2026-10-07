@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -37,6 +38,10 @@ type resolvedAgentProfile struct {
 	// relaunches when the identity it was launched with changes.
 	IdentityKey  string
 	KnowledgeKey string
+	// ProjectInstructions is the Code or Crew project's own PROJECT_INSTRUCTIONS.md, rendered as the last
+	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
+	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
+	ProjectInstructions string
 	// ChatConnections are this chat's own MCP connections: a Code's personal
 	// servers switched on for it, or a Crew's attached ones. They join the
 	// turn's servers later in the query path; here they only feed the session
@@ -101,7 +106,9 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		ChatConnections []string              `json:"chat_connections,omitempty"`
 		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
 		KnowledgeKey    string                `json:"knowledge_key,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey})
+		Instructions    string                `json:"project_instructions,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
+		Instructions: projectinstructions.Key(profile.ProjectInstructions)})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -580,6 +587,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nSaved browser procedures for this workspace: " + index + ". When the user asks for a previously taught browser task, read this index and the matching tested procedure before acting. Resolve fresh page targets, supply the requested inputs and check the reviewed outcome. A saved procedure does not grant additional tool or website permissions.\n"
 		}
 	}
+	projectInstructions := ""
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		file := agentProfileRuntimeWorkspace(userID, workspacePath) + "/" + projectinstructions.FileName
+		if content, found, err := readFileFromWorkspace(ctx, file); err != nil {
+			log.Printf("[PROJECT INSTRUCTIONS] Failed to read %s: %v", file, err)
+		} else if found {
+			projectInstructions = projectinstructions.Section(content)
+		}
+	}
 	var resolvedKeys *llm.ProviderAPIKeys
 	requestHasExplicitModel := strings.TrimSpace(req.Provider) != "" && strings.TrimSpace(req.ModelID) != ""
 	if provider, modelID := resolveProfileRuntimeModel(profile.Runtime, req.Provider, req.ModelID); provider != "" && modelID != "" {
@@ -654,7 +670,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeRuntimeConfigKey(workspacePath),
+	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeRuntimeConfigKey(workspacePath), ProjectInstructions: projectInstructions,
 		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
 		ChatSecrets:     api.chatSecretNames(ctx, userID, req)}, nil
 }

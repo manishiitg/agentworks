@@ -22,6 +22,11 @@ variables and paths.
 
 This workspace's chat history is saved in `builder/conversation/` (JSON).
 
+`PROJECT_INSTRUCTIONS.md` at the workspace root holds the owner's standing
+instructions and is added after these on every message: to remember a project
+rule when asked ("we always use pnpm"), add it there, never to AGENTS.md,
+CLAUDE.md or GEMINI.md, which the platform rewrites.
+
 Server administrators and reviewers can view workspaces, chats and files
 read-only. Use secret references rather than values, never print or
 store secret contents, and stay within the person's folder, network, MCP and
