@@ -4,4 +4,5 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-651](plat-651.md) | Workflow steps could not use Brain (no caller identity) | open | P1 |
 | [PLAT-647](plat-647.md) | Built-in brain skill for steps and chats with Brain access | open | P2 |

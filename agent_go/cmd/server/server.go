@@ -2480,11 +2480,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
-	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup"} {
+	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup", "changes", "diff"} {
 		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
 	}
 	apiRouter.HandleFunc("/knowledgebase/project", api.handleKnowledgebaseProject).Methods("GET", "POST", "OPTIONS")
 	brainSecretsAPI = api
+	apiRouter.HandleFunc("/knowledgebase/seen", handleBrainSeen).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/secrets", api.handleBrainSecrets).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/secrets/{name}", api.handleBrainSecrets).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
@@ -4614,6 +4615,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Workflow agents can be Simple or ReAct agents, tools are registered based on mode.
 		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, req.SelectedFolder) // Workflow mode: session-aware
 		api.guardPulseResultExecutor(allExecutors, sessionID)
+		bindKnowledgebaseStepIdentity(r.Context(), sessionID, allExecutors, toolCategories)
 
 		// NOTE: Workspace executor replacement with session + secrets happens after secrets are merged (see below).
 
@@ -11674,6 +11676,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
 	api.guardPulseResultExecutor(allExecutors, sessionID)
+	bindKnowledgebaseStepIdentity(ctx, sessionID, allExecutors, toolCategories)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 
 	// Track preset's global secret selection (overrides req.SelectedGlobalSecrets which is nil for phase chat)

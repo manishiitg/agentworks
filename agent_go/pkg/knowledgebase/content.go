@@ -48,6 +48,12 @@ func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[s
 	case "search_knowledgebase":
 		v, e := s.search(ctx, p, a)
 		return v, nil, e
+	case "list_knowledgebase_changes":
+		v, e := s.listChanges(ctx, p, a)
+		return v, nil, e
+	case "read_knowledgebase_diff":
+		v, e := s.noteDiff(ctx, p, a)
+		return v, nil, e
 	case "get_knowledgebase_backup_status":
 		v, e := s.backupStatus(p, a)
 		return v, nil, e

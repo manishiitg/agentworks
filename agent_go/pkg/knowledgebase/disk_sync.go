@@ -71,6 +71,7 @@ func (s *Service) syncDiskLocked(actor string) error {
 	if err := s.transact(changes); err != nil {
 		return err
 	}
+	s.recordHistory(actor, "Edits in Brain's folder")
 	after, err := s.diskSignature()
 	if err != nil {
 		return err

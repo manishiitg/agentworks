@@ -374,6 +374,18 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	if out, err := read(ctx, args); err != nil || !strings.Contains(out, "identity-bound-marker") {
 		t.Fatalf("owner read failed: %s %v", out, err)
 	}
+	// A workflow step on a coding CLI calls through its bridge session with no user attached; the workflow's
+	// server-side setup binds the session's authenticated caller (RTS rtslatency, 2026-10-07).
+	stepTools, stepExecutors, stepCategories := createKnowledgebaseTools("admin", session, workspace)
+	_ = stepTools
+	bindKnowledgebaseStepIdentity(knowledgeTestCaller(t.Context(), "admin"), session, stepExecutors, stepCategories)
+	stepRead := stepExecutors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
+	if out, err := stepRead(executor.WithSessionID(t.Context(), session), args); err != nil || !strings.Contains(out, "identity-bound-marker") {
+		t.Fatalf("a bound step session must read as its owner: %s %v", out, err)
+	}
+	if out, err := stepRead(executor.WithSessionID(t.Context(), "someone-elses-session"), args); err == nil || out != "" {
+		t.Fatalf("an unrelated session must stay refused: %s %v", out, err)
+	}
 	if _, err := bound(executor.WithSessionID(t.Context(), "foreign-chat"), "brain_read"); err == nil {
 		t.Fatal("foreign session admitted")
 	}

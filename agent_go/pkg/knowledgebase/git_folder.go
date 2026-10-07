@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // GitFolder is Brain's folder as a Git working folder: the Brain chat (and its terminal) run git there normally
@@ -66,11 +67,12 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 	}
 	// Brain's own bookkeeping files are not content.
 	exclude := filepath.Join(s.live, ".git", "info", "exclude")
-	if b, _ := os.ReadFile(exclude); !strings.Contains(string(b), ".kb-registry.json") {
+	// Brain's bookkeeping and the hidden folders a shell leaves at the top (.cache, .tmp, .sandbox-cache) are not content.
+	if b, _ := os.ReadFile(exclude); !strings.Contains(string(b), "/.*") {
 		if err := os.MkdirAll(filepath.Dir(exclude), 0o700); err != nil {
 			return f, err
 		}
-		if err := os.WriteFile(exclude, append(b, []byte("\n.kb-registry.json\n")...), 0o600); err != nil {
+		if err := os.WriteFile(exclude, append(b, []byte("\n.kb-registry.json\n/.*\n")...), 0o600); err != nil {
 			return f, err
 		}
 	}
@@ -88,6 +90,8 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 			return f, err
 		}
 	}
+	// History starts complete: anything saved before it existed is committed now.
+	s.recordHistory("brain", "Brain as of "+time.Now().UTC().Format("2006-01-02 15:04 UTC"))
 	return f, nil
 }
 

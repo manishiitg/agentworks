@@ -459,6 +459,9 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 			return nil, err
 		}
 		s.noteOwnWrite()
+		if message := historyMessage(tool, args); message != "" {
+			s.recordHistory(p.IdentityID, message)
+		}
 		if tool == "manage_knowledgebase_access" && stringArg(args, "action") == "configure_backup" {
 			_, _ = s.EnsureGitRepository(ctx) // the folder's origin follows the new destination at once
 		}

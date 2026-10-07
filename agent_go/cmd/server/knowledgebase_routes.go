@@ -307,12 +307,16 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 		tool = "get_knowledgebase_access"
 	case "backup":
 		tool = "get_knowledgebase_backup_status"
+	case "changes":
+		tool = "list_knowledgebase_changes"
+	case "diff":
+		tool = "read_knowledgebase_diff"
 	default:
 		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")
 		return
 	}
 	args := map[string]any{}
-	for _, key := range []string{"folder_path", "entry_id", "path", "query", "type", "tag", "cursor", "glob"} {
+	for _, key := range []string{"folder_path", "entry_id", "path", "query", "type", "tag", "cursor", "glob", "since"} {
 		if r.URL.Query().Has(key) {
 			args[key] = r.URL.Query().Get(key)
 		}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -175,4 +176,37 @@ func brainChatAllowed(r *http.Request) bool {
 		return false
 	}
 	return service.CanWriteSomewhere(knowledgebasePrincipal(r, claims))
+}
+
+// GET/POST /api/knowledgebase/seen: the caller's last seen Brain commit (What's new starts after it).
+func handleBrainSeen(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.UserID == "" || !knowledgebaseProductAllowed(claims) {
+		http.Error(w, "Brain not found", http.StatusNotFound)
+		return
+	}
+	service, err := knowledgebaseService()
+	if err != nil {
+		knowledgebaseHTTPError(w, err)
+		return
+	}
+	identity := knowledgebasePrincipal(r, claims).IdentityID
+	if r.Method == http.MethodPost {
+		var body struct {
+			Commit string `json:"commit"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+			http.Error(w, "commit is required", http.StatusBadRequest)
+			return
+		}
+		if err := service.SetSeenCommit(identity, strings.TrimSpace(body.Commit)); err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+	}
+	knowledgebaseWriteJSON(w, map[string]any{"commit": service.SeenCommit(identity)})
 }
