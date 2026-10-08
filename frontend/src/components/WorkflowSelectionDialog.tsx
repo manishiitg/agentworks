@@ -5,12 +5,13 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
+import { PulseIcon } from './workflow/pulseIcon'
 
 interface WorkflowItem {
   presetId: string
   label: string
   workspacePath: string
-  kind: 'workflow' | 'crew'
+  kind: 'workflow' | 'crew' | 'pulse'
   icon?: string
   secondaryLabel?: string
 }
@@ -21,6 +22,8 @@ interface WorkflowSelectionDialogProps {
   onSelectWorkflow: (workflow: WorkflowItem) => void
   searchQuery: string
   position: { bottom: number; left: number }
+  // In a Builder chat, the workflow's Pulse is the first entry: #pulse asks it.
+  includePulse?: boolean
 }
 
 export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = ({
@@ -28,7 +31,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   onClose,
   onSelectWorkflow,
   searchQuery: externalSearchQuery,
-  position
+  position,
+  includePulse = false
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [localQuery, setLocalQuery] = useState('')
@@ -97,7 +101,11 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     }).catch(() => { if (!cancelled) setLoadError(true) })
     return () => { cancelled = true }
   }, [isOpen, userID])
-  const allReferences = useMemo(() => isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : [], [isOpen, referenceResult, userID])
+  const allReferences = useMemo(() => {
+    const items = isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : []
+    if (!isOpen || !includePulse) return items
+    return [{ presetId: 'pulse', label: 'pulse', secondaryLabel: 'Ask this workflow\'s Pulse', workspacePath: '', kind: 'pulse' as const }, ...items]
+  }, [includePulse, isOpen, referenceResult, userID])
 
   // Filter synchronously
   const filteredWorkflows = useMemo<WorkflowItem[]>(() => {
@@ -229,14 +237,14 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               }`}
               onMouseDown={e => { e.preventDefault(); onSelectWorkflow(workflow) }}
             >
-              <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />
+              {workflow.kind === 'pulse' ? <PulseIcon className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" /> : <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />}
               <div className="flex-1 min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="truncate font-medium">{workflow.label}</div>
                   <span className="shrink-0 rounded border border-border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{workflow.kind}</span>
                 </div>
                 {workflow.secondaryLabel && <div className="truncate text-xs text-muted-foreground">{workflow.secondaryLabel}</div>}
-                <div className="text-xs text-muted-foreground truncate">{workflow.workspacePath}</div>
+                {workflow.workspacePath && <div className="text-xs text-muted-foreground truncate">{workflow.workspacePath}</div>}
               </div>
             </div>
           ))

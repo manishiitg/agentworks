@@ -2486,6 +2486,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const beforeHash = inputText.substring(0, hashPosition)
     const afterSearch = inputText.substring(hashPosition + 1 + workflowSearchQuery.length)
+    // #pulse is plain text the Builder reads as "ask Pulse"; it adds no context.
+    if (workflow.presetId === 'pulse') {
+      writeComposerText(beforeHash + '#pulse ' + afterSearch)
+      setShowWorkflowDialog(false)
+      setHashPosition(-1)
+      setWorkflowSearchQuery('')
+      return
+    }
     const tag = referenceTag(workflow)
     const newQuery = beforeHash + tag + ' ' + afterSearch
 
@@ -2522,7 +2530,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textareaRef.current.setSelectionRange(cursorPosition, cursorPosition)
       }
     }, 0)
-  }, [inputText, hashPosition, workflowSearchQuery, activeTabId, setTabConfig])
+  }, [inputText, hashPosition, workflowSearchQuery, activeTabId, setTabConfig, writeComposerText])
 
   const handleWorkflowDialogClose = useCallback(() => {
     setShowWorkflowDialog(false)
@@ -3745,6 +3753,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onSelectWorkflow={handleWorkflowSelect}
         searchQuery={workflowSearchQuery}
         position={workflowDialogPosition}
+        includePulse={isWorkflowPhaseChat}
       />
 
       {/* Inline Skill Selection Popup */}
