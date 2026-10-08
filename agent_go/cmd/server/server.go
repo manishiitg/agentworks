@@ -395,6 +395,7 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
 
@@ -827,6 +828,10 @@ type QueryRequest struct {
 	// authoritative manifest for this turn. It is never itself a filesystem
 	// authority: Work maps its workspace_id through the caller's current grants.
 	AgentProfileConversationKey string `json:"agent_profile_conversation_key,omitempty"`
+	// Code source selection is a hint, never file authority.
+	CodeLocalFiles      *codeLocalFileTarget `json:"code_local_files,omitempty"`
+	CodeChatMode        string               `json:"code_chat_mode,omitempty"`
+	CodeChatAttachments []string             `json:"code_chat_attachments,omitempty"`
 	// Code execution mode: When enabled, only virtual tools are added to LLM
 	// MCP tools are accessed through generated scripts using the on-demand HTTP API specification.
 	UseCodeExecutionMode bool `json:"use_code_execution_mode,omitempty"`
@@ -3105,6 +3110,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
 
 	// Plan and Step Config API routes
+	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
+	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
@@ -3983,6 +3990,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		http.Error(w, admitErr.Error(), status)
+		return
+	}
+	if err := api.prepareCodeChatAttachments(r.Context(), &req, resolvedProfile, currentUserID, sessionID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
@@ -6050,13 +6061,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
 		}
-		if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
-			selectedServers = mergeServerLists(selectedServers, placeNames)
-			if agentConfig.RuntimeOverrides == nil {
-				agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
-			}
-			for name, override := range placeOverrides {
-				agentConfig.RuntimeOverrides[name] = override
+		if !codeLocalModeTurn(req, resolvedProfile) {
+			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
+				selectedServers = mergeServerLists(selectedServers, placeNames)
+				if agentConfig.RuntimeOverrides == nil {
+					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
+				}
+				for name, override := range placeOverrides {
+					agentConfig.RuntimeOverrides[name] = override
+				}
 			}
 		}
 		// Apply the external Builder boundary last, including after a Code
@@ -6064,7 +6077,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
-		if resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID {
+		if codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
 			selectedServers = []string{mcpclient.NoServers}
 			agentConfig.RuntimeOverrides = nil
 		}
@@ -6548,7 +6561,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("[WORKSPACE TOOLS] Registering %d workspace tools for %s", len(workspaceTools), workspaceToolModeLabel)
 
+			if codeLocalModeTurn(req, resolvedProfile) {
+				image := virtualtools.WrapChatAttachmentImage(api.codeChatImageReader(sessionID, currentUserID), getWorkspaceAPIURL())
+				images := map[string]func(context.Context, map[string]any) (string, error){"read_image": image}
+				if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
+					virtualtools.SetReadImageLLMConfig(images, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig, mergedAPIKeys)
+				}
+				workspaceExecutors["read_image"] = images["read_image"]
+			}
 			for _, tool := range workspaceTools {
+				// Local mode uses the same definitions with laptop executors registered below.
+				if codeLocalModeTurn(req, resolvedProfile) && (tool.Function == nil || tool.Function.Name != "read_image") {
+					continue
+				}
 				if tool.Function == nil {
 					log.Printf("[WORKSPACE TOOLS] Warning: Skipping tool with nil Function")
 					continue
@@ -6842,6 +6867,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			// Local folder grants belong to the owner's interactive website turn;
+			// scheduled, connector and unattended/background adapters need separate consent.
+			if codeLocalFileTurn(req, resolvedProfile) {
+				if err := api.registerLocalWorkspaceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, req.CodeLocalFiles); err != nil {
+					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
+					return
+				}
+			}
 			isToolBackedChat := !isWorkflowPhase
 			isAgentWorksChat := isToolBackedChat && resolvedProfile == nil
 			if isToolBackedChat {
@@ -7018,11 +7051,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			if codeLocalModeTurn(req, resolvedProfile) {
+				if err := llmAgent.AddInstructions(codeLocalFilesInstructions(req.CodeLocalFiles)); err != nil {
+					sendError("Failed to apply local Code file instructions", true)
+					return
+				}
+			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
 			//    section (AttachSkill, not AddInstructions), so it stays here
 			//    rather than in the prompt-section registry below.
 			identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
-			if len(identitySkillNames) > 0 {
+			if !codeLocalModeTurn(req, resolvedProfile) && len(identitySkillNames) > 0 {
 				// Phase 3 rewire: skills are now first-class on the agent.
 				// mcpagent's ensureSystemPrompt auto-injects the progressive-
 				// disclosure listing (name + description); CLI transports
@@ -7060,7 +7099,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if resolvedProfile != nil && !isWorkflowPhase {
+			if resolvedProfile != nil && !isWorkflowPhase && !codeLocalModeTurn(req, resolvedProfile) {
 				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly)); err != nil {
 					sendError(fmt.Sprintf("Failed to attach project memory guidance: %v", err), true)
 					return
@@ -7099,7 +7138,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			promptCtx.NativeCodingTools = strings.HasPrefix(llmAgent.CodingAgentToolsMode(), "full")
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
-				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
+				if !codeLocalModeTurn(req, resolvedProfile) {
+					promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
+				}
 			}
 			if len(req.WorkflowContextPaths) > 0 {
 				referenceSkillName := "work-workflow-files"
@@ -14191,12 +14232,30 @@ func (e *queryAdmissionError) Unwrap() error { return e.err }
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
 func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest, currentUserID, sessionID string) (*resolvedAgentProfile, WorkflowAccessLevel, *queryAdmissionError) {
+	if api.codeLocalSession(sessionID) && (req.TriggeredBy != "" && req.TriggeredBy != "interactive" || req.BotPlatform != "" || req.IsAutoNotification || req.ParentSessionID != "" || req.SessionKind != "" || req.PulseLifecycleTurn || !websiteDeviceClaims(GetUserFromContext(ctx))) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Local Code sessions cannot receive automated or other-chat turns"), invalidProfile: true}
+	}
 	resolvedProfile, err := api.resolveAgentProfileForQuery(ctx, req, currentUserID, sessionID)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
+	}
+	if req.CodeChatMode != "" && (resolvedProfile == nil || resolvedProfile.Definition.ID != "code") {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Code chat mode requires a Code chat"), invalidProfile: true}
+	}
+	if req.CodeChatMode == "local" && (!codeLocalModeTurn(*req, resolvedProfile) || !websiteDeviceClaims(GetUserFromContext(ctx))) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Local mode requires an interactive Code website chat"), invalidProfile: true}
+	}
+	if req.CodeLocalFiles != nil {
+		if !codeLocalFileTurn(*req, resolvedProfile) || !req.CodeLocalFiles.valid() {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("local files require an interactive Code chat"), invalidProfile: true}
+		}
+		if err := api.validateCodeLocalFiles(GetUserFromContext(ctx), req.CodeLocalFiles); err != nil {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
+		}
+		resolvedProfile.CodeLocalFiles = req.CodeLocalFiles
 	}
 	// Workflow-phase payloads identify the workspace through their preset,
 	// not selected_folder (the client never sends it for these chats).
@@ -14210,6 +14269,9 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
+	if req.CodeLocalFiles != nil {
+		resolvedProfile.CodeLocalFilePolicy = api.codeLocalFilePolicyKey(GetUserFromContext(ctx), req.CodeLocalFiles, crewReadOnly)
+	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}

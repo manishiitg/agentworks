@@ -10,12 +10,12 @@ The current system is fully file-backed:
 
 There is no DB-backed workflow scheduler architecture anymore.
 
-Remote workspace note: in the planned Remote Workspace Gateway model, the
-schedule files still live with the workflow on the server, but the server does
-not run the coding agent. An online local runner reads the schedule, claims a
-server-side job lease, executes the scheduled workshop messages locally, and
-writes run history/Pulse/report artifacts back through the gateway. See
-[Remote Workspace Gateway + Local Runner Plan](../core/remote_workspace_server_plan.md).
+Remote execution design: local agents access server workflows through the public
+MCP; scheduling remains an operation of the service that owns the workflow. For
+the proposed server-agent/local-files direction, local tool execution requires
+an online laptop executor. Device selection, missed-run handling and duplicate
+execution prevention are still design decisions, not implemented scheduling
+guarantees. See [Local and Server Agent Design](../core/remote_workspace_server_plan.md).
 
 ## Source Of Truth
 

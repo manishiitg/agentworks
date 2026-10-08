@@ -22,6 +22,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
+import { useCodeFilesPreference } from './codeLocalFiles'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -105,12 +106,15 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // a public origin; local agents can connect directly to a loopback MCP URL.
   const incomingGmail = useGmailInboundUIEnabled()
   const product = useProjectProduct()
+  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  const filePreference = useCodeFilesPreference(chatSessionId || '')
+  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const visibleTabs = INTEGRATION_TABS.filter(option =>
-    isWorkIntegrationTabEnabled(option.value, enabledPanels) &&
+    isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
-  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
+  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value ?? 'apps'
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(true)
@@ -122,7 +126,6 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     if (visibleTabs.some(option => option.value === target)) { setTab(target as WorkIntegrationTab); setIntegrationMenu(false) }
     else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
   })
-  const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
@@ -146,6 +149,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
       store.setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
     }
   }
+
+  if (localCodeSession) return <p className="p-4 text-sm text-muted-foreground">Integrations are unavailable in Local mode. Manage the local connection in the right-side panel.</p>
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">

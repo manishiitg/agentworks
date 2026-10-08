@@ -215,6 +215,7 @@ workflows:
 # Shared runtime instruction sections admitted by this product.
 # A new section must be declared here before it is attached to chat.
 instruction_sections:
+  - authenticated-user
   - workspace-map
   - project-memory
   - product-features

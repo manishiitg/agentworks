@@ -54,6 +54,10 @@ func authorizedSharedAsset(w http.ResponseWriter, r *http.Request, full string) 
 			externalError(w, 403, "insufficient_scope", "This token does not allow this asset.")
 			return
 		}
+		if claims.AccessToken != nil && !claims.AccessToken.FileGuard.Allows(relative, false) {
+			externalError(w, 403, "protected_path", "File is outside folder grants.")
+			return
+		}
 	} else {
 		uid := publicWorkspaceUserID(r)
 		if requested := r.URL.Query().Get("uid"); IsMultiUserMode() && requested != "" && requested != uid {
@@ -286,6 +290,10 @@ func (api *StreamingAPI) handleExternalAssetContent(w http.ResponseWriter, r *ht
 	clean, err := wf.CleanRelative(p)
 	if err != nil || clean != p || p == "." {
 		externalError(w, 400, "invalid_path", "Use a workflow-relative file path.")
+		return
+	}
+	if claims.AccessToken != nil && !claims.AccessToken.FileGuard.Allows(p, false) {
+		externalError(w, 403, "protected_path", "File is outside folder grants.")
 		return
 	}
 	root, relative, ok := authorizedSharedAsset(w, r, fmt.Sprintf("%s/%s", chosen.WorkspacePath, p))

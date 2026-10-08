@@ -26,6 +26,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 type resolvedAgentProfile struct {
@@ -42,6 +43,12 @@ type resolvedAgentProfile struct {
 	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
 	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
 	ProjectInstructions string
+	// Changing Code source location replaces retained tools/instructions between turns.
+	CodeChatMode           string
+	CodeLocalFiles         *codeLocalFileTarget
+	CodeChatAttachments    []string
+	CodeLocalFilePolicy    string
+	CodeLocalDisabledTools []string
 	// ChatConnections are this chat's own MCP connections: a Code's personal
 	// servers switched on for it, or a Crew's attached ones. They join the
 	// turn's servers later in the query path; here they only feed the session
@@ -100,15 +107,20 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	secrets := append([]string(nil), profile.ChatSecrets...)
 	sort.Strings(secrets)
 	payload, err := json.Marshal(struct {
-		Definition      agentprofiles.Profile `json:"definition"`
-		SelectedServers []string              `json:"selected_servers,omitempty"`
-		IdentityKey     string                `json:"identity_key,omitempty"`
-		ChatConnections []string              `json:"chat_connections,omitempty"`
-		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
-		KnowledgeKey    string                `json:"knowledge_key,omitempty"`
-		Instructions    string                `json:"project_instructions,omitempty"`
+		Definition             agentprofiles.Profile `json:"definition"`
+		SelectedServers        []string              `json:"selected_servers,omitempty"`
+		IdentityKey            string                `json:"identity_key,omitempty"`
+		ChatConnections        []string              `json:"chat_connections,omitempty"`
+		ChatSecrets            []string              `json:"chat_secrets,omitempty"`
+		KnowledgeKey           string                `json:"knowledge_key,omitempty"`
+		CodeChatMode           string                `json:"code_chat_mode,omitempty"`
+		CodeLocalFiles         *codeLocalFileTarget  `json:"code_local_files,omitempty"`
+		CodeChatAttachments    []string              `json:"code_chat_attachments,omitempty"`
+		CodeLocalFilePolicy    string                `json:"code_local_file_policy,omitempty"`
+		CodeLocalDisabledTools []string              `json:"code_local_disabled_tools,omitempty"`
+		Instructions           string                `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions)})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions), CodeChatMode: profile.CodeChatMode, CodeLocalFiles: profile.CodeLocalFiles, CodeLocalFilePolicy: profile.CodeLocalFilePolicy, CodeChatAttachments: profile.CodeChatAttachments, CodeLocalDisabledTools: profile.CodeLocalDisabledTools})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -328,6 +340,9 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 
 func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *QueryRequest, userID, sessionID string) (*resolvedAgentProfile, error) {
 	profileID := strings.TrimSpace(req.AgentProfileID)
+	if req.CodeChatMode != "" && profileID != codeproduct.ProfileID {
+		return nil, fmt.Errorf("Code chat mode requires a Code profile")
+	}
 	if profileID == "" {
 		if req.AgentProfileVersion != 0 || strings.TrimSpace(req.AgentProfileContext.ProjectTitle) != "" || strings.TrimSpace(req.AgentProfileContext.WorkspaceDescription) != "" {
 			return nil, fmt.Errorf("agent_profile_id is required when agent profile fields are provided")
@@ -491,6 +506,28 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		promptContext.Product = productVars
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
+	var localDisabledTools []string
+	if profile.ID == codeproduct.ProfileID {
+		mode, err := resolveCodeChatMode(req.CodeChatMode, req.CodeLocalFiles)
+		if err != nil {
+			return nil, err
+		}
+		req.CodeChatMode = mode
+	}
+	if profile.ID == codeproduct.ProfileID && req.CodeChatMode == "local" {
+		_, blockedTools := restrictCodeLocalFeatures(&profile)
+		localDisabledTools = blockedTools
+		req.SelectedSkills = nil
+		req.EnabledServers = []string{mcpclient.NoServers}
+		req.Servers = nil
+		req.WorkflowContextPaths = nil
+		req.authorizedWorkflowContextReadPaths = nil
+		browserDisabled := false
+		req.EnableBrowserAccess = &browserDisabled
+		req.BrowserMode = "none"
+		req.CdpPort = nil
+		req.CdpPorts = nil
+	}
 	rendered, err := agentprofiles.RenderPrompt(profile, promptContext)
 	if err != nil {
 		return nil, err
@@ -502,7 +539,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileID = profile.ID
 	req.AgentProfileVersion = profile.Version
-	if _, sharedPrompt := workflowkb.SharedConfig(stepworkflow.GetPromptDocsRoot(), workspacePath); sharedPrompt != "" {
+	if _, sharedPrompt := workflowkb.SharedConfig(stepworkflow.GetPromptDocsRoot(), workspacePath); sharedPrompt != "" && req.CodeChatMode != "local" {
 		rendered += "\n\n" + sharedPrompt
 	}
 	req.AgentProfileContext = promptContext
@@ -670,9 +707,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeRuntimeConfigKey(workspacePath), ProjectInstructions: projectInstructions,
-		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
-		ChatSecrets:     api.chatSecretNames(ctx, userID, req)}, nil
+	connections := []string(nil)
+	knowledgeKey := ""
+	if req.CodeChatMode != "local" {
+		connections = chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
+		knowledgeKey = knowledgeRuntimeConfigKey(workspacePath)
+	}
+	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+		CodeLocalDisabledTools: localDisabledTools, CodeChatMode: req.CodeChatMode,
+		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
 // chatSecretNames lists the secrets the turn will expose to the coding CLI, by name only.
@@ -965,7 +1008,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
 			gate.Declare(name)
 		}
-		if err := api.registerOpenWorkWorkspaceViewTool(registrar, userID, sessionID, workspacePath); err != nil {
+		if err := api.registerOpenWorkWorkspaceViewTool(registrar, userID, sessionID, workspacePath, resolved.CodeChatMode == "local" || resolved.CodeLocalFiles != nil); err != nil {
 			return err
 		}
 	}
@@ -975,6 +1018,11 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 func profileDisablesVirtualTool(profile *resolvedAgentProfile, toolName string) bool {
 	if profile == nil {
 		return false
+	}
+	for _, disabled := range profile.CodeLocalDisabledTools {
+		if strings.EqualFold(strings.TrimSpace(disabled), strings.TrimSpace(toolName)) {
+			return true
+		}
 	}
 	for _, disabled := range profile.Definition.ToolPolicy.Disabled {
 		if strings.EqualFold(strings.TrimSpace(disabled), strings.TrimSpace(toolName)) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,11 +69,11 @@ func TestLifecyclePersistenceAndRevocation(t *testing.T) {
 		t.Fatal("database permissions", info.Mode())
 	}
 }
-func TestWriteScopesRejected(t *testing.T) {
+func TestPlanAndIncompleteWriteScopesRejected(t *testing.T) {
 	now := time.Now()
 	for _, scopes := range [][]string{
 		append([]string{}, Scopes...),
-		{"workflows:read", "files:read", "files:write"},
+		{"files:write"},
 		{"workflows:read", "plan:write"},
 		{"builder:chat"},
 	} {
@@ -403,5 +404,39 @@ func TestNonExpiringLocalTokenPersistenceAndRemoval(t *testing.T) {
 	legacy := Token{Name: "Legacy", UserID: "owner", Scopes: []string{"workflows:read"}, ExpiresAt: PermanentExpiry()}
 	if err := Validate(legacy, now); err == nil {
 		t.Fatal("ordinary tokens must still have bounded expiry")
+	}
+}
+
+func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
+	now := time.Now()
+	if err := Validate(Token{Name: "Mixed", UserID: "owner", Scopes: []string{"devices:connect", "workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}, now); err == nil {
+		t.Fatal("device permission combined with replacing workflow token")
+	}
+	store, err := Open(filepath.Join(t.TempDir(), "auth", "tokens.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	writer, raw, err := store.Issue(context.Background(), Token{Name: "Writer", UserID: "owner", Scopes: []string{"workflows:read", "files:read", "files:write"}, WorkflowIDs: []string{"one"}, FileGuard: &wf.FolderGuard{WritePaths: []string{"docs"}, ReadOnlyPaths: []string{"docs/locked"}}, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Authenticate(context.Background(), raw, now)
+	if err != nil || loaded.FileGuard == nil || loaded.FileGuard.Allows("docs/locked/a", true) || !loaded.FileGuard.Allows("docs/a", true) {
+		t.Fatalf("persisted guard %+v %v", loaded, err)
+	}
+	device, _, err := store.Issue(context.Background(), Token{Name: "Laptop", UserID: "owner", Scopes: []string{"devices:connect"}, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Active(context.Background(), writer.ID, now); err != nil {
+		t.Fatalf("device revoked writer: %v", err)
+	}
+	_, _, err = store.Issue(context.Background(), Token{Name: "Read", UserID: "owner", Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Active(context.Background(), device.ID, now); err != nil {
+		t.Fatalf("CLI revoked device: %v", err)
 	}
 }

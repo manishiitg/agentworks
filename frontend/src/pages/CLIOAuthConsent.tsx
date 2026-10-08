@@ -37,7 +37,9 @@ export function CLIOAuthConsent() {
       </div>
       {consent && !decision && <>
         <p className="text-sm text-foreground">Only allow this if you started <code>agentworks login</code> and your terminal shows this code: <strong className="font-mono">{consent.user_code}</strong></p>
-        <p className="text-sm text-foreground">The CLI can read workflows and files you can access, and start or control runs. It cannot edit plans or files.</p>
+        {consent.scopes.includes('devices:connect') && <p className="text-sm text-foreground">Connect a local file executor to your website account. Only folders you explicitly select in the executor command are shared. Read-only folders cannot be edited; plans and private files stay protected. Stopping the command disconnects it.</p>}
+        {consent.scopes.includes('files:write') && <p className="text-sm text-foreground">Write workflow source and documentation with revision checks. Plans, configuration, databases and private files stay protected.</p>}
+        {consent.scopes.some(scope => scope !== 'devices:connect') && <p className="text-sm text-foreground">Approved permissions: {consent.scopes.filter(scope => scope !== 'devices:connect').join(', ')}. Your current account access applies to every request.</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={() => void decide('deny')}>Deny</Button>
           <Button disabled={busy} onClick={() => void decide('approve')}>{busy ? 'Connecting…' : 'Allow access'}</Button>

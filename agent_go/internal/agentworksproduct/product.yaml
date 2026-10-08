@@ -375,7 +375,7 @@ chat:
     # Run-mode session. A name here without an implemented external tool
     # fails server startup, as does an implemented tool missing from both
     # lists. Admitting an authoring mutation here is a deliberate API
-    # change: this list remains read/run. Builder has its own scoped external_tools.
+    # change: direct file writes require their own scope; plans remain Builder-owned.
     external_tools:
       - list_workflows
       - get_workflow
@@ -384,6 +384,7 @@ chat:
       - list_step_code
       - get_file_link
       - read_file
+      - write_file
       - get_plan
       - get_agent_context
       - list_guidance_topics
@@ -441,6 +442,7 @@ chat:
 # Shared runtime instruction sections admitted by this product.
 # A new section must be declared here before it is attached to chat.
 instruction_sections:
+  - authenticated-user
   - workspace-map
   - project-memory
   - product-features

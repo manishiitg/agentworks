@@ -45,6 +45,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=$HOME_DIR/.env
 Environment=HOME=$HOME_DIR/home
+Environment=AGENTWORKS_STATE_ROOT=$HOME_DIR/state
 WorkingDirectory=$HOME_DIR/current
 ExecStart=$HOME_DIR/current/bin/agents-workspace server --host 127.0.0.1 --port 24001 --docs-dir $HOME_DIR/data/docs
 StandardOutput=append:$HOME_DIR/logs/workspace.log
@@ -66,6 +67,7 @@ Type=simple
 EnvironmentFile=$HOME_DIR/.env
 Environment=HOME=$HOME_DIR/home
 Environment=MCP_BRIDGE_BINARY=$HOME_DIR/current/bin/mcpbridge
+Environment=AGENTWORKS_STATE_ROOT=$HOME_DIR/state
 WorkingDirectory=$HOME_DIR/current
 ExecStart=$HOME_DIR/current/bin/agents-agent server --host 127.0.0.1 --port 24000 --log-level info --log-file $HOME_DIR/logs/agent.log --mcp-config $HOME_DIR/current/configs/mcp_servers_agents.json --max-turns 100
 StandardOutput=append:$HOME_DIR/logs/agent.log

@@ -1,451 +1,376 @@
-# Remote Workspace Gateway + Local Runner Plan
+# Local and Server Agent Design
 
-**Status: DRAFT, NOT IMPLEMENTED** (2026-07-06)
+**Status: guarded public MCP writes, the file/shell executor and minimal Local chat mode implemented. Updated 2026-10-08.**
 
-Goal: `workspace-docs` lives **only on a server** (single physical copy, no local
-working copies, no sync layer), while the user's laptop remains the **agent
-runner**. Claude Code / Codex CLI / Cursor / other coding-agent CLIs run locally,
-the local app runs the workshop/scheduler/control-plane logic, and every
-workspace filesystem / shell / database / browser operation is executed through
-a secure server-side workspace gateway.
+This document replaces the workspace-router proposal. Support two directions:
 
-This is not "server-hosted Runloop" and not "duplicate `agent_go` on both
-machines." The server is a secure remote workspace runtime. The local app is the
-agent runner and UI.
+- **Local → server:** a local agent uses the existing public AgentWorks MCP to
+  work with server-owned workflows. Extend that MCP with guarded file writes.
+- **Server → local:** the agent and LLM run in the website's server backend;
+  a connected laptop executes authorized file operations and granted shell commands in one selected folder.
+  Use an internal authenticated device connection for these operations.
 
-Multiple users may share one server: each user has **personal workflows** plus
-access to a set of **shared team workflows**.
+Keep each workspace authoritative on its owning machine. Neither direction
+requires a synchronized filesystem or a second working copy.
 
-## Locked Decisions
+The router prototype, placement/move APIs, special server authentication and
+remote-only `mcp_only` enforcement have been removed. Local → server uses the
+public MCP. Server → local has a dedicated `agentworks executor connect` command
+and an authenticated outbound WebSocket connection for file operations and local shell commands.
+The retired proposal remains available in Git history.
 
-| Decision | Choice |
+Implemented now:
+
+- Public `write_file`, explicit optional `files:write` consent, persisted token
+  folder caps, workflow access checks, revision conflicts and durable receipts.
+- File-owning workspace service writes, including deployments where the agent
+  server does not share its filesystem. The internal service route is not exposed
+  through the general workspace proxy.
+- Managed document, diff, upload, move/delete and Builder writes share the same
+  cross-process serialization boundary. Unmanaged local editors or shell commands
+  do not participate in that lock; reads and writes remain individually atomic.
+- Executor login with `devices:connect`, owner-scoped device discovery and file
+  list/read/write and granted shell tools for interactive Code chat agents, local guard enforcement,
+  heartbeat/reconnect, token revocation and pending-request failure on disconnect.
+- Local file writes and shell commands retain private receipts across reconnects/restarts. The
+  server never blindly resends a write or shell command after a timeout or disconnect.
+- Code **Settings → General → Local CLI connection** offers **Connect local files**.
+  The browser-scoped binding takes over file access for the current Code chat.
+  The right side shows only **Local CLI connection**, **Costs**, and **Models**.
+  The connection panel provides CLI setup, folder selection, status and disconnect.
+  File reads, edits and granted laptop shell commands happen through the agent in chat.
+- Local chat attachments support picking, pasting screenshots and dropping images
+  or text/source files (10 files, 10 MB each). Server uploads are owner/chat
+  scoped and read-only to the agent; no automatic laptop copy. Text previews are
+  bounded; the existing `read_image` reads only current-turn attachments. Nested
+  image CLIs receive a temporary copy under Landlock, failing closed if unavailable.
+  Attachment uploads disclose transfer to the server/model.
+- Local-connected turns exclude MCP connections, skills, project/Vault secrets,
+  background agents, server terminal/browser tools and other server adapters.
+  Dashboards/databases, schedules/triggers and messaging stay disabled. Saved
+  settings are excluded from the turn without changing project configuration.
+  Offline bindings retain these restrictions. Disconnect restores normal Code.
+  Other chats and existing server schedules/connections are unchanged.
+
+The executor supports files and laptop shell commands enabled automatically for every shared folder, including builds and tests. Browser tools, laptop workflow routing,
+schedules, device-management panels, public history/restore APIs and retention
+policies are outside this change.
+Before-content history is capped at 128 KiB per write; full revisions are retained.
+Device connections currently live in one backend process. Deployments with
+multiple backend instances need routing affinity for device and chat requests.
+No production deployment or external LLM call is performed by this change.
+
+## 1. Decisions and boundaries
+
+| Topic | Decision |
 |---|---|
-| Server role | Remote Workspace Gateway: auth, one live `workspace-docs`, file/search/db/shell/browser tool APIs, leases, backups/snapshots |
-| Local role | Agent Runner: UI/control plane, local `agent_go`, coding CLIs, `mcpbridge`, schedules/Pulse/auto-improve execution |
-| Agent location | Claude/Codex/Cursor/LLM agents run locally unless a separate always-on runner machine is configured |
-| Sharing model | Per-user personal workflows + explicitly shared team workflows |
-| Copies of docs | Exactly one live copy on server disk; git Backups are recovery points, not working copies |
-| Auth | Users authenticate to the server gateway via SSO/device grants; local runner gets a scoped token |
-| Bridge | `mcpbridge` remains local beside the coding CLI and normally calls local `agent_go`, not the server directly |
-| Schedules | Schedule definitions live with server workspace files; execution happens on an online local runner that claims a lease |
+| Local agent accessing server workflows | Use the existing separate public MCP, `/api/external/v1/mcp` |
+| Public MCP file writes | Add `write_file` with explicit permission, folder guards, revision checks and audit history |
+| Plans and configuration | Keep direct file writes blocked; change them through typed tools |
+| Transparent local workspace routing | Retire the branch's router approach; do not introduce a second remote file-access system |
+| Server agent accessing laptop resources | Use a laptop executor connected to the same backend that serves the website |
+| MCP for the website's own laptop executor | Not required; reuse internal tool handlers and their policy |
+| Connection establishment | Laptop initiates an authenticated outbound connection |
+| Files | Remain on their owning machine; reads return content to the agent |
+| Browser-only website | Can use explicitly selected files where the browser supports it; cannot supply arbitrary local shell/application access |
+| Full local tools | Require an installed/running laptop companion |
 
-Related docs: [mcp_bridge_layer.md](mcp_bridge_layer.md),
-[multi_user_authentication.md](multi_user_authentication.md),
-[folder_guard_system.md](folder_guard_system.md).
+The public MCP and the CLI tool bridge are different interfaces. This design's
+local → server direction uses the **separate public MCP**, not the coding CLI's
+internal `mcpbridge`. Our own server → local executor does not need to convert
+every internal tool call into an external MCP call.
 
----
+## 2. Use cases
 
-## 1. Product Shape
+| Direction | Good fit | Dependency |
+|---|---|---|
+| Local → server | A person's Claude/Codex/other agent reads and edits shared workflow code or documents using that person's LLM | Server endpoint is reachable and the connection has the required grants |
+| Local → server | Inspect runs, call workflow functions, ask Crews or manage permitted Vault resources from an external agent | Existing product tools and their independent permissions |
+| Server → local | The website supplies the model and conversation while a developer keeps source files on their laptop | Laptop executor is connected |
+| Server → local | The website agent reads and edits files within an explicitly shared local folder | Explicit device/folder/tool grants and an appropriate local executor |
 
-### Server: Remote Workspace Gateway
+Using a server LLM alone does not require moving the agent loop. A local loop
+with a server model gateway is a separate, simpler option if centralized model
+credentials and billing are the only requirement.
 
-Example target: one AWS/GCP/VPS instance at `https://workspace.example.com`
-behind TLS. A VPN-only deployment is allowed, but the gateway should still be
-safe if exposed to the public internet.
+## 3. Local → server through public MCP
 
-Hosted server responsibilities:
-
-- **SSO / device connection**: authenticate the user, issue short-lived desktop
-  import grants, mint scoped device/runner tokens, revoke devices.
-- **Persistent workspace volume**: mount the single live copy at
-  `/app/workspace-docs`.
-- **Workspace file APIs**: document read/write/list/move/delete, search, glob,
-  upload/import/export, version restore.
-- **Workspace execution APIs**: shell execution inside the server workspace
-  container, read-only SQLite query, browser/process helpers where supported.
-- **Access enforcement**: token validation, user identity, folder guards,
-  per-user/team path mapping, request limits, audit logs.
-- **Write leases**: one active writer per shared workflow and claim leases for
-  scheduled jobs so two laptops do not run or edit the same thing at once.
-- **Durability**: snapshots, backup status, recovery tooling.
-
-Server non-goals for v1:
-
-- no Claude/Codex/Cursor installation requirement;
-- no LLM provider auth requirement;
-- no full workshop/chat orchestration;
-- no autonomous Pulse/auto-improve execution without an online runner;
-- no local-desktop UI replacement.
-
-Implementation can reuse existing `workspace-api` and selected `agent_go`
-code/routes, but the deployed server should be treated as a **gateway**, not as
-a second full Runloop desktop backend.
-
-### Local App: Agent Runner
-
-Local responsibilities:
-
-- run the desktop UI and local `agent_go` control plane;
-- launch Claude Code / Codex CLI / Cursor / other coding-agent CLIs;
-- run local `mcpbridge` as the stdio bridge for those CLIs;
-- register and execute local custom tools such as `read_skill`, plan
-  editing tools, schedule tools, Pulse/auto-improve orchestration;
-- point all workspace IO to the remote gateway via `WORKSPACE_API_URL`;
-- store the imported server profile and device token securely;
-- run schedules when the machine is online and successfully claims the server
-  lease.
-
-Local non-goals in remote workspace mode:
-
-- no local checkout/copy of `workspace-docs`;
-- no local `workspace-api` for the remote workspace;
-- no direct raw access to server files outside the gateway APIs.
-
-### Runtime Flow
-
-```text
-Claude/Codex/Cursor on laptop
-  -> local mcpbridge
-  -> local agent_go tool handler
-  -> WorkspaceClient / WORKSPACE_API_URL
-  -> HTTPS Remote Workspace Gateway
-  -> server workspace-api / /app/workspace-docs
+```mermaid
+flowchart LR
+    A[Local agent and LLM] -->|Public MCP| B[Server AgentWorks]
+    B --> C[Server workspace and product tools]
+    C -->|Results| A
 ```
 
-This keeps the agent stack local while moving the workspace and dangerous
-operations to the server.
+The local agent discovers operations through `get_api_spec` and invokes them
+with `call_tool`. Workflow IDs identify resources; caller-supplied filesystem
+roots must not select arbitrary server directories.
 
----
+The existing catalog already includes raw file reads/listing/search, plans,
+run evidence and controls, workflow functions, Crew operations, Brain and
+authorized Vault administration. The effective catalog depends on the
+connection's scopes and the caller's live permissions.
 
-## 2. Connection Flow
+Add direct file authoring so the local model can decide an edit and submit it
+without asking a second model to rewrite the file. Existing `builder_chat`
+remains an explicit delegation to the **server's configured Builder model**.
+Likewise, calling run/step/Crew operations invokes the configured service-side
+execution; adding file writes does not relocate those agents to the laptop.
 
-1. Admin deploys the workspace gateway and configures SSO.
-2. User opens the gateway connection page and signs in.
-3. Server shows **Connect Desktop**.
-4. Connect Desktop creates a short-lived, single-use grant and either:
-   - opens `runloop://connect?server=...&code=...`, or
-   - downloads a `.runloop-connection` file containing server URL + grant code.
-5. Local app exchanges the grant for a scoped device/runner token.
-6. Local app stores a remote profile:
-   - `workspace_api_url = https://workspace.example.com`
-   - `server_id`
-   - `user_id`
-   - `device_id`
-   - token in OS keychain or equivalent secure storage
-7. Local app verifies gateway health, token scope, visible workflows, and bridge
-   compatibility.
-8. Local runner starts using `WORKSPACE_API_URL=https://workspace.example.com`
-   for the selected remote workspace.
+Provider-native tools on the laptop still operate on laptop resources. Remote
+operations must name the server's MCP tools. This direction does not require a
+blanket shutdown of native tools for an otherwise local external agent.
 
-Security rule: the server gateway derives identity from the validated token.
-It must not trust browser/client-supplied `X-User-ID` as authority.
+### `write_file` contract
 
----
-
-## 3. How Existing Tools Map
-
-### `read_skill`
-
-Already fits the model. It is an intrinsic `mcpagent` identity tool that reads
-the in-memory bundles attached to the agent; it does not depend on workspace
-storage or on a Builder-specific transport path.
-
-```text
-API model -> mcpagent -> attached skill bundle
-coding CLI -> mcpbridge -> mcpagent -> attached skill bundle
+```json
+{
+  "name": "write_file",
+  "arguments": {
+    "workflow_id": "workflow-id-from-list_workflows",
+    "path": "code/task.py",
+    "content": "print('updated')\n",
+    "expected_revision": "revision-returned-by-read_file",
+    "request_id": "unique-id-for-this-intended-write"
+  }
+}
 ```
 
-### Plan Editing Tools
+This tool is available to explicitly authorized connections. The first slice creates or
+replaces bounded UTF-8 source/document files. Use `expected_revision: missing`
+for creation. A successful response includes the resulting revision and audit
+receipt. Delete, move, patch and binary upload are separate future decisions.
 
-`create_plan`, `add_scripted_step`, `update_scripted_step`,
-`delete_plan_steps`, route tools, validation tools, and `update_step_config`
-should keep executing in local `agent_go`.
+### Permission and folder-guard rules
 
-They already use the orchestrator's `ReadWorkspaceFile` / `WriteWorkspaceFile`
-callbacks, backed by `WorkspaceClient`. In remote mode that client must point to
-the server gateway.
+Effective write authority is the intersection of:
 
-```text
-plan tool in local agent_go
-  -> WorkspaceClient
-  -> remote gateway
-  -> Workflow/<name>/planning/plan.json
-```
+**connection scope ∩ current user access ∩ granted write folders ∩ operation
+policy**, with blocked/read-only/protected paths taking precedence.
 
-Required hardening:
+- Require explicit `files:write` consent and current workflow edit access.
+  Existing read/run connections do not silently acquire writes.
+- Resolve the workflow and guard on the server. A public MCP request has no
+  automatic right to inherit another chat's session guard, and a client-sent
+  allowlist cannot widen access.
+- Derive authoring-folder grants from the selected workflow and connection
+  restrictions. Carry any legitimate execution-session narrowing as trusted
+  server state. Define how folder caps are stored and issued before rollout;
+  folder caps are persisted as `file_guard` on personal access tokens. OAuth write
+  consent defaults to the workflow's public authoring paths; tokens can narrow it.
+- Apply `WritePaths`, `BlockedPaths`, `BlockedWritePaths` and read-only grants
+  using shared policy evaluation. Missing or unreadable required policy refuses
+  the write.
+- Normalize and confine paths before opening them; reject absolute paths,
+  traversal, private paths and symlinks, including symlink substitution during
+  the operation. Match path components, not a raw string prefix.
+- Preserve the protected-file rules below even when the containing workflow
+  folder is writable. Reading a plan can remain permitted.
 
-- `WorkspaceClient` must send a verified device/user token, not only
-  `X-User-ID`.
-- Server gateway must enforce write permission and workflow write leases.
-- Dedicated plan tools remain the only allowed path for protected planning
-  files; raw `diff_patch` / shell writes to `planning/plan.json` stay blocked.
-
-### Workspace File / Shell / DB / Browser Tools
-
-These should execute against the remote gateway:
-
-- file read/write/list/search;
-- `execute_shell_command`;
-- `diff_patch_workspace_file`;
-- SQLite query;
-- browser/process helpers where the capability is server-side.
-
-CDP against the user's visible local Chrome is a separate local-browser mode and
-should not be confused with server-side browser execution. In remote workspace
-mode, unattended schedules should prefer server-side headless/browser helpers or
-explicitly require a local runner/browser.
-
----
-
-## 4. Schedules, Pulse, Auto-Improve, Chief Of Staff
-
-The server does not have coding CLIs or LLM agents in this model, so it cannot
-execute scheduled agent work by itself.
-
-### Schedule Storage
-
-Schedule definitions remain workspace artifacts, for example:
-
-- workflow schedules in `Workflow/<name>/workflow.json`;
-- workflow schedule history in `Workflow/<name>/schedule-runs.json`;
-- Chief of Staff schedules under the user's server workspace area.
-
-Because those files live on the server, all runners see the same schedule
-configuration.
-
-### Schedule Execution
-
-An online local runner:
-
-1. reads schedules from the remote workspace;
-2. computes due jobs locally;
-3. asks the server gateway to claim a job lease;
-4. runs the scheduled messages locally using the local coding agent stack;
-5. all file/shell/db/browser operations go to the server gateway;
-6. writes run outputs, Pulse HTML, costs, reports, notify state, and run history
-   back to the server workspace;
-7. releases or completes the lease.
-
-If no runner is online, schedules wait. For always-on automation, the user can
-run a dedicated runner machine. That machine is still a **runner** with coding
-CLIs installed; the workspace server remains a gateway.
-
-### Multi-Runner Rules
-
-- A scheduled job must have a server-side claim lease before execution starts.
-- A shared workflow must have a write lease before plan/config/report/KB/db
-  mutations.
-- If a lease expires, another runner may recover only after checking run state
-  and marking stale `running` records safely.
-- Notification and publish steps must be idempotent enough that a recovered run
-  does not double-send or double-publish without checking status.
-
----
-
-## 5. Sharing Model
-
-Build on existing per-user isolation:
-
-```text
-workspace-docs/
-  _users/<user-id>/...            # personal workflows + chat scratch
-  _team/Workflow/<name>/...       # shared team workflows
-```
-
-Rules:
-
-- **Personal**: only the owning user's runner sessions get folder-guard access.
-- **Shared team workflows**: authenticated team members may read; writes require
-  a server-side workflow lease.
-- **System-like writes** from Pulse/auto-improve are still performed by the
-  runner that claimed the schedule, but server audit records should mark them as
-  schedule/automation writes, not arbitrary user edits.
-- Keep v1 small: one team per server, personal vs shared boundary only. No
-  per-workflow ACL matrix yet.
-
----
-
-## 6. Implementation Phases
-
-Order matters: first make the gateway secure, then point local runners at it.
-
-### Phase 0 — Mode Boundary
-
-- Add an explicit **remote workspace profile** to the local app.
-- In remote mode, local `agent_go` remains the control plane, but
-  `WORKSPACE_API_URL` points to the server gateway.
-- Do not start/use local `workspace-api` for the remote workspace.
-- Make the UI show active mode, server, user, and runner identity.
-
-Exit criteria: local UI can browse a remote workspace through the gateway
-without any local workspace copy.
-
-### Phase 1 — SSO + Device Token
-
-- Add the Connect Desktop grant flow.
-- Exchange one-time grants for scoped device/runner tokens.
-- Store tokens securely.
-- Add revoke/list devices.
-- Make `WorkspaceClient` attach the device token to every gateway request.
-
-Exit criteria: local runner can authenticate to the gateway without pasting raw
-browser JWTs or long-lived shared tokens.
-
-### Phase 2 — Secure Gateway
-
-- Gateway validates token and derives user identity server-side.
-- Remove trust in client-supplied `X-User-ID` as authority.
-- Apply folder guards and per-user/team mapping at the gateway.
-- Add request-size limits, rate limits, audit logs, and TLS-only public access.
-- Keep `workspace-api` private behind the gateway layer if the gateway is split
-  into auth/proxy + workspace-api.
-
-Exit criteria: no anonymous request can read/write files or run shell; a stolen
-token is scoped to one user/device and can be revoked.
-
-### Phase 3 — Tool Compatibility
-
-- Run the existing workshop tools against remote `WORKSPACE_API_URL`.
-- Verify `read_skill` stays local and unaffected.
-- Verify plan tools mutate remote `planning/plan.json` through
-  `WorkspaceClient`.
-- Verify file, shell, db, report, cost, media, and browser helpers either work
-  through the gateway or are explicitly marked local-only.
-- Add tests for direct protected-planning-file writes being blocked in remote
-  mode.
-
-### Phase 4 — Leases
-
-- Add workflow write leases for shared workflows.
-- Add scheduled-job claim leases.
-- Add recovery behavior for expired/stale leases.
-- Surface lease errors clearly to agents and UI.
-
-### Phase 5 — CLI Scratch Dir Audit
-
-Today coding CLIs may be launched with cwd inside the workspace subtree. With
-remote docs that path does not exist locally.
-
-- Launch CLIs in per-session local scratch dirs.
-- Write only local CLI config there (`.mcp.json`, `.cursor/mcp.json`, hooks,
-  policy files).
-- Audit CLI-specific implicit disk context (`CLAUDE.md`, `@file`,
-  `.pi/APPEND_SYSTEM.md`) and inject/fetch needed context through tools instead.
-- Update bridge guidance: prompt paths are server workspace paths; access them
-  through tools, not local disk.
-
-### Phase 6 — Migration
-
-- Backup local workflow.
-- Restore/import it into server `workspace-docs`.
-- Rewrite embedded absolute host paths to the canonical server root where needed.
-- Mark the local workflow copy read-only/retired to avoid accidental split-brain.
-
----
-
-## 7. Risks
-
-| Risk | Notes / mitigation |
+| Example target | Direct file-write result |
 |---|---|
-| **Remote code execution surface** | `execute_shell_command` is remote code execution by design. Gateway auth, folder guards, request limits, and audit logs are product code, not hardening. |
-| **False duplicate-server design** | Do not run a second full control plane on the server. Server is gateway; local runner owns agents and orchestration. |
-| **Concurrent-write corruption** | Server-side workflow leases are required before shared workflow writes. |
-| **Schedule double-runs** | Multiple laptops can be online. Every due job needs a server-side claim lease. |
-| **Laptop-off schedules** | Schedules do not run if no runner is online. Use a dedicated always-on runner if needed. |
-| **Token leakage on runners** | Use scoped device tokens, secure storage, short lifetimes/refresh, and revocation. |
-| **Canonical-root drift** | Server workspace root should be stable, preferably `/app/workspace-docs`; changing it requires migration. |
-| **Silent CLI context loss** | Local CLIs no longer cwd into workspace files; audit implicit disk context and route through tools. |
-| **Local-browser ambiguity** | Server-side browser helpers and local CDP browser are different capabilities. Label them clearly. |
+| `code/task.py`, `docs/process.md` | Allowed within effective write grants |
+| A folder granted only for reading | Rejected |
+| `planning/*`, including `planning/plan.json` and step configuration | Rejected; use typed plan tools |
+| `workflow.json`, `product.json`, `functions.json`, `workflow.json.kb-lock` | Rejected; use typed workflow/configuration tools |
+| `costs/*`, `schedule-runs.json` | Rejected; runtime-managed records |
+| Databases and their journal files | Rejected; use scoped database tools |
+| Secret stores, authentication files, private runtime/audit state | Rejected |
+| Another workflow, a path outside the grant, or a symlink escape | Rejected |
 
----
+A `files:write` grant permits authoring executable source: later runs may execute
+that source. It must therefore require authoring authority, not merely run or
+read permission. This intentionally includes `code/<step>/`: editable authors
+can change source without Builder's description-hash/code-lock validation.
+Use Builder when those authoring checks are required. Direct source access is
+not offered to run-only or read-only accounts. It does not grant shell execution,
+plan writes or Vault access.
 
-## 8. Manual Validation Checklist
+### Revisions, durability and retries
 
-These are the areas to test manually before trusting remote workspace mode with
-real workflows.
+The file-owning service must check the revision and replace the file under one
+shared SQLite serialization boundary per workflow or product project. MCP, browser
+editing, version restores, document patch/move/delete/upload and Builder file edits
+use the same physical scope. A long folder operation in one workflow does not
+hold another workflow's lock. Direct
+filesystem edits by other processes cannot be made transactional by this API.
 
-### Auth / Identity
+Stage and atomically replace the file while preserving Unix ownership, ordinary
+permission bits and Linux access ACLs when permitted. A rootless Linux service
+cannot assign another UID: it retains the original group and effective ACL
+permissions, adding the former owner as a named ACL entry. The replacement is
+service-owned; masked permissions are normalized before the mask is enlarged so
+other users do not gain access. Refuse replacement before rename when the required
+group or ACL access cannot be retained.
+Record caller, workflow, path, request ID, previous/resulting revision and
+recoverable history. Fail closed when required authorization or audit storage
+is unavailable. If the file changed but receipt confirmation failed, report an
+uncertain outcome that can be resolved by request ID instead of retrying blindly.
 
-- Log in via SSO, import a desktop connection, then revoke that device token.
-  The local runner must stop working without needing a local app restart.
-- Try to spoof another user by changing `X-User-ID` or a user id field in a
-  request. The gateway must derive identity from the validated token and deny
-  the spoof.
-- Try to read another user's `_users/<id>` folder. The gateway must deny it.
-- Try an expired token during a running session. Token refresh should recover,
-  or the runner should fail clearly without partial writes.
+Retrying the same request ID and payload returns the recorded outcome. Reusing
+that ID with a different payload is rejected. A revision conflict requires
+rereading and reconciling; it must not turn into an unconditional overwrite.
 
-### Remote Workspace Targeting
+The shared `workflowfiles` editor owns guarded writes and durable receipts at
+per-root hashed directories beneath `WORKSPACE_FILE_STATE_DIR`, or under
+configured `AGENTWORKS_STATE_ROOT`, with
+`.<docs-folder>-file-edits/` as the private sibling fallback. Records
+include authenticated user ID/name, connection ID, source, logical root, path,
+request ID, before-content up to 128 KiB and
+both revisions. Prepared records reconcile an interrupted atomic replacement.
+Builder's existing operation audit remains separate; its mounted file writer
+participates in the same serialization lock. Public writes always use the
+file-owning service and therefore support separate service volumes. Agent and
+workspace services must use the same shared private state directory and service
+identity when both mount the documents. Docker Compose uses a shared state
+volume; rootless/systemd deployments configure matching state roots. Receipts
+are not automatically pruned; operators must retain request outcomes when
+planning audit retention.
 
-- With a remote profile active, verify every workspace read/write/shell request
-  hits the server gateway, not local `127.0.0.1:8081`.
-- Run `execute_shell_command pwd` and confirm it executes inside the server
-  workspace/container.
-- Run `read_skill(skills=[{"name":"builder-reference","path":"references/file-layout.md"}])`
-  and confirm it still works locally without
-  requiring server file access.
-- Disable or stop local `workspace-api` while using a remote profile; remote
-  workflow browsing and tools should still work.
+## 4. Server → local through the CLI executor
 
-### Plan And Protected Files
+```mermaid
+flowchart LR
+    U[Code website chat] --> A[Server agent and LLM]
+    L[Local CLI] -->|Authenticated outbound WebSocket| G[Server device gateway]
+    A -->|Selected folder file or shell request| G
+    G -->|Existing connection| L
+    L --> F[Granted local folder]
+    F -->|Result and durable receipt| A
+```
 
-- Edit a deterministic step with `update_scripted_step`; confirm only the server-side
-  `Workflow/<name>/planning/plan.json` changes.
-- Try raw `diff_patch_workspace_file`, shell redirect, or direct write against
-  `planning/plan.json`; it must be blocked.
-- Simulate network loss during a plan edit; the result must be either fully
-  applied or clearly failed, not half-written JSON.
-- Have two runners try to edit the same shared workflow. One must acquire the
-  workflow write lease and the other must get a clear lease error.
+The server owns the agent loop and LLM. Local Code reuses the existing MCP bridge
+tools and schemas: `execute_shell_command` (`command`, optional `timeout`) and,
+for writable folders, `diff_patch_workspace_file` (`filepath`, `diff`). Only their
+execution target changes. The selected laptop and folder are bound internally;
+the agent does not receive new local file tools or device-selection arguments.
+Reads and listing use shell commands such as `cat`, `sed`, `head` and `ls`.
 
-### Schedules / Multi-Runner
+Server coding CLI providers still require the internal `mcpbridge` executable.
+The runtime honors `MCP_BRIDGE_BINARY`, then discovers an executable beside the
+server binary (or in its sibling `.bin/` directory), then retains the provider's
+`PATH`/`~/go/bin/` fallback. Discovery follows the installed server executable,
+including release symlinks; agent-controlled working directories are never
+searched. Release packaging must include the bridge. A missing server binary
+cannot be supplied by the laptop connection.
 
-- Start two local runners with the same server profile and a due schedule. Only
-  one runner should claim and execute the job.
-- Kill the runner mid-schedule. The lease should expire or recover cleanly, and
-  stale `running` records should not hide the failure.
-- Let a schedule become due while no runner is online. It should wait, and the
-  UI should say it is waiting for an online runner instead of implying the
-  server is executing it.
-- Run Pulse and auto-improve from a claimed schedule; confirm artifacts, cost
-  report, Pulse HTML, dashboard cards, notify status, and run history all write
-  to the server workspace.
-- Retry/recover a scheduled run and confirm notify/publish/backup do not
-  double-send or double-publish without checking status.
+Shell commands are enabled automatically for every folder shared through the CLI.
+`--folder` uses a read-only filesystem sandbox; `--write-folder` permits file
+changes and patch tools, including builds and tests that write project files.
+No separate shell flag is required. Before connecting, the CLI prints each
+folder's file and command permissions. Commands can access the internet,
+localhost services and the local network, including on read-only grants.
+Filesystem guards do not filter network destinations; the website confirmation
+explains this before selecting the folder. File contents and command output reach the
+server and LLM. The CLI accepts requests over its existing outbound connection.
 
-### Shell / File Boundary
+### Connection and website experience
 
-- Test path traversal (`../`), symlink escape, absolute host paths, and attempts
-  to access outside the allowed workspace root.
-- Confirm folder guards apply consistently to read, write, move, delete, shell,
-  db query, upload/import/export, and restore/version APIs.
-- Run large file/report/media operations over the gateway and confirm timeouts,
-  upload limits, and error messages are sane.
+1. Open a Code chat and go to **Settings → General → Local CLI connection**
+   in the right-side panel. The composer only displays the current connection;
+   it has no Server/Local switch. Opening setup keeps server mode active.
+2. Install the CLI, sign in with `devices:connect`, and run
+   `agentworks executor connect` with named folder grants.
+   This scope is exclusive and cannot be combined with remote MCP permissions.
+   The executor refuses the home directory, its parents and any shared folder
+   containing its credential config or private state. Share individual projects.
+3. Select the computer and shared folder, review the consequences, then explicitly
+   click **Use this folder**. Selection alone does not change the mode. The browser remembers this binding
+   for the account, server workspace and current chat only.
+4. The right-side toolbar offers **Local CLI connection**, **Costs**, and
+   **Models**. The connection panel shows setup, folder permissions, status
+   and disconnect. No file editor, terminal, browser, dashboard, automation,
+   integrations or general project settings are shown.
+5. The agent uses the existing shell and patch tools against the laptop from chat. MCP connections, skills,
+   project/Vault secrets and background agents are excluded from local turns.
+   Provider authentication remains available for the selected server model.
+   Returned file contents and command output may be retained in server chat
+   history, accessible through normal administrator and Code review permissions.
+6. Disconnect asks the user to review the restored server file access and features,
+   then explicitly choose **Switch to server files**. Connection changes are
+   unavailable while a turn is running. Saved configuration and other chats
+   remain unchanged; Ctrl-C in the CLI ends folder sharing.
 
-### Secrets / Logs
+Only interactive Code turns receive local tools. Crew, Brain, Vault, schedules,
+messaging turns and unattended agents do not inherit this binding. Native
+server filesystem/terminal/browser tools are disabled for connected turns.
+Retained callbacks check the current turn and selected binding on every call.
+Local sessions refuse synthetic notifications, notification steering and asks
+from other chats; a registration from an earlier turn grants no new authority.
 
-- Confirm local LLM/coding-agent credentials stay local and are not copied to the
-  server workspace.
-- Confirm server-side workflow/tool secrets are only available where intended.
-- Confirm terminal logs, run files, Pulse, cost reports, and error messages
-  redact device tokens, `Authorization` headers, and secrets.
+### Authority and failures
 
-### Browser Modes
+Every dispatch validates website ownership and live connection authorization.
+The CLI independently checks local grants. Patches reuse the existing parser and
+diff application, validate every file before mutation, and apply protected-file
+rules and revision checks. Shell is available for read-only and writable folders.
+Within writable grants, arbitrary programs
+can modify project files, including git metadata, plans or databases. OS sandboxing
+limits filesystem access to folder grants and runtime system/scratch paths and
+enforces `--block` and `--read-only` exclusions. CLI credentials and receipt state
+are denied, and command environments omit login/provider secrets. Shell execution
+requires an editable owner account; read-only folder grants allow inspection but
+block writes in the OS sandbox. A missing sandbox
+refuses execution; commands never fall back to server execution. Absolute roots
+are omitted from grant metadata; command output can contain local paths.
 
-- Test a workflow using local CDP/visible Chrome and a workflow using
-  server-side/headless browser helpers. The UI and tool errors should make clear
-  which browser mode is active.
-- Run an unattended schedule that requires browser access. It should either use
-  server-side/headless browser capability or explicitly require an online local
-  runner/browser.
+An offline device retains the binding and restrictions. Ordinary chat can
+continue; local file and shell calls fail without server fallback. Connection controls
+remain available during setup and offline.
 
-### Migration / Single Source Of Truth
+Patch operations use revision checks and authenticated write receipts. Request
+identities are generated internally, rather than added to the bridge tool schemas.
+Both read-only and writable folders use private command receipt storage outside
+the shared folder. The transport never retries mutations automatically. Completed
+shell results survive reconnects/restarts; an interrupted command with an unknown
+outcome is not executed again under the same request identity. Inspect current
+files before deciding to issue another patch or command after an uncertain result.
+Commands return the existing bridge stdout/stderr/exit-code response, capture at
+most 1 MiB per stream, default to 60 seconds and allow at most 300 seconds.
+Cancellation, disconnect and revocation stop active commands and their process
+groups. Builds/tests run on the laptop; typed workflow editing, laptop workflow
+routing and browser tools remain excluded.
+Linux uses the launcher embedded in the CLI with Landlock; macOS uses sandbox-exec.
+Local macOS commands permit Mach lookups only for named directory services
+(libinfo and membership); they have no general Mach/IOKit permission. Desktop
+launching, Apple Events, clipboard and credential-service lookups remain denied.
+Live integration checks cover curl, git clone, npm install/test and refusal of
+desktop/AppleScript/clipboard access and an outside SSH-key fixture.
 
-- Migrate a local workflow to the server, then confirm the local copy is retired
-  or marked read-only so it does not become a second source of truth.
-- Restore from Backup into the server workspace and verify embedded absolute
-  host paths are rewritten or flagged.
-- Confirm published dashboards and report viewers read from server-side files/db
-  through the gateway, not from stale local data.
+The device registry currently lives in one backend process. Multiple instances
+need routing affinity for device and chat requests. This change does not deploy
+the service or invoke an external LLM.
 
----
+## 5. Existing implementation references
 
-## 9. Open Questions
+| Area | Source |
+|---|---|
+| Public MCP transport and discovery | [external_mcp.go](../../agent_go/cmd/server/external_mcp.go) |
+| External catalog and dispatch | [external_tools.go](../../agent_go/cmd/server/external_tools.go) |
+| Public tool admission | [product.yaml](../../agent_go/internal/agentworksproduct/product.yaml) |
+| Token scopes and issuance | [store.go](../../agent_go/pkg/accesstokens/store.go), [mcp_oauth.go](../../agent_go/cmd/server/mcp_oauth.go) |
+| Existing bounded file reads | [external_file_reads.go](../../agent_go/cmd/server/external_file_reads.go) |
+| Existing managed Builder file writer | [external_builder_workspace.go](../../agent_go/cmd/server/external_builder_workspace.go) |
+| Builder audit/history | [external_builder_audit.go](../../agent_go/cmd/server/external_builder_audit.go) |
+| Session folder-guard state | [types.go](../../agent_go/pkg/common/types.go) |
 
-- Should the gateway be implemented as a hardened mode of existing
-  `workspace-api`, or as an auth/proxy layer in `agent_go` in front of private
-  `workspace-api`?
-- Deep link vs `.runloop-connection` file for desktop import.
-- Exact device token lifetime and refresh behavior for long interactive runs.
-- Whether shared workflows use `_team/` placement or `workflow.json shared=true`.
-- Whether a dedicated "runner daemon" mode is needed for always-on schedules.
+Related documentation: [public MCP and CLI](../getting-started/agentworks-cli-mcp.md),
+[folder guards](folder_guard_system.md), [workflow scheduling](../workflow/workflow_scheduling.md).
+
+### Downloads companion and connection setup
+
+Local setup has three steps: install the CLI, sign in with the exclusive
+`devices:connect` scope, then share a project. The right-side panel generates
+quoted commands from the selected path and access level, shows live connected or
+offline status, and requires reviewing consequences before binding a chat.
+Downloads is off by default. Selecting **Also share Downloads** adds `--downloads`
+to the CLI command and separately grants read/write `~/Downloads`. Each project
+explicitly links that companion; simply sharing a second alias does not widen
+its shell access. Commands use `$AGENTWORKS_DOWNLOADS`; guarded patches may use
+absolute Downloads paths, with one shared folder per patch request. A read-only
+project can still use its separately approved writable Downloads. Both roots
+retain exclusion checks and refuse moved roots. A Downloads companion cannot
+override a read-only project nested inside it; patches to that project keep its
+project guards. There is no folder sync.
+
+Traceability: [PLAT-726](../bugs/pulse_platform/coding-agents/files/plat-720.md).

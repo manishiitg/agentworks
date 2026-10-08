@@ -13,7 +13,7 @@ var errCLIOAuthPending = errors.New("authorization_pending")
 var errCLIOAuthDenied = errors.New("access_denied")
 var errCLIOAuthSlowDown = errors.New("slow_down")
 
-func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context) (deviceCode, verificationCode string, err error) {
+func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context, requested ...string) (deviceCode, verificationCode string, err error) {
 	deviceCode, err = mcpOAuthRandom("cli_device_")
 	if err != nil {
 		return
@@ -25,7 +25,10 @@ func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context) (deviceCode, verifi
 	if _, err = s.db.ExecContext(ctx, `DELETE FROM cli_devices WHERE expires_at<=?`, time.Now().Unix()); err != nil {
 		return
 	}
-	scopes, _ := json.Marshal(mcpOAuthDefaultScopes)
+	if len(requested) == 0 {
+		requested = mcpOAuthDefaultScopes
+	}
+	scopes, _ := json.Marshal(requested)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO cli_devices(hash,verification_hash,scopes,status,expires_at) SELECT ?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM cli_devices)<10000`, mcpOAuthHash(deviceCode), mcpOAuthHash(verificationCode), string(scopes), time.Now().Add(10*time.Minute).Unix())
 	if err == nil {
 		var n int64

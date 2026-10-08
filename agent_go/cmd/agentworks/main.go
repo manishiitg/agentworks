@@ -41,7 +41,7 @@ var cliOperationGroups = []struct {
 	operations        []struct{ command, tool string }
 }{
 	{"workflows", "Discover workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}}},
-	{"files", "Read ordinary workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"search", "search_files"}}},
+	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
 	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
 	{"chat", "Chat with the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
@@ -52,6 +52,9 @@ var cliOperationGroups = []struct {
 }
 
 func main() {
+	if handled, code := localShellLauncher(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
@@ -94,7 +97,7 @@ func newCommand(o *options) *cobra.Command {
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
-	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o))
+	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
 	toolsCmd.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, Short: "List tools with authoritative JSON schemas", RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := o.client()
@@ -247,6 +250,7 @@ func (o *options) client() (*agentworksclient.Client, error) {
 func loginCommand(o *options) *cobra.Command {
 	var tokenStdin bool
 	var noBrowser bool
+	var scopes []string
 	cmd := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in through your browser", Long: "Open AgentWorks in your browser, approve this CLI, and save a private renewable connection. Use --no-browser on a remote terminal and open the printed URL yourself.", RunE: func(cmd *cobra.Command, _ []string) error {
 		cfg, path, err := o.connection(true)
 		if err != nil {
@@ -257,7 +261,7 @@ func loginCommand(o *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			device, err := client.StartDeviceAuthorization(cmd.Context())
+			device, err := client.StartDeviceAuthorization(cmd.Context(), scopes...)
 			if err != nil {
 				return fmt.Errorf("start browser sign in: %w", err)
 			}
@@ -319,6 +323,7 @@ func loginCommand(o *options) *cobra.Command {
 		return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
 	}}
 	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read a legacy personal access token from stdin")
+	cmd.Flags().StringSliceVar(&scopes, "scopes", nil, "Explicit permissions for this connection (e.g. devices:connect for the local executor)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the approval link without opening a browser")
 	return cmd
 }

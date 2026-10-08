@@ -35,8 +35,8 @@ type OAuthTokens struct {
 
 func (c *Client) oauthResource() string { return c.baseURL + "/api/external/v1" }
 
-func (c *Client) StartDeviceAuthorization(ctx context.Context) (DeviceAuthorization, error) {
-	data, err := c.request(ctx, http.MethodPost, "/api/oauth/cli/device", nil, false)
+func (c *Client) StartDeviceAuthorization(ctx context.Context, scopes ...string) (DeviceAuthorization, error) {
+	data, err := c.request(ctx, http.MethodPost, "/api/oauth/cli/device", map[string]any{"scopes": scopes}, false)
 	if err != nil {
 		return DeviceAuthorization{}, err
 	}

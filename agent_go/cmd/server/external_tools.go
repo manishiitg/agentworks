@@ -83,6 +83,7 @@ func externalTools() ([]externalTool, error) {
 		add("list_step_code", "List saved Python code by workflow step, with plan step IDs and titles where available. Uses code/<step-id>/ for current workflows and learnings/<step-id>/ for legacy workflows.", false, true, p)
 		add("get_file_link", "Get an existing file or folder’s authenticated browser preview URL. Files also include an authenticated download URL, size and content type. Links never contain credentials; recipients need workflow access.", false, true, map[string]any{"path": externalString("Workflow-relative file or folder path.")}, "path")
 		add("read_file", "Read a workflow file up to 2 MiB. Binary content is base64.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
+		add("write_file", "Write UTF-8 source or documentation with explicit files:write consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "content", "expected_revision", "request_id")
 		// Tokens read and run, like the Slack and WhatsApp run-mode channels:
 		// file writes, plan mutations, and Builder execution are not exposed.
 		// Catalog membership is admitted by product.yaml (chat.run
@@ -631,6 +632,9 @@ func externalFailure(w http.ResponseWriter, err error) {
 func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
 	req := wf.Request{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Query: externalArg(args, "query"), Glob: externalArg(args, "glob"), Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 4)}
 	switch name {
+	case "write_file":
+		api.externalWriteFile(w, r, args, workflow)
+		return
 	case "read_file":
 		req.Operation = "read"
 	case "list_files":

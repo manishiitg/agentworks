@@ -46,3 +46,30 @@ describe('isWorkIntegrationTabEnabled', () => {
     expect(isWorkIntegrationTabEnabled('cli', new Set())).toBe(true)
   })
 })
+
+describe('local-connected Code sessions', () => {
+  it('limits local views to connection controls, Costs and Models even without a loaded feature list', () => {
+    const serverPanels = new Set(['dashboard', 'database', 'schedules', 'triggers', 'bots', 'files', 'costs', 'models', 'mcp', 'skills', 'secrets'])
+    for (const panels of [undefined, serverPanels]) {
+      for (const view of ['dashboard', 'database', 'schedules', 'shell', 'browser', 'mcp', 'plan', 'memory', 'suggestions'] as const) {
+        expect(isWorkWorkspaceViewEnabled(view, panels, true)).toBe(false)
+      }
+      for (const view of ['files', 'identity', 'costs'] as const) {
+        expect(isWorkWorkspaceViewEnabled(view, panels, true)).toBe(true)
+      }
+    }
+  })
+
+  it('blocks every integration section in local mode', () => {
+    const panels = new Set(['bots', 'mcp', 'skills', 'secrets', 'folders'])
+    for (const tab of ['slack', 'whatsapp', 'gmail'] as const) {
+      expect(isWorkIntegrationTabEnabled(tab, undefined, true)).toBe(false)
+      expect(isWorkIntegrationTabEnabled(tab, panels, true)).toBe(false)
+      expect(isWorkIntegrationTabEnabled(tab, panels, false)).toBe(true)
+    }
+    for (const tab of ['apps', 'skills', 'secrets', 'folders', 'cli'] as const) {
+      expect(isWorkIntegrationTabEnabled(tab, panels, true)).toBe(false)
+    }
+    expect(isWorkWorkspaceViewEnabled('mcp', new Set(['bots']), true)).toBe(false)
+  })
+})

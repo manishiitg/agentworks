@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('../../hooks/usePendingCrewSuggestions', () => ({ usePendingCrewSuggestions: () => 0 }))
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
+import { writeCodeFilesPreference } from './codeLocalFiles'
 import { WorkWorkspaceToolbar } from './WorkWorkspacePane'
 import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
@@ -14,9 +15,9 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root
 let host: HTMLDivElement
 beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove() })
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
-const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean }) => act(() => {
+const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
     <ProjectProductProvider value={product}>
       <WorkWorkspaceToolbar workspacePath="p" view="files" onViewChange={() => undefined} {...props} />
@@ -44,4 +45,17 @@ it.each([['Crew', CREW_PRODUCT], ['Code', CODE_PRODUCT]] as const)('shows the sh
   expect(host.querySelectorAll('[aria-label="Active work monitor"]')).toHaveLength(1)
   render(product, { showActivityMonitor: false })
   expect(host.querySelector('[aria-label="Active work monitor"]')).toBeNull()
+})
+
+it.each([false, true])('shows only connection, Costs and Models during local setup and after selection (%s)', (selected) => {
+  const storage = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) } })
+  writeCodeFilesPreference('local-chat', { location: 'computer', ...(selected ? { target: { device_id: 'laptop', resource_id: 'project' } } : {}) })
+  render(CODE_PRODUCT, { sessionId: 'local-chat', showShell: true })
+  // The shared collapse control is toolbar chrome, not another product view.
+  expect([...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Local CLI connection', 'Costs and usage', 'Models', 'Hide toolbar'])
+  act(() => writeCodeFilesPreference('local-chat', { location: 'server' }))
+  expect(hasTerminal()).toBe(true)
+  expect(host.querySelector('[aria-label="Local CLI connection"]')).toBeNull()
+  vi.unstubAllGlobals()
 })

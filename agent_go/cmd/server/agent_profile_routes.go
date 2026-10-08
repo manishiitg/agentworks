@@ -33,10 +33,13 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
-	ConnectionID    string `json:"connection_id,omitempty"`
-	Message         string `json:"message"`
-	ConversationKey string `json:"conversation_key,omitempty"`
-	Engine          string `json:"engine,omitempty"`
+	CodeChatMode        string               `json:"code_chat_mode,omitempty"`
+	CodeChatAttachments []string             `json:"code_chat_attachments,omitempty"`
+	CodeLocalFiles      *codeLocalFileTarget `json:"code_local_files,omitempty"`
+	ConnectionID        string               `json:"connection_id,omitempty"`
+	Message             string               `json:"message"`
+	ConversationKey     string               `json:"conversation_key,omitempty"`
+	Engine              string               `json:"engine,omitempty"`
 	// ModelID picks a model within the engine's provider: one the platform's
 	// model catalog lists for that provider (or, when the engine declares its
 	// own Models list, one of those). Empty keeps the option's own model.
@@ -136,6 +139,19 @@ func hasSelectedServers(servers []string) bool {
 }
 
 func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	if input.CodeChatMode != "" && profile.ID != "code" {
+		return QueryRequest{}, fmt.Errorf("chat mode is available only in Code")
+	}
+	if profile.ID == "code" {
+		mode, err := resolveCodeChatMode(input.CodeChatMode, input.CodeLocalFiles)
+		if err != nil {
+			return QueryRequest{}, err
+		}
+		input.CodeChatMode = mode
+	}
+	if input.CodeLocalFiles != nil && (profile.ID != "code" || !input.CodeLocalFiles.valid()) {
+		return QueryRequest{}, fmt.Errorf("local file selection requires Code and a valid device and folder alias")
+	}
 	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
 		return QueryRequest{}, fmt.Errorf("this profile does not accept Brain context")
 	}
@@ -143,6 +159,9 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		return QueryRequest{}, fmt.Errorf("product conversation has no runtime binding")
 	}
 	req := QueryRequest{
+		CodeLocalFiles:              input.CodeLocalFiles,
+		CodeChatMode:                input.CodeChatMode,
+		CodeChatAttachments:         input.CodeChatAttachments,
 		Query:                       input.Message,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),
 		SessionTitle:                firstNonEmptyTrimmed(conversation.Title, profile.Name),

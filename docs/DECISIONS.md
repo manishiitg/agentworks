@@ -53,6 +53,30 @@ sign-out and removal cancel open flows. Why: the old start-time disconnect let a
 again" undo a finished sign-in (a hosted server, 2026-10-08). A failed sign-in's reason is now shown on the Apps row. Code:
 `beginVaultConnectionOAuth` in `agent_go/cmd/server/vault_connection_oauth.go`. Ticket: the Vault connections
 sign-in ticket in the private tickets repo.
+### 2026-10-08 — Local Code accepts read-only chat attachments
+
+Allow file picking, pasted screenshots and dropped images/text files in Local
+Code. Upload to a server folder scoped to the owner and chat, disclose transfer
+to the server/model, and never copy attachments to the laptop automatically.
+Bound text previews; reuse `read_image` only for the current turn's attached
+images. Nested coding-CLI image analysis uses a temporary copy under Landlock;
+without confinement it fails closed. Local image analysis supports Codex and
+Claude Code; server commands and unrelated file reads are denied. Other
+server files, MCP, skills and secrets remain excluded. Why: users need to show
+screenshots and examples while working on laptop projects.
+PLAT-726.
+
+### 2026-10-08 — Local agents use MCP; website Code uses an explicit laptop connection
+
+Remove workflow routing/placement: local-to-server access uses the public MCP
+with guarded writes. Server-to-local stays in Code, using the outbound laptop
+CLI and existing shell/patch schemas. Shell is always enabled within granted
+folders; the agent/model remain on the server. Local mode excludes MCP, skills,
+project secrets and unrelated server features. Connection changes live only in
+the right-side settings, with consequences reviewed before confirming. Downloads
+is a separate read/write companion, off by default and explicitly enabled during
+setup. Why: the owner wants one remote access path and a focused laptop mode.
+PLAT-726.
 
 ### 2026-10-08 — Bring your own model key runs through Pi; setup checks call the service directly
 

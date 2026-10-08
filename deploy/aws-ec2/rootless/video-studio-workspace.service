@@ -7,6 +7,7 @@ After=docker.service
 [Service]
 EnvironmentFile=%h/video-studio/.env
 Environment=HOME=%h
+Environment=AGENTWORKS_STATE_ROOT=%h/video-studio/state
 Environment=PATH=%h/video-studio/slots/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=AGENT_BROWSER_CDP_ENABLED=false
 Environment=AGENT_BROWSER_CLI_DIR=%h/.local/bin

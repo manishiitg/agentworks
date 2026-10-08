@@ -2635,6 +2635,9 @@ func autoNotificationBracketContext(meta map[string]string) string {
 // NOT queue). Returns false on any failure so the caller falls back to the
 // existing queue + drain-on-idle backstop.
 func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID string) bool {
+	if api.codeLocalSession(sessionID) {
+		return false
+	}
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		return false
 	}
@@ -2870,6 +2873,9 @@ func (api *StreamingAPI) executeSyntheticTurn(sessionID, syntheticMsg string, pa
 // only that the turn started; durable notification delivery must be committed
 // by onComplete after it receives nil.
 func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, parentExecutionID string, onComplete func(error)) bool {
+	if api.codeLocalSession(sessionID) {
+		return false
+	}
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		log.Printf("[BG AGENT] Session %s is stopped/inactive, suppressing synthetic turn", sessionID)
 		return false
@@ -2896,7 +2902,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	// prevents an old completion turn and a resumed user turn from concurrently
 	// mutating conversation history, running-agent maps, and terminal state.
 	releaseInputLane := api.lockSessionInputLane(sessionID)
-	if api.autoNotificationSessionUnreachable(sessionID) {
+	if api.codeLocalSession(sessionID) || api.autoNotificationSessionUnreachable(sessionID) {
 		releaseInputLane()
 		return false
 	}

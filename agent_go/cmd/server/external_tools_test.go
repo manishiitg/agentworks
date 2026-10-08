@@ -56,6 +56,13 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[]}`)
 	f.write(t, "Workflow/invoices/docs/process.md", "Invoices are reviewed weekly.\n")
 	router := gin.New()
+	router.POST("/api/shared-file-write", func(c *gin.Context) {
+		if c.GetHeader("X-Workspace-Token") != workspaceToken {
+			c.AbortWithStatus(401)
+			return
+		}
+		workspacehandlers.SharedFileWrite(c)
+	})
 	router.POST("/api/shared-assets", func(c *gin.Context) {
 		if c.GetHeader("X-Workspace-Token") != workspaceToken {
 			c.AbortWithStatus(401)
@@ -192,6 +199,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 				want[name] = true
 			}
 		}
+		delete(want, "write_file") // Direct writes require explicit connection consent.
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
@@ -300,7 +308,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" {
+		if tool.mutates && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -346,7 +354,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits", "set_allowed_models"}
+	wantExternal := []string{"list_workflows", "get_workflow", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits", "set_allowed_models"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}
@@ -416,7 +424,7 @@ func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 	}
 	for name, args := range calls {
 		wantStatus, wantCode := 404, "unknown_tool"
-		if strings.HasPrefix(name, "builder_") {
+		if strings.HasPrefix(name, "builder_") || name == "write_file" {
 			wantStatus, wantCode = 403, "insufficient_scope"
 		}
 		body := externalTestBody(t, f.call(t, "owner", name, args), wantStatus)

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Loader2, Lock, Tag, Target, Trash2 } from 'lucide-react'
+import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
@@ -27,6 +27,9 @@ import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
+import { useChatStore } from '../../stores/useChatStore'
+
+const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
 export type WorkIdentityTab = 'general' | 'models'
 
@@ -45,7 +48,8 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
 }
 
 // Code has a name only: rename and delete, no identity, purpose or templates.
-function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+  sessionId: string
   projectTitle: string
   projectIdentity?: ProductIdentity
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
@@ -86,6 +90,7 @@ function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onD
           </Button>
         </div>
       </SettingsCard>
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} /></Suspense>
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"
@@ -361,7 +366,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -373,6 +378,9 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   projectTemplates: Array<{ id: string; version: number }>
   onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   tabId: string
+  modelsOnly?: boolean
+  openLocalFilesSettings?: boolean
+  onLocalFilesSettingsOpened?: () => void
   selectedSecrets: string[]
   selectedGlobalSecrets: string[]
   projectLLMConfig?: PresetLLMConfig
@@ -388,9 +396,15 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   onDeleteRequest: () => void
 }) {
   const product = useProjectProduct()
+  const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
   const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
-  const visibleTabs = IDENTITY_TABS.filter(option => isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
+  useEffect(() => {
+    if (!openLocalFilesSettings) return
+    setTab('general')
+    onLocalFilesSettingsOpened?.()
+  }, [openLocalFilesSettings, onLocalFilesSettingsOpened, setTab])
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   useWorkspaceViewTarget('identity', target => { if (visibleTabs.some(option => option.value === target)) setTab(target as WorkIdentityTab) })
   // Every tab loads on mount, so Refresh always remounts.
@@ -399,8 +413,8 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
-        icon={Fingerprint}
-        title={product.hasIdentity ? 'Identity' : 'Setup'}
+        icon={product.hasIdentity ? Fingerprint : Settings}
+        title={modelsOnly ? 'Models' : product.hasIdentity ? 'Identity' : 'Settings'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
         actions={(
           <WorkspaceViewActions
@@ -411,10 +425,11 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
+        tabs={modelsOnly ? undefined : { value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
+          sessionId={sessionId}
           projectTitle={projectTitle}
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}
@@ -438,7 +453,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
             onRuntimeChange={onRuntimeChange}
             hideHeader
           />
-          {product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
+          {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
         </div>}
       </div>
     </div>

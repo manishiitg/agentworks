@@ -86,6 +86,25 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 		return gate
 	}
 	gate.profileID = resolved.Definition.ID
+	if resolved.Definition.ID == "code" && (resolved.CodeChatMode == "local" || resolved.CodeLocalFiles != nil) {
+		// Removed feature tools stay denied even if another registration path
+		// or an explicit factory attempts to declare their names again.
+		gate.DenyReaderTools(resolved.CodeLocalDisabledTools...)
+		// A factory may Declare additional tools; local turns have a fixed
+		// boundary so registration cannot restore server capabilities.
+		gate.DenyWhere(func(name string) bool {
+			switch name {
+			case "execute_shell_command", "diff_patch_workspace_file":
+				return resolved.CodeLocalFiles == nil
+			case "read_image":
+				return len(resolved.CodeChatAttachments) == 0
+			case "list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification":
+				return false
+			default:
+				return true
+			}
+		})
+	}
 	policy := resolved.Definition.ToolPolicy
 	if !policy.IsAllowlist() {
 		return gate
@@ -175,7 +194,10 @@ func (g *productToolGate) DenyWhere(denied func(string) bool) {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.deny = denied
+	previous := g.deny
+	g.deny = func(name string) bool {
+		return previous != nil && previous(name) || denied != nil && denied(name)
+	}
 }
 
 // Allows reports the current policy without recording a registration attempt.

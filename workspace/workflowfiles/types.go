@@ -67,13 +67,17 @@ func CleanRelative(p string) (string, error) {
 // ordinary workflow files; the list mirrors managedCodingAgentProjectionWritePaths.
 func Private(p string) bool {
 	for _, part := range strings.Split(strings.ToLower(p), "/") {
+		switch path.Ext(part) {
+		case ".pem", ".key", ".p12", ".pfx", ".kdbx":
+			return true
+		}
 		// Hidden workspace folders may hold credentials, tool state, and
 		// downloaded packages. Expose workflow-authored source through its
 		// ordinary code/, learnings/, and knowledgebase/ paths instead.
 		if strings.HasPrefix(part, ".") && part != "." {
 			return true
 		}
-		if part == "builder" || part == "secrets" || part == "keys" {
+		if part == "builder" || part == "secrets" || part == "keys" || part == "db" || part == "credentials.json" || part == "token.json" || part == "tokens.json" || strings.HasSuffix(part, ".sqlite") || strings.HasSuffix(part, ".sqlite3") || strings.HasSuffix(part, ".db") || strings.HasSuffix(part, "-wal") || strings.HasSuffix(part, "-shm") {
 			return true
 		}
 		if part == "agents.md" || part == "agent.md" || part == "claude.md" || part == "gemini.md" {

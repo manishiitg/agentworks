@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 func openAccessTokens() (*accesstokens.Store, error) {
@@ -113,7 +114,7 @@ func authenticateAccessToken(w http.ResponseWriter, r *http.Request, raw string)
 		externalError(w, 401, "unauthorized", "Access tokens must use the Authorization header.")
 		return nil, false
 	}
-	if !((r.Method == "GET" && r.URL.Path == "/api/external/v1/tools") || (r.Method == "POST" && r.URL.Path == "/api/external/v1/call") || ((r.Method == "GET" || r.Method == "HEAD") && r.URL.Path == "/api/external/v1/files/content") || (r.URL.Path == externalMCPPath && (r.Method == "POST" || r.Method == "GET" || r.Method == "DELETE")) || (r.Method == "GET" && (r.URL.Path == "/api/external/v1/skill.md" || r.URL.Path == "/api/external/v1/skill.zip" || r.URL.Path == "/api/external/v1/agentworks.plugin"))) {
+	if !((r.Method == "GET" && r.URL.Path == "/api/external/v1/devices/connect") || (r.Method == "GET" && r.URL.Path == "/api/external/v1/tools") || (r.Method == "POST" && r.URL.Path == "/api/external/v1/call") || ((r.Method == "GET" || r.Method == "HEAD") && r.URL.Path == "/api/external/v1/files/content") || (r.URL.Path == externalMCPPath && (r.Method == "POST" || r.Method == "GET" || r.Method == "DELETE")) || (r.Method == "GET" && (r.URL.Path == "/api/external/v1/skill.md" || r.URL.Path == "/api/external/v1/skill.zip" || r.URL.Path == "/api/external/v1/agentworks.plugin"))) {
 		externalError(w, 403, "forbidden", "Access tokens are valid only for the external tools API.")
 		return nil, false
 	}
@@ -165,6 +166,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 	case "POST":
 		var req struct {
 			Name                    string               `json:"name"`
+			FileGuard               *wf.FolderGuard      `json:"file_guard"`
 			LocalFullAccess         bool                 `json:"local_full_access"`
 			Scopes                  []string             `json:"scopes"`
 			WorkflowIDs             []string             `json:"workflow_ids"`
@@ -206,7 +208,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			req.Name = "Access token"
 		}
 		now := time.Now()
-		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, FileGuard: req.FileGuard, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
 		if req.LocalFullAccess {
 			t.NonExpiring = true
 			t.ExpiresAt = accesstokens.PermanentExpiry()
@@ -287,7 +289,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			for _, wf := range visible {
 				if wf.Manifest != nil {
 					role := workflowAccessForManifest(c, wf.Manifest)
-					allowed[wf.Manifest.ID] = !(t.Allows("builder:chat") || t.Allows("relays:write")) || role == WorkflowAccessOwner || role == WorkflowAccessWrite
+					allowed[wf.Manifest.ID] = !(t.Allows("builder:chat") || t.Allows("relays:write") || t.Allows("files:write")) || role == WorkflowAccessOwner || role == WorkflowAccessWrite
 				}
 			}
 			for _, id := range t.WorkflowIDs {
@@ -310,7 +312,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		// Legacy connections replace only other legacy connections. Knowledge
 		// base tokens coexist and are revoked explicitly by their owner.
 		for _, old := range previous {
-			if !t.KnowledgebaseAccess() && !old.KnowledgebaseAccess() && old.RevokedAt == nil && old.ExpiresAt.After(now) {
+			if !t.KnowledgebaseAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
 				api.cancelAccessTokenSessions(old.ID)
 			}
 		}
@@ -377,6 +379,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
+	}
+	if tool.Name == "write_file" {
+		return c.AccessToken != nil && c.AccessToken.Allows("files:write") && c.AccessToken.Allows("files:read") && c.AccessToken.Allows("workflows:read") && userAccessForClaims(c).CanEdit
 	}
 	if c.AccessToken == nil {
 		return true

@@ -19,28 +19,30 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	_ "modernc.org/sqlite"
 )
 
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write"}
+var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
 var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat"}
 
 type Token struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	UserID       string   `json:"-"`
-	Username     string   `json:"-"`
-	Email        string   `json:"-"`
-	Provider     string   `json:"-"`
-	Scopes       []string `json:"scopes"`
-	WorkflowIDs  []string `json:"workflow_ids"`
-	AllWorkflows bool     `json:"all_workflows"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	UserID       string          `json:"-"`
+	Username     string          `json:"-"`
+	Email        string          `json:"-"`
+	Provider     string          `json:"-"`
+	Scopes       []string        `json:"scopes"`
+	WorkflowIDs  []string        `json:"workflow_ids"`
+	AllWorkflows bool            `json:"all_workflows"`
+	FileGuard    *wf.FolderGuard `json:"file_guard,omitempty"`
 	// CrewIDs / AllCrews bound crews:read, crews:run and crews:write the same way
 	// WorkflowIDs / AllWorkflows bound the workflow permissions.
 	CrewIDs  []string `json:"crew_ids"`
@@ -88,7 +90,7 @@ func (t Token) FullBuilderAccess() bool {
 
 // BuilderAccess is explicit authoring consent. It follows the account's own permission (every workflow the person
 // may edit, checked live on every call) unless a token names specific workflow IDs (an older grant, or a personal
-// access token made for a few workflows). Direct file/plan write scopes are deliberately unnecessary and remain unissued.
+// access token made for a few workflows). Direct file writes are separately consented and never grant plan authoring.
 func (t Token) BuilderAccess() bool {
 	if t.AllWorkflows && len(t.WorkflowIDs) > 0 || !t.AllWorkflows && (len(t.WorkflowIDs) == 0 || len(t.WorkflowIDs) > 200) {
 		return false
@@ -141,10 +143,22 @@ func Validate(t Token, now time.Time) error {
 		if !slices.Contains(Scopes, s) || seen[s] {
 			return errors.New("invalid or duplicate permission")
 		}
-		if s == "files:write" || s == "plan:write" {
-			return errors.New("direct files:write and plan:write permissions are not issued; use scoped Builder chat")
+		if s == "plan:write" {
+			return errors.New("direct plan:write permissions are not issued; use scoped Builder chat")
 		}
 		seen[s] = true
+	}
+	if t.Allows("files:write") && (!t.Allows("files:read") || !t.Allows("workflows:read")) {
+		return errors.New("files:write requires files:read and workflows:read")
+	}
+	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
+		return errors.New("devices:connect must be approved separately from other permissions")
+	}
+	if t.FileGuard != nil && !t.Allows("files:write") {
+		return errors.New("file guards require files:write")
+	}
+	if err := t.FileGuard.Validate(); err != nil {
+		return err
 	}
 	if t.Allows("knowledgebase:write") && !t.Allows("knowledgebase:read") {
 		return errors.New("knowledgebase:write requires knowledgebase:read")
@@ -189,7 +203,7 @@ func Validate(t Token, now time.Time) error {
 		switch {
 		case strings.HasPrefix(s, "crews:"):
 			hasCrewScope = true
-		case s == "code:review" || s == "vault:manage" || s == "users:manage":
+		case s == "code:review" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
 		case strings.HasPrefix(s, "knowledgebase:"):
 			// Bounded by current domain grants and optional folder caps.
@@ -289,7 +303,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	// Crew bounds arrived after the table; add them to existing databases.
-	for _, column := range []string{`crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`, `knowledgebase_folders TEXT DEFAULT NULL`, `knowledgebase_identity_id TEXT NOT NULL DEFAULT ''`} {
+	for _, column := range []string{`file_guard TEXT DEFAULT NULL`, `crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`, `knowledgebase_folders TEXT DEFAULT NULL`, `knowledgebase_identity_id TEXT NOT NULL DEFAULT ''`} {
 		if _, alterErr := db.Exec(`ALTER TABLE access_tokens ADD COLUMN ` + column); alterErr != nil && !strings.Contains(alterErr.Error(), "duplicate column") {
 			db.Close()
 			return nil, alterErr
@@ -331,6 +345,14 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 		}
 		kbFolders = string(encoded)
 	}
+	var fileGuard any
+	if t.FileGuard != nil {
+		encoded, err := json.Marshal(t.FileGuard)
+		if err != nil {
+			return Token{}, "", err
+		}
+		fileGuard = string(encoded)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Token{}, "", err
@@ -338,14 +360,14 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	defer tx.Rollback()
 	// Preserve replacement semantics for existing workflow/Crew callers,
 	// while knowledge-base connections remain independently revocable.
-	if !t.KnowledgebaseAccess() {
-		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
+	if !t.KnowledgebaseAccess() && !t.Allows("devices:connect") {
+		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write','devices:connect'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
 			return Token{}, "", err
 		}
 	}
 	// Cap issuance in the same statement, including concurrent requests.
-	result, err := tx.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,created_at,expires_at)
-	 SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, kbFolders, t.KnowledgebaseIdentityID, now.Unix(), t.ExpiresAt.Unix(), t.UserID, now.Unix())
+	result, err := tx.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at)
+	 SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, kbFolders, t.KnowledgebaseIdentityID, fileGuard, now.Unix(), t.ExpiresAt.Unix(), t.UserID, now.Unix())
 	if err != nil {
 		return Token{}, "", err
 	}
@@ -359,15 +381,15 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	return t, raw, nil
 }
 
-const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,created_at,expires_at,last_used_at,revoked_at`
+const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at,last_used_at,revoked_at`
 
 func scan(row interface{ Scan(...any) error }) (Token, error) {
 	var t Token
 	var scopes, ids, crewIDs string
-	var kbFolders sql.NullString
+	var kbFolders, fileGuard sql.NullString
 	var created, expires int64
 	var used, revoked sql.NullInt64
-	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &kbFolders, &t.KnowledgebaseIdentityID, &created, &expires, &used, &revoked)
+	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &kbFolders, &t.KnowledgebaseIdentityID, &fileGuard, &created, &expires, &used, &revoked)
 	if err != nil {
 		return t, err
 	}
@@ -389,6 +411,11 @@ func scan(row interface{ Scan(...any) error }) (Token, error) {
 			caps = []knowledgebase.Cap{}
 		}
 		t.KnowledgebaseFolders = &caps
+	}
+	if fileGuard.Valid {
+		if err = json.Unmarshal([]byte(fileGuard.String), &t.FileGuard); err != nil {
+			return t, err
+		}
 	}
 	t.CreatedAt = time.Unix(created, 0).UTC()
 	t.ExpiresAt = time.Unix(expires, 0).UTC()

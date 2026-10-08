@@ -7,6 +7,7 @@ interface FileContextItem {
 }
 
 interface FileContextDisplayProps {
+  attachmentMode?: boolean
   files: FileContextItem[]
   onRemoveFile: (path: string) => void
   onClearAll: () => void
@@ -14,7 +15,7 @@ interface FileContextDisplayProps {
   isRequiredFolderSelected: boolean
 }
 
-export default function FileContextDisplay({ files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected }: FileContextDisplayProps) {
+export default function FileContextDisplay({ files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected, attachmentMode = false }: FileContextDisplayProps) {
   if (files.length === 0) {
     return null
   }
@@ -31,12 +32,12 @@ export default function FileContextDisplay({ files, onRemoveFile, onClearAll, ag
             ? 'text-amber-700 dark:text-amber-400'
             : 'text-muted-foreground'
         }`}>
-          {agentMode === 'workflow' && !isRequiredFolderSelected ? 'Context (Select Automation folder):' : 'Context:'}
+          {attachmentMode ? 'Attachments:' : agentMode === 'workflow' && !isRequiredFolderSelected ? 'Context (Select Automation folder):' : 'Context:'}
         </span>
         {files.map((file, index) => (
           <div key={file.path} className="flex items-center gap-0.5">
             <span className="text-xs text-foreground font-mono">
-              {file.path}
+              {attachmentMode ? file.name : file.path}
             </span>
             <button
               onClick={() => onRemoveFile(file.path)}

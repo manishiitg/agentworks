@@ -30,7 +30,7 @@ These docs describe platform subsystems that cut across workflow and multi-agent
 - `multi_user_authentication.md`
 - `native_workspace_mode.md`
 - `oauth.md`
-- `remote_workspace_server_plan.md`
+- [Local and Server Agent Design](remote_workspace_server_plan.md): public MCP with guarded writes for local → server; an authenticated laptop executor for server → local.
 - `session_and_tool_binding.md`
 - `secrets.md`
 - `skills.md`

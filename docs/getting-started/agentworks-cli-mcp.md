@@ -121,8 +121,9 @@ and clears the local credentials.
 
 CLI grants run in full run mode —
 `workflows:read`, `files:read`, and `runs:execute` — over all currently and
-future accessible workflows. Write permissions
-(`files:write`, `plan:write`, `builder:chat`) are not issued in v1. Every
+future accessible workflows. Additional authoring scopes are optional: `files:write` permits guarded source
+and documentation edits, and `builder:chat` delegates authoring to the workflow's
+Builder. Direct `plan:write` is never issued. Every
 call checks the grant scopes and the user's current workflow
 access. CLI grants cannot call account management, the general query endpoint,
 or the workspace proxy; only the external tool, asset-content, skill, and
@@ -133,7 +134,7 @@ Precisely, a token authorizes: reading the account's workflows, files,
 plans, runs, guidance, and knowledge; starting, steering, observing, and
 stopping executions; triggering the workflow's saved schedules (which run
 with their owner-configured definition); and the workflow's own outbound
-actions (Slack routes, user notifications). It never authorizes authoring
+actions (Slack routes, user notifications). The default grant never authorizes authoring
 (plans, configs, files, workflows), account management, or account-wide
 service shells — `google_workspace_cli` stays out of the external catalog
 and token-backed chat sessions for exactly this reason. Slack and WhatsApp
@@ -632,7 +633,7 @@ AGENTS.md-style prompt files and the .claude, .agents, .codex, .cursor,
 .gemini, and .pi tool directories, including the skills beneath them. Skills
 stay readable through the knowledge tools, which serve the skill catalog;
 learnings and ordinary documents are readable in their workflow's workspace.
-Nothing is writable: run tools execute; they never author plans, files, or
+Default read/run connections cannot author plans, files, or
 configuration.
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`. CLI exit
@@ -671,3 +672,265 @@ Example read-only check:
 Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `manage_vault_access` operation `list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
 
 The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Those runtime restrictions remain unchanged. The explicitly authorized `call_vault_mcp_tool` management operation instead uses the same administrator setup authority as the Vault builder, independently of group/regex grants, to resolve real resource IDs before configuring restrictions. It is limited to active Vault connections and approved tools, rechecks the current administrator on every request, and the gateway validates schemas and audits calls as the actual user. Upstream mutations require an explicit user request. Private connections belonging to other people and secret values are excluded.
+
+
+## Guarded public file writes
+
+Request optional authoring permission explicitly; existing connections keep their
+original scopes:
+
+```sh
+agentworks login --server https://your-agentworks.example \
+  --scopes workflows:read,files:read,files:write
+agentworks files read --workflow invoices --path docs/readme.md
+```
+
+Call `write_file` through MCP `call_tool`, or `agentworks files write --input edit.json`:
+
+```json
+{
+  "workflow_id": "invoices",
+  "path": "docs/readme.md",
+  "content": "Updated documentation\n",
+  "expected_revision": "revision-from-read_file-or-missing",
+  "request_id": "unique-id-for-this-write"
+}
+```
+
+The caller needs current account/workflow edit rights. Plans, `workflow.json`,
+runtime run records, databases, private files and shared Brain content cannot be
+edited this way. This includes `costs/`, `schedule-runs.json`, the knowledge lock,
+`product.json` and `functions.json`. Use their typed tools. Authorized authors can
+edit `code/<step>/` sources, including scheduled code; these source edits do not
+apply Builder expected-hash checks. Use Builder for checked plan-linked edits.
+Writes accept UTF-8 text up to 2 MiB.
+Reusing the same request ID and arguments returns its durable receipt; different
+arguments fail. A stale revision fails; read and reconcile before submitting a
+new write. The workspace service retains private audit records outside documents.
+
+When issuing a personal access token through `POST /api/auth/access-tokens`, optionally
+include a persisted `file_guard` (paths relative to each selected workflow):
+
+```json
+{
+  "read_paths": ["."],
+  "write_paths": ["code", "docs"],
+  "read_only_paths": ["docs/reference"],
+  "blocked_write_paths": ["code/generated"],
+  "blocked_paths": ["docs/confidential"]
+}
+```
+
+A present guard with empty write paths denies all writes. An absent guard uses
+workflow access and the unconditional protected-path policy. A tool call cannot
+change these grants. Narrow read grants also apply to raw file reads/downloads;
+execution and typed tools retain their separately authorized scopes.
+
+## Server agents using local files and commands
+
+The dedicated executor command opens an outbound authenticated connection to the
+AgentWorks server. It does not start a local model or a listening HTTP server.
+Use a separate CLI config to keep ordinary remote MCP credentials independent:
+
+`devices:connect` must be approved alone; combining it with workflow/MCP scopes
+is rejected. Share a project directory: the executor refuses your home directory,
+its parents, and any folder containing the CLI config or private state, including
+through another grant alias. Raw file operations also exclude private key files
+such as `.pem`, `.key`, `.p12`, `.pfx` and `.kdbx`. Shell programs have broader
+authority within a writable grant; keep credentials outside it and explicitly
+block any sensitive project directories.
+
+```sh
+agentworks --config /absolute/path/private/executor.json login \
+  --server https://your-agentworks.example --scopes devices:connect
+agentworks --config /absolute/path/private/executor.json executor connect \
+  --device work-laptop \
+  --folder reference=/absolute/path/reference \
+  --write-folder project=/absolute/path/project \
+  --read-only generated --block secrets
+```
+
+`--folder` shares a read-only folder; shell commands can inspect its files but
+cannot modify them. `--write-folder` also permits edits and the existing patch
+tool; protected plans/configuration/database/private paths remain blocked in patches.
+`--downloads` separately grants read/write access to `~/Downloads` alongside
+each shared project. It is off by default. Shell commands use
+`$AGENTWORKS_DOWNLOADS`; guarded patches can name absolute Downloads paths,
+with one shared folder per request. Downloads remains writable even when the
+project is read-only. Merely sharing an additional folder alias does not expand
+a project’s command access. The same `--block`/`--read-only` exclusions apply
+to both roots; sensitive files should remain excluded.
+
+Every shared folder automatically enables shell commands; no separate flag is
+required. The CLI prints these permissions before connecting. Writable folders
+support builds, tests, git and package installation. Commands have network access
+to the internet, localhost services and the local network, even on read-only
+folder grants. File exclusions restrict filesystem access, not network destinations.
+Shell programs have broader project-file authority than patches; use `--block` and `--read-only` for paths
+commands must not access or modify. CLI credentials and receipt state stay denied.
+Commands use the filesystem sandbox and a sanitized environment; if the sandbox
+cannot enforce the grants, execution fails. Linux uses the launcher embedded in
+the CLI with Landlock; macOS uses sandbox-exec.
+Local commands on macOS allow only named directory lookup services through Mach
+IPC; desktop launching, Apple Events, clipboard and credential service lookups
+are not granted. Linux exclusions must exist
+before a command runs, and nested exclusions require supported user/mount namespaces. `--block` and
+`--read-only` accept repeatable relative paths and apply to each shared folder.
+Aliases and relative grants are sent to the server; absolute roots are omitted
+from grant metadata (shell output may contain local paths). `--state-dir` can select private durable receipt storage, which must be
+outside every shared folder. Both read-only and writable folders need private
+receipt storage and a writable private sibling `.<folder>-file-edits/` for a
+shared serialization lock; a read-only grant never
+writes inside the shared folder. Default receipt storage is beside the CLI config in
+`executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
+The CLI automatically reconnects after transport interruptions, including while
+the server waits for an old socket to expire. It never retries a mutation whose
+outcome is uncertain.
+
+### Code website: connect local files to the current chat
+
+Open the right-side **Settings → General → Local CLI connection** panel in a
+Code chat. Click **Connect local files**. The panel walks through installation,
+sign-in and a project path, with copyable commands and a Downloads read/write
+checkbox that starts off. Keep the terminal running. Connected computers appear
+automatically; **Check connection** refreshes their live status. Choose a computer
+and folder. Review the explanation of laptop permissions, data sent to
+the server/model, and unavailable features, then click **Use this folder**.
+Opening setup or choosing a folder alone does not switch the chat. The composer
+only shows a small read-only connection label. All changes happen in the
+right-side connection panel; switching back requires **Disconnect local files**
+then **Switch to server files** after reviewing what changes. You cannot change
+connections during a running turn. The browser remembers the binding for your
+account, server workspace and chat only.
+The chat, agent and selected model continue running on the server.
+File contents and command output returned by tools reach the server/model and may
+remain in server chat history, accessible to authorized administrators and Code
+reviewers. Switching modes does not erase earlier history. Automated notifications,
+other chats, schedules and connector turns cannot drive a Local chat's executor.
+
+Coding CLI models such as Claude Code also need the server's internal
+`mcpbridge` executable. Release builds ship it beside the server binary, and the
+server discovers that bundled executable automatically (including a `.bin/`
+directory beside the server). `MCP_BRIDGE_BINARY` takes precedence; otherwise
+the existing `PATH` and `~/go/bin/` lookup remains available. The development
+server launcher builds and configures its private `.bin/mcpbridge`.
+If technical details report `mcpbridge binary not found`, the server deployment
+must include the bridge, or set `MCP_BRIDGE_BINARY` to its installed executable
+and restart the backend. Connecting the laptop CLI does not supply this server
+executable.
+
+The right side shows only **Local CLI connection**, **Costs and usage**, and
+**Models**. The connection panel provides CLI setup, folder selection, status
+and disconnect. There is no local file browser/editor; ask the agent in chat
+to read/edit the shared files or run commands within the selected folder’s permissions.
+
+Local mode applies a separate minimal tool policy even before a folder is selected.
+The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
+skills, project/Vault secrets, background agents and server terminal/browser
+access. Saved selections are excluded without changing project settings.
+Other chats and existing schedules/connections are unchanged. Confirming the switch to server files returns
+this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
+
+Local chats also accept **images and text/source files** through the paperclip,
+pasting screenshots or drag-and-drop. Up to 10 attachments, 10 MB each, are
+uploaded to that chat's server folder and sent to the server/model. They are
+read-only context and are **not copied to your computer**. PDFs and archives are
+not supported in this mode yet. Text previews include at most 64 KiB per file
+and 256 KiB per turn; the agent is told when a preview is truncated. Images use
+the existing `read_image` tool, restricted to images attached to the current
+turn. Attachments work without a connected laptop. Image analysis uses confined
+Codex or Claude Code on the server and requires a
+working Linux Landlock runner. Claude additionally needs Python 3 for its
+attachment-only read guard. Cursor image analysis is excluded from Local mode;
+the Code chat itself can still use Cursor. A host without confinement refuses
+image analysis; ask an administrator to enable it. No general server file
+access is enabled.
+
+Every file action validates live ownership, authorization and folder grants.
+Changing the selected folder or permissions refreshes retained tools between
+turns. Offline bindings retain their restrictions: chat can continue, but local
+file and shell operations fail without server fallback. Patches retain revision checks and authenticated receipts. Request identities
+are generated internally; the transport never automatically retries mutations.
+
+Local tools are available only to interactive **Code** chats. Crew, Brain, Vault,
+schedules and connector turns do not acquire them. The CLI runs laptop builds/tests
+within writable folder grants. Browser tools remain disabled. File contents and command
+output reach the server and LLM; output may include absolute local paths.
+Provider credentials needed by the selected server model remain available.
+
+Local Code reuses the existing MCP bridge names and schemas:
+`execute_shell_command` accepts `command` and optional `timeout`;
+`diff_patch_workspace_file` accepts `filepath` and `diff` for writable folders.
+The selected laptop/folder is bound internally. No new local read/list/write
+agent tools, device IDs or request IDs are added to the tool interface. Read and
+list files with shell commands such as `cat`, `sed`, `head` and `ls`. Commands
+start at the selected folder root; absolute paths must stay within its grants.
+Patches support the existing unified diff and multi-file `*** Begin Patch`
+formats, reuse the existing parser/application, and check all file paths/hunks
+before writing. Commands default to 60 seconds, allow up to 300, and capture up
+to 1 MiB per output stream. Cancellation and connection loss terminate active
+command process groups. Public MCP and bot-route identities do not receive this
+laptop execution binding. Read-only accounts/turns do not receive mutating tools.
+
+The website backend exposes owner-authenticated `GET /api/devices` for connection
+selection/status. File operations are available to the local-connected Code
+agent through its scoped tools; there is no separate website file editor API.
+
+Ctrl-C stops sharing. Network loss or laptop sleep makes the device unavailable;
+there is no fallback to server files. The CLI reconnects with backoff and renewed
+credentials. Duplicate live device IDs are refused. Pending requests fail on
+disconnect, and mutation outcomes may be uncertain: reconnect and inspect current
+files before deciding whether another patch or command is needed.
+Shell requests save durable results: an identical completed request returns its
+result without rerunning. An interrupted request with an unknown result is refused;
+inspect local state before starting another command. Revocation cancels active
+commands when the socket closes, including at the next heartbeat for idle dispatch.
+Revoking the connection or disabling its account blocks dispatch immediately and
+closes idle sockets at the next heartbeat. Website chat tools are assembled at
+turn startup, so send a new Code message after connecting and selecting a folder.
+
+Device sockets are held by one backend process. Use a single backend or routing
+affinity so the website chat reaches the process holding its device connection.
+Schedules and browser tools remain excluded from Local mode; laptop shell commands
+are supported through the CLI grant. The old
+transparent workflow router, placement/move APIs and remote `mcp_only` override
+have been removed; local agents access server workflows through public MCP.
+
+
+### Attribution and plan changelogs
+
+Direct MCP file writes cannot edit `planning/*`, including its changelog. Their
+receipts record `identity.user_id`, `identity.username`, `identity.connection_id`
+and `identity.source=public_mcp`, together with the request ID and revisions.
+Local executor receipts record the same identity plus the device ID and source
+`server_local_executor`. Identity comes from server authentication, never tool
+arguments. Private records also retain the timestamp and capped before-content.
+
+MCP `builder_chat` requests use the normal typed plan tools. The existing
+`planning/changelog/*.json` entries preserve `origin.type=external_builder`,
+user ID/name, session ID, operation ID and `via_token=token:<connection ID>`, plus
+change reason, timestamp and before/after hashes. A separate Builder audit also
+links the typed mutation to its authenticated operation and connection. Token
+IDs in these records are identifiers, never secret token values.
+
+
+For container deployments with a read-only parent of the documents mount, set
+`WORKSPACE_FILE_STATE_DIR` to a writable private directory outside documents.
+Mount that state directory into both the workspace service and any agent service
+using the mounted Builder writer, and configure the same path and OS service
+identity on each. Locks and receipts use a subdirectory keyed by the canonical
+workspace path; both services must see the same document paths. The supplied
+Docker and rootless service configurations share this state.
+Otherwise configured `AGENTWORKS_STATE_ROOT/file-edits/<root-hash>/` is used when
+available; the fallback is the private sibling `.<folder>-file-edits/`. Normal
+managed document editing shares this lock and therefore also requires the state
+location to be writable. Local executors honor the same state override for locks;
+`--state-dir` selects their separate durable receipt directory.
+Managed edits, version restores and MCP/Builder writes share a workflow/project
+lock, so a long operation on one workflow does not block another. Atomic replacements
+preserve Unix ownership, permissions and Linux access ACLs when permitted.
+When a rootless Linux service cannot assign the original UID, replacements remain
+service-owned while retaining the original group and effective ACL permissions,
+including the former owner’s access. Masked entries do not gain new access.
+Replacement fails before rename if the group or required ACL cannot be retained. Receipt storage has no automatic pruning;
+operators must include it in their retention and storage policy.

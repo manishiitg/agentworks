@@ -41,6 +41,13 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
+	var guard *wf.FolderGuard
+	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
+		guard = claims.AccessToken.FileGuard
+	}
+	if req.Operation == "read" && !guard.Allows(p, false) || req.Operation != "read" && !guard.AllowsTraversal(p) {
+		return wf.Result{}, &externalUpstreamError{403, "file is outside folder grants"}
+	}
 	if externalPathPrivate(crewRoot, p) {
 		return wf.Result{}, &externalUpstreamError{403, "private path"}
 	}
@@ -50,7 +57,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return externalRemoteFileRequest(ctx, req, p)
+			result, err := externalRemoteFileRequest(ctx, req, p)
+			return externalGuardReadResult(result, err, guard)
 		}
 		return wf.Result{}, err
 	}
@@ -61,7 +69,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	root, err := base.OpenRoot(rootPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return externalRemoteFileRequest(ctx, req, p)
+			result, err := externalRemoteFileRequest(ctx, req, p)
+			return externalGuardReadResult(result, err, guard)
 		}
 		return wf.Result{}, err
 	}
@@ -78,7 +87,8 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		file, err := externalScopedFile(root, p)
 		return wf.Result{File: file}, err
 	case "list", "search":
-		return externalListFiles(ctx, root, p, req, crewRoot)
+		result, err := externalListFiles(ctx, root, p, req, crewRoot)
+		return externalGuardReadResult(result, err, guard)
 	default:
 		return wf.Result{}, &externalUpstreamError{400, "unsupported file operation"}
 	}
@@ -176,6 +186,7 @@ func externalPathPrivate(crewRoot bool, p string) bool {
 }
 
 func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool) (wf.Result, error) {
+	guard := externalFileGuard(ctx, crewRoot)
 	if req.Limit <= 0 {
 		req.Limit = 100
 	}
@@ -215,6 +226,12 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 			return walkErr
 		}
 		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !guard.Allows(name, false) && !(d.IsDir() && guard.AllowsTraversal(name)) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -289,6 +306,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	return result, nil
 }
 
+func externalFileGuard(ctx context.Context, crewRoot bool) *wf.FolderGuard {
+	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
+		return claims.AccessToken.FileGuard
+	}
+	return nil
+}
+
 func externalRootUsesSharedKnowledge(root *os.Root) bool {
 	data, err := root.ReadFile("workflow.json")
 	if err != nil {
@@ -298,4 +322,18 @@ func externalRootUsesSharedKnowledge(root *os.Root) bool {
 		Mode string `json:"knowledgebase_mode"`
 	}
 	return json.Unmarshal(data, &m) != nil || strings.TrimSpace(string(data)) == "null" || m.Mode != ""
+}
+
+func externalGuardReadResult(result wf.Result, err error, guard *wf.FolderGuard) (wf.Result, error) {
+	if err != nil || guard == nil {
+		return result, err
+	}
+	visible := result.Entries[:0]
+	for _, entry := range result.Entries {
+		if guard.Allows(entry.Path, false) || entry.Type == "folder" && guard.AllowsTraversal(entry.Path) {
+			visible = append(visible, entry)
+		}
+	}
+	result.Entries = visible
+	return result, nil
 }

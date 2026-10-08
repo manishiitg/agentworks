@@ -97,6 +97,11 @@ func CreateDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c, req.FilePath)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Sanitize input filepath to ensure it's relative
 	docsDir := viper.GetString("docs-dir")
@@ -145,7 +150,7 @@ func CreateDocument(c *gin.Context) {
 	}
 
 	// Write file
-	if err := os.WriteFile(fullPath, []byte(req.Content), 0644); err != nil {
+	if err := writeFileAtomic(fullPath, []byte(req.Content), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create document",
@@ -1053,6 +1058,11 @@ func UpdateDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1110,7 +1120,7 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 	} else {
-		writeErr = os.WriteFile(filePath, []byte(req.Content), 0644)
+		writeErr = writeFileAtomic(filePath, []byte(req.Content), 0644)
 	}
 	if err := writeErr; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
@@ -1143,6 +1153,11 @@ func UpdateDocument(c *gin.Context) {
 
 // DeleteDocument handles DELETE /api/documents/*filepath
 func DeleteDocument(c *gin.Context) {
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
 	filePathParam := c.Param("filepath")
 	confirm := c.Query("confirm")
 
@@ -1228,6 +1243,11 @@ func MoveDocument(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c, filePathParam, req.DestinationPath)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1475,6 +1495,12 @@ func RestoreFileVersion(c *gin.Context) {
 		return
 	}
 
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
+
 	// Restore the version
 	versionManager := utils.NewGitVersionManager(docsDir)
 	if err := versionManager.RestoreFileVersion(filePath, req.CommitHash); err != nil {
@@ -1507,6 +1533,11 @@ func CreateFolder(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c, req.FolderPath)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Sanitize input folder path to ensure it's relative
 	docsDir := viper.GetString("docs-dir")
@@ -1594,6 +1625,11 @@ func CopyFolder(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c, req.SourcePath, req.DestinationPath)
+	if !ok {
+		return
+	}
+	defer release()
 
 	docsDir := viper.GetString("docs-dir")
 
@@ -1791,6 +1827,11 @@ func CopyFolder(c *gin.Context) {
 
 // DeleteFolder handles DELETE /api/folders/*folderpath
 func DeleteFolder(c *gin.Context) {
+	release, ok := lockFileMutation(c, strings.TrimSuffix(c.Param("folderpath"), "/files"))
+	if !ok {
+		return
+	}
+	defer release()
 	// Gin's wildcard route capture always includes the leading slash
 	// ("/Chats/SparkQuill/..." for a request to /api/folders/Chats/...) —
 	// HandleDocumentRequest strips this same leading slash from its own
@@ -1885,6 +1926,11 @@ func DeleteFolder(c *gin.Context) {
 
 // DeleteAllFilesInFolder handles DELETE /api/folders/*folderpath/files
 func DeleteAllFilesInFolder(c *gin.Context, folderPathParam string, confirm bool) {
+	release, ok := lockFileMutation(c, folderPathParam)
+	if !ok {
+		return
+	}
+	defer release()
 	if !confirm {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 			Success: false,
@@ -2020,6 +2066,11 @@ func UploadFile(c *gin.Context) {
 		})
 		return
 	}
+	release, ok := lockFileMutation(c, req.FolderPath)
+	if !ok {
+		return
+	}
+	defer release()
 
 	// Get the uploaded file
 	file, header, err := c.Request.FormFile("file")

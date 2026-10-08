@@ -224,3 +224,8 @@ func truncateShellStream(s string, budget int, stream string) string {
 	tail := remaining - head
 	return s[:head] + marker + s[len(s)-tail:]
 }
+
+// MarshalShellResultForAgent shares the bridge output limit with remote executors.
+func MarshalShellResultForAgent(result ShellCommandResult) (string, error) {
+	return marshalCappedShellResultForAgent(result)
+}
