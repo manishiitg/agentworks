@@ -229,12 +229,13 @@ server and LLM. The CLI accepts requests over its existing outbound connection.
 
 ### Connection and website experience
 
-1. Open a Code chat and switch **Server → Local** in its composer (or use
-   **Settings → General → Local CLI connection**). Local has a separate minimal
-   tool policy, applied before a folder is selected. The selected model stays the same.
+1. Open a Code chat and go to **Settings → General → Local CLI connection**
+   in the right-side panel. The composer only displays the current connection;
+   it has no Server/Local switch. Opening setup keeps server mode active.
 2. Install the CLI, sign in with `devices:connect`, and run
    `agentworks executor connect` with named folder grants.
-3. Select the computer and shared folder. The browser remembers this binding
+3. Select the computer and shared folder, review the consequences, then explicitly
+   click **Use this folder**. Selection alone does not change the mode. The browser remembers this binding
    for the account, server workspace and current chat only.
 4. The right-side toolbar offers **Local CLI connection**, **Costs**, and
    **Models**. The connection panel shows setup, folder permissions, status
@@ -243,7 +244,9 @@ server and LLM. The CLI accepts requests over its existing outbound connection.
 5. The agent uses the existing shell and patch tools against the laptop from chat. MCP connections, skills,
    project/Vault secrets and background agents are excluded from local turns.
    Provider authentication remains available for the selected server model.
-6. Disconnect restores normal Code mode. Saved configuration and other chats
+6. Disconnect asks the user to review the restored server file access and features,
+   then explicitly choose **Switch to server files**. Connection changes are
+   unavailable while a turn is running. Saved configuration and other chats
    remain unchanged; Ctrl-C in the CLI ends folder sharing.
 
 Only interactive Code turns receive local tools. Crew, Brain, Vault, schedules,

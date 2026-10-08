@@ -28,6 +28,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useModeStore } from '../stores/useModeStore'
 import { agentApi } from '../services/api'
 import { setProductCommands, setUserCommands } from '../commands/registry'
+import { writeCodeFilesPreference } from '../products/work/codeLocalFiles'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -86,6 +87,30 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
   }
 
+
+  it('shows a read-only connection label and removes server controls in Local Code', async () => {
+    await act(async () => {
+      const tab = terminalTab('local-code')
+      tab.viewMode = 'formatted'
+      tab.metadata = { mode: 'multi-agent', agentProfileId: 'code', agentProfileWorkspace: 'Chats/Code/projects/demo' }
+      useChatStore.setState({ activeTabId: 'local-code', chatTabs: { 'local-code': tab } })
+      writeCodeFilesPreference(tab.sessionId!, { location: 'computer', target: { device_id: 'laptop', resource_id: 'project' } })
+      renderComposer(undefined, false)
+    })
+    expect(host.querySelector('[aria-label="Code chat mode"]')).toBeNull()
+    expect(host.querySelector('[aria-label="File connection: Local files · project"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Open live view"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Attach files"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Browse commands"]')).toBeNull()
+    expect(textarea().placeholder).toBe('Work on your local project…')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '@server-file')
+      textarea().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(textarea().getAttribute('aria-expanded')).toBe('false')
+    expect(host.querySelector<HTMLInputElement>('input[type="file"]')!.disabled).toBe(true)
+    expect(agentApi.uploadPlannerFile).not.toHaveBeenCalled()
+  })
 
   it('uses the Relay catalog for both command picker and typed commands, excluding Pulse', async () => {
     await act(async () => {

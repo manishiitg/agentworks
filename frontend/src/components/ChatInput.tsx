@@ -1,4 +1,5 @@
-import { CodeChatModeSwitch } from '../products/work/CodeChatModeSwitch'
+import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
+import { useCodeFilesPreference } from '../products/work/codeLocalFiles'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
@@ -483,6 +484,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const isOrganizationAssistant = !!activeTab?.metadata?.isOrganizationAssistant
   const agentProfileWorkspace = activeTab?.metadata?.agentProfileWorkspace
   const agentProfileId = activeTab?.metadata?.agentProfileId
+  const codeFilePreference = useCodeFilesPreference(activeTab?.sessionId || '')
+  const localCodeMode = agentProfileId === 'code' && codeFilePreference.location === 'computer'
   const agentProfileVersion = activeTab?.metadata?.agentProfileVersion
   const agentProfileProjectId = activeTab?.metadata?.agentProfileProjectId
   // Product identity comes from the tab contract, not the visual composer
@@ -524,7 +527,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   useSyncExternalStore(subscribeCommands, getCommandRevision)
   // A product with no shipped commands still needs the slash entry point so
   // users can create and use project-scoped custom commands.
-  const productCommandsAvailable = true
+  const productCommandsAvailable = !localCodeMode
   const profileSessionRuntime = useChatStore(state => activeTab?.sessionId
     ? state.activeSessionsCache.find(session => session.session_id === activeTab.sessionId)?.runtime
     : undefined)
@@ -846,7 +849,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // displaying a restored structured/background execution.
     providerUsesStructuredTransport: false,
   })
-  const liveTerminalOffered = mainTerminalAvailable && !currentChatUsesStructuredTransport
+  const liveTerminalOffered = !localCodeMode && mainTerminalAvailable && !currentChatUsesStructuredTransport
   useEffect(() => {
     if (!providerManifestLoaded) {
       void loadProviderManifest()
@@ -1037,7 +1040,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   useEffect(() => {
     const handleChatToolCommand = (event: Event) => {
       const command = chatToolCommandFromEvent(event)
-      if (command !== 'browser' || hideExtras || isProductSurface) return
+      if (localCodeMode || command !== 'browser' || hideExtras || isProductSurface) return
 
       if (!activeTabId) {
         addToast('No active chat tab yet.', 'info')
@@ -1053,7 +1056,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     window.addEventListener(CHAT_TOOL_COMMAND_EVENT, handleChatToolCommand)
     return () => window.removeEventListener(CHAT_TOOL_COMMAND_EVENT, handleChatToolCommand)
-  }, [activeTabId, addToast, browserMode, hideExtras, isProductSurface, setBrowserMode, setWorkspaceMinimized])
+  }, [localCodeMode, activeTabId, addToast, browserMode, hideExtras, isProductSurface, setBrowserMode, setWorkspaceMinimized])
 
   // Get preset info for multi-agent mode
   const { getActivePreset, activePresetIds } = usePresetApplication()
@@ -1789,6 +1792,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedImageFiles = getClipboardImageFiles(e.clipboardData)
     if (pastedImageFiles.length > 0) {
+      if (localCodeMode) { e.preventDefault(); addToast('Use a file in your connected folder; uploads to server files are unavailable in Local mode.', 'info'); return }
       e.preventDefault()
       void uploadFilesToChatRef.current(pastedImageFiles)
       return
@@ -1821,7 +1825,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       textarea.setSelectionRange(cursorPosition, cursorPosition)
       adjustTextareaHeight()
     }, 0)
-  }, [addPastedAttachment, adjustTextareaHeight, inputText, writeComposerText])
+  }, [localCodeMode, addToast, addPastedAttachment, adjustTextareaHeight, inputText, writeComposerText])
 
   const closeComposerPickers = useCallback(() => {
     const trigger = composerTriggerRef.current
@@ -1841,13 +1845,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   useLayoutEffect(() => {
     closeComposerPickers()
-  }, [activeTabId, terminalViewSelected, closeComposerPickers])
+  }, [activeTabId, localCodeMode, terminalViewSelected, closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
     const palette = commandPaletteRef.current
     if (palette && palette.text === textarea.value && palette.start === textarea.selectionStart && palette.end === textarea.selectionEnd) return
     commandPaletteRef.current = null
-    let trigger = composingRef.current ? null : getComposerTrigger(textarea.value, textarea.selectionStart, textarea.selectionEnd)
+    let trigger = composingRef.current || localCodeMode ? null : getComposerTrigger(textarea.value, textarea.selectionStart, textarea.selectionEnd)
     if (isWorkflowPhaseChat && (trigger?.kind === '!' || trigger?.kind === '$')) trigger = null
     // Profile products configure MCP servers and skills in their right-side
     // Setup panels. Their slash menu is likewise manifest-owned: a product
@@ -1878,7 +1882,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       case '$':
         setDollarPosition(trigger.start); setServerPopupSearchQuery(trigger.query); setServerPopupPosition(position); break
     }
-  }, [isProductProfile, isWorkflowPhaseChat, productCommandsAvailable])
+  }, [localCodeMode, isProductProfile, isWorkflowPhaseChat, productCommandsAvailable])
 
   // Memoized handlers to prevent re-creation
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2062,6 +2066,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, canWriteCommandWorkflow, clearInputState, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, isViewOnly, pulseReviewPicker, tabSessionId])
 
   const executeSlashCommandFromQuery = useCallback((trimmedQuery: string) => {
+    if (localCodeMode) return false
     if (!trimmedQuery.startsWith('/')) return false
 
     const withoutSlash = trimmedQuery.slice(1).trim()
@@ -2113,7 +2118,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog])
+  }, [localCodeMode, activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog])
 
   const getSubmitBlockReason = useCallback((): string | null => {
     if (!queryToSubmit?.trim()) return null
@@ -2559,6 +2564,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeWorkflowWorkspacePath, agentProfileWorkspace, selectedModeCategory, workspaceActiveFolder])
 
   const uploadFilesToChat = useCallback(async (files: File[]) => {
+    if (localCodeMode) { addToast('Use a file in your connected folder; uploads to server files are unavailable in Local mode.', 'info'); return }
     if (files.length === 0 || isUploadingFiles) {
       console.info('[CHAT_UPLOAD] no files selected or upload already in progress', { fileCount: files.length, isUploadingFiles })
       return
@@ -2679,7 +2685,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] upload completed', { uploadedCount: uploadedPaths.length, failureCount: failures.length })
 
     setIsUploadingFiles(false)
-  }, [activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
+  }, [localCodeMode, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -2845,6 +2851,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly) return "View only — cannot continue this conversation"
+    if (localCodeMode) return isStreaming ? 'Add a message…' : 'Work on your local project…'
     if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
@@ -2857,7 +2864,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [localCodeMode, agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2951,7 +2958,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       </TooltipContent>
     </Tooltip>
   ) : null
-  const attachmentEl = (
+  const attachmentEl = !localCodeMode && (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
@@ -3132,7 +3139,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
-          {agentProfileId === 'code' && <CodeChatModeSwitch sessionId={activeTab?.sessionId || ''} disabled={isViewOnly || isTurnInFlight} />}
           <div ref={setMicBannerHost} className="empty:hidden" />
         </>}>
             {/* Queued messages: a message sent while the agent is still working is
@@ -3223,7 +3229,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               </div>
             )}
 <ChatComposerControls>
-              <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
+              <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 items-center gap-1.5'}>
+                {agentProfileId === 'code' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3692,7 +3699,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           multiple
           onChange={handleUploadFilesSelected}
           className="hidden"
-          disabled={isUploadingFiles}
+          disabled={isUploadingFiles || localCodeMode}
         />
       </ChatComposerArea>
       

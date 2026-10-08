@@ -760,10 +760,16 @@ writes inside the shared folder. Default receipt storage is beside the CLI confi
 
 ### Code website: connect local files to the current chat
 
-Open a Code chat and switch its composer from **Server** to **Local**. You can
-also enter Local mode from **Settings → General → Local CLI connection → Connect local files**.
-Follow the CLI setup commands and select a computer and shared folder. The
-browser remembers this binding for your account, server workspace and chat only.
+Open the right-side **Settings → General → Local CLI connection** panel in a
+Code chat. Click **Connect local files**, follow the CLI setup, and select a
+computer and folder. Review the explanation of laptop permissions, data sent to
+the server/model, and unavailable features, then click **Use this folder**.
+Opening setup or choosing a folder alone does not switch the chat. The composer
+only shows a small read-only connection label. All changes happen in the
+right-side connection panel; switching back requires **Disconnect local files**
+then **Switch to server files** after reviewing what changes. You cannot change
+connections during a running turn. The browser remembers the binding for your
+account, server workspace and chat only.
 The chat, agent and selected model continue running on the server.
 
 The right side shows only **Local CLI connection**, **Costs and usage**, and
@@ -775,7 +781,7 @@ Local mode applies a separate minimal tool policy even before a folder is select
 The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
 skills, project/Vault secrets, background agents and server terminal/browser
 access. Saved selections are excluded without changing project settings.
-Other chats and existing schedules/connections are unchanged. Disconnect returns
+Other chats and existing schedules/connections are unchanged. Confirming the switch to server files returns
 this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
 
 Every file action validates live ownership, authorization and folder grants.
