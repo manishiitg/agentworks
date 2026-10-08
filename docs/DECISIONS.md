@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — One Pulse, no separate reviewers
+
+Pulse on means the Pulse agent owns the workflow; Pulse off means the owner
+manages it. Every Pulse workflow with a soul.md gets the Pulse agent (a goal
+metric is no longer required; setting it up is Pulse's first job). The full
+Pulse pass is one Goal Work turn in its conversation: no Gate, no separate
+Architecture or Technical reviews, no finalizer, and no QA fix runs; Pulse
+diagnoses and the Builder chat fixes. Why: the owner wants one Pulse working
+one way, not a second set of reviewers. Unused reviewer code is removed in a
+follow-up. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-08 — Only admins share provider accounts with workflows or Crews
 
 A member may share their own provider account only with named colleagues, at

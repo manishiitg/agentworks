@@ -11,28 +11,10 @@ import (
 	"time"
 )
 
-// PLAT-697 (owner, 2026-10-07): for a workflow with a goal, QA and
-// Architecture belong to its Pulse conversation. The full pass runs Goal Work
-// only (in that conversation), with no Architecture or Technical turn; a
-// workflow without a goal keeps the old order. The safety net stays: a failed
-// run wakes the conversation for exactly one turn, however often the launcher
-// looks.
+// PLAT-697 (owner, 2026-10-08): Pulse is the only reviewer of a Pulse workflow.
+// A failed run wakes its conversation for exactly one turn, however often the
+// launcher looks, and that turn hands the fix to the Builder chat.
 func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.T) {
-	allDue := func(string) bool { return true }
-	labels := func(steps []pulseLifecycleStep) string {
-		out := []string{}
-		for _, step := range steps {
-			out = append(out, fmt.Sprintf("%s(lead=%v)", step.label, step.goalLead))
-		}
-		return strings.Join(out, ",")
-	}
-	if got := labels(pulsePassModuleSteps("run-1", true, allDue)); got != "strategic-review(lead=true)" {
-		t.Fatalf("goal workflow pass = %s, want Goal Work only, in the Pulse conversation", got)
-	}
-	if got := labels(pulsePassModuleSteps("run-1", false, allDue)); got != "strategic-review(lead=false),architecture-review(lead=false),technical-review(lead=false)" {
-		t.Fatalf("workflow without a goal = %s, want the unchanged order", got)
-	}
-
 	env := newCrewFunctionEnv(t)
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -72,7 +54,7 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 	if len(queries) != 1 {
 		t.Fatalf("Pulse turns = %d, want exactly one for the one failed run", len(queries))
 	}
-	for _, want := range []string{"a run of this workflow failed", "run run-failed", "step publish: API returned 401", "record_pulse_qa_request"} {
+	for _, want := range []string{"a run of this workflow failed", "run run-failed", "step publish: API returned 401", "ask_builder"} {
 		if !strings.Contains(queries[0], want) {
 			t.Fatalf("run-failure turn is missing %q:\n%s", want, queries[0])
 		}

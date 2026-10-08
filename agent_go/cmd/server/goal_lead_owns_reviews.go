@@ -236,9 +236,9 @@ func (s *SchedulerService) wakeGoalLeadOnRunFailures(ctx context.Context, worksp
 		return false
 	}
 	_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: "system", Source: goalLeadTurnRunFailed, Text: goalLeadRunFailureMessage(len(claimed))})
-	turn := goalLeadTurn{Kind: goalLeadTurnRunFailed, Body: goalLeadRunFailureBody(claimed),
-		// Report and ask for QA only: no reruns, edits or messages in this turn.
-		Perms: &stepworkflow.GoalWorkPermissions{}}
+	// The Builder chat it asks to fix the failure works within Pulse's own
+	// levels, as for any other turn.
+	turn := goalLeadTurn{Kind: goalLeadTurnRunFailed, Body: goalLeadRunFailureBody(claimed)}
 	startGoalLeadBackgroundTurn(func() {
 		turnCtx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
 		defer cancel()
@@ -261,7 +261,7 @@ func goalLeadRunFailureBody(runs []goalLeadFailedRun) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(`
-One short turn. Read only as much as you need (the run folder, get_pulse_state(view="step_concerns")). For each failure decide: does it block or threaten the goal (the goal-driving step or route failed, the goal cannot be measured, the same failure repeats)? If so, call record_pulse_qa_request once with the run, step and symptom; a QA run checks and repairs, and its result comes back here. Otherwise say in one line why it can wait; your next goal check reports it. Do not rerun the workflow, edit it or notify anyone in this turn.`)
+One short turn. Read only as much as you need (the run folder, get_pulse_state(view="step_concerns")). For each failure decide: does it block or threaten the goal (the goal-driving step or route failed, the goal cannot be measured, the same failure repeats)? If so, diagnose it (the inspect skill) and ask the Builder chat with ask_builder to debug and fix it, with the run, step, symptom and your diagnosis. Otherwise say in one line why it can wait; your next goal check reports it. Do not rerun the workflow, edit it or notify anyone in this turn.`)
 	return b.String()
 }
 

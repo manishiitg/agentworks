@@ -2846,94 +2846,12 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 		}
 		s.sessionLogf(sctx, sessionID, "[PULSE] fix run selected %d steps for %s: %s", len(steps), sctx.WorkspacePath, sctx.PulseFixReason)
 	} else {
-		// A workflow with a goal: its Pulse conversation owns QA and
-		// architecture, so the pass runs only Goal Work after Gate
-		// (goal_lead_owns_reviews.go, PLAT-697).
-		hasGoal := workflowHasGoal(ctx, sctx.WorkspacePath)
-		gateStep := pulseLifecycleGateStep(pulseRunID, runFolder, runStatus)
-		if sctx.Schedule.PulseReviewOnly {
-			folders, foldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
-			if foldersErr != nil {
-				s.sessionLogf(sctx, sessionID, "[PULSE] periodic backlog listing failed, Gate will reason with no folder listing: %v", foldersErr)
-				folders = nil
-			}
-			gateStep = pulseLifecycleBacklogGateStep(pulseRunID, pulseReviewBacklogSummary(folders))
-		}
-		if hasGoal {
-			gateStep.query += goalLeadGateNote
-		}
-		gateCompleted := false
-		for attempt := 1; attempt <= 2; attempt++ {
-			result := runStep(gateStep)
-			if abortIfInterrupted(gateStep, result) {
-				return
-			}
-			if result.outcome == pulseLifecycleStepCompleted {
-				if err := validatePulseGateCompletion(ctx, sctx.WorkspacePath, pulseRunID); err == nil {
-					gateCompleted = true
-					break
-				} else {
-					s.sessionLogf(sctx, sessionID, "[PULSE] Gate completion contract failed (attempt %d/2): %v", attempt, err)
-					result = pulseLifecycleStepRunResult{outcome: pulseLifecycleStepWaitFailed, err: err}
-				}
-			} else if err := validatePulseGateCompletion(ctx, sctx.WorkspacePath, pulseRunID); err == nil {
-				// The agent may time out after it has already committed the
-				// complete durable worklist. Preserve the failure truth, but do
-				// not discard its due-module routing.
-				handleStepFailure(gateStep, result, true)
-				gateCompleted = true
-				s.sessionLogf(sctx, sessionID, "[PULSE] Gate stage failed after recording a complete durable worklist; continuing with selected modules")
-				break
-			}
-			if attempt == 1 {
-				handleStepFailure(gateStep, result, true)
-				continue
-			}
-			handleStepFailure(gateStep, result, true)
-		}
-		if !gateCompleted {
-			if err := validatePulseGateCompletion(ctx, sctx.WorkspacePath, pulseRunID); err == nil {
-				gateCompleted = true
-				s.sessionLogf(sctx, sessionID, "[PULSE] recovered complete durable Gate worklist after the stage failure")
-			}
-		}
-		if gateCompleted {
-			// Workflow Review (Plan Drift) is not a Pulse module any more: it
-			// runs before every run (PLAT-697 phase 0, workflow_review_prerun.go),
-			// so nothing here waits for it or holds Goal Work's levels for it.
-			if hasGoal {
-				// A recovery, the prompt budget or a protected boundary can
-				// still make Architecture or Technical due; close them so
-				// nothing waits on a turn this pass does not run.
-				if err := closeGoalLeadOwnedModules(ctx, sctx.WorkspacePath, pulseRunID); err != nil {
-					s.sessionLogf(sctx, sessionID, "[PULSE] could not close the reviews the Pulse conversation owns: %v", err)
-				}
-			}
-			// Goal Work runs first; for a goal workflow it is the only module
-			// turn and runs in the persistent Pulse conversation (PLAT-697).
-			moduleSteps := pulsePassModuleSteps(pulseRunID, hasGoal, func(module string) bool {
-				due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module)
-				return err != nil || due
-			})
-			for _, step := range moduleSteps {
-				if pulsemodules.ForStepLabel(step.label) == pulseModuleStrategicReview {
-					perms, text := goalWorkAutonomy(ctx, sctx.WorkspacePath)
-					step.query += "\n\n" + text
-					step.goalWork = &perms
-				}
-				steps = append(steps, step)
-			}
-			steps = append(steps, pulseLifecycleFinalSteps(pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))...)
-			if len(steps) > 0 && !isPulseLifecycleFinalStep(steps[0].label) {
-				s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
-					RunID: scheduleRunID, To: schedulerstate.StatePulseModules, Reason: "Pulse Gate recorded due modules",
-					SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
-				})
-			}
-			s.sessionLogf(sctx, sessionID, "[PULSE] selected %d post-gate steps for %s", len(steps), sctx.Schedule.ID)
-		} else {
-			steps = pulseLifecycleFinalSteps(pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))
-		}
+		// One Pulse for every Pulse workflow (owner, 2026-10-08): the pass is a
+		// Goal Work turn in the workflow's Pulse conversation. No Gate, no
+		// separate Architecture or Technical reviews, no finalizer; Workflow
+		// Review runs before runs and housekeeping is per-schedule.
+		steps = []pulseLifecycleStep{{label: "goal-work", goalLead: true, query: fmt.Sprintf("PULSE GOAL WORK. pulse_run_id=%q. Do a Goal Work pass now with the goal-lead-work skill: follow up earlier items, find what would move the goal, and get 1-3 bounded items done through the Builder chat (ask_builder). Record each item with record_pulse_goal_work. Nothing worth doing is a valid answer.", pulseRunID)}}
+		s.sessionLogf(sctx, sessionID, "[PULSE] Goal Work turn for %s, in the Pulse conversation", sctx.WorkspacePath)
 	}
 
 	// runHeldStep runs a turn; a Goal Work turn holds the session's tools to its

@@ -58,10 +58,11 @@ runs ran the workflow. A failed run also wakes you once, soon after, for one
 short turn.
 
 - A failure that **blocks or threatens the goal** (the goal-driving step or route
-  failed, the goal cannot be measured, the same failure repeats): call
-  `record_pulse_qa_request` once with the run, step and symptom.
+  failed, the goal cannot be measured, the same failure repeats): diagnose it
+  (`goal-lead-inspect.md`) and ask the Builder chat to debug and fix it with
+  your evidence.
 - **Other failures and concerns**: note them in one line in your check summary;
-  ask for QA when they repeat.
+  hand them to the Builder chat when they repeat.
 - Never repair steps in your conversation. A separate QA run checks and repairs;
   its short result comes back to your conversation, and you judge the effect on
   the goal.
@@ -84,7 +85,7 @@ them; do not recompute them.
   when it keeps rising, a recommendation to the owner; never change models or
   spending yourself.
 - **error_rate**: failure share since your last check against the 14-day
-  median. A spike that threatens the goal is a `record_pulse_qa_request`.
+  median. A spike that threatens the goal: diagnose it and ask the Builder chat.
 - **login_hints**: possible expired logins or failing connections (a narrow text
   match, so check the run first). You cannot log in for the owner: one clear
   ask naming the account or connection.

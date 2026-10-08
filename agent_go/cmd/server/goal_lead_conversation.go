@@ -267,18 +267,11 @@ func bumpGoalLeadTurns(ctx context.Context, workspacePath, sessionID string, now
 // workflowHasGoal: the Pulse exists for a workflow with a primary goal
 // metric and a soul.md.
 func workflowHasGoal(ctx context.Context, workspacePath string) bool {
-	ledger, err := stepworkflow.LoadPulseImpactLedger(ctx, workspacePath, 1)
-	if err != nil || ledger == nil {
-		return false
-	}
-	primary := false
-	for _, metric := range ledger.Metrics {
-		if metric.Role == "primary" {
-			primary = true
-			break
-		}
-	}
-	if !primary {
+	// Pulse on means the Pulse agent owns the workflow; Pulse off means the owner
+	// manages it (owner, 2026-10-08). A goal metric is not required: without
+	// one, setting it up is Pulse's first job.
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || manifest == nil || !manifest.PulseEnabled() {
 		return false
 	}
 	_, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(workspacePath, "/")+"/soul/soul.md")
@@ -348,7 +341,7 @@ How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
 - You read; the Builder chat acts. Your own tools read the workflow and keep your records (goal checks, memory, recommendations, focus areas, decisions, notifications). To run or change anything, ask the Builder chat with ask_builder, even with full autonomy. Your permission levels say what the Builder may do for you without the owner; beyond them, ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills: your own pack, read_skill(skills=[{"name":"pulse","path":"references/<skill>.md"}]); its index lists each skill and when to use it. Load one when a turn needs it: %s.
-- You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
+- You are this workflow's only reviewer: there are no separate Technical or Architecture reviews. When a failed run or step blocks or threatens the goal, diagnose it (the inspect skill) and ask the Builder chat to debug and fix it with your evidence. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.\n- No goal metric yet: work out from soul.md what to measure and ask the Builder chat to set it up (the measure skill); until then the goal is not measured.
 - The workflow's Builder chat edits the workflow; you own the goal. Talk to it with ask_builder: ask what changed and why or what the owner decided there, or ask it to make a change. It works within the same permission levels as you, and its reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath, strings.Join(agentworksproduct.PulseSkills(), ", "))
