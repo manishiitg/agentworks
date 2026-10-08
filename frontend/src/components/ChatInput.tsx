@@ -887,7 +887,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [showCdpPopup, setShowCdpPopup] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
-  const isCdpDisconnected = browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
+  const isCdpDisconnected = !localCodeMode && browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
 
   // File context operations (always update tab config)
   const removeFileFromContext = useCallback((path: string) => {
@@ -3258,7 +3258,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         />
                       )}
                     {/* Browser access lives in the chat header for multi-agent mode. */}
-                    {!hideExtras && !isMultiAgentMode && <button
+                    {!localCodeMode && !hideExtras && !isMultiAgentMode && <button
                       type="button"
                       data-tour="chat-browser-tools"
                       data-testid="tour-chat-browser-tools"
@@ -3314,7 +3314,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 )}
 
                 {/* Browser Access Configuration Popup */}
-                {showCdpPopup && (
+                {!localCodeMode && showCdpPopup && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowCdpPopup(false); setWorkspaceMinimized(false) }}>
                     <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-2xl" onClick={(e) => e.stopPropagation()}>
                       {/* Header */}

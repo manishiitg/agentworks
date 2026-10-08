@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/mcpagent/observability"
 	"github.com/manishiitg/mcpagent/toolcalllog"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	agentlogger "github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
@@ -108,6 +109,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			AgentToolsMode:                    config.CodingAgentToolsMode,
 			ApprovalsMode:                     config.CodingAgentApprovalsMode,
 			BridgeRoutingInstructionsOverride: config.BridgeRoutingInstructionsOverride,
+			BridgeBinary:                      cliruntime.MCPBridgeBinary(),
 			CLISecurityPolicy:                 config.CLISecurityPolicy,
 			SecretEnvironment:                 config.CodingAgentSecretEnvironment,
 			CodexNetworkAccess:                config.CodexNetworkAccess,

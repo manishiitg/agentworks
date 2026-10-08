@@ -108,13 +108,13 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const product = useProjectProduct()
   const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const filePreference = useCodeFilesPreference(chatSessionId || '')
-  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer' && Boolean(filePreference.target)
+  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const visibleTabs = INTEGRATION_TABS.filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
-  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
+  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value ?? 'apps'
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(true)
@@ -149,6 +149,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
       store.setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
     }
   }
+
+  if (localCodeSession) return <p className="p-4 text-sm text-muted-foreground">Integrations are unavailable in Local mode. Manage the local connection in the right-side panel.</p>
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">

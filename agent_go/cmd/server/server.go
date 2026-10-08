@@ -7045,7 +7045,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			//    section (AttachSkill, not AddInstructions), so it stays here
 			//    rather than in the prompt-section registry below.
 			identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
-			if len(identitySkillNames) > 0 {
+			if !codeLocalModeTurn(req, resolvedProfile) && len(identitySkillNames) > 0 {
 				// Phase 3 rewire: skills are now first-class on the agent.
 				// mcpagent's ensureSystemPrompt auto-injects the progressive-
 				// disclosure listing (name + description); CLI transports
@@ -7083,7 +7083,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if resolvedProfile != nil && !isWorkflowPhase {
+			if resolvedProfile != nil && !isWorkflowPhase && !codeLocalModeTurn(req, resolvedProfile) {
 				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly)); err != nil {
 					sendError(fmt.Sprintf("Failed to attach project memory guidance: %v", err), true)
 					return

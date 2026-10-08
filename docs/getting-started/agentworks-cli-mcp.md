@@ -772,6 +772,17 @@ connections during a running turn. The browser remembers the binding for your
 account, server workspace and chat only.
 The chat, agent and selected model continue running on the server.
 
+Coding CLI models such as Claude Code also need the server's internal
+`mcpbridge` executable. Release builds ship it beside the server binary, and the
+server discovers that bundled executable automatically (including a `.bin/`
+directory beside the server). `MCP_BRIDGE_BINARY` takes precedence; otherwise
+the existing `PATH` and `~/go/bin/` lookup remains available. The development
+server launcher builds and configures its private `.bin/mcpbridge`.
+If technical details report `mcpbridge binary not found`, the server deployment
+must include the bridge, or set `MCP_BRIDGE_BINARY` to its installed executable
+and restart the backend. Connecting the laptop CLI does not supply this server
+executable.
+
 The right side shows only **Local CLI connection**, **Costs and usage**, and
 **Models**. The connection panel provides CLI setup, folder selection, status
 and disconnect. There is no local file browser/editor; ask the agent in chat

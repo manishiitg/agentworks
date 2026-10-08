@@ -1,5 +1,5 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { DollarSign, Laptop, Server, Settings } from 'lucide-react'
+import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'

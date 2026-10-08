@@ -705,9 +705,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeRuntimeConfigKey(workspacePath), ProjectInstructions: projectInstructions,
-		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
-		ChatSecrets:     api.chatSecretNames(ctx, userID, req)}, nil
+	connections := []string(nil)
+	knowledgeKey := ""
+	if req.CodeChatMode != "local" {
+		connections = chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
+		knowledgeKey = knowledgeRuntimeConfigKey(workspacePath)
+	}
+	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+		CodeLocalDisabledTools: localDisabledTools, CodeChatMode: req.CodeChatMode,
+		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
 // chatSecretNames lists the secrets the turn will expose to the coding CLI, by name only.

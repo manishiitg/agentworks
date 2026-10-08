@@ -102,6 +102,7 @@ describe('terminal toolbar shared tools', () => {
     expect(host.querySelector('[aria-label="Open live view"]')).toBeNull()
     expect(host.querySelector('[aria-label="Attach files"]')).toBeNull()
     expect(host.querySelector('[aria-label="Browse commands"]')).toBeNull()
+    expect(host.querySelector('[data-testid="tour-chat-browser-tools"]')).toBeNull()
     expect(textarea().placeholder).toBe('Work on your local project…')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '@server-file')

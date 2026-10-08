@@ -221,6 +221,14 @@ execution target changes. The selected laptop and folder are bound internally;
 the agent does not receive new local file tools or device-selection arguments.
 Reads and listing use shell commands such as `cat`, `sed`, `head` and `ls`.
 
+Server coding CLI providers still require the internal `mcpbridge` executable.
+The runtime honors `MCP_BRIDGE_BINARY`, then discovers an executable beside the
+server binary (or in its sibling `.bin/` directory), then retains the provider's
+`PATH`/`~/go/bin/` fallback. Discovery follows the installed server executable,
+including release symlinks; agent-controlled working directories are never
+searched. Release packaging must include the bridge. A missing server binary
+cannot be supplied by the laptop connection.
+
 Shell commands are enabled automatically for every folder shared through the CLI.
 `--folder` uses a read-only filesystem sandbox; `--write-folder` permits file
 changes and patch tools, including builds and tests that write project files.

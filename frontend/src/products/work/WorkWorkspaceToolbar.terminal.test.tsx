@@ -15,7 +15,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root
 let host: HTMLDivElement
 beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove() })
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
 const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
@@ -52,7 +52,8 @@ it.each([false, true])('shows only connection, Costs and Models during local set
   vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) } })
   writeCodeFilesPreference('local-chat', { location: 'computer', ...(selected ? { target: { device_id: 'laptop', resource_id: 'project' } } : {}) })
   render(CODE_PRODUCT, { sessionId: 'local-chat', showShell: true })
-  expect([...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Local CLI connection', 'Costs and usage', 'Models'])
+  // The shared collapse control is toolbar chrome, not another product view.
+  expect([...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Local CLI connection', 'Costs and usage', 'Models', 'Hide toolbar'])
   act(() => writeCodeFilesPreference('local-chat', { location: 'server' }))
   expect(hasTerminal()).toBe(true)
   expect(host.querySelector('[aria-label="Local CLI connection"]')).toBeNull()
