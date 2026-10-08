@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -27,6 +29,30 @@ func pulseLevelsText(perms stepworkflow.GoalWorkPermissions) string {
 		"- Outward: " + level(perms.Outward) + ". Post, send or contact people beyond what the steps normally do.\n" +
 		"- Change: " + level(perms.Change) + ". Change the plan, step settings or schedules (never delete steps or schedules, replace the plan, or edit soul.md).\n" +
 		"At auto, act on your own: decide, have the Builder chat do it now, check the result, and record it (record_pulse_goal_work); do not wait for or ask the owner, and do not raise a decision for it. At ask, still direct the Builder chat with what is best and why: it prepares the change, raises one decision for the owner (you attach your recommendation), and carries it out once the owner accepts. Spending money always goes to the owner. The Builder chat is held to these levels while it handles your message and refuses what they do not allow."
+}
+
+// builderPulseLevelsSection is the Builder chat's standing permission for
+// work Pulse directs (owner, 2026-10-08: "depending on autonomy the builder
+// should take actions on its own"). Without it the Builder asked the owner for
+// a go-ahead the levels already gave. Empty when Pulse does not own the goal.
+func builderPulseLevelsSection(ctx context.Context, workspacePath string) string {
+	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
+	if workspacePath == "" || !workflowHasGoal(ctx, workspacePath) {
+		return ""
+	}
+	perms, _ := goalWorkAutonomy(ctx, workspacePath)
+	level := func(on bool) string {
+		if on {
+			return "auto"
+		}
+		return "ask"
+	}
+	return "## Pulse's permission levels\n\n" +
+		"This workflow's Pulse owns its goal and directs you with what is best. The owner set these levels (workflow.json pulse.autonomy) as standing permission for work Pulse directs, whether Pulse messages you or you bring the owner's #pulse question to Pulse:\n" +
+		"- Run: " + level(perms.Run) + ". Run the workflow's steps or routes.\n" +
+		"- Outward: " + level(perms.Outward) + ". Post, publish, send or contact people.\n" +
+		"- Change: " + level(perms.Change) + ". Change the plan, step settings or schedules.\n" +
+		"At auto, do what Pulse directs now, without asking the owner, then report the result (to Pulse, and to the owner when they asked). Do not ask the owner for a go-ahead the level already gives, and do not end a reply to Pulse with a question for the owner. At ask, prepare it and raise one decision for the owner (create_human_input_request) with Pulse's recommendation, and carry it out once the owner accepts. Always the owner's: spending money, deleting steps or schedules, replacing the plan, editing soul.md, and re-enabling schedules the owner paused."
 }
 
 // configurePulseShellGuard: Pulse's shell reads the whole workflow and writes
