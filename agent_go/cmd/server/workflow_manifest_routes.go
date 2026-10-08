@@ -250,6 +250,7 @@ type UpdateWorkflowManifestRequest struct {
 	WorkflowContextPaths       *[]string                                    `json:"workflow_context_paths,omitempty"`
 	PulseEnabled               *bool                                        `json:"pulse_enabled,omitempty"`
 	PulseDisabledReviewModules *[]string                                    `json:"pulse_disabled_review_modules,omitempty"`
+	PulseAutonomyLevel         *int                                         `json:"pulse_autonomy_level,omitempty"`
 	PulseAutonomyRun           *string                                      `json:"pulse_autonomy_run,omitempty"`
 	PulseAutonomyOutward       *string                                      `json:"pulse_autonomy_outward,omitempty"`
 	PulseAutonomyChange        *string                                      `json:"pulse_autonomy_change,omitempty"`
@@ -489,7 +490,22 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		copied := *req.AfterManualRun
 		manifest.AfterManualRun = &copied
 	}
-	if req.PulseAutonomyRun != nil || req.PulseAutonomyOutward != nil || req.PulseAutonomyChange != nil {
+	if req.PulseAutonomyLevel != nil {
+		if manifest.Pulse == nil {
+			manifest.Pulse = &WorkflowPulseConfig{}
+		}
+		level := *req.PulseAutonomyLevel
+		resolved, err := resolvePulseAutonomy(&WorkflowPulseAutonomy{Level: &level})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		answer := ""
+		if manifest.Pulse.Autonomy != nil && strings.TrimSpace(manifest.Pulse.Autonomy.Answer) != "" {
+			answer, _ = normalizePulseAnswerMode(manifest.Pulse.Autonomy.Answer)
+		}
+		manifest.Pulse.Autonomy = &WorkflowPulseAutonomy{Level: &level, Run: resolved.Run, Outward: resolved.Outward, Change: resolved.Change, Answer: answer}
+	} else if req.PulseAutonomyRun != nil || req.PulseAutonomyOutward != nil || req.PulseAutonomyChange != nil {
 		if manifest.Pulse == nil {
 			manifest.Pulse = &WorkflowPulseConfig{}
 		}

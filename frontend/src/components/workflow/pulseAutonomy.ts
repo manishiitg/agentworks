@@ -1,20 +1,31 @@
 import type { PulseAutonomy } from '../../services/api-types'
 
-// One slider over the three stored permissions. Each stop adds one kind of
-// action Pulse may take on its own; everything else it prepares and asks.
+// The autonomy ladder (owner, 2026-10-08): six levels, each adding one kind of
+// action Pulse may get done without asking. Stored as pulse.autonomy.level; the
+// run/outward/change switches are written beside it for older readers. Keep in
+// step with stepworkflow.AutonomyLadder.
+const sw = (on: boolean) => (on ? 'auto' : 'ask') as 'auto' | 'ask'
+function valueFor(level: number): PulseAutonomy {
+  return { level, run: sw(level >= 1), outward: sw(level >= 4), change: sw(level >= 2) }
+}
+
 export const AUTONOMY_LEVELS: Array<{ label: string; summary: string; value: PulseAutonomy }> = [
-  { label: 'Ask first', summary: 'Prepares work and asks before running anything.', value: { run: 'ask', outward: 'ask', change: 'ask' } },
-  { label: 'Run steps', summary: 'Runs your workflow steps on its own. Asks before new posts or workflow edits.', value: { run: 'auto', outward: 'ask', change: 'ask' } },
-  { label: 'Edit workflow', summary: 'Also edits steps and schedules. Asks before new posts or messages.', value: { run: 'auto', outward: 'ask', change: 'auto' } },
-  { label: 'Full', summary: 'Also posts, sends and reaches out on its own, within your rules.', value: { run: 'auto', outward: 'auto', change: 'auto' } },
+  { label: 'Advise', summary: 'Pulse only recommends. Nothing happens without you.', value: valueFor(0) },
+  { label: 'Measure', summary: 'Runs steps to measure the goal and recover missed runs, and sets up goal metrics.', value: valueFor(1) },
+  { label: 'Fix', summary: 'Also fixes broken steps (bugs, wrong inputs), reversibly.', value: valueFor(2) },
+  { label: 'Tune', summary: 'Also improves prompts and step settings.', value: valueFor(3) },
+  { label: 'Publish', summary: "Also publishes and posts through the workflow's own steps and accounts.", value: valueFor(4) },
+  { label: 'Reshape', summary: "Also changes schedules and the plan's structure (never deletes).", value: valueFor(5) },
 ]
 
-// autonomyLevelIndex maps stored permissions to the highest stop they fully allow.
+export const AUTONOMY_ALWAYS_ASKS = 'Always asks you: spending money, deleting, soul.md, new kinds of outreach, schedules you paused.'
+
+// autonomyLevelIndex is the stored level, or for an older setting the highest
+// level its switches fully allow (never more than they granted).
 export function autonomyLevelIndex(autonomy: PulseAutonomy): number {
-  let index = 0
-  AUTONOMY_LEVELS.forEach((level, i) => {
-    const allowed = (Object.keys(level.value) as Array<keyof PulseAutonomy>).every(key => level.value[key] === 'ask' || autonomy[key] === 'auto')
-    if (allowed) index = i
-  })
-  return index
+  if (typeof autonomy.level === 'number') return Math.max(0, Math.min(AUTONOMY_LEVELS.length - 1, autonomy.level))
+  if (autonomy.run !== 'auto') return 0
+  if (autonomy.change !== 'auto') return 1
+  if (autonomy.outward !== 'auto') return 3
+  return 5
 }

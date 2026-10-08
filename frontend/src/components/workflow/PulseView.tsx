@@ -5,6 +5,7 @@ import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
 import { GoalLeadPanel } from './GoalLeadPanel'
 import { PulseOffCard } from './PulseOffCard'
+import { AutonomySlider } from './AutonomySlider'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
@@ -113,6 +114,7 @@ export default function PulseView({
         <div className="p-3 sm:p-4">
           {ownerManaged && <PulseOffCard pulseOn={monitorOn} hasSoul={hasSoul} runSetup={runSetup} saving={monitorSaving} onTurnOn={onToggleMonitor} />}
           {!ownerManaged && workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
+          {!ownerManaged && <AutonomySlider autonomy={autonomy} saving={autonomySaving} onChange={onChangeAutonomy} />}
           {!ownerManaged && workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
           {!ownerManaged && workspacePath && (
             <PulseWorkspace

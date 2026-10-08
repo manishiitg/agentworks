@@ -63,15 +63,15 @@ describe('PulseWorkspace information hierarchy', () => {
     expect(() => manualPulseReviewMessage('unknown')).toThrow('Unsupported Pulse review module')
   })
 
-  it('maps stored Pulse permissions to the highest slider stop they fully allow', () => {
-    expect(autonomyLevelIndex({ run: 'ask', outward: 'ask', change: 'ask' })).toBe(0)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'ask', change: 'ask' })).toBe(1)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'ask', change: 'auto' })).toBe(2)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'auto' })).toBe(3)
-    // A mix no stop describes falls back to the highest stop it covers.
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'ask' })).toBe(1)
+  // Owner 2026-10-08: a six-level ladder; an older run/outward/change setting
+  // maps to the highest level it fully allowed, never more.
+  it('reads the stored ladder level, and maps older switches without granting more', () => {
+    expect(autonomyLevelIndex({ level: 4, run: 'auto', outward: 'auto', change: 'auto' })).toBe(4)
     expect(autonomyLevelIndex({ run: 'ask', outward: 'auto', change: 'auto' })).toBe(0)
-    expect(AUTONOMY_LEVELS.map(level => level.label)).toEqual(['Ask first', 'Run steps', 'Edit workflow', 'Full'])
+    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'ask' })).toBe(1)
+    expect(autonomyLevelIndex({ run: 'auto', outward: 'ask', change: 'auto' })).toBe(3)
+    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'auto' })).toBe(5)
+    expect(AUTONOMY_LEVELS.map(level => level.label)).toEqual(['Advise', 'Measure', 'Fix', 'Tune', 'Publish', 'Reshape'])
   })
 
   it('runs the same product command from a Pulse tab button, with review and fix together', () => {

@@ -386,11 +386,13 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
 
   const setPulseAutonomy = useCallback((next: PulseAutonomy) => {
     if (!workspacePath || pulseAutonomySaving) return
-    if (next.run === pulseAutonomy.run && next.outward === pulseAutonomy.outward && next.change === pulseAutonomy.change) return
+    if (next.level === pulseAutonomy.level && next.run === pulseAutonomy.run && next.outward === pulseAutonomy.outward && next.change === pulseAutonomy.change) return
     const previous = pulseAutonomy
     setPulseAutonomyState(next)
     setPulseAutonomySaving(true)
-    void updateWorkflowManifest(workspacePath, { pulse_autonomy_run: next.run, pulse_autonomy_outward: next.outward, pulse_autonomy_change: next.change })
+    void updateWorkflowManifest(workspacePath, typeof next.level === 'number'
+      ? { pulse_autonomy_level: next.level }
+      : { pulse_autonomy_run: next.run, pulse_autonomy_outward: next.outward, pulse_autonomy_change: next.change })
       .then(() => useChatStore.getState().addToast('Pulse autonomy updated', 'success'))
       .catch(error => {
         setPulseAutonomyState(previous)
