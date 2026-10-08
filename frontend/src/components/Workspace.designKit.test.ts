@@ -30,7 +30,7 @@ const BANNED_PALETTE = [
 ]
 
 describe('Files design kit', () => {
-  it('keeps the Explorer header VS Code-style: title, Open Editors, then the folder toolbar', () => {
+  it('keeps the Explorer header: title, then the folder toolbar (the open files are the tab strip above the viewer)', () => {
     const workspace = readFileSync('src/components/Workspace.tsx', 'utf8')
     const header = readFileSync('src/components/workspace/ExplorerHeader.tsx', 'utf8')
 
@@ -39,9 +39,8 @@ describe('Files design kit', () => {
       expect(workspace).toContain(`aria-label="${label}"`)
     }
     // The agent action sits with the title, the toolbar icons on the folder row.
-    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('<OpenEditors'))
-    expect(header.indexOf('<OpenEditors')).toBeLessThan(header.indexOf('{toolbar}'))
-    expect(header).toContain('Open Editors')
+    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('{toolbar}'))
+    expect(header).not.toContain('Open Editors')
   })
 
   it('keeps the filter in the content below the header, not inside it', () => {
