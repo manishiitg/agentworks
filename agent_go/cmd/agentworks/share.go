@@ -159,6 +159,7 @@ type startFlags struct {
 	blocked                []string
 	downloads, debug       bool
 	foreground, background bool
+	askAgain               bool
 	open, noOpen           bool
 }
 
@@ -179,6 +180,7 @@ func startCommand(o *options) *cobra.Command {
 	cmd.Flags().BoolVar(&f.downloads, "downloads", false, "Also allow reading and writing ~/Downloads (explicit opt-in)")
 	cmd.Flags().BoolVar(&f.foreground, "foreground", false, "Keep this terminal open instead of running in the background (Ctrl-C stops)")
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
+	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
 	cmd.Flags().BoolVar(&f.open, "open", false, "Open the website when connected, without asking")
 	cmd.Flags().BoolVar(&f.noOpen, "no-open", false, "Do not open the website")
 	cmd.Flags().BoolVar(&f.debug, "debug", false, "Stay in this terminal, print diagnostics and log every file and command request the server sends")
@@ -235,14 +237,38 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 
 	in := bufio.NewReader(o.stdin)
 	interactive := stdinIsTerminal() && !o.jsonOutput
+	// The first run asks; the answers are remembered, so later runs just connect (--ask asks again).
+	prefsPath := filepath.Join(dir, "start-preferences.json")
+	prefs := loadStartPrefs(prefsPath)
+	if f.askAgain {
+		prefs = startPrefs{}
+	}
+	usedSaved := false
 	foreground := f.foreground || f.debug
-	if !foreground && !f.background && interactive {
+	switch {
+	case foreground:
+	case f.background:
+	case prefs.Background != nil:
+		foreground, usedSaved = !*prefs.Background, true
+	case interactive:
 		fmt.Fprintf(o.stderr, "Sharing %s as %s/%s with read and write access and shell commands.\n", folder, device, alias)
-		foreground = !ask(in, os.Stderr, "Run in the background? (No keeps this terminal open; Ctrl-C stops.)", true)
+		bg := ask(in, os.Stderr, "Run in the background? (No keeps this terminal open and shows live activity; Ctrl-C stops.)", true)
+		foreground, prefs.Background = !bg, &bg
 	}
 	openWeb := f.open
-	if !f.open && !f.noOpen && interactive {
-		openWeb = ask(in, os.Stderr, "Open your Code chat in the browser once connected?", true)
+	switch {
+	case f.open || f.noOpen:
+	case prefs.Open != nil:
+		openWeb, usedSaved = *prefs.Open, true
+	case interactive:
+		yes := ask(in, os.Stderr, "Open the website in your browser once connected?", true)
+		openWeb, prefs.Open = yes, &yes
+	}
+	if interactive {
+		saveStartPrefs(prefsPath, prefs)
+	}
+	if usedSaved && interactive {
+		fmt.Fprintln(o.stderr, "Using your saved choices. `agentworks start --ask` asks again.")
 	}
 
 	if f.debug {
@@ -267,15 +293,15 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 	p.connected = func() {
 		st.Connected = true
 		writeShareState(statePath, st)
-		fmt.Fprintf(o.stderr, "Connected. In the website, open a Code chat and switch it to Local: %s\n", shareWebURL(server, device, alias))
+		if !opened {
+			printShared(o, folder, device, alias, server, os.Getpid(), false)
+		}
 		if openWeb && !opened {
 			opened = true
 			openWebsite(shareWebURL(server, device, alias))
 		}
 	}
-	if f.debug {
-		p.trace = debugTrace(o)
-	}
+	p.trace = requestTrace(o) // a terminal that stays open shows what the server asks for, live
 	return runExecutor(ctx, o, p)
 }
 
@@ -330,8 +356,7 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 				return fmt.Errorf("did not connect within 30 seconds; run `agentworks start --debug` to see why (log: %s)", logPath)
 			case <-poll.C:
 				if st, ok := readShareState(statePath); ok && st.Connected {
-					fmt.Fprintf(o.stderr, "Sharing %s as %s/%s in the background (process %d). Stop it with `agentworks stop`.\n", folder, device, alias, st.PID)
-					fmt.Fprintf(o.stderr, "In the website, open a Code chat and switch it to Local: %s\n", shareWebURL(server, device, alias))
+					printShared(o, folder, device, alias, server, st.PID, true)
 					if openWeb {
 						openWebsite(shareWebURL(server, device, alias))
 					}
@@ -362,6 +387,7 @@ func serveShareCommand(o *options) *cobra.Command {
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
 		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }
+		p.trace = requestTrace(o) // into the log: `agentworks watch` follows it
 		err := runExecutor(cmd.Context(), o, p)
 		if err != nil {
 			st.Connected = false
@@ -513,7 +539,7 @@ func printDebug(ctx context.Context, o *options, cfg agentworksclient.Config, cf
 	fmt.Fprintln(w, "-------------------------------")
 }
 
-func debugTrace(o *options) func(request localfiles.Request, response localfiles.Response, took time.Duration) {
+func requestTrace(o *options) func(request localfiles.Request, response localfiles.Response, took time.Duration) {
 	return func(request localfiles.Request, response localfiles.Response, took time.Duration) {
 		what := request.Path
 		if request.Operation == "shell" {
@@ -531,4 +557,101 @@ func debugTrace(o *options) func(request localfiles.Request, response localfiles
 		}
 		fmt.Fprintln(o.stderr, line)
 	}
+}
+
+// printShared is the one short summary printed once the folder is connected.
+func printShared(o *options, folder, device, alias, server string, pid int, background bool) {
+	w := o.stderr
+	fmt.Fprintf(w, "\n✔ Sharing %s\n", folder)
+	fmt.Fprintf(w, "  Computer: %s / %s · read and write · shell commands on\n", device, alias)
+	fmt.Fprintf(w, "  Website:  %s\n", shareWebURL(server, device, alias))
+	if background {
+		fmt.Fprintf(w, "  Running in the background (process %d). Watch: agentworks watch · Status: agentworks status · Stop: agentworks stop\n\n", pid)
+	} else {
+		fmt.Fprintln(w, "  Live activity appears below. Ctrl-C stops sharing.")
+		fmt.Fprintln(w)
+	}
+}
+
+// startPrefs are the answers to the first-run questions, so later runs do not ask.
+type startPrefs struct {
+	Background *bool `json:"background,omitempty"`
+	Open       *bool `json:"open,omitempty"`
+}
+
+func loadStartPrefs(path string) startPrefs {
+	var p startPrefs
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &p)
+	}
+	return p
+}
+
+func saveStartPrefs(path string, p startPrefs) {
+	if raw, err := json.Marshal(p); err == nil {
+		_ = os.WriteFile(path, raw, 0o600)
+	}
+}
+
+// watchCommand follows a background share's log: its connection state and every request the server makes.
+func watchCommand(o *options) *cobra.Command {
+	return &cobra.Command{Use: "watch", Args: cobra.NoArgs, Short: "Show live activity of the folder shared in the background (Ctrl-C leaves it running)", RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := o.useShareConfig(); err != nil {
+			return err
+		}
+		dir, err := o.shareDir()
+		if err != nil {
+			return err
+		}
+		shares := runningShares(dir)
+		folder, _ := os.Getwd()
+		if resolved, err := filepath.EvalSymlinks(folder); err == nil {
+			folder = resolved
+		}
+		st, ok := shares[shareKey(folder)]
+		if !ok && len(shares) == 1 {
+			for _, only := range shares {
+				st, ok = only, true
+			}
+		}
+		if !ok {
+			fmt.Fprintln(o.stderr, "No folder is being shared in the background here. Run `agentworks start` first.")
+			return errors.New("nothing to watch")
+		}
+		logPath := st.Log
+		if logPath == "" {
+			logPath = filepath.Join(dir, shareKey(st.Folder)+".log")
+		}
+		fmt.Fprintf(o.stderr, "Watching %s (%s/%s). Ctrl-C stops watching; sharing continues.\n", st.Folder, st.Device, st.Alias)
+		file, err := os.Open(logPath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		reader := bufio.NewReader(file)
+		if info, err := file.Stat(); err == nil && info.Size() > 4096 {
+			_, _ = file.Seek(info.Size()-4096, 0)
+			reader.Reset(file)
+			_, _ = reader.ReadString('\n') // the first line after a mid-line seek may be partial
+		}
+		pending := ""
+		for {
+			line, err := reader.ReadString('\n')
+			if err == nil {
+				fmt.Fprint(o.stderr, pending+line)
+				pending = ""
+				continue
+			}
+			pending += line // a line still being written
+			select {
+			case <-cmd.Context().Done():
+				return nil
+			case <-time.After(300 * time.Millisecond):
+			}
+			if !processAlive(st.PID) {
+				fmt.Fprintln(o.stderr, "Sharing stopped.")
+				return nil
+			}
+		}
+	}}
 }

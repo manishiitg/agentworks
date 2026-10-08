@@ -97,7 +97,7 @@ func newCommand(o *options) *cobra.Command {
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
-	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), serveShareCommand(o))
+	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), serveShareCommand(o))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
 	toolsCmd.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, Short: "List tools with authoritative JSON schemas", RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := o.client()

@@ -214,3 +214,17 @@ func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 		t.Fatal("start did not stop")
 	}
 }
+
+// The answers to start's first-run questions are remembered, so a later run does not ask again.
+func TestStartRemembersItsFirstRunAnswers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "start-preferences.json")
+	if got := loadStartPrefs(path); got.Background != nil || got.Open != nil {
+		t.Fatalf("no answers yet, got %+v", got)
+	}
+	background, open := true, false
+	saveStartPrefs(path, startPrefs{Background: &background, Open: &open})
+	got := loadStartPrefs(path)
+	if got.Background == nil || !*got.Background || got.Open == nil || *got.Open {
+		t.Fatalf("saved answers not restored: %+v", got)
+	}
+}

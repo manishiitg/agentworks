@@ -740,7 +740,7 @@ It signs you in the first time (a browser approval limited to sharing local fold
 read and write access and shell commands, and keeps the connection open. It asks whether to run in the background or keep
 the terminal open (`--background` / `--foreground` skip the question), and whether to open the website (`--open` /
 `--no-open`); the website then opens Code with the shared folder as the default for new Code chats (Local mode).
-`agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
+The first run asks the two questions and remembers the answers (`agentworks start --ask` asks again). Once connected it prints a short summary (folder, computer, website link); a terminal that stays open shows each file and command request live, and `agentworks watch` shows the same for a background share. `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
 shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
 sandbox) and logs every file and command request from the server. `--block <path>` hides a file or folder, `--downloads`
 also shares `~/Downloads`. In the website, **Verify connection** (Code settings) confirms the computer is connected.
