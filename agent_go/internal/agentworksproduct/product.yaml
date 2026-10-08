@@ -22,14 +22,13 @@ profile:
   built_in: true
   # Slash commands the builder ships with itself. Each prompt lives in its
   # own file under commands/; `{{context}}` is replaced with whatever the
-  # user typed before the slash (for run-technical-review, the resolved review focus
-  # plus that text). /pulse stays a hardcoded builtin: it is an async
+  # user typed before the slash. /pulse stays a hardcoded builtin: it is an async
   # frontend API call no static prompt can express.
   commands:
-    # Pulse keeps two chat commands: /pulse (builtin) and /run-goal-work, which
-    # takes a focus. Plan Drift, Technical and Architecture are started from
-    # the Pulse tab (its buttons execute these hidden commands, one prompt per
-    # action) or automatically by fix runs.
+    # The old reviewer commands (/run-goal-work, /strategy-auditor,
+    # /goal-advisor, /run-technical-review, /pulse-review*, /run-architecture-review)
+    # are gone: the Pulse agent owns the goal and there are no separate
+    # reviewers (owner, 2026-10-08). Ask Pulse with #pulse in the Builder chat.
     - name: design-plan
       description: Comprehensively review the plan, dependent artifacts, and better design options
       icon: git-branch
@@ -50,22 +49,6 @@ profile:
       icon: target
       aliases: [define-success]
       file: commands/setup-goals.md
-    - name: run-goal-work
-      description: Find and do the work that would move your goals
-      icon: target
-      aliases: [strategy-auditor, goal-advisor]
-      file: commands/run-goal-work.md
-    - name: run-technical-review
-      description: Find and fix what is broken in runs, validation, reports and stores
-      icon: check-circle
-      aliases: [pulse-review]
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: run-architecture-review
-      description: Research better ways to structure the workflow; proposes, never edits
-      icon: git-branch
-      menu_hidden: true
-      file: commands/run-architecture-review.md
     - name: review-code
       description: Review saved code and JSON parameters; propose code/ migration with focused tests
       icon: file-text
@@ -82,44 +65,6 @@ profile:
       description: Set up, review, or test agentic notifications
       icon: bell-ring
       file: commands/notify.md
-    # Retained pulse-review-* focus shortcuts: executable under access checks,
-    # without menu rows. All share the run-technical-review prompt; the client
-    # resolves each name to its fixed focus before submitting.
-    - name: pulse-review-execution-health
-      description: 'Pulse review: execution health'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-validation-contract
-      description: 'Pulse review: validation contracts'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-report-quality
-      description: 'Pulse review: dashboard quality'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-evaluation-quality
-      description: 'Pulse review: measurement quality'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-database
-      description: 'Pulse review: database integrity'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-knowledge
-      description: 'Pulse review: knowledgebase'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
-    - name: pulse-review-learnings
-      description: 'Pulse review: learnings'
-      icon: check-circle
-      menu_hidden: true
-      file: commands/run-technical-review.md
 
 branding:
   icon: ""
