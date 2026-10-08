@@ -17,6 +17,22 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — The owner talks to the Builder; the Builder and Pulse act on the levels
+
+The owner talks to the Builder chat; the Builder talks to Pulse (`#pulse`,
+`ask_pulse`) and Pulse talks to the Builder (`ask_builder`) as a conversation.
+No person reads Pulse's conversation: Pulse never asks a human anything; when
+the owner must decide, the Builder raises the decision and Pulse attaches its
+recommendation. Pulse is the goal expert (measurement first, skills before
+judging, the Builder's design guides as shared read-only skills) and directs;
+the Builder acts. Pulse's autonomy levels are the owner's standing permission:
+at auto the Builder does what Pulse directs without asking the owner; at ask
+it raises one decision and carries it out on acceptance; money, deletes, plan
+replacement, soul.md and owner-paused schedules stay with the owner. Pulse
+chooses its next goal check (1 hour to 7 days, default a day). Why: Pulse and
+the Builder kept handing every step back to the owner even with full autonomy.
+[PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-08 — Bring your own model key runs through Pi; setup checks call the service directly
 
 A person's key for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any

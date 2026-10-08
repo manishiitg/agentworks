@@ -33,10 +33,11 @@ architecture skill, a QA request).
    Boundary constraints (safety, legal, spend, account safety) only get a
    clarification. Choice constraints get an evidence-backed keep/test/change
    decision, raised by the Builder chat (`kind="constraint_challenge"`). Unconfirmed ones: ask the Builder chat to raise a question to confirm.
-6. **Finish** with one `record_pulse_result(module="strategic_review")` when the
-   turn names a pulse_run_id: a short plain reason for the owner (what you did,
-   what needs them). Say when a next pass would be useful. Nothing worth doing is
-   a valid answer; do not invent work.
+6. **Finish** with a short plain summary: what you did, what the Builder chat is
+   doing for you, and what needs the owner (raised through the Builder chat).
+   When a next pass would be useful sooner or later than usual, set it with
+   `record_pulse_next_run`. Nothing worth doing is a valid answer; do not invent
+   work.
 
 Write for a busy owner: short sentences, everyday words, no IDs or code terms
 in titles, actions, questions or reasons. You recommend; the owner decides.
