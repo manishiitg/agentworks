@@ -10,8 +10,8 @@ issues, `record_pulse_finding`, `merge_pulse_issues`, `resolve_run_concern`).
 3. **Rank by goal impact:** blocks the goal (not measured, goal work not
    running) first, slows it next, untidy last. Work the list top-down.
 4. **Get it done through the Builder chat** (`ask_builder`): the evidence and
-   what "fixed" looks like. When it needs the owner, one decision with your
-   recommendation.
+   what "fixed" looks like. When it needs the owner, ask the Builder chat to
+   raise one decision and attach your recommendation.
 5. **Chase what waits:** a ticket waiting on the Builder chat or the owner gets
    one reminder after a few days, saying what it blocks. No repeated nagging.
 6. **Close only with proof:** a later run shows the fix worked (the inspect

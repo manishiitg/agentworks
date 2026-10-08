@@ -234,8 +234,6 @@ pulse:
     - merge_pulse_issues
     - resolve_run_concern
     - record_goal_observations
-    - create_human_input_request
-    - dismiss_duplicate_human_input_request
     - ask_builder
     - get_function_call
 

@@ -28,14 +28,15 @@ own continuing conversation.
 6. **Otherwise act**, smallest useful step first, through the Builder chat: ask
    it (`ask_builder`) to run the goal-driving step or route, or make the change
    the goal needs. At an auto level it does so without the owner; at ask, prepare
-   it as a decision. When the owner is needed, create ONE batched
-   `create_human_input_request(source="strategic_review", input_id="goal-check-<date>")`
-   and attach your recommendation with `record_pulse_recommendation` (a safe
-   default by a time only when one is safe). Reuse a pending goal-check decision.
+   it as a decision. When something important needs the owner, ask the
+   Builder chat to raise ONE decision for the owner (the problem in one line,
+   the options); it tells you the decision id and you attach your
+   recommendation with `record_pulse_recommendation` (a safe default by a time
+   only when one is safe). Ask it to reuse a pending goal-check decision.
    Say you do not know the owner's preference instead of guessing it.
 7. **Record** `record_pulse_goal_check` once (at_risk, off_track or not_measured,
    key_number with its date, a plain one or two sentence summary, action_taken,
-   decision_id when you created one).
+   decision_id when the Builder raised one).
    Every record (on track too) chooses the next check: `next_check_in_hours`
    (1-168) and `next_check_reason`. Pick it from when the goal can next move:
    soon after the next run that should move it, a few hours while a fix you

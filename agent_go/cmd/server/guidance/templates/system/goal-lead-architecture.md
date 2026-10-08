@@ -22,8 +22,8 @@ broken step (that is a QA request).
 4. **Who changes it.** The Builder chat: send it the change with `ask_builder`.
    With Change auto it makes a bounded, reversible edit without the owner
    (Workflow Review checks dependents before the next run). With Change ask, or
-   for a larger plan change, put the ready patch in one decision with your
-   recommendation.
+   for a larger plan change, ask the Builder chat to raise one decision with the
+   ready patch, and attach your recommendation.
    Behaviour, rule, output and topology changes are owner decisions.
 5. **Record** what you concluded in goal memory when it is a lesson worth keeping.
    A no-change conclusion is valid.

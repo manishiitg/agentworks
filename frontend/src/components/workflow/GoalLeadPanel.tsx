@@ -177,7 +177,42 @@ function errorText(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback
 }
 
-/** "Talk to Pulse": the message goes into Pulse's conversation; its reply shows in the "<workflow> Pulse" chat tab. */
+// The owner talks to the Builder and the Builder talks to Pulse (owner,
+// 2026-10-08): these questions go to the Builder chat tagged #pulse; the
+// Builder asks Pulse (ask_pulse) and shows the reply there.
+const PULSE_QUICK_ASKS = [
+  { label: 'How is the goal doing?', message: 'How is the goal doing? The key number, its trend, and what is helping or blocking it.' },
+  { label: 'What are you working on?', message: 'What are you working on now, and what comes next?' },
+  { label: 'What worked so far?', message: 'What have you tried for the goal, what worked and what did not?' },
+  { label: 'What would move the goal most?', message: 'What one change would move the goal most this week, and what do you need from me or the Builder for it?' },
+  { label: 'What do you need from me?', message: 'What decisions or information do you need from me, with your recommendation for each?' },
+]
+
+export function AskPulseViaBuilder({ workspacePath }: { workspacePath: string }) {
+  const [sending, setSending] = useState<string | null>(null)
+  const ask = async (label: string, message: string) => {
+    setSending(label)
+    try {
+      await sendWorkspacePaneMessageToChat({ workspacePath, message: `#pulse ${message}` })
+    } catch (err) {
+      useChatStore.getState().addToast(errorText(err, 'Could not send the question.'), 'error')
+    } finally {
+      setSending(null)
+    }
+  }
+  return <section aria-label="Ask Pulse" className="rounded-lg border bg-background p-2.5">
+    <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><MessageSquare className="h-3.5 w-3.5 text-primary" />
+      Ask Pulse through the Builder chat. For anything else, type #pulse in the Builder chat.</p>
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {PULSE_QUICK_ASKS.map(({ label, message }) => <button key={label} type="button" disabled={sending !== null}
+        onClick={() => void ask(label, message)}
+        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-primary/10 disabled:opacity-50">
+        {sending === label && <Loader2 className="h-3 w-3 animate-spin" />}{label}</button>)}
+    </div>
+  </section>
+}
+
+/** Direct "Talk to Pulse", kept for testing: the message goes into Pulse's conversation; its reply shows in the "<workflow> Pulse" chat tab. */
 export function TalkToPulse({ workspacePath, sessionId }: { workspacePath: string; sessionId: string }) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -196,9 +231,9 @@ export function TalkToPulse({ workspacePath, sessionId }: { workspacePath: strin
       setSending(false)
     }
   }
-  return <section aria-label="Talk to Pulse" className="rounded-lg border bg-background p-2">
-    <p className="flex items-center gap-1.5 px-0.5 text-[11px] text-muted-foreground"><MessageSquare className="h-3.5 w-3.5 text-primary" />
-      Ask Pulse why, or give it direction. Replies appear in the Pulse chat tab.</p>
+  return <details aria-label="Talk to Pulse" className="rounded-lg border bg-background px-2 py-1.5">
+    <summary className="cursor-pointer text-[11px] text-muted-foreground">Message Pulse directly (testing)</summary>
+    <p className="mt-1 px-0.5 text-[11px] text-muted-foreground">Goes straight to Pulse, not through the Builder. Replies appear in the Pulse chat tab.</p>
     <div className="mt-1.5 flex items-end gap-2">
       <textarea aria-label="Message to Pulse" value={draft} onChange={event => setDraft(event.target.value)} rows={1}
         placeholder="Why did you pause the growth runs? / Focus on new subscribers this month."
@@ -208,7 +243,7 @@ export function TalkToPulse({ workspacePath, sessionId }: { workspacePath: strin
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary disabled:opacity-50">
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Send</button>
     </div>
-  </section>
+  </details>
 }
 
 export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
@@ -253,6 +288,7 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
     </section>}
     <DecisionLog entries={log} />
     <GoalMemory workspacePath={workspacePath} memory={memory} path={memoryPath} onSaved={() => void load()} />
+    {hasGoal && <AskPulseViaBuilder workspacePath={workspacePath} />}
     {hasGoal && <TalkToPulse workspacePath={workspacePath} sessionId={pulseSession} />}
   </div>
 }

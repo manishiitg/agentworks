@@ -24,7 +24,7 @@ architecture skill, a QA request).
 4. **Do 1-3 bounded items now** (up to 5 when the goal is far behind, preferring
    real outcomes over plans). You change and run nothing yourself: ask the
    Builder chat (`ask_builder`) to do it. At an auto level it does so without
-   the owner; at ask, put it in one decision with your recommendation. Record each item with `record_pulse_goal_work`: the gap as
+   the owner; at ask, ask the Builder chat to raise one decision for the owner and attach your recommendation. Record each item with `record_pulse_goal_work`: the gap as
    title, what you did, links, the metric, expected direction, `check_at`, and a
    short "why this should move <metric>": own data first (numbers, window,
    sample), external evidence labelled by strength, the mechanism, confidence and
@@ -32,7 +32,7 @@ architecture skill, a QA request).
 5. **Constraints** are hypotheses to test with the owner, never broken.
    Boundary constraints (safety, legal, spend, account safety) only get a
    clarification. Choice constraints get an evidence-backed keep/test/change
-   decision (`kind="constraint_challenge"`). Unconfirmed ones: ask to confirm.
+   decision, raised by the Builder chat (`kind="constraint_challenge"`). Unconfirmed ones: ask the Builder chat to raise a question to confirm.
 6. **Finish** with one `record_pulse_result(module="strategic_review")` when the
    turn names a pulse_run_id: a short plain reason for the owner (what you did,
    what needs them). Say when a next pass would be useful. Nothing worth doing is
