@@ -1,7 +1,18 @@
 ## Pulse skill: check the measurement
 
-Use it when a reading looks wrong, flat or missing, before concluding anything
-about the goal. A broken measure is not a stuck goal.
+Measurement comes first: a goal that is not measured cannot be owned. Use this
+skill when there is no goal metric yet, and when a reading looks wrong, flat or
+missing, before concluding anything about the goal. A broken measure is not a
+stuck goal.
+
+**Setting it up properly** (the `measurement-plan` guide has the platform
+rules): the metric is defined with `configure_goal_metrics` (name, unit,
+direction, which route moves it); the step that already produces the number
+records it with `record_goal_observations`, once per run, scoped to that run;
+a dedicated measurement step only when no existing step can own it; the
+reading cadence matches the schedule that drives the goal (a daily route reads
+daily); the target and its date are in `soul.md`. Ask the Builder chat for
+exactly that, then confirm on the next run that a reading arrived.
 
 1. **What is measured.** `get_goal_metrics`: the primary metric, its unit,
    route and how readings are made. Compare with the objective in

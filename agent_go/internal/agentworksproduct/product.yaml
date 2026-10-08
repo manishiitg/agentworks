@@ -187,6 +187,13 @@ pulse:
     - goal-lead-experiment
     - goal-lead-costs
     - goal-lead-architecture
+    # The Builder's design guides, read-only knowledge so Pulse judges the
+    # plan and directs the Builder precisely (owner, 2026-10-08).
+    - measurement-plan
+    - plan-design
+    - routing
+    - schedules
+    - step-config
   write_paths:
     - pulse/
     - memory/
