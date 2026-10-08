@@ -197,7 +197,7 @@ func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 	// A shadow surface filters nothing (PLAT-608); only a real product
 	// profile excludes workflow notifications. Before this, the shadow gate
 	// removed notify_user from every Goals Builder and Run chat and Pulse.
-	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed || g.profileID == pulseToolSurface)
+	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed)
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {

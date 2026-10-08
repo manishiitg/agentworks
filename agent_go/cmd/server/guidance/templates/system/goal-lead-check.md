@@ -36,10 +36,11 @@ own continuing conversation.
 7. **Record** `record_pulse_goal_check` once (at_risk, off_track or not_measured,
    key_number with its date, a plain one or two sentence summary, action_taken,
    decision_id when you created one).
-8. **One message.** `notify_user(notification_kind="pulse_summary")` once: the
-   title leads with the goal status; then the key number and when it was last
-   measured, what you did, your recommendations waiting on the owner and what you
-   need.
+8. **Tell the Builder chat when the owner should know.** You send no
+   notifications. When something needs the owner's attention (the goal is off
+   track, a decision waits), tell the Builder chat with `ask_builder` in a few
+   plain lines (status, key number and when measured, what you did, what you
+   need); it decides whether to notify the owner. On track: nothing to send.
 
 ## Failed runs: you are the safety net
 

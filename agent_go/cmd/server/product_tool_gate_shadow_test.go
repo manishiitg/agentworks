@@ -29,12 +29,12 @@ func TestShadowGateAdmitsEverythingAndRecordsWhatTheListMisses(t *testing.T) {
 	}
 }
 
-// Owner, 2026-10-08: Pulse reads and talks to the Builder chat; it changes and runs nothing itself, even with
-// full autonomy, and keeps notify_user for its goal message.
+// Owner, 2026-10-08: Pulse reads and talks to the Builder chat; it changes, runs and notifies nothing itself,
+// even with full autonomy.
 func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 	gate := newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
 	gate.AllowWorkflowNotifications(true)
-	for _, name := range []string{"get_pulse_state", "query_workflow_db", "record_pulse_goal_check", "ask_builder", "notify_user"} {
+	for _, name := range []string{"get_pulse_state", "query_workflow_db", "record_pulse_goal_check", "ask_builder", "get_function_call"} {
 		if !gate.Admit(name) {
 			t.Fatalf("Pulse must get %s", name)
 		}
@@ -42,7 +42,7 @@ func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 	if got := agentworksproduct.PulseWritePaths(); len(got) != 2 || got[0] != "pulse/" || got[1] != "memory/" {
 		t.Fatalf("Pulse may write only pulse/ and memory/, product.yaml says %v", got)
 	}
-	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser"} {
+	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser", "notify_user"} {
 		if gate.Admit(name) {
 			t.Fatalf("Pulse must not get %s; it asks the Builder chat", name)
 		}

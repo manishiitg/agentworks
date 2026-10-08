@@ -225,8 +225,8 @@ pulse:
     - record_goal_observations
     - create_human_input_request
     - dismiss_duplicate_human_input_request
-    - notify_user
     - ask_builder
+    - get_function_call
 
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
 # the entry file chooses which definitions to render. Runtime values stay in Go.
