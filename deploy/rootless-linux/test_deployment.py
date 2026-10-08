@@ -7,16 +7,23 @@ ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
 
 
+def product_dirs():
+    """The public example plus the real server configs when the private deployments repository is checked out."""
+    dirs = [ROOT / "products" / "example"]
+    private = REPO.parent / "deployments" / "products"
+    if private.is_dir():
+        dirs += sorted(p for p in private.iterdir() if (p / "product.env").is_file())
+    return dirs
+
+
 class SharedRootlessDeploymentTest(unittest.TestCase):
     def test_products_only_define_configuration_and_assets(self):
-        for product in ("confida", "sparkquill", "agents"):
-            directory = ROOT / "products" / product
-            with self.subTest(product=product):
+        for directory in product_dirs():
+            with self.subTest(product=directory.name):
                 self.assertTrue((directory / "product.env").is_file())
                 self.assertTrue((directory / "runtime-config.js").is_file())
                 # Every deployment builds from the shared catalog.
                 self.assertFalse((directory / "mcp-servers.json").exists())
-                self.assertFalse(any(directory.glob("*.sh")))
 
     def test_repository_root_deploy_is_the_only_entry_point(self):
         entry = (REPO / "deploy.sh").read_text()
@@ -26,7 +33,10 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             self.assertFalse((REPO / removed).exists(), removed)
 
     def test_confida_keeps_required_product_contract(self):
-        config = (ROOT / "products/confida/product.env").read_text()
+        private = REPO.parent / "deployments" / "products" / "confida" / "product.env"
+        if not private.is_file():
+            self.skipTest("Confida's config lives in the private deployments repository")
+        config = private.read_text()
         for expected in (
             "PIN_NODE_VERSION=\"24.21.0\"",
             "AGY_AUTH_MODE=gemini",
@@ -44,8 +54,8 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             with self.subTest(entry=name):
                 self.assertIn("deploy/common/install-coding-clis.sh", (REPO / name).read_text())
         # Product-specific dependency lists must not silently omit a provider.
-        for product in ("confida", "sparkquill", "agents"):
-            config = (ROOT / "products" / product / "product.env").read_text()
+        for directory in product_dirs():
+            config = (directory / "product.env").read_text()
             self.assertNotIn("CLI_TOOLS=", config)
             self.assertNotIn("CODEX_CLI_NPM_VERSION=", config)
 

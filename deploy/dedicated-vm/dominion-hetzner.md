@@ -27,7 +27,7 @@ containers, bound ports, systemd units, Caddy sites, or firewall rules.
 ## Current shared deployment and Vault
 
 Since 2026-10-07, `./deploy.sh dominion` uses the shared build/deployer and
-`deploy/rootless-linux/products/dominion/`. The former native script remains only
+`products/dominion/` in the private deployments repository. The former native script remains only
 as `dominion-legacy`; sections below retain its historical setup details.
 
 [PLAT-646](../../docs/bugs/pulse_platform/dominion/deployment/plat-646.md) completed

@@ -9,8 +9,6 @@ on:
       - ".github/workflows/coding-cli-p0.yml"
       # The ticket-register integrity check below guards a docs-only failure
       # mode, so a docs-only change has to be able to trigger this workflow.
-      - "docs/bugs/pulse_platform/index.md"
-      - "docs/bugs/pulse_platform/**"
   pull_request:
     paths:
       - "agent_go/**"
@@ -18,8 +16,6 @@ on:
       - ".github/workflows/coding-cli-p0.yml"
       # The ticket-register integrity check below guards a docs-only failure
       # mode, so a docs-only change has to be able to trigger this workflow.
-      - "docs/bugs/pulse_platform/index.md"
-      - "docs/bugs/pulse_platform/**"
   workflow_dispatch:
     inputs:
       providers:
@@ -159,12 +155,6 @@ jobs:
           -run 'Test(HandleLiveInputMessageBusyCodingAgentDeliversExactlyOnce|HandleLiveInputMessageCompletionBoundaryChoosesExactlyOneRoute|StartNextTurnFromLiveInputAcknowledgesBeforeQueuedTurnRuns|WorkflowStepCompletionAutoNotificationCarriesCleanFinalMessage|CodingCLILifecycleMatrixHermeticTmux|RetainedSubmissionRecoveryAfterIdleReaperP0|ChatSubmissionKeepsUncertainReceiptWithoutNotDeliveredProof|CanRetryUncertainChatSubmissionUsesClosedNativeTranscriptProof|TerminalOwnerReconciliationRejectsStaleGeneration|TerminalSnapshotExpiryMatrix|CleanupBoundedTmuxKeepsDismissedSnapshotUntilDisplayDeadline|HandleStopSessionCancelsActiveWorkAndPreventsPaneReuse|ResolveLiveAttachRestartRecoveryRequiresMatchingTmuxOwner|TerminalRoutesCompleteTerminalSignalsProviderWaitLoop|TerminalRoutesFailTerminalMarksSnapshotFailed|TerminalRoutesKillTerminalKillsTmuxAndMarksFailed|TerminalRoutesSendDownBypassesStartupReadinessForCompletedLivePane)$'
           -count=1
 
-      # Tickets are docs/bugs/pulse_platform/<product>/<area>/plat-NNN.md with a standard header, and every folder
-      # has a generated index.md (no hand-edited register since 2026-10-06; parallel sessions used to drop each
-      # other's rows, e.g. 29b1241e dropped PLAT-123). Cheap: reads the docs tree, no deps, no network.
-      - name: Verify platform tickets and their generated indexes
-        working-directory: coding-agent-loop
-        run: python3 scripts/tickets.py check
 
       - name: Verify frontend live-input submission contract
         working-directory: coding-agent-loop

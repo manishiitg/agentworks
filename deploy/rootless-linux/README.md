@@ -107,15 +107,17 @@ unless `manifest.json` has the announced hash, and leaves nothing behind on fail
 
 ## Adding a new product
 
-Citymall runs on a dedicated host of its own (`./deploy.sh citymall`): see [citymall.md](citymall.md) for the
-ProxyJump, the root host preparation (`HOST_SETUP_SCRIPT`), the downloaded shared build (`PREBUILT_DELIVERY=fetch`),
-nginx and the Pi provider template (`products/<p>/pi-agent`).
+Real server configs live in the PRIVATE deployments repository (`runloop-workflows/deployments`), checked out next
+to this one as `../deployments` (or `AGENTWORKS_DEPLOYMENTS_DIR`): `products/<name>/`. `deploy.sh` reads them from there
+and ships the folder with each deploy, so customer names, hosts, endpoints and people never enter this public
+repository. A dedicated host (ProxyJump `SSH_JUMP`, a root `HOST_SETUP_SCRIPT` kept in the product folder, a downloaded
+build `PREBUILT_DELIVERY=fetch`, nginx, a Pi provider template `pi-agent/`) is configured the same way.
 
-Copy `products/sparkquill/` as a starting point:
+Copy `products/example/` into the deployments repository as a starting point:
 
 - `product.env` — ports, provider/model, which CLIs to install, and any
   `EXTRA_ENV` the systemd units need beyond what's already in
-  `/srv/<product>/.env`. See the comments in `products/sparkquill/product.env`
+  `/srv/<product>/.env`. See the comments in `products/example/product.env`
   for what each field means and which ones are safe to leave at their
   defaults.
 - `runtime-config.js` — the frontend's `window.__APP_RUNTIME_CONFIG__`.

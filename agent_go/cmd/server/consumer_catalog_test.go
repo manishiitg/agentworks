@@ -19,7 +19,7 @@ func TestConsumerCatalogsStayInSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	added := []string{"Todoist", "Asana", "ClickUp", "Atlassian", "Dropbox", "Miro", "Figma", "GitHub", "GoogleGmail", "GitLab", "HubSpot", "Stripe", "Supabase", "Zapier"}
-	for _, path := range []string{"", "../../../deploy/aws-ec2/server/mcp-servers.override.json", "../../../deploy/rootless-linux/products/confida/mcp-servers.override.json"} {
+	for _, path := range []string{"", "../../../deploy/aws-ec2/server/mcp-servers.override.json"} {
 		catalog := map[string]mcpclient.MCPServerConfig{}
 		for name, server := range base.MCPServers {
 			catalog[name] = server

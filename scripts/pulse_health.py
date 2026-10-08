@@ -144,10 +144,13 @@ def table_exists(conn, name: str) -> bool:
 def load_register_ids(repo_root: Path) -> set:
     """Every PLAT-NNN already known, so a finding citing one isn't re-flagged."""
     ids = set()
-    # Every ticket is a file under docs/bugs/pulse_platform/<product>/<area>/ (no register since 2026-10-06).
-    for ticket in (repo_root / "docs" / "bugs" / "pulse_platform").rglob("plat-*.md"):
+    # Tickets live in the private deployments repository next to this one (tickets/pulse_platform/<product>/<area>/,
+    # moved from docs/bugs 2026-10-08); an older checkout still has docs/bugs.
+    frag_dir = repo_root.parent / "deployments" / "tickets" / "pulse_platform"
+    if not frag_dir.exists():
+        frag_dir = repo_root / "docs" / "bugs" / "pulse_platform"
+    for ticket in frag_dir.rglob("plat-*.md"):
         ids |= {m.upper() for m in PLAT_ID_RE.findall(ticket.name)}
-    frag_dir = repo_root / "docs" / "bugs" / "pulse_platform"
     if frag_dir.exists():
         for f in frag_dir.rglob("plat-*.md"):
             ids |= {m.upper() for m in PLAT_ID_RE.findall(f.read_text(errors="replace"))}
@@ -502,7 +505,7 @@ def report_untriaged(snapshot: dict, known_ids: set):
     print(f"  {total} external_action_required findings; MAY_NEED_ATTENTION={untriaged}")
     if untriaged:
         print("  An UNTRIAGED row is not automatically a new ticket — it may be a fresh instance of an")
-        print("  existing one in different words. Read it against docs/bugs/pulse_platform/index.md")
+        print("  existing one in different words. Read it against the ticket index (deployments repo: tickets/pulse_platform/index.md)")
         print("  before filing a new PLAT-NNN.")
     print()
 

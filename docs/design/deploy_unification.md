@@ -42,7 +42,7 @@ with native mode on and no shared profile left `AGENT_BROWSER_SOCKET_DIR` unset.
 
 **One script**: `deploy/rootless-linux/build-and-activate.sh`, parameterised (app dir, data dir, bind address), used by every server.
 RTS keeps a small pre-step that turns Secrets Manager into `.env`; Dominion's hand-kept `runtime-config.js` and `configs/` move into
-`deploy/rootless-linux/products/dominion/`.
+`products/dominion/` (private deployments repository).
 
 **One profile, the same everywhere:**
 - `NATIVE_WORKSPACE=true`, `MULTI_USER_MODE=true`, `AGENT_BROWSER_CDP_ENABLED=false`.

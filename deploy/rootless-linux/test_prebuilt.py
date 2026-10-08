@@ -94,7 +94,7 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertTrue((release / "static/report-preview.js").is_file())
         self.assertTrue((release / "configs/mcp_servers_sparkquill.json").is_file())
         self.assertEqual((release / "frontend/runtime-config.js").read_text(),
-                         (ROOT / "products/sparkquill/runtime-config.js").read_text())
+                         (ROOT / "products/example/runtime-config.js").read_text())
         self.assertTrue((release / "check-release-assets.mjs").is_file())
         self.assertTrue((release / "deployment_checks.py").is_file())
         # nothing was activated
