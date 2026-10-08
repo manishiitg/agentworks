@@ -25,6 +25,14 @@ func externalBoolArg(args map[string]any, name string) bool {
 	return v
 }
 
+// externalCompact reports whether a listing or status call wants the compact
+// view. Compact is the default (owner, 2026-10-08: nothing relies on the full
+// shape yet); compact: false returns the full one.
+func externalCompact(args map[string]any) bool {
+	v, set := args["compact"].(bool)
+	return !set || v
+}
+
 // externalTurnFields adds the compact answer to a status response: turn_status
 // (running, waiting_for_input or idle) and, once the session is idle,
 // final_answer, the newest assistant reply.
@@ -111,7 +119,7 @@ func (api *StreamingAPI) externalWaitForTurn(started map[string]interface{}, ses
 		}
 		if !time.Now().Before(deadline) {
 			started["turn_status"] = "running"
-			started["next"] = "Still running: poll run_status with this session_id (compact: true) for the answer or a pending question."
+			started["next"] = "Still running: poll run_status with this session_id for the answer or a pending question."
 			return
 		}
 		time.Sleep(300 * time.Millisecond)

@@ -63,8 +63,8 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Return id, label, owners, schedule counts and Pulse state only, without each workflow's manifest (the full list can be tens of thousands of characters). Use get_workflow for one manifest."}
-		add("list_workflows", "List workflows visible to the signed-in user. Pass compact: true for a short list; the full list carries every manifest.", false, false, p)
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Pulse state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
+		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)
 		for _, name := range []string{"list_files", "search_files"} {
 			p = page()
@@ -125,8 +125,8 @@ func externalTools() ([]externalTool, error) {
 		p = page()
 		p["session_id"] = externalString("Run session ID returned by a previous run call.")
 		p["since_index"] = externalInteger(-1, 1000000000)
-		p["compact"] = map[string]any{"type": "boolean", "description": "Return only turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle, and executions: no events. Recommended for polling."}
-		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs, its active executions and a size-bounded event page (pass compact: true to leave the events out).", false, p, "session_id")
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle and executions, without events. Pass false for a size-bounded page of events."}
+		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs and its active executions, without events by default (compact: false adds a size-bounded event page).", false, p, "session_id")
 		addRun("list_workflow_functions", "List the workflow's functions: typed entry points (a route plus named inputs set as that run's variables) that callers invoke with call_workflow_function.", false, nil)
 		addRun("call_workflow_function", "Call one of the workflow's functions (see list_workflow_functions). Inputs are checked first: a missing, unknown or mistyped input is refused before anything runs. Returns at once with status=running and a call_id for get_workflow_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the run outcome (status, error, step outputs). Repeating the same call while it runs returns the same call_id. Requires the runs:execute scope and workflow write access.", true, map[string]any{
 			"function":      externalString("Function name from list_workflow_functions."),
@@ -146,10 +146,10 @@ func externalTools() ([]externalTool, error) {
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)
-		p["compact"] = map[string]any{"type": "boolean", "description": "Return id, status, times, duration, error and run folder per run, without group lists, final responses or usage."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, status, times, duration, error and run folder per run. Pass false for group lists, final responses and usage."}
 		addRun("get_schedule_runs", "Page a schedule's retained run history with limit and offset, including after schedule deletion: status, duration, run folder, errors, and webhook deploy metadata when present. Workflow runs are kept for at least 90 days.", false, p, "schedule_id")
 		addRun("trigger_schedule", "Trigger a schedule to run immediately, outside its normal timing. Requires the runs:execute scope.", true, map[string]any{"schedule_id": externalString("Schedule ID from list_schedules.")}, "schedule_id")
-		addRun("chat", "Chat with the workflow assistant in a pinned Run-mode session: ask questions, request analysis, or direct runs conversationally. Starts a new session, or continues session_id for multi-turn conversation. Requires the runs:execute scope. Pass wait_seconds to get the reply in the same call; otherwise poll run_status (compact: true) for it.", true, map[string]any{"message": externalString("The question or instruction to send."), "session_id": map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new conversation."}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the reply or a question before returning (default 0: return at once; max 25). The result then carries final_answer, or pending_inputs if the assistant asked something."}}, "message")
+		addRun("chat", "Chat with the workflow assistant in a pinned Run-mode session: ask questions, request analysis, or direct runs conversationally. Starts a new session, or continues session_id for multi-turn conversation. Requires the runs:execute scope. Pass wait_seconds to get the reply in the same call; otherwise poll run_status for it.", true, map[string]any{"message": externalString("The question or instruction to send."), "session_id": map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new conversation."}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the reply or a question before returning (default 0: return at once; max 25). The result then carries final_answer, or pending_inputs if the assistant asked something."}}, "message")
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see run_status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from run_status."), "request_id": externalString("Pending input request ID from run_status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
@@ -490,7 +490,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		sort.Slice(matches, func(i, j int) bool { return matches[i].Manifest.ID < matches[j].Manifest.ID })
 		start := min(externalInt(args, "offset", 0), len(matches))
 		end := min(start+externalInt(args, "limit", 100), len(matches))
-		if externalBoolArg(args, "compact") {
+		if externalCompact(args) {
 			rows := make([]map[string]any, 0, end-start)
 			for _, item := range matches[start:end] {
 				rows = append(rows, externalCompactWorkflow(item))

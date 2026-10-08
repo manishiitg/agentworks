@@ -441,7 +441,12 @@ func TestExternalToolsHTTPWorkflowVisibilityAndReadonlyOwnerGuard(t *testing.T) 
 	f := newExternalToolsFixture(t)
 	body := externalTestBody(t, f.call(t, "owner", "list_workflows", nil), 200)
 	workflows := body["workflows"].([]any)
-	if len(workflows) != 1 || workflows[0].(map[string]any)["manifest"].(map[string]any)["id"] != "invoices" {
+	// Compact is the default; compact: false returns the full manifest.
+	full := externalTestBody(t, f.call(t, "owner", "list_workflows", map[string]any{"compact": false}), 200)["workflows"].([]any)
+	if len(full) != 1 || full[0].(map[string]any)["manifest"].(map[string]any)["id"] != "invoices" {
+		t.Fatalf("list_workflows with compact:false must carry the manifest: %v", full)
+	}
+	if len(workflows) != 1 || workflows[0].(map[string]any)["id"] != "invoices" || workflows[0].(map[string]any)["manifest"] != nil {
 		t.Fatalf("unauthorized workflow visible: %v", body)
 	}
 	for _, tool := range []string{"get_workflow", "get_plan"} {

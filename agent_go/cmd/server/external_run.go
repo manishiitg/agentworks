@@ -377,7 +377,7 @@ func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	page := storeevents.ForwardEventPage{GetEventsResult: storeevents.GetEventsResult{Events: []storeevents.Event{}, LastProcessedIndex: -1}}
-	compact := externalBoolArg(args, "compact")
+	compact := externalCompact(args)
 	if api.eventStore != nil {
 		// Compact status omits the events; the full page is bounded by size,
 		// not only by count (every event carries its full tool output).
@@ -438,7 +438,7 @@ func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Reques
 		delete(response, "history_available")
 		delete(response, "events_available")
 		delete(response, "runtime_state")
-		response["note"] = "Compact status: no events. Omit compact to page through events."
+		response["note"] = "Compact status: no events. Pass compact: false to page through events."
 	}
 	externalJSON(w, response)
 }
@@ -549,7 +549,7 @@ func (api *StreamingAPI) externalScheduleRuns(w http.ResponseWriter, r *http.Req
 	if runs == nil {
 		runs = []ScheduleRunEntry{}
 	}
-	if externalBoolArg(args, "compact") {
+	if externalCompact(args) {
 		rows := make([]map[string]any, 0, len(runs))
 		for _, run := range runs {
 			rows = append(rows, externalCompactScheduleRun(run))

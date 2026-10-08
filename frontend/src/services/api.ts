@@ -2937,6 +2937,8 @@ export interface CreateAccessTokenInput {
   workflow_ids: string[]
   all_workflows: boolean
   expires_in_days?: number
+  /** A token that can only look (read scopes, 7 days unless another expiry); what it sees follows the owner's roles. */
+  read_only?: boolean
   knowledgebase_folders?: Array<{ folder_path: string; role: 'reader' | 'editor' }> | null
   knowledgebase_identity_id?: string
 }

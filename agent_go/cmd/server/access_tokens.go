@@ -176,6 +176,11 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			KnowledgebaseFolders    *[]knowledgebase.Cap `json:"knowledgebase_folders"`
 			KnowledgebaseIdentityID string               `json:"knowledgebase_identity_id"`
 			ExpiresInDays           int                  `json:"expires_in_days"`
+			// ReadOnly issues a token that can only look: the read scopes this
+			// account is allowed, nothing that runs, writes or manages, and a
+			// 7-day expiry unless another is chosen. What it can see is still
+			// decided by the owning user's roles.
+			ReadOnly bool `json:"read_only"`
 		}
 		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
 		d.DisallowUnknownFields()
@@ -186,6 +191,32 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		if d.Decode(new(any)) != io.EOF {
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
+		}
+		if req.ReadOnly {
+			if req.LocalFullAccess || req.KnowledgebaseIdentityID != "" || req.KnowledgebaseFolders != nil {
+				externalError(w, 400, "invalid_arguments", "A read-only token cannot be a full local or Brain service token.")
+				return
+			}
+			for _, scope := range req.Scopes {
+				if !mcpOAuthReadScopes[scope] {
+					externalError(w, 400, "invalid_arguments", "A read-only token can hold only read scopes.")
+					return
+				}
+			}
+			// Brain access has its own folder grants; a read-only token leaves it out.
+			req.Scopes = mcpOAuthScopesFor(c, []string{"workflows:read", "files:read", "crews:read"})
+			if req.ExpiresInDays == 0 {
+				req.ExpiresInDays = 7
+			}
+			if !req.AllWorkflows && len(req.WorkflowIDs) == 0 {
+				req.AllWorkflows = true
+			}
+			if !req.AllCrews && len(req.CrewIDs) == 0 {
+				req.AllCrews = true
+			}
+			if strings.TrimSpace(req.Name) == "" {
+				req.Name = "Read-only token"
+			}
 		}
 		if req.LocalFullAccess {
 			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {

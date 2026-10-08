@@ -147,6 +147,20 @@ func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) 
 	if unrestricted.Metadata.KnowledgebaseFolders != nil || denied.Metadata.KnowledgebaseFolders == nil || len(*denied.Metadata.KnowledgebaseFolders) != 0 {
 		t.Fatalf("null and empty caps confused: %+v %+v", unrestricted.Metadata, denied.Metadata)
 	}
+	// Read only (owner, 2026-10-08): the owning user's account decides what it
+	// can see, but it can never run, write or manage, and expires in a week.
+	readOnly := issue(`{"name":"Reporter","read_only":true}`, priyaJWT)
+	for _, scope := range []string{"runs:execute", "files:write", "builder:chat", "relays:write", "crews:write", "vault:manage", "users:manage", "knowledgebase:read"} {
+		if readOnly.Metadata.Allows(scope) {
+			t.Fatalf("a read-only token holds %s", scope)
+		}
+	}
+	if !readOnly.Metadata.Allows("workflows:read") || readOnly.Metadata.NonExpiring || time.Until(readOnly.Metadata.ExpiresAt) > 8*24*time.Hour {
+		t.Fatalf("a read-only token must read workflows and expire within a week: %+v", readOnly.Metadata)
+	}
+	if w := request("POST", "/api/auth/access-tokens", `{"name":"x","read_only":true,"scopes":["runs:execute"]}`, priyaJWT); w.Code != 400 {
+		t.Fatalf("a read-only token request for a run scope was accepted: %d", w.Code)
+	}
 	readRequest := `{"name":"brain_read","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
 	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
 		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
