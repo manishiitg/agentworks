@@ -35,13 +35,6 @@ const (
 	workflowReviewStateFile    = "workflow_review.json"
 	workflowReviewStateVersion = 1
 	maxReviewedRevisions       = 50
-	// workflowReviewQuietPeriod keeps the after-change review from starting in
-	// the middle of a Builder editing session.
-	workflowReviewQuietPeriod = 10 * time.Minute
-	// workflowReviewEvaluateGap bounds how often the tick launcher looks at one
-	// workflow.
-	workflowReviewEvaluateGap    = 5 * time.Minute
-	maxConcurrentWorkflowReviews = 1
 )
 
 const (
@@ -291,7 +284,6 @@ var (
 	workflowReviewInflightMu sync.Mutex
 	workflowReviewInflights  = map[string]*workflowReviewInflight{}
 	workflowReviewSessions   sync.Map // session ID -> true while a review runs
-	workflowReviewEvaluated  = map[string]time.Time{}
 )
 
 func isWorkflowReviewSession(sessionID string) bool {
@@ -304,12 +296,6 @@ func workflowReviewRunning(workspacePath string) bool {
 	defer workflowReviewInflightMu.Unlock()
 	_, ok := workflowReviewInflights[workflowReviewKey(workspacePath)]
 	return ok
-}
-
-func runningWorkflowReviews() int {
-	workflowReviewInflightMu.Lock()
-	defer workflowReviewInflightMu.Unlock()
-	return len(workflowReviewInflights)
 }
 
 func workflowReviewKey(workspacePath string) string {
@@ -632,64 +618,4 @@ func (api *StreamingAPI) startWorkflowReviewBackgroundJob(ctx context.Context, s
 		api.emitBackgroundAgentCompleted(sessionID, agentID, name, "completed", truncateForToolResponse(result, 500), "", duration)
 		api.bgAgentRegistry.NotifyCompletion(sessionID, agentID)
 	}()
-}
-
-// launchDueWorkflowReviews runs after changes: a Builder plan edit, a contract
-// upgrade or a flags-version bump all change the due set, and the review runs
-// in the background once the workflow has been quiet for a while, so most runs
-// find it already done. Only workflows that run unattended (an enabled
-// schedule) are reviewed ahead; the rest are reviewed before their next run.
-func (s *SchedulerService) launchDueWorkflowReviews(ctx context.Context) {
-	if s == nil || s.api == nil {
-		return
-	}
-	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
-		return
-	}
-	discovered, err := DiscoverWorkflowManifests(ctx)
-	if err != nil {
-		return
-	}
-	now := time.Now()
-	for _, item := range discovered {
-		if runningWorkflowReviews() >= maxConcurrentWorkflowReviews {
-			return
-		}
-		if item.Manifest == nil || item.Manifest.Kind == "relay" || workflowSchedulesAllPaused(item.Manifest) || len(item.Manifest.Schedules) == 0 {
-			continue
-		}
-		workspacePath := item.WorkspacePath
-		if last, ok := workflowReviewEvaluated[workspacePath]; ok && now.Sub(last) < workflowReviewEvaluateGap {
-			continue
-		}
-		workflowReviewEvaluated[workspacePath] = now
-		if workflowReviewRunning(workspacePath) || s.findActiveNonBuilderExecutionForWorkspace(workspacePath) != nil {
-			continue
-		}
-		if !workflowPlanQuiet(workspacePath, now) {
-			continue
-		}
-		items, err := collectWorkflowReviewItems(workspacePath)
-		if err != nil {
-			continue
-		}
-		decision, revision, _ := decideWorkflowReview(workspacePath, items, nil, readWorkflowReviewState(workspacePath))
-		if decision != workflowReviewNeeded {
-			continue
-		}
-		scheduleLogf("[WORKFLOW REVIEW] plan changed for %s; reviewing ahead of its next run", workspacePath)
-		go s.reviewWorkflowOnce(context.Background(), workspacePath, "cron", revision, items)
-	}
-}
-
-// workflowPlanQuiet reports whether the plan files have not changed for the
-// quiet period, so a review does not start mid-edit.
-func workflowPlanQuiet(workspacePath string, now time.Time) bool {
-	root := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")))
-	for _, rel := range []string{"workflow.json", "planning/plan.json", "planning/step_config.json"} {
-		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil && now.Sub(info.ModTime()) < workflowReviewQuietPeriod {
-			return false
-		}
-	}
-	return true
 }

@@ -427,7 +427,7 @@ func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) 
 	}
 	switch turn.Kind {
 	case goalLeadTurnCheck:
-		return fmt.Sprintf("PULSE TURN: daily goal check, %s.\n\n%s%s", date, turn.Body, levels)
+		return fmt.Sprintf("PULSE TURN: goal check and Goal Work, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnGoalWork:
 		return fmt.Sprintf("PULSE TURN: Goal Work, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnRunFailed:

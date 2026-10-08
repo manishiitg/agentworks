@@ -84,7 +84,7 @@ func isPulseFixFailedRunStatus(status string) bool {
 	return false
 }
 
-// launchDueFixRuns runs on every scheduler tick after launchDuePulses.
+// launchDueFixRuns runs on every scheduler tick.
 func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
 	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
 		return

@@ -464,7 +464,7 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 	if encoded, err := json.Marshal(goalLeadAgentContext(ctx, workspacePath)); err == nil {
 		goalLead = string(encoded)
 	}
-	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`PULSE DAILY GOAL CHECK. pulse_run_id=%q. One short turn; no Gate, reviewers or finalizer follow. You are the workflow's Pulse: the goal comes first.
+	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`GOAL CHECK, THEN GOAL WORK. pulse_run_id=%q. This is your one self-timed turn (you chose its time on your last check); no Gate, reviewers or finalizer follow. You are the workflow's Pulse: the goal comes first.
 
 Code-computed goal facts (the silence alarm; already current, do not recompute them):
 %s
@@ -479,6 +479,7 @@ Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, 
 5. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when the Builder raised one.
    Choose when to check next with next_check_in_hours (1 to 168) and a short next_check_reason: soon after the next run that should move the goal, a few hours while a fix you asked for is pending, or days for a workflow that runs weekly. Without it the next check is in 24 hours. A failed run wakes you anyway.
 6. You send no notifications. When the owner should know (the goal is off track, a decision waits), tell the Builder chat with ask_builder in a few plain lines: the status, key number and when it was last measured, what you did and what you need; it decides whether to notify the owner.%s%s
+7. Then Goal Work, in this same turn: if something within your level would move the goal (load the goal-lead-work skill), get 1-3 bounded items done through the Builder chat and record each with record_pulse_goal_work. Skip it when the check found nothing worth doing; that is a valid answer. There is no separate Goal Work pass: your next turn is the time you chose with next_check_in_hours, or sooner when a run fails.
 
 %s`, pulseRunID, facts, goalLead, routing, finalizerRichEmailInstruction, autonomyText) + pausedRule}
 }

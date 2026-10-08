@@ -537,15 +537,16 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 					return
 				}
 				defer pulseLauncherMu.Unlock()
-				s.launchDuePulses(context.Background())
+				// No separate Goal Work clock (owner, 2026-10-08): the goal
+				// check is Pulse's one self-timed turn and does Goal Work when
+				// useful. A failed run still wakes it.
 				s.launchDueFixRuns(context.Background())
 				// Then the daily goal check (PLAT-697).
 				s.launchDueGoalChecks(context.Background())
 				// QA runs the Pulse asked for (PLAT-697 phase 4).
 				s.launchGoalLeadQARequests(context.Background())
-				// Workflow Review after a plan change, so most runs find it
-				// already done (PLAT-697 phase 0). Not a Pulse run.
-				s.launchDueWorkflowReviews(context.Background())
+				// Workflow Review runs only right before a run, never on its
+				// own in the background (owner, 2026-10-08).
 			}()
 			lastTick = t
 		}

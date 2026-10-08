@@ -174,7 +174,6 @@ pulse:
     - record_pulse_decision_outcome
     - record_pulse_focus_area
     - record_pulse_goal_work
-    - record_pulse_next_run
     - record_pulse_finding
     - merge_pulse_issues
     - resolve_run_concern
