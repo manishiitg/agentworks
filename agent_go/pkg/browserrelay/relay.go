@@ -300,7 +300,9 @@ func (m *Manager) RequestProjectConnection(user, scope string) bool {
 		return false
 	}
 	source.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	return source.extension.WriteJSON(envelope{Type: "connect-project", Scope: scope}) == nil
+	ok := source.extension.WriteJSON(envelope{Type: "connect-project", Scope: scope}) == nil
+	notifyChange(key(user, scope))
+	return ok
 }
 
 // Called under the binding's automation gate. Create the first project tab
@@ -432,6 +434,7 @@ func (m *Manager) Disconnect(user, scope string) error {
 	if b != nil {
 		b.closeWithReason("Disconnected in browser settings")
 	}
+	notifyChange(key(user, scope))
 	return nil
 }
 func (b *Binding) close() {
@@ -440,6 +443,7 @@ func (b *Binding) close() {
 func (b *Binding) closeWithReason(reason string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	defer notifyChange(b.key)
 	if b.newTabResult != nil {
 		select {
 		case b.newTabResult <- envelope{Error: "Chrome connection stopped"}:
@@ -650,6 +654,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	if old != nil {
 		old.closeWithReason("Connected from another browser")
 	}
+	notifyChange(b.key)
 	defer b.close()
 	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
 	b.mu.Unlock()
@@ -689,6 +694,9 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 				break
 			}
 			if e.Tabs >= 0 && e.Tabs <= 32 {
+				if b.tabs != e.Tabs {
+					notifyChange(b.key)
+				}
 				b.tabs = e.Tabs
 				b.tabTitles = nil
 				for _, title := range e.TabTitles {

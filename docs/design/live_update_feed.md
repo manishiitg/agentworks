@@ -114,6 +114,7 @@ These are the kinds, and the refetch each one triggers:
 | `report` | workflow | Right pane: Report dashboard | re-run the dashboard (`ReportViewer` `refresh()`: document catalog + HTML) |
 | `plan` | workflow, shared crew, or path-free legacy project | Right pane: Graph/Plan while open | refetch `plan.json`, `step_config.json`, and graph triggers |
 | `ui_control` | session owner only (`"session":"<id>"`) | Right pane: the tab bound to that chat session | ui-control `sync`, which claims any queued view action |
+| `browser` | the browser's owner only | Toolbar browser indicator, Chrome extension connect panel | `GET /api/browser/extension` (PLAT-730; replaces the 2.5 s poll) |
 
 A notice never contains the changed data. The client always refetches through
 the existing endpoint, which applies its own access rules. This keeps the
@@ -180,7 +181,7 @@ burst. No file watching is needed.
   - The cache is dropped when `manifestMutationGeneration` changes.
   - `sessions` notices go to every connection; `header-summary` already
     filters the sessions on refetch.
-  - A notice published with `PublishToUser` (only `ui_control`) goes only to
+  - A notice published with `PublishToUser` (`ui_control` and `browser`) goes only to
     that user's connections; the user is never written to the wire.
 - **Headers:** the same as `handleSSEStream`: no write deadline and
   `X-Accel-Buffering: no`.
@@ -198,6 +199,7 @@ burst. No file watching is needed.
 | `report` | Session/execution terminal status (the same hook as publish-on-session-completion). Writes under `db/reports/` via `writeFileToWorkspace` and the `/api/wp` proxy. Proxied `/api/mutate` and `/api/report-field`. |
 | `scheduler_config` | `SaveSchedulerConfig` (scheduler_config_store.go:43). |
 | `ui_control` | `performUIActionForContract` when the broker accepts a fresh action (`publishUIControlWake`, to the chat session's owner). |
+| `browser` | `browserrelay.SetChangeHook`: the extension connects or disconnects, a project is selected or removed, or the tab count changes (to the browser's owner). A slow safety refetch remains for Playwright sessions and for time-based expiry. |
 | `browser_sessions` | The `browser.SessionTracker` mutators (`Touch` on first sight only, `Remove*`, `Close*`, `Clear`). The client computes `age`/`idle` from timestamps instead of polling for them. |
 
 **Writes the feed cannot see.** Coding CLIs and shell `/api/execute` write

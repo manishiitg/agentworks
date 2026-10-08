@@ -38,6 +38,10 @@ const (
 	// session. It only wakes that session's tabs to sync with the ui-control
 	// broker; the action itself is claimed there. Owner-only (PublishToUser).
 	UIControl Kind = "ui_control"
+	// Browser: the connection of a user's browser extension changed (connected,
+	// disconnected, selected, tab count). Owner-only (PublishToUser); the client
+	// refetches /api/browser/extension instead of polling it.
+	Browser Kind = "browser"
 )
 
 // Notice is one change. Workflow is the workspace path ("Workflow/<folder>")

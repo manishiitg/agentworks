@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
 
 export interface ChromeExtensionStatus {
@@ -35,6 +36,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
   const generation = useRef(0)
   const revision = useRef(0)
   const awaiting = useRef<{ previous: string } | null>(null)
+  const refreshRef = useRef<() => void>(() => {})
   const base = new URL(String(api.defaults.baseURL || window.location.origin), window.location.origin)
   const download = new URL('/api/downloads/chrome-extension.zip', base).href
 
@@ -61,10 +63,12 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
         if (alive && mutation === revision.current) { setLoading(false); setCheckingError('Could not check the browser connection. Try again shortly.') }
       } finally { refreshing = false }
     }
+    refreshRef.current = () => { void refresh() }
     void refresh()
-    const timer = window.setInterval(() => { void refresh() }, 2500)
-    return () => { alive = false; window.clearInterval(timer) }
+    return () => { alive = false; refreshRef.current = () => {} }
   }, [workspacePath, profileId, readOnly])
+  // The server announces a browser change on the live feed; the old 2.5 s poll only runs while the feed is down.
+  useLiveRefetch(() => refreshRef.current(), { kinds: ['browser'], fallbackMs: 2500, safetyMs: 20_000, minIntervalMs: 500, enabled: !!workspacePath && !readOnly })
 
   const connect = async () => {
     const turn = generation.current

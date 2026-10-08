@@ -78,6 +78,9 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 			}
 			wrote := false
 			for _, n := range notices {
+				if !liveFeedNoticeForUser(n, claims) {
+					continue
+				}
 				if n.Workflow != "" && !access.visible(ctx, n.Workflow) {
 					continue
 				}
