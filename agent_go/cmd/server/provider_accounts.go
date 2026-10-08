@@ -611,7 +611,7 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 
 // providerAccountUnavailable is the one error a denied account produces.
 func providerAccountUnavailable(run providerAccountRun) error {
-	return fmt.Errorf("this account is no longer available to %s", run.Label)
+	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in this project's Models panel; your next message uses it", run.Label)
 }
 
 // providerAccountNotShared is the denial for an account that exists but is private to its owner
@@ -657,6 +657,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 	// A model that names no account keeps today's provider rules; an account
 	// named explicitly must belong to an enabled provider.
 	if !strings.HasPrefix(id, llmguard.ServerDefaultConnectionPrefix) && !providerEnabled(provider) {
+		log.Printf("[PROVIDER_ACCOUNT] %s refused for %q: provider not enabled on this server", provider, scope.Principal)
 		return nil, fmt.Errorf("provider is not enabled")
 	}
 	run := api.describeProviderAccountRun(ctx, scope)
@@ -717,6 +718,9 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		log.Printf("[PROVIDER_ACCOUNT] account %s (owner %s) denied for %s (%s)", record.ID, record.OwnerUserID, principal, run.Label)
 		return nil, providerAccountNotShared(run, record)
 	}
+	// The chat or project still names an account that was removed (a re-added key gets a new ID). Logged, since the
+	// refusal was otherwise silent on the server (Excellence 2026-10-08).
+	log.Printf("[PROVIDER_ACCOUNT] account %s (%s) not found for %s (%s): removed or never existed", id, provider, principal, run.Label)
 	return nil, providerAccountUnavailable(run)
 }
 
