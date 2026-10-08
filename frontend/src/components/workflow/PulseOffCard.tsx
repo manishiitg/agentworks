@@ -1,15 +1,9 @@
+import { ArrowRight, Brain, CalendarClock, Check, MessageSquare, SearchCheck, ShieldCheck, Target, Wrench } from 'lucide-react'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { describeCron } from '../scheduler/scheduleRuns/cron'
 import { timeAgo } from '../scheduler/scheduleRuns/helpers'
 import { PulseIcon } from './pulseIcon'
 import type { ScheduleAfterRun, WorkflowRunSetup } from '../../services/api-types'
-
-const PULSE_DOES = [
-  'Checks the goal daily: is it measured, is it moving, did a run fail.',
-  'Finds what would move the goal and asks the Builder to do it: fix a failing step, set up measurement, try an experiment.',
-  'Remembers what it tried and what worked, so it builds on it instead of repeating itself.',
-  'Asks you when a decision is yours. Talk to it any time with #pulse in the Builder chat.',
-]
 
 function afterRunText(options: ScheduleAfterRun | undefined): string {
   const on = (['backup', 'publish', 'notify'] as const).filter(key => options?.[key])
@@ -22,8 +16,15 @@ function scheduleWhen(schedule: WorkflowRunSetup['schedules'][number]): string {
   return schedule.cron_expression ? describeCron(schedule.cron_expression) : 'Cron'
 }
 
+const PULSE_TILES = [
+  { icon: Target, title: 'Checks the goal', text: 'Every day: is it measured, is it moving, did a run fail.' },
+  { icon: Wrench, title: 'Improves the workflow', text: 'Asks the Builder to fix a failing step, set up measurement or try an experiment.' },
+  { icon: Brain, title: 'Learns', text: 'Remembers what it tried and what worked, and builds on it.' },
+]
+
 /** The Pulse tab when Pulse is off, or on without a soul.md: the owner manages
- * the workflow, so the tab says what still runs and how to hand the goal to Pulse. */
+ * the workflow. Pulse is introduced first (what it is, how it helps), then
+ * what runs today. */
 export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
   pulseOn: boolean
   hasSoul: boolean
@@ -36,73 +37,81 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
   const review = runSetup?.workflow_review
   const reviewedAt = review?.finished_at || review?.started_at
   return (
-    <div data-testid="pulse-off-card" className="mx-auto max-w-2xl space-y-4">
-      <div>
-        <div className="text-sm font-medium text-foreground">You manage this workflow.</div>
-        <div className="text-xs text-muted-foreground">Nothing reviews it or changes it on its own.</div>
-      </div>
-
-      <div className="rounded-lg border border-border">
-        <div className="border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">What still runs</div>
-        <dl className="divide-y divide-border text-xs">
-          <div className="grid grid-cols-[8rem_1fr] gap-2 px-3 py-2">
-            <dt className="text-muted-foreground">Your schedules</dt>
-            <dd className="space-y-0.5">
-              {schedules.length === 0 && <div className="text-muted-foreground">No schedules: runs start only when you start them.</div>}
-              {schedules.map((schedule, index) => (
-                <div key={`${schedule.name}-${index}`} className={schedule.enabled ? 'text-foreground' : 'text-muted-foreground'}>
-                  <span className="font-medium">{schedule.name || 'Schedule'}</span> · {scheduleWhen(schedule)}{schedule.enabled ? '' : ' · paused'}
-                  {schedule.type !== 'webhook' && <span className="text-muted-foreground"> · after: {afterRunText(schedule.after_run)}</span>}
-                </div>
-              ))}
-            </dd>
-          </div>
-          <div className="grid grid-cols-[8rem_1fr] gap-2 px-3 py-2">
-            <dt className="text-muted-foreground">Runs from a chat</dt>
-            <dd className="text-foreground">after: {afterRunText(runSetup?.manual_after_run)}</dd>
-          </div>
-          <div className="grid grid-cols-[8rem_1fr] gap-2 px-3 py-2">
-            <dt className="text-muted-foreground">Before each run</dt>
-            <dd className="text-foreground">
-              Workflow Review checks a changed plan before it runs
-              <span className="text-muted-foreground">{reviewedAt ? ` · last ${timeAgo(reviewedAt)}` : ' · not run yet'}</span>
-            </dd>
-          </div>
-        </dl>
-        <div className="border-t border-border px-3 py-2 text-right">
-          <button type="button" onClick={openSchedules} className="text-xs font-medium text-primary hover:underline">Edit schedules and after-run options</button>
+    <div data-testid="pulse-off-card" className="mx-auto max-w-3xl space-y-4">
+      <section className="rounded-xl border border-primary/25 bg-gradient-to-b from-primary/10 to-transparent px-4 py-6 text-center sm:px-8">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 ring-4 ring-primary/10">
+          <PulseIcon className="h-6 w-6 text-primary" aria-hidden="true" />
         </div>
-      </div>
-
-      <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
-          <PulseIcon className="h-4 w-4 text-primary" aria-hidden="true" />
-          {pulseOn ? 'Pulse is waiting for a goal' : 'Turn on Pulse'}
-        </div>
-        <p className="text-xs text-foreground">
-          Pulse is an agent that owns this workflow&apos;s goal, the one written in soul.md, like a teammate who looks after it every day.
+        <h2 className="text-base font-semibold text-foreground">{pulseOn ? 'Pulse is waiting for a goal' : 'Let an agent own this workflow’s goal'}</h2>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Pulse watches the goal written in soul.md every day and gets the Builder to improve the workflow, like a teammate who looks after it.
         </p>
-        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-          {PULSE_DOES.map(item => <li key={item}>{item}</li>)}
-        </ul>
-        <p className="mt-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Useful when</span> the workflow has a number you want to grow (subscribers, leads, sales, quality) and you don&apos;t want to read every run yourself.
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">You stay in control:</span> Pulse only reads; the Builder makes the changes, within the permission levels you set. You can turn it off any time.
-        </p>
-        <div className="mt-2 flex justify-end">
+        <div className="mt-4">
           {hasSoul ? (
             !pulseOn && (
-              <button type="button" onClick={onTurnOn} disabled={saving} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
+              <button type="button" onClick={onTurnOn} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50">
                 Turn on Pulse
               </button>
             )
           ) : (
-            <span className="text-xs text-muted-foreground">Write the goal in soul.md first: ask the Builder chat.</span>
+            <span className="inline-block rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground">Write the goal in soul.md first: ask the Builder chat.</span>
           )}
         </div>
-      </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        {PULSE_TILES.map(({ icon: Icon, title, text }) => (
+          <div key={title} className="rounded-lg border border-border bg-background p-3">
+            <Icon className="mb-2 h-4 w-4 text-primary" aria-hidden="true" />
+            <div className="text-xs font-semibold text-foreground">{title}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{text}</div>
+          </div>
+        ))}
+      </section>
+
+      <section className="rounded-lg border border-border bg-background p-3">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">How it works</div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 font-medium text-primary"><PulseIcon className="h-3.5 w-3.5" aria-hidden="true" />Pulse</span>
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="text-muted-foreground">asks</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 font-medium"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />Builder</span>
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="text-muted-foreground">changes</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 font-medium"><Check className="h-3.5 w-3.5" aria-hidden="true" />Workflow</span>
+        </div>
+        <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+          <span>Pulse only reads. The Builder makes changes within the permission levels you set; anything big comes to you under Needs you. Talk to it any time with #pulse in the Builder chat, or turn it off.</span>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Today you manage this workflow</div>
+          <button type="button" onClick={openSchedules} className="text-xs font-medium text-primary hover:underline">Edit</button>
+        </div>
+        <ul className="divide-y divide-border text-xs">
+          {schedules.length === 0 && (
+            <li className="flex items-center gap-2 px-3 py-2 text-muted-foreground"><CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />No schedules: runs start only when you start them.</li>
+          )}
+          {schedules.map((schedule, index) => (
+            <li key={`${schedule.name}-${index}`} className={`flex items-center gap-2 px-3 py-2 ${schedule.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+              <CalendarClock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate"><span className="font-medium">{schedule.name || 'Schedule'}</span> · {scheduleWhen(schedule)}{schedule.enabled ? '' : ' · paused'}</span>
+              {schedule.type !== 'webhook' && <span className="shrink-0 text-muted-foreground">after: {afterRunText(schedule.after_run)}</span>}
+            </li>
+          ))}
+          <li className="flex items-center gap-2 px-3 py-2 text-foreground">
+            <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0 flex-1">Runs from a chat</span>
+            <span className="shrink-0 text-muted-foreground">after: {afterRunText(runSetup?.manual_after_run)}</span>
+          </li>
+          <li className="flex items-center gap-2 px-3 py-2 text-foreground">
+            <SearchCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0 flex-1">Workflow Review checks a changed plan before each run</span>
+            <span className="shrink-0 text-muted-foreground">{reviewedAt ? `last ${timeAgo(reviewedAt)}` : 'not run yet'}</span>
+          </li>
+        </ul>
+      </section>
     </div>
   )
 }

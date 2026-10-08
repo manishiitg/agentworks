@@ -85,7 +85,7 @@ it('updates the header walkthrough when the Pulse tab changes', async () => {
 it.each([[false, true], [true, false]])('shows the owner-managed card when Pulse on=%s and soul.md=%s', async (monitorOn, hasSoul) => {
   const host = await renderView(monitorOn, hasSoul);
   const card = host.querySelector('[data-testid="pulse-off-card"]');
-  expect(card?.textContent).toContain('You manage this workflow.');
+  expect(card?.textContent).toContain('Today you manage this workflow');
   expect(card?.textContent).toContain('after: backup, notify');
   expect(host.querySelector('[data-testid="pulse-workspace"]')).toBeNull();
 });
