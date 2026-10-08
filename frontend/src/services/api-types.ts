@@ -706,6 +706,7 @@ export interface PulseModuleStateResponse {
   focus_areas?: string[]
   /** The workflow has written its goal in soul.md; Pulse needs it to own the goal. */
   has_soul?: boolean
+  pace?: PulsePace
   run_setup?: WorkflowRunSetup | null
   error?: string
 }
@@ -722,13 +723,17 @@ export type PulseAutonomyLevel = 'auto' | 'ask'
 /** Goal Work's Run permission: auto lets it run existing workflow steps itself. */
 export type PulseAutonomyRun = PulseAutonomyLevel
 /** Goal Work's permissions. Run defaults to auto; outward and change to ask. */
+/** How hard Pulse pushes on the goal (pulse.pace). */
+export type PulsePace = 'calm' | 'steady' | 'aggressive'
 export interface PulseAutonomy {
+  /** The autonomy ladder level, 0-5 (pulseAutonomy.ts); absent on older settings. */
+  level?: number
   run: PulseAutonomyLevel
   outward: PulseAutonomyLevel
   change: PulseAutonomyLevel
 }
 export type PulseAutonomyKey = keyof PulseAutonomy
-export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { run: 'auto', outward: 'ask', change: 'ask' }
+export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { level: 1, run: 'auto', outward: 'ask', change: 'ask' }
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 export interface PulseGoalAlarm {
@@ -3927,6 +3932,8 @@ export interface UpdateWorkflowManifestRequest {
   run_retention_count?: number
   pulse_enabled?: boolean
   pulse_disabled_review_modules?: PulseReviewerModule[]
+  pulse_autonomy_level?: number
+  pulse_pace?: PulsePace
   pulse_autonomy_run?: PulseAutonomyRun
   pulse_autonomy_outward?: PulseAutonomyLevel
   pulse_autonomy_change?: PulseAutonomyLevel

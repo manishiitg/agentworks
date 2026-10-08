@@ -10,23 +10,95 @@ import (
 // "auto" (Goal Work does it itself) and false for "ask" (it prepares the work
 // and creates a decision). Run defaults to auto; Outward and Change to ask.
 type GoalWorkPermissions struct {
+	// Level is the autonomy ladder step, 0-5 (AutonomyLadder); the booleans
+	// below are what the tools enforce for it.
+	Level int
 	// Run: run existing steps and routes, including what they normally do.
 	Run bool
 	// Outward: post, send or contact anyone beyond what existing steps do.
 	Outward bool
-	// Change: edit the plan, step settings and schedules. soul.md goals and
-	// constraints always go to the user.
+	// Change: edit existing steps (prompts, items, settings). soul.md goals
+	// and constraints always go to the user.
 	Change bool
+	// Reshape: change schedules and the plan's structure (add steps, routes,
+	// groups, workflow settings). Never deletes.
+	Reshape bool
+}
+
+// AutonomyStep is one step of the autonomy ladder: each adds one kind of
+// action Pulse may get done without asking the owner (owner, 2026-10-08).
+type AutonomyStep struct {
+	Name string
+	Adds string
+}
+
+// AutonomyLadder is pulse.autonomy.level 0-5.
+var AutonomyLadder = []AutonomyStep{
+	{"Advise only", "Pulse recommends; nothing happens without the owner."},
+	{"Measure", "run steps to measure the goal and recover missed runs, and set up goal metrics."},
+	{"Fix", "fix broken steps (bugs, wrong inputs), reversible."},
+	{"Tune", "improve prompts and step settings."},
+	{"Publish", "publish and post through the workflow's own steps and accounts."},
+	{"Reshape", "change schedules and the plan's structure (never deletes)."},
+}
+
+// MaxAutonomyLevel is the top of the ladder.
+const MaxAutonomyLevel = 5
+
+// PermissionsForLevel is what the tools allow at a ladder step. Fix and Tune
+// use the same edit tools (the text separates them); Publish turns on the
+// outward tools; Reshape the schedule and structure tools.
+func PermissionsForLevel(level int) GoalWorkPermissions {
+	if level < 0 {
+		level = 0
+	}
+	if level > MaxAutonomyLevel {
+		level = MaxAutonomyLevel
+	}
+	return GoalWorkPermissions{Level: level, Run: level >= 1, Change: level >= 2, Outward: level >= 4, Reshape: level >= 5}
+}
+
+// LegacyAutonomyLevel maps the old run/outward/change switches to the ladder,
+// never granting more than they did: no run is Advise only; run alone is
+// Measure; run and change is Tune; all three is Reshape.
+func LegacyAutonomyLevel(run, outward, change bool) int {
+	switch {
+	case !run:
+		return 0
+	case !change:
+		return 1
+	case !outward:
+		return 3
+	}
+	return 5
+}
+
+// AutonomyLadderText lists the ladder with the current step marked, for the
+// Pulse and Builder prompts.
+func AutonomyLadderText(level int) string {
+	perms := PermissionsForLevel(level)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Autonomy: level %d of %d, %s (workflow.json pulse.autonomy.level). Each level adds one kind of action done without asking the owner:\n", perms.Level, MaxAutonomyLevel, AutonomyLadder[perms.Level].Name)
+	for i, step := range AutonomyLadder {
+		mark := "  "
+		if i <= perms.Level {
+			mark = "✓ "
+		}
+		fmt.Fprintf(&b, "%s%d %s: %s\n", mark, i, step.Name, step.Adds)
+	}
+	b.WriteString("Above the current level, prepare the work and have it put to the owner as one decision. Always the owner's, at every level: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and schedules the owner paused.")
+	return b.String()
 }
 
 // PulseAutonomyPermissions reads workflow.json pulse.autonomy. Run is off only
 // for an explicit "ask"; Outward and Change are on only for an explicit
 // "auto". Missing or unreadable settings mean those defaults.
 func PulseAutonomyPermissions(manifestJSON string) GoalWorkPermissions {
-	perms := GoalWorkPermissions{Run: true}
+	perms := PermissionsForLevel(1)
 	var manifest struct {
 		Pulse *struct {
 			Autonomy *struct {
+				Level   *int   `json:"level"`
 				Run     string `json:"run"`
 				Outward string `json:"outward"`
 				Change  string `json:"change"`
@@ -36,12 +108,12 @@ func PulseAutonomyPermissions(manifestJSON string) GoalWorkPermissions {
 	if err := json.Unmarshal([]byte(manifestJSON), &manifest); err != nil || manifest.Pulse == nil || manifest.Pulse.Autonomy == nil {
 		return perms
 	}
-	level := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
 	a := manifest.Pulse.Autonomy
-	perms.Run = level(a.Run) != "ask"
-	perms.Outward = level(a.Outward) == "auto"
-	perms.Change = level(a.Change) == "auto"
-	return perms
+	if a.Level != nil {
+		return PermissionsForLevel(*a.Level)
+	}
+	level := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+	return PermissionsForLevel(LegacyAutonomyLevel(level(a.Run) != "ask", level(a.Outward) == "auto", level(a.Change) == "auto"))
 }
 
 // goalWorkPermissionInstructions tells Goal Work what it may do itself and what
@@ -49,24 +121,7 @@ func PulseAutonomyPermissions(manifestJSON string) GoalWorkPermissions {
 // server refuses the matching tools for an "ask" level during the Goal Work
 // turn (cmd/server/pulse_autonomy_guard.go), so the text and the tools agree.
 func goalWorkPermissionInstructions(perms GoalWorkPermissions) string {
-	parts := []string{}
-	if perms.Run {
-		parts = append(parts, "Run permission: auto. Run existing workflow steps or routes yourself (execute_step, run_full_workflow) when that directly advances the goal or recovers work that did not happen; they do what they normally do, including their usual posts.")
-	} else {
-		parts = append(parts, "Run permission: ask. Do not run workflow steps, routes or Crews (the run tools refuse); prepare the work fully and create a decision request (create_human_input_request) asking the user to run it.")
-	}
-	if perms.Outward {
-		parts = append(parts, "Outward permission: auto. You may post, send or contact people yourself with the workflow's own accounts and tools when it advances the goal, within soul.md limits and the workflow's own caps and dedupe records; verify each action landed and record it where the workflow records its own.")
-	} else {
-		parts = append(parts, "Outward permission: ask. Beyond what existing steps normally do, never post, send or contact anyone yourself (Slack posts and Google writes are refused; hold it the same way in the browser, shell and connected servers): prepare it fully and create a decision request for the user to approve.")
-	}
-	if perms.Change {
-		parts = append(parts, "Change permission: auto. You may change how the workflow works yourself with the typed Builder tools (step prompts and items, step settings, schedules) when it advances the goal and every soul.md constraint still holds. soul.md goals and constraints are not yours to edit: challenge them through a decision. Never delete steps or schedules or replace the plan (those tools refuse); propose that through a decision.")
-	} else {
-		parts = append(parts, "Change permission: ask. Never edit the plan, steps, schedules or soul.md (the Builder edit tools refuse); propose them with a ready patch through a decision request.")
-	}
-	parts = append(parts, "Spending money or buying anything always goes to the user as a decision request.")
-	return strings.Join(parts, " ")
+	return AutonomyLadderText(perms.Level) + " The tools hold the level: running steps needs Measure, editing steps Fix, posting tools Publish, schedules and plan structure Reshape."
 }
 
 func parseBackgroundReadOnlyAccess(args map[string]interface{}, agentType string) (bool, error) {

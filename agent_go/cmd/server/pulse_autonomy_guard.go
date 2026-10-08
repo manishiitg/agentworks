@@ -79,11 +79,25 @@ var goalWorkRunTools = map[string]bool{
 	"trigger_schedule": true, "ask_platform_crew": true,
 }
 
-// goalWorkChangeTools edit how the workflow works, beyond the plan tools that
-// stepworkflow.ScheduleGuardedTool already names.
+// goalWorkMeasureTools set up measurement: allowed from the Measure level.
+var goalWorkMeasureTools = map[string]bool{"configure_goal_metrics": true}
+
+// goalWorkChangeTools edit existing steps (Fix and Tune), beyond the step
+// edit tools that stepworkflow.ScheduleGuardedTool already names.
 var goalWorkChangeTools = map[string]bool{
-	"update_step_config": true, "create_schedule": true, "create_calendar_schedule": true, "update_schedule": true,
-	"configure_goal_metrics": true, "restore_step_from_changelog": true, "manage_workflow_webhook": true,
+	"update_step_config": true, "restore_step_from_changelog": true,
+}
+
+// goalWorkReshapeTools change schedules and the plan's structure: only at the
+// Reshape level (owner, 2026-10-08 autonomy ladder).
+var goalWorkReshapeTools = map[string]bool{
+	"create_schedule": true, "create_calendar_schedule": true, "update_schedule": true, "manage_workflow_webhook": true,
+	"add_step": true, "add_scripted_step": true, "add_message_sequence_step": true, "add_routing_step": true, "add_branch_step": true,
+	"add_human_input_step": true, "add_todo_task_step": true, "add_todo_task_route": true, "add_orchestrator_step": true,
+	"add_orchestrator_route": true, "add_crew_step": true, "manage_step_route": true, "manage_group": true, "maintain_plan": true,
+	"convert_routing_branch_step_type": true, "delete_todo_task_route": true, "delete_orchestrator_route": true,
+	"update_workflow_config": true, "set_workflow_llm_config": true, "update_variable": true, "add_group": true,
+	"update_group": true, "delete_group": true,
 }
 
 // goalWorkNeverTools stay with the user whatever the levels: deleting steps or
@@ -107,17 +121,21 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 	switch {
 	case goalWorkNeverTools[tool]:
 		return fmt.Errorf("%s is not available to Goal Work: deleting steps or schedules, replacing the plan and migrations stay with the user. Create a decision request (create_human_input_request) with the exact change instead", tool)
-	case goalWorkRunTools[tool]:
+	case goalWorkRunTools[tool] || goalWorkMeasureTools[tool]:
 		if !perms.Run {
-			return fmt.Errorf("%s refused: Goal Work's Run permission is ask for this turn (pulse.autonomy.run). Do not run it another way; prepare the work and create a decision request (create_human_input_request) asking the user to run it", tool)
+			return fmt.Errorf("%s refused: running steps needs the Measure autonomy level (now level %d, pulse.autonomy.level). Do not run it another way; prepare the work and have it put to the owner as one decision", tool, perms.Level)
+		}
+	case goalWorkReshapeTools[tool]:
+		if !perms.Reshape {
+			return fmt.Errorf("%s refused: schedules and the plan's structure need the Reshape autonomy level (now level %d, pulse.autonomy.level). Do not change it another way; have it put to the owner as one decision with the ready patch", tool, perms.Level)
 		}
 	case goalWorkChangeTools[tool] || stepworkflow.ScheduleGuardedTool(tool):
 		if !perms.Change {
-			return fmt.Errorf("%s refused: Goal Work's Change permission is ask for this turn (pulse.autonomy.change). Do not edit the workflow another way; create a decision request (create_human_input_request) with the ready patch instead", tool)
+			return fmt.Errorf("%s refused: editing steps needs the Fix autonomy level (now level %d, pulse.autonomy.level). Do not edit the workflow another way; have it put to the owner as one decision with the ready patch", tool, perms.Level)
 		}
 	case goalWorkOutwardTools[tool]:
 		if !perms.Outward {
-			return fmt.Errorf("%s refused: Goal Work's Outward permission is ask (pulse.autonomy.outward). Prepare the message and create a decision request (create_human_input_request) for the user to approve it", tool)
+			return fmt.Errorf("%s refused: posting needs the Publish autonomy level (now level %d, pulse.autonomy.level). Prepare the message and have it put to the owner as one decision", tool, perms.Level)
 		}
 	}
 	return nil

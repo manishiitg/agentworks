@@ -5,11 +5,13 @@ import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
 import { GoalLeadPanel } from './GoalLeadPanel'
 import { PulseOffCard } from './PulseOffCard'
+import { AutonomySlider } from './AutonomySlider'
+import { PaceSelector } from './PaceSelector'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
 import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
-import type { WorkflowRunSetup, PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
+import type { WorkflowRunSetup, PulsePace, PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
 
 export interface PulseOverview {
   recorded: number
@@ -24,6 +26,9 @@ interface PulseViewProps {
   onToggleMonitor: () => void
   hasSoul?: boolean
   runSetup?: WorkflowRunSetup | null
+  pace?: PulsePace
+  paceSaving?: boolean
+  onChangePace?: (next: PulsePace) => void
   disabledReviewModules: PulseReviewerModule[]
   reviewModuleSaving: PulseReviewerModule | null
   onToggleReviewModule: (module: PulseReviewerModule) => void
@@ -57,6 +62,9 @@ export default function PulseView({
   onToggleMonitor,
   hasSoul = false,
   runSetup = null,
+  pace = 'steady',
+  paceSaving = false,
+  onChangePace,
   disabledReviewModules,
   reviewModuleSaving,
   onToggleReviewModule,
@@ -113,6 +121,8 @@ export default function PulseView({
         <div className="p-3 sm:p-4">
           {ownerManaged && <PulseOffCard pulseOn={monitorOn} hasSoul={hasSoul} runSetup={runSetup} saving={monitorSaving} onTurnOn={onToggleMonitor} />}
           {!ownerManaged && workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
+          {!ownerManaged && <AutonomySlider autonomy={autonomy} saving={autonomySaving} onChange={onChangeAutonomy} />}
+          {!ownerManaged && <PaceSelector pace={pace} saving={paceSaving} onChange={onChangePace} />}
           {!ownerManaged && workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
           {!ownerManaged && workspacePath && (
             <PulseWorkspace

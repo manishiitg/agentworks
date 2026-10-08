@@ -35,7 +35,7 @@ func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
 
 	// run=ask: execute_step is refused and points at a decision request.
 	_, err := inTurn(`{"pulse":{"autonomy":{"run":"ask"}}}`, "execute_step")
-	if err == nil || !strings.Contains(err.Error(), "create_human_input_request") {
+	if err == nil || !strings.Contains(err.Error(), "Measure autonomy level") {
 		t.Fatalf("execute_step with run=ask must be refused with a decision-request hint, got %v", err)
 	}
 	// run=auto (also the default): allowed.
@@ -106,7 +106,7 @@ func TestGoalWorkAutonomyHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 	if _, err := updateStep(context.Background(), map[string]interface{}{}); err == nil {
 		t.Fatal("change=ask: a direct update_step must be refused")
 	}
-	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Change permission is ask") {
+	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Fix autonomy level") {
 		t.Fatalf("change=ask: update_step over the HTTP tool route must be refused, got %+v", out)
 	}
 	release()

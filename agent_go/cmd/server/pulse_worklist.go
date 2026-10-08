@@ -2281,6 +2281,7 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 		"autonomy":                   pulseAutonomyForView(r.Context(), workspacePath),
 		"focus_areas":                pulseFocusAreasForView(r.Context(), workspacePath),
 		"has_soul":                   workflowHasSoul(r.Context(), workspacePath),
+		"pace":                       workflowPulsePace(r.Context(), workspacePath).Name,
 		"run_setup":                  workflowRunSetupView(r.Context(), workspacePath),
 	})
 }
@@ -3028,7 +3029,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: is the goal measured, moving, and its work running."},
 					"action_taken":        map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
 					"decision_id":         map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
-					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now (1 to 168). Pick it from when the goal can next move: soon after the next run that matters, a few hours while a fix is pending, days for a weekly workflow. Omitted: 24."},
+					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; held within the workflow's pace (calm 24-168, steady 6-72, aggressive 1-24). Pick it from when the goal can next move: soon after the next run that matters, a few hours while a fix is pending, days for a weekly workflow. Omitted: the pace default (calm 72, steady 24, aggressive 6)."},
 					"next_check_reason":   map[string]interface{}{"type": "string", "description": "Why that time, in a few words, e.g. \"after tomorrow's 09:00 publish run\"."},
 				},
 				"required": []string{"workspace_path", "status", "summary"},

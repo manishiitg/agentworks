@@ -264,7 +264,12 @@ type WorkflowPulseConfig struct {
 	// Autonomy holds Goal Work's permission levels. Nil means the defaults:
 	// Run is auto (Goal Work may run existing steps itself); Outward and Change
 	// ask the user.
-	Autonomy              *WorkflowPulseAutonomy         `json:"autonomy,omitempty"`
+	Autonomy *WorkflowPulseAutonomy `json:"autonomy,omitempty"`
+	// Pace is how hard Pulse pushes on the goal: calm, steady (default) or
+	// aggressive. It bounds when Pulse checks next, whether a failed run
+	// wakes it, and how much Goal Work it takes on per turn (owner,
+	// 2026-10-08; pulse_pace.go).
+	Pace                  string                         `json:"pace,omitempty"`
 	AdvisorSpecialization *WorkflowAdvisorSpecialization `json:"advisor_specialization,omitempty"`
 	// DisabledReviewModules is the owner-controlled denylist for optional Pulse
 	// reviewers. Gate still records these modules in each worklist for an
@@ -336,6 +341,10 @@ func (m *WorkflowManifest) EffectivePulseSchedule() WorkflowPulseSchedule {
 // Preparing work is always on. Each level is "auto" (Goal Work does it
 // itself) or "ask" (it prepares the work and creates a decision).
 type WorkflowPulseAutonomy struct {
+	// Level is the autonomy ladder step, 0-5 (stepworkflow.AutonomyLadder;
+	// owner, 2026-10-08). When set it decides; run/outward/change are written
+	// beside it for older readers. Without it they are read as before.
+	Level *int `json:"level,omitempty"`
 	// Run: run existing workflow steps and routes. Default auto.
 	Run string `json:"run,omitempty"`
 	// Outward: post, send or contact anyone beyond what existing steps
@@ -353,6 +362,7 @@ type WorkflowPulseAutonomy struct {
 
 // PulseAutonomyLevels is the resolved setting with defaults applied.
 type PulseAutonomyLevels struct {
+	Level   int    `json:"level"`
 	Run     string `json:"run"`
 	Outward string `json:"outward"`
 	Change  string `json:"change"`
@@ -409,7 +419,16 @@ func normalizePulseAutonomyAskDefault(field, value string) (string, error) {
 // resolvePulseAutonomy applies the defaults and rejects unknown values.
 func resolvePulseAutonomy(a *WorkflowPulseAutonomy) (PulseAutonomyLevels, error) {
 	if a == nil {
-		return PulseAutonomyLevels{Run: "auto", Outward: "ask", Change: "ask"}, nil
+		return pulseAutonomyLevelsFor(1), nil
+	}
+	if _, err := normalizePulseAnswerMode(a.Answer); err != nil {
+		return PulseAutonomyLevels{}, err
+	}
+	if a.Level != nil {
+		if *a.Level < 0 || *a.Level > step_based_workflow.MaxAutonomyLevel {
+			return PulseAutonomyLevels{}, fmt.Errorf("pulse.autonomy.level must be 0 to %d", step_based_workflow.MaxAutonomyLevel)
+		}
+		return pulseAutonomyLevelsFor(*a.Level), nil
 	}
 	run, err := normalizePulseAutonomyRun(a.Run)
 	if err != nil {
@@ -423,10 +442,20 @@ func resolvePulseAutonomy(a *WorkflowPulseAutonomy) (PulseAutonomyLevels, error)
 	if err != nil {
 		return PulseAutonomyLevels{}, err
 	}
-	if _, err := normalizePulseAnswerMode(a.Answer); err != nil {
-		return PulseAutonomyLevels{}, err
+	return pulseAutonomyLevelsFor(step_based_workflow.LegacyAutonomyLevel(run == "auto", outward == "auto", change == "auto")), nil
+}
+
+// pulseAutonomyLevelsFor is a ladder level with the matching run/outward/change
+// switches, kept for older readers.
+func pulseAutonomyLevelsFor(level int) PulseAutonomyLevels {
+	perms := step_based_workflow.PermissionsForLevel(level)
+	sw := func(on bool) string {
+		if on {
+			return "auto"
+		}
+		return "ask"
 	}
-	return PulseAutonomyLevels{Run: run, Outward: outward, Change: change}, nil
+	return PulseAutonomyLevels{Level: perms.Level, Run: sw(perms.Run), Outward: sw(perms.Outward), Change: sw(perms.Change)}
 }
 
 func validateWorkflowPulseSchedule(schedule *WorkflowPulseSchedule) error {
@@ -1196,6 +1225,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 			return err
 		}
 		if _, err := resolvePulseAutonomy(m.Pulse.Autonomy); err != nil {
+			return err
+		}
+		if _, err := normalizePulsePace(m.Pulse.Pace); err != nil {
 			return err
 		}
 		if _, err := normalizePulseFocusAreas(m.Pulse.FocusAreas); err != nil {

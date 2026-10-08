@@ -150,7 +150,8 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Pulse", SessionID: req.PulseSession}}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest,
 		Chat: &codeChat{Key: "session:" + builderSession, ID: builderSession, Name: label + " Builder chat", SessionID: builderSession}}
-	args := map[string]interface{}{"message": req.Message, "run": req.Perms.Run, "outward": req.Perms.Outward, "change": req.Perms.Change}
+	args := map[string]interface{}{"message": req.Message, "level": req.Perms.Level, "run": req.Perms.Run,
+		"outward": req.Perms.Outward, "change": req.Perms.Change, "reshape": req.Perms.Reshape}
 	call, err := api.startCrewFunctionCall(ctx, req.UserID, caller, target, pulseBuilderAskFunction(), args, triggerTargetDefaultTimeout, req.SubmissionID)
 	if err != nil {
 		return nil, err
@@ -207,10 +208,20 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 	defer cancel()
 	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
 	message, _ := args["message"].(string)
+	// The exact levels Pulse is held to travel with the call; the Builder chat
+	// is held to the same ones.
+	level := 0
+	switch v := args["level"].(type) {
+	case int:
+		level = v
+	case float64:
+		level = int(v)
+	}
 	run, _ := args["run"].(bool)
 	outward, _ := args["outward"].(bool)
 	change, _ := args["change"].(bool)
-	perms := stepworkflow.GoalWorkPermissions{Run: run, Outward: outward, Change: change}
+	reshape, _ := args["reshape"].(bool)
+	perms := stepworkflow.GoalWorkPermissions{Level: level, Run: run, Outward: outward, Change: change, Reshape: reshape}
 	session := target.Chat.SessionID
 	recordPulseBuilderAsk(ctx, target.Path, call.ID, "message", session, message)
 	// The record comes first: a waiting caller reads it as soon as the call
