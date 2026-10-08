@@ -17,7 +17,23 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — The Builder chat and Pulse talk as two agents, in plain messages
+
+A message between the Builder chat and the workflow's Pulse is plain text with
+its sender ("the Builder chat (manish): …", "Reports Pulse: …"), and the reply
+comes back; the owner's own message to Pulse is sent exactly as typed. Pulse's
+standing rules and permission levels live in its system prompt (their hash
+joins the chat policy fingerprint, so an autonomy change relaunches the
+retained CLI on the same conversation), never in the messages. The Builder
+chat's tools are held to Pulse's levels while it handles Pulse's message.
+Removed: threads and round limits, required `decision:` / `owner_needed:`
+lines, question/fix kinds, and the grouped "Builder ↔ Pulse" block. Why: the
+owner wanted two agents talking; the protocol made every message a page of
+rules. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-08 — Builder chat treats Pulse as the goal expert, in threads; Pulse tab shows no conversation
+
+Superseded the same day by "The Builder chat and Pulse talk as two agents, in plain messages".
 
 The Pulse tab no longer shows Pulse's conversation: the "<workflow> Pulse" chat tab does. Its "Talk to Pulse" box
 stays and sends straight into Pulse's conversation (`POST /api/workflow/goal-lead/message`), then opens that chat
@@ -32,6 +48,8 @@ is not using pulse as an expert … just exchanging one-off msgs"; the conversat
 Slack `<slug>-pulse` stays for now. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
 
 ### 2026-10-08 — Pulse asks the Builder chat (ask_builder); fixes only at change=auto
+
+Superseded the same day by "The Builder chat and Pulse talk as two agents, in plain messages".
 
 The Pulse can ask the workflow's Builder chat (the owner's most recently active one) with `ask_builder`, as a normal
 turn the owner can watch. A question changes nothing (the chat's tools are held to ask for that turn). A fix request

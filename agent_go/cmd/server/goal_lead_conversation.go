@@ -81,9 +81,7 @@ const goalLeadMessagesSchema = `CREATE TABLE IF NOT EXISTS goal_lead_messages (
 const (
 	goalLeadTurnCheck    = "check"
 	goalLeadTurnGoalWork = "goal_work"
-	// goalLeadTurnOwner: the owner's message from the Pulse tab; also the
-	// logged role of their words relayed by their Builder chat (an ask turn
-	// with OwnerRelay).
+	// goalLeadTurnOwner: the owner's message from the Pulse tab.
 	goalLeadTurnOwner = "owner"
 	goalLeadTurnAsk   = "ask"
 	goalLeadTurnSlack = "slack"
@@ -301,47 +299,10 @@ type goalLeadTurn struct {
 	Rotate bool
 	// Logged: the incoming message is already in goal_lead_messages.
 	Logged bool
-	// CallID is the function call an ask turn answers.
-	CallID string
-	// OwnerRelay: the ask carries the owner's own words from their Builder
-	// chat (goalLeadAskCaller), so lasting direction is recorded, not only
-	// answered.
-	OwnerRelay bool
-	// ThreadID and Round place an ask in its thread (goal_lead_ask.go).
-	ThreadID string
-	Round    int
 }
 
-// goalLeadAskThreadLine tells Pulse where an ask sits in its thread.
-func goalLeadAskThreadLine(turn goalLeadTurn) string {
-	if strings.TrimSpace(turn.ThreadID) == "" {
-		return ""
-	}
-	if turn.Round <= 1 {
-		return fmt.Sprintf("This opens thread %s (at most %d rounds).", turn.ThreadID, goalLeadThreadMaxRounds)
-	}
-	return fmt.Sprintf("Round %d of at most %d of thread %s: it continues your earlier replies in this thread, above in this conversation; answer as the next step of that exchange.", turn.Round, goalLeadThreadMaxRounds, turn.ThreadID)
-}
-
-// goalLeadAskClosingRules: how an ask turn's reply ends, so the asking chat
-// knows whether to act, answer a question in the thread, or ask the owner.
-const goalLeadAskClosingRules = "End your reply with either one line `question: <the one fact you need from the asking chat>` (the thread stays open and the chat answers in it), or the two lines `decision: <what to do>` and `owner_needed: yes|no (why)`. owner_needed is yes only when the step is beyond your permission levels, rests on a preference only the owner knows (goal memory may already hold it), spends money, cannot be undone, or changes soul.md; otherwise no, and the chat acts on your decision without asking the owner again. When your levels allow and you made the change yourself, say so in the decision."
-
-// goalLeadOwnerDirectionRules: what Pulse does with the owner's own words,
-// from the Pulse tab, relayed by their Builder chat, or sent on Slack.
-const goalLeadOwnerDirectionRules = `When they ask how the goal is doing or why you did something, answer from this conversation, goal memory, the decision log and your recorded checks. Direction that should last goes to goal memory (record_pulse_goal_memory, source owner_answer, in their words). Time-boxed direction becomes a proposed focus area (record_pulse_focus_area action=propose, with an end date and its own check), which they confirm with one click in the Pulse tab. A change to the goal itself is a proposed soul.md edit in your reply: never edit soul.md. Anything beyond your permission levels: prepare it and say what you need. Say in your reply what you recorded or proposed.`
-
-// goalLeadMessageOpen / goalLeadMessageClose wrap the words a person sent, so
-// the chat view can show just those words instead of the whole turn text
-// (frontend chatMessageContent.ts pulseTurnDisplayText).
-const (
-	goalLeadMessageOpen  = "--- message ---"
-	goalLeadMessageClose = "--- end of message ---"
-)
-
-func goalLeadMarkedMessage(body string) string {
-	return goalLeadMessageOpen + "\n" + strings.TrimSpace(body) + "\n" + goalLeadMessageClose
-}
+// goalLeadOwnerDirectionRules: what Pulse does with the owner's own words.
+const goalLeadOwnerDirectionRules = `When the owner asks how the goal is doing or why you did something, answer from this conversation, goal memory, the decision log and your recorded checks. Direction that should last goes to goal memory (record_pulse_goal_memory, source owner_answer, in their words). Time-boxed direction becomes a proposed focus area (record_pulse_focus_area action=propose, with an end date and its own check), which they confirm with one click in the Pulse tab. A change to the goal itself is a proposed soul.md edit in your reply: never edit soul.md. Say in your reply what you recorded or proposed.`
 
 // goalLeadNow is the clock of Pulse turns (tests move it a day).
 var goalLeadNow = time.Now
@@ -380,66 +341,73 @@ func goalLeadTurnsInFlight(workspacePath string) int {
 // goalLeadCharter is the platform-defined instruction, the same for every
 // workflow, sent as the first turn of each conversation.
 func goalLeadCharter(label, workspacePath string) string {
-	return fmt.Sprintf(`PULSE. You are the %s Pulse: the platform's persistent owner of this workflow's goal (workspace_path=%q). This is your one continuing conversation for the goal. The daily goal check, Goal Work, the owner's messages (from the Pulse tab, or relayed by their Builder chat with ask_pulse), questions from the workflow's chats and steps (ask_pulse), failed runs, Slack messages and QA results all arrive here as turns. These instructions are the same for every workflow; nobody edits them.
+	return fmt.Sprintf(`PULSE. You are the %s Pulse: the platform's persistent owner of this workflow's goal (workspace_path=%q). This is your one continuing conversation for the goal. The daily goal check, Goal Work, the owner's messages (the Pulse tab or Slack), messages from the workflow's Builder chat and steps, failed runs, Slack messages and QA results all arrive here as turns. These instructions are the same for every workflow; nobody edits them.
 
 How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
 - Your authority is pulse.autonomy (run, outward, change), enforced by the tools on every turn. Within it, act and record it; beyond it, prepare the work and ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills, loaded when a turn needs them: the goal check, read_skill(skills=[{"name":"builder-reference","path":"references/goal-lead-check.md"}]); Goal Work, references/goal-lead-work.md; a structural question about the workflow, references/goal-lead-architecture.md.
 - You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
-- The workflow's Builder chat: ask_builder(kind="question") to learn what changed and why or what the owner decided there (record the answer in goal memory, source builder_answer); ask_builder(kind="fix") for a bounded repair with evidence, sent only when change is auto and otherwise turned into one decision with your recommendation. Never for soul.md, deletions or contract migrations. Workflow Review checks plan changes before the next run.
+- The workflow's Builder chat edits the workflow; you own the goal. Talk to it with ask_builder: ask what changed and why or what the owner decided there, or ask it to make a change. It works within the same permission levels as you, and its reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
 - Use your tools only as tools. Never script calls to the platform's tool API from the shell (curl, python urllib or similar against /s/<session>/tools/...): the same permission checks apply there, and the change goes unrecorded as yours.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath)
 }
 
-func goalLeadTurnQuery(label, workspacePath string, firstTurn bool, turn goalLeadTurn, autonomyText string, now time.Time) string {
-	var b strings.Builder
-	if firstTurn {
-		b.WriteString(goalLeadCharter(label, workspacePath))
-		b.WriteString("\n\n")
+// goalLeadSystemSection is the Pulse conversation's standing instructions,
+// added to its system prompt on every turn (the workflow phase prompt in
+// server.go) and never repeated in its messages: the charter, how it talks
+// with the owner and the workflow's chats, and its current permission levels.
+// Its hash joins the chat policy fingerprint, so a change, for example to
+// pulse.autonomy, relaunches the retained CLI on the same conversation with
+// the new prompt, like other agents.
+func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
+	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
+	if workspacePath == "" {
+		return ""
 	}
+	label := workspacePath
+	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && manifest != nil {
+		label = firstNonEmptyTrimmed(manifest.Label, workspacePath)
+	}
+	_, autonomyText := goalWorkAutonomy(ctx, workspacePath)
+	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
+		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (manish): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (daily goal check, Goal Work, a failed run). Any other message is the owner. " + goalLeadOwnerDirectionRules +
+		"\n\n" + autonomyText
+}
+
+func goalLeadSystemSectionKey(section string) string {
+	if section == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(section))
+	return hex.EncodeToString(sum[:])
+}
+
+// goalLeadTurnQuery is one turn's message. The standing instructions are in
+// the system prompt: the owner's message is sent as typed, a chat's message
+// with its sender, and an automatic turn with one header line and its task.
+// overrideLevels is set only when the turn holds other permission levels than
+// the workflow's (a failed-run turn).
+func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) string {
 	date := now.UTC().Format("2006-01-02")
-	from := firstNonEmptyTrimmed(turn.From, "the owner")
+	levels := ""
+	if strings.TrimSpace(overrideLevels) != "" {
+		levels = "\n\nThis turn only: " + strings.TrimSpace(overrideLevels)
+	}
 	switch turn.Kind {
 	case goalLeadTurnCheck:
-		fmt.Fprintf(&b, "PULSE TURN: daily goal check, %s, workspace_path=%q. Load the goal-check skill (references/goal-lead-check.md) when you need the full procedure.\n\n%s", date, workspacePath, turn.Body)
+		return fmt.Sprintf("PULSE TURN: daily goal check, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnGoalWork:
-		fmt.Fprintf(&b, "PULSE TURN: Goal Work in the full Pulse, %s, workspace_path=%q. Load the Goal Work skill (references/goal-lead-work.md).\n\n%s", date, workspacePath, turn.Body)
+		return fmt.Sprintf("PULSE TURN: Goal Work, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnRunFailed:
-		fmt.Fprintf(&b, "PULSE TURN: a run of this workflow failed, %s, workspace_path=%q. The goal-check skill (references/goal-lead-check.md, \"Failed runs\") has the rule.\n\n%s\n\n%s", date, workspacePath, turn.Body, autonomyText)
+		return fmt.Sprintf("PULSE TURN: a run of this workflow failed, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnAsk:
-		if turn.OwnerRelay {
-			fmt.Fprintf(&b, `PULSE TURN: [Function call %s] a message from %s (workspace_path=%q), %s. The Builder chat passes the owner's words to you with ask_pulse and shows them your final reply; it does not see this conversation, so make the reply self-contained. %s
-
-%s
-
-Reply briefly and plainly. %s %s
-
-%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), goalLeadMarkedMessage(turn.Body), goalLeadOwnerDirectionRules, goalLeadAskClosingRules, autonomyText)
-			break
-		}
-		fmt.Fprintf(&b, `PULSE TURN: [Function call %s] %s, working on this workflow (workspace_path=%q), asks the Pulse (ask_pulse), %s. %s
-
-%s
-
-Answer as a recommendation: what you recommend and why, the evidence and your confidence. Say plainly when it is the owner's call, or when you do not know the owner's preference (goal memory holds what they already said). You never decide the owner's preferences and you cannot answer decision requests. Your final reply is returned to the caller as the answer: make it self-contained, the caller does not see this conversation. Do not run anything for it beyond your permission levels. %s
-
-%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), goalLeadMarkedMessage(turn.Body), goalLeadAskClosingRules, autonomyText)
+		return firstNonEmptyTrimmed(turn.From, "a chat of this workflow") + ": " + strings.TrimSpace(turn.Body) + levels
 	default:
-		where := "in the Pulse tab; your reply shows in the Pulse chat tab"
-		if turn.Kind == goalLeadTurnSlack {
-			where = "on Slack; your reply is posted in their thread"
-		}
-		fmt.Fprintf(&b, `PULSE TURN: a message from %s %s, %s, workspace_path=%q:
-
-%s
-
-Reply briefly and plainly. %s
-
-%s`, from, where, date, workspacePath, goalLeadMarkedMessage(turn.Body), goalLeadOwnerDirectionRules, autonomyText)
+		// The owner talking to Pulse (the Pulse tab or Slack): as typed.
+		return strings.TrimSpace(turn.Body) + levels
 	}
-	return b.String()
 }
 
 // runGoalLeadTurn runs one turn in the workflow's Pulse conversation and
@@ -489,21 +457,18 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 		reqMap["restored_conversation_session_id"] = sessionID
 	}
 
-	perms, autonomyText := goalWorkAutonomy(ctx, workspacePath)
+	perms, _ := goalWorkAutonomy(ctx, workspacePath)
+	overrideLevels := ""
 	if turn.Perms != nil {
 		perms = *turn.Perms
-		autonomyText = stepworkflow.GoalWorkAutonomyInstructions(perms)
+		overrideLevels = stepworkflow.GoalWorkAutonomyInstructions(perms)
 	}
-	reqMap["query"] = goalLeadTurnQuery(label, workspacePath, conv.Turns == 0, turn, autonomyText, now)
+	reqMap["query"] = goalLeadTurnQuery(turn, overrideLevels, now)
 
 	switch turn.Kind {
 	case goalLeadTurnOwner, goalLeadTurnSlack, goalLeadTurnAsk:
-		role := turn.Kind
-		if turn.OwnerRelay {
-			role = goalLeadTurnOwner
-		}
 		if !turn.Logged {
-			_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: role, Source: turn.From, Text: turn.Body, SessionID: sessionID})
+			_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: turn.Kind, Source: turn.From, Text: turn.Body, SessionID: sessionID})
 		}
 	}
 
@@ -514,7 +479,6 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	mcpagent.ClearHTTPSessionStopped(sessionID)
 	release := beginGoalWorkTurn(sessionID, perms)
 	defer release()
-	defer markGoalLeadTurnKind(sessionID, turn.Kind)()
 
 	// As the scheduler's own Pulse turns: the principal is the userID, not
 	// claims carried on ctx.

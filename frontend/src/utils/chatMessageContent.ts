@@ -4,24 +4,19 @@ const TRANSPORT_CONTEXT_MARKERS = [
 ]
 
 const PULSE_TURN_MARKER = 'PULSE TURN:'
-const PULSE_MESSAGE_OPEN = '--- message ---'
-const PULSE_MESSAGE_CLOSE = '--- end of message ---'
 const PULSE_TURN_LABELS: Array<[string, string]> = [
   ['PULSE TURN: daily goal check', 'Pulse: daily goal check'],
   ['PULSE TURN: Goal Work', 'Pulse: Goal Work'],
   ['PULSE TURN: a run of this workflow failed', 'Pulse: a run failed'],
 ]
 
-/** A Pulse turn carries pages of instructions around the person's words
- * (goal_lead_conversation.go). Show only those words, or a short label for
- * the automatic turns. Returns null for anything that is not a Pulse turn. */
+/** Pulse's automatic turns (goal check, Goal Work, a failed run) carry their
+ * task text; show a short label instead. Messages between people and agents
+ * are plain and shown as they are. Returns null when it is not such a turn. */
 export function pulseTurnDisplayText(content: string): string | null {
   const turnAt = content.indexOf(PULSE_TURN_MARKER)
   if (turnAt < 0) return null
   const turn = content.slice(turnAt)
-  const open = turn.indexOf(PULSE_MESSAGE_OPEN)
-  const close = turn.indexOf(PULSE_MESSAGE_CLOSE)
-  if (open >= 0 && close > open) return turn.slice(open + PULSE_MESSAGE_OPEN.length, close).trim()
   for (const [prefix, label] of PULSE_TURN_LABELS) {
     if (turn.startsWith(prefix)) return label
   }

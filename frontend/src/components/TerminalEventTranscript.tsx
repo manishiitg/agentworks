@@ -814,43 +814,6 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
   )
 }
 
-// The Builder chat and the workflow's Pulse talk in rounds on one topic
-// (ask_pulse threads, PLAT-697). The whole exchange reads as one block.
-const PulseThreadBlock: React.FC<{ item: Extract<TranscriptItem, { kind: 'pulse_thread' }> }> = ({ item }) => {
-  const [expanded, toggle] = useDisclosure(`pulse-thread:${item.key}`, false)
-  const rounds = item.rounds
-  const last = rounds[rounds.length - 1]
-  const running = last?.status === 'running'
-  const summary = last?.decision
-    ? `decision: ${last.decision}${last.ownerNeeded ? ` · owner needed: ${last.ownerNeeded}` : ''}`
-    : running ? 'Pulse is answering' : ''
-  return (
-    <div data-testid="terminal-pulse-thread" className="my-1">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        className="flex max-w-full items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span className="font-medium text-foreground">Builder ↔ Pulse: {rounds.length} {rounds.length === 1 ? 'round' : 'rounds'}</span>
-        {summary && <span className="truncate">· {summary}</span>}
-        {running && <span aria-hidden="true" className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/70" />}
-        {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-      </button>
-      {expanded && (
-        <ol className="mt-1 space-y-2 border-l border-border pl-3 text-xs leading-5">
-          {rounds.map((round, index) => (
-            <li key={index}>
-              <p className="whitespace-pre-wrap break-words text-muted-foreground"><span className="font-semibold text-foreground">Builder: </span>{round.message}</p>
-              <p className="mt-0.5 whitespace-pre-wrap break-words text-foreground"><span className="font-semibold">Pulse: </span>{round.answer || (round.status === 'running' ? '…' : '')}</p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  )
-}
-
 // A web search is something the reader wants to see (what was looked up, what
 // came back), so it gets its own collapsed card instead of hiding inside the
 // "N tool calls" chip. The other calls keep their chip, split around the
@@ -1210,8 +1173,6 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             ? <LiveAssistantTranscript text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'tools'
             ? <ToolBatch item={item} />
-            : item.kind === 'pulse_thread'
-            ? <PulseThreadBlock item={item} />
             : item.kind === 'thinking'
               ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} />
               : (

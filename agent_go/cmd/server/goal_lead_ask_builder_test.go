@@ -13,12 +13,11 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// PLAT-697: the Pulse asks the workflow's Builder chat. A fix request is sent
-// only when pulse.autonomy.change is auto; at ask it becomes one decision with
-// the Pulse's recommendation, and the owner's Accept carries it to the Builder
-// chat. A question goes at either level and may change nothing. The goal
-// check's context names plan changes since the last check.
-func TestPulseAskBuilderHonoursChangeLevelAndCheckSeesPlanChanges(t *testing.T) {
+// Pulse talks to the workflow's Builder chat like a colleague (owner,
+// 2026-10-08): its message arrives there as plain text from the Pulse, the
+// Builder chat's tools are held to Pulse's own permission levels, and the
+// reply comes back. The goal check also sees plan changes since the last check.
+func TestPulseTalksToTheBuilderChatWithinItsLevels(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -51,67 +50,27 @@ func TestPulseAskBuilderHonoursChangeLevelAndCheckSeesPlanChanges(t *testing.T) 
 	})
 
 	ctx := context.Background()
-	fix := pulseBuilderAskRequest{
-		UserID: "owner", WorkspacePath: ws, PulseSession: goalLeadSessionID("reports", 1), Kind: "fix",
-		Message:  "Make step-growth-summary record the subscriber delta every run.",
-		Evidence: "growth ran 6 times (runs 41-46) without a subscriber reading",
-		Title:    "Have the growth step record subscriber numbers every run?",
-		Why:      "The goal cannot be judged while growth runs record no subscriber numbers.",
-		Wait:     5 * time.Second,
+	msg := pulseBuilderAskRequest{
+		UserID: "owner", WorkspacePath: ws, PulseSession: goalLeadSessionID("reports", 1),
+		Message: "What changed in step-growth-summary yesterday, and why?",
+		Perms:   stepworkflow.GoalWorkPermissions{Run: true},
+		Wait:    5 * time.Second,
 	}
-
-	// change=ask: no Builder turn, one decision with the recommendation.
-	out, err := env.api.askBuilder(ctx, fix)
-	if err != nil || out["status"] != "decision_created" {
-		t.Fatalf("fix at change=ask = %v, %v; want a decision instead", out, err)
-	}
-	if len(turns) != 0 {
-		t.Fatalf("a fix at change=ask reached the Builder chat: %+v", turns)
-	}
-	pending, err := listReportHumanInputs(ctx, ws, "pending", "")
-	if err != nil || len(pending) != 1 {
-		t.Fatalf("pending decisions = %+v, %v", pending, err)
-	}
-	decision := pending[0]
-	if decision.ApplyContract.Mode != "targeted_fixer" || !strings.Contains(decision.ApplyContract.ApprovedScope, "step-growth-summary") ||
-		decision.Recommendation == nil || decision.Recommendation.OptionID != "approve" {
-		t.Fatalf("decision = %+v (recommendation %+v)", decision, decision.Recommendation)
-	}
-	answered, err := answerReportHumanInput(ctx, ws, decision.ID, ReportHumanInputAnswerRequest{SelectedOptionID: "approve", AnsweredBy: "owner", AnsweredByKind: "human_ui", AnsweredVia: "report_ui"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if apply := decisionApplyChatMessage(*answered); !strings.Contains(apply, "Apply it now, here in this chat") || !strings.Contains(apply, "step-growth-summary") {
-		t.Fatalf("Accept must send the fix to the Builder chat: %q", apply)
-	}
-
-	// change=auto: the fix runs in the Builder chat, which may change but not run.
-	fix.Perms = stepworkflow.GoalWorkPermissions{Change: true}
-	if out, err = env.api.askBuilder(ctx, fix); err != nil || out["status"] != "completed" {
-		t.Fatalf("fix at change=auto = %v, %v", out, err)
-	}
-	// A question goes at change=ask too, and its turn may change nothing.
-	question := pulseBuilderAskRequest{UserID: "owner", WorkspacePath: ws, PulseSession: fix.PulseSession, Kind: "question",
-		Message: "What changed in step-growth-summary yesterday, and why?", Wait: 5 * time.Second}
-	if out, err = env.api.askBuilder(ctx, question); err != nil || out["status"] != "completed" {
-		t.Fatalf("question at change=ask = %v, %v", out, err)
+	out, err := env.api.askBuilder(ctx, msg)
+	if err != nil || out["status"] != "completed" || !strings.Contains(fmt.Sprint(out["result"]), "records the subscriber delta") {
+		t.Fatalf("ask_builder = %v, %v", out, err)
 	}
 	mu.Lock()
-	if len(turns) != 2 || turns[0].session != builderChat || turns[1].session != builderChat {
+	if len(turns) != 1 || turns[0].session != builderChat {
 		t.Fatalf("Builder turns = %+v", turns)
 	}
-	if !strings.Contains(turns[0].query, "asks this Builder chat for a fix") || !turns[0].perms.Change || turns[0].perms.Run || turns[0].perms.Outward {
-		t.Fatalf("fix turn = %+v", turns[0])
+	if turns[0].query != "Reports Pulse: What changed in step-growth-summary yesterday, and why?" && !strings.HasSuffix(turns[0].query, "Pulse: What changed in step-growth-summary yesterday, and why?") {
+		t.Fatalf("the Builder chat received %q, want the plain message from Pulse", turns[0].query)
 	}
-	if !strings.Contains(turns[1].query, "asks this Builder chat a question") || turns[1].perms.Change || turns[1].perms.Run {
-		t.Fatalf("question turn = %+v", turns[1])
+	if !turns[0].perms.Run || turns[0].perms.Change || turns[0].perms.Outward {
+		t.Fatalf("the Builder chat must be held to Pulse's levels: %+v", turns[0].perms)
 	}
 	mu.Unlock()
-	// A failed-run turn may only ask questions.
-	fix.TurnKind = goalLeadTurnRunFailed
-	if _, err := env.api.askBuilder(ctx, fix); err == nil || !strings.Contains(err.Error(), "questions only") {
-		t.Fatalf("fix from a failed-run turn = %v", err)
-	}
 
 	// A plan edit since the last check appears in the check's context.
 	env.mock.mu.Lock()
@@ -123,7 +82,7 @@ func TestPulseAskBuilderHonoursChangeLevelAndCheckSeesPlanChanges(t *testing.T) 
 	if len(changes) != 1 || changes[0].StepIDs[0] != "step-growth-summary" || changes[0].Session != builderChat || !strings.Contains(fmt.Sprint(facts["plan_changes_note"]), "ask_builder") {
 		t.Fatalf("plan_changes = %+v", facts["plan_changes"])
 	}
-	if asks, _ := facts["builder_asks"].([]map[string]string); len(asks) != 2 || asks[0]["status"] != "completed" {
+	if asks, _ := facts["builder_asks"].([]map[string]string); len(asks) != 1 || asks[0]["status"] != "completed" {
 		t.Fatalf("builder_asks = %+v", facts["builder_asks"])
 	}
 }

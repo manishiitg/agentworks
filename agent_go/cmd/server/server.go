@@ -7506,6 +7506,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Workflow browser configuration is authoritative; do not add the
 				// generic chat browser pointer as well.
 				promptCtx.BrowserPointer = ""
+				// The Pulse conversation's standing instructions live in its
+				// system prompt, never in its messages (PLAT-697).
+				if isGoalLeadSessionID(sessionID) {
+					if section := goalLeadSystemSection(context.Background(), phaseWorkspacePath); section != "" {
+						phaseAdditions = append(phaseAdditions, section)
+					}
+				}
 				phaseSystemPrompt, phaseIncluded, phaseSkipped, phasePromptErr := buildWorkflowPhaseSystemPrompt(workflowPhaseID, phaseTemplateVars, promptCtx, phaseAdditions...)
 				if phasePromptErr != nil {
 					sendError(fmt.Sprintf("Failed to assemble the system prompt for phase %s: %v", workflowPhaseID, phasePromptErr), true)
@@ -7693,6 +7700,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				policyWorkflowKind = "relay"
 			}
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
+			// Pulse's system prompt carries its permission levels: a change
+			// relaunches the retained CLI on the same conversation.
+			if isGoalLeadSessionID(sessionID) {
+				if key := goalLeadSystemSectionKey(goalLeadSystemSection(context.Background(), req.SelectedFolder)); key != "" {
+					policyKey += ":pulse-" + key
+				}
+			}
 			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()

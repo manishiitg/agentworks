@@ -427,3 +427,16 @@ Left / risks:
 
 The daily goal check is skipped while schedules are globally paused (`launchDueGoalChecks` returns early), so the owner never saw one. The goal status card has a **Run goal check now** button (`POST /api/scheduler/workflows/goal-check-run`, write access) that starts the same run as the scheduled check (`TriggerGoalCheck`). With all schedules paused that check is report-only, as designed.
 - 2026-10-08: the Pulse chat tab showed whole turn instructions as the owner message; Pulse turns now mark the words a person sent and the chat shows only those (automatic turns show a short label). Enter sends in Talk to Pulse. "Run Goal Work now" on a goal workflow starts Goal Work in the Pulse conversation instead of `/run-goal-work` in the Builder chat.
+
+## Two agents talking (2026-10-08)
+
+The owner: "i just want two agents talking with each other". The Builder ↔ Pulse
+protocol (threads, rounds, `decision:` / `owner_needed:` lines, question/fix kinds,
+per-message rules, the grouped transcript block) is removed. `ask_pulse` and
+`ask_builder` take one plain message; it arrives with its sender and the reply comes
+back. Pulse's charter, its owner-message rules and its permission levels are in its
+system prompt (`goalLeadSystemSection`, added to the workflow phase prompt; its hash
+joins the chat policy fingerprint). The owner's messages reach Pulse as typed. While
+the Builder chat handles Pulse's message, its tools are held to Pulse's levels.
+Tests: `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks` and
+`TestPulseTalksToTheBuilderChatWithinItsLevels` check the behaviour, not wording.

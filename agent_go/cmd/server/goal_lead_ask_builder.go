@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,33 +19,19 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// ask_builder (PLAT-697): the Pulse asks the workflow's Builder chat, the
-// reverse of ask_pulse, by the same function-call mechanism (a call id and a
-// saved record, the chain guard, 20 an hour per workflow, a bounded wait).
-//
-//   - kind=question: "what changed in step X and why?", "what did the owner
-//     decide about Dubai?". The Builder chat answers from its own
-//     conversation; nothing in it may change, run or send anything for it.
-//   - kind=fix: a concrete repair with evidence. Only when the turn holds
-//     pulse.autonomy.change=auto. At ask the request becomes one decision with
-//     the Pulse's recommendation; the owner's Accept sends it to the Builder
-//     chat through the existing apply-in-chat path (decision_apply_chat.go).
-//     Never for soul.md, deletions or contract migrations, and never from a
-//     failed-run turn (questions only there).
-//
-// The target is the owner's most recently active Builder chat for the
-// workflow (live first, else the latest saved one, as the web Builder
-// restores it). With none, a question is refused and a fix becomes a decision;
-// no chat is created. The ask runs there as a normal turn, so the owner sees
-// the request and the reply in that chat. While it runs, that chat's tools are
-// held by the phase 2 guard: a question may not change, run or send anything;
-// a fix may change the workflow but not run it, send, delete or migrate.
+// ask_builder: the Pulse talks to the workflow's Builder chat, the reverse of
+// ask_pulse and by the same function-call mechanism (call id, saved record,
+// chain guard, 20 an hour per workflow, a bounded wait). The message arrives
+// in the owner's most recently active Builder chat as plain text from the
+// Pulse, where the owner can watch, and the chat's reply comes back. While
+// that turn runs, the Builder chat's tools are held to the Pulse's own
+// permission levels (the phase 2 guard), so the Pulse cannot get done through
+// the Builder what it may not do itself; deleting, replacing the plan and
+// migrations stay refused either way (owner, 2026-10-08: two agents talking).
 
 const (
 	pulseBuilderAskCreatedBy = "platform (pulse ask builder)"
 	pulseBuilderAskToolName  = "ask_builder"
-	pulseBuilderAskKindQ     = "question"
-	pulseBuilderAskKindFix   = "fix"
 	pulseBuilderChatKey      = "goal-lead"
 )
 
@@ -96,37 +81,13 @@ func (l *hourlyAskLimiter) admit(workspacePath string, now time.Time, perHour in
 
 var pulseBuilderAsks = &hourlyAskLimiter{}
 
-// goalLeadTurnKinds records the kind of the Pulse turn running in a session,
-// so ask_builder knows a failed-run turn (questions only).
-var goalLeadTurnKinds sync.Map
-
-func markGoalLeadTurnKind(sessionID, kind string) func() {
-	goalLeadTurnKinds.Store(sessionID, kind)
-	return func() { goalLeadTurnKinds.CompareAndDelete(sessionID, kind) }
-}
-
-func goalLeadTurnKindFor(sessionID string) string {
-	kind, _ := goalLeadTurnKinds.Load(strings.TrimSpace(sessionID))
-	value, _ := kind.(string)
-	return value
-}
-
-// pulseBuilderForbiddenFix names what a fix request may never ask for.
-var pulseBuilderForbiddenFix = regexp.MustCompile(`(?i)soul\.md|\bsoul file\b|\b(?:delete|remove|drop)\b[^.]{0,40}\b(?:steps?|schedules?|routes?|groups?|plan|workflow)\b|\bmigrat|contract[_ ]version|replace the (?:whole )?plan|create_plan`)
-
-// pulseBuilderAskRequest is one ask_builder call from a Pulse turn.
 type pulseBuilderAskRequest struct {
 	UserID        string
 	WorkspacePath string
 	PulseSession  string
-	Kind          string
 	Message       string
-	Evidence      string
-	Title         string
-	Why           string
 	BuilderChat   string
 	Perms         stepworkflow.GoalWorkPermissions
-	TurnKind      string
 	Wait          time.Duration
 	SubmissionID  string
 }
@@ -157,13 +118,6 @@ var pulseBuilderAskTurn func(ctx context.Context, reqMap map[string]interface{},
 
 // askBuilder runs one ask_builder call.
 func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequest) (map[string]interface{}, error) {
-	req.Kind = strings.ToLower(strings.TrimSpace(req.Kind))
-	if req.Kind == "" {
-		req.Kind = pulseBuilderAskKindQ
-	}
-	if req.Kind != pulseBuilderAskKindQ && req.Kind != pulseBuilderAskKindFix {
-		return nil, fmt.Errorf("kind must be question or fix")
-	}
 	req.Message = strings.TrimSpace(req.Message)
 	if req.Message == "" {
 		return nil, fmt.Errorf("message is required")
@@ -175,23 +129,6 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	if err != nil || !found || manifest == nil {
 		return nil, fmt.Errorf("cannot read this workflow")
 	}
-	if req.Kind == pulseBuilderAskKindFix {
-		if req.TurnKind == goalLeadTurnRunFailed {
-			return nil, fmt.Errorf("refused: a failed-run turn may ask the Builder chat questions only; for a failure that threatens the goal call record_pulse_qa_request")
-		}
-		if match := pulseBuilderForbiddenFix.FindString(req.Message + "\n" + req.Title); match != "" {
-			return nil, fmt.Errorf("refused: ask_builder never asks for soul.md edits, deletions or contract migrations (matched %q); propose it to the owner as a decision instead", match)
-		}
-		if strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Why) == "" || strings.TrimSpace(req.Evidence) == "" {
-			return nil, fmt.Errorf("a fix request needs title (one plain sentence for the owner), why (how it serves the goal) and evidence (runs, steps, numbers)")
-		}
-		if err := checkPulsePlainText("evidence", plainTextField{name: "title", text: req.Title, maxLen: 200}, plainTextField{name: "why", text: req.Why, maxLen: 400}); err != nil {
-			return nil, err
-		}
-		if !req.Perms.Change {
-			return api.pulseBuilderFixDecision(ctx, req, "pulse.autonomy.change is ask for this turn")
-		}
-	}
 	if err := pulseBuilderPingPong(manifest.ID); err != nil {
 		return nil, err
 	}
@@ -200,13 +137,10 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 		return nil, err
 	}
 	if builderSession == "" {
-		if req.Kind == pulseBuilderAskKindFix {
-			return api.pulseBuilderFixDecision(ctx, req, "the workflow has no Builder chat of the owner's yet")
-		}
-		return map[string]interface{}{"status": "no_builder_chat", "note": "The owner has no Builder chat for this workflow yet, so there is no conversation to ask. Read planning/changelog and the run records yourself, or ask the owner in your message."}, nil
+		return map[string]interface{}{"status": "no_builder_chat", "note": "The owner has no Builder chat for this workflow yet. Read planning/changelog and the run records yourself, or ask the owner."}, nil
 	}
 	if api.conversationTurnOccupied(builderSession) {
-		return nil, fmt.Errorf("the Builder chat is busy with another turn now (the owner may be using it); ask again on a later turn")
+		return nil, fmt.Errorf("the Builder chat is busy with another turn now (the owner may be using it); try again on a later turn")
 	}
 	if !pulseBuilderAsks.admit(req.WorkspacePath, time.Now(), goalLeadAsksPerHour) {
 		return nil, fmt.Errorf("refused: the Builder chat was asked %d times in the last hour; continue with what you have", goalLeadAsksPerHour)
@@ -216,10 +150,7 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Pulse", SessionID: req.PulseSession}}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest,
 		Chat: &codeChat{Key: "session:" + builderSession, ID: builderSession, Name: label + " Builder chat", SessionID: builderSession}}
-	args := map[string]interface{}{"message": req.Message, "kind": req.Kind}
-	if req.Evidence != "" {
-		args["evidence"] = strings.TrimSpace(req.Evidence)
-	}
+	args := map[string]interface{}{"message": req.Message, "run": req.Perms.Run, "outward": req.Perms.Outward, "change": req.Perms.Change}
 	call, err := api.startCrewFunctionCall(ctx, req.UserID, caller, target, pulseBuilderAskFunction(), args, triggerTargetDefaultTimeout, req.SubmissionID)
 	if err != nil {
 		return nil, err
@@ -233,11 +164,8 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	}
 	out := call.snapshot()
 	out["builder_session_id"] = builderSession
-	out["kind"] = req.Kind
 	if !call.settled() {
-		out["next"] = "The Builder chat is still working. Its answer is saved and shown to you as builder_asks on your next goal check (or read it with get_function_call(call_id)); continue without it."
-	} else if req.Kind == pulseBuilderAskKindQ {
-		out["next"] = "Record what matters from this answer in goal memory: record_pulse_goal_memory(source=\"builder_answer\"), one dated line."
+		out["next"] = "The Builder chat is still replying. Its reply is saved and shown to you as builder_asks on your next goal check (or read it with get_function_call(call_id))."
 	}
 	return out, nil
 }
@@ -265,55 +193,10 @@ func pulseBuilderPingPong(workflowID string) error {
 	return nil
 }
 
-// pulseBuilderFixDecision turns a fix request into one decision with the
-// Pulse's recommendation. Accept sends it to the Builder chat (apply in chat).
-func (api *StreamingAPI) pulseBuilderFixDecision(ctx context.Context, req pulseBuilderAskRequest, why string) (map[string]interface{}, error) {
-	input, err := createReportHumanInput(ctx, req.WorkspacePath, ReportHumanInputCreateRequest{
-		Source:   "strategic_review",
-		Priority: "normal",
-		Question: strings.TrimSpace(req.Title),
-		Context:  "Pulse wants the Builder chat to make this fix:\n" + req.Message + "\n\nWhy: " + strings.TrimSpace(req.Why) + "\n\nAccept sends it to the Builder chat, which makes the change where you can watch.",
-		Options: []ReportHumanInputOption{
-			{ID: "approve", Title: "Make this fix", Description: "The Builder chat makes the change and checks it."},
-			{ID: "decline", Title: "Leave it as it is", Description: "Nothing changes."},
-		},
-		Evidence:      strings.TrimSpace(req.Evidence),
-		CreatedBy:     "pulse",
-		CreatedByKind: "agent",
-		CreatedVia:    pulseBuilderAskToolName,
-		SessionID:     req.PulseSession,
-		ApplyContract: ReportHumanInputApplyContract{Mode: "targeted_fixer", ApprovedScope: req.Message},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("could not record the fix as a decision: %w", err)
-	}
-	recCtx := executor.WithSessionID(ctx, req.PulseSession)
-	if _, err := recordPulseRecommendationFromToolArgs(recCtx, map[string]interface{}{
-		"workspace_path": req.WorkspacePath, "input_id": input.ID, "option_id": "approve",
-		"why": req.Why, "evidence": req.Evidence, "confidence": "medium",
-	}); err != nil {
-		return nil, fmt.Errorf("decision %s was created but the recommendation was not recorded: %w", input.ID, err)
-	}
-	return map[string]interface{}{
-		"status":   "decision_created",
-		"input_id": input.ID,
-		"reason":   "Not sent to the Builder chat: " + why + ".",
-		"note":     "The fix is now one decision with your recommendation (Make this fix). The owner's Accept sends it to the Builder chat. Name it in your check summary and goal message; do not ask again.",
-	}, nil
-}
-
-// pulseBuilderAskText is the Builder chat's turn for an ask.
-func pulseBuilderAskText(callID, label, kind, message, evidence string) string {
-	if kind == pulseBuilderAskKindFix {
-		var b strings.Builder
-		fmt.Fprintf(&b, "[Function call %s] The %s (the platform's owner of this workflow's goal) asks this Builder chat for a fix (ask_builder; the owner set pulse.autonomy.change to auto):\n\n%s\n", callID, label, strings.TrimSpace(message))
-		if evidence = strings.TrimSpace(evidence); evidence != "" {
-			fmt.Fprintf(&b, "\nEvidence: %s\n", evidence)
-		}
-		b.WriteString("\nMake the smallest change that does this with the normal typed Builder tools, check it (validate_plan_change when the plan changed) and re-read what you changed. Do not edit soul/soul.md, delete steps or schedules, replace the plan or migrate contracts; if the fix needs any of that, change nothing and say so. Do not run the workflow, back up, publish or notify. Your final reply goes back to the Pulse: what you changed, what you checked and what a later run must still prove.")
-		return b.String()
-	}
-	return fmt.Sprintf("[Function call %s] The %s (the platform's owner of this workflow's goal) asks this Builder chat a question (ask_builder):\n\n%s\n\nAnswer from this conversation and the workflow's files: what changed, when and why, and what the owner said or decided. Say plainly what you do not know. Do not change, run or send anything for this question. Your final reply goes back to the Pulse; make it self-contained.", callID, label, strings.TrimSpace(message))
+// pulseBuilderAskText is the Builder chat's turn: the Pulse's message, with
+// its sender.
+func pulseBuilderAskText(label, message string) string {
+	return label + ": " + strings.TrimSpace(message)
 }
 
 // runPulseBuilderAsk runs the ask as a turn in the Builder chat and settles
@@ -324,10 +207,12 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 	defer cancel()
 	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
 	message, _ := args["message"].(string)
-	kind, _ := args["kind"].(string)
-	evidence, _ := args["evidence"].(string)
+	run, _ := args["run"].(bool)
+	outward, _ := args["outward"].(bool)
+	change, _ := args["change"].(bool)
+	perms := stepworkflow.GoalWorkPermissions{Run: run, Outward: outward, Change: change}
 	session := target.Chat.SessionID
-	recordPulseBuilderAsk(ctx, target.Path, call.ID, kind, session, message)
+	recordPulseBuilderAsk(ctx, target.Path, call.ID, "message", session, message)
 	// The record comes first: a waiting caller reads it as soon as the call
 	// settles.
 	settle := func(status, answer, failure string) {
@@ -336,7 +221,7 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 		if status != "completed" {
 			text = "The Builder chat did not answer: " + failure
 		}
-		_ = appendGoalLeadMessage(context.WithoutCancel(ctx), target.Path, GoalLeadMessage{Role: "builder_answer", Source: kind, Text: text})
+		_ = appendGoalLeadMessage(context.WithoutCancel(ctx), target.Path, GoalLeadMessage{Role: "builder_answer", Text: text})
 		if status == "completed" {
 			call.settle(status, map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
 		} else {
@@ -347,11 +232,11 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 		settle("failed", "", "workflow is unavailable")
 		return
 	}
-	_ = appendGoalLeadMessage(ctx, target.Path, GoalLeadMessage{Role: "ask_builder", Source: kind, Text: "Asked the Builder chat (" + kind + "): " + message})
+	_ = appendGoalLeadMessage(ctx, target.Path, GoalLeadMessage{Role: "ask_builder", Text: "To the Builder chat: " + message})
 	query := QueryRequest{
-		Query: pulseBuilderAskText(call.ID, caller.Label, kind, message, evidence), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
+		Query: pulseBuilderAskText(caller.Label, message), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
 		PresetQueryID: target.Manifest.ID, SelectedFolder: target.Path,
-		TriggeredBy: "external", TriggeredByLabel: "Pulse (" + kind + ")",
+		TriggeredBy: "external", TriggeredByLabel: "Pulse",
 		ExecutionOptions: &ExecutionOptions{WorkshopMode: "workshop"},
 	}
 	if api.workflowAskSessionExists(session, target.Path) {
@@ -367,10 +252,9 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 	call.RunID, call.RunIDs = session, []string{session}
 	call.mu.Unlock()
 	call.persist()
-	// The Builder chat's tools for this turn: a question changes, runs and
-	// sends nothing; a fix may change the workflow, never run it or send.
-	// Deleting, replacing the plan and migrations stay refused either way.
-	release := beginGoalWorkTurn(session, stepworkflow.GoalWorkPermissions{Change: kind == pulseBuilderAskKindFix})
+	// The Builder chat's tools for this turn are held to the Pulse's own
+	// levels; deleting, replacing the plan and migrations stay refused.
+	release := beginGoalWorkTurn(session, perms)
 	defer release()
 	turnDone := make(chan struct{})
 	go api.watchAskActivity(call, session, fmt.Sprintf("the Builder chat of %q", target.Manifest.Label), timeout, turnDone)
@@ -467,22 +351,17 @@ func recentPulseBuilderAsks(ctx context.Context, workspacePath string, since tim
 func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name: pulseBuilderAskToolName,
-		Description: "Pulse only: ask this workflow's Builder chat (the owner's most recently active one), where the owner can watch. kind=question: what changed in a step and why, what the owner decided; it answers from its own conversation and changes nothing. " +
-			"kind=fix: one bounded repair with evidence (\"make step-growth-summary record the subscriber delta every run\"); sent only when pulse.autonomy.change is auto for this turn, otherwise it becomes one decision with your recommendation and the owner's Accept sends it to the Builder chat. Never for soul.md, deletions or contract migrations; a failed-run turn may only ask questions; never ask back a Builder chat that asked you. " +
+		Description: "Talk to this workflow's Builder chat (the owner's most recently active one, where they can watch): ask what changed and why or what the owner decided, or ask it to make a change. It works within your own permission levels, and its reply comes back. " +
 			"Waits up to wait_seconds (default 90) for the reply; a later reply reaches your next goal check as builder_asks. Capped at 20 an hour per workflow.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"kind":               map[string]interface{}{"type": "string", "enum": []string{pulseBuilderAskKindQ, pulseBuilderAskKindFix}},
-				"message":            map[string]interface{}{"type": "string", "minLength": 1, "description": "Self-contained question, or the exact fix (step ids, what to change); the Builder chat does not see your conversation."},
-				"evidence":           map[string]interface{}{"type": "string", "description": "fix: runs, steps and numbers that show the problem."},
-				"title":              map[string]interface{}{"type": "string", "description": "fix: one plain sentence for the owner, used when it becomes a decision (no code terms)."},
-				"why":                map[string]interface{}{"type": "string", "description": "fix: how the fix serves the goal, plain words, at most 400 characters."},
+				"message":            map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to the Builder chat, as you would write it to a colleague."},
 				"builder_session_id": map[string]interface{}{"type": "string", "description": "Optional: one of the owner's Builder chats of this workflow (e.g. a plan change's session_id); default the most recently active one."},
 				"wait_seconds":       map[string]interface{}{"type": "integer", "minimum": 0, "maximum": goalLeadAskMaxWaitSecond},
-				"submission_id":      map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this ask; reuse it after an uncertain retry to get the original call."},
+				"submission_id":      map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original call."},
 			},
-			"required": []string{"kind", "message"},
+			"required": []string{"message"},
 		}),
 	}}
 	execute := func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -515,9 +394,8 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 		}
 		out, err := api.askBuilder(ctx, pulseBuilderAskRequest{
 			UserID: claims.UserID, WorkspacePath: workspacePath, PulseSession: sessionID,
-			Kind: stringToolArg(args, "kind"), Message: stringToolArg(args, "message"), Evidence: stringToolArg(args, "evidence"),
-			Title: stringToolArg(args, "title"), Why: stringToolArg(args, "why"), BuilderChat: stringToolArg(args, "builder_session_id"),
-			Perms: perms, TurnKind: goalLeadTurnKindFor(sessionID), Wait: wait, SubmissionID: stringToolArg(args, "submission_id"),
+			Message: stringToolArg(args, "message"), BuilderChat: stringToolArg(args, "builder_session_id"),
+			Perms: perms, Wait: wait, SubmissionID: stringToolArg(args, "submission_id"),
 		})
 		if err != nil {
 			return "", err

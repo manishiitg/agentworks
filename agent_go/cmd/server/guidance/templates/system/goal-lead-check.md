@@ -65,8 +65,8 @@ them; do not recompute them.
 
 - **plan_changes**: plan edits (step, reason, who, session). For one that
   touches a goal-driving step or how the metric is measured,
-  `ask_builder(kind="question")` what changed and why (pass its `session_id`
-  as `builder_session_id` when it was a Builder chat), and record the answer
+  ask the Builder chat with `ask_builder` what changed and why (pass its
+  `session_id` as `builder_session_id` when it was a Builder chat), and record the answer
   with `record_pulse_goal_memory(source="builder_answer")`.
 - **owner_answers**: decisions the owner answered. Copy lasting direction into
   memory if it is not there. Owner messages in Builder chats are not collected:
@@ -84,9 +84,7 @@ them; do not recompute them.
 
 ## The Builder chat
 
-`ask_builder` reaches the owner's most recent Builder chat, where the owner can
-watch. `kind="question"` changes nothing. `kind="fix"` (title, why, evidence)
-is sent only when Change is auto; at ask it becomes one decision with your
-recommendation, and Accept sends it to the Builder chat. Never for soul.md,
-deletions or contract migrations, never from a failed-run turn, and never back
-to a Builder chat that asked you.
+`ask_builder` sends a message to the owner's most recent Builder chat, where the
+owner can watch; its reply comes back. Write it as to a colleague: a question,
+or a change you want made. It works within your own permission levels for this
+turn. Never back to a Builder chat that is talking to you right now.
