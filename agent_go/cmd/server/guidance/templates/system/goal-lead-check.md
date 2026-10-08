@@ -36,6 +36,11 @@ own continuing conversation.
 7. **Record** `record_pulse_goal_check` once (at_risk, off_track or not_measured,
    key_number with its date, a plain one or two sentence summary, action_taken,
    decision_id when you created one).
+   Every record (on track too) chooses the next check: `next_check_in_hours`
+   (1-168) and `next_check_reason`. Pick it from when the goal can next move:
+   soon after the next run that should move it, a few hours while a fix you
+   asked for is pending, days for a weekly workflow. Omitted: 24 hours. A
+   failed run wakes you anyway.
 8. **Tell the Builder chat when the owner should know.** You send no
    notifications. When something needs the owner's attention (the goal is off
    track, a decision waits), tell the Builder chat with `ask_builder` in a few

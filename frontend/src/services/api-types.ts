@@ -762,6 +762,9 @@ export interface PulseGoalStatus {
     summary: string
     action_taken?: string
     decision_id?: string
+    /** When Pulse chose to check next, and why. */
+    next_check_at?: string
+    next_check_reason?: string
   } | null
 }
 

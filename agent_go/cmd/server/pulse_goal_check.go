@@ -23,9 +23,12 @@ import (
 // shown at the top of the Pulse tab and leads the Pulse summary notification.
 
 const (
-	// goalCheckInterval: the goal check runs daily, whether or not the full
-	// Pulse review does.
+	// goalCheckInterval: the next goal check when the Pulse chose no time.
+	// Each check may choose its next one (next_check_in_hours) within
+	// goalCheckMinGap..goalCheckMaxGap (owner, 2026-10-08).
 	goalCheckInterval = 24 * time.Hour
+	goalCheckMinGap   = time.Hour
+	goalCheckMaxGap   = 7 * 24 * time.Hour
 	// goalCheckRetryGap stops a goal check that did not record a result from
 	// being started again every tick.
 	goalCheckRetryGap = 3 * time.Hour
@@ -58,7 +61,9 @@ const pulseGoalChecksSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_checks (
 	action_taken TEXT NOT NULL DEFAULT '',
 	decision_id TEXT NOT NULL DEFAULT '',
 	alarms_json TEXT NOT NULL DEFAULT '[]',
-	pause_fingerprint TEXT NOT NULL DEFAULT ''
+	pause_fingerprint TEXT NOT NULL DEFAULT '',
+	next_check_at TEXT NOT NULL DEFAULT '',
+	next_check_reason TEXT NOT NULL DEFAULT ''
 )`
 
 const pulseGoalCheckRunsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_check_runs (
@@ -78,6 +83,25 @@ type PulseGoalCheck struct {
 	DecisionID       string            `json:"decision_id,omitempty"`
 	Alarms           []goalcheck.Alarm `json:"alarms"`
 	PauseFingerprint string            `json:"pause_fingerprint,omitempty"`
+	// NextCheckAt is when this check chose the next one; NextCheckReason why.
+	NextCheckAt     string `json:"next_check_at,omitempty"`
+	NextCheckReason string `json:"next_check_reason,omitempty"`
+}
+
+// nextGoalCheckDue is when the next goal check is due after check: the time it
+// chose, or a day after it.
+func nextGoalCheckDue(check *PulseGoalCheck) time.Time {
+	if check == nil {
+		return time.Time{}
+	}
+	checked := parseStoredTime(check.CheckedAt)
+	if checked.IsZero() {
+		return time.Time{}
+	}
+	if chosen := parseStoredTime(check.NextCheckAt); !chosen.IsZero() {
+		return chosen
+	}
+	return checked.Add(goalCheckInterval)
 }
 
 // GoalStatusView is the goal status shown first to the agent and the owner.
@@ -93,6 +117,13 @@ type GoalStatusView struct {
 func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
 	for _, ddl := range []string{pulseGoalChecksSchema, pulseGoalCheckRunsSchema} {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
+			return err
+		}
+	}
+	// Tables created before the Pulse chose its next check gain the columns.
+	for _, column := range []string{"next_check_at", "next_check_reason"} {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_goal_checks ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
 		}
 	}
@@ -112,9 +143,9 @@ func latestPulseGoalCheck(ctx context.Context, workspacePath string) (*PulseGoal
 	_ = db.QueryRowContext(ctx, `SELECT COALESCE(MAX(started_at),'') FROM pulse_goal_check_runs`).Scan(&lastStarted)
 	var check PulseGoalCheck
 	var alarms string
-	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint
+	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason
 		FROM pulse_goal_checks ORDER BY checked_at DESC LIMIT 1`).Scan(&check.CheckID, &check.CheckedAt, &check.PulseRunID, &check.Status,
-		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint)
+		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint, &check.NextCheckAt, &check.NextCheckReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, parseStoredTime(lastStarted), nil
 	}
@@ -299,18 +330,34 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	if err := ensurePulseGoalCheckSchema(ctx, db); err != nil {
 		return "", err
 	}
+	// The Pulse chooses its next check: hours from now, within 1 hour and 7
+	// days; none means a day.
+	nextGap := goalCheckInterval
+	nextReason := strings.TrimSpace(stringToolArg(args, "next_check_reason"))
+	if hours, ok := args["next_check_in_hours"].(float64); ok && hours > 0 {
+		nextGap = time.Duration(hours * float64(time.Hour))
+		if nextGap < goalCheckMinGap {
+			nextGap = goalCheckMinGap
+		}
+		if nextGap > goalCheckMaxGap {
+			nextGap = goalCheckMaxGap
+		}
+	} else {
+		nextReason = ""
+	}
+	nextAt := now.Add(nextGap)
 	buf := make([]byte, 4)
 	_, _ = rand.Read(buf)
 	checkID := "GC-" + strings.ToUpper(hex.EncodeToString(buf))
 	alarms, _ := json.Marshal(view.Facts.Alarms)
-	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint)
-		VALUES (?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), stringToolArg(args, "pulse_run_id"), status,
+	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), stringToolArg(args, "pulse_run_id"), status,
 		strings.TrimSpace(stringToolArg(args, "key_number")), summary, strings.TrimSpace(stringToolArg(args, "action_taken")),
-		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint)
+		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason)
 	if err != nil {
 		return "", err
 	}
-	next := "Goal check recorded."
+	next := fmt.Sprintf("Goal check recorded. Next check: %s.", nextAt.Format("Mon 2 Jan 15:04 MST"))
 	if status == "on_track" && len(view.Facts.Alarms) == 0 {
 		next += " On track: stop here."
 	}
@@ -319,7 +366,7 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 
 // decideGoalCheckDue: daily, never right after a check that did not finish,
 // and for a paused workflow only to report a pause (or a change) once.
-func decideGoalCheckDue(facts goalcheck.Facts, lastCheck, lastStarted, now time.Time) (bool, string) {
+func decideGoalCheckDue(facts goalcheck.Facts, nextDue, lastStarted, now time.Time) (bool, string) {
 	if !lastStarted.IsZero() && now.Sub(lastStarted) < goalCheckRetryGap {
 		return false, "a goal check started recently"
 	}
@@ -329,14 +376,10 @@ func decideGoalCheckDue(facts goalcheck.Facts, lastCheck, lastStarted, now time.
 		}
 		return true, "schedules are paused; report it once"
 	}
-	last := lastCheck
-	if lastStarted.After(last) {
-		last = lastStarted
+	if !nextDue.IsZero() && now.Before(nextDue) {
+		return false, "next check chosen for " + nextDue.Format(time.RFC3339)
 	}
-	if !last.IsZero() && now.Sub(last) < goalCheckInterval {
-		return false, "checked within the last day"
-	}
-	return true, "daily goal check"
+	return true, "goal check due"
 }
 
 // launchDueGoalChecks runs on every scheduler tick after the full Pulse and
@@ -365,11 +408,8 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 		if !lastStarted.IsZero() && now.Sub(lastStarted) < goalCheckRetryGap {
 			continue
 		}
-		lastCheck := time.Time{}
-		if latest != nil {
-			lastCheck = parseStoredTime(latest.CheckedAt)
-		}
-		if !workflowSchedulesAllPaused(item.Manifest) && !lastCheck.IsZero() && now.Sub(lastCheck) < goalCheckInterval {
+		nextDue := nextGoalCheckDue(latest)
+		if !workflowSchedulesAllPaused(item.Manifest) && !nextDue.IsZero() && now.Before(nextDue) {
 			continue
 		}
 		// A paused workflow, or one with no goal, would otherwise be
@@ -383,7 +423,7 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 			scheduleLogf("[PULSE] cannot compute goal facts for %s: %v", workspacePath, err)
 			continue
 		}
-		due, reason := decideGoalCheckDue(view.Facts, lastCheck, lastStarted, now)
+		due, reason := decideGoalCheckDue(view.Facts, nextDue, lastStarted, now)
 		if !due {
 			continue
 		}
@@ -434,9 +474,10 @@ Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, 
 
 1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Decide: is the goal measured, is it moving, is the work that drives it running?
 2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so. For each active focus area in focus_areas, call record_pulse_focus_area(action="track") with moving, stuck (and the one clear ask) or done; close a done or expired one with action="close" and a one-line lesson (for an expired one, say why and propose extend, change or drop). Read run_health: no separate Technical review runs after this workflow's runs, so you are its safety net. For a failed run or step that blocks or threatens the goal, diagnose it and ask the Builder chat (ask_builder) to debug and fix it with your evidence; note the other failures and concerns in one line in your summary. If the goal has no metric yet, get one set up through the Builder chat first. Then read plan_changes, owner_answers, spend, error_rate, login_hints and builder_asks and act on each as its note says: ask the Builder chat (ask_builder) about a plan change that touches a goal-driving step or the metric and record the answer in goal memory (source builder_answer).
-3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary) and stop. No notification.
+3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary, next_check_in_hours, next_check_reason) and stop. No notification.
 4. Otherwise act within the permission levels below, smallest useful step first. You run and change nothing yourself: ask the Builder chat (ask_builder) to run the goal-driving step or route, or to make the change. At an auto level it does so without the owner; at ask, prepare it as a decision. Then, if the owner is needed, create ONE batched create_human_input_request(source="strategic_review", input_id="goal-check-<date>") that names the problem in one line, and attach your recommendation to it with record_pulse_recommendation (with a safe default by a time only when one is safe); the owner confirms recommendations. Reuse a pending goal-check decision instead of creating another. Never guess the owner's preference: say you do not know it.
 5. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when you created one.
+   Choose when to check next with next_check_in_hours (1 to 168) and a short next_check_reason: soon after the next run that should move the goal, a few hours while a fix you asked for is pending, or days for a workflow that runs weekly. Without it the next check is in 24 hours. A failed run wakes you anyway.
 6. You send no notifications. When the owner should know (the goal is off track, a decision waits), tell the Builder chat with ask_builder in a few plain lines: the status, key number and when it was last measured, what you did and what you need; it decides whether to notify the owner.%s%s
 
 %s`, pulseRunID, facts, goalLead, routing, finalizerRichEmailInstruction, autonomyText) + pausedRule}

@@ -75,7 +75,8 @@ export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus 
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <p className="text-[10px] text-muted-foreground">
-          {check ? `Goal check ${formatDate(check.checked_at)}` : 'No goal check yet; the daily check runs on its own.'}
+          {check ? `Goal check ${formatDate(check.checked_at)}` : 'No goal check yet; Pulse checks the goal on its own.'}
+          {check?.next_check_at && ` · Next check ${formatDate(check.next_check_at)}${check.next_check_reason ? `: ${check.next_check_reason}` : ''}`}
         </p>
         {workspacePath && (
           <button
