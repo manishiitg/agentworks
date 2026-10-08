@@ -247,7 +247,8 @@ it('shows each account\'s models and lets an admin limit the admin-managed accou
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, allowed_models: ['gpt-5.3-codex'] }, own, sharedWithMe, adminView])
   await click(buttonByText(container, 'Save models'))
   expect(llmConfigService.setAccountAllowedModels).toHaveBeenCalledWith('global:claude-code', ['gpt-5.3-codex'])
-  expect(container.textContent).toContain('Models: 1 model')
+  // The server row names the models plainly (PLAT-714).
+  expect(container.textContent).toContain('Models: gpt-5.3-codex only')
 })
 
 it('lets the owner set models on their own account, and sends [] for All models', async () => {

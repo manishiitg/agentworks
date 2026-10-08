@@ -262,8 +262,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 						log.Printf("[WORKFLOW_PHASE] Refresh LLMConfig details: mode=%q tieredConfig=%v",
 							caps.LLMConfig.Mode, caps.LLMConfig.TieredConfig != nil)
 						lockedCfg := lockedPresetLLMConfig(caps.LLMConfig)
-						phaseLLM, refreshedTiered := workshopResolveLLMConfig(lockedCfg)
-						pulseLLM := workshopResolvePulseLLMConfig(lockedCfg)
+						modelCtx := withModelLimitPerson(context.Background(), userID) // the person's allowed models (PLAT-714)
+						phaseLLM, refreshedTiered := workshopResolveLLMConfigFor(modelCtx, lockedCfg)
+						pulseLLM := workshopResolvePulseLLMConfigFor(modelCtx, lockedCfg)
 						workshopSession.UpdatePresetLLMConfigs(phaseLLM, pulseLLM)
 
 						if refreshedTiered != nil {

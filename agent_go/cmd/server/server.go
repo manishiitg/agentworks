@@ -3991,6 +3991,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	botTokenOwner := botRouteTokenOwner(r.Context(), currentUserID, accountScope.WorkspacePath)
 	accountScope.TokenOwner = botTokenOwner
 	req.tokenOwner = botTokenOwner
+	// Allowed models follow the same person (PLAT-714): a person's override of
+	// a shared account's list applies to their turns and to bot turns billed
+	// to them.
+	modelLimitPersonID := firstNonEmptyTrimmed(botTokenOwner, currentUserID)
 	// The FINAL account of the turn: a workflow chat that does not override
 	// the manifest runs on the workflow's saved model and account.
 	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
@@ -4555,7 +4559,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workflowPhaseFolder = resolvedWPath
 				logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Loaded config from manifest at %s", resolvedWPath)
 				if manifest.Capabilities.LLMConfig != nil {
-					phaseLLM, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
+					phaseLLM, _ := workshopResolveLLMConfigFor(withModelLimitPerson(r.Context(), modelLimitPersonID), lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
 					if phaseLLM != nil && phaseLLM.Provider != "" && phaseLLM.ModelID != "" {
 						if requestLLMConfigOverridesManifest(req) {
 							logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Preserving request LLM %s/%s from %s over manifest phase LLM %s/%s",
@@ -5936,7 +5940,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Allowed models: whatever settled finalModelID above (request, saved
 		// project or workflow, product default), the account's list decides. A
 		// saved model it does not allow runs on the first allowed one.
-		if constrained, changed, constrainErr := resolveAccountModel(streamCtx, finalProvider, resolvedConnectionID, finalModelID); constrainErr != nil {
+		if constrained, changed, constrainErr := resolveAccountModel(withModelLimitPerson(streamCtx, modelLimitPersonID), finalProvider, resolvedConnectionID, finalModelID); constrainErr != nil {
 			sendError(constrainErr.Error(), true)
 			return
 		} else if changed {
@@ -11864,8 +11868,10 @@ func (api *StreamingAPI) buildWorkshopConfig(
 				llmCfg := lockedPresetLLMConfig(caps.LLMConfig)
 				log.Printf("[WORKSHOP] LLMConfig details: mode=%q tieredConfig=%v providerProfile=%q",
 					llmCfg.Mode, llmCfg.TieredConfig != nil, llmCfg.Provider)
-				cfg.PresetPhaseLLM, cfg.TieredConfig = workshopResolveLLMConfig(llmCfg)
-				cfg.PresetPulseLLM = workshopResolvePulseLLMConfig(llmCfg)
+				// Role models follow the run person's allowed models (PLAT-714).
+				modelCtx := withModelLimitPerson(ctx, firstNonEmptyTrimmed(req.tokenOwner, currentUserID))
+				cfg.PresetPhaseLLM, cfg.TieredConfig = workshopResolveLLMConfigFor(modelCtx, llmCfg)
+				cfg.PresetPulseLLM = workshopResolvePulseLLMConfigFor(modelCtx, llmCfg)
 
 				if llmCfg.UseKnowledgebase != nil {
 					cfg.UseKnowledgebase = *llmCfg.UseKnowledgebase
@@ -14022,13 +14028,19 @@ func collectQueryToolCallSummaries(api *StreamingAPI, mainSessID, correlationID,
 }
 
 func workshopConvertAgentLLMConfig(config *workflowtypes.AgentLLMConfig) *todo_creation_human.AgentLLMConfig {
+	return workshopConvertAgentLLMConfigFor(context.Background(), config)
+}
+
+// workshopConvertAgentLLMConfigFor is workshopConvertAgentLLMConfig with the
+// allowed models of the person ctx names (modelLimitPerson).
+func workshopConvertAgentLLMConfigFor(ctx context.Context, config *workflowtypes.AgentLLMConfig) *todo_creation_human.AgentLLMConfig {
 	if config == nil {
 		return nil
 	}
 	// A saved role model its account does not allow (the admin restricted the
 	// account after the workflow was set up) runs on the first allowed model.
 	modelID, publishedID := config.ModelID, config.PublishedLLMID
-	if constrained, changed, err := resolveAccountModel(context.Background(), config.Provider, config.ConnectionID, config.ModelID); err == nil && changed && strings.TrimSpace(config.ModelID) != "" {
+	if constrained, changed, err := resolveAccountModel(ctx, config.Provider, config.ConnectionID, config.ModelID); err == nil && changed && strings.TrimSpace(config.ModelID) != "" {
 		modelID, publishedID = constrained, ""
 	}
 	return &todo_creation_human.AgentLLMConfig{
@@ -14041,14 +14053,18 @@ func workshopConvertAgentLLMConfig(config *workflowtypes.AgentLLMConfig) *todo_c
 }
 
 func workshopConvertTieredLLMConfig(config *workflowtypes.TieredLLMConfig) *todo_creation_human.TieredLLMConfig {
+	return workshopConvertTieredLLMConfigFor(context.Background(), config)
+}
+
+func workshopConvertTieredLLMConfigFor(ctx context.Context, config *workflowtypes.TieredLLMConfig) *todo_creation_human.TieredLLMConfig {
 	if config == nil {
 		return nil
 	}
 
 	tiered := &todo_creation_human.TieredLLMConfig{
-		Tier1: workshopConvertAgentLLMConfig(config.Tier1),
-		Tier2: workshopConvertAgentLLMConfig(config.Tier2),
-		Tier3: workshopConvertAgentLLMConfig(config.Tier3),
+		Tier1: workshopConvertAgentLLMConfigFor(ctx, config.Tier1),
+		Tier2: workshopConvertAgentLLMConfigFor(ctx, config.Tier2),
+		Tier3: workshopConvertAgentLLMConfigFor(ctx, config.Tier3),
 	}
 
 	if tiered.Tier1 == nil || tiered.Tier2 == nil || tiered.Tier3 == nil {
@@ -14094,30 +14110,41 @@ func generateTextWorkflowTiersFromResolved(tiers *todo_creation_human.TieredLLMC
 }
 
 func workshopResolveLLMConfig(config *workflowtypes.PresetLLMConfig) (*todo_creation_human.AgentLLMConfig, *todo_creation_human.TieredLLMConfig) {
+	return workshopResolveLLMConfigFor(context.Background(), config)
+}
+
+// workshopResolveLLMConfigFor resolves the manifest's role models under the
+// allowed models of the person ctx names (modelLimitPerson); without one, the
+// shared accounts' own lists apply.
+func workshopResolveLLMConfigFor(ctx context.Context, config *workflowtypes.PresetLLMConfig) (*todo_creation_human.AgentLLMConfig, *todo_creation_human.TieredLLMConfig) {
 	if config == nil {
 		return nil, nil
 	}
 	if builder, tiered, ok := workflowtypes.ResolveProviderProfileConfig(config); ok {
-		return workshopConvertAgentLLMConfig(builder), workshopConvertTieredLLMConfig(tiered)
+		return workshopConvertAgentLLMConfigFor(ctx, builder), workshopConvertTieredLLMConfigFor(ctx, tiered)
 	}
 
-	builder := workshopConvertAgentLLMConfig(config.BuilderLLM)
+	builder := workshopConvertAgentLLMConfigFor(ctx, config.BuilderLLM)
 	var tiered *todo_creation_human.TieredLLMConfig
 	if config.Mode == workflowtypes.LLMConfigModeExplicit && config.TieredConfig != nil {
-		tiered = workshopConvertTieredLLMConfig(config.TieredConfig)
+		tiered = workshopConvertTieredLLMConfigFor(ctx, config.TieredConfig)
 	}
 	return builder, tiered
 }
 
 func workshopResolvePulseLLMConfig(config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
+	return workshopResolvePulseLLMConfigFor(context.Background(), config)
+}
+
+func workshopResolvePulseLLMConfigFor(ctx context.Context, config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
 	if config == nil {
 		return nil
 	}
 	if resolved, ok := workflowtypes.ResolveProviderProfilePulseConfig(config); ok {
-		return workshopConvertAgentLLMConfig(resolved)
+		return workshopConvertAgentLLMConfigFor(ctx, resolved)
 	}
 	if config.PulseLLM != nil && config.PulseLLM.Provider != "" && config.PulseLLM.ModelID != "" {
-		return workshopConvertAgentLLMConfig(config.PulseLLM)
+		return workshopConvertAgentLLMConfigFor(ctx, config.PulseLLM)
 	}
 	return nil
 }

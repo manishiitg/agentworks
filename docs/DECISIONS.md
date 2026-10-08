@@ -17,6 +17,22 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Allowed models per person on the shared accounts, like token limits
+
+A shared server account's model list (Providers → the account → Models) is
+the default for everyone; an admin may give one person their own list for
+that account (users.json `account_allowed_models`): a list replaces the
+account's for them, `["*"]` is every model, none falls back to the account's.
+The person is the one the turn's token limits count toward (the signed-in
+person, or the owner a Slack channel bot turn is billed to), and the pickers
+offer only that person's effective models (`allowed_models` on a server
+account in the provider connections API is now the caller's effective list;
+`default_allowed_models` is the account's own). A disallowed model still runs
+on the first allowed one; the turn never fails. MCP: `get_token_usage` shows
+the lists, `set_allowed_models` (admin, users:manage, audited) sets them. Why:
+owner, 2026-10-08, model limits should work like token limits.
+[PLAT-714](bugs/pulse_platform/coding-agents/accounts/plat-714.md).
+
 ### 2026-10-08 — Pulse reads; the Builder chat acts
 
 Pulse's own tools are read-only plus its records (goal checks, memory,

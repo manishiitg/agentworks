@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-714](plat-714.md) | Model limits per person, matching token limits | fixed on main | P2 |
 | [PLAT-713](plat-713.md) | Private CLI sign-ins leak into the shared server account | open | P1 |
 | [PLAT-706](plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 |
 | [PLAT-688](plat-688.md) | Muse Check usage fails for non-managers | fixed on main | P2 |

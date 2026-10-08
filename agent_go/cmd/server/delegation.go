@@ -589,10 +589,12 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 	if string(provider) != parentReq.Provider {
 		connectionID = ""
 	}
+	// Allowed models follow the person the parent turn counts toward (PLAT-714).
+	modelCtx := withModelLimitPerson(ctx, firstNonEmptyTrimmed(parentReq.tokenOwner, delegationPrincipal(ctx, parentReq)))
 	var tierOptions map[string]interface{}
 	if reasoningLevel != "" {
 		// Load fresh from workspace file at delegation time so LLM-written tier changes take effect immediately
-		tierConfig := LoadAndResolveTierConfig(ctx, parentReq.DelegationTierConfig)
+		tierConfig := LoadAndResolveTierConfig(modelCtx, parentReq.DelegationTierConfig)
 		if tierConfig != nil {
 			var tierModel *virtualtools.TierModel
 			switch reasoningLevel {
@@ -624,7 +626,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 
 	// Allowed models: a tier or inherited model the account does not allow
 	// runs on the account's first allowed model.
-	if constrained, changed, constrainErr := resolveAccountModel(ctx, string(provider), connectionID, modelID); constrainErr != nil {
+	if constrained, changed, constrainErr := resolveAccountModel(modelCtx, string(provider), connectionID, modelID); constrainErr != nil {
 		return "", constrainErr
 	} else if changed {
 		modelID = constrained

@@ -6,18 +6,25 @@ import { hasModelLimit } from '../../utils/allowedModels'
  * Which models may run on one provider account: "All models" (the default) or
  * "Only these" with a checkbox per model of the provider. The server enforces
  * the list; saving an empty selection under "Only these" is not possible.
+ *
+ * With `person`, it edits one person's override of a shared account's list
+ * (PLAT-714): "Account default" saves null, "All models" saves ["*"].
  */
-export default function AllowedModelsEditor({ provider, value, disabled = false, onSave, onCancel }: {
+export default function AllowedModelsEditor({ provider, value, disabled = false, onSave, onCancel, person }: {
   provider: string
   value?: string[]
   disabled?: boolean
-  onSave: (models: string[]) => void | Promise<void>
+  onSave: (models: string[] | null) => void | Promise<void>
   onCancel: () => void
+  /** Edit a person's override; accountText describes the account's own list. */
+  person?: { name: string; accountText: string }
 }) {
   const [catalog, setCatalog] = useState<DynamicModelEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [limited, setLimited] = useState(hasModelLimit(value))
-  const [selected, setSelected] = useState<string[]>(value ?? [])
+  const initialMode = person && !hasModelLimit(value) ? 'inherit' : value?.includes('*') ? 'all' : hasModelLimit(value) ? 'only' : 'all'
+  const [mode, setMode] = useState<'inherit' | 'all' | 'only'>(initialMode)
+  const limited = mode === 'only'
+  const [selected, setSelected] = useState<string[]>((value ?? []).filter(id => id !== '*'))
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -32,10 +39,11 @@ export default function AllowedModelsEditor({ provider, value, disabled = false,
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
   const canSave = !disabled && (!limited || selected.length > 0)
   return (
-    <form className="mt-3 w-full space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); if (canSave) void onSave(limited ? selected : []) }}>
+    <form className="mt-3 w-full space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); if (canSave) void onSave(mode === 'inherit' ? null : limited ? selected : person ? ['*'] : []) }}>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Models
-        <select aria-label="Models allowed on this account" disabled={disabled} value={limited ? 'only' : 'all'} onChange={event => setLimited(event.target.value === 'only')}
+        <select aria-label={person ? `Models allowed for ${person.name}` : 'Models allowed on this account'} disabled={disabled} value={mode} onChange={event => setMode(event.target.value as 'inherit' | 'all' | 'only')}
           className="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+          {person && <option value="inherit">Account default ({person.accountText})</option>}
           <option value="all">All models</option>
           <option value="only">Only these…</option>
         </select>

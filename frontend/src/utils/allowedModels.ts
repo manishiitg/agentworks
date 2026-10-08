@@ -32,3 +32,11 @@ export function allowedModelsSummary(allowed?: string[] | null): string {
   if (!hasModelLimit(allowed)) return 'All models'
   return allowed.length === 1 ? '1 model' : `${allowed.length} models`
 }
+
+/** Plain row text: "All models", "gpt-6-luna only", "a, b only", or the first three and a count. */
+export function allowedModelsText(allowed?: string[] | null): string {
+  if (!hasModelLimit(allowed)) return 'All models'
+  if (allowed.includes('*')) return 'All models'
+  if (allowed.length <= 3) return `${allowed.join(', ')} only`
+  return `${allowed.slice(0, 3).join(', ')} +${allowed.length - 3} more`
+}

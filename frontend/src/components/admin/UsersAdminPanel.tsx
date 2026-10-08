@@ -14,6 +14,8 @@ import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from
 import { selectableProducts } from './selectableProducts'
 import { TOKEN_LIMIT_UNLIMITED, formatTokens, parseOverrideAmount, parseTokenAmount, sharedAccountLabel, shownOverrideLimit } from '../../utils/tokenLimits'
 import { llmConfigService } from '../../services/llm-config-api'
+import AllowedModelsEditor from '../providers/AllowedModelsEditor'
+import { allowedModelsText } from '../../utils/allowedModels'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -62,11 +64,14 @@ const shownLimit = (n?: number) => (n ? String(n) : '')
  * One person's limits on the shared server accounts, with their use today and
  * this week. Saved on blur or Enter; empty is unlimited.
  */
-function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccount }: {
+function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccount, accountModels, onSaveModels }: {
   user: AdminUser; disabled: boolean; onSave: (limits: { daily: number; weekly: number }) => void
   /** Providers with a shared server account, for adding a per-person override. */
   accountProviders: string[]
   onSaveAccount: (provider: string, limits: { daily: number; weekly: number }) => void
+  /** Each shared account's own model list (absent or empty = all models). */
+  accountModels: Record<string, string[] | undefined>
+  onSaveModels: (provider: string, models: string[] | null) => void
 }) {
   const limits = user.token_limits
   const usage = user.token_usage
@@ -109,6 +114,56 @@ function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccou
         </p>
       )}
       <AccountLimitsList user={user} disabled={disabled} accountProviders={accountProviders} onSave={onSaveAccount} />
+      <AccountModelsList user={user} disabled={disabled} accountProviders={accountProviders} accountModels={accountModels} onSave={onSaveModels} />
+    </div>
+  )
+}
+
+/**
+ * This person's models on each shared account where an admin gave them their
+ * own list (PLAT-714); every other account uses its own list (Providers →
+ * the account → Models). A list replaces the account's for them, "All
+ * models" lifts the account's limit for them, "Account default" removes it.
+ */
+function AccountModelsList({ user, disabled, accountProviders, accountModels, onSave }: {
+  user: AdminUser; disabled: boolean; accountProviders: string[]
+  accountModels: Record<string, string[] | undefined>
+  onSave: (provider: string, models: string[] | null) => void
+}) {
+  const overrides = user.account_allowed_models || {}
+  const [editing, setEditing] = useState<string | null>(null)
+  const shown = Object.keys(overrides).sort()
+  const addable = accountProviders.filter((p) => !shown.includes(p))
+  const rows = editing && !shown.includes(editing) ? [...shown, editing] : shown
+  return (
+    <div className="space-y-0.5">
+      {rows.map((provider) => {
+        const label = sharedAccountLabel(provider)
+        if (editing === provider) {
+          return (
+            <AllowedModelsEditor key={provider} provider={provider} value={overrides[provider]} disabled={disabled}
+              person={{ name: user.username, accountText: allowedModelsText(accountModels[provider]) }}
+              onSave={(models) => { onSave(provider, models); setEditing(null) }} onCancel={() => setEditing(null)} />
+          )
+        }
+        return (
+          <p key={provider} className="text-muted-foreground">
+            <button type="button" disabled={disabled} onClick={() => setEditing(provider)} className="underline-offset-2 hover:underline disabled:no-underline"
+              title={`Edit ${user.username}'s models on the shared ${label} account. Account default: ${allowedModelsText(accountModels[provider])}.`}>
+              {label} models
+            </button>
+            {': '}{allowedModelsText(overrides[provider])} (own)
+          </p>
+        )
+      })}
+      {addable.length > 0 && !editing && (
+        <select aria-label={`Set models on an account for ${user.username}`} disabled={disabled} value=""
+          onChange={(e) => { if (e.target.value) setEditing(e.target.value) }}
+          className="h-6 rounded border border-border bg-background px-1 text-xs text-muted-foreground">
+          <option value="">+ Models on an account…</option>
+          {addable.map((p) => <option key={p} value={p}>{sharedAccountLabel(p)}{accountModels[p]?.length ? ` (${allowedModelsText(accountModels[p])})` : ''}</option>)}
+        </select>
+      )}
     </div>
   )
 }
@@ -218,11 +273,18 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   const [busyId, setBusyId] = useState<string | null>(null)
   // Providers with a shared server account, for per-person account overrides (PLAT-693).
   const [accountProviders, setAccountProviders] = useState<string[]>([])
+  // Each shared account's own model list, for the per-person model overrides (PLAT-714).
+  const [accountModels, setAccountModels] = useState<Record<string, string[] | undefined>>({})
   useEffect(() => {
     if (vaultOnly) return
     let cancelled = false
     void Promise.resolve().then(() => llmConfigService.getProviderConnections())
-      .then((records) => { if (!cancelled) setAccountProviders([...new Set(records.filter((r) => r.relation === 'server' || r.id.startsWith('global:')).map((r) => r.provider))]) })
+      .then((records) => {
+        if (cancelled) return
+        const servers = records.filter((r) => r.relation === 'server' || r.id.startsWith('global:'))
+        setAccountProviders([...new Set(servers.map((r) => r.provider))])
+        setAccountModels(Object.fromEntries(servers.map((r) => [r.provider, (r.default_allowed_models !== undefined ? r.default_allowed_models : r.allowed_models) ?? undefined])))
+      })
       .catch(() => undefined)
     return () => { cancelled = true }
   }, [vaultOnly])
@@ -470,6 +532,8 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                           onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
                           accountProviders={accountProviders}
                           onSaveAccount={(provider, limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_token_limits: { [provider]: limits } })) }}
+                          accountModels={accountModels}
+                          onSaveModels={(provider, models) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_allowed_models: { [provider]: models } })) }}
                         />
                       </td>
                     )}

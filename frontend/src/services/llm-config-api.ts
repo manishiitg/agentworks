@@ -47,8 +47,10 @@ export interface ProviderConnection {
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
-  /** Models allowed on this account; absent or empty = every model. */
+  /** Models allowed on this account; absent or empty = every model. On a server account this is the caller's effective list (their per-person override when an admin set one). */
   allowed_models?: string[]
+  /** A server account's own model list (null or empty = every model), before any per-person override. */
+  default_allowed_models?: string[] | null
   /** A server account's default per-person token limits (UTC day / Monday-start week); absent = unlimited. */
   token_limits?: { daily?: number; weekly?: number }
   // Account view fields. Optional so an older server still reads.

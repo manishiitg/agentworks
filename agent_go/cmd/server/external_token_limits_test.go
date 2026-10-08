@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -101,5 +102,64 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 		if !strings.Contains(log, want) {
 			t.Fatalf("not audited (%s):\n%s", want, log)
 		}
+	}
+}
+
+// Allowed models per person sit next to the token limits (PLAT-714): the
+// admin limits the shared Codex account to one model and gives Alice her own
+// list. Her turns resolve against her list, Bob's against the account's;
+// all_models gives her every model and null puts her back on the account's.
+// An id the provider's catalog does not list is refused; a reviewer cannot
+// set models; every write is audited.
+func TestAllowedModelsPersonOverrideDecidesTheTurnModel(t *testing.T) {
+	api, mock := newCodeAdminFixture(t, true)
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"boss","username":"boss","admin":true,"can_create":true},
+		{"id":"rev","username":"rev","role":"viewer","code_reviewer":true},
+		{"id":"am-alice","username":"am-alice","email":"am-alice@example.com","can_create":true},
+		{"id":"am-bob","username":"am-bob","can_create":true}]}`)
+	ids := providerModelIDs("codex-cli")
+	if len(ids) < 2 {
+		t.Fatalf("codex-cli catalog = %v, want two models", ids)
+	}
+	only, other := ids[0], ids[1]
+	admin := codeReviewToken("boss", "users:manage")
+	if w := codeReviewCall(api, admin, "set_allowed_models", map[string]any{"account": "codex-cli", "models": []any{only}}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"allowed_models":["`+only+`"]`) {
+		t.Fatalf("account list = %d %s", w.Code, w.Body.String())
+	}
+	if w := codeReviewCall(api, admin, "set_allowed_models", map[string]any{"account": "codex-cli", "user_id": "am-alice", "models": []any{"no-such-model"}}); w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown model = %d %s", w.Code, w.Body.String())
+	}
+	if w := codeReviewCall(api, admin, "set_allowed_models", map[string]any{"account": "codex-cli", "user_id": "am-alice", "models": []any{other}}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"allowed_models":{"codex-cli":{"models":["`+other+`"],"source":"person"}}`) {
+		t.Fatalf("person override = %d %s", w.Code, w.Body.String())
+	}
+	resolve := func(person, model, want string) {
+		t.Helper()
+		got, _, err := resolveAccountModel(withModelLimitPerson(context.Background(), person), "codex-cli", "global:codex-cli", model)
+		if err != nil || got != want {
+			t.Fatalf("%s on %s runs %q (%v), want %q", person, model, got, err, want)
+		}
+	}
+	resolve("am-alice", only, other) // not on her list: her first model, never a failed turn
+	resolve("am-alice", other, other)
+	resolve("am-bob", other, only)
+	codeReviewCall(api, admin, "set_allowed_models", map[string]any{"account": "codex-cli", "email": "am-alice@example.com", "all_models": true})
+	resolve("am-alice", only, only)
+	resolve("am-alice", other, other)
+	codeReviewCall(api, admin, "set_allowed_models", map[string]any{"account": "codex-cli", "user_id": "am-alice", "models": nil})
+	resolve("am-alice", other, only)
+
+	w := codeReviewCall(api, admin, "get_token_usage", map[string]any{"account": "codex-cli"})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"account_allowed_models":{"codex-cli":["`+only+`"]}`) || !strings.Contains(w.Body.String(), `"allowed_models":{"codex-cli":{"models":["`+only+`"],"source":"account"}}`) {
+		t.Fatalf("usage models = %d %s", w.Code, w.Body.String())
+	}
+	if w = codeReviewCall(api, codeReviewToken("rev", "users:manage", "code:review"), "set_allowed_models", map[string]any{"account": "codex-cli", "models": nil}); w.Code != http.StatusForbidden {
+		t.Fatalf("reviewer set models = %d %s", w.Code, w.Body.String())
+	}
+	mock.mu.Lock()
+	log := mock.files[codeAdminAuditPath(time.Now())]
+	mock.mu.Unlock()
+	if !strings.Contains(log, `"action":"set_allowed_models"`) || !strings.Contains(log, `"target":"am-alice account=codex-cli models=`+other+`"`) {
+		t.Fatalf("not audited:\n%s", log)
 	}
 }

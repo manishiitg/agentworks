@@ -7,7 +7,7 @@ import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
-import { allowedModelsSummary } from '../../utils/allowedModels'
+import { allowedModelsSummary, allowedModelsText } from '../../utils/allowedModels'
 import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
 import {
   llmConfigService,
@@ -242,13 +242,15 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     setBusy(true); setError(null)
     try {
       await llmConfigService.setAccountAllowedModels(record.id, models)
-      setConnections(current => current.map(item => item.id === record.id ? { ...item, allowed_models: models.length > 0 ? models : undefined } : item))
+      setConnections(current => current.map(item => item.id === record.id ? { ...item, allowed_models: models.length > 0 ? models : undefined, ...(accountRelation(item) === 'server' ? { default_allowed_models: models } : {}) } : item))
       setModelsId(null); changed()
     } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save the allowed models.')) }
     finally { setBusy(false) }
   }
+  // A server account's own list; allowed_models there is the viewer's effective one (PLAT-714).
+  const accountModels = (record: ProviderConnection) => accountRelation(record) === 'server' && record.default_allowed_models !== undefined ? (record.default_allowed_models ?? undefined) : record.allowed_models
   const modelsEditor = (record: ProviderConnection) => modelsId === record.id && (
-    <AllowedModelsEditor provider={provider} value={record.allowed_models} disabled={busy} onSave={models => saveModels(record, models)} onCancel={() => setModelsId(null)} />
+    <AllowedModelsEditor provider={provider} value={accountModels(record)} disabled={busy} onSave={models => saveModels(record, models ?? [])} onCancel={() => setModelsId(null)} />
   )
   const modelsItem = (record: ProviderConnection) => record.can_manage && manage ? [{ label: 'Models', onSelect: () => setModelsId(modelsId === record.id ? null : record.id) }] : []
   const saveAvailability = async (value: ProviderAvailableTo | null) => {
@@ -383,7 +385,10 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>
-              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsSummary(record.allowed_models)}</p>}
+              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
+                Models: {allowedModelsText(accountModels(record))}
+                {record.can_manage && !disabled && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
+              </p>}
               {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Tokens (input + output) each person may use on this account; overrides per person are in Access → Users. Day and week are UTC; weeks start Monday.">
                 Limit per person: {record.token_limits?.daily || record.token_limits?.weekly
                   ? [record.token_limits?.daily ? `${formatTokens(record.token_limits.daily)} a day` : '', record.token_limits?.weekly ? `${formatTokens(record.token_limits.weekly)} a week` : ''].filter(Boolean).join(' · ')

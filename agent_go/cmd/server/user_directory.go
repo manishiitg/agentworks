@@ -86,8 +86,12 @@ type UserRecord struct {
 	// provider, e.g. "codex-cli"), that account's default per-person limits
 	// for this person; a field set here replaces the default's field.
 	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits,omitempty"`
-	CreatedAt          string                      `json:"created_at,omitempty"`
-	UpdatedAt          string                      `json:"updated_at,omitempty"`
+	// AccountAllowedModels overrides, per shared server account (keyed by
+	// provider), the models the account allows for this person: a list
+	// replaces the account's list, ["*"] is every model (PLAT-714).
+	AccountAllowedModels map[string][]string `json:"account_allowed_models,omitempty"`
+	CreatedAt            string              `json:"created_at,omitempty"`
+	UpdatedAt            string              `json:"updated_at,omitempty"`
 }
 
 // UserSSO links an account to an external identity provider.
@@ -718,9 +722,11 @@ type userAdminView struct {
 	Invited            bool                        `json:"invited"`
 	TokenLimits        *UserTokenLimits            `json:"token_limits,omitempty"`
 	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits,omitempty"`
-	TokenUsage         *sharedAccountTokenUsage    `json:"token_usage,omitempty"`
-	CreatedAt          string                      `json:"created_at,omitempty"`
-	UpdatedAt          string                      `json:"updated_at,omitempty"`
+	// AccountAllowedModels is this person's model override per shared account.
+	AccountAllowedModels map[string][]string      `json:"account_allowed_models,omitempty"`
+	TokenUsage           *sharedAccountTokenUsage `json:"token_usage,omitempty"`
+	CreatedAt            string                   `json:"created_at,omitempty"`
+	UpdatedAt            string                   `json:"updated_at,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -738,9 +744,10 @@ func viewOf(rec UserRecord) userAdminView {
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
 		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
-		Invited:            rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
-		TokenLimits:        rec.TokenLimits.normalized(),
-		AccountTokenLimits: normalizedAccountTokenLimits(rec.AccountTokenLimits),
+		Invited:              rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
+		TokenLimits:          rec.TokenLimits.normalized(),
+		AccountTokenLimits:   normalizedAccountTokenLimits(rec.AccountTokenLimits),
+		AccountAllowedModels: rec.AccountAllowedModels,
 	}
 }
 
@@ -842,6 +849,10 @@ type userWriteRequest struct {
 	// account (both fields); an entry with no limit removes the override.
 	// Accounts not named keep their override.
 	AccountTokenLimits map[string]*UserTokenLimits `json:"account_token_limits"`
+	// AccountAllowedModels sets this person's model override for each named
+	// shared account: a list, ["*"] for every model, or null/[] to fall back
+	// to the account's list. Accounts not named keep their override.
+	AccountAllowedModels map[string][]string `json:"account_allowed_models"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -965,6 +976,10 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := applyAccountAllowedModels(&rec, req.AccountAllowedModels); err != nil {
+		writeUsersError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	dir.Users = append(dir.Users, rec)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
@@ -1048,12 +1063,16 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := applyAccountAllowedModels(rec, req.AccountAllowedModels); err != nil {
+		writeUsersError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	rec.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v account_token_limits=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits))
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 

@@ -38,6 +38,11 @@ type providerAccountView struct {
 	AvailabilityEditable bool                       `json:"availability_editable,omitempty"`
 	// TokenLimits is a server account's default per-person token limit.
 	TokenLimits *UserTokenLimits `json:"token_limits,omitempty"`
+	// DefaultAllowedModels is a server account's own model list (empty =
+	// every model). allowed_models on a server account is the caller's
+	// effective list: their per-person override when an admin set one
+	// (PLAT-714), so every picker offers only what their turns may run.
+	DefaultAllowedModels *[]string `json:"default_allowed_models,omitempty"`
 	// Usable reports whether the caller may select the account for the
 	// requested workflow, Crew, Code or product.
 	Usable bool `json:"usable"`
@@ -177,9 +182,11 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 				usable = usable || availability.AvailableTo.admits(userID, product)
 			}
 		}
+		defaultModels := accountSettings.AllowedModels[provider]
 		view := providerAccountView{
-			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: accountSettings.AllowedModels[provider]},
-			Kind:               kind, Relation: "server", Source: source, Availability: &availability,
+			ProviderConnection:   ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: effectiveAllowedModels(accountSettings.AllowedModels[provider], personAccountAllowedModels(userID, provider))},
+			DefaultAllowedModels: &defaultModels,
+			Kind:                 kind, Relation: "server", Source: source, Availability: &availability,
 			TokenLimits:          accountSettings.TokenLimits[provider].normalized(),
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,

@@ -2808,6 +2808,8 @@ export interface AdminUser {
   token_limits?: TokenLimits
   /** Per shared account (provider, e.g. "codex-cli"): this person's override of the account's default limits. */
   account_token_limits?: Record<string, TokenLimits>
+  /** Per shared account (provider): this person's model override; ["*"] = every model. Absent = the account's list. */
+  account_allowed_models?: Record<string, string[]>
   token_usage?: SharedAccountTokenUsage
   created_at?: string
   updated_at?: string
@@ -2860,6 +2862,8 @@ export interface AdminUserWrite {
   token_limits?: TokenLimits
   /** Sets the override of each named shared account (both fields); no limit removes it. */
   account_token_limits?: Record<string, TokenLimits>
+  /** Sets the model override of each named shared account: a list, ["*"] for every model, null to use the account's list. */
+  account_allowed_models?: Record<string, string[] | null>
 }
 
 export interface AuthResponse {
