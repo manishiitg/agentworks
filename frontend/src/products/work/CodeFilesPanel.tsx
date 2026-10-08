@@ -38,7 +38,7 @@ function SetupStep({ number, title, children }: { number: number; title: string;
   </div>
 }
 
-function ComputerSetup({ connected, reconnecting }: { connected: boolean; reconnecting: boolean }) {
+function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: boolean; reconnecting: boolean; workspaceName?: string }) {
   const base = getApiBaseUrl() || window.location.origin
   const cli = '"$HOME/.local/bin/agentworks"'
   return <details className="group rounded-xl border border-border bg-background" open={!connected && !reconnecting}>
@@ -50,8 +50,8 @@ function ComputerSetup({ connected, reconnecting }: { connected: boolean; reconn
         <p className="text-xs text-muted-foreground">Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.</p>
       </SetupStep>
       <SetupStep number={2} title="Go to your project folder and start">
-        <CopyCommand label="start command" command={`cd /path/to/your/project && ${cli} start --server ${shellQuote(base)}`} />
-        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with read and write access, and the agent can run commands there. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and whether to open this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
+        <CopyCommand label="start command" command={`cd /path/to/your/project && ${cli} start --server ${shellQuote(base)} --workspace ${shellQuote(workspaceName || 'your workspace name')}`} />
+        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with this workspace (the name after --workspace, as shown in Settings), with read and write access, and the agent can run commands there. The CLI remembers the workspace for that folder. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and whether to open this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
       </SetupStep>
       <SetupStep number={3} title="Check it, stop it, or fix it">
         <p className="text-xs leading-5 text-muted-foreground">Press <span className="font-medium">Verify connection</span> below to confirm this computer is connected. <code className="font-mono">agentworks stop</code> ends sharing for the current folder, <code className="font-mono">agentworks status</code> lists what is shared, and <code className="font-mono">agentworks start --debug</code> prints diagnostics and every request from the server if something does not work. Add <code className="font-mono">--block .env</code> to hide a file, or <code className="font-mono">--downloads</code> to also share ~/Downloads.</p>
@@ -61,7 +61,7 @@ function ComputerSetup({ connected, reconnecting }: { connected: boolean; reconn
 }
 
 /** The connection belongs to this Code session's files, not its runtime. */
-export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
+export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId: string; workspaceName?: string }) {
   const preference = useCodeFilesPreference(sessionId)
   const local = preference.location === 'computer'
   const selected = local ? preference.target : undefined
@@ -130,7 +130,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
         </div>}
         {local && resource && <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
         {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3"><p className="text-xs font-medium">Reconnect your computer to continue file work</p><p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
-        <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} />
+        <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} workspaceName={workspaceName} />
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="outline" disabled={refreshing} onClick={() => { setVerified(true); refresh() }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button></div>
           {verified && checked && !refreshing && <p role="status" className={`text-xs leading-5 ${devices.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{error ? error : devices.length ? `Connected: ${devices.flatMap(device => device.resources.map(folder => `${device.device_id} / ${folder.id}`)).join(', ')}.` : 'Nothing is connected yet. Run agentworks start inside your project folder; if it does not connect, agentworks start --debug shows why.'}</p>}

@@ -41,7 +41,7 @@ import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher from './components/QuickSwitcher'
 import { WelcomeHome } from './components/WelcomeHome'
-import { setDefaultLocalTarget } from './products/work/codeLocalFiles'
+import { setPendingLocalLink } from './products/work/codeLocalFiles'
 import { PanelSwitcher } from './components/PanelSwitcher'
 import { markFeatureUsed } from './utils/featureUsage'
 
@@ -105,16 +105,17 @@ function App() {
   const mcpAccount = useAuthStore(state => state.isAuthenticated ? state.user?.id : undefined)
   useEffect(() => { if (mcpAccount) void useMCPStore.getState().refreshTools() }, [mcpAccount])
 
-  // `agentworks start` opens the site with ?local_device=…&local_folder=… : open Code, with the shared folder as the
-  // default for Code chats (Local mode). Read before sign-in so a login redirect cannot lose it.
+  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Code and remember the link; the
+  // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const device = params.get('local_device')
     const folder = params.get('local_folder')
-    if (!device || !folder) return
-    setDefaultLocalTarget({ device_id: device, resource_id: folder })
+    const workspace = params.get('local_workspace')
+    if (!device || !folder || !workspace) return
+    setPendingLocalLink({ target: { device_id: device, resource_id: folder }, workspace })
     setProductSurface('code')
-    params.delete('local_device'); params.delete('local_folder')
+    params.delete('local_device'); params.delete('local_folder'); params.delete('local_workspace')
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
   }, [setProductSurface])

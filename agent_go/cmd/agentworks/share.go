@@ -34,6 +34,7 @@ type shareState struct {
 	PID       int       `json:"pid"`
 	Device    string    `json:"device"`
 	Alias     string    `json:"alias"`
+	Workspace string    `json:"workspace,omitempty"`
 	Folder    string    `json:"folder"`
 	Server    string    `json:"server"`
 	Started   time.Time `json:"started"`
@@ -147,8 +148,9 @@ func ask(in *bufio.Reader, out *os.File, question string, def bool) bool {
 	return def
 }
 
-func shareWebURL(server, device, alias string) string {
-	q := url.Values{"local_device": {device}, "local_folder": {alias}}
+// shareWebURL opens the website on the Code workspace that uses this folder; it finds the workspace by its name.
+func shareWebURL(server, device, alias, workspace string) string {
+	q := url.Values{"local_device": {device}, "local_folder": {alias}, "local_workspace": {workspace}}
 	return strings.TrimRight(server, "/") + "/?" + q.Encode()
 }
 
@@ -160,6 +162,7 @@ type startFlags struct {
 	downloads, debug       bool
 	foreground, background bool
 	askAgain               bool
+	workspace              string
 	open, noOpen           bool
 }
 
@@ -180,6 +183,7 @@ func startCommand(o *options) *cobra.Command {
 	cmd.Flags().BoolVar(&f.downloads, "downloads", false, "Also allow reading and writing ~/Downloads (explicit opt-in)")
 	cmd.Flags().BoolVar(&f.foreground, "foreground", false, "Keep this terminal open instead of running in the background (Ctrl-C stops)")
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
+	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Code workspace (its name in Settings) that uses this folder; asked the first time, then remembered")
 	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
 	cmd.Flags().BoolVar(&f.open, "open", false, "Open the website when connected, without asking")
 	cmd.Flags().BoolVar(&f.noOpen, "no-open", false, "Do not open the website")
@@ -237,6 +241,25 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 
 	in := bufio.NewReader(o.stdin)
 	interactive := stdinIsTerminal() && !o.jsonOutput
+	// Which Code workspace uses this folder is required, never guessed: given with --workspace, remembered per folder, or asked.
+	linksPath := filepath.Join(dir, "workspaces.json")
+	links := loadShareLinks(linksPath)
+	workspace := strings.TrimSpace(f.workspace)
+	if workspace == "" {
+		workspace = links[folder]
+	}
+	if workspace == "" {
+		if !interactive {
+			return errors.New("agentworks start needs the Code workspace that uses this folder: add --workspace \"<name shown in Settings>\"")
+		}
+		fmt.Fprintf(o.stderr, "Which Code workspace should use %s? Type its name as shown in Settings (Workspace name): ", folder)
+		line, _ := in.ReadString('\n')
+		if workspace = strings.TrimSpace(line); workspace == "" {
+			return errors.New("a workspace name is required")
+		}
+	}
+	links[folder] = workspace
+	saveShareLinks(linksPath, links)
 	// The first run asks; the answers are remembered, so later runs just connect (--ask asks again).
 	prefsPath := filepath.Join(dir, "start-preferences.json")
 	prefs := loadStartPrefs(prefsPath)
@@ -275,17 +298,17 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		printDebug(ctx, o, cfg, cfgPath, folder, device, alias, statePath)
 	}
 	if foreground {
-		return runShareForeground(ctx, o, f, folder, device, alias, cfg.Server, statePath, openWeb)
+		return runShareForeground(ctx, o, f, folder, device, alias, workspace, cfg.Server, statePath, openWeb)
 	}
-	return runShareBackground(ctx, o, f, folder, device, alias, cfg.Server, dir, key, statePath, openWeb, login)
+	return runShareBackground(ctx, o, f, folder, device, alias, workspace, cfg.Server, dir, key, statePath, openWeb, login)
 }
 
 func shareParams(f startFlags, device, alias, folder string) executorParams {
 	return executorParams{deviceID: device, writeFolders: []string{alias + "=" + folder}, blocked: f.blocked, downloads: f.downloads}
 }
 
-func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, server, statePath string, openWeb bool) error {
-	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Folder: folder, Server: server, Started: time.Now()}
+func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, statePath string, openWeb bool) error {
+	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now()}
 	writeShareState(statePath, st)
 	defer os.Remove(statePath)
 	p := shareParams(f, device, alias, folder)
@@ -294,18 +317,18 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 		st.Connected = true
 		writeShareState(statePath, st)
 		if !opened {
-			printShared(o, folder, device, alias, server, os.Getpid(), false)
+			printShared(o, folder, device, alias, workspace, server, os.Getpid(), false)
 		}
 		if openWeb && !opened {
 			opened = true
-			openWebsite(shareWebURL(server, device, alias))
+			openWebsite(shareWebURL(server, device, alias, workspace))
 		}
 	}
 	p.trace = requestTrace(o) // a terminal that stays open shows what the server asks for, live
 	return runExecutor(ctx, o, p)
 }
 
-func runShareBackground(ctx context.Context, o *options, f startFlags, folder, device, alias, server, dir, key, statePath string, openWeb bool, login func() error) error {
+func runShareBackground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, dir, key, statePath string, openWeb bool, login func() error) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -317,7 +340,7 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 			return err
 		}
 		_ = os.Remove(statePath)
-		args := []string{"share-serve", "--config", o.configPath, "--server", server, "--device", device, "--alias", alias, "--folder", folder, "--state", statePath, "--log", logPath}
+		args := []string{"share-serve", "--config", o.configPath, "--server", server, "--device", device, "--alias", alias, "--workspace", workspace, "--folder", folder, "--state", statePath, "--log", logPath}
 		for _, b := range f.blocked {
 			args = append(args, "--block", b)
 		}
@@ -356,9 +379,9 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 				return fmt.Errorf("did not connect within 30 seconds; run `agentworks start --debug` to see why (log: %s)", logPath)
 			case <-poll.C:
 				if st, ok := readShareState(statePath); ok && st.Connected {
-					printShared(o, folder, device, alias, server, st.PID, true)
+					printShared(o, folder, device, alias, workspace, server, st.PID, true)
 					if openWeb {
-						openWebsite(shareWebURL(server, device, alias))
+						openWebsite(shareWebURL(server, device, alias, workspace))
 					}
 					return nil
 				}
@@ -379,11 +402,11 @@ func firstNonEmpty(values ...string) string {
 // serveShareCommand is the background process `start` launches; it is not meant to be run by hand.
 func serveShareCommand(o *options) *cobra.Command {
 	var f startFlags
-	var alias, folder, statePath, logPath string
+	var alias, workspace, folder, statePath, logPath string
 	cmd := &cobra.Command{Use: "share-serve", Hidden: true, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o.stderr = os.Stderr
 		server := o.serverURL
-		st := shareState{PID: os.Getpid(), Device: f.device, Alias: alias, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+		st := shareState{PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
 		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }
@@ -404,6 +427,7 @@ func serveShareCommand(o *options) *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&f.device, "device", "", "")
 	cmd.Flags().StringVar(&alias, "alias", "", "")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "")
 	cmd.Flags().StringVar(&folder, "folder", "", "")
 	cmd.Flags().StringVar(&statePath, "state", "", "")
 	cmd.Flags().StringVar(&logPath, "log", "", "")
@@ -477,7 +501,7 @@ func listShares(o *options, shares map[string]shareState) {
 		if st.Connected {
 			state = "connected"
 		}
-		fmt.Fprintf(o.stderr, "  %s  %s/%s  %s  (process %d, since %s)\n", st.Folder, st.Device, st.Alias, state, st.PID, st.Started.Format("15:04"))
+		fmt.Fprintf(o.stderr, "  %s  %s/%s  workspace %q  %s  (process %d, since %s)\n", st.Folder, st.Device, st.Alias, st.Workspace, state, st.PID, st.Started.Format("15:04"))
 	}
 }
 
@@ -560,11 +584,12 @@ func requestTrace(o *options) func(request localfiles.Request, response localfil
 }
 
 // printShared is the one short summary printed once the folder is connected.
-func printShared(o *options, folder, device, alias, server string, pid int, background bool) {
+func printShared(o *options, folder, device, alias, workspace, server string, pid int, background bool) {
 	w := o.stderr
 	fmt.Fprintf(w, "\n✔ Sharing %s\n", folder)
 	fmt.Fprintf(w, "  Computer: %s / %s · read and write · shell commands on\n", device, alias)
-	fmt.Fprintf(w, "  Website:  %s\n", shareWebURL(server, device, alias))
+	fmt.Fprintf(w, "  Workspace: %s\n", workspace)
+	fmt.Fprintf(w, "  Website:  %s\n", shareWebURL(server, device, alias, workspace))
 	if background {
 		fmt.Fprintf(w, "  Running in the background (process %d). Watch: agentworks watch · Status: agentworks status · Stop: agentworks stop\n\n", pid)
 	} else {
@@ -654,4 +679,19 @@ func watchCommand(o *options) *cobra.Command {
 			}
 		}
 	}}
+}
+
+// Which Code workspace uses which folder on this computer, remembered so only the first start asks.
+func loadShareLinks(path string) map[string]string {
+	links := map[string]string{}
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &links)
+	}
+	return links
+}
+
+func saveShareLinks(path string, links map[string]string) {
+	if raw, err := json.Marshal(links); err == nil {
+		_ = os.WriteFile(path, raw, 0o600)
+	}
 }

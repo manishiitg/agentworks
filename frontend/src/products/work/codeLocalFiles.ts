@@ -30,29 +30,31 @@ function parse(value: string | null): CodeFilesPreference {
   } catch { /* Unknown preferences use server files. */ }
   return { location: 'server' }
 }
-// `agentworks start` opens the site with the computer and folder it just shared. That is remembered for 12 hours and
-// applied once to a Code workspace that has no setting yet (takeDefaultLocalTarget, called by the workspace screen).
-const defaultKey = 'code-files-default-local'
-const defaultTtlMs = 12 * 60 * 60 * 1000
-export function setDefaultLocalTarget(target: CodeLocalFileTarget) {
-  if (!validID.test(target.device_id) || !validID.test(target.resource_id)) return
-  try { localStorage.setItem(defaultKey, JSON.stringify({ target, at: Date.now() })) } catch { /* Without storage the chat stays on server files. */ }
+// `agentworks start` opens the site with the computer, the folder and the name of the Code workspace that uses it. The link is
+// kept (12 hours, until used) so a sign-in redirect cannot lose it; the workspace screen finds the workspace by name and saves the
+// folder in its product.json (takePendingLocalLink). Nothing is ever applied to a workspace the user did not name.
+const pendingLinkKey = 'code-local-pending-link'
+const pendingLinkTtlMs = 12 * 60 * 60 * 1000
+export interface PendingLocalLink { target: CodeLocalFileTarget; workspace: string }
+export function setPendingLocalLink(link: PendingLocalLink) {
+  if (!validID.test(link.target.device_id) || !validID.test(link.target.resource_id) || !link.workspace.trim()) return
+  try { localStorage.setItem(pendingLinkKey, JSON.stringify({ ...link, at: Date.now() })) } catch { /* Without storage the link is not remembered. */ }
   window.dispatchEvent(new Event(changed))
 }
-function clearDefaultLocalTarget() { try { localStorage.removeItem(defaultKey) } catch { /* Nothing to clear. */ } }
-function defaultLocalTarget(): CodeLocalFileTarget | undefined {
+function readPendingLocalLink(): PendingLocalLink | undefined {
   try {
-    const saved = JSON.parse(localStorage.getItem(defaultKey) || 'null')
+    const saved = JSON.parse(localStorage.getItem(pendingLinkKey) || 'null')
     const target = saved?.target
-    if (saved && Date.now() - saved.at < defaultTtlMs && typeof target?.device_id === 'string' && typeof target?.resource_id === 'string' && validID.test(target.device_id) && validID.test(target.resource_id)) return target
-  } catch { /* An unreadable default is no default. */ }
+    if (saved && Date.now() - saved.at < pendingLinkTtlMs && typeof saved.workspace === 'string' && saved.workspace.trim() && typeof target?.device_id === 'string' && typeof target?.resource_id === 'string' && validID.test(target.device_id) && validID.test(target.resource_id)) return { target, workspace: saved.workspace }
+  } catch { /* An unreadable link is no link. */ }
   return undefined
 }
-/** The remembered start link target, handed out once so one link configures one workspace. */
-export function takeDefaultLocalTarget(): CodeLocalFileTarget | undefined {
-  const target = defaultLocalTarget()
-  if (target) clearDefaultLocalTarget()
-  return target
+export function peekPendingLocalLink() { return readPendingLocalLink() }
+export function clearPendingLocalLink() { try { localStorage.removeItem(pendingLinkKey) } catch { /* Nothing to clear. */ } }
+export function takePendingLocalLink(): PendingLocalLink | undefined {
+  const link = readPendingLocalLink()
+  if (link) clearPendingLocalLink()
+  return link
 }
 
 // The computer and folder a Code workspace works in is saved in its product.json (`local_files`), so it survives a refresh,
@@ -74,10 +76,7 @@ function resolveRaw(sessionId: string): string | null {
     const target = projectLocal.get(project)
     return JSON.stringify(target ? { location: 'computer', target } : { location: 'server' })
   }
-  const own = stored(preferenceKey(sessionId))
-  if (own !== null) return own
-  const fallback = defaultLocalTarget()
-  return fallback ? JSON.stringify({ location: 'computer', target: fallback }) : null
+  return stored(preferenceKey(sessionId))
 }
 export function readCodeFilesPreference(sessionId: string) { return parse(resolveRaw(sessionId)) }
 export function writeCodeFilesPreference(sessionId: string, pref: CodeFilesPreference) {
@@ -86,13 +85,11 @@ export function writeCodeFilesPreference(sessionId: string, pref: CodeFilesPrefe
     const target = pref.location === 'computer' && pref.target ? pref.target : null
     const previous = projectLocal.get(project) ?? null
     projectLocal.set(project, target)
-    if (!target) clearDefaultLocalTarget()
     window.dispatchEvent(new Event(changed))
     void persister(project, target).catch(() => { projectLocal.set(project, previous); window.dispatchEvent(new Event(changed)) })
     return
   }
   localStorage.setItem(preferenceKey(sessionId), JSON.stringify(pref))
-  if (pref.location === 'server') clearDefaultLocalTarget()
   window.dispatchEvent(new Event(changed))
 }
 function subscribe(listener: () => void) {

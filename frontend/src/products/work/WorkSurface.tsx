@@ -33,7 +33,7 @@ import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, remov
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { registerLocalFilesPersister, setProjectLocalFiles, takeDefaultLocalTarget, useCodeFilesPreference } from './codeLocalFiles'
+import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, useCodeFilesPreference } from './codeLocalFiles'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -917,7 +917,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
 
   // Code: the computer and folder come from the workspace's product.json (`local_files`), so Local mode survives a refresh.
-  // A link opened by `agentworks start` configures a workspace that has no setting yet, once.
   const localFilesProjectId = selected?.id
   const selectedLocalFiles = selected?.localFiles
   const selectedIsShared = !!selected?.shared
@@ -925,12 +924,27 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (product.profileId !== 'code' || !localFilesProjectId) return
     // Someone else's workspace never shows its owner's computer: not theirs to use, and the server refuses it.
     setProjectLocalFiles(localFilesProjectId, selectedIsShared ? null : selectedLocalFiles ?? null)
-    if (selectedLocalFiles || selectedIsShared) return
-    const target = takeDefaultLocalTarget()
-    if (!target) return
-    setProjectLocalFiles(localFilesProjectId, target)
-    void updateLocalFiles(localFilesProjectId, target).catch(() => setProjectLocalFiles(localFilesProjectId, null))
-  }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared, updateLocalFiles])
+  }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared])
+  // An `agentworks start` link names the Code workspace that uses the folder: open that workspace and save the folder in it.
+  // Only a workspace the user named is changed; no match (or several) says so and changes nothing.
+  useEffect(() => {
+    if (product.profileId !== 'code' || sessionsLoading) return
+    const link = peekPendingLocalLink()
+    if (!link) return
+    const wanted = link.workspace.trim().toLowerCase()
+    const matches = sessions.filter(item => !item.shared && (item.identity?.name?.trim() || item.title).trim().toLowerCase() === wanted)
+    clearPendingLocalLink()
+    if (matches.length !== 1) {
+      useChatStore.getState().addToast(matches.length === 0
+        ? `No Code workspace is named “${link.workspace}”. Check the name in Settings (or create the workspace), then run agentworks start again.`
+        : `Several Code workspaces are named “${link.workspace}”. Rename one so the link can pick it, then run agentworks start again.`, 'error')
+      return
+    }
+    const match = matches[0]
+    select(match.id)
+    setProjectLocalFiles(match.id, link.target)
+    void updateLocalFiles(match.id, link.target).catch(() => setProjectLocalFiles(match.id, null))
+  }, [product.profileId, sessionsLoading, sessions, select, updateLocalFiles])
   useEffect(() => {
     if (product.profileId !== 'code') return
     registerLocalFilesPersister((projectId, target) => updateLocalFiles(projectId, target ?? undefined).then(() => undefined))

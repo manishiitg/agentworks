@@ -13,7 +13,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
 import { CodeChatConnectionStatus } from './CodeChatConnectionStatus'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setDefaultLocalTarget, setProjectLocalFiles, takeDefaultLocalTarget, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setPendingLocalLink, setProjectLocalFiles, takePendingLocalLink, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -178,6 +178,7 @@ it('shows one start command with no folder form, and Verify connection says what
   const { host } = await render(true)
   await click(host, 'Connect local files')
   expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('--workspace')
   expect(host.textContent).toContain('agentworks stop')
   expect(host.textContent).toContain('agentworks start --debug')
   expect(host.querySelector('#local-project-folder')).toBeNull()
@@ -215,12 +216,16 @@ it('the workspace decides the mode (saved in its product.json), so a chat with a
   registerLocalFilesPersister(undefined)
 })
 
-it('a folder opened by `agentworks start` is handed out once, and a bad identifier is ignored', () => {
-  setDefaultLocalTarget({ device_id: '../bad', resource_id: 'project' })
-  expect(takeDefaultLocalTarget()).toBeUndefined()
-  setDefaultLocalTarget(target)
-  expect(takeDefaultLocalTarget()).toEqual(target)
-  expect(takeDefaultLocalTarget()).toBeUndefined()
+it('a link from `agentworks start` names its workspace, is handed out once, and a bad one is ignored', () => {
+  setPendingLocalLink({ target: { device_id: '../bad', resource_id: 'project' }, workspace: 'App' })
+  setPendingLocalLink({ target, workspace: '  ' })
+  expect(takePendingLocalLink()).toBeUndefined()
+  setPendingLocalLink({ target, workspace: 'App' })
+  expect(takePendingLocalLink()).toEqual({ target, workspace: 'App' })
+  expect(takePendingLocalLink()).toBeUndefined()
+  // It never configures a chat or workspace by itself.
+  setPendingLocalLink({ target, workspace: 'App' })
+  expect(codeChatModeForChat('fresh-chat')).toBe('server')
 })
 
 it('shows Downloads permission before switching and on the connected summary', async () => {

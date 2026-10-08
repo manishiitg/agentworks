@@ -23,7 +23,14 @@ func terminateProcess(pid int, force bool) {
 	_ = syscall.Kill(pid, signal)
 }
 
+// stdinIsTerminal is true for a real terminal. /dev/null is a character device too, but nobody can answer a question there.
 func stdinIsTerminal() bool {
 	info, err := os.Stdin.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(info, null) {
+		return false
+	}
+	return true
 }

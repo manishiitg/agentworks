@@ -447,7 +447,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
           onDeleteRequest={onDeleteRequest}
         />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
-        {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} /></Suspense>}
+        {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
         {activeTab === 'models' && <div className="space-y-4">
           <WorkModelsPanel
             tabId={tabId}

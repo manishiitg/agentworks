@@ -187,7 +187,7 @@ func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	finished := make(chan int, 1)
 	go func() {
-		finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+		finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open", "--workspace", "My App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
 			if key == "AGENTWORKS_TOKEN" {
 				return "test-token"
 			}
@@ -226,5 +226,25 @@ func TestStartRemembersItsFirstRunAnswers(t *testing.T) {
 	got := loadStartPrefs(path)
 	if got.Background == nil || !*got.Background || got.Open == nil || *got.Open {
 		t.Fatalf("saved answers not restored: %+v", got)
+	}
+}
+
+// Without a workspace the CLI refuses to start: which Code workspace uses a folder is never guessed.
+func TestStartRequiresAWorkspace(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	project := filepath.Join(t.TempDir(), "app")
+	if err := os.Mkdir(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(project)
+	var stdout, stderr bytes.Buffer
+	code := run(t.Context(), []string{"--server", "https://agents.example.test", "start", "--foreground", "--no-open"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+		if key == "AGENTWORKS_TOKEN" {
+			return "test-token"
+		}
+		return ""
+	})
+	if code == 0 || !strings.Contains(stderr.String(), "--workspace") {
+		t.Fatalf("expected a refusal naming --workspace, got %d: %s", code, stderr.String())
 	}
 }
