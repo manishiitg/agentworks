@@ -33,16 +33,6 @@ describe('local MCP access tokens', () => {
     expect(authApi.revokeAccessToken).toHaveBeenCalledWith('test-token')
     expect(host.querySelector('[aria-label="New access token"]')).toBeNull()
   })
-  // Owner 2026-10-08: a read-only token for a reporting agent: one button, no picker.
-  it('issues a read-only token that expires in a week', async () => {
-    const host = await mount()
-    vi.mocked(authApi.createAccessToken).mockResolvedValue({ token: 'read-only-secret', access_token: { ...token, id: 'ro-token', name: 'Reporter' } as any })
-    const name = host.querySelector<HTMLInputElement>('[aria-label="Read-only token name"]')!
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Reporter'); name.dispatchEvent(new Event('input', { bubbles: true })) })
-    await act(async () => button(host, 'Create read-only token').click())
-    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ name: 'Reporter', read_only: true, expires_in_days: 7 }))
-    expect(host.querySelector<HTMLInputElement>('[aria-label="New read-only token"]')?.value).toBe('read-only-secret')
-  })
   it('handles failed issuance', async () => {
     const host = await mount()
     vi.mocked(authApi.createAccessToken).mockRejectedValue(new Error('offline'))

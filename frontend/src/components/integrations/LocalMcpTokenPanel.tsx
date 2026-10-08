@@ -11,8 +11,6 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
-  const [readOnlyName, setReadOnlyName] = useState('')
-  const [issuedReadOnly, setIssuedReadOnly] = useState<{ id: string; token: string } | null>(null)
   useEffect(() => {
     let active = true
     authApi.listAccessTokens().then(data => { if (active) setTokens(data.tokens) })
@@ -28,16 +26,6 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
       try { setTokens((await authApi.listAccessTokens()).tokens) }
       catch { setError('Token created, but the token list could not refresh. Copy your new token and reopen Connect to reload the list.') }
     } catch { setError('Could not create the access token. Try again.') }
-    finally { setBusy(false) }
-  }
-  // A token for a reporting agent: it can look, never run, write or manage.
-  async function createReadOnly() {
-    setBusy(true); setError(''); setIssuedReadOnly(null)
-    try {
-      const result = await authApi.createAccessToken({ name: readOnlyName.trim() || 'Read-only token', read_only: true, expires_in_days: 7, scopes: [], workflow_ids: [], all_workflows: true })
-      setIssuedReadOnly({ id: result.access_token.id, token: result.token })
-      try { setTokens((await authApi.listAccessTokens()).tokens) } catch { /* the token is shown; the list refreshes on reopen */ }
-    } catch { setError('Could not create the read-only token. Try again.') }
     finally { setBusy(false) }
   }
   async function revoke(id: string) {
@@ -58,15 +46,6 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
         <Button disabled={busy} onClick={() => void create()}>{busy ? 'Working…' : 'Create access token'}</Button>
         {issued && <div className="space-y-2 rounded-md border border-border p-3"><p className="text-xs">Copy this token now. It is shown only for this session.</p><input aria-label="New access token" type="password" readOnly value={issued.token} className="w-full rounded border border-border bg-background p-2 text-xs" /><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(issued.token).then(() => setCopied(true)).catch(() => setError('Could not copy the token.'))}><Copy className="mr-1 h-3 w-3" />{copied ? 'Copied' : 'Copy token'}</Button></div>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-      </div>
-    </SettingsCard>
-    <SettingsCard title="Read-only token" description="For a reporting agent: it can look at your workflows, files and Crews, never run, write or change anything. Expires in a week; what it sees follows your account's roles.">
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <input aria-label="Read-only token name" value={readOnlyName} onChange={event => setReadOnlyName(event.target.value)} placeholder="Name, e.g. Weekly report agent" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm" />
-          <Button disabled={busy} onClick={() => void createReadOnly()}>{busy ? 'Working…' : 'Create read-only token'}</Button>
-        </div>
-        {issuedReadOnly && <div className="space-y-2 rounded-md border border-border p-3"><p className="text-xs">Copy this token now. It is shown only for this session.</p><input aria-label="New read-only token" type="password" readOnly value={issuedReadOnly.token} className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs" /></div>}
       </div>
     </SettingsCard>
     <SettingsCard title="MCP client configuration" description="Works with HTTP MCP clients that support Authorization headers.">

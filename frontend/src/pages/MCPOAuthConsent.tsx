@@ -22,9 +22,6 @@ const scopeDescriptions: Record<string, string> = {
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
 
-// The scopes a read-only connection keeps (the server keeps the same set).
-const READ_SCOPES = ['workflows:read', 'files:read', 'crews:read', 'knowledgebase:read']
-
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
 const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Manage Vault connections, groups and permissions (administrator)', scopes: ['vault:manage'] },
@@ -44,9 +41,6 @@ export function MCPOAuthConsent() {
   const [consent, setConsent] = useState<Consent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Read only: keep just the read access the app asked for, so the connection
-  // can look but never run, write or manage anything.
-  const [readOnly, setReadOnly] = useState(false)
 
   useEffect(() => {
     if (!request || !/^mcp_req_[a-f0-9]{64}$/.test(request)) { setError('This connection request is invalid.'); return }
@@ -60,7 +54,7 @@ export function MCPOAuthConsent() {
     setBusy(true)
     setError(null)
     try {
-      const { data } = await api.post<{ redirect_url: string }>(`${consentAPI}?request=${encodeURIComponent(request)}`, { decision, workflow_ids: [], ...(readOnly && decision === 'approve' ? { read_only: true } : {}) })
+      const { data } = await api.post<{ redirect_url: string }>(`${consentAPI}?request=${encodeURIComponent(request)}`, { decision, workflow_ids: [] })
       const destination = new URL(data.redirect_url)
       if (destination.origin !== new URL(consent.redirect_uri).origin || destination.pathname !== new URL(consent.redirect_uri).pathname) {
         throw new Error('The connection response had an unexpected destination.')
@@ -85,11 +79,6 @@ export function MCPOAuthConsent() {
           <summary className="cursor-pointer">Show details</summary>
           <ul className="mt-2 space-y-1">{consent.scopes.map(scope => <li key={scope}>{scopeDescriptions[scope] || scope}</li>)}</ul>
         </details>
-        {!vault && consent.scopes.some(scope => READ_SCOPES.includes(scope)) && consent.scopes.some(scope => !READ_SCOPES.includes(scope)) && <button type="button" role="switch" aria-checked={readOnly} onClick={() => setReadOnly(value => !value)}
-          className="flex w-full items-start justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm">
-          <span><span className="font-medium text-foreground">Read only</span><span className="block text-xs text-muted-foreground">Let this app look but not run, write or change anything. Good for a reporting agent.</span></span>
-          <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${readOnly ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{readOnly ? 'On' : 'Off'}</span>
-        </button>}
         <p className="text-xs text-muted-foreground break-all">You will return to {new URL(consent.redirect_uri).origin}. You can revoke this connection later.</p>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" disabled={busy} onClick={() => void decide('deny')}>Deny</Button>
