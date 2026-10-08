@@ -7510,7 +7510,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// system prompt, never in its messages (PLAT-697).
 				if isGoalLeadSessionID(sessionID) {
 					if section := goalLeadSystemSection(context.Background(), phaseWorkspacePath); section != "" {
-						phaseAdditions = append(phaseAdditions, section)
+						// Pulse's section leads; the runtime pointers follow it.
+						phaseAdditions = append([]string{section}, phaseAdditions...)
+						phaseTemplateVars["PulseConversation"] = "true"
 					}
 				}
 				phaseSystemPrompt, phaseIncluded, phaseSkipped, phasePromptErr := buildWorkflowPhaseSystemPrompt(workflowPhaseID, phaseTemplateVars, promptCtx, phaseAdditions...)

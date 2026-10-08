@@ -42,6 +42,18 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		}
 		return strings.Join(parts, "\n\n"), nil, nil, nil
 	}
+	// The Pulse conversation has its own prompt, about the goal only: its
+	// section (goalLeadSystemSection, passed in additions) and the runtime
+	// pointers, never the Builder's plan-editing guidance (owner, 2026-10-08).
+	if vars["PulseConversation"] == "true" {
+		parts := []string{"## Workspace\n\nThe workflow's folder: `" + vars["WorkspacePath"] + "`. Its goal is soul/soul.md, your memory memory/goal.md, the plan planning/plan.json, runs under runs/, data in db/db.sqlite, reports under db/reports/. Read and search them with the workspace tools; load skills with read_skill when a turn needs one."}
+		for _, addition := range additions {
+			if strings.TrimSpace(addition) != "" {
+				parts = append(parts, addition)
+			}
+		}
+		return strings.Join(parts, "\n\n"), nil, nil, nil
+	}
 	parts := &workflowPromptParts{parts: []string{workflow.PhaseChatSystemPrompt(phase, vars)}}
 	// Other phase templates keep their existing reference contract. Builder
 	// (including Run) is the skill-backed surface migrated here.
