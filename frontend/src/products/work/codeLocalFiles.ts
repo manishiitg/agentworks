@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -6,7 +6,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 export interface CodeLocalFileTarget { device_id: string; resource_id: string }
 export type CodeFilesPreference = { location: 'server' } | { location: 'computer'; target?: CodeLocalFileTarget }
 export interface LocalFolderGuard { read_paths?: string[]; write_paths?: string[]; read_only_paths?: string[]; blocked_write_paths?: string[]; blocked_paths?: string[] }
-export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; shell?: boolean; guard: LocalFolderGuard }[] }
+export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; shell?: boolean; downloads?: boolean; guard: LocalFolderGuard }[] }
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
@@ -66,21 +66,25 @@ export function useLocalFileDevices(enabled: boolean) {
   const [devices, setDevices] = useState<LocalFileDevice[]>([])
   const [error, setError] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshRef = useRef<() => void>(() => {})
   useEffect(() => {
-    setDevices([]); setChecked(false); setError(null)
+    setDevices([]); setChecked(false); setError(null); setRefreshing(false)
     if (!enabled) return
     let active = true
     let loading = false
     const refresh = async () => {
       if (loading) return
       loading = true
+      if (active) setRefreshing(true)
       try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } }
       catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } }
-      finally { loading = false }
+      finally { loading = false; if (active) setRefreshing(false) }
     }
+    refreshRef.current = () => { void refresh() }
     void refresh()
     const timer = window.setInterval(() => void refresh(), 5000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => { active = false; refreshRef.current = () => {}; window.clearInterval(timer) }
   }, [enabled, account, workspace])
-  return { devices, error, checked }
+  return { devices, error, checked, refreshing, refresh: () => refreshRef.current() }
 }

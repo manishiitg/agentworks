@@ -10,6 +10,7 @@
 | [claude-code](claude-code/index.md) | 1 | 0 |
 | [codex](codex/index.md) | 8 | 2 |
 | [cursor](cursor/index.md) | 2 | 0 |
+| [files](files/index.md) | 1 | 1 |
 | [general](general/index.md) | 5 | 0 |
 | [models](models/index.md) | 1 | 1 |
 | [muse](muse/index.md) | 6 | 3 |

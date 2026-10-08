@@ -1,30 +1,79 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, Copy, Laptop } from 'lucide-react'
+import { Check, Copy, Download, FolderOpen, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
+import { Input } from '../../components/ui/Input'
 import { useChatStore } from '../../stores/useChatStore'
 import { getApiBaseUrl } from '../../services/api'
 import { useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
 
-function CopyCommand({ command }: { command: string }) {
+function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
+
+function CopyCommand({ command, label, disabled = false }: { command: string; label: string; disabled?: boolean }) {
   const [copied, setCopied] = useState(false)
-  return <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2">
-    <code className="min-w-0 flex-1 break-all text-xs">{command}</code>
-    <Button size="icon" variant="ghost" aria-label="Copy command" onClick={() => void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(() => setCopied(false))}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button>
+  const [error, setError] = useState(false)
+  useEffect(() => { setCopied(false); setError(false) }, [command])
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(command); setCopied(true); setError(false) }
+    catch { setError(true) }
+  }
+  return <div>
+    <div className={`flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 ${disabled ? 'opacity-50' : ''}`}>
+      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[11px] leading-5">{command}</code>
+      <Button size="icon" variant="ghost" disabled={disabled} aria-label={`Copy ${label}`} title={copied ? 'Copied' : 'Copy'} onClick={() => void copy()}>{copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}</Button>
+    </div>
+    <span role="status" className="text-xs text-muted-foreground">{copied ? 'Copied. Paste into your computer’s terminal.' : error ? 'Could not copy. Select the command and copy it manually.' : ''}</span>
   </div>
 }
-function ComputerSetup() {
+
+function SetupStep({ number, title, children }: { number: number; title: string; children: ReactNode }) {
+  return <div className="flex gap-3">
+    <span aria-hidden="true" className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-medium text-muted-foreground">{number}</span>
+    <div className="min-w-0 flex-1 space-y-2"><h4 className="text-sm font-medium">{title}</h4>{children}</div>
+  </div>
+}
+
+function ComputerSetup({ connected, reconnecting }: { connected: boolean; reconnecting: boolean }) {
   const base = getApiBaseUrl() || window.location.origin
-  const quoted = `'${base.replace(/'/g, "'\\''")}'`
-  return <details className="rounded-lg border border-border p-3" open>
-    <summary className="cursor-pointer text-sm font-medium">Connect your computer</summary>
-    <div className="mt-3 space-y-3 text-sm">
-      <p>Run these commands in your computer’s terminal (macOS or Linux). First install the AgentWorks CLI:</p>
-      <CopyCommand command={`curl -fsSL '${`${base}/api/downloads/cli/install-agentworks.sh`.replace(/'/g, "'\\''")}' | sh -s -- --server ${quoted} --no-login`} />
-      <CopyCommand command={`agentworks --config ~/.config/agentworks/executor.json login --server ${quoted} --scopes devices:connect`} />
-      <p>Approve the browser sign-in. Replace the path below with your project folder:</p>
-      <CopyCommand command="agentworks --config ~/.config/agentworks/executor.json executor connect --device my-computer --write-folder project=/absolute/path/to/project" />
-      <p className="text-xs text-muted-foreground">This allows file edits and sandboxed commands such as builds and tests. Shell commands are enabled automatically for every shared folder. Use --folder instead of --write-folder to allow inspection without file changes. Keep the command running; Ctrl-C disconnects. Folders and permissions are approved on your computer.</p>
+  const [folder, setFolder] = useState('')
+  const [device, setDevice] = useState('my-computer')
+  const [writable, setWritable] = useState(true)
+  const [downloads, setDownloads] = useState(false)
+  const value = folder.trim()
+  const validFolder = value.startsWith('/') && value !== '/' || value.startsWith('~/') && value.length > 2
+  const validDevice = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(device)
+  const project = value.startsWith('~/') ? `"$HOME"/${shellQuote(value.slice(2))}` : shellQuote(value)
+  const cli = '"$HOME/.local/bin/agentworks" --config "$HOME/.config/agentworks/executor.json"'
+  const command = `${cli} executor connect --device ${shellQuote(device)} ${writable ? '--write-folder' : '--folder'} project=${validFolder ? project : '/absolute/path/to/project'}${downloads ? ' --downloads' : ''}`
+  return <details className="group rounded-xl border border-border bg-background" open={!connected && !reconnecting}>
+    <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux</span></summary>
+    <div className="space-y-5 border-t border-border px-4 py-4">
+      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects your files. Already installed? Start at step 2.</p>
+      <SetupStep number={1} title="Install the CLI">
+        <CopyCommand label="install command" command={`curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`} />
+        <p className="text-xs text-muted-foreground">Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.</p>
+      </SetupStep>
+      <SetupStep number={2} title="Sign in to this server">
+        <CopyCommand label="sign-in command" command={`${cli} login --server ${shellQuote(base)} --scopes devices:connect`} />
+        <p className="text-xs leading-5 text-muted-foreground">A browser opens. Approve the local connection, then return to your terminal. This sign-in is separate from remote MCP access.</p>
+      </SetupStep>
+      <SetupStep number={3} title="Choose what to share">
+        <div className="space-y-3">
+          <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-project-folder">Project folder on your computer</label><Input id="local-project-folder" value={folder} onChange={event => setFolder(event.target.value)} placeholder="~/Projects/my-app" autoComplete="off" spellCheck={false} /><p className="text-xs text-muted-foreground">Use an absolute path or ~/… . Paths with spaces are supported.</p>{value && !validFolder && <p className="text-xs text-destructive">Enter a project path, not your home folder or /.</p>}</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-computer-name">Computer name</label><Input id="local-computer-name" value={device} onChange={event => setDevice(event.target.value)} autoComplete="off" spellCheck={false} />{!validDevice && <p className="text-xs text-destructive">Use letters, numbers, dashes or underscores.</p>}</div>
+            <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-project-access">Project access</label><select id="local-project-access" className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs" value={writable ? 'write' : 'read'} onChange={event => setWritable(event.target.value === 'write')}><option value="write">Read and write</option><option value="read">Read only</option></select></div>
+          </div>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3"><input type="checkbox" className="mt-0.5" checked={downloads} onChange={event => setDownloads(event.target.checked)} /><span><span className="flex items-center gap-1.5 text-xs font-medium"><Download className="h-3.5 w-3.5" />Also share Downloads</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">Allow reading and changing files in ~/Downloads alongside this project. Off unless you enable it.</span></span></label>
+          <CopyCommand label="connection command" command={command} disabled={!validFolder || !validDevice} />
+          <p className="text-xs leading-5 text-muted-foreground">{!validFolder ? 'Enter your project folder to copy a ready-to-run command. ' : ''}Shell commands are enabled automatically. Read-only access blocks changes to the project. Keep this terminal running; Ctrl-C disconnects.</p>
+        </div>
+      </SetupStep>
     </div>
   </details>
 }
@@ -40,7 +89,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
   const [confirmServer, setConfirmServer] = useState(false)
   const [settingError, setSettingError] = useState<string | null>(null)
   const busy = useChatStore(state => Object.values(state.chatTabs).some(tab => tab.sessionId === sessionId && (tab.isStreaming || tab.hasRunningBgAgents)))
-  const { devices, error, checked } = useLocalFileDevices(local || setupOpen)
+  const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(local || setupOpen)
   useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
   const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
   const draftResource = devices.flatMap(device => device.resources.map(folder => ({ ...folder, deviceId: device.device_id }))).find(folder => JSON.stringify([folder.deviceId, folder.id]) === draftKey)
@@ -57,7 +106,10 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
     {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : !local && !setupOpen ?
       <Button variant="outline" disabled={busy} onClick={() => setSetupOpen(true)}>Connect local files</Button> : <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span role="status" className="text-xs text-muted-foreground">{local ? resource ? 'Connected' : !selected ? 'Choose a folder' : checked ? 'Offline' : 'Checking…' : 'Server files active · setting up local connection'}</span>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${resource || !local && devices.length ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{resource || !local && devices.length ? <Laptop className="h-4 w-4" /> : !checked ? <Loader2 className="h-4 w-4 animate-spin" /> : selected ? <WifiOff className="h-4 w-4" /> : <Terminal className="h-4 w-4" />}</span>
+            <div><p role="status" className="text-sm font-medium">{local ? resource ? 'Connected' : !selected ? 'Choose a folder' : checked ? 'Offline' : 'Checking connection…' : devices.length ? 'Your CLI is connected' : checked ? 'Waiting for your CLI' : 'Checking connection…'}</p><p className="text-xs text-muted-foreground">{resource ? `${selected?.device_id} · ${resource.id}` : local ? 'Local mode stays active.' : 'Server files stay active until you confirm a folder.'}</p></div>
+          </div>
           {local ? <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmServer(true)}>Disconnect local files</Button> : <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setDraftKey('') }}>Cancel setup</Button>}
         </div>
         {confirmServer && <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
@@ -65,7 +117,10 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
           <p className="text-xs leading-5 text-muted-foreground">Future file edits and commands will use the server workspace. This chat’s normal Code features, including MCP connections, skills, secrets, integrations, schedules and dashboards, become available again. Switching does not move or sync your laptop project. Earlier messages and tool results remain in server chat history. The CLI keeps running until you stop it with Ctrl-C.</p>
           <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => savePreference({ location: 'server' })}>Switch to server files</Button><Button size="sm" variant="ghost" onClick={() => setConfirmServer(false)}>Keep local connection</Button></div>
         </div>}
-        <ComputerSetup />
+        {local && resource && <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
+        {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3"><p className="text-xs font-medium">Reconnect your computer to continue file work</p><p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
+        <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} />
+        <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="ghost" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button></div>
         <label className="block text-xs font-medium" htmlFor="code-local-folder">Computer and shared folder</label>
         <select id="code-local-folder" aria-label="Computer and shared folder" value={draftKey} disabled={busy} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDraftKey(event.target.value); setConfirmServer(false) }}>
           <option value="">Choose a folder…</option>
@@ -76,6 +131,8 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
           <p className="text-sm font-medium">{local ? 'Change this chat’s local folder' : 'Use local files for this chat'}</p>
           <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
             <li>File access and shell commands will use {draftResource.deviceId} / {draftResource.id}. {draftResource.writable ? 'The agent can change files and run builds, tests and git commands within your CLI permissions.' : 'This folder is read only: the agent can inspect files and run commands that do not change them.'}</li>
+            {draftResource.downloads && <li>Downloads is also shared with read and write access. The agent can inspect, create and change files there alongside your project.</li>}
+            <li>Commands can access the internet, services on your computer (localhost), and your local network. Folder permissions limit file access; they do not limit network destinations.</li>
             <li>Your agent and model stay on the server. File contents and command output are sent to the server and model provider and may be saved in server chat history. People with authorized administrator or Code review access can read that history.</li>
             <li>MCP connections, reusable skills, project secrets, integrations, schedules, dashboards, browser tools and background agents are unavailable in Local mode.</li>
             <li>{local ? 'The previous folder will no longer be used by this chat; files are not moved.' : 'Server files will no longer be used by this chat; files are not moved.'} If the CLI disconnects, local actions fail until it reconnects. Other chats and existing server schedules stay unchanged.</li>

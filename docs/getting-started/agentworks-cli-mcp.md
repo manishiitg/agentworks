@@ -753,13 +753,27 @@ agentworks --config /absolute/path/private/executor.json executor connect \
 `--folder` shares a read-only folder; shell commands can inspect its files but
 cannot modify them. `--write-folder` also permits edits and the existing patch
 tool; protected plans/configuration/database/private paths remain blocked in patches.
+`--downloads` separately grants read/write access to `~/Downloads` alongside
+each shared project. It is off by default. Shell commands use
+`$AGENTWORKS_DOWNLOADS`; guarded patches can name absolute Downloads paths,
+with one shared folder per request. Downloads remains writable even when the
+project is read-only. Merely sharing an additional folder alias does not expand
+a project’s command access. The same `--block`/`--read-only` exclusions apply
+to both roots; sensitive files should remain excluded.
+
 Every shared folder automatically enables shell commands; no separate flag is
-required. Writable folders support builds, tests, git and package installation.
+required. The CLI prints these permissions before connecting. Writable folders
+support builds, tests, git and package installation. Commands have network access
+to the internet, localhost services and the local network, even on read-only
+folder grants. File exclusions restrict filesystem access, not network destinations.
 Shell programs have broader project-file authority than patches; use `--block` and `--read-only` for paths
 commands must not access or modify. CLI credentials and receipt state stay denied.
 Commands use the filesystem sandbox and a sanitized environment; if the sandbox
 cannot enforce the grants, execution fails. Linux uses the launcher embedded in
-the CLI with Landlock; macOS uses sandbox-exec. Linux exclusions must exist
+the CLI with Landlock; macOS uses sandbox-exec.
+Local commands on macOS allow only named directory lookup services through Mach
+IPC; desktop launching, Apple Events, clipboard and credential service lookups
+are not granted. Linux exclusions must exist
 before a command runs, and nested exclusions require supported user/mount namespaces. `--block` and
 `--read-only` accept repeatable relative paths and apply to each shared folder.
 Aliases and relative grants are sent to the server; absolute roots are omitted
@@ -776,8 +790,11 @@ outcome is uncertain.
 ### Code website: connect local files to the current chat
 
 Open the right-side **Settings → General → Local CLI connection** panel in a
-Code chat. Click **Connect local files**, follow the CLI setup, and select a
-computer and folder. Review the explanation of laptop permissions, data sent to
+Code chat. Click **Connect local files**. The panel walks through installation,
+sign-in and a project path, with copyable commands and a Downloads read/write
+checkbox that starts off. Keep the terminal running. Connected computers appear
+automatically; **Check connection** refreshes their live status. Choose a computer
+and folder. Review the explanation of laptop permissions, data sent to
 the server/model, and unavailable features, then click **Use this folder**.
 Opening setup or choosing a folder alone does not switch the chat. The composer
 only shows a small read-only connection label. All changes happen in the
@@ -896,6 +913,9 @@ location to be writable. Local executors honor the same state override for locks
 `--state-dir` selects their separate durable receipt directory.
 Managed edits, version restores and MCP/Builder writes share a workflow/project
 lock, so a long operation on one workflow does not block another. Atomic replacements
-preserve Unix ownership and permissions, plus Linux access ACLs, and fail before
-replacement if these cannot be retained. Receipt storage has no automatic pruning;
+preserve Unix ownership, permissions and Linux access ACLs when permitted.
+When a rootless Linux service cannot assign the original UID, replacements remain
+service-owned while retaining the original group and effective ACL permissions,
+including the former owner’s access. Masked entries do not gain new access.
+Replacement fails before rename if the group or required ACL cannot be retained. Receipt storage has no automatic pruning;
 operators must include it in their retention and storage policy.

@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Local agents use MCP; website Code uses an explicit laptop connection
+
+Remove workflow routing/placement: local-to-server access uses the public MCP
+with guarded writes. Server-to-local stays in Code, using the outbound laptop
+CLI and existing shell/patch schemas. Shell is always enabled within granted
+folders; the agent/model remain on the server. Local mode excludes MCP, skills,
+project secrets and unrelated server features. Connection changes live only in
+the right-side settings, with consequences reviewed before confirming. Downloads
+is a separate read/write companion, off by default and explicitly enabled during
+setup. Why: the owner wants one remote access path and a focused laptop mode.
+[PLAT-720](bugs/pulse_platform/coding-agents/files/plat-720.md).
+
 ### 2026-10-08 — Bring your own model key runs through Pi; setup checks call the service directly
 
 A person's key for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any

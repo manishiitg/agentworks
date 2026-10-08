@@ -189,9 +189,13 @@ use the same physical scope. A long folder operation in one workflow does not
 hold another workflow's lock. Direct
 filesystem edits by other processes cannot be made transactional by this API.
 
-Stage and atomically replace the file while preserving its Unix owner/group and
-ordinary permission bits. Linux replacements also retain the access ACL; a
-service unable to preserve ownership refuses the replacement before rename.
+Stage and atomically replace the file while preserving Unix ownership, ordinary
+permission bits and Linux access ACLs when permitted. A rootless Linux service
+cannot assign another UID: it retains the original group and effective ACL
+permissions, adding the former owner as a named ACL entry. The replacement is
+service-owned; masked permissions are normalized before the mask is enlarged so
+other users do not gain access. Refuse replacement before rename when the required
+group or ACL access cannot be retained.
 Record caller, workflow, path, request ID, previous/resulting revision and
 recoverable history. Fail closed when required authorization or audit storage
 is unavailable. If the file changed but receipt confirmation failed, report an
@@ -247,7 +251,11 @@ cannot be supplied by the laptop connection.
 Shell commands are enabled automatically for every folder shared through the CLI.
 `--folder` uses a read-only filesystem sandbox; `--write-folder` permits file
 changes and patch tools, including builds and tests that write project files.
-No separate shell flag is required. File contents and command output reach the
+No separate shell flag is required. Before connecting, the CLI prints each
+folder's file and command permissions. Commands can access the internet,
+localhost services and the local network, including on read-only grants.
+Filesystem guards do not filter network destinations; the website confirmation
+explains this before selecting the folder. File contents and command output reach the
 server and LLM. The CLI accepts requests over its existing outbound connection.
 
 ### Connection and website experience
@@ -317,6 +325,11 @@ Cancellation, disconnect and revocation stop active commands and their process
 groups. Builds/tests run on the laptop; typed workflow editing, laptop workflow
 routing and browser tools remain excluded.
 Linux uses the launcher embedded in the CLI with Landlock; macOS uses sandbox-exec.
+Local macOS commands permit Mach lookups only for named directory services
+(libinfo and membership); they have no general Mach/IOKit permission. Desktop
+launching, Apple Events, clipboard and credential-service lookups remain denied.
+Live integration checks cover curl, git clone, npm install/test and refusal of
+desktop/AppleScript/clipboard access and an outside SSH-key fixture.
 
 The device registry currently lives in one backend process. Multiple instances
 need routing affinity for device and chat requests. This change does not deploy
@@ -337,3 +350,21 @@ the service or invoke an external LLM.
 
 Related documentation: [public MCP and CLI](../getting-started/agentworks-cli-mcp.md),
 [folder guards](folder_guard_system.md), [workflow scheduling](../workflow/workflow_scheduling.md).
+
+### Downloads companion and connection setup
+
+Local setup has three steps: install the CLI, sign in with the exclusive
+`devices:connect` scope, then share a project. The right-side panel generates
+quoted commands from the selected path and access level, shows live connected or
+offline status, and requires reviewing consequences before binding a chat.
+Downloads is off by default. Selecting **Also share Downloads** adds `--downloads`
+to the CLI command and separately grants read/write `~/Downloads`. Each project
+explicitly links that companion; simply sharing a second alias does not widen
+its shell access. Commands use `$AGENTWORKS_DOWNLOADS`; guarded patches may use
+absolute Downloads paths, with one shared folder per patch request. A read-only
+project can still use its separately approved writable Downloads. Both roots
+retain exclusion checks and refuse moved roots. A Downloads companion cannot
+override a read-only project nested inside it; patches to that project keep its
+project guards. There is no folder sync.
+
+Traceability: [PLAT-720](../bugs/pulse_platform/coding-agents/files/plat-720.md).

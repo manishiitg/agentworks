@@ -12,9 +12,6 @@ import (
 )
 
 func (e *Executor) patch(ctx context.Context, g Grant, r Request) ([]wf.WriteReceipt, error) {
-	if !g.Writable {
-		return nil, &wf.FileError{Status: 403, Message: "folder is read-only"}
-	}
 	if r.RequestID == "" || len(r.RequestID) > 100 || len(r.Content) > wf.MaxFileBytes {
 		return nil, &wf.FileError{Status: 400, Message: "patch requires bounded diff and request identity"}
 	}
@@ -27,6 +24,31 @@ func (e *Executor) patch(ctx context.Context, g Grant, r Request) ([]wf.WriteRec
 	}
 	if len(sections) == 0 || len(sections) > 32 {
 		return nil, &wf.FileError{Status: 400, Message: "patch must name 1 to 32 files"}
+	}
+	if g.Downloads {
+		companion := e.grants["downloads"]
+		downloadTargets := 0
+		within := func(grant Grant, path string) bool {
+			if containsPath(grant.Root, path) {
+				return true
+			}
+			canonical, err := filepath.EvalSymlinks(grant.Root)
+			return err == nil && containsPath(canonical, path)
+		}
+		for _, section := range sections {
+			if filepath.IsAbs(section.Path) && !within(g, section.Path) && within(companion, section.Path) {
+				downloadTargets++
+			}
+		}
+		if downloadTargets > 0 {
+			if downloadTargets != len(sections) {
+				return nil, &wf.FileError{Status: 400, Message: "patch each shared folder separately"}
+			}
+			g = companion
+		}
+	}
+	if !g.Writable {
+		return nil, &wf.FileError{Status: 403, Message: "folder is read-only"}
 	}
 	type change struct {
 		file    wf.File

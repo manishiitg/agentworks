@@ -246,6 +246,8 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	defer conn.Close()
 	hello := localfiles.Hello{Version: localfiles.Version, DeviceID: "shell-laptop", Resources: []localfiles.Resource{{ID: "project", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}}}
 	hello.Resources = append(hello.Resources,
+		localfiles.Resource{ID: "reference-downloads", Downloads: true, Patch: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}}},
+		localfiles.Resource{ID: "downloads", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}},
 		localfiles.Resource{ID: "reference", Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}}},
 		localfiles.Resource{ID: "older-cli", Writable: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}})
 	if err = conn.WriteJSON(hello); err != nil {
@@ -270,6 +272,12 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 			t.Fatalf("inspection tools for %s: %+v", resource, inspect.tools)
 		}
 	}
+	downloadTarget := &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: "reference-downloads"}
+	downloadTools := &recordingRegistrar{}
+	if err := api.registerLocalWorkspaceTools(downloadTools, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, downloadTarget), downloadTarget); err != nil || len(downloadTools.tools) != 2 {
+		t.Fatalf("Downloads tools missing: %+v %v", downloadTools.tools, err)
+	}
+	localWorkspaceTestSession(api, owner, target)
 	tool, ok := reg.tools["execute_shell_command"]
 	if !ok {
 		t.Fatal("shell tool missing")
@@ -322,6 +330,24 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	if err = <-returned; err != nil {
 		t.Fatal(err)
 	}
+	localWorkspaceTestSession(api, owner, downloadTarget)
+	go func() {
+		_, err := downloadTools.tools["diff_patch_workspace_file"].exec(t.Context(), map[string]interface{}{"filepath": "/Downloads/export.txt", "diff": "@@ -1 +1 @@\n-old\n+new\n"})
+		returned <- err
+	}()
+	if err = conn.ReadJSON(&dispatched); err != nil {
+		t.Fatal(err)
+	}
+	if dispatched.ResourceID != "reference-downloads" || dispatched.Operation != "patch" || dispatched.Path != "/Downloads/export.txt" {
+		t.Fatalf("Downloads patch binding lost: %+v", dispatched)
+	}
+	if err = conn.WriteJSON(localfiles.Response{ID: dispatched.ID, Status: 200}); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-returned; err != nil {
+		t.Fatal(err)
+	}
+	localWorkspaceTestSession(api, owner, target)
 	for _, path := range []string{"../escape", "blocked", "locked"} {
 		r := localfiles.Request{Operation: "shell", ResourceID: "project", Path: path, Command: "echo no", RequestID: "guard"}
 		if _, err := api.localDeviceCall(t.Context(), owner, "shell-laptop", r); wf.StatusCode(err) != 403 {

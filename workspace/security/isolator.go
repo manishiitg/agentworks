@@ -564,26 +564,25 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 	sb.WriteString("(allow process-fork)\n")
 	sb.WriteString("(allow signal (target self))\n")
 	sb.WriteString("(allow sysctl-read)\n")
-	sb.WriteString("(allow mach-lookup)\n")
-	sb.WriteString("(allow iokit-open)\n\n")
+	if iso.PrivateScratch {
+		// Local commands must not ask desktop or credential services to act
+		// outside their filesystem grants. Directory lookups support ordinary
+		// user/group resolution and DNS without granting arbitrary Mach IPC.
+		sb.WriteString("(allow mach-lookup\n")
+		sb.WriteString("  (global-name \"com.apple.system.opendirectoryd.libinfo\")\n")
+		sb.WriteString("  (global-name \"com.apple.system.opendirectoryd.membership\"))\n\n")
+	} else {
+		sb.WriteString("(allow mach-lookup)\n")
+		sb.WriteString("(allow iokit-open)\n\n")
+	}
 
 	if iso.AllowNetwork {
 		// Outbound network, opted into explicitly (see AllowNetwork's own doc
 		// comment for the tradeoff this accepts). Getting actual hostname
-		// resolution working here took real trial and error: (allow
-		// network*) alone connects fine to a raw IP (confirmed via curl
-		// --resolve) but getaddrinfo()-based resolution still silently failed
-		// with NO logged sandbox denial — `log show --predicate 'eventMessage
-		// contains "deny"'` showed nothing network-related at all. The actual
-		// missing pieces, found by removing restrictions one at a time until
-		// resolution worked: the mach-lookup for opendirectoryd (glibc-style
-		// resolution goes through it) IS covered by the unscoped (allow
-		// mach-lookup) above, but file-read-metadata on "/", "/var", "/etc"
-		// plus broader /var subpath read access were still being silently
-		// denied and were load-bearing for the resolver to actually get a
-		// response back. Do not narrow this without re-testing a real `curl
-		// https://<host>` end to end — a change that "looks sufficient" by
-		// reading Apple's sandbox docs was insufficient twice before this.
+		// resolution requires opendirectoryd lookups and ancestor metadata,
+		// in addition to network*. PrivateScratch uses named Mach services
+		// above and does not expose shared /var contents. Re-test real curl,
+		// git and npm hostname requests when changing these resolver grants.
 		sb.WriteString("; Outbound network (opted in) + what hostname resolution actually needs — see AllowNetwork's doc comment\n")
 		sb.WriteString("(allow network*)\n")
 		sb.WriteString("(allow ipc-posix-shm-read-data)\n")

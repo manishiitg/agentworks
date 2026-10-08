@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 84 | 21 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 85 | 22 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-720](coding-agents/files/plat-720.md) | Local Code connections, Downloads grants and guarded MCP writes | open | P1 | [coding-agents/files](coding-agents/files/index.md) |
 | [PLAT-719](ops/repo/plat-719.md) | Company and customer specifics in the public repo | in progress | P1 | [ops/repo](ops/repo/index.md) |
 | [PLAT-718](coding-agents/claude-code/plat-718.md) | Claude Haiku 5.5 replaces Haiku 4.5 | fixed on main | P2 | [coding-agents/claude-code](coding-agents/claude-code/index.md) |
 | [PLAT-717](coding-agents/pi/plat-717.md) | Bring your own model key: OpenRouter, NVIDIA NIM, Groq, Google AI Studio and OpenAI-compatible endpoints through Pi | fixed on main | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-678](browser/browser/plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 | [browser/browser](browser/browser/index.md) |
-| [PLAT-677](vault/groups/plat-677.md) | Vault group descriptions must not name people | open | P2 | [vault/groups](vault/groups/index.md) |

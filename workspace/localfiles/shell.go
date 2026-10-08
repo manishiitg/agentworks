@@ -86,7 +86,15 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 		return nil, err
 	}
 	defer journalDir.Close()
-	payload, _ := json.Marshal([]any{root, g.Resource, g.PrivatePaths, p, r.Command, r.ShellTimeout(), r.Identity.UserID})
+	var downloads *Grant
+	if g.Downloads {
+		companion, ok := e.grants["downloads"]
+		if !ok {
+			return nil, &wf.FileError{Status: 403, Message: "Downloads is not shared by this CLI"}
+		}
+		downloads = &companion
+	}
+	payload, _ := json.Marshal([]any{root, g.Resource, g.PrivatePaths, downloads, p, r.Command, r.ShellTimeout(), r.Identity.UserID})
 	fingerprint := sha256.Sum256(payload)
 	id := sha256.Sum256([]byte(r.RequestID))
 	name := hex.EncodeToString(id[:]) + ".json"
@@ -109,17 +117,48 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 		return nil, err
 	}
 	iso := &security.Isolator{BaseDir: root, WorkDir: workDir, StrictAllowlist: true, AllowNetwork: true, PrivateScratch: true}
-	for _, path := range append(append([]string{}, g.Guard.ReadPaths...), g.Guard.ReadOnlyPaths...) {
-		iso.ReadPaths = append(iso.ReadPaths, filepath.Join(root, filepath.FromSlash(path)))
+	commandGrants := []Grant{g}
+	if downloads != nil {
+		commandGrants = append(commandGrants, *downloads)
 	}
-	for _, path := range g.Guard.WritePaths {
-		iso.WritePaths = append(iso.WritePaths, filepath.Join(root, filepath.FromSlash(path)))
-	}
-	for _, path := range g.Guard.BlockedPaths {
-		iso.BlockedPaths = append(iso.BlockedPaths, filepath.Join(root, filepath.FromSlash(path)))
-	}
-	for _, path := range append(append([]string{}, g.Guard.ReadOnlyPaths...), g.Guard.BlockedWritePaths...) {
-		iso.BlockedWritePaths = append(iso.BlockedWritePaths, filepath.Join(root, filepath.FromSlash(path)))
+	for _, grant := range commandGrants {
+		grantRoot, err := filepath.EvalSymlinks(grant.Root)
+		if err != nil {
+			return nil, err
+		}
+		held, err := e.roots[grant.ID].Stat(".")
+		if err != nil {
+			return nil, err
+		}
+		actual, err := os.Stat(grantRoot)
+		if err != nil || !os.SameFile(held, actual) {
+			return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
+		}
+		for _, path := range append(append([]string{}, grant.Guard.ReadPaths...), grant.Guard.ReadOnlyPaths...) {
+			iso.ReadPaths = append(iso.ReadPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+		}
+		if !grant.Writable {
+			// A writable companion must not override a read-only project nested within it.
+			iso.BlockedWritePaths = append(iso.BlockedWritePaths, grantRoot)
+		}
+		for _, path := range grant.Guard.WritePaths {
+			iso.WritePaths = append(iso.WritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+		}
+		for _, path := range grant.Guard.BlockedPaths {
+			iso.BlockedPaths = append(iso.BlockedPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+		}
+		for _, path := range append(append([]string{}, grant.Guard.ReadOnlyPaths...), grant.Guard.BlockedWritePaths...) {
+			iso.BlockedWritePaths = append(iso.BlockedWritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+		}
+		if runtime.GOOS == "linux" {
+			exclusions := append(append([]string{}, grant.Guard.BlockedPaths...), grant.Guard.ReadOnlyPaths...)
+			exclusions = append(exclusions, grant.Guard.BlockedWritePaths...)
+			for _, path := range exclusions {
+				if _, err := os.Lstat(filepath.Join(grantRoot, filepath.FromSlash(path))); err != nil {
+					return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: Linux shell exclusions must exist before commands run"}
+				}
+			}
+		}
 	}
 	for _, grant := range e.grants {
 		if grant.State != "" {
@@ -130,17 +169,6 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 			iso.BlockedPaths = append(iso.BlockedPaths, lockState)
 		}
 	}
-	// Landlock cannot deny a not-yet-created child of a writable grant.
-	// Reject such policies rather than silently dropping an exclusion.
-	if runtime.GOOS == "linux" {
-		exclusions := append(append([]string{}, g.Guard.BlockedPaths...), g.Guard.ReadOnlyPaths...)
-		exclusions = append(exclusions, g.Guard.BlockedWritePaths...)
-		for _, path := range exclusions {
-			if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
-				return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: Linux shell exclusions must exist before commands run"}
-			}
-		}
-	}
 	cmd, cleanup, err := iso.ExecuteIsolated(operationCtx, r.Command, nil)
 	if err != nil {
 		return nil, &wf.FileError{Status: 503, Message: err.Error()}
@@ -149,6 +177,9 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	// Keep only local tool lookup, locale and sandbox cache paths. Login tokens,
 	// server/provider secrets and arbitrary CLI environment never reach commands.
 	cmd.Env = shellEnvironment(cmd.Env)
+	if downloads != nil {
+		cmd.Env = append(cmd.Env, "AGENTWORKS_DOWNLOADS="+downloads.Root)
+	}
 	var stdout, stderr boundedOutput
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	kill := configureShellProcess(cmd)

@@ -399,7 +399,7 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	if patch {
 		// All diff targets, including absolute local paths and multi-file patches,
 		// are checked independently by the file-owning CLI before any write.
-		if !resource.Writable || !resource.Patch || request.RequestID == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes {
+		if (!resource.Writable && !resource.Downloads) || !resource.Patch || request.RequestID == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes {
 			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Patch requires a writable folder, current CLI and bounded diff"}
 		}
 	} else {
@@ -496,12 +496,13 @@ func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolReg
 		return nil
 	}
 	selected := *target
-	patchSupported, shellSupported := false, false
+	patchSupported, shellSupported, downloadsSupported := false, false, false
 	for _, hello := range api.localDeviceList(claims) {
 		if hello.DeviceID == selected.DeviceID {
 			for _, resource := range hello.Resources {
 				if resource.ID == selected.ResourceID {
-					patchSupported, shellSupported = resource.Writable && resource.Patch, resource.Shell
+					patchSupported, shellSupported = (resource.Writable || resource.Downloads) && resource.Patch, resource.Shell
+					downloadsSupported = resource.Downloads
 				}
 			}
 		}
@@ -531,6 +532,9 @@ func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolReg
 			description = "Execute a shell command on the selected laptop with sh -c and return stdout, stderr and exit code. Read/list files with cat, sed, head or ls; run builds, tests, git and other commands within the locally approved folder permissions. Read-only folders allow inspection but block writes. timeout defaults to 60 seconds and is limited to 300. Use $TMPDIR for private scratch; the command environment does not include laptop login/provider secrets."
 		}
 		description += " The selected computer/folder is bound internally. The folder root is the command working directory; relative paths start there and absolute paths must stay underneath the grants. Never use server files as a fallback."
+		if downloadsSupported {
+			description += " The CLI also explicitly shares Downloads for reading and writing. Its path is $AGENTWORKS_DOWNLOADS in shell commands. To patch a Downloads file, inspect that path and use its absolute filepath; patch each shared folder separately."
+		}
 		gate.Declare(tool)
 		err = registrar.RegisterCustomToolWithTimeout(tool, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if !api.localWorkspaceTurnAllowed(sessionID, claims.UserID, selected) {

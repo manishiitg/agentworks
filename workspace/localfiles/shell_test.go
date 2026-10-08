@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
@@ -45,6 +46,58 @@ func shellFixture(t *testing.T) (*Executor, Grant) {
 func shellRequest(command, id string) Request {
 	return Request{Operation: "shell", ResourceID: "project", Path: ".", Command: command, RequestID: id, Identity: wf.EditIdentity{UserID: "owner"}}
 }
+
+func TestLocalMacShellCannotUseDesktopCredentialOrClipboardServices(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS broker services")
+	}
+	e, g := shellFixture(t)
+	// Use an outside fixture rather than reading any real laptop credentials.
+	private := filepath.Join(filepath.Dir(g.Root), "private-home", ".ssh")
+	if err := os.MkdirAll(private, 0700); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(private, "id_test")
+	if err := os.WriteFile(key, []byte("fixture-not-a-real-key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commands := []struct{ name, command string }{
+		{"desktop", "open -a Calculator"},
+		{"apple-events", `osascript -e 'do shell script "id"'`},
+		{"clipboard", "pbpaste >/dev/null"},
+		{"outside-key", "cat '" + strings.ReplaceAll(key, "'", "'\\''") + "' >/dev/null"},
+	}
+	for _, command := range commands {
+		t.Run(command.name, func(t *testing.T) {
+			got := e.Execute(t.Context(), shellRequest(command.command, command.name))
+			if got.Status != 200 || got.Shell == nil || got.Shell.ExitCode == 0 || got.Shell.TimedOut {
+				t.Fatalf("broker or outside-file access was not denied: status=%d result=%+v", got.Status, got.Shell)
+			}
+		})
+	}
+}
+
+func TestLocalMacShellNetworkGitAndNpm(t *testing.T) {
+	if runtime.GOOS != "darwin" || os.Getenv("AGENTWORKS_TEST_LOCAL_NETWORK") != "1" {
+		t.Skip("opt in to real macOS network integration with AGENTWORKS_TEST_LOCAL_NETWORK=1")
+	}
+	e, g := shellFixture(t)
+	if err := os.WriteFile(filepath.Join(g.Root, "package.json"), []byte(`{"private":true,"scripts":{"test":"node -e \"if (!require('is-number')(42)) process.exit(1)\""}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commands := []struct{ name, command string }{
+		{"curl", "curl --fail --silent --show-error --max-time 15 https://example.com >/dev/null"},
+		{"git", "git -c credential.helper= clone --depth=1 https://github.com/octocat/Hello-World.git remote"},
+		{"npm-install", "npm install --ignore-scripts --no-audit --no-fund --save-exact is-number@7.0.0 --fetch-timeout=15000 --fetch-retries=0"},
+		{"npm-test", "npm test"},
+	}
+	for _, command := range commands {
+		got := e.Execute(t.Context(), shellRequest(command.command, command.name))
+		if got.Status != 200 || got.Shell == nil || got.Shell.ExitCode != 0 || got.Shell.TimedOut {
+			t.Fatalf("%s: status=%d result=%+v", command.name, got.Status, got.Shell)
+		}
+	}
+}
 func TestLocalShellCommandsResultsAndDurableRetry(t *testing.T) {
 	e, g := shellFixture(t)
 	r := shellRequest("printf 'local-output'; printf 'error-output' >&2; echo once >> count; exit 7", "command-1")
@@ -68,6 +121,79 @@ func TestLocalShellCommandsResultsAndDurableRetry(t *testing.T) {
 	r.Command = "echo different"
 	if got := e.Execute(t.Context(), r); got.Status != 409 {
 		t.Fatalf("request ID reuse %+v", got)
+	}
+}
+
+func TestLocalDownloadsRequireExplicitCompanionGrant(t *testing.T) {
+	_, project := shellFixture(t)
+	downloadsRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(downloadsRoot, "import.csv"), []byte("downloaded"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(downloadsRoot, "blocked"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadsRoot, "blocked", "private"), []byte("hidden"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	companion := Grant{Resource: Resource{ID: "downloads", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}}}, Root: downloadsRoot, State: filepath.Join(t.TempDir(), "state")}
+	for _, enabled := range []bool{false, true} {
+		// A read-only project may still opt in to writable Downloads.
+		project.Writable = false
+		project.Guard.WritePaths = nil
+		project.Downloads = enabled
+		e, err := Open("laptop", []Grant{project, companion})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer e.Close()
+		id := fmt.Sprintf("downloads-%v", enabled)
+		got := e.Execute(t.Context(), shellRequest("cat '"+downloadsRoot+"/import.csv'", id))
+		if got.Shell == nil || (got.Shell.ExitCode == 0) != enabled {
+			t.Fatalf("Downloads grant %v: %+v", enabled, got.Shell)
+		}
+		patch := shellRequest("", id+"-patch")
+		patch.Path = ""
+		patch.Operation, patch.Content = "patch", "*** Begin Patch\n*** Add File: "+filepath.Join(downloadsRoot, "export.txt")+"\n+exported\n*** End Patch"
+		result := e.Execute(t.Context(), patch)
+		if (result.Status == 200) != enabled {
+			t.Fatalf("Downloads patch %v: %+v", enabled, result)
+		}
+		if enabled {
+			canonical, err := filepath.EvalSymlinks(downloadsRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			patch.Content = "*** Begin Patch\n*** Add File: " + filepath.Join(canonical, "canonical.txt") + "\n+new\n*** End Patch"
+			patch.RequestID = id + "-canonical-patch"
+			if result := e.Execute(t.Context(), patch); result.Status != 200 {
+				t.Fatalf("canonical Downloads patch: %+v", result)
+			}
+			patch.Content = "*** Begin Patch\n*** Add File: " + filepath.Join(downloadsRoot, "blocked", "new.txt") + "\n+hidden\n*** End Patch"
+			patch.RequestID = id + "-blocked-patch"
+			if result := e.Execute(t.Context(), patch); result.Status != 403 {
+				t.Fatalf("Downloads patch bypassed exclusion: %+v", result)
+			}
+			patch.Content = "*** Begin Patch\n*** Add File: " + filepath.Join(downloadsRoot, "mixed.txt") + "\n+new\n*** Add File: untouched.txt\n+new\n*** End Patch"
+			patch.RequestID = id + "-mixed-patch"
+			if result := e.Execute(t.Context(), patch); result.Status != 400 {
+				t.Fatalf("mixed patch accepted: %+v", result)
+			}
+			if _, err := os.Stat(filepath.Join(downloadsRoot, "mixed.txt")); !os.IsNotExist(err) {
+				t.Fatal("mixed patch wrote before validation")
+			}
+			got = e.Execute(t.Context(), shellRequest(`printf updated > "$AGENTWORKS_DOWNLOADS/import.csv"`, id+"-write"))
+			if got.Shell == nil || got.Shell.ExitCode != 0 {
+				t.Fatalf("Downloads write: %+v", got.Shell)
+			}
+			if data, _ := os.ReadFile(filepath.Join(downloadsRoot, "import.csv")); string(data) != "updated" {
+				t.Fatalf("Downloads not updated: %s", data)
+			}
+			got = e.Execute(t.Context(), shellRequest(`cat "$AGENTWORKS_DOWNLOADS/blocked/private"`, id+"-blocked"))
+			if got.Shell == nil || got.Shell.ExitCode == 0 {
+				t.Fatal("Downloads exclusion ignored")
+			}
+		}
 	}
 }
 func TestLocalShellEnforcesFolderGuardsAndEnvironment(t *testing.T) {
@@ -203,5 +329,37 @@ func TestLocalShellUnknownOutcomeDoesNotExecuteAgain(t *testing.T) {
 	data, err = os.ReadFile(filepath.Join(g.Root, "counter"))
 	if err != nil || string(data) != "once\n" {
 		t.Fatalf("unknown side effect repeated %s %v", data, err)
+	}
+}
+
+func TestLocalDownloadsDoNotOverrideNestedReadonlyProject(t *testing.T) {
+	_, project := shellFixture(t)
+	downloads := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	project.Root = filepath.Join(downloads, "project")
+	if err := os.Mkdir(project.Root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	project.Writable, project.Downloads = false, true
+	project.Guard.WritePaths = nil
+	companion := Grant{Resource: Resource{ID: "downloads", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}}, Root: downloads, State: filepath.Join(t.TempDir(), "state")}
+	e, err := Open("laptop", []Grant{project, companion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	got := e.Execute(t.Context(), shellRequest(`touch "$AGENTWORKS_DOWNLOADS/project/forbidden"`, "nested-deny"))
+	if got.Shell == nil || got.Shell.ExitCode == 0 {
+		t.Fatalf("companion widened project: %+v", got)
+	}
+	got = e.Execute(t.Context(), shellRequest(`touch "$AGENTWORKS_DOWNLOADS/allowed"`, "nested-allow"))
+	if got.Shell == nil || got.Shell.ExitCode != 0 {
+		t.Fatalf("Downloads write blocked: %+v", got)
+	}
+	patch := shellRequest("", "nested-patch")
+	patch.Path, patch.Operation = "", "patch"
+	patch.Content = "*** Begin Patch\n*** Add File: " + filepath.Join(project.Root, "forbidden") + "\n+new\n*** End Patch"
+	if result := e.Execute(t.Context(), patch); result.Status != 403 {
+		t.Fatalf("patch widened project: %+v", result)
 	}
 }

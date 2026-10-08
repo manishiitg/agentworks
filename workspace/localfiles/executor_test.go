@@ -85,3 +85,16 @@ func TestExecutorRejectsBroadRootsAndPrivateCredentialsAcrossAliases(t *testing.
 		e.Close()
 	}
 }
+
+func TestDownloadsLinkRequiresIndependentWritableGrant(t *testing.T) {
+	project := Resource{ID: "project", Downloads: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}}}
+	companion := Resource{ID: "downloads", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}}
+	for _, resources := range [][]Resource{{project}, {project, {ID: "downloads"}}, {{ID: "downloads", Downloads: true, Writable: true}}} {
+		if err := (Hello{Version: Version, DeviceID: "laptop", Resources: resources}).Validate(); err == nil {
+			t.Fatalf("unapproved Downloads link accepted: %+v", resources)
+		}
+	}
+	if err := (Hello{Version: Version, DeviceID: "laptop", Resources: []Resource{project, companion}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 func executorCommand(o *options) *cobra.Command {
 	var deviceID, stateDir string
 	var folders, writeFolders, blocked, readOnly []string
+	var downloads bool
 	root := &cobra.Command{Use: "executor", Short: "Share explicitly selected local folders with server agents"}
 	connect := &cobra.Command{Use: "connect", Args: cobra.NoArgs, Short: "Keep an outbound authenticated file and shell connection open; Ctrl-C disconnects", RunE: func(cmd *cobra.Command, _ []string) error {
 		if !localfiles.ValidID(deviceID) {
@@ -49,6 +51,22 @@ func executorCommand(o *options) *cobra.Command {
 				grants = append(grants, localfiles.Grant{Resource: localfiles.Resource{ID: alias, Writable: group.writable, Shell: true, Guard: guard}, Root: folder, State: filepath.Join(stateDir, alias), PrivatePaths: []string{config}})
 			}
 		}
+		if downloads {
+			if len(grants) == 0 {
+				return errors.New("--downloads requires a project --folder or --write-folder")
+			}
+			for i := range grants {
+				if grants[i].ID == "downloads" {
+					return errors.New("the downloads alias is reserved when --downloads is enabled")
+				}
+				grants[i].Downloads = true
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			grants = append(grants, localfiles.Grant{Resource: localfiles.Resource{ID: "downloads", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: blocked, ReadOnlyPaths: readOnly}}, Root: filepath.Join(home, "Downloads"), State: filepath.Join(stateDir, "downloads"), PrivatePaths: []string{config}})
+		}
 		if len(grants) > 0 {
 			if err := configureLocalShellSandbox(); err != nil {
 				return err
@@ -59,6 +77,13 @@ func executorCommand(o *options) *cobra.Command {
 			return err
 		}
 		defer executor.Close()
+		for _, grant := range grants {
+			access := "read-only files"
+			if grant.Writable {
+				access = "file edits"
+			}
+			fmt.Fprintf(o.stderr, "Sharing %s: %s and shell commands enabled. Commands can access the internet, localhost services and your local network. Ctrl-C stops sharing.\n", grant.ID, access)
+		}
 		client, err := o.client()
 		if err != nil {
 			return err
@@ -93,6 +118,7 @@ func executorCommand(o *options) *cobra.Command {
 	connect.Flags().StringArrayVar(&blocked, "block", nil, "Blocked relative path on every shared folder (repeatable)")
 	connect.Flags().StringArrayVar(&readOnly, "read-only", nil, "Read-only relative path on every writable folder (repeatable)")
 	connect.Flags().StringVar(&stateDir, "state-dir", "", "Private receipt storage outside all shared folders")
+	connect.Flags().BoolVar(&downloads, "downloads", false, "Also allow reading and writing ~/Downloads from each shared project (explicit opt-in)")
 	root.AddCommand(connect)
 	return root
 }

@@ -67,6 +67,8 @@ it('connects the current session and shows only CLI connection controls', async 
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
   expect(codeLocalFilesForChat(session)).toBeUndefined()
+  expect(host.textContent).toContain('services on your computer (localhost), and your local network')
+  expect(host.textContent).toContain('they do not limit network destinations')
   await click(host, 'Use this folder')
   expect(host.textContent).toContain('Connected')
   expect(codeLocalFilesForChat(session)).toEqual(target)
@@ -143,7 +145,7 @@ it('prevents changing connections during an active turn', async () => {
   writeCodeFilesPreference(session, { location: 'computer', target })
   chats.chatTabs = { running: { sessionId: session, isStreaming: true } }
   const { host } = await render(true)
-  expect(host.querySelector<HTMLSelectElement>('select')!.disabled).toBe(true)
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Computer and shared folder"]')!.disabled).toBe(true)
   const disconnect = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Disconnect local files')!
   expect(disconnect.disabled).toBe(true)
   expect(host.textContent).toContain('Wait for the current turn')
@@ -160,4 +162,42 @@ it('shows shell capability and a CLI command that enables local builds and tests
   expect(host.textContent).toContain('Files and commands')
   expect(host.textContent).toContain('Shell commands enabled on this computer')
   expect(transport.post).not.toHaveBeenCalled()
+})
+
+it('requires a project path and explicitly opts in to writable Downloads in the setup command', async () => {
+  transport.get.mockResolvedValue({ data: { devices: [] } })
+  const { host } = await render(true)
+  await click(host, 'Connect local files')
+  const copy = host.querySelector<HTMLButtonElement>('[aria-label="Copy connection command"]')!
+  const downloads = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+  expect(copy.disabled).toBe(true)
+  expect(downloads.checked).toBe(false)
+  expect(host.textContent).not.toContain('--downloads')
+  const input = host.querySelector<HTMLInputElement>('#local-project-folder')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, "~/Projects/my app's files")
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(copy.disabled).toBe(false)
+  expect(host.textContent).toContain(`project="$HOME"/'Projects/my app'\\''s files'`)
+  await act(async () => downloads.click())
+  expect(host.textContent).toContain('--downloads')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  expect(transport.post).not.toHaveBeenCalled()
+})
+
+it('shows Downloads permission before switching and on the connected summary', async () => {
+  transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: false, shell: true, downloads: true, guard: {} }] }] } })
+  const { host } = await render(true)
+  await click(host, 'Connect local files')
+  await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
+  expect(host.textContent).toContain('Downloads is also shared with read and write access')
+  expect(codeLocalFilesForChat(session)).toBeUndefined()
+  await click(host, 'Use this folder')
+  expect(host.textContent).toContain('Project: read only')
+  expect(host.textContent).toContain('Downloads: read and write')
+  const calls = transport.get.mock.calls.length
+  await click(host, 'Check connection')
+  expect(transport.get.mock.calls.length).toBe(calls + 1)
+  expect(codeLocalFilesForChat(session)).toEqual(target)
 })

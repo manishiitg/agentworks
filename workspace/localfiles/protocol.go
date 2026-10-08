@@ -19,10 +19,11 @@ type Resource struct {
 	ID string `json:"id"`
 	// Capabilities distinguish older CLIs. New executors always support shell;
 	// writable folders also support guarded patches. These are not opt-in flags.
-	Patch    bool           `json:"patch,omitempty"`
-	Shell    bool           `json:"shell,omitempty"`
-	Writable bool           `json:"writable"`
-	Guard    wf.FolderGuard `json:"guard"`
+	Patch     bool           `json:"patch,omitempty"`
+	Shell     bool           `json:"shell,omitempty"`
+	Writable  bool           `json:"writable"`
+	Downloads bool           `json:"downloads,omitempty"`
+	Guard     wf.FolderGuard `json:"guard"`
 }
 type Hello struct {
 	Version   int        `json:"version"`
@@ -46,6 +47,19 @@ func (h Hello) Validate() error {
 			return fmt.Errorf("read-only resource has write grants")
 		}
 		seen[r.ID] = true
+	}
+	for _, r := range h.Resources {
+		if r.Downloads {
+			valid := false
+			for _, companion := range h.Resources {
+				if companion.ID == "downloads" && companion.Writable && !companion.Downloads && r.ID != "downloads" {
+					valid = true
+				}
+			}
+			if !valid {
+				return fmt.Errorf("Downloads access requires its separate writable folder grant")
+			}
+		}
 	}
 	return nil
 }
