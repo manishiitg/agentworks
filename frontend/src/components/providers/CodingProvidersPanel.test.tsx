@@ -212,7 +212,7 @@ describe('CodingProvidersPanel', () => {
       expect(host.querySelector('[role="dialog"]')).toBeNull()
       expect(host.querySelector('[role="region"]')).not.toBeNull()
       expect(document.body.style.overflow).toBe('')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Manage connections'))!.click())
+      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Open the Pi terminal'))!.click())
       const terminal = host.querySelector('[data-testid="guided-terminal"]')
       expect(terminal?.textContent).toBe('Terminal setup-1')
       await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
@@ -238,7 +238,7 @@ describe('CodingProvidersPanel', () => {
     try {
       await act(async () => root.render(<CodingProvidersPanel isOpen onClose={vi.fn()} />))
       await act(async () => Promise.resolve())
-      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Manage connections'))!.click())
+      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Open the Pi terminal'))!.click())
       await act(async () => Promise.resolve())
 
       const replaceButton = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('End existing session and start new'))

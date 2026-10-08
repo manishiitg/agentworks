@@ -84,3 +84,7 @@ Kimi.
 ## 2026-10-08: bundle budget
 
 The first Excellence deploy stopped at the build: the eager JavaScript was 1034.72 kB gzip against the 1030 kB budget. The key setup and model browser now load on first use (React.lazy).
+
+## 2026-10-08: one way to add a Pi key
+
+The Pi page still had a "Model providers: open the guided Pi window, type /login… Connect a provider" card next to the new key flow; the owner found the two confusing, and Ashutosh hit it (a key added with /login worked only in that terminal). The card is now "Model keys" with **Add a model key** (the PLAT-717 flow) and a small "Open the Pi terminal" link, and says that /login keys are not used by chats.

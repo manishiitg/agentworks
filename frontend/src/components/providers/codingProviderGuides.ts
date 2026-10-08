@@ -13,7 +13,7 @@ export const CODING_PROVIDER_GUIDES: Record<string, CodingProviderGuide> = {
     authenticateNote: 'Complete the guided Cursor authentication flow. No SSH or direct server access is required.',
   },
   'pi-cli': {
-    authenticateNote: 'Open the guided Pi window, type /login, and choose the model provider you want to connect. Type /quit when finished. No SSH or direct server access is required.',
+    authenticateNote: 'Pi runs on a key from a model service: OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any OpenAI-compatible endpoint, many with free models. Add it with Add a model key. Keys entered with /login in the Pi terminal stay in that terminal and are not used by chats.',
   },
   'muse-cli': {
     authenticateNote: 'Complete the guided Muse sign-in. No SSH or direct server access is required. META_API_KEY is also supported for managed environments.',
