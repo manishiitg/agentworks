@@ -1925,6 +1925,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Daily ping to keep a Supabase free-tier auth project from auto-pausing.
 	// No-op unless AUTH_PROVIDERS includes supabase.
 	StartSupabaseKeepalive(context.Background())
+	startBrainAutoPush(context.Background())
 	fmt.Printf("📋 Supported Providers: %s\n", os.Getenv("SUPPORTED_LLM_PROVIDERS"))
 	fmt.Printf("📁 Config: %s\n", config.MCPConfigPath)
 

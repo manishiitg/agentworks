@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -392,4 +393,42 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
 	return a.Root == b.Root && a.LiveRoot == b.LiveRoot && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
 		a.BackupBranch == b.BackupBranch && a.AllowPrivateBackup == b.AllowPrivateBackup && a.BackupEncryptionKey == b.BackupEncryptionKey
+}
+
+// startBrainAutoPush delivers Brain's commits to its Git backup a few minutes after the last change, so the backup
+// follows every save without anyone asking (owner, 2026-10-08). AGENTWORKS_BRAIN_AUTO_PUSH=off turns it off. A
+// remote edited elsewhere is never overwritten: the push stops and the reason is logged and kept for Brain's status.
+func startBrainAutoPush(ctx context.Context) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_AUTO_PUSH")), "off") {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		lastError := ""
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			service, err := knowledgebaseService()
+			if err != nil {
+				continue
+			}
+			runCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			pushed, err := service.AutoPush(runCtx, 5*time.Minute, time.Now())
+			cancel()
+			switch {
+			case err != nil && err.Error() != lastError:
+				log.Printf("[BRAIN] automatic backup push: %v", err)
+				lastError = err.Error()
+			case pushed:
+				log.Printf("[BRAIN] automatic backup push: delivered")
+				lastError = ""
+			case err == nil:
+				lastError = ""
+			}
+		}
+	}()
 }
