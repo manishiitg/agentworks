@@ -5762,6 +5762,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
 		}
+		if isWorkflowPhase && isGoalLeadSessionID(sessionID) {
+			// Pulse writes only its own folders (product.yaml pulse.write_paths).
+			cliWritePaths = pulseWriteDirs(sharedChatWorkingDir)
+		}
 		if chatWorkingDir != sharedChatWorkingDir {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
@@ -5887,7 +5891,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// The Pulse conversation reads and talks to the Builder chat; it changes
 		// nothing itself (pulseTools).
 		if isWorkflowPhase && !relayChat && isGoalLeadSessionID(sessionID) {
-			toolGate = newProductToolGateForAllowlist(pulseToolSurface, pulseTools)
+			toolGate = newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
 		}
 		// Goals workflow chats have no profile, so nothing enforced their product.yaml lists; measure them first
 		// (PLAT-608 step 4): the gate logs what each Builder/Run session registers and what the list would drop.
@@ -7207,6 +7211,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
+					if isGoalLeadSessionID(sessionID) {
+						configurePulseShellGuard(sessionID, phaseWorkspacePath)
+					}
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					todo_creation_human.ConfigureManagedWorkflowDBSession(

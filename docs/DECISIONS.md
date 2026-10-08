@@ -27,7 +27,8 @@ Pulse's permission levels, even with full autonomy. Pulse's system prompt is
 its own, about the goal only, not the Builder prompt. Why: the owner wants one
 editor (the Builder, visible in his chat) and Pulse as the goal owner that
 reads and directs; the Builder toolset had also given Pulse unguarded secret,
-vault, model and skill tools. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+vault, model and skill tools. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md). Its tools and its writable folders (`pulse/`, `memory/`) are declared in
+product.yaml `pulse:`; its shell and CLI sandbox write only there.
 
 ### 2026-10-08 — The Builder chat and Pulse talk as two agents, in plain messages
 

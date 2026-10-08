@@ -169,6 +169,65 @@ chat_policy:
     notification: *builder_capabilities
   read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
 
+# The workflow Pulse agent (PLAT-697): it reads the workflow, keeps its own
+# records and talks to the Builder chat (ask_builder), which runs and changes
+# things within Pulse's permission levels. These are the only tools it gets,
+# and the only workflow folders it may write; the rest is read-only to it.
+# execute_shell_command stays because a coding CLI reaches its tools through it.
+pulse:
+  write_paths:
+    - pulse/
+    - memory/
+  tools:
+    - get_pulse_state
+    - get_goal_metrics
+    - query_workflow_db
+    - query_workflow_costs
+    - get_cost_summary
+    - get_step_prompts
+    - get_plan_prompt_health
+    - get_workflow_config
+    - get_llm_config
+    - list_executions
+    - get_schedule_runs
+    - list_schedules
+    - query_step
+    - get_notification_history
+    - get_human_input_request
+    - list_skills
+    - search_skills
+    - get_workflow_command_guidance
+    - get_file_link
+    - get_report_link
+    - read_image
+    - read_crew_calls
+    - search_platform
+    - search_playbooks
+    - brain_browse
+    - brain_access
+    - list_accessible_workflows
+    - get_contract_upgrades
+    - execute_shell_command
+    - record_pulse_goal_check
+    - record_pulse_goal_memory
+    - record_pulse_recommendation
+    - record_pulse_decision_outcome
+    - record_pulse_focus_area
+    - record_pulse_qa_request
+    - record_pulse_goal_work
+    - record_pulse_result
+    - record_pulse_worklist
+    - record_pulse_next_run
+    - record_pulse_fast_request
+    - record_pulse_finding
+    - merge_pulse_issues
+    - resolve_run_concern
+    - record_goal_observations
+    - create_human_input_request
+    - dismiss_duplicate_human_input_request
+    - notify_user
+    - ask_builder
+
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
