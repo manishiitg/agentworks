@@ -73,6 +73,11 @@ export const schedulerApi = {
       workspace_path: workspacePath,
     }).then(r => r.data),
 
+  runGoalCheck: (workspacePath: string) =>
+    api.post<{ run_id: string }>('/api/scheduler/workflows/goal-check-run', {
+      workspace_path: workspacePath,
+    }).then(r => r.data),
+
   getJobRuns: (id: string, limit = 20, offset = 0) =>
     api.get<ListScheduledJobRunsResponse>(`/api/scheduler/jobs/${id}/runs`, { params: { limit, offset } }).then(r => r.data),
 

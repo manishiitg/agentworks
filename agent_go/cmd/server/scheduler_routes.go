@@ -419,6 +419,7 @@ func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
 	}
 	apiRouter.HandleFunc("/jobs/{id}/trigger", triggerScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/pulse-run", requireWorkflowWriteAccess(triggerWorkflowPulseHandler(svc))).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/workflows/goal-check-run", requireWorkflowWriteAccess(triggerWorkflowGoalCheckHandler(svc))).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/stop", stopScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/reset-history", resetHistoryScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/runs", getScheduledJobRunsHandler(svc)).Methods("GET", "OPTIONS")
@@ -486,6 +487,34 @@ func triggerWorkflowPulseHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"run_id": runID})
+	}
+}
+
+// triggerWorkflowGoalCheckHandler starts Pulse's daily goal check now (PLAT-697),
+// e.g. to see it while schedules are globally paused, when the daily launcher
+// skips it. It uses the same run as the scheduled check.
+func triggerWorkflowGoalCheckHandler(svc *SchedulerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		var req TriggerPulseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(req.WorkspacePath) == "" {
+			http.Error(w, "workspace_path is required", http.StatusBadRequest)
+			return
+		}
+		runID, err := svc.TriggerGoalCheck(req.WorkspacePath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"run_id": runID})
 	}

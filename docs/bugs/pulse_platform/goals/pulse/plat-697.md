@@ -422,3 +422,7 @@ Left / risks:
 - Not run live. Tests: `TestWorkflowReviewRunsOncePerPlanRevisionBeforeARun`,
   `TestPulseModeMigratesToAfterRunOptions`, `ScheduleListView.test.tsx`.
 
+
+## Run goal check now (2026-10-08)
+
+The daily goal check is skipped while schedules are globally paused (`launchDueGoalChecks` returns early), so the owner never saw one. The goal status card has a **Run goal check now** button (`POST /api/scheduler/workflows/goal-check-run`, write access) that starts the same run as the scheduled check (`TriggerGoalCheck`). With all schedules paused that check is report-only, as designed.

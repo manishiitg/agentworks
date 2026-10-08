@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { schedulerApi } from '../../api/scheduler'
 import type { PulseGoalStatus } from '../../services/api-types'
 
 type Tone = 'good' | 'warn' | 'bad' | 'muted'
@@ -37,7 +39,8 @@ function statusOf(goal: PulseGoalStatus): { label: string; tone: Tone } {
 
 /** Goal status at the top of the Pulse tab (PLAT-697): on track / at risk / off track / not measured,
  * the key number, when it was last measured, and the silence alarms. */
-export function GoalStatusCard({ goal }: { goal: PulseGoalStatus | null | undefined }) {
+export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus | null | undefined; workspacePath?: string }) {
+  const [checkState, setCheckState] = useState<'idle' | 'starting' | 'started' | string>('idle')
   if (!goal?.facts?.has_goal) return null
   const { label, tone } = statusOf(goal)
   const facts = goal.facts
@@ -70,9 +73,31 @@ export function GoalStatusCard({ goal }: { goal: PulseGoalStatus | null | undefi
           Schedules are paused{facts.pause_already_reported ? '; this was reported once and stays quiet until something changes.' : '.'}
         </p>
       )}
-      <p className="mt-1.5 text-[10px] text-muted-foreground">
-        {check ? `Goal check ${formatDate(check.checked_at)}` : 'No goal check yet; the daily check runs on its own.'}
-      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <p className="text-[10px] text-muted-foreground">
+          {check ? `Goal check ${formatDate(check.checked_at)}` : 'No goal check yet; the daily check runs on its own.'}
+        </p>
+        {workspacePath && (
+          <button
+            type="button"
+            className="rounded border border-border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted disabled:opacity-50"
+            disabled={checkState === 'starting'}
+            onClick={() => {
+              setCheckState('starting')
+              schedulerApi.runGoalCheck(workspacePath)
+                .then(() => setCheckState('started'))
+                .catch((err: unknown) => {
+                  const data = (err as { response?: { data?: unknown } })?.response?.data
+                  setCheckState(typeof data === 'string' && data.trim() ? data.trim() : 'Could not start the goal check')
+                })
+            }}
+          >
+            {checkState === 'starting' ? 'Starting…' : 'Run goal check now'}
+          </button>
+        )}
+        {checkState === 'started' && <span className="text-[10px] text-muted-foreground">Started; the result shows here and in the Pulse chat tab in a minute or two.</span>}
+        {checkState !== 'idle' && checkState !== 'starting' && checkState !== 'started' && <span className="text-[10px] text-red-600 dark:text-red-400">{checkState}</span>}
+      </div>
     </section>
   )
 }

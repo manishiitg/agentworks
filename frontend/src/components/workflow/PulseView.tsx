@@ -113,7 +113,7 @@ export default function PulseView({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-3 sm:p-4">
-          {workspacePath && <GoalStatusCard goal={goalStatus} />}
+          {workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
           {workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
           {workspacePath && (
             <PulseWorkspace
