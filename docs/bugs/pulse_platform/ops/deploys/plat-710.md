@@ -52,3 +52,7 @@ the Pi model template was not loaded by the app, and nothing ran there.
   Supabase redirect `https://agents.citymall.live/auth/callback`), then SUPABASE_URL, SUPABASE_ANON_KEY and
   ADMIN_USERS (first admin) in /srv/citymall/.env.
 - Codex on the gateway needs Citymall's Responses API (/responses returns 500).
+
+## 2026-10-08: first accounts
+
+Owner: only four people for now, all admins (gaurav@, akram@, nverdhan@citymall.live and the owner's Gmail). The citymall.live domain rule is removed from the Citymall config; the user directory is the only gate.
