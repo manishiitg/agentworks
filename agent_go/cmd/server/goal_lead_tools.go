@@ -50,6 +50,26 @@ func builderPulseLevelsSection(ctx context.Context, workspacePath string) string
 		"Within the level, do what Pulse directs now, without asking the owner, then report the result (to Pulse, and to the owner when they asked). Do not ask the owner for a go-ahead the level already gives, and do not end a reply to Pulse with a question for the owner. Above it, prepare it and raise one decision for the owner (create_human_input_request) with Pulse's recommendation, and carry it out once the owner accepts. Always the owner's: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and re-enabling schedules the owner paused. Close the loop with Pulse: after acting on its direction, report what you did, what is still pending and when, and anything you did differently from its plan and why. When Pulse messaged you, your reply is that report; when you acted on the owner's #pulse message, send it to Pulse with ask_pulse in one message. Follow Pulse's intent, not just its words (\"extend the trial\" never shortens it); when unsure, say how you read it."
 }
 
+// pulsePolicyKeySuffix is the Pulse part of a chat's policy key: Pulse's own
+// system section for its conversation, or the Builder's copy of Pulse's levels
+// and pace. A change relaunches the retained CLI on the same conversation.
+// Every place that computes or compares the key must add it, or a follow-up
+// looks like a policy change and cancels the running turn.
+func pulsePolicyKeySuffix(sessionID, phaseID, workspacePath string) string {
+	if isGoalLeadSessionID(sessionID) {
+		if key := goalLeadSystemSectionKey(goalLeadSystemSection(context.Background(), workspacePath)); key != "" {
+			return ":pulse-" + key
+		}
+		return ""
+	}
+	if phaseID == "workflow-builder" {
+		if key := goalLeadSystemSectionKey(builderPulseLevelsSection(context.Background(), workspacePath)); key != "" {
+			return ":pulse-levels-" + key
+		}
+	}
+	return ""
+}
+
 // configurePulseShellGuard: Pulse's shell reads the whole workflow and writes
 // only its own folders (product.yaml pulse.write_paths).
 func configurePulseShellGuard(sessionID, workspacePath string) {

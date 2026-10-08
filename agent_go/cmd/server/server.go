@@ -7766,17 +7766,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if relayChat {
 				policyWorkflowKind = "relay"
 			}
-			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
-			// Pulse's system prompt carries its permission levels: a change
-			// relaunches the retained CLI on the same conversation.
-			if isGoalLeadSessionID(sessionID) {
-				if key := goalLeadSystemSectionKey(goalLeadSystemSection(context.Background(), req.SelectedFolder)); key != "" {
-					policyKey += ":pulse-" + key
-				}
-			} else if key := goalLeadSystemSectionKey(builderPulseLevelsSection(context.Background(), req.SelectedFolder)); req.PhaseID == "workflow-builder" && key != "" {
-				// The Builder's copy of Pulse's levels: a change relaunches it too.
-				policyKey += ":pulse-levels-" + key
-			}
+			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind) +
+				pulsePolicyKeySuffix(sessionID, req.PhaseID, req.SelectedFolder)
 			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()

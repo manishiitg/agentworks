@@ -223,3 +223,27 @@ func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
 		t.Fatalf("unchanged High effort should retain its CLI: compatible=%v err=%v", compatible, err)
 	}
 }
+
+// Local 2026-10-08: a turn stored its policy key with the Builder's Pulse part,
+// but the follow-up check rebuilt it without, so every follow-up to a Pulse
+// workflow's Builder chat counted as a policy change and cancelled the running
+// turn. Both must use the same key.
+func TestPulseWorkflowBuilderFollowUpKeepsTheRunningTurn(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_edit":true}]}`)
+	ws, docs := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]},"pulse":{"enabled":true,"autonomy":{"level":3}}}`
+	docs.files["Workflow/test/soul/soul.md"] = "Grow subscribers to 100 by December."
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	req := QueryRequest{SelectedFolder: "Workflow/test", PhaseID: "workflow-builder"}
+	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
+	suffix := pulsePolicyKeySuffix("chat", req.PhaseID, req.SelectedFolder)
+	if suffix == "" {
+		t.Fatal("a Pulse workflow's Builder chat must carry the Pulse part of the key")
+	}
+	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + suffix
+	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || !compatible {
+		t.Fatal("an unchanged Pulse workflow's follow-up was treated as a policy change", compatible, err)
+	}
+}
