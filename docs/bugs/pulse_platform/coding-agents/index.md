@@ -13,6 +13,6 @@
 | [general](general/index.md) | 5 | 0 |
 | [models](models/index.md) | 1 | 1 |
 | [muse](muse/index.md) | 6 | 3 |
-| [pi](pi/index.md) | 7 | 1 |
+| [pi](pi/index.md) | 8 | 1 |
 | [sessions](sessions/index.md) | 20 | 7 |
 | [tools](tools/index.md) | 15 | 4 |

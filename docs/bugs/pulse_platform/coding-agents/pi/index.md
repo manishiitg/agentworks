@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-720](plat-720.md) | Model key checks fail after 30 s on slow services | fixed on main | P2 |
 | [PLAT-717](plat-717.md) | Bring your own model key: OpenRouter, NVIDIA NIM, Groq, Google AI Studio and OpenAI-compatible endpoints through Pi | fixed on main | P2 |
 | [PLAT-711](plat-711.md) | Pi: deployment-supplied providers/models staged into each session | deployed | P2 |
 | [PLAT-273](plat-273.md) | Pi CLI live input was reported failed (409) while Pi had accepted it, and every retry layer then re-sent the message | fixed on main | P1 |

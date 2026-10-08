@@ -435,9 +435,11 @@ export const llmConfigService = {
 
   /** Status of one account; verify adds the real login check (Claude Code). */
   // "Bring your own model key" (PLAT-717). Either an account (connection_id, its stored key) or a key being set up.
-  byokTestKey: async (request: ByokRequest): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/test-key', request)).data,
+  // Test key and Try it call the service itself; the server waits up to 50 s (byok.go), and free models (NVIDIA NIM)
+  // often take over 30 s, which the shared 30 s limit reported as a failed check (PLAT-720).
+  byokTestKey: async (request: ByokRequest): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/test-key', request, { timeout: 60000 })).data,
   byokModels: async (request: ByokRequest): Promise<{ models: ByokModel[]; default_model?: string }> => (await llmConfigApi.post('/api/byok/models', request)).data,
-  byokTryModel: async (request: ByokRequest & { model: string }): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/try-model', request)).data,
+  byokTryModel: async (request: ByokRequest & { model: string }): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/try-model', request, { timeout: 60000 })).data,
 
   getProviderAccountStatus: async (connectionId: string, verify = false, workspacePath?: string | null): Promise<ProviderAccountStatus> => {
     const query = new URLSearchParams()
