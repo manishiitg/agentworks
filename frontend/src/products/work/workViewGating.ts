@@ -23,7 +23,7 @@ export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanel
 
 export function isWorkIdentityTabEnabled(tab: WorkIdentityTab, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
-  if (tab === 'general') return true
+  if (tab === 'general' || tab === 'location') return true
   return enabledPanels.has(tab)
 }
 

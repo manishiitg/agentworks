@@ -82,6 +82,8 @@ export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
 export const WORK_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },
   { id: 'models', label: 'Models', keywords: 'model llm provider ai' },
+  // Code only (WorkWorkspacePane drops it for Crews).
+  { id: 'location', label: 'Location', keywords: 'files location computer laptop local server cli folder connection start' },
 ]
 export const AUTOMATION_SECTIONS: PanelSection[] = [
   { id: 'schedules', label: 'Schedules', keywords: 'cron schedule timer' },

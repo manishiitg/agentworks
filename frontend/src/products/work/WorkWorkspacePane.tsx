@@ -117,7 +117,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
   // A Code hides the "Use in AI apps" integration tab (CODE_HIDDEN_INTEGRATION_TABS).
-  const sectionsFor = (id: string) => (WORK_PANEL_SECTIONS[id] ?? []).filter(section => !(isCode && id === 'mcp' && section.id === 'cli'))
+  const sectionsFor = (id: string) => (WORK_PANEL_SECTIONS[id] ?? []).filter(section => !(isCode && id === 'mcp' && section.id === 'cli') && !(!isCode && id === 'identity' && section.id === 'location'))
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
     ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Views', sections: sectionsFor(item.id) })),
     ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: sectionsFor(item.id) })),
@@ -365,7 +365,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} onManageConnection={() => { setOpenLocalFilesSettings(true); onViewChange('identity') }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           modelsOnly={localCodeSession}

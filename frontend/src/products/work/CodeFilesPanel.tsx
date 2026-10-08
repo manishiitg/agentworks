@@ -133,14 +133,9 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
   </SettingsCard>
 }
 
-export function CodeFilesPanel({ sessionId, serverFiles, onManageConnection }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void>; onManageConnection: () => void }) {
+export function CodeFilesPanel({ sessionId, serverFiles }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void> }) {
   const preference = useCodeFilesPreference(sessionId)
   if (preference.location === 'computer') return <div className="h-full overflow-y-auto p-4"><CodeLocalFilesSettings sessionId={sessionId} /></div>
-  return <div className="flex h-full min-h-0 flex-col">
-    <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-      <span className="flex-1 text-xs font-medium">Server files</span>
-      <Button size="sm" variant="ghost" onClick={onManageConnection}>Manage file connection</Button>
-    </div>
-    <div className="min-h-0 flex-1">{serverFiles}</div>
-  </div>
+  // Server files are the normal case: no header, no label. The connection settings stay in the right-side settings tab.
+  return <div className="h-full min-h-0">{serverFiles}</div>
 }

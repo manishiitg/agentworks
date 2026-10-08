@@ -31,11 +31,13 @@ import { useChatStore } from '../../stores/useChatStore'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
-export type WorkIdentityTab = 'general' | 'models'
+export type WorkIdentityTab = 'general' | 'models' | 'location'
 
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'models', label: 'Models' },
+  // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
+  { value: 'location', label: 'Location' },
 ]
 
 function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<WorkIdentityTab, string> {
@@ -44,6 +46,7 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
       ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
       : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
     models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
+    location: 'Explain where this chat works with files today (server or my computer) and how I would connect my computer with the CLI.',
   }
 }
 
@@ -90,7 +93,6 @@ function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateId
           </Button>
         </div>
       </SettingsCard>
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} /></Suspense>
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"
@@ -398,11 +400,11 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
   const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
-  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && (option.value !== 'location' || !product.hasIdentity) && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   useEffect(() => {
     if (!openLocalFilesSettings) return
-    setTab('general')
+    setTab('location')
     onLocalFilesSettingsOpened?.()
   }, [openLocalFilesSettings, onLocalFilesSettingsOpened, setTab])
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
@@ -445,6 +447,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
           onDeleteRequest={onDeleteRequest}
         />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
+        {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} /></Suspense>}
         {activeTab === 'models' && <div className="space-y-4">
           <WorkModelsPanel
             tabId={tabId}

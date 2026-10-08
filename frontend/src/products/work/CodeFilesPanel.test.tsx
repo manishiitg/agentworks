@@ -34,11 +34,10 @@ async function render(settings = false, status = false) {
   const host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)
   const ask = vi.fn(async () => {})
-  const manage = vi.fn()
-  const files = <CodeFilesPanel sessionId={session} serverFiles={<p>Server source</p>} onAsk={ask} onManageConnection={manage} />
+  const files = <CodeFilesPanel sessionId={session} serverFiles={<p>Server source</p>} onAsk={ask} />
   await act(async () => root?.render(<>{status && <CodeChatConnectionStatus sessionId={session} />}{settings ? <CodeLocalFilesSettings sessionId={session} /> : files}</>))
   const showFiles = async () => { await act(async () => root?.render(files)) }
-  return { host, ask, manage, showFiles }
+  return { host, ask, showFiles }
 }
 async function choose(host: HTMLElement, label: string, value: string) {
   await act(async () => {
@@ -52,12 +51,13 @@ async function click(host: HTMLElement, text: string) {
   await act(async () => button!.click())
 }
 
-it('keeps connection controls in Settings and links there from Files', async () => {
-  const { host, manage } = await render()
+it('shows server files with no header or label, and keeps connection controls in Settings', async () => {
+  const { host } = await render(false, true)
   expect(host.textContent).toContain('Server source'); expect(transport.get).not.toHaveBeenCalled()
+  expect(host.textContent).not.toContain('Server files')
+  expect(host.textContent).not.toContain('Manage file connection')
+  expect(host.querySelector('[aria-label^="File connection"]')).toBeNull()
   expect(host.querySelector('select')).toBeNull()
-  await click(host, 'Manage file connection')
-  expect(manage).toHaveBeenCalledOnce()
 })
 
 it('connects the current session and shows only CLI connection controls', async () => {
