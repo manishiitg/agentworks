@@ -388,6 +388,7 @@ chat:
       - get_agent_context
       - list_guidance_topics
       - get_guidance_topic
+      - get_skill
       - list_workflow_knowledge
       - read_workflow_knowledge
       - list_runs

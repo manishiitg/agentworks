@@ -92,6 +92,7 @@ func externalTools() ([]externalTool, error) {
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
 		add("get_guidance_topic", "Read one external guidance topic rendered from the canonical builder reference. Load only topics relevant to the task.", false, false, map[string]any{"topic": externalString("Topic name from list_guidance_topics.")}, "topic")
+		add("get_skill", "Return the AgentWorks skill (SKILL.md) for this server so you can install it: save `content` to <your skills folder>/agentworks/SKILL.md (Claude Code: ~/.claude/skills/agentworks/SKILL.md). Read-only; no workflow required.", false, false, nil)
 		add("list_workflow_knowledge", "List a workflow's learnings, knowledgebase notes, workspace skills, and skill wiring (workflow-selected skills plus per-step enabled_skills). Page the file inventories with limit and offset; has_more signals another page.", false, true, page())
 		add("read_workflow_knowledge", "Read one knowledge file: learnings/ or knowledgebase/ paths from the workflow, or skills/<folder>/<file> from the workspace skill catalog. Nothing else is addressable.", false, true, map[string]any{"path": externalString("Knowledge path: learnings/..., knowledgebase/..., or skills/<folder>/<file>.")}, "path")
 		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run.", false, true, page())
@@ -469,6 +470,9 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	case "get_guidance_topic":
 		api.externalGuidanceTopicBody(w, r, args)
+		return
+	case "get_skill":
+		externalJSON(w, map[string]any{"name": "agentworks", "install_path": "agentworks/SKILL.md", "content": buildHostedSkillMarkdown(getBaseURL(r))})
 		return
 	}
 	if tool.Name == "list_workflows" {
