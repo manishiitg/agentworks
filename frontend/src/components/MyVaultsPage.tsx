@@ -19,6 +19,8 @@ interface VaultConnection {
   label: string
   provider: string
   status: string
+  /** Why the last sign-in did not finish, e.g. it timed out or the app's tools could not be loaded. */
+  sign_in_error?: string
 }
 
 interface VaultView {
@@ -113,10 +115,16 @@ function signInUrl(text: string): string {
 }
 
 // What to show after adding an app: its sign-in link, or the server's words when there is none to give.
-function signInNote(text: string): { url: string; text: string } {
+// connectionId and until let the card re-read the vault while the link is open; a link lives five minutes.
+interface SignInNote { url: string; text: string; connectionId: string; wasSignedIn: boolean; until: number }
+
+function signInNote(text: string, wasSignedIn = false): SignInNote {
   const url = signInUrl(text)
-  return { url, text: url ? '' : text }
+  const connectionId = url ? (text.match(/\bConnection (c-[a-f0-9]{8,32})\b/)?.[1] ?? '') : ''
+  return { url, text: url ? '' : text, connectionId, wasSignedIn, until: Date.now() + 5 * 60 * 1000 }
 }
+
+const noSignIn: SignInNote = { url: '', text: '', connectionId: '', wasSignedIn: false, until: 0 }
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
@@ -163,7 +171,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   const [secretValue, setSecretValue] = useState('')
   const [replacing, setReplacing] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [signIn, setSignIn] = useState<{ url: string; text: string }>({ url: '', text: '' })
+  const [signIn, setSignIn] = useState<SignInNote>(noSignIn)
   const [pending, setPending] = useState<Pending>(null)
 
   const run = useCallback(async (args: Record<string, unknown>, done: string): Promise<string | null> => {
@@ -180,6 +188,17 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
       setBusy(false)
     }
   }, [vaultId, addToast, onChanged])
+
+  // While a sign-in link is open, re-read the vault so the app turns "Signed in" (or shows why not) without a reload.
+  // "Sign in again" starts from an app that is already signed in, so only a new sign-in going wrong ends that wait.
+  const pendingStatus = connections.find(connection => connection.id === signIn.connectionId)
+  const pendingDone = !!pendingStatus && ((!signIn.wasSignedIn && pendingStatus.status === 'active') || !!pendingStatus.sign_in_error)
+  useEffect(() => {
+    if (!signIn.url || !signIn.connectionId || pendingDone || Date.now() > signIn.until) return
+    // Each refresh re-renders the card, which schedules the next one.
+    const timer = window.setTimeout(onChanged, 4000)
+    return () => window.clearTimeout(timer)
+  }, [signIn, pendingDone, onChanged])
 
   const addPerson = async () => {
     if (!email.trim()) return
@@ -296,12 +315,13 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
               {connections.map(connection => {
                 const name = connection.label || connection.provider || connection.id
                 const needsSignIn = connection.status === 'authentication_required'
+                const signInFailed = needsSignIn && !!connection.sign_in_error
                 return (
                   <Row
                     key={connection.id}
                     actions={owner && (
                       <>
-                        <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: connection.id }, 'Sign-in link ready'); if (r) setSignIn(signInNote(r)) }}>{needsSignIn ? 'Sign in' : 'Sign in again'}</Button>
+                        <Button variant="ghost" size="sm" disabled={busy} onClick={async () => { const r = await run({ operation: 'sign_in', connection_id: connection.id }, 'Sign-in link ready'); if (r) setSignIn(signInNote(r, connection.status === 'active')) }}>{needsSignIn ? 'Sign in' : 'Sign in again'}</Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" title="Refresh this app's tools" aria-label={`Refresh ${name}`} disabled={busy} onClick={() => void run({ operation: 'sync', connection_id: connection.id }, `${name} refreshed`)}><RefreshCw className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" title="Remove this app" aria-label={`Remove ${name}`} disabled={busy} onClick={() => setPending({ kind: 'connection', id: connection.id, name })}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </>
@@ -310,13 +330,14 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
                     <Plug aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate font-medium text-foreground">{name}</span>
                     {connection.provider && connection.provider.toLowerCase() !== name.toLowerCase() && <span className="truncate text-muted-foreground">{connection.provider}</span>}
-                    {connection.status && <Badge variant={needsSignIn ? 'outline' : 'secondary'} className={needsSignIn ? 'border-warning/30 bg-warning/10 text-warning' : ''}>{needsSignIn ? 'Needs sign-in' : connection.status === 'active' ? 'Signed in' : connection.status}</Badge>}
+                    {connection.status && <Badge variant={needsSignIn ? 'outline' : 'secondary'} className={needsSignIn ? 'border-warning/30 bg-warning/10 text-warning' : ''} title={connection.sign_in_error}>{signInFailed ? 'Sign-in failed' : needsSignIn ? 'Needs sign-in' : connection.status === 'active' ? 'Signed in' : connection.status}</Badge>}
+                    {signInFailed && <span className="min-w-0 truncate text-xs text-warning" title={connection.sign_in_error}>{connection.sign_in_error}</span>}
                   </Row>
                 )
               })}
             </ul>
           )}
-          {signIn.url && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn.url} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
+          {signIn.url && !pendingDone && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn.url} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
           {signIn.text && <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-warning">{signIn.text}</p>}
           {owner && open === 'connection' && (
             <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addConnection() }}>

@@ -136,7 +136,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		if err != nil {
 			return "", err
 		}
-		return withMemberEmails(data), nil
+		return withMemberEmails(withVaultSignInErrors(data)), nil
 	case "apps":
 		// The Vault catalog: what connect accepts as provider. The gateway route is the admin catalog, which the host's
 		// service credential reaches; only names and whether a sign-in is needed go to the person, never upstream URLs.
@@ -169,7 +169,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		if err != nil {
 			return "", err
 		}
-		return withMemberEmails(data), nil
+		return withMemberEmails(withVaultSignInErrors(data)), nil
 	case "add_member", "remove_member", "add_owner", "remove_owner":
 		if err := needVault(); err != nil {
 			return "", err

@@ -139,10 +139,13 @@ func vaultAdminActive(userID string) bool {
 	access := userAccessForClaims(claims)
 	return userID != "" && access.Admin && !access.Disabled && userAllowedProduct(claims, "mcp-gateway")
 }
-func advanceVaultOAuthGeneration(id string) uint64 {
+func currentVaultOAuthGeneration(id string) uint64 {
 	value, _ := vaultOAuthGenerations.Load(id)
 	n, _ := value.(uint64)
-	n++
+	return n
+}
+func advanceVaultOAuthGeneration(id string) uint64 {
+	n := currentVaultOAuthGeneration(id) + 1
 	vaultOAuthGenerations.Store(id, n)
 	return n
 }
@@ -153,10 +156,9 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	if _, err := api.vaultOAuthTemplate(ctx, id, name, ""); err != nil {
 		return nil, nil, err
 	}
-	// Drop the previous account's session outside the credential mutex.
-	if _, err := vaultServiceRequest(ctx, userID, http.MethodPost, "/api/admin/connectors/"+id+"/oauth/disconnect", nil); err != nil {
-		return nil, nil, err
-	}
+	// Starting a sign-in changes nothing yet: the current sign-in, if any, keeps working until a new one
+	// completes, and the completing flow's sync then replaces the upstream session. Dropping it here let a second
+	// click, or an abandoned "Sign in again", undo a sign-in that had already finished.
 	mutex := platformMCPOAuthMutex("vault:" + id)
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -207,14 +209,16 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	if requiresRegisteredMCPClientSecret(name) && (cfg.OAuth.ClientID == "" || !hasRegisteredMCPClientSecret(cfg.OAuth)) {
 		return nil, &OAuthDiscoveryResponse{Status: "needs_client_id", ServerName: name, RedirectURI: redirect, NeedsClientSecret: true, Message: "Enter the OAuth app credentials in this connection’s sign-in form."}, nil
 	}
-	generation := advanceVaultOAuthGeneration(id)
+	// Flows started together share a generation, so whichever the person finishes wins; only a sign-out or removal
+	// (advanceVaultOAuthGeneration) cancels flows that are still waiting.
+	generation := currentVaultOAuthGeneration(id)
+	started := noteVaultSignInStarted(id)
 	notificationID := "vault-oauth:" + id + ":" + newSteerMessageID()
 	start, discovery, flowErr := api.runOAuthFlow(sessionID, redirect, oauthFlowTarget{
 		Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
 		BeforeExchange: func(flow *OAuthFlowState) error {
-			latest, _ := vaultOAuthGenerations.Load(id)
-			if latest != generation || !api.vaultActorCanManage(context.Background(), userID, id) {
-				return errors.New("sign-in was cancelled or administrator access changed")
+			if currentVaultOAuthGeneration(id) != generation || !api.vaultActorCanManage(context.Background(), userID, id) {
+				return errors.New("this connection was signed out or removed while the sign-in was open, or your access changed")
 			}
 			if _, err := api.vaultOAuthTemplate(context.Background(), id, name, cfg.URL); err != nil {
 				return err
@@ -231,10 +235,17 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			}
 			// Sync runs outside the credential mutex: upstream discovery calls
 			// the broker, which uses that same mutex to serialize refresh.
-			_, err := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)
-			return err
+			if _, err := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil); err != nil {
+				return fmt.Errorf("signed in to %s, but Vault could not load its tools (%w); use Refresh to retry", name, err)
+			}
+			return nil
 		},
 		Notify: func(success bool, detail string) {
+			shown := detail
+			if strings.Contains(detail, "did not complete authorization") {
+				shown = "the sign-in page was not finished within 5 minutes; sign in again"
+			}
+			recordVaultSignInOutcome(id, started, success, shown)
 			if sessionID == "" {
 				return
 			}
@@ -250,10 +261,91 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 
 		},
 	})
-	if flowErr == nil && start != nil {
-		_ = os.Remove(cfg.OAuth.TokenFile)
-	}
 	return start, discovery, flowErr
+}
+
+// The last sign-in outcome per connection, so the Apps list can say why a connection still needs
+// a sign-in instead of only "Needs sign-in". In memory: a restart forgets it, and the status still shows.
+type vaultSignInOutcome struct {
+	ok     bool
+	reason string
+	at     time.Time
+}
+
+var vaultSignInOutcomes sync.Map // connection ID -> vaultSignInOutcome
+var vaultSignInStarts sync.Map   // connection ID -> time.Time of the newest sign-in start
+
+// noteVaultSignInStarted marks a new attempt: an earlier failure no longer describes the connection.
+func noteVaultSignInStarted(id string) time.Time {
+	now := time.Now()
+	vaultSignInStarts.Store(id, now)
+	if prior, ok := vaultSignInOutcomes.Load(id); ok && !prior.(vaultSignInOutcome).ok {
+		vaultSignInOutcomes.Delete(id)
+	}
+	return now
+}
+
+// recordVaultSignInOutcome keeps the newest outcome. Any flow may succeed, but only the newest attempt's failure is
+// shown: a link from an earlier click that is left open and times out, before or after a later sign-in finished,
+// says nothing about the connection.
+func recordVaultSignInOutcome(id string, flowStarted time.Time, success bool, detail string) {
+	if latest, ok := vaultSignInStarts.Load(id); ok && !success && flowStarted.Before(latest.(time.Time)) {
+		return
+	}
+	if prior, ok := vaultSignInOutcomes.Load(id); ok {
+		if p := prior.(vaultSignInOutcome); p.ok && !success && p.at.After(flowStarted) {
+			return
+		}
+	}
+	vaultSignInOutcomes.Store(id, vaultSignInOutcome{ok: success, reason: strings.TrimSpace(detail), at: time.Now()})
+}
+
+// withVaultSignInErrors adds sign_in_error to each connection in a vault view (inspect or list) whose last sign-in
+// failed and that still needs a sign-in, or whose sign-in succeeded but whose tools could not be loaded.
+func withVaultSignInErrors(data []byte) []byte {
+	var generic any
+	if json.Unmarshal(data, &generic) != nil {
+		return data
+	}
+	changed := false
+	var walk func(any)
+	walk = func(node any) {
+		switch value := node.(type) {
+		case map[string]any:
+			if list, ok := value["connections"].([]any); ok {
+				for _, item := range list {
+					c, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					id, _ := c["id"].(string)
+					status, _ := c["status"].(string)
+					if outcome, ok := vaultSignInOutcomes.Load(id); ok {
+						if o := outcome.(vaultSignInOutcome); !o.ok && o.reason != "" && status != "active" {
+							c["sign_in_error"] = o.reason
+							changed = true
+						}
+					}
+				}
+			}
+			for _, child := range value {
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(generic)
+	if !changed {
+		return data
+	}
+	out, err := json.Marshal(generic)
+	if err != nil {
+		return data
+	}
+	return out
 }
 func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *http.Request, id, name string) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -285,6 +377,8 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 	writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": err == nil && token != "", "has_oauth": true})
 }
 func removeVaultCredentialFiles(id string) {
+	vaultSignInOutcomes.Delete(id)
+	vaultSignInStarts.Delete(id)
 	for _, path := range []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id))} {
 		_ = os.Remove(path)
 	}

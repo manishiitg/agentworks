@@ -33,6 +33,15 @@ chooses its next goal check (1 hour to 7 days, default a day). Why: Pulse and
 the Builder kept handing every step back to the owner even with full autonomy.
 [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
 
+### 2026-10-08 — Starting a Vault app sign-in no longer signs the connection out
+
+Starting a sign-in for a Vault connection changes nothing until a flow completes: the current sign-in keeps working,
+every open flow stays valid, and whichever the person finishes wins (its sync replaces the upstream session). Only
+sign-out and removal cancel open flows. Why: the old start-time disconnect let a second click or an abandoned "Sign in
+again" undo a finished sign-in (a hosted server, 2026-10-08). A failed sign-in's reason is now shown on the Apps row. Code:
+`beginVaultConnectionOAuth` in `agent_go/cmd/server/vault_connection_oauth.go`. Ticket: the Vault connections
+sign-in ticket in the private tickets repo.
+
 ### 2026-10-08 — Bring your own model key runs through Pi; setup checks call the service directly
 
 A person's key for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any

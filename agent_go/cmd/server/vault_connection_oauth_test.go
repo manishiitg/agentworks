@@ -33,6 +33,7 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 	const one = "c-11111111"
 	const two = "c-22222222"
 	connections := map[string]vaultOAuthConnection{}
+	failSync := map[string]bool{}
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+secret {
 			w.WriteHeader(401)
@@ -53,6 +54,11 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 		if strings.HasSuffix(r.URL.Path, "/oauth/disconnect") {
 			c.Status = "authentication_required"
 		} else if strings.HasSuffix(r.URL.Path, "/sync") {
+			if failSync[c.ID] {
+				w.WriteHeader(400)
+				w.Write([]byte(`{"error":"upstream rejected discovery"}`))
+				return
+			}
 			c.Status = "active"
 		} else {
 			w.WriteHeader(400)
@@ -198,8 +204,49 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 	}
 	assertToken(one, "account-one")
 	assertToken(two, "account-two")
-	// Starting a replacement flow must not immediately report the old token valid.
 	t.Setenv("PUBLIC_URL", "http://localhost")
+	// Regression: a second click after a finished sign-in must not undo it, and a sign-in whose
+	// tools could not be loaded says why instead of only "Needs sign-in".
+	strayReply, err := api.capLayerConnectionAccess(context.Background(), "default", "sign_in_connection", json.RawMessage(`{"connection_id":"c-11111111"}`))
+	stray := &OAuthStartResponse{}
+	if err != nil || json.Unmarshal([]byte(strayReply), stray) != nil || stray.State == "" {
+		t.Fatal("second sign-in did not start", err)
+	}
+	mu.Lock()
+	stillActive := connections[one].Status == "active"
+	failSync[one] = true
+	mu.Unlock()
+	if !stillActive {
+		t.Fatal("starting a second sign-in signed the finished one out")
+	}
+	assertToken(one, "account-one")
+	oauthFlowsMu.RLock()
+	strayFlow := oauthFlows[stray.State]
+	oauthFlowsMu.RUnlock()
+	strayFlow.CodeChan <- "stray"
+	for until := time.Now().Add(3 * time.Second); time.Now().Before(until); time.Sleep(5 * time.Millisecond) {
+		oauthFlowsMu.RLock()
+		done := strayFlow.Outcome
+		oauthFlowsMu.RUnlock()
+		if done != "" {
+			break
+		}
+	}
+	shown := string(withVaultSignInErrors([]byte(`{"connections":[{"id":"c-11111111","status":"authentication_required"}]}`)))
+	if !strings.Contains(shown, "could not load its tools") || !strings.Contains(shown, "upstream rejected discovery") {
+		t.Fatal("failed post-sign-in sync was not shown with its reason:", shown)
+	}
+	mu.Lock()
+	failSync[one] = false
+	mu.Unlock()
+	// An older flow left open (the first click's link) that times out after a later success shows no error.
+	opened := time.Now()
+	recordVaultSignInOutcome("c-44444444", opened, true, "")
+	recordVaultSignInOutcome("c-44444444", opened.Add(-time.Second), false, "the user did not complete authorization within 5 minutes")
+	if shown := string(withVaultSignInErrors([]byte(`{"connections":[{"id":"c-44444444","status":"authentication_required"}]}`))); strings.Contains(shown, "sign_in_error") {
+		t.Fatal("an abandoned older flow overrode a completed sign-in:", shown)
+	}
+	// Starting a replacement flow must not immediately report the old token valid.
 	reply, err := api.capLayerConnectionAccess(context.Background(), "default", "sign_in_connection", json.RawMessage(`{"connection_id":"c-11111111"}`))
 	if err != nil {
 		t.Fatal(err)
