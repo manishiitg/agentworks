@@ -30,7 +30,10 @@ import (
 //
 // See docs/design/agent_tool_surface_single_source.md.
 type productToolGate struct {
-	profileID             string
+	profileID string
+	// shadowed: profileID names a measuring-only shadow surface (Shadow),
+	// not a real product profile, so it must not change what the chat gets.
+	shadowed              bool
 	workflowNotifications bool
 	deny                  func(string) bool
 
@@ -64,6 +67,7 @@ func (g *productToolGate) Shadow(surface string, names []string) {
 	defer g.mu.Unlock()
 	if g.profileID == "" {
 		g.profileID = surface
+		g.shadowed = true
 	}
 	g.shadow = make(map[string]struct{}, len(names))
 	for _, name := range names {
@@ -190,7 +194,10 @@ func (g *productToolGate) Allows(name string) bool {
 func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.workflowNotifications = enabled && g.profileID == ""
+	// A shadow surface filters nothing (PLAT-608); only a real product
+	// profile excludes workflow notifications. Before this, the shadow gate
+	// removed notify_user from every Goals Builder and Run chat and Pulse.
+	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed)
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {

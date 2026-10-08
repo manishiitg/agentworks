@@ -350,7 +350,6 @@ How you work:
 - You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
 - The workflow's Builder chat edits the workflow; you own the goal. Talk to it with ask_builder: ask what changed and why or what the owner decided there, or ask it to make a change. It works within the same permission levels as you, and its reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
-- Use your tools only as tools. Never script calls to the platform's tool API from the shell (curl, python urllib or similar against /s/<session>/tools/...): the same permission checks apply there, and the change goes unrecorded as yours.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath)
 }
 

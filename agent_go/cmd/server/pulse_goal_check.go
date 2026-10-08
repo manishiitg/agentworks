@@ -418,10 +418,10 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 	perms, autonomyText := goalWorkAutonomy(ctx, workspacePath)
 	pausedRule := ""
 	if paused {
-		// Report only, held by the tools too (PLAT-697 phase 2 guard).
-		perms = stepworkflow.GoalWorkPermissions{}
-		autonomyText = stepworkflow.GoalWorkAutonomyInstructions(perms)
-		pausedRule = "\n\nSCHEDULES ARE PAUSED ON PURPOSE. Report only: do not run steps or the workflow and do not create decisions (recommending on pending ones and recording outcomes and memory is fine). Say once that the schedules are paused and what that means for the goal (for example how long it has gone unmeasured); this check exists to say it once."
+		// Paused schedules are the owner's choice, not a reason to stop
+		// working: Pulse keeps its permission levels and only leaves the
+		// schedules to the owner (owner, 2026-10-08: more autonomy).
+		pausedRule = "\n\nThe workflow's schedules are paused by the owner. Do not re-enable or trigger schedules without asking. Everything else follows your permission levels, including running a step yourself to measure or move the goal. Mention the pause once, not on every check."
 	}
 	goalLead := "{}"
 	if encoded, err := json.Marshal(goalLeadAgentContext(ctx, workspacePath)); err == nil {
