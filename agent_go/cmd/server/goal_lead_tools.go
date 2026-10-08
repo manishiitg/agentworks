@@ -26,7 +26,7 @@ func pulseLevelsText(perms stepworkflow.GoalWorkPermissions) string {
 		"- Run: " + level(perms.Run) + ". Run the workflow's steps or routes.\n" +
 		"- Outward: " + level(perms.Outward) + ". Post, send or contact people beyond what the steps normally do.\n" +
 		"- Change: " + level(perms.Change) + ". Change the plan, step settings or schedules (never delete steps or schedules, replace the plan, or edit soul.md).\n" +
-		"At auto, ask the Builder chat and it acts; tell the owner after. At ask, prepare it and put one decision to the owner with your recommendation. Spending money always goes to the owner. The Builder chat is held to these levels while it handles your message."
+		"At auto, act on your own: decide, have the Builder chat do it now, check the result, and record it (record_pulse_goal_work); do not wait for or ask the owner, and do not raise a decision for it. At ask, still direct the Builder chat with what is best and why: it prepares the change, raises one decision for the owner (you attach your recommendation), and carries it out once the owner accepts. Spending money always goes to the owner. The Builder chat is held to these levels while it handles your message and refuses what they do not allow."
 }
 
 // configurePulseShellGuard: Pulse's shell reads the whole workflow and writes
