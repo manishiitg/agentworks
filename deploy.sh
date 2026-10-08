@@ -160,6 +160,16 @@ if gb > 0.8 * 1024 or req > 0.8e7:
 PY
 }
 
+# Company- and customer-specific server configs (product.env, runtime-config.js, branding, nginx, host setup) live in the
+# private deployments repository (github.com/runloop-workflows/deployments), checked out next to this repo as
+# ../deployments, or at AGENTWORKS_DEPLOYMENTS_DIR. The copies under deploy/rootless-linux/products are the fallback
+# until they are removed from this public repository (PLAT-719).
+deployments_dir() { printf '%s\n' "${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}"; }
+product_config_dir() {
+  local private_dir; private_dir="$(deployments_dir)/products/$1"
+  if [[ -f "$private_dir/product.env" ]]; then printf '%s\n' "$private_dir"; else printf '%s\n' "$REPO_ROOT/deploy/rootless-linux/products/$1"; fi
+}
+
 # --- Rootless Linux products (Confida, SparkQuill) -------------------------
 # Repeatable redeploy for a fixed-workspace product running as its own isolated
 # Linux account on the shared rootless-systemd Hetzner box. Only /srv/$PRODUCT
@@ -175,7 +185,7 @@ PRODUCT="${1:?Usage: ./deploy.sh <product> (a directory under deploy/rootless-li
 LOCAL_SCRIPT_DIR="$REPO_ROOT/deploy/rootless-linux"
 LOCAL_REPO_ROOT="$REPO_ROOT"                                  # mcp-agent-builder-go (local checkout)
 LOCAL_WORKSPACE_ROOT="$(cd "$LOCAL_REPO_ROOT/.." && pwd)"    # sibling repos (mcpagent, ...)
-PRODUCT_DIR="$LOCAL_SCRIPT_DIR/products/$PRODUCT"
+PRODUCT_DIR="$(product_config_dir "$PRODUCT")"
 
 test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/product.env not found" >&2; exit 1; }
 # shellcheck disable=SC1091
@@ -215,7 +225,7 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   nginx_site_b64=""
   [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
   ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
-    "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT"
+    "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$([[ -f "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" ]] && echo "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" || echo "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT")"
 fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"
@@ -319,13 +329,16 @@ trap cleanup EXIT
 cp "$LOCAL_SCRIPT_DIR/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
 printf '%s\n' "$DEPLOY_BRANCH" > "$STAGING/branch"
 printf '%s\n' "$PRODUCT" > "$STAGING/product"
+# The product's config travels with the job: build-and-activate.sh on the server reads it from here, not from the
+# public source checkout (where customer configs no longer live).
+tar -C "$PRODUCT_DIR" -czf "$STAGING/product-config.tgz" .
 "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
 
 # All three repos are public; to_https_url (above) gives an anonymous HTTPS URL so a fresh account with no SSH deploy key for
 # github.com can still clone (confida hit "Host key verification failed" on the SSH remote form, 2026-09-11).
 if [[ -n "$PREBUILT_NAME" ]]; then
   printf '%s\n' "$PREBUILT_PATH" > "$STAGING/prebuilt"
-  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
+  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/product-config.tgz" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
   echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOST_IP (copy and activate, no compile)"
 else
   echo "==> [$PRODUCT] Resolving git remotes for $DEPLOY_BRANCH (mcp-agent-builder-go, mcpagent, multi-llm-provider-go)"
@@ -334,7 +347,7 @@ else
     to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" remote get-url origin)"
     to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" remote get-url origin)"
   } > "$STAGING/repos"
-  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/repos" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
+  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/product-config.tgz" "$STAGING/repos" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
   echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH and building natively"
 fi
 # Throttled below the box's shared core/RAM budget: this box also runs other
@@ -531,7 +544,7 @@ if [[ "$SERVER" == slotcheck ]]; then
       product="$1"; [[ "$product" == excellence ]] && product=agents
       (
         # shellcheck disable=SC1090
-        source "$REPO_ROOT/deploy/rootless-linux/products/$product/product.env"
+        source "$(product_config_dir "$product")/product.env"
         identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
         exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
           "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"

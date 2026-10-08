@@ -34,7 +34,9 @@ while [[ $# -gt 0 ]]; do
 done
 REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
 SCRIPT_DIR="$REPO_ROOT/deploy/rootless-linux"
-PRODUCT_DIR="$SCRIPT_DIR/products/$PRODUCT"
+# The product config shipped with the deploy job (PRODUCT_CONFIG_DIR), else the copy in this checkout.
+PRODUCT_DIR="${PRODUCT_CONFIG_DIR:-$SCRIPT_DIR/products/$PRODUCT}"
+EXPECTED_PRODUCT="$PRODUCT"
 REMOTE_APP="/srv/$PRODUCT"
 if [[ -n "${DEPLOY_APP_ROOT:-}" ]]; then
   [[ "$STAGE_ONLY" == 1 ]] || { echo "DEPLOY_APP_ROOT is only allowed together with --stage-only" >&2; exit 2; }
@@ -52,7 +54,7 @@ export PATH="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$PATH"
 test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/product.env" >&2; exit 1; }
 # shellcheck disable=SC1091
 source "$PRODUCT_DIR/product.env"
-[[ "$PRODUCT" == "$(basename "$PRODUCT_DIR")" ]] || { echo "product.env PRODUCT=$PRODUCT does not match directory $(basename "$PRODUCT_DIR")" >&2; exit 1; }
+[[ "$PRODUCT" == "$EXPECTED_PRODUCT" ]] || { echo "product.env PRODUCT=$PRODUCT does not match the deployed product $EXPECTED_PRODUCT" >&2; exit 1; }
 
 [[ "$STAGE_ONLY" == 1 ]] || python3 - "$REMOTE_APP/.env" "${REQUIRED_PERSISTED_ENV_KEYS[@]:-}" <<'PY'
 from pathlib import Path

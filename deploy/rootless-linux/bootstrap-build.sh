@@ -9,6 +9,12 @@
 set -euo pipefail
 JOB="$1"
 PRODUCT="$(cat "$JOB/product")"
+# deploy.sh ships the product's config (from the private deployments repository) with the job.
+if [[ -f "$JOB/product-config.tgz" ]]; then
+  install -d -m 0700 "$JOB/product-config"
+  tar -xzf "$JOB/product-config.tgz" -C "$JOB/product-config"
+  export PRODUCT_CONFIG_DIR="$JOB/product-config"
+fi
 REMOTE_APP="/srv/$PRODUCT"
 export PATH="$HOME/.local/go/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 [[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "$PRODUCT build must run on Linux x86_64" >&2; exit 1; }

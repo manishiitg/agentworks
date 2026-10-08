@@ -32,3 +32,7 @@ People's emails removed from tickets (PLAT-323, 616, 623, 710) and `citymall.md`
 
 - Step 2: private `agentworks-ops` repo with `deploy/rootless-linux/products/*` (incl. SparkQuill's admin emails and Citymall's gateway endpoint), per-server docs, the server list and `./deploy.sh check`; `deploy.sh` reads products from it; public keeps one example product.
 - Step 3: decide where tickets and DECISIONS entries that name customers/people live.
+
+## Step 2 (in progress)
+
+`deploy.sh` reads a product's config from the private `runloop-workflows/deployments` repo (`../deployments/products/<name>`, or `AGENTWORKS_DEPLOYMENTS_DIR`) and ships it with the deploy job (`product-config.tgz`); `bootstrap-build.sh` unpacks it and `build-and-activate.sh` reads `PRODUCT_CONFIG_DIR`. A product's own `HOST_SETUP_SCRIPT` is taken from its config folder first. The public copies stay as a fallback until a deploy from the private repo has run.
