@@ -11,6 +11,7 @@
 | [integrations](integrations/index.md) | 1 | 0 |
 | [models](models/index.md) | 2 | 1 |
 | [navigation](navigation/index.md) | 25 | 1 |
+| [onboarding](onboarding/index.md) | 1 | 0 |
 | [reports](reports/index.md) | 7 | 2 |
 | [tests](tests/index.md) | 6 | 2 |
 | [tools](tools/index.md) | 1 | 1 |

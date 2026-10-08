@@ -43,6 +43,9 @@ const products: Array<{
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
 ]
 
+/** The product list with labels, descriptions and marks, shared with the welcome page. */
+export const PRODUCT_CARDS = products
+
 export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {
   const sidebar = useProductNavigationSidebar()
   const productSurface = useProductSurfaceStore((state) => state.productSurface)

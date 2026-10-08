@@ -40,6 +40,7 @@ declare global {
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher from './components/QuickSwitcher'
+import { WelcomeHome } from './components/WelcomeHome'
 import { PanelSwitcher } from './components/PanelSwitcher'
 import { markFeatureUsed } from './utils/featureUsage'
 
@@ -759,6 +760,8 @@ function App() {
         {/* Mounted above the surface switch so toasts raised from the top bar
             render on every surface, not only the ones that mount a chat. */}
         <ToastHost />
+        {/* First visit: products, MCP and providers instead of an empty product surface. */}
+        <WelcomeHome />
         {showQuickSwitcher && (
           <QuickSwitcher
             isOpen

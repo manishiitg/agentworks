@@ -6,7 +6,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Folder | Tickets | Open |
 |---|---|---|
-| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 87 | 14 |
+| [App UI (panes, toolbars, chat screen, settings)](app/index.md) | 88 | 14 |
 | [Brain](brain/index.md) | 29 | 7 |
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-721](app/onboarding/plat-721.md) | First visit opens a welcome page | fixed on main | P2 | [app/onboarding](app/onboarding/index.md) |
 | [PLAT-720](coding-agents/pi/plat-720.md) | Model key checks fail after 30 s on slow services | fixed on main | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
 | [PLAT-719](ops/repo/plat-719.md) | Company and customer specifics in the public repo | in progress | P1 | [ops/repo](ops/repo/index.md) |
 | [PLAT-718](coding-agents/claude-code/plat-718.md) | Claude Haiku 5.5 replaces Haiku 4.5 | fixed on main | P2 | [coding-agents/claude-code](coding-agents/claude-code/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-681](brain/access/plat-681.md) | Brain: say why a project cannot use a folder | fixed on main | P2 | [brain/access](brain/access/index.md) |
 | [PLAT-680](relays/frontend-chat/plat-680.md) | Centre Relay branch labels on connector lines | fixed on main | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
-| [PLAT-678](browser/browser/plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 | [browser/browser](browser/browser/index.md) |
