@@ -6,7 +6,7 @@ import { useTerminalFocusMode } from './TerminalFocusLayout'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { resolvePiModelGroup } from '../utils/llmDisplay'
-import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
+import React, { Suspense, lazy, useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -116,7 +116,8 @@ import type { InlineSelectionItem } from './InlineSelectionPopup'
 import SkillImportDialog from './skills/SkillImportDialog'
 import { MCPConfigPopup } from './MCPConfigPopup'
 import MCPDetailsModal from './MCPDetailsModal'
-import CodingProvidersPanel from './providers/CodingProvidersPanel'
+// The Models dialog (all provider accounts and the key setup) loads when first opened, not with every chat (bundle budget, PLAT-717).
+const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -3810,10 +3811,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           onClose={() => closeDialog('mcpConfig')}
         />
       )}
-      <CodingProvidersPanel
-        isOpen={agentProfileId !== 'caplayer' && showModels}
-        onClose={() => closeDialog('models')}
-      />
+      {agentProfileId !== 'caplayer' && showModels && (
+        <Suspense fallback={null}>
+          <CodingProvidersPanel isOpen onClose={() => closeDialog('models')} />
+        </Suspense>
+      )}
       </ChatComposerBand>
     </TooltipProvider>
   )
