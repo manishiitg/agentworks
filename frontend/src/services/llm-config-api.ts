@@ -391,6 +391,11 @@ export const llmConfigService = {
       cols: 100,
       rows: 24,
       replace_running: replaceRunning || undefined,
+    }, {
+      // The server starts the CLI and then waits up to 45 s for its usage answer
+      // (providerUsageCollectTimeout); Codex alone takes over 30 s, so the shared
+      // 30 s limit failed every check with "timeout of 30000ms exceeded" (PLAT-716).
+      timeout: 90000,
     })
     return response.data
   },
