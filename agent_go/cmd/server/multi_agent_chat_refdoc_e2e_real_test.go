@@ -214,7 +214,7 @@ func dumpBlocks(blocks []anthropic.ContentBlockUnion) string {
 // Gating:
 //   - RUN_MULTIAGENT_REFDOC_CC_E2E=1 to run.
 //   - `claude` CLI binary must be on PATH.
-//   - CLAUDE_CODE_REFDOC_MODEL override (default: claude-haiku-4-5-20251001).
+//   - CLAUDE_CODE_REFDOC_MODEL override (default: claude-haiku-5-5).
 //
 // Cost: uses the user's local Claude subscription, not API credits.
 func TestMultiAgentChatPromptSteersToReferenceDocs_ClaudeCode(t *testing.T) {
@@ -226,7 +226,7 @@ func TestMultiAgentChatPromptSteersToReferenceDocs_ClaudeCode(t *testing.T) {
 	}
 	model := strings.TrimSpace(os.Getenv("CLAUDE_CODE_REFDOC_MODEL"))
 	if model == "" {
-		model = "claude-haiku-4-5-20251001"
+		model = "claude-haiku-5-5"
 	}
 
 	systemPrompt := virtualtools.GetMultiAgentDelegationInstructionsWithUser("Chats", "default")
@@ -327,7 +327,7 @@ func TestMultiAgentChatFullConversation_ClaudeCode(t *testing.T) {
 	}
 	model := strings.TrimSpace(os.Getenv("CLAUDE_CODE_REFDOC_MODEL"))
 	if model == "" {
-		model = "claude-haiku-4-5-20251001"
+		model = "claude-haiku-5-5"
 	}
 
 	// Build the full system prompt the chat session would normally see.

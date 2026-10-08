@@ -60,7 +60,7 @@ This test:
 			} else if provider == "bedrock" {
 				model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 			} else {
-				model = "claude-haiku-4-5-20251001"
+				model = "claude-haiku-5-5"
 			}
 		}
 

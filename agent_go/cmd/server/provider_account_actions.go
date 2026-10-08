@@ -40,7 +40,7 @@ var providerStatusCommands = map[string]providerSetupCommand{
 
 // claudeVerifyCommand is the one real round trip that proves a Claude login
 // works (the cheapest model, one turn, no MCP servers).
-var claudeVerifyCommand = providerSetupCommand{command: "claude", args: []string{"-p", "hi", "--model", "claude-haiku-4-5", "--max-turns", "1", "--strict-mcp-config", "--permission-mode", "dontAsk"}}
+var claudeVerifyCommand = providerSetupCommand{command: "claude", args: []string{"-p", "hi", "--model", "claude-haiku-5-5", "--max-turns", "1", "--strict-mcp-config", "--permission-mode", "dontAsk"}}
 
 // providerLogoutCommands are each CLI's own logout, verified with --help on
 // 2026-09-28: `claude auth logout`, `codex logout`, `cursor-agent logout`,

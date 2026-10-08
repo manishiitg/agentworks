@@ -165,6 +165,8 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 		return "claude-sonnet-5-5"
 	case "fable", "claude-fable":
 		return "claude-fable-5-1"
+	case "haiku", "claude-haiku":
+		return "claude-haiku-5-5"
 	}
 
 	modelKey := pricingAliasKey(modelLower)
@@ -186,6 +188,9 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 		return "claude-sonnet-5-5"
 	case strings.Contains(modelKey, "sonnet-4-6") || strings.Contains(modelKey, "4-6-sonnet"):
 		return "claude-sonnet-4-6"
+	// Haiku 4.5 is retired on Claude Code and runs as Haiku 5.5 (2026-10-08).
+	case strings.Contains(modelKey, "haiku-5") || strings.Contains(modelKey, "5-5-haiku") || strings.Contains(modelKey, "haiku-4-5") || strings.Contains(modelKey, "4-5-haiku"):
+		return "claude-haiku-5-5"
 	default:
 		return originalModelID
 	}

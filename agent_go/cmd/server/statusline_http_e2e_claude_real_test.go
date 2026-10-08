@@ -20,7 +20,7 @@ func TestTerminalStatusLineHTTPCapturesRealClaudeCodeTelemetry(t *testing.T) {
 		wantStatusExtras: true,
 		cleanup:          func() { _ = claudecodeadapter.CleanupClaudeCodeTmuxSessions(context.Background()) },
 		run: func(ctx context.Context, sessionID string) (*llmtypes.StatusLine, error) {
-			model := statusLineModelOr("CLAUDE_CODE_EXPERIMENTAL_MODEL", "claude-haiku-4-5-20251001")
+			model := statusLineModelOr("CLAUDE_CODE_EXPERIMENTAL_MODEL", "claude-haiku-5-5")
 			a := claudecodeadapter.NewClaudeCodeInteractiveAdapter(model, &e2eMockLogger{})
 			// A persistent interactive session mirrors production: claude writes its
 			// statusline temp file under the live tmux session, and the session stays

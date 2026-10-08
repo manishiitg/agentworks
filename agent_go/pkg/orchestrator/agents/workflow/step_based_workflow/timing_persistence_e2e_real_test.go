@@ -65,7 +65,7 @@ func TestRealClaudeStructuredToolCallPersistsNonZeroTimingToDisk(t *testing.T) {
 	}
 
 	// --- 1. Real live structured claude-code call, capturing real chunks ---
-	model := "claude-haiku-4-5-20251001"
+	model := "claude-haiku-5-5"
 	adapter := claudecodeadapter.NewClaudeCodeInteractiveAdapter(model, timingE2EMockLogger{})
 
 	ch := make(chan llmtypes.StreamChunk, 64)

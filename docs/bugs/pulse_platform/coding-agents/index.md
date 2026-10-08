@@ -7,6 +7,7 @@
 | [accounts](accounts/index.md) | 12 | 3 |
 | [agents](agents/index.md) | 3 | 0 |
 | [claude](claude/index.md) | 4 | 0 |
+| [claude-code](claude-code/index.md) | 1 | 0 |
 | [codex](codex/index.md) | 8 | 2 |
 | [cursor](cursor/index.md) | 2 | 0 |
 | [general](general/index.md) | 5 | 0 |

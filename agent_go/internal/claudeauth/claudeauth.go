@@ -91,7 +91,7 @@ func ValidateOAuthToken(parent context.Context, token string) error {
 }
 
 // verifyModel is the cheapest model that still proves the credential works.
-const verifyModel = "claude-haiku-4-5"
+const verifyModel = "claude-haiku-5-5"
 
 func firstLine(output string) string {
 	for _, line := range strings.Split(output, "\n") {

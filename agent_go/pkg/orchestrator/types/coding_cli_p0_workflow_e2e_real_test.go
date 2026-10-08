@@ -97,7 +97,7 @@ func codingCLIP0Providers(t *testing.T) map[string]codingCLIP0Provider {
 		"claude-code": {
 			name:        "claude-code",
 			provider:    llm.ProviderClaudeCode,
-			model:       model("CLAUDE_CODE_WORKFLOW_P0_MODEL", "claude-haiku-4-5-20251001"),
+			model:       model("CLAUDE_CODE_WORKFLOW_P0_MODEL", "claude-haiku-5-5"),
 			requiredBin: "claude",
 			apiKeys:     &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: optional(os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"))},
 			cleanup:     func(ctx context.Context) { _ = llmproviders.CleanupClaudeCodeTmuxSessions(ctx) },

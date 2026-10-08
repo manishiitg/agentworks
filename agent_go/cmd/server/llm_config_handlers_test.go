@@ -69,7 +69,7 @@ func TestClaudeCodeDiscoveryOptionsIncludeManualNewModels(t *testing.T) {
 		"claude-fable-5-1",
 		"claude-opus-5-5",
 		"claude-sonnet-5-5",
-		"claude-haiku-4-5-20251001",
+		"claude-haiku-5-5",
 	} {
 		if !containsLLMCapabilityString(options, modelID) {
 			t.Fatalf("claude-code options = %v, want %s", options, modelID)
