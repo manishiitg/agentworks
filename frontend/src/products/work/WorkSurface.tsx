@@ -923,7 +923,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const selectedIsShared = !!selected?.shared
   useEffect(() => {
     if (product.profileId !== 'code' || !localFilesProjectId) return
-    setProjectLocalFiles(localFilesProjectId, selectedLocalFiles ?? null)
+    // Someone else's workspace never shows its owner's computer: not theirs to use, and the server refuses it.
+    setProjectLocalFiles(localFilesProjectId, selectedIsShared ? null : selectedLocalFiles ?? null)
     if (selectedLocalFiles || selectedIsShared) return
     const target = takeDefaultLocalTarget()
     if (!target) return
