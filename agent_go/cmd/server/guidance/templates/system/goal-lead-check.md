@@ -42,6 +42,13 @@ own continuing conversation.
    plain lines (status, key number and when measured, what you did, what you
    need); it decides whether to notify the owner. On track: nothing to send.
 
+## Skills for what you find
+
+A failed or odd run: `goal-lead-inspect.md`. A reading that looks wrong, flat or
+missing: `goal-lead-measure.md` before any conclusion. The goal measured but
+stuck: `goal-lead-funnel.md`. A test or open bet due: `goal-lead-experiment.md`.
+A spend rise or spike: `goal-lead-costs.md`.
+
 ## Failed runs: you are the safety net
 
 No separate Technical review runs after this workflow's runs; you own QA. The

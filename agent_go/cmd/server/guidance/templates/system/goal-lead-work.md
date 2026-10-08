@@ -28,8 +28,7 @@ architecture skill, a QA request).
    title, what you did, links, the metric, expected direction, `check_at`, and a
    short "why this should move <metric>": own data first (numbers, window,
    sample), external evidence labelled by strength, the mechanism, confidence and
-   what would prove it wrong. A test has one variable, a comparison, the metric
-   and its attribution, the sample needed and a stop rule.
+   what would prove it wrong. A test: `goal-lead-experiment.md`.
 5. **Constraints** are hypotheses to test with the owner, never broken.
    Boundary constraints (safety, legal, spend, account safety) only get a
    clarification. Choice constraints get an evidence-backed keep/test/change
