@@ -31,14 +31,26 @@ func pulseLevelsText(perms stepworkflow.GoalWorkPermissions) string {
 		"At auto, act on your own: decide, have the Builder chat do it now, check the result, and record it (record_pulse_goal_work); do not wait for or ask the owner, and do not raise a decision for it. At ask, still direct the Builder chat with what is best and why: it prepares the change, raises one decision for the owner (you attach your recommendation), and carries it out once the owner accepts. Spending money always goes to the owner. The Builder chat is held to these levels while it handles your message and refuses what they do not allow."
 }
 
-// builderPulseLevelsSection is the Builder chat's standing permission for
-// work Pulse directs (owner, 2026-10-08: "depending on autonomy the builder
-// should take actions on its own"). Without it the Builder asked the owner for
-// a go-ahead the levels already gave. Empty when Pulse does not own the goal.
+// builderPulseLevelsSection is the Builder chat's always-on Pulse section
+// (owner, 2026-10-08): with Pulse on, who Pulse is and the levels it acts on
+// (the owner's standing permission for work Pulse directs: without it the
+// Builder asked the owner for a go-ahead the levels already gave); with Pulse
+// on but no soul.md, that the goal is missing; with Pulse off, that the owner
+// manages the workflow.
 func builderPulseLevelsSection(ctx context.Context, workspacePath string) string {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
-	if workspacePath == "" || !workflowHasGoal(ctx, workspacePath) {
+	if workspacePath == "" {
 		return ""
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || manifest == nil || manifest.Kind == "relay" {
+		return ""
+	}
+	if !manifest.PulseEnabled() {
+		return "## Pulse\n\nPulse is off: you and the owner manage this workflow, and nothing reviews it on its own. When the owner wants an agent to own the goal, turn Pulse on (update_workflow_config(pulse_enabled=true); the goal must be in soul/soul.md)."
+	}
+	if !workflowHasSoul(ctx, workspacePath) {
+		return "## Pulse\n\nPulse is on but waiting for the goal: soul/soul.md is missing. Help the owner write it (objective, the number that shows progress, a target and date); Pulse starts once it exists."
 	}
 	perms, _ := goalWorkAutonomy(ctx, workspacePath)
 	level := func(on bool) string {
@@ -47,8 +59,9 @@ func builderPulseLevelsSection(ctx context.Context, workspacePath string) string
 		}
 		return "ask"
 	}
-	return "## Pulse's permission levels\n\n" +
-		"This workflow's Pulse owns its goal and directs you with what is best. The owner set these levels (workflow.json pulse.autonomy) as standing permission for work Pulse directs, whether Pulse messages you or you bring the owner's #pulse question to Pulse:\n" +
+	return "## Pulse\n\n" +
+		"This workflow's Pulse owns its goal and directs you with what is best; you act. Ask it with ask_pulse (the owner's #pulse messages go to it in their words); read the working-with-pulse skill for how.\n\n" +
+		"The owner set these levels (workflow.json pulse.autonomy) as standing permission for work Pulse directs, whether Pulse messages you or you bring the owner's #pulse question to Pulse:\n" +
 		"- Run: " + level(perms.Run) + ". Run the workflow's steps or routes.\n" +
 		"- Outward: " + level(perms.Outward) + ". Post, publish, send or contact people.\n" +
 		"- Change: " + level(perms.Change) + ". Change the plan, step settings or schedules.\n" +

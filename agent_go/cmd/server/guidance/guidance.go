@@ -112,6 +112,7 @@ var allKinds = map[string]kindMeta{
 // References own procedures and examples. Prompts retain mode/authorization
 // boundaries and live context; tool discovery uses the current runtime registry.
 var referenceKinds = map[string]kindMeta{
+	"working-with-pulse":  {Group: "system", Description: "How the Builder works with the workflow's Pulse: when to ask it, #pulse, acting on its direction within its levels, raising decisions for it, reporting back.", Modes: []string{"workshop"}},
 	"workflow-chat":       {Group: "system", Description: "Workflow chat procedures: runtime grounding, route/input selection, execution and notifications, Builder design/review flow, schedules and channel handling. Read before any workflow platform action.", Modes: []string{"workshop", "run"}},
 	"step-system-prompts": {Group: "system", Description: "Canonical runtime system prompt source for execution and orchestrator steps, including managed DB guidance. Read alongside step-description before authoring: these platform rules are supplied by the runtime, so descriptions should add only task-specific requirements. Conditions/placeholders are resolved per run; get_step_prompts shows a saved run.", Modes: []string{"workshop"}, RawTemplate: true},
 	// Workflow-scoped reference docs (workshop / run modes).
@@ -468,7 +469,7 @@ func buildSystemToolsSkillWithMCP(mode string, mcpManagement bool) *llmtypes.Ski
 	}
 
 	configAccess := buildConfigurationAccessGuidance(mode)
-	referenceExamples := "`pulse-gate` for Pulse Gate, `pulse-review-fixer` for review/fix work, `code-authoring` before authoring `main.py`, `llm-selection` before changing workflow models, `integration-discovery` before connecting a new third-party service/MCP server, `browser-usage` before driving a browser or troubleshooting CDP, or `gmail-connection-scopes` before touching a Gmail/Workspace connection's permissions"
+	referenceExamples := "`working-with-pulse` before messaging Pulse or acting on its direction, `code-authoring` before authoring `main.py`, `llm-selection` before changing workflow models, `integration-discovery` before connecting a new third-party service/MCP server, `browser-usage` before driving a browser or troubleshooting CDP, or `gmail-connection-scopes` before touching a Gmail/Workspace connection's permissions"
 	if !mcpManagement {
 		referenceExamples = strings.ReplaceAll(referenceExamples, "`integration-discovery` before connecting a new third-party service/MCP server, ", "")
 	}

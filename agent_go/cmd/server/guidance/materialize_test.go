@@ -135,6 +135,9 @@ func TestMaterializedReviewReferencesKeepDistinctRoleQuestions(t *testing.T) {
 			t.Fatalf("materialized Technical Review retains architecture ownership %q", forbidden)
 		}
 	}
+	if content := materializedFileContent(t, reference, "references/working-with-pulse.md"); !strings.Contains(content, "ask_pulse") {
+		t.Fatal("working-with-pulse guide is missing from the Builder's pack")
+	}
 }
 
 func TestRunReferenceSurfaceExcludesWorkshopMaintenanceSkills(t *testing.T) {
