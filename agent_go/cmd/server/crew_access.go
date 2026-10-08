@@ -199,7 +199,7 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		return denied()
 	}
-	// Projects are private to their owner unless project sharing is switched on (project_sharing.go).
+	// Projects are private to their owner when project sharing is switched off (project_sharing.go).
 	if !projectSharingEnabled() {
 		return denied()
 	}

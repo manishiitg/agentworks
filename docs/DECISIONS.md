@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Project sharing is on by default again
+
+- **Decided.** `projectSharingEnabled` (`agent_go/cmd/server/project_sharing.go`) is on unless
+  `AGENTWORKS_PROJECT_SHARING=off`. Another user with the Crew product sees and opens an owner's Crew as a
+  reader, as before 2026-10-01. Code workspaces stay private.
+- **Why.** The 2026-10-01 reason (a reader's commands ran as their own slot and could not work in the owner's
+  folder) no longer holds: Crew turns run as the app account (2026-10-04). With sharing off, `list_crews`
+  listed Crews that `get_crew` and `ask_crew` then refused. Owner decision. Ticket: PLAT-725.
+
 ### 2026-10-08 — The owner talks to the Builder; the Builder and Pulse act on the levels
 
 The owner talks to the Builder chat; the Builder talks to Pulse (`#pulse`,
@@ -2983,6 +2992,8 @@ PLAT-405.
   `workspace_proxy_policy.go`, and `deleteWorkSession`.
 
 ### 2026-10-01 — Project sharing removed: projects are private to their owner
+
+Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
 - **Decided.** A project (a Crew in the project directory, on RTS the Video Studio / Goals projects that every
   account could open) is private to its owner, as Code workspaces already were. A non-owner can no longer

@@ -261,7 +261,7 @@ func assertMultiUserAccess(t *testing.T, f *multiUserFixture, layout identityLay
 		if newLiveFeedAccess(f.Claims(fixtureUserC)).visible(f.Ctx(fixtureUserC), "Crew/"+fixtureCrewFolder) {
 			t.Error("C sees the Crew's live feed")
 		}
-		// Sharing off (the default): B is not a reader either.
+		// Sharing off (AGENTWORKS_PROJECT_SHARING=off): B is not a reader either.
 		f.WithSharing(false)
 		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, crewPhysical); err == nil {
 			t.Fatalf("B opened A's Crew with project sharing off: %+v", got)

@@ -208,8 +208,8 @@ func jsonBody(v interface{}) *bytes.Reader {
 	return bytes.NewReader(data)
 }
 
-// WithSharing turns Crew project sharing on for the test (it is off by default: projects are private to their owner),
-// which is the mode where another user with the Crew product opens a Crew as a Run-mode reader.
+// WithSharing turns Crew project sharing on or off for the test (on by default; off makes projects private to their
+// owner). On is the mode where another user with the Crew product opens a Crew as a Run-mode reader.
 func (f *multiUserFixture) WithSharing(on bool) {
 	f.t.Helper()
 	prior := projectSharingEnabled

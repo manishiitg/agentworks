@@ -429,7 +429,7 @@ func TestOwnSharedProjectsEndpointListsOnlyTheCallersCrews(t *testing.T) {
 	}
 }
 
-// With project sharing off (the default on a real server) another user's Crew is invisible to everyone but its owner:
+// With project sharing off (AGENTWORKS_PROJECT_SHARING=off) another user's Crew is invisible to everyone but its owner:
 // no reader access, no live-feed notices.
 func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())

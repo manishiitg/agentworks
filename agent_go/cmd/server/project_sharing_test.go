@@ -17,7 +17,7 @@ func withProjectSharing(t *testing.T, on bool) {
 	t.Cleanup(func() { projectSharingEnabled = prior })
 }
 
-// With project sharing off (the default), a project is private to its owner: another user can neither
+// With project sharing off (AGENTWORKS_PROJECT_SHARING=off), a project is private to its owner: another user can neither
 // resolve it nor see it in the shared-project list, while the owner is unaffected.
 func TestProjectsArePrivateWhenSharingIsOff(t *testing.T) {
 	fx := newCrewRunModeFixture(t)

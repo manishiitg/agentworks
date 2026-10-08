@@ -132,8 +132,8 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	if ref.OwnerID == sanitizeUserIDForPath(claims.UserID) {
 		return crewAccessOwner
 	}
-	// Another user's Crew is read only where project sharing is switched on (projects are private to their owner by
-	// default, DECISIONS 2026-10-01); with it off nobody else sees even that the Crew exists or is working.
+	// Another user's Crew is read only while project sharing is on (the default, DECISIONS 2026-10-08); with it off
+	// (AGENTWORKS_PROJECT_SHARING=off) nobody else sees even that the Crew exists or is working.
 	if projectSharingEnabled() && userAllowedProduct(claims, "work") {
 		return crewAccessReader
 	}
