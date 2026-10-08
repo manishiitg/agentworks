@@ -56,3 +56,7 @@ the Pi model template was not loaded by the app, and nothing ran there.
 ## 2026-10-08: first accounts
 
 Owner: only four people for now, all admins (gaurav@, akram@, nverdhan@citymall.live and the owner's Gmail). The citymall.live domain rule is removed from the Citymall config; the user directory is the only gate.
+
+## 2026-10-08: DNS and HTTPS
+
+DNS live (agents.citymall.live → 13.206.199.45), port 80 open, Let's Encrypt certificate issued. The nginx site from the repo now includes /etc/nginx/citymall-tls.d/, which the host setup fills when the certificate exists, so deploys keep HTTPS. Waiting on port 443 in their security group; then PUBLIC_CHECKS=true and an HTTP→HTTPS redirect.

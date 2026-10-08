@@ -188,6 +188,21 @@ runuser -u citymall -- env "XDG_RUNTIME_DIR=/run/user/$service_uid" \
 # nginx: the site file comes from the repository (products/citymall/nginx-site.conf, passed by deploy.sh as
 # NGINX_SITE_B64). Validate the whole configuration and restore the previous site if it does not pass.
 if [[ -n "${NGINX_SITE_B64:-}" ]]; then
+  # HTTPS once certbot has the certificate (nginx-site.conf includes this folder; empty means plain HTTP).
+  install -d -m 0755 /etc/nginx/citymall-tls.d
+  cert=/etc/letsencrypt/live/agents.citymall.live
+  if [[ -s "$cert/fullchain.pem" && -s "$cert/privkey.pem" ]]; then
+    cat > /etc/nginx/citymall-tls.d/tls.conf <<TLS
+listen 443 ssl;
+listen [::]:443 ssl;
+ssl_certificate $cert/fullchain.pem;
+ssl_certificate_key $cert/privkey.pem;
+include /etc/letsencrypt/options-ssl-nginx.conf;
+ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+TLS
+  else
+    rm -f /etc/nginx/citymall-tls.d/tls.conf
+  fi
   site=/etc/nginx/sites-available/citymall
   printf '%s' "$NGINX_SITE_B64" | base64 -d > "$site.next"
   if [[ ! -f "$site" ]] || ! cmp -s "$site.next" "$site"; then

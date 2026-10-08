@@ -59,13 +59,18 @@ Ports 80/443 are closed in Citymall's security group, so check it on the box: `c
 http://127.0.0.1/login`. To use the app before DNS, tunnel the gateway: `ssh -L 25080:127.0.0.1:25080 ... citymall@...`
 and open `http://localhost:25080` (cookies are Secure; browsers accept them on localhost only).
 
-### HTTPS, once DNS points at the box and 80/443 are open
+### HTTPS
+
+DNS (`agents.citymall.live` → 13.206.199.45) and port 80 were live on 2026-10-08; the Let's Encrypt certificate was
+issued then (`certbot --nginx … --no-redirect`) and `certbot.timer` renews it. A new box gets it with:
 
 ```bash
-sudo certbot --nginx -d agents.citymall.live      # on the box, as ubuntu
+sudo certbot certonly --nginx -d agents.citymall.live      # on the box, as ubuntu; port 80 must be open
 ```
 
-Then set `PUBLIC_CHECKS=true` in `products/citymall/product.env` and redeploy. `PUBLIC_URL` is already
+The deploy never overwrites HTTPS: `setup-citymall-host.sh` writes the listen/ssl lines to
+`/etc/nginx/citymall-tls.d/tls.conf` whenever the certificate exists, and `nginx-site.conf` includes that folder.
+Port 443 must also be open in Citymall's security group. Then set `PUBLIC_CHECKS=true` in `products/citymall/product.env` and redeploy. `PUBLIC_URL` is already
 `https://agents.citymall.live` in `.env`, and the runtime config already names that origin.
 
 ## Pi on the Citymall gateway
