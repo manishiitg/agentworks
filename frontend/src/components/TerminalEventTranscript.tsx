@@ -1009,8 +1009,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
   const questions = useMemo(() => codingAgentQuestionCards(scoped), [scoped])
+  // context_cancelled is the agent library's debug event, emitted once per
+  // internal turn (T0, T1): one cancel showed three times beside the turn's own
+  // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id)))))),
+    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
     [scoped, questions],
   )
   // Retry belongs to the latest human turn, never an older failed message

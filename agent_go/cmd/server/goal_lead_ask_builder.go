@@ -189,7 +189,7 @@ func pulseBuilderPingPong(workflowID string) error {
 		if _, background := stepworkflow.LookupWorkshopToolSession(session); background {
 			continue
 		}
-		return fmt.Errorf("refused: a Builder chat asked you (ask_pulse) in this exchange; answer it in your reply instead of asking a Builder chat back")
+		return fmt.Errorf("not sent: the Builder chat that asked you (ask_pulse) is waiting for your reply, so it cannot take a new message now. Put what you need from it in your reply (what to do, what to tell you back, the decision id you need); it acts on your reply and reports back to you with ask_pulse")
 	}
 	return nil
 }
