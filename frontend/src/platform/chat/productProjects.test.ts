@@ -8,7 +8,7 @@ const listOwnSharedProjects = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects } }))
 
 import { agentApi } from '../../services/api'
-import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, type ProductProject } from './productProjects'
+import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -32,6 +32,27 @@ describe('parseProductProjectManifest', () => {
       name: 'Nova',
       role: 'Launch partner',
     })
+  })
+})
+
+describe('Code local files in product.json', () => {
+  const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
+  it('reads local_files, ignoring a malformed one', () => {
+    expect(parseProductProjectManifest(JSON.stringify({ ...base, local_files: { device_id: 'laptop', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
+    expect(parseProductProjectManifest(JSON.stringify({ ...base, local_files: { device_id: '../x', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toBeUndefined()
+  })
+
+  it('writes and clears local_files without touching the rest of product.json', async () => {
+    const project = { product: 'code', id: 'code-1', title: 'App', workspacePath: 'Chats/Code/app' } as ProductProject<'code'>
+    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, identity: { name: 'Nova' } }) })
+    const saved = await updateProductProjectLocalFiles(project, { device_id: 'laptop', resource_id: 'app' }, 'Set files location')
+    const written = JSON.parse(updatePlannerFile.mock.calls[0][1])
+    expect(written.local_files).toEqual({ device_id: 'laptop', resource_id: 'app' })
+    expect(written.identity).toEqual({ name: 'Nova' })
+    expect(saved.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
+    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, local_files: written.local_files }) })
+    await updateProductProjectLocalFiles(project, undefined, 'Set files location')
+    expect(JSON.parse(updatePlannerFile.mock.calls[1][1]).local_files).toBeUndefined()
   })
 })
 

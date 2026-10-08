@@ -13,7 +13,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
 import { CodeChatConnectionStatus } from './CodeChatConnectionStatus'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, setDefaultLocalTarget, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setDefaultLocalTarget, setProjectLocalFiles, takeDefaultLocalTarget, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -21,7 +21,7 @@ const target = { device_id: 'laptop', resource_id: 'project' }
 let root: Root | undefined
 beforeEach(() => {
   const storage = new Map<string, string>()
-  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) }, clear: () => storage.clear() })
+  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) }, removeItem: (key: string) => { storage.delete(key) }, clear: () => storage.clear() })
   localStorage.clear(); chats.chatTabs = {}; account.user.id = 'alice'; workspace.activeWorkspaceId = 'hosted'
   transport.get.mockReset(); transport.post.mockReset()
   transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: false, guard: {} }] }] } })
@@ -86,9 +86,11 @@ it('connects the current session and shows only CLI connection controls', async 
 it('disconnects only this session in Settings without a server runtime mutation', async () => {
   writeCodeFilesPreference(session, { location: 'computer', target })
   const { host, showFiles } = await render(true)
+  expect(host.textContent).not.toContain('Disconnect local files')
+  await click(host, 'Details')
   await click(host, 'Disconnect local files')
   expect(codeLocalFilesForChat(session)).toEqual(target)
-  expect(host.textContent).toContain('normal Code features')
+  expect(host.textContent).toContain('not a quick toggle')
   await click(host, 'Switch to server files')
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   expect(transport.post).not.toHaveBeenCalled()
@@ -101,6 +103,9 @@ it('preserves offline selections without rendering server files or silently wide
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render()
   expect(host.textContent).toContain('Offline')
+  // Every time this opens in Local mode with the CLI not running, the user is asked.
+  expect(document.body.textContent).toContain('Your computer is not connected')
+  expect(document.body.textContent).toContain('agentworks start')
   expect(host.textContent).toContain('/agentworks" start --server')
   expect(host.textContent).toContain('Costs and Models')
   expect(host.textContent).not.toContain('Server source')
@@ -135,6 +140,7 @@ it('only applies mode changes from the connection panel after showing consequenc
   const connection = host.querySelector('[aria-label="File connection: Local files · project"]')!
   expect(connection.tagName).toBe('SPAN')
   expect(connection.querySelector('button,select')).toBeNull()
+  await click(host, 'Details')
   await click(host, 'Disconnect local files')
   await click(host, 'Keep local connection')
   expect(codeChatModeForChat(session)).toBe('local')
@@ -145,6 +151,7 @@ it('prevents changing connections during an active turn', async () => {
   writeCodeFilesPreference(session, { location: 'computer', target })
   chats.chatTabs = { running: { sessionId: session, isStreaming: true } }
   const { host } = await render(true)
+  await click(host, 'Details')
   expect(host.querySelector<HTMLSelectElement>('[aria-label="Computer and shared folder"]')!.disabled).toBe(true)
   const disconnect = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Disconnect local files')!
   expect(disconnect.disabled).toBe(true)
@@ -156,6 +163,8 @@ it('shows shell capability and a CLI command that enables local builds and tests
   writeCodeFilesPreference(session, { location: 'computer', target })
   transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
   const { host } = await render(true)
+  expect(host.textContent).toContain('Shell commands enabled on this computer')
+  await click(host, 'Details')
   expect(host.textContent).toContain('/agentworks" start --server')
   expect(host.textContent).not.toContain('--write-folder')
   expect(host.textContent).not.toContain('Read only')
@@ -182,25 +191,36 @@ it('shows one start command with no folder form, and Verify connection says what
   expect(transport.post).not.toHaveBeenCalled()
 })
 
-it('the connection belongs to the Code workspace, so a refreshed chat with a new session ID is still Local', () => {
-  chats.chatTabs = { a: { sessionId: 'chat-before-refresh', isStreaming: false, metadata: { agentProfileProjectId: 'code-1' } }, b: { sessionId: 'other-project-chat', isStreaming: false, metadata: { agentProfileProjectId: 'code-2' } } }
-  writeCodeFilesPreference('chat-before-refresh', { location: 'computer', target })
-  chats.chatTabs = { a: { sessionId: 'chat-after-refresh', isStreaming: false, metadata: { agentProfileProjectId: 'code-1' } }, b: chats.chatTabs.b }
-  expect(codeChatModeForChat('chat-after-refresh')).toBe('local')
+it('the workspace decides the mode (saved in its product.json), so a chat with a new session ID after a refresh is still Local', async () => {
+  const tab = (sessionId: string, project: string) => ({ sessionId, isStreaming: false, metadata: { agentProfileProjectId: project } })
+  chats.chatTabs = { a: tab('chat-before-refresh', 'code-1'), b: tab('other-project-chat', 'code-2') }
+  setProjectLocalFiles('code-1', target)
+  setProjectLocalFiles('code-2', null)
+  expect(codeChatModeForChat('chat-before-refresh')).toBe('local')
+  chats.chatTabs = { a: tab('chat-after-refresh', 'code-1'), b: chats.chatTabs.b }
   expect(codeLocalFilesForChat('chat-after-refresh')).toEqual(target)
   expect(codeChatModeForChat('other-project-chat')).toBe('server')
+  // Switching saves through the workspace's product.json, and only then is the workspace on server files.
+  const saved = vi.fn(async () => {})
+  registerLocalFilesPersister(saved)
   writeCodeFilesPreference('chat-after-refresh', { location: 'server' })
+  expect(saved).toHaveBeenCalledWith('code-1', null)
   expect(codeChatModeForChat('chat-after-refresh')).toBe('server')
+  // A save that fails puts the previous choice back.
+  setProjectLocalFiles('code-1', target)
+  registerLocalFilesPersister(async () => { throw new Error('offline') })
+  writeCodeFilesPreference('chat-after-refresh', { location: 'server' })
+  await act(async () => {})
+  expect(codeChatModeForChat('chat-after-refresh')).toBe('local')
+  registerLocalFilesPersister(undefined)
 })
 
-it('a folder opened by `agentworks start` makes chats without their own choice Local, and a chat choice wins', () => {
-  setDefaultLocalTarget(target)
-  expect(codeChatModeForChat('fresh-chat')).toBe('local')
-  expect(codeLocalFilesForChat('fresh-chat')).toEqual(target)
-  writeCodeFilesPreference('server-chat', { location: 'server' })
-  expect(codeChatModeForChat('server-chat')).toBe('server')
+it('a folder opened by `agentworks start` is handed out once, and a bad identifier is ignored', () => {
   setDefaultLocalTarget({ device_id: '../bad', resource_id: 'project' })
-  expect(codeLocalFilesForChat('fresh-chat')).toEqual(target)
+  expect(takeDefaultLocalTarget()).toBeUndefined()
+  setDefaultLocalTarget(target)
+  expect(takeDefaultLocalTarget()).toEqual(target)
+  expect(takeDefaultLocalTarget()).toBeUndefined()
 })
 
 it('shows Downloads permission before switching and on the connected summary', async () => {

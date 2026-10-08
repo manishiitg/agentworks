@@ -11,16 +11,14 @@ export interface LocalFileDevice { device_id: string; resources: { id: string; w
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
-/** The choice belongs to the Code workspace, not to one chat: a chat nobody has written in yet gets a new random session ID
- *  after a page refresh, so a per-session choice was forgotten. A session with no known workspace keeps its own choice. */
-function scopeOf(chatTabs: Record<string, { sessionId?: string | null; metadata?: { agentProfileProjectId?: string } }>, sessionId: string) {
-  const project = Object.values(chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId
-  return project ? `workspace:${project}` : sessionId
+type TabsLike = Record<string, { sessionId?: string | null; metadata?: { agentProfileProjectId?: string } }>
+function projectOf(chatTabs: TabsLike, sessionId: string): string | undefined {
+  return Object.values(chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId || undefined
 }
-function preferenceKeyForScope(scope: string) {
-  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', scope])}`
+// Without a known workspace (no project behind the chat) the choice is kept per chat in this browser.
+function preferenceKey(sessionId: string) {
+  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', sessionId])}`
 }
-function preferenceKey(sessionId: string) { return preferenceKeyForScope(scopeOf(useChatStore.getState().chatTabs, sessionId)) }
 function stored(key: string) { try { return localStorage.getItem(key) } catch { return null } }
 function parse(value: string | null): CodeFilesPreference {
   try {
@@ -32,8 +30,8 @@ function parse(value: string | null): CodeFilesPreference {
   } catch { /* Unknown preferences use server files. */ }
   return { location: 'server' }
 }
-// `agentworks start` opens the site with the computer and folder it just shared; that becomes the default for Code chats
-// that have no choice of their own, for 12 hours, so the chat starts in Local mode. A chat's own choice always wins.
+// `agentworks start` opens the site with the computer and folder it just shared. That is remembered for 12 hours and
+// applied once to a Code workspace that has no setting yet (takeDefaultLocalTarget, called by the workspace screen).
 const defaultKey = 'code-files-default-local'
 const defaultTtlMs = 12 * 60 * 60 * 1000
 export function setDefaultLocalTarget(target: CodeLocalFileTarget) {
@@ -41,6 +39,7 @@ export function setDefaultLocalTarget(target: CodeLocalFileTarget) {
   try { localStorage.setItem(defaultKey, JSON.stringify({ target, at: Date.now() })) } catch { /* Without storage the chat stays on server files. */ }
   window.dispatchEvent(new Event(changed))
 }
+function clearDefaultLocalTarget() { try { localStorage.removeItem(defaultKey) } catch { /* Nothing to clear. */ } }
 function defaultLocalTarget(): CodeLocalFileTarget | undefined {
   try {
     const saved = JSON.parse(localStorage.getItem(defaultKey) || 'null')
@@ -49,15 +48,51 @@ function defaultLocalTarget(): CodeLocalFileTarget | undefined {
   } catch { /* An unreadable default is no default. */ }
   return undefined
 }
-function effectiveRaw(key: string) {
-  const own = stored(key)
-  if (own !== null) return own
+/** The remembered start link target, handed out once so one link configures one workspace. */
+export function takeDefaultLocalTarget(): CodeLocalFileTarget | undefined {
   const target = defaultLocalTarget()
-  return target ? JSON.stringify({ location: 'computer', target }) : null
+  if (target) clearDefaultLocalTarget()
+  return target
 }
-export function readCodeFilesPreference(sessionId: string) { return parse(effectiveRaw(preferenceKey(sessionId))) }
+
+// The computer and folder a Code workspace works in is saved in its product.json (`local_files`), so it survives a refresh,
+// another browser and another device; switching to server files is a deliberate act, not a toggle. The workspace screen
+// loads it here (setProjectLocalFiles) and registers how to save it (registerLocalFilesPersister).
+const projectLocal = new Map<string, CodeLocalFileTarget | null>() // project ID -> target; null = the server's files
+type LocalFilesPersister = (projectId: string, target: CodeLocalFileTarget | null) => Promise<void>
+let persister: LocalFilesPersister | undefined
+export function registerLocalFilesPersister(fn: LocalFilesPersister | undefined) { persister = fn }
+export function setProjectLocalFiles(projectId: string, target: CodeLocalFileTarget | null) {
+  const current = projectLocal.get(projectId)
+  if (projectLocal.has(projectId) && (current?.device_id ?? '') === (target?.device_id ?? '') && (current?.resource_id ?? '') === (target?.resource_id ?? '')) return
+  projectLocal.set(projectId, target)
+  window.dispatchEvent(new Event(changed))
+}
+function resolveRaw(sessionId: string): string | null {
+  const project = projectOf(useChatStore.getState().chatTabs, sessionId)
+  if (project && projectLocal.has(project)) {
+    const target = projectLocal.get(project)
+    return JSON.stringify(target ? { location: 'computer', target } : { location: 'server' })
+  }
+  const own = stored(preferenceKey(sessionId))
+  if (own !== null) return own
+  const fallback = defaultLocalTarget()
+  return fallback ? JSON.stringify({ location: 'computer', target: fallback }) : null
+}
+export function readCodeFilesPreference(sessionId: string) { return parse(resolveRaw(sessionId)) }
 export function writeCodeFilesPreference(sessionId: string, pref: CodeFilesPreference) {
+  const project = projectOf(useChatStore.getState().chatTabs, sessionId)
+  if (project && projectLocal.has(project) && persister) {
+    const target = pref.location === 'computer' && pref.target ? pref.target : null
+    const previous = projectLocal.get(project) ?? null
+    projectLocal.set(project, target)
+    if (!target) clearDefaultLocalTarget()
+    window.dispatchEvent(new Event(changed))
+    void persister(project, target).catch(() => { projectLocal.set(project, previous); window.dispatchEvent(new Event(changed)) })
+    return
+  }
   localStorage.setItem(preferenceKey(sessionId), JSON.stringify(pref))
+  if (pref.location === 'server') clearDefaultLocalTarget()
   window.dispatchEvent(new Event(changed))
 }
 function subscribe(listener: () => void) {
@@ -66,11 +101,11 @@ function subscribe(listener: () => void) {
   return () => { window.removeEventListener(changed, listener); window.removeEventListener('storage', listener) }
 }
 export function useCodeFilesPreference(sessionId: string) {
-  const user = useAuthStore(state => state.user?.id)
-  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const scope = useChatStore(state => scopeOf(state.chatTabs, sessionId))
-  const key = useMemo(() => preferenceKeyForScope(scope), [scope, user, workspace])
-  const raw = useSyncExternalStore(subscribe, () => effectiveRaw(key), () => null)
+  // These re-render the hook when the account, server workspace or the chat's project changes; the snapshot reads fresh state.
+  useAuthStore(state => state.user?.id)
+  useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  useChatStore(state => projectOf(state.chatTabs, sessionId))
+  const raw = useSyncExternalStore(subscribe, () => resolveRaw(sessionId), () => null)
   return useMemo(() => parse(raw), [raw])
 }
 /** The selection is context, never authority; the backend rechecks local grants. */

@@ -29,11 +29,11 @@ import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionLocalFiles, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { useCodeFilesPreference } from './codeLocalFiles'
+import { registerLocalFilesPersister, setProjectLocalFiles, takeDefaultLocalTarget, useCodeFilesPreference } from './codeLocalFiles'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -325,6 +325,14 @@ function useWorkSessions(product: ProjectProductConfig) {
     return updated
   }, [product, sessions, updateSessions])
 
+  const updateLocalFiles = useCallback(async (projectId: string, localFiles: { device_id: string; resource_id: string } | undefined) => {
+    const project = sessions.find(item => item.id === projectId)
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    const updated = await updateWorkSessionLocalFiles(project, localFiles)
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    return updated
+  }, [product, sessions, updateSessions])
+
   return {
     sessions,
     selected: sessions.find((session) => session.id === selectedId) ?? null,
@@ -337,6 +345,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     updateNativeAgentTools,
     updateSelections,
     updateIdentity,
+    updateLocalFiles,
     refresh,
     loading,
     error,
@@ -898,7 +907,7 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, updateLocalFiles, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
@@ -906,6 +915,26 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     await updateLLMConfig(selected.id, selection)
   }, [selected, updateLLMConfig])
   const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
+
+  // Code: the computer and folder come from the workspace's product.json (`local_files`), so Local mode survives a refresh.
+  // A link opened by `agentworks start` configures a workspace that has no setting yet, once.
+  const localFilesProjectId = selected?.id
+  const selectedLocalFiles = selected?.localFiles
+  const selectedIsShared = !!selected?.shared
+  useEffect(() => {
+    if (product.profileId !== 'code' || !localFilesProjectId) return
+    setProjectLocalFiles(localFilesProjectId, selectedLocalFiles ?? null)
+    if (selectedLocalFiles || selectedIsShared) return
+    const target = takeDefaultLocalTarget()
+    if (!target) return
+    setProjectLocalFiles(localFilesProjectId, target)
+    void updateLocalFiles(localFilesProjectId, target).catch(() => setProjectLocalFiles(localFilesProjectId, null))
+  }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared, updateLocalFiles])
+  useEffect(() => {
+    if (product.profileId !== 'code') return
+    registerLocalFilesPersister((projectId, target) => updateLocalFiles(projectId, target ?? undefined).then(() => undefined))
+    return () => registerLocalFilesPersister(undefined)
+  }, [product.profileId, updateLocalFiles])
 
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile

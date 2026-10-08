@@ -3,6 +3,8 @@ import type { PresetLLMConfig, SharedProjectSchedule, SharedProjectTrigger } fro
 import { dedupeByFilepath, flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
 import { nativeAgentToolsEnabled } from '../../utils/nativeAgentTools'
 
+export type ProductLocalFiles = { device_id: string; resource_id: string }
+
 export type ProductProject<P extends string = string> = {
   schemaVersion: 1
   product: P
@@ -23,6 +25,8 @@ export type ProductProject<P extends string = string> = {
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
   nativeAgentTools?: boolean
+  /** Code: the computer and folder this workspace works in (product.json `local_files`). Absent = the server's files. */
+  localFiles?: ProductLocalFiles
   selectionConfigInitialized: boolean
   secretSelectionInitialized: boolean
   runtimeConfigInitialized: boolean
@@ -62,6 +66,7 @@ type ProductManifest = {
   updated_at?: unknown
   capabilities?: unknown
   workflow_context_paths?: unknown
+  local_files?: unknown
 }
 
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
@@ -84,6 +89,13 @@ function parseProductTemplate(value: unknown): { id: string; version: number } |
   return id && Number.isInteger(raw.version) && (raw.version as number) > 0
     ? { id, version: raw.version as number }
     : undefined
+}
+
+const localFileId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
+function manifestLocalFiles(raw: ProductManifest): ProductLocalFiles | undefined {
+  const value = raw.local_files as { device_id?: unknown; resource_id?: unknown } | undefined
+  return value && typeof value.device_id === 'string' && typeof value.resource_id === 'string' && localFileId.test(value.device_id) && localFileId.test(value.resource_id)
+    ? { device_id: value.device_id, resource_id: value.resource_id } : undefined
 }
 
 function parseProductTemplates(raw: ProductManifest): Array<{ id: string; version: number }> {
@@ -169,6 +181,7 @@ export function parseProductProjectManifest<P extends string>(
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
+    localFiles: manifestLocalFiles(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,
@@ -575,6 +588,33 @@ export async function updateProductProjectLLMConfig<P extends string>(
   } catch {
     throw new Error('Project configuration is invalid JSON.')
   }
+}
+
+/**
+ * Code: remembers the computer and folder this workspace works in (product.json `local_files`), or clears it to use the
+ * server's files. The setting is context, never authority: the server rechecks the device grants on every request.
+ */
+export async function updateProductProjectLocalFiles<P extends string>(
+  project: ProductProject<P>,
+  localFiles: ProductLocalFiles | undefined,
+  commitLabel: string,
+): Promise<ProductProject<P>> {
+  const path = `${project.workspacePath}/product.json`
+  const response = await agentApi.getPlannerFileContent(path)
+  const document = responseContent(response)
+  if (!document) throw new Error('Project configuration was not found.')
+  let manifest: Record<string, unknown>
+  try {
+    manifest = JSON.parse(document.content) as Record<string, unknown>
+  } catch {
+    throw new Error('Project configuration is invalid JSON.')
+  }
+  if (localFiles) manifest.local_files = { device_id: localFiles.device_id, resource_id: localFiles.resource_id }
+  else delete manifest.local_files
+  const updatedAt = new Date().toISOString()
+  manifest.updated_at = updatedAt
+  await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
+  return { ...project, localFiles, updatedAt }
 }
 
 /** Sets the crew's "Native agent tools" switch (capabilities.native_agent_tools). */
