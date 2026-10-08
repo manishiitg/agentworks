@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrainCircuit, ChevronDown, Gauge, Loader2 } from 'lucide-react'
+import { BrainCircuit, ChevronDown, Gauge, KeyRound, Loader2 } from 'lucide-react'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
+import { llmConfigService, type ByokModel, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
+import ModalPortal from '../../components/ui/ModalPortal'
+import ByokSetup from '../../components/providers/ByokSetup'
+import ByokModelBrowser from '../../components/providers/ByokModelBrowser'
+import { byokServiceOf } from '../../utils/byok'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, modelReasoningLevels, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
@@ -190,6 +194,24 @@ export function WorkModelsPanel({
       && account.usable !== false && account.configured !== false)
     .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]?.id
   const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId
+  // A model key account (PLAT-717): its own models (the person's picks), with the live catalog's free and price data.
+  const inUseAccount = accounts?.find(account => account.id === inUseConnectionId)
+  const keyService = selectedOption?.provider === 'pi-cli' ? byokServiceOf(inUseAccount) : undefined
+  const [keyModels, setKeyModels] = useState<ByokModel[]>([])
+  const [keyBrowserOpen, setKeyBrowserOpen] = useState(false)
+  const [keyPicksDraft, setKeyPicksDraft] = useState<string[] | null>(null)
+  const [keySetupOpen, setKeySetupOpen] = useState(false)
+  const keyAccountId = keyService ? inUseAccount?.id : undefined
+  useEffect(() => {
+    let cancelled = false
+    setKeyModels([])
+    if (keyAccountId) {
+      void llmConfigService.byokModels({ connection_id: keyAccountId, workspace_path: workspacePath }).then(result => {
+        if (!cancelled) setKeyModels(result.models || [])
+      }).catch(() => undefined)
+    }
+    return () => { cancelled = true }
+  }, [keyAccountId, workspacePath])
   const llmConfig = useMemo<PresetLLMConfig | undefined>(() => selectedOption?.provider ? {
     schema_version: 2,
     mode: 'provider_profile',
@@ -213,7 +235,7 @@ export function WorkModelsPanel({
   }, [providerManifest, allowedModelsFor])
 
   const currentGroup = engineGroups.find(group => group.option.id === selectedOption?.id)
-  const selectedAllowedModels = allowedModelsFor(selectedOption?.provider, selectedConnectionId)
+  const selectedAllowedModels = keyService ? inUseAccount?.allowed_models : allowedModelsFor(selectedOption?.provider, selectedConnectionId)
   const selectedDefaults = defaultForOption(selectedOption, selectedConnectionId)
   const metadataMatchesSelectedProvider = tab?.metadata?.agentProfileEngine === selectedOption?.id
   // Only an allowed model is shown selected; a saved one the account no longer allows reads as its first allowed model
@@ -222,7 +244,20 @@ export function WorkModelsPanel({
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileModelID : undefined)
     || activeRuntime?.model_id
     || selectedDefaults.modelId, selectedAllowedModels)
+  const keyModelChoices = useMemo<ModelMetadata[] | null>(() => {
+    if (!keyService) return null
+    const byId = new Map(keyModels.map(model => [model.model_id, model]))
+    const picks = inUseAccount?.allowed_models?.length ? inUseAccount.allowed_models : keyModels.filter(model => model.recommended).slice(0, 12).map(model => model.model_id)
+    return picks.map(id => {
+      const meta = byId.get(id)
+      return {
+        model_id: id, model_name: meta?.model_name || id.slice(id.indexOf('/') + 1), provider: 'pi-cli',
+        context_window: meta?.context_window || 0, input_cost_per_1m: meta?.cost_input || 0, output_cost_per_1m: meta?.cost_output || 0, is_free: meta?.is_free,
+      } satisfies ModelMetadata
+    }).sort((a, b) => Number(Boolean(b.is_free)) - Number(Boolean(a.is_free)))
+  }, [keyService, keyModels, inUseAccount?.allowed_models])
   const selectableModels = useMemo(() => {
+    if (keyModelChoices) return keyModelChoices
     const metadataById = new Map(modelCatalog.map(model => [model.model_id, model]))
     return filterAllowedModels((currentGroup?.models || []).map(({ id, label }) => metadataById.get(id) || {
       model_id: id,
@@ -232,7 +267,7 @@ export function WorkModelsPanel({
       input_cost_per_1m: 0,
       output_cost_per_1m: 0,
     } satisfies ModelMetadata), selectedAllowedModels)
-  }, [currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
+  }, [keyModelChoices, currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
   const requestedReasoningEffort = savedSelection?.reasoningEffort
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
     || selectedDefaults.reasoningEffort
@@ -275,6 +310,23 @@ export function WorkModelsPanel({
     } finally {
       setUsageStarting(false)
     }
+  }
+
+  const saveKeyPicks = async (picks: string[]) => {
+    if (!inUseAccount) return
+    try {
+      await llmConfigService.setAccountAllowedModels(inUseAccount.id, picks)
+      window.dispatchEvent(new Event('provider-connections-changed'))
+      setKeyBrowserOpen(false); setKeyPicksDraft(null)
+    } catch { /* the browser stays open; the person can retry */ }
+  }
+  const piOption = options.find(option => option.provider === 'pi-cli')
+  const piRuntimeAvailable = providerManifest.find(provider => provider.id === 'pi-cli')?.runtime_available !== false
+  const keyEntryAvailable = Boolean(piOption && piRuntimeAvailable)
+  const switchToNewKey = (record: ProviderConnection, picks: string[]) => {
+    setKeySetupOpen(false)
+    if (!piOption) return
+    void onRuntimeChange({ engine: piOption.id, connectionId: record.id, provider: 'pi-cli', modelId: picks[0] || '', reasoningEffort: undefined })
   }
 
   const selectProvider = (config: PresetLLMConfig) => {
@@ -352,11 +404,24 @@ export function WorkModelsPanel({
           </button>
           {modelPickerOpen && (
             <div className="border-t border-border px-4 pb-4 pt-3">
-                            <TierModelSelector
+              {keyService && inUseAccount && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5" />Your key: {inUseAccount.display_name} ({keyService.label}). Free models first.</span>
+                  {(inUseAccount.relation ?? 'own') === 'own' && <button type="button" className="font-medium text-primary hover:underline" onClick={() => { setKeyBrowserOpen(open => !open); setKeyPicksDraft(inUseAccount.allowed_models ?? []) }}>{keyBrowserOpen ? 'Close' : `Browse ${keyService.label} models`}</button>}
+                </div>
+              )}
+              {keyService && inUseAccount && keyBrowserOpen && keyPicksDraft && (
+                <div className="mt-3 space-y-2 rounded-lg border border-border p-3">
+                  <ByokModelBrowser request={{ connection_id: inUseAccount.id, workspace_path: workspacePath }} service={inUseAccount.underlying_provider} value={keyPicksDraft} onChange={setKeyPicksDraft} manualIds={inUseAccount.underlying_provider === 'openai-compatible'} />
+                  <button type="button" disabled={keyPicksDraft.length === 0} onClick={() => void saveKeyPicks(keyPicksDraft)} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Save picks</button>
+                </div>
+              )}
+              <TierModelSelector
                 models={selectableModels}
                 selectedModelId={currentModelId}
                 onSelect={selectModel}
                 className="mt-3"
+                showPrices={Boolean(keyService)}
               />
             </div>
           )}
@@ -381,6 +446,22 @@ export function WorkModelsPanel({
         )}
         </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Applies on the next message. Chat history is kept.</p>}
+        {keyEntryAvailable && (workProviderIds.length === 0 || savedProviderUnusable
+          ? <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3">
+              <p className="text-sm font-medium text-foreground">No coding agent is available to you here.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Add your own model key (OpenRouter, NVIDIA NIM, Groq, Google AI Studio…) and chat on it. Many models are free.</p>
+              <button type="button" onClick={() => setKeySetupOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"><KeyRound className="h-3.5 w-3.5" />Use your own model key</button>
+            </div>
+          : <button type="button" onClick={() => setKeySetupOpen(true)} className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><KeyRound className="h-3.5 w-3.5" />Use your own model key (free models available)</button>)}
+        {keySetupOpen && (
+          <ModalPortal>
+            <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-gray-950/55 p-3" onMouseDown={event => { if (event.target === event.currentTarget) setKeySetupOpen(false) }}>
+              <div role="dialog" aria-modal="true" aria-label="Use your own model key" className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-white p-4 shadow-2xl dark:bg-gray-900">
+                <ByokSetup onCancel={() => setKeySetupOpen(false)} onSaved={(record, picks) => { window.dispatchEvent(new Event('provider-connections-changed')); switchToNewKey(record, picks) }} />
+              </div>
+            </div>
+          </ModalPortal>
+        )}
         <ProviderChangeNotice turnRunning={Boolean(tab?.isStreaming)} runningProvider={activeRuntime?.provider} selectedProvider={selectedOption?.provider} />
         {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">

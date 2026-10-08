@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-717](plat-717.md) | Bring your own model key: OpenRouter, NVIDIA NIM, Groq, Google AI Studio and OpenAI-compatible endpoints through Pi | fixed on main | P2 |
 | [PLAT-711](plat-711.md) | Pi: deployment-supplied providers/models staged into each session | deployed | P2 |
 | [PLAT-273](plat-273.md) | Pi CLI live input was reported failed (409) while Pi had accepted it, and every retry layer then re-sent the message | fixed on main | P1 |
 | [PLAT-188](plat-188.md) | `MCP_SERVER_API_TOKEN` regenerates on every server restart, busting pi-mcp-adapter's cache for every workspace's first post-restart launch | open | P3 |

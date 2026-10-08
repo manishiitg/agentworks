@@ -76,11 +76,13 @@ type providerManifestResponse struct {
 }
 
 type dynamicModelEntry struct {
-	ModelID       string  `json:"model_id"`
-	ModelName     string  `json:"model_name"`
-	Group         string  `json:"group,omitempty"`
-	IsDefault     bool    `json:"is_default,omitempty"`
-	IsFree        bool    `json:"is_free,omitempty"`
+	ModelID   string `json:"model_id"`
+	ModelName string `json:"model_name"`
+	Group     string `json:"group,omitempty"`
+	IsDefault bool   `json:"is_default,omitempty"`
+	IsFree    bool   `json:"is_free,omitempty"`
+	// SupportsTools: the catalog says the model takes tool calls (OpenRouter's supported_parameters).
+	SupportsTools bool    `json:"supports_tools,omitempty"`
 	ContextWindow int     `json:"context_window,omitempty"`
 	CostInput     float64 `json:"cost_input,omitempty"`
 	CostOutput    float64 `json:"cost_output,omitempty"`
@@ -790,6 +792,7 @@ type openRouterModelsResponse struct {
 			Prompt     string `json:"prompt"`
 			Completion string `json:"completion"`
 		} `json:"pricing"`
+		SupportedParameters []string `json:"supported_parameters"`
 	} `json:"data"`
 }
 
@@ -837,6 +840,7 @@ func fetchOpenRouterCatalog() ([]dynamicModelEntry, error) {
 			ModelName:     m.Name,
 			Group:         "OpenRouter",
 			IsFree:        promptCost == 0 && completionCost == 0,
+			SupportsTools: containsFold(m.SupportedParameters, "tools"),
 			ContextWindow: m.ContextLength,
 			CostInput:     promptCost * 1_000_000,
 			CostOutput:    completionCost * 1_000_000,

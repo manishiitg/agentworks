@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 )
 
 const (
@@ -26,13 +27,16 @@ var providerConnectionsMu sync.Mutex
 // ProviderConnection is safe public metadata. Credentials are stored only in
 // the encrypted registry and resolved for an authorized execution principal.
 type ProviderConnection struct {
-	ID                      string    `json:"id"`
-	Provider                string    `json:"provider"`
-	DisplayName             string    `json:"display_name"`
-	OwnerUserID             string    `json:"owner_user_id,omitempty"`
-	Scope                   string    `json:"scope"`
-	AuthMethod              string    `json:"auth_method"`
-	UnderlyingProvider      string    `json:"underlying_provider,omitempty"`
+	ID                 string `json:"id"`
+	Provider           string `json:"provider"`
+	DisplayName        string `json:"display_name"`
+	OwnerUserID        string `json:"owner_user_id,omitempty"`
+	Scope              string `json:"scope"`
+	AuthMethod         string `json:"auth_method"`
+	UnderlyingProvider string `json:"underlying_provider,omitempty"`
+	// BaseURL is the endpoint of a Pi account on a person's own
+	// OpenAI-compatible service (UnderlyingProvider "openai-compatible").
+	BaseURL                 string    `json:"base_url,omitempty"`
 	PersonalAccountsAllowed *bool     `json:"personal_accounts_allowed,omitempty"`
 	UpdatedAt               time.Time `json:"updated_at"`
 	// AllowedModels limits the models that may run on this account; empty
@@ -194,6 +198,19 @@ func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPI
 			return nil, fmt.Errorf("Pi connection requires an underlying provider")
 		}
 		keys.PiProviderKeys = map[string]string{record.UnderlyingProvider: record.Credential}
+		if record.UnderlyingProvider == byokCustomProvider {
+			// The account's own endpoint: Pi learns it from a staged
+			// models.json that names the key only by its variable.
+			models := make([]string, 0, len(record.AllowedModels))
+			for _, model := range record.AllowedModels {
+				models = append(models, strings.TrimPrefix(model, byokCustomProvider+"/"))
+			}
+			custom := &picli.PiCustomProvider{Name: byokCustomProvider, BaseURL: record.BaseURL, Models: models}
+			if err := custom.Validate(); err != nil {
+				return nil, fmt.Errorf("the OpenAI-compatible account needs its base URL and at least one model")
+			}
+			keys.PiCustomProvider = custom
+		}
 	default:
 		return nil, fmt.Errorf("unsupported provider connection")
 	}

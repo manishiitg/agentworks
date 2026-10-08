@@ -1,6 +1,7 @@
 import { Check, Box, Brain, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { ModelMetadata } from '../../services/llm-config-api'
+import { formatPerMillion } from '../../utils/byok'
 
 interface TierModelSelectorProps {
   models: ModelMetadata[]
@@ -8,6 +9,8 @@ interface TierModelSelectorProps {
   onSelect: (modelId: string) => void
   className?: string
   disabled?: boolean
+  /** Show the price per 1M tokens of paid models (a model key's catalog). */
+  showPrices?: boolean
 }
 
 const formatContext = (ctx: number) => {
@@ -33,6 +36,7 @@ export function TierModelSelector({
   onSelect,
   className,
   disabled = false,
+  showPrices = false,
 }: TierModelSelectorProps) {
   if (models.length === 0) {
     return (
@@ -82,6 +86,12 @@ export function TierModelSelector({
             )}
 
             <div className="flex items-center gap-2.5 flex-wrap mt-0.5">
+              {model.is_free && (
+                <span className="inline-flex items-center text-[11px] font-medium text-emerald-700 bg-emerald-500/10 px-1.5 py-0.5 rounded dark:text-emerald-300">Free</span>
+              )}
+              {showPrices && !model.is_free && formatPerMillion(model.input_cost_per_1m, model.output_cost_per_1m) && (
+                <span className="text-[11px] text-muted-foreground">{formatPerMillion(model.input_cost_per_1m, model.output_cost_per_1m)}</span>
+              )}
               {model.context_window > 0 && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-secondary/60 px-1.5 py-0.5 rounded">
                   <Box className="h-3 w-3" />

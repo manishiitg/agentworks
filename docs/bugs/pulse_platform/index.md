@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 82 | 21 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 83 | 21 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-717](coding-agents/pi/plat-717.md) | Bring your own model key: OpenRouter, NVIDIA NIM, Groq, Google AI Studio and OpenAI-compatible endpoints through Pi | fixed on main | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
 | [PLAT-716](coding-agents/accounts/plat-716.md) | Check usage times out after 30 s in the browser | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-715](coding-agents/accounts/plat-715.md) | Only admins share provider accounts widely | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-714](coding-agents/accounts/plat-714.md) | Model limits per person, matching token limits | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-677](vault/groups/plat-677.md) | Vault group descriptions must not name people | open | P2 | [vault/groups](vault/groups/index.md) |
 | [PLAT-676](coding-agents/muse/plat-676.md) | Muse hooks fail on slots: node Permission denied | in progress | P1 | [coding-agents/muse](coding-agents/muse/index.md) |
 | [PLAT-675](chat/rendering/plat-675.md) | Report links to a dead localhost port | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
-| [PLAT-674](chat/rendering/plat-674.md) | Rare product tips while the agent works | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |

@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Bring your own model key runs through Pi; setup checks call the service directly
+
+A person's key for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any
+OpenAI-compatible endpoint is a private Pi account (`underlying_provider` =
+the Pi provider id; `openai-compatible` also stores `base_url`, staged into the
+session's Pi `models.json` with the key only as `$OPENAI_COMPATIBLE_API_KEY`).
+Its allowed models are the person's picks, so a turn on it never runs a model
+of another service. Turns still run only through the Pi CLI; only the setup
+screens call the service's HTTP API directly (key check, model list, and Try
+it: one chat request with one tool that is never run). Custom endpoints must be
+https on a public address (`AGENTWORKS_BYOK_ALLOW_PRIVATE_ENDPOINTS=1` lifts
+that for a self-hosted deployment). Why: owner, 2026-10-08, "a good interface"
+for using one's own (often free) model key.
+[PLAT-717](bugs/pulse_platform/coding-agents/pi/plat-717.md).
+
 ### 2026-10-08 — One Pulse, no separate reviewers
 
 Pulse on means the Pulse agent owns the workflow; Pulse off means the owner

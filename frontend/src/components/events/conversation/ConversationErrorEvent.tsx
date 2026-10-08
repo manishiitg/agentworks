@@ -2,6 +2,7 @@ import React from 'react'
 import { AlertCircle, Hash } from 'lucide-react'
 import type { ConversationErrorEvent } from '../../../generated/events'
 import { formatDuration } from '../../../utils/duration'
+import { FreeModelHint } from '../../chat/FreeModelHint'
 
 /** Try to extract a short user-facing message from API error strings (e.g. Azure DeploymentNotFound). */
 function getErrorSummary(error: string): string {
@@ -36,6 +37,7 @@ export const ConversationErrorEventDisplay: React.FC<ConversationErrorEventProps
               {errorDisplay}
             </div>
           )}
+          <FreeModelHint error={event.error} />
         </div>
       </div>
     )
@@ -67,6 +69,7 @@ export const ConversationErrorEventDisplay: React.FC<ConversationErrorEventProps
             <div className="mt-1 text-red-800 dark:text-red-200 whitespace-pre-wrap break-words">{event.error}</div>
           </div>
         )}
+        <FreeModelHint error={event.error} />
         
         {/* Context */}
         {event.context && (

@@ -236,12 +236,14 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 }
 
 type providerConnectionRequest struct {
-	Provider           string                     `json:"provider"`
-	DisplayName        *string                    `json:"display_name"`
-	Credential         *string                    `json:"credential"`
-	UnderlyingProvider string                     `json:"underlying_provider"`
-	AuthMethod         string                     `json:"auth_method"`
-	Sharing            *ProviderConnectionSharing `json:"sharing"`
+	Provider           string  `json:"provider"`
+	DisplayName        *string `json:"display_name"`
+	Credential         *string `json:"credential"`
+	UnderlyingProvider string  `json:"underlying_provider"`
+	// BaseURL is an OpenAI-compatible account's endpoint (PLAT-717).
+	BaseURL    string                     `json:"base_url"`
+	AuthMethod string                     `json:"auth_method"`
+	Sharing    *ProviderConnectionSharing `json:"sharing"`
 	// AvailableTo is the admin setting for a server account; JSON null
 	// clears it back to the installation policy.
 	AvailableTo json.RawMessage `json:"available_to"`
@@ -300,6 +302,12 @@ func (api *StreamingAPI) createProviderConnection(w http.ResponseWriter, r *http
 		credential = strings.TrimSpace(*request.Credential)
 	}
 	record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: request.Provider, DisplayName: name, OwnerUserID: userID, Scope: "user", AuthMethod: "api_key", UnderlyingProvider: strings.TrimSpace(request.UnderlyingProvider), UpdatedAt: time.Now().UTC(), Sharing: sharing, AllowedModels: allowedModels}, Credential: credential}
+	if record.Provider == "pi-cli" && record.UnderlyingProvider == byokCustomProvider {
+		if record.BaseURL, err = validateByokBaseURL(request.BaseURL); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	if request.AuthMethod == "cli_login" {
 		record.AuthMethod = "cli_login"
 		record.Credential = ""

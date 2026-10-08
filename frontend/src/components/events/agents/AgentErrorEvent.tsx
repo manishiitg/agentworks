@@ -1,6 +1,7 @@
 import React from 'react'
 import type { AgentErrorEvent } from '../../../generated/events-bridge'
 import { formatDuration } from '../../../utils/duration'
+import { FreeModelHint } from '../../chat/FreeModelHint'
 
 interface AgentErrorEventProps {
   event: AgentErrorEvent
@@ -29,6 +30,7 @@ export const AgentErrorEventDisplay: React.FC<AgentErrorEventProps> = ({ event }
               </div>
             </div>
           )}
+          <FreeModelHint error={event.error} />
 
           {/* Context - full detail preserved */}
           {event.context && (

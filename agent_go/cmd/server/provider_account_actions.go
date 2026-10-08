@@ -257,6 +257,22 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 		}
 	case "muse-cli":
 		status.State, status.Identity = museAccountStatus(target)
+	case "pi-cli":
+		// A model key account (PLAT-717): the real check is one request
+		// with the key; without it, the saved key counts as set up.
+		service, ok := byokServiceFor(target.Record)
+		if !ok {
+			status.Detail = "This CLI has no status check."
+			return status
+		}
+		if !verify {
+			status.State, status.Identity = "signed_in", service.Label+" key"
+			return status
+		}
+		if endpoint, err := byokEndpoint(service, target.Record.BaseURL); err == nil {
+			service = endpoint
+		}
+		return byokAccountStatus(checkByokKey(ctx, service, target.Record.Credential))
 	default:
 		status.Detail = "This CLI has no status check."
 	}

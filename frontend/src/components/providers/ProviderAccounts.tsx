@@ -7,6 +7,9 @@ import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
+import ByokSetup from './ByokSetup'
+import ByokModelBrowser from './ByokModelBrowser'
+import { byokServiceOf } from '../../utils/byok'
 import { allowedModelsSummary, allowedModelsText } from '../../utils/allowedModels'
 import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
 import {
@@ -24,9 +27,16 @@ import {
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
 
 /** One line for an account's status; never a credential. */
-export function accountStatusText(status?: ProviderAccountStatus | 'loading'): string {
+export function accountStatusText(status?: ProviderAccountStatus | 'loading', keyAccount = false): string {
   if (!status) return ''
-  if (status === 'loading') return 'Checking status…'
+  if (status === 'loading') return keyAccount ? 'Testing the key…' : 'Checking status…'
+  if (keyAccount) {
+    switch (status.state) {
+      case 'signed_in': return status.verified ? `Key works${status.identity ? ` · ${status.identity}` : ''}${status.detail ? ` · ${status.detail}` : ''}` : `${status.identity || 'Key saved'} · not tested yet`
+      case 'key_rejected': return `Key rejected${status.detail ? `: ${status.detail}` : ''}`
+      default: return status.detail ? `Could not test: ${status.detail}` : 'Status unknown'
+    }
+  }
   switch (status.state) {
     case 'signed_in': return `Signed in${status.identity ? ` as ${status.identity}` : ''}${status.verified ? ' (checked)' : ''}`
     case 'signed_out': return 'Signed out'
@@ -80,7 +90,7 @@ export function accountOptionLabel(record: ProviderConnection): string {
 
 export const NO_LONGER_AVAILABLE = 'No longer available here'
 
-export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, formOnly = false, selectionOnly = false, workspacePath, product }: {
+export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
   provider: string
   /** Display name of the provider, e.g. "Claude Code". */
   providerLabel?: string
@@ -88,6 +98,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   onSelect?: (id: string) => void
   disabled?: boolean
   addRequest?: number
+  /** Pi: the model key service the add flow opens on (e.g. openrouter). */
+  addService?: string
   formOnly?: boolean
   selectionOnly?: boolean
   /** Workflow, Crew or Code path the selection is for. */
@@ -102,6 +114,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [modelsId, setModelsId] = useState<string | null>(null)
+  // A Pi model key account's picks being edited in the model browser (PLAT-717).
+  const [keyModelsDraft, setKeyModelsDraft] = useState<{ id: string; picks: string[] } | null>(null)
   const [sharingDraft, setSharingDraft] = useState<ProviderAccountSharing>({ mode: 'private' })
   const [availabilityDraft, setAvailabilityDraft] = useState<ProviderAvailableTo | null>(null)
   // The server account's default per-person token limits being edited (PLAT-693).
@@ -254,7 +268,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const modelsEditor = (record: ProviderConnection) => modelsId === record.id && (
     <AllowedModelsEditor provider={provider} value={accountModels(record)} disabled={busy} onSave={models => saveModels(record, models ?? [])} onCancel={() => setModelsId(null)} />
   )
-  const modelsItem = (record: ProviderConnection) => record.can_manage && manage ? [{ label: 'Models', onSelect: () => setModelsId(modelsId === record.id ? null : record.id) }] : []
+  const keyModelsEditor = (record: ProviderConnection) => keyModelsDraft?.id === record.id && (
+    <div className="mt-3 w-full space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+      <ByokModelBrowser request={{ connection_id: record.id, workspace_path: workspacePath }} service={record.underlying_provider} value={keyModelsDraft.picks} onChange={picks => setKeyModelsDraft({ id: record.id, picks })} manualIds={record.underlying_provider === 'openai-compatible'} />
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || keyModelsDraft.picks.length === 0} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50" onClick={() => void saveModels(record, keyModelsDraft.picks).then(() => setKeyModelsDraft(null))}>{busy ? 'Saving…' : 'Save models'}</button>
+        <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => setKeyModelsDraft(null)}>Cancel</button>
+      </div>
+    </div>
+  )
+  const modelsItem = (record: ProviderConnection) => record.can_manage && manage ? [{ label: 'Models', onSelect: () => {
+    if (byokServiceOf(record)) setKeyModelsDraft(keyModelsDraft?.id === record.id ? null : { id: record.id, picks: record.allowed_models ?? [] })
+    else setModelsId(modelsId === record.id ? null : record.id)
+  } }] : []
   const saveAvailability = async (value: ProviderAvailableTo | null) => {
     setBusy(true); setError(null)
     try {
@@ -292,7 +318,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
   const statusLine = (record: ProviderConnection) => {
     const status = statuses[record.id]
-    const text = status ? accountStatusText(status) : record.configured === false ? 'Not signed in' : ''
+    const text = status ? accountStatusText(status, Boolean(byokServiceOf(record))) : record.configured === false ? 'Not signed in' : ''
     if (!text) return null
     const ok = status && status !== 'loading' && status.state === 'signed_in'
     return (
@@ -305,7 +331,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
   const terminalItem = (record: ProviderConnection) => record.can_manage ? [{ label: 'Terminal (sign in, check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
-  const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined ? [{ label: 'Check sign-in again', onSelect: () => void refreshStatus(record) }] : []
+  const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined || byokServiceOf(record) ? [{ label: byokServiceOf(record) ? 'Test key again' : 'Check sign-in again', onSelect: () => void refreshStatus(record) }] : []
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
   )) || (usageText && usageText.rowId === record.id && (
@@ -329,7 +355,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     const own = relation === 'own'
     const canManage = own || record.can_manage === true
     let detail: string
-    if (own) detail = sharingSummary(record.sharing)
+    const keyService = byokServiceOf(record)
+    if (own) detail = `${keyService ? `${keyService.label} · ` : ''}${sharingSummary(record.sharing)}`
     else if (relation === 'admin_view') detail = otherAccountDetail(record, sharingSummary(record.sharing))
     else detail = `Shared by ${record.owner_name || 'another person'}`
     return (
@@ -345,7 +372,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="Not signed in and no key yet: use Sign in to set it up">Not set up</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
-            {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsSummary(record.allowed_models)}</p>}
+            {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {keyService && record.allowed_models?.length ? allowedModelsText(record.allowed_models.map(id => id.slice(id.indexOf('/') + 1))) : allowedModelsSummary(record.allowed_models)}</p>}
             {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
             {statusLine(record)}
           </div>
@@ -360,13 +387,14 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ...(personalAllowed && canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
               ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
               ...(own ? modelsItem({ ...record, can_manage: true }) : []),
-              ...(own && personalAllowed ? [{ label: 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
+              ...(own && personalAllowed ? [{ label: keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
             ]} />
           </div>
         )}
         {sharingEditor(record)}
         {modelsEditor(record)}
+        {keyModelsEditor(record)}
         {terminalFor(record)}
       </li>
     )
@@ -482,7 +510,15 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const selectedUnavailableText = selectedRecord?.configured === false ? "needs setup" : NO_LONGER_AVAILABLE.toLowerCase()
   const own = connections.filter(record => accountRelation(record) === 'own')
 
-  const addForm = adding && (
+  // Pi: adding an account is the guided "Use your own model key" flow.
+  const keySetup = adding && !editingId && provider === 'pi-cli' && (
+    <div className={formOnly ? '' : 'mt-4 border-t border-gray-200 pt-4 dark:border-gray-700'}>
+      <ByokSetup initialService={addService} disabled={disabled || !personalAllowed} onCancel={cancel} onSaved={record => {
+        setConnections(current => [...current, record]); setAdding(false); resetForm(); changed(); onSelect?.(record.id)
+      }} />
+    </div>
+  )
+  const addForm = keySetup || adding && (
     <form className={formOnly ? 'space-y-4' : 'mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700'} onSubmit={event => { event.preventDefault(); void save() }}>
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">{editingId ? 'Edit your account' : 'Add your account'}</h4>
@@ -492,7 +528,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       {!editingId && ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}><option value="api_key">API key</option><option value="cli_login">Browser login</option></select></label>}
       {authMethod !== 'cli_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
       {provider === 'claude-code' && authMethod !== 'cli_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Generate a token with <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">claude setup-token</code> for the account you want to add.</p>}
-      {provider === 'pi-cli' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Pi provider ID<input required value={underlyingProvider} onChange={event => setUnderlyingProvider(event.target.value)} className={inputClass} /></label>}
+      {provider === 'pi-cli' && !editingId && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Pi provider ID<input required value={underlyingProvider} onChange={event => setUnderlyingProvider(event.target.value)} className={inputClass} /></label>}
       {!editingId && manage && <SharingFields value={newSharing} onChange={setNewSharing} disabled={busy} peopleOnly={!isAdmin} />}
       <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Credentials are encrypted. Nobody else sees them, even when the account is shared.</p>
       <div className="flex items-center gap-2">
@@ -502,7 +538,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     </form>
   )
   const addButton = !disabled && personalAllowed && !adding && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> Add my account</button>
+    <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> {provider === 'pi-cli' ? 'Add a model key' : 'Add my account'}</button>
   )
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
@@ -517,7 +553,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Which {providerLabel || 'provider'} login or key a workflow, Crew or Code runs as.</p>
           {group('Your accounts', own, addButton)}
           {!personalAllowed && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">The installation does not allow personal accounts for this provider.</p>}
-          {personalAllowed && own.length === 0 && !adding && <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>}
+          {personalAllowed && own.length === 0 && !adding && (provider === 'pi-cli'
+            ? <p className="text-xs text-gray-500 dark:text-gray-400">No keys yet. <strong>Add a model key</strong> for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any OpenAI-compatible endpoint; many have free models. Private to you unless you share it.</p>
+            : <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>)}
           {addForm}
           {server && <div className="mt-5">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>
@@ -566,7 +604,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             {ACCOUNT_GROUPS.map(groupSpec => {
               const records = selectable.filter(record => groupSpec.relations.includes(accountRelation(record)))
               if (records.length === 0) return null
-              return <optgroup key={groupSpec.label} label={groupSpec.label}>
+              return <optgroup key={groupSpec.label} label={provider === 'pi-cli' && groupSpec.label === 'Your accounts' ? 'Your keys' : groupSpec.label}>
                 {records.map(record => <option key={record.id} value={record.id}>{accountOptionLabel(record)}</option>)}
               </optgroup>
             })}

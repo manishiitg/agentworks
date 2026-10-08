@@ -1,6 +1,7 @@
 import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountConfigured, accountRelation, accountUsable } from '../providers/ProviderAccounts'
 import { Button } from '../ui/Button'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
+import { byokServiceOf } from '../../utils/byok'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, UserRound, ShieldCheck } from 'lucide-react'
@@ -642,7 +643,8 @@ export default function WorkflowLLMConfigurationPanel({
       const needsSetup = 'configured' in account && account.configured === false
       const available = !unavailable && !needsSetup && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
       const relation = accountRelation(account)
-      const note = relation === 'own' ? ('sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private')
+      const keyService = 'underlying_provider' in account ? byokServiceOf(account) : undefined
+      const note = relation === 'own' ? `${keyService ? `Your ${keyService.label} key · ` : ''}${'sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private'}`
         : relation === 'server' ? `Managed by admin${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
           : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
       return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">

@@ -44,6 +44,8 @@ export interface ProviderConnection {
   personal_accounts_allowed?: boolean
   auth_method: string
   underlying_provider?: string
+  /** Endpoint of a Pi account on the person's own OpenAI-compatible service. */
+  base_url?: string
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
@@ -106,6 +108,8 @@ export interface ModelMetadata {
   cached_input_cost_per_1m?: number
   cached_input_cost_write_per_1m?: number
   provider: string
+  /** The catalog prices the model at zero (OpenRouter free models, NVIDIA's free tier). */
+  is_free?: boolean
   supports_reasoning_effort?: boolean
   reasoning_effort_levels?: string[]
   supports_thinking_level?: boolean
@@ -189,12 +193,41 @@ export interface ProviderManifestResponse {
   provider_order: string[]
 }
 
+/** A bring-your-own-key request: an account, or a service + key being set up. */
+export interface ByokRequest {
+  connection_id?: string
+  service?: string
+  credential?: string
+  base_url?: string
+  workspace_path?: string | null
+}
+
+/** A key or model check, in plain words. */
+export interface ByokCheck {
+  state: 'ok' | 'rejected' | 'rate_limited' | 'error'
+  detail?: string
+  identity?: string
+}
+
+/** One model of a key's service. model_id is the Pi id (service/model). Costs are per 1M tokens. */
+export interface ByokModel {
+  model_id: string
+  model_name: string
+  is_free?: boolean
+  supports_tools?: boolean
+  context_window?: number
+  cost_input?: number
+  cost_output?: number
+  recommended?: boolean
+}
+
 export interface DynamicModelEntry {
   model_id: string
   model_name: string
   group?: string
   is_default?: boolean
   is_free?: boolean
+  supports_tools?: boolean
   context_window?: number
   cost_input?: number
   cost_output?: number
@@ -296,7 +329,7 @@ export const llmConfigService = {
     const response = await llmConfigApi.get('/api/provider-connections', Object.keys(params).length ? { params } : undefined)
     return response.data.connections
   },
-  addProviderConnection: async (connection: { provider: string; display_name: string; credential?: string; auth_method?: string; underlying_provider?: string; sharing?: ProviderAccountSharing }): Promise<ProviderConnection> => {
+  addProviderConnection: async (connection: { provider: string; display_name: string; credential?: string; auth_method?: string; underlying_provider?: string; base_url?: string; allowed_models?: string[]; sharing?: ProviderAccountSharing }): Promise<ProviderConnection> => {
     const response = await llmConfigApi.post('/api/provider-connections', connection)
     return response.data
   },
@@ -394,13 +427,18 @@ export const llmConfigService = {
     }, {
       // The server starts the CLI and then waits up to 45 s for its usage answer
       // (providerUsageCollectTimeout); Codex alone takes over 30 s, so the shared
-      // 30 s limit failed every check with "timeout of 30000ms exceeded" (PLAT-716).
+      // 30 s limit failed every check with "timeout of 30000ms exceeded" (PLAT-717).
       timeout: 90000,
     })
     return response.data
   },
 
   /** Status of one account; verify adds the real login check (Claude Code). */
+  // "Bring your own model key" (PLAT-717). Either an account (connection_id, its stored key) or a key being set up.
+  byokTestKey: async (request: ByokRequest): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/test-key', request)).data,
+  byokModels: async (request: ByokRequest): Promise<{ models: ByokModel[]; default_model?: string }> => (await llmConfigApi.post('/api/byok/models', request)).data,
+  byokTryModel: async (request: ByokRequest & { model: string }): Promise<ByokCheck> => (await llmConfigApi.post('/api/byok/try-model', request)).data,
+
   getProviderAccountStatus: async (connectionId: string, verify = false, workspacePath?: string | null): Promise<ProviderAccountStatus> => {
     const query = new URLSearchParams()
     if (verify) query.set('verify', '1')
