@@ -418,7 +418,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("runs:execute")
 	case "get_relay_releases":
 		return t.Allows("workflows:read")
-	case "get_agent_context", "list_guidance_topics", "get_guidance_topic":
+	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill":
 		// Canonical server-owned guidance carries no workflow content.
 		return reads || t.Allows("vault:manage")
 	case "list_workflow_knowledge", "read_workflow_knowledge":

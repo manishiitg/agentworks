@@ -57,7 +57,7 @@ func TestExternalGuidanceTopicScopeSplit(t *testing.T) {
 	for _, raw := range body["tools"].([]any) {
 		names[raw.(map[string]any)["name"].(string)] = true
 	}
-	for _, name := range []string{"get_agent_context", "list_guidance_topics", "get_guidance_topic"} {
+	for _, name := range []string{"get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill"} {
 		if !names[name] {
 			t.Fatalf("workflows:read token missing %s", name)
 		}
