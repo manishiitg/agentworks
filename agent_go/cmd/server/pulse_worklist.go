@@ -2280,6 +2280,8 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 		"autonomy_run":               pulseAutonomyRunForView(r.Context(), workspacePath),
 		"autonomy":                   pulseAutonomyForView(r.Context(), workspacePath),
 		"focus_areas":                pulseFocusAreasForView(r.Context(), workspacePath),
+		"has_soul":                   workflowHasSoul(r.Context(), workspacePath),
+		"run_setup":                  workflowRunSetupView(r.Context(), workspacePath),
 	})
 }
 

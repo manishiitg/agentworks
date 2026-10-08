@@ -704,7 +704,17 @@ export interface PulseModuleStateResponse {
   autonomy_run?: PulseAutonomyRun
   autonomy?: PulseAutonomy
   focus_areas?: string[]
+  /** The workflow has written its goal in soul.md; Pulse needs it to own the goal. */
+  has_soul?: boolean
+  run_setup?: WorkflowRunSetup | null
   error?: string
+}
+
+/** What runs for a workflow whoever manages it (shown on the Pulse tab when Pulse is off). */
+export interface WorkflowRunSetup {
+  schedules: { name: string; type: 'cron' | 'calendar' | 'webhook' | string; enabled: boolean; cron_expression?: string; timezone?: string; after_run: ScheduleAfterRun }[]
+  manual_after_run: ScheduleAfterRun
+  workflow_review?: { finished_at?: string; started_at?: string; outcome?: string; reason?: string } | null
 }
 
 /** One Pulse permission: auto lets Goal Work do it itself; ask makes it prepare the work and create a decision. */

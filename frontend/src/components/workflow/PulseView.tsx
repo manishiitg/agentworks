@@ -4,11 +4,12 @@ import { PulseIcon } from './pulseIcon'
 import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
 import { GoalLeadPanel } from './GoalLeadPanel'
+import { PulseOffCard } from './PulseOffCard'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
 import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
-import type { PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
+import type { WorkflowRunSetup, PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
 
 export interface PulseOverview {
   recorded: number
@@ -21,6 +22,8 @@ interface PulseViewProps {
   monitorOn: boolean
   monitorSaving: boolean
   onToggleMonitor: () => void
+  hasSoul?: boolean
+  runSetup?: WorkflowRunSetup | null
   disabledReviewModules: PulseReviewerModule[]
   reviewModuleSaving: PulseReviewerModule | null
   onToggleReviewModule: (module: PulseReviewerModule) => void
@@ -47,19 +50,13 @@ interface PulseViewProps {
   headerAction?: React.ReactNode
 }
 
-function nextPulseLabel(nextRun: PulseNextRun | null): string {
-  if (!nextRun?.next_at) return 'Pulse is choosing its next run'
-  const date = new Date(nextRun.next_at)
-  if (Number.isNaN(date.getTime())) return 'Pulse is choosing its next run'
-  const when = date.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  return date.getTime() <= Date.now() ? `Next Pulse due now (${when})` : `Next Pulse: ${when}`
-}
-
 export default function PulseView({
   workspacePath,
   monitorOn,
   monitorSaving,
   onToggleMonitor,
+  hasSoul = false,
+  runSetup = null,
   disabledReviewModules,
   reviewModuleSaving,
   onToggleReviewModule,
@@ -68,7 +65,6 @@ export default function PulseView({
   planDriftDueItems,
   planDriftDueError,
   finalCommandStates,
-  nextRun = null,
   goalWork = [],
   goalStatus = null,
   autonomy = DEFAULT_PULSE_AUTONOMY,
@@ -86,6 +82,8 @@ export default function PulseView({
   headerAction,
 }: PulseViewProps) {
   const [tab, setTab] = useState<PulseWorkspaceTab>('for_you')
+  // Pulse off, or on without a goal in soul.md: the owner manages the workflow.
+  const ownerManaged = !monitorOn || !hasSoul
   useWorkspaceViewTarget('pulse', target => { if (target === 'for_you' || target === 'platform') setTab(target) })
   return (
     <div className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
@@ -113,9 +111,10 @@ export default function PulseView({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-3 sm:p-4">
-          {workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
-          {workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
-          {workspacePath && (
+          {ownerManaged && <PulseOffCard pulseOn={monitorOn} hasSoul={hasSoul} runSetup={runSetup} saving={monitorSaving} onTurnOn={onToggleMonitor} />}
+          {!ownerManaged && workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
+          {!ownerManaged && workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
+          {!ownerManaged && workspacePath && (
             <PulseWorkspace
               activeTab={tab}
               onTabChange={setTab}
@@ -144,7 +143,7 @@ export default function PulseView({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3 border-t border-border bg-background px-4 py-3 sm:px-5">
+      {monitorOn && <div className="flex shrink-0 items-center gap-3 border-t border-border bg-background px-4 py-3 sm:px-5">
         <button
           type="button"
           role="switch"
@@ -157,12 +156,12 @@ export default function PulseView({
           <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${monitorOn ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
         </button>
         <div className="min-w-0">
-          <div className="text-xs font-medium text-foreground">{monitorOn ? nextPulseLabel(nextRun) : 'Pulse is off'}</div>
-          <div className="truncate text-[11px] text-muted-foreground" title={monitorOn ? nextRun?.reason : undefined}>{monitorOn
-            ? (nextRun?.reason ? `Because ${nextRun.reason}` : 'Pulse runs on its own schedule. Backup, publish and notify are each schedule’s after-run options.')
-            : 'Turn on to let Pulse review this workflow on its own schedule.'}</div>
+          <div className="text-xs font-medium text-foreground">Pulse is on</div>
+          <div className="truncate text-[11px] text-muted-foreground">{hasSoul
+            ? 'Pulse owns the goal: it checks it daily and asks the Builder to make changes.'
+            : 'Pulse needs the goal in soul.md before it starts.'}</div>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

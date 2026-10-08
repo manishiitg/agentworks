@@ -244,6 +244,10 @@ func (s *SchedulerService) launchDuePulses(ctx context.Context) {
 		if item.Manifest == nil || !item.Manifest.PulseEnabled() || workflowSchedulesAllPaused(item.Manifest) {
 			continue
 		}
+		// Pulse on without a soul.md has no goal to own: it runs like Pulse off.
+		if !workflowHasGoal(ctx, item.WorkspacePath) {
+			continue
+		}
 		workspacePath := item.WorkspacePath
 		schedule := item.Manifest.EffectivePulseSchedule()
 		state, err := readPulseScheduleState(ctx, workspacePath)

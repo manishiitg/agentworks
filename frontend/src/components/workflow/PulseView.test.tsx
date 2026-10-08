@@ -24,7 +24,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function renderView(monitorOn: boolean) {
+async function renderView(monitorOn: boolean, hasSoul = true) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -33,6 +33,8 @@ async function renderView(monitorOn: boolean) {
       <PulseView
         workspacePath="/tmp/workflow-test"
         monitorOn={monitorOn}
+        hasSoul={hasSoul}
+        runSetup={{ schedules: [{ name: 'Daily', type: 'cron', enabled: true, cron_expression: '0 9 * * *', after_run: { backup: true, publish: false, notify: true } }], manual_after_run: { backup: false, publish: false, notify: false } }}
         monitorSaving={false}
         onToggleMonitor={() => {}}
         disabledReviewModules={[]}
@@ -76,4 +78,14 @@ it('updates the header walkthrough when the Pulse tab changes', async () => {
   await act(async () => (host.querySelector('[data-testid="pulse-workspace"] button:last-child') as HTMLButtonElement).click());
   expect(host.querySelector('[aria-label="Walkthrough: Pulse · Platform health"]')).not.toBeNull();
   expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Workflow Review, Technical, and Architecture');
+});
+
+// Owner 2026-10-08: Pulse off (or on without a goal in soul.md) means the owner
+// manages the workflow, so the tab shows what still runs, not Pulse's panels.
+it.each([[false, true], [true, false]])('shows the owner-managed card when Pulse on=%s and soul.md=%s', async (monitorOn, hasSoul) => {
+  const host = await renderView(monitorOn, hasSoul);
+  const card = host.querySelector('[data-testid="pulse-off-card"]');
+  expect(card?.textContent).toContain('You manage this workflow.');
+  expect(card?.textContent).toContain('after: backup, notify');
+  expect(host.querySelector('[data-testid="pulse-workspace"]')).toBeNull();
 });

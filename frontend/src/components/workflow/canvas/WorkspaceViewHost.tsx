@@ -37,6 +37,7 @@ import type {
   PulseGoalStatus,
   PulseAutonomy,
   VariablesManifest,
+  WorkflowRunSetup,
 } from '../../../services/api-types'
 import { DEFAULT_PULSE_AUTONOMY } from '../../../services/api-types'
 import { PULSE_FIXED_COMMANDS, PULSE_MODULE_COMMANDS } from './pulseSections'
@@ -206,6 +207,8 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             monitorOn={pulse.monitorOn}
             monitorSaving={pulse.monitorSaving}
             onToggleMonitor={pulse.toggleMonitor}
+            hasSoul={pulse.hasSoul}
+            runSetup={pulse.runSetup}
             disabledReviewModules={pulse.disabledReviewModules}
             reviewModuleSaving={pulse.reviewModuleSaving}
             onToggleReviewModule={pulse.toggleReviewModule}
@@ -375,6 +378,8 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const [pulseAutonomy, setPulseAutonomyState] = useState<PulseAutonomy>(DEFAULT_PULSE_AUTONOMY)
   const [pulseAutonomySaving, setPulseAutonomySaving] = useState(false)
   const [pulseFocusAreas, setPulseFocusAreas] = useState<string[]>([])
+  const [pulseHasSoul, setPulseHasSoul] = useState(false)
+  const [pulseRunSetup, setPulseRunSetup] = useState<WorkflowRunSetup | null>(null)
   const [pulseFocusSaving, setPulseFocusSaving] = useState(false)
   const [pulseStatusLoading, setPulseStatusLoading] = useState(false)
   const [pulseStatusError, setPulseStatusError] = useState<string | null>(null)
@@ -439,6 +444,8 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       setPulseGoalStatus(resp.goal_status ?? null)
       setPulseAutonomyState(resp.autonomy ?? { ...DEFAULT_PULSE_AUTONOMY, run: resp.autonomy_run === 'ask' ? 'ask' : 'auto' })
       setPulseFocusAreas(resp.focus_areas || [])
+      setPulseHasSoul(!!resp.has_soul)
+      setPulseRunSetup(resp.run_setup ?? null)
       setPulseFinalCommandStates(resp.commands || [])
       setPulseReviewFocuses(resp.review_focus_history || [])
       setPulseReviewFocusSelections(resp.review_focus_selections || [])
@@ -549,10 +556,12 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     statusLoading: pulseStatusLoading,
     overview: pulseOverview,
     refresh: refreshPulseModuleStates,
+    hasSoul: pulseHasSoul,
+    runSetup: pulseRunSetup,
   }), [
     monitorOn, monitorSaving, toggleMonitor, disabledReviewModules, reviewModuleSaving, toggleReviewModule, pulseModuleStates, planDriftDue, planDriftDueItems, planDriftDueError, pulseFinalCommandStates, pulseNextRun, pulseGoalWork, pulseGoalStatus, pulseAutonomy, pulseAutonomySaving, setPulseAutonomy, pulseFocusAreas, pulseFocusSaving, savePulseFocusAreas,
     pulseReviewFocuses, pulseReviewFocusSelections, pulseStatusError, pulseStatusLoading,
-    pulseOverview, refreshPulseModuleStates,
+    pulseOverview, refreshPulseModuleStates, pulseHasSoul, pulseRunSetup,
   ])
 
   // The flow canvas's VariablesSidebar edits the manifest in place; keep the

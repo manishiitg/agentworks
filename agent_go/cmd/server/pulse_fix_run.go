@@ -3,22 +3,15 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
-
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// Pulse fix runs close the loop between finding a problem and fixing it. The
-// full Pulse runs on its own daily-to-weekly schedule; a fix run is a short
-// Technical Review+Fix pass (after Plan Drift when due) that starts as soon as
-// a workflow has something to fix: an open workflow issue, a new step concern,
-// or a failed scheduled run. A stable workflow with nothing to fix gets none,
-// so Pulse is fast while there are problems and quiet once there are not.
-// Fix runs never move the full Pulse schedule. A workflow with a goal gets
-// fix runs only when its Pulse conversation asks (goal_lead_qa.go).
+// Pulse fix runs: automatic fix runs no longer start (owner, 2026-10-08). A
+// failed run wakes the workflow's Pulse conversation once and it asks the
+// Builder chat to fix it; a run the Pulse asks for directly still uses the
+// fix-run worklist below (goal_lead_qa.go).
 
 const (
 	pulseFixRunScheduleID = "pulse-fix-run"
@@ -83,124 +76,6 @@ func recordPulseFixRunStarted(ctx context.Context, workspacePath, runID, reason 
 	return err
 }
 
-// pulseFixRunHistory returns the latest fix-run start and how many started in
-// the 24 hours before now.
-func pulseFixRunHistory(ctx context.Context, workspacePath string, now time.Time) (last time.Time, lastDay int, err error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
-	if err != nil || db == nil {
-		return time.Time{}, 0, err
-	}
-	defer db.Close()
-	if err := ensurePulseFixRunsSchema(ctx, db); err != nil {
-		return time.Time{}, 0, err
-	}
-	rows, err := db.QueryContext(ctx, `SELECT started_at FROM pulse_fix_runs`)
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return time.Time{}, 0, err
-		}
-		started := parseStoredTime(raw)
-		if started.After(last) {
-			last = started
-		}
-		if now.Sub(started) < 24*time.Hour {
-			lastDay++
-		}
-	}
-	return last, lastDay, rows.Err()
-}
-
-// pulseFixSignals is what a fix run would work on.
-type pulseFixSignals struct {
-	OpenIssues  int
-	NewConcerns int
-	FailedRuns  int
-	// OpenIssuesLastActivity is the latest time any open issue was seen again
-	// or had an event recorded.
-	OpenIssuesLastActivity time.Time
-}
-
-func (s pulseFixSignals) any() bool { return s.OpenIssues > 0 || s.NewConcerns > 0 || s.FailedRuns > 0 }
-
-func (s pulseFixSignals) reason() string {
-	parts := []string{}
-	if s.OpenIssues > 0 {
-		parts = append(parts, fmt.Sprintf("%d open issue(s)", s.OpenIssues))
-	}
-	if s.NewConcerns > 0 {
-		parts = append(parts, fmt.Sprintf("%d new step concern(s)", s.NewConcerns))
-	}
-	if s.FailedRuns > 0 {
-		parts = append(parts, fmt.Sprintf("%d failed scheduled run(s)", s.FailedRuns))
-	}
-	return strings.Join(parts, ", ")
-}
-
-// decidePulseFixRun applies the cost guards. since is the latest Pulse or fix
-// run start: new concerns and failed runs count only after it, so a run that
-// already looked at them does not retrigger.
-func decidePulseFixRun(signals pulseFixSignals, lastFix time.Time, fixesLastDay int, now time.Time) (bool, string) {
-	if !signals.any() {
-		return false, "nothing to fix"
-	}
-	if fixesLastDay >= pulseFixRunMaxPerDay {
-		return false, fmt.Sprintf("daily limit of %d fix runs reached", pulseFixRunMaxPerDay)
-	}
-	// Only old open issues, none touched since the last fix run started: a new
-	// pass would see exactly what the last one left, so it would end the same
-	// way. They wait for new trouble or the full Pulse.
-	if signals.NewConcerns == 0 && signals.FailedRuns == 0 && !lastFix.IsZero() &&
-		!signals.OpenIssuesLastActivity.After(lastFix) {
-		return false, "open issues unchanged since the last fix run"
-	}
-	gap := pulseFixRunBacklogGap
-	if signals.NewConcerns > 0 || signals.FailedRuns > 0 {
-		gap = pulseFixRunFreshGap
-	}
-	if !lastFix.IsZero() && now.Sub(lastFix) < gap {
-		return false, fmt.Sprintf("last fix run started %s ago; minimum gap is %s", now.Sub(lastFix).Round(time.Minute), gap)
-	}
-	return true, signals.reason()
-}
-
-// collectPulseFixSignals reads the workflow's current fix work.
-func collectPulseFixSignals(ctx context.Context, workspacePath string, since time.Time) (pulseFixSignals, error) {
-	var signals pulseFixSignals
-	open, err := stepworkflow.CountPulseActionableWorkflowIssuesForPass(ctx, workspacePath, since)
-	if err != nil {
-		return signals, err
-	}
-	signals.OpenIssues = open
-	if open > 0 {
-		issues, err := stepworkflow.ListPulseActionableWorkflowIssues(ctx, workspacePath)
-		if err != nil {
-			return signals, err
-		}
-		for _, issue := range issues {
-			if issue.LastActivity.After(signals.OpenIssuesLastActivity) {
-				signals.OpenIssuesLastActivity = issue.LastActivity
-			}
-		}
-	}
-	signals.NewConcerns = collectStepConcerns(workspacePath, since).Total
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
-	if err != nil {
-		return signals, err
-	}
-	for _, run := range runs {
-		if run.StartedAt.After(since) && isPulseFixFailedRunStatus(run.Status) &&
-			run.ScheduleID != manualWorkflowPulseScheduleID && run.ScheduleID != pulseFixRunScheduleID {
-			signals.FailedRuns++
-		}
-	}
-	return signals, nil
-}
-
 func isPulseFixFailedRunStatus(status string) bool {
 	switch status {
 	case "error", "failed", "interrupted":
@@ -224,44 +99,12 @@ func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
 		if item.Manifest == nil || !item.Manifest.PulseEnabled() || workflowSchedulesAllPaused(item.Manifest) {
 			continue
 		}
-		workspacePath := item.WorkspacePath
-		// A workflow with a goal gets no automatic fix run: its Pulse
-		// conversation is woken once per failed run and asks for QA itself
-		// (goal_lead_owns_reviews.go, PLAT-697).
-		if workflowHasGoal(ctx, workspacePath) {
-			s.wakeGoalLeadOnRunFailures(ctx, workspacePath, now)
-			continue
+		// No automatic fix runs (owner, 2026-10-08): a failed run wakes the
+		// Pulse conversation once and it asks the Builder chat to fix it; a
+		// workflow without a soul.md runs like Pulse off.
+		if workflowHasGoal(ctx, item.WorkspacePath) {
+			s.wakeGoalLeadOnRunFailures(ctx, item.WorkspacePath, now)
 		}
-		lastFix, fixesLastDay, err := pulseFixRunHistory(ctx, workspacePath, now)
-		if err != nil {
-			scheduleLogf("[PULSE] cannot read fix-run history for %s: %v", workspacePath, err)
-			continue
-		}
-		since := lastFix
-		if state, err := readPulseScheduleState(ctx, workspacePath); err == nil && state != nil && state.LastStartedAt.After(since) {
-			since = state.LastStartedAt
-		}
-		if since.IsZero() {
-			since = now.Add(-24 * time.Hour)
-		}
-		signals, err := collectPulseFixSignals(ctx, workspacePath, since)
-		if err != nil {
-			scheduleLogf("[PULSE] cannot read fix signals for %s: %v", workspacePath, err)
-			continue
-		}
-		due, reason := decidePulseFixRun(signals, lastFix, fixesLastDay, now)
-		if !due {
-			continue
-		}
-		if s.runningPulseRuns() >= maxConcurrentPulseRuns {
-			return
-		}
-		runID, err := s.TriggerPulseFixRun(workspacePath, reason)
-		if err != nil {
-			// A running workflow, schedule or Pulse retries on a later tick.
-			continue
-		}
-		scheduleLogf("[PULSE] fix run started for %s (run %s): %s", workspacePath, runID, reason)
 	}
 }
 

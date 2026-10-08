@@ -274,8 +274,40 @@ func workflowHasGoal(ctx context.Context, workspacePath string) bool {
 	if err != nil || !found || manifest == nil || !manifest.PulseEnabled() {
 		return false
 	}
+	return workflowHasSoul(ctx, workspacePath)
+}
+
+// workflowHasSoul reports whether the workflow has written its goal in soul.md.
+func workflowHasSoul(ctx context.Context, workspacePath string) bool {
 	_, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(workspacePath, "/")+"/soul/soul.md")
 	return err == nil && exists
+}
+
+// workflowRunSetupView is what runs for the workflow whoever manages it: its
+// schedules with their after-run options, and the manual-run options. The
+// Pulse tab shows it, most of all when Pulse is off.
+func workflowRunSetupView(ctx context.Context, workspacePath string) map[string]interface{} {
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || manifest == nil {
+		return nil
+	}
+	schedules := []map[string]interface{}{}
+	for _, schedule := range manifest.Schedules {
+		kind := strings.TrimSpace(schedule.ScheduleType)
+		if kind == "" {
+			kind = "cron"
+		}
+		schedules = append(schedules, map[string]interface{}{
+			"name": schedule.Name, "type": kind, "enabled": schedule.Enabled,
+			"cron_expression": schedule.CronExpression, "timezone": schedule.Timezone,
+			"after_run": manifest.EffectiveAfterRun(schedule),
+		})
+	}
+	return map[string]interface{}{
+		"schedules":        schedules,
+		"manual_after_run": manifest.EffectiveManualAfterRun(),
+		"workflow_review":  LatestWorkflowReview(workspacePath),
+	}
 }
 
 // goalLeadTurn is one turn of the Pulse conversation.
