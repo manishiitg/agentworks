@@ -525,3 +525,50 @@ func TestExternalBuilderOperationsRetryRepairsMissingQueueExactlyOnce(t *testing
 		}
 	}
 }
+
+// builder_chat with wait_seconds returns the Builder's answer in the same call
+// instead of making the client poll builder_status.
+func TestExternalBuilderChatWaitReturnsTheAnswer(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	_, raw := f.issue(t, "owner")
+	f.api.internalExternalBuilderTurn = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: "Plan updated."}, nil
+	}
+	got := make(chan *httptest.ResponseRecorder, 1)
+	body := `{"name":"builder_chat","arguments":{"workflow_id":"invoices","submission_id":"wait","message":"Update the plan","wait_seconds":10}}`
+	go func() {
+		r := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+raw)
+		w := httptest.NewRecorder()
+		AuthMiddleware(http.HandlerFunc(f.api.handleExternalCall)).ServeHTTP(w, r)
+		got <- w
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	var turn queuedConversationTurn
+	for {
+		next, ok := f.api.claimNextConversationTurn(context.Background(), "owner", f.sessions["owner"])
+		if ok {
+			turn = next
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("builder_chat never queued its turn")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	request, err := queryRequestToMap(turn.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := f.api.queuedConversationTurnContext(turn, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.api.runQueuedExternalBuilder(ctx, turn, request); err != nil {
+		t.Fatal(err)
+	}
+	w := <-got
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"completed"`) || !strings.Contains(w.Body.String(), "Plan updated.") {
+		t.Fatalf("builder_chat did not return the answer: %s", w.Body)
+	}
+}

@@ -23,8 +23,8 @@ func externalBuilderEnabled() bool {
 }
 
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Poll builder_status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
-		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat.")}, "message", "submission_id")
+	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder_status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
+		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
 	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
 	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
@@ -47,10 +47,17 @@ func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]
 			desc = "Answer this Builder operation's pending question. Requires current Builder permission."
 		} else if name == "builder_cancel" {
 			desc = "Cancel this connection's Builder operation and its queued/active work. Other turns in the main chat continue. Completed edits are not rolled back."
+		} else {
+			props["wait_seconds"] = externalBuilderWaitSchema
+			desc += " Pass wait_seconds to wait for the answer or a pending question instead of polling."
 		}
 		add(name, desc, true, true, props, required...)
 	}
 }
+
+// externalBuilderWaitSchema lets a caller wait for a Builder operation in one
+// call instead of polling. Capped like every MCP wait, under the proxy timeout.
+var externalBuilderWaitSchema = map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the final answer or a pending question before returning (max 25). On status queued/running, call builder_status with wait_seconds again."}
 
 type externalBuilderOperation struct {
 	ID           string    `json:"operation_id"`
@@ -322,17 +329,42 @@ func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *
 				return
 			}
 		}
+		externalJSON(w, api.externalBuilderStatus(r.Context(), op, externalCrewWait(args)))
+	}
+}
+
+type externalBuilderStatusView struct {
+	externalBuilderOperation
+	Pending    []virtualtools.HumanFeedbackRequest `json:"pending_inputs"`
+	NeedsInput bool                                `json:"needs_user_input"`
+}
+
+// externalBuilderStatus returns the operation with its pending questions,
+// waiting up to wait for it to finish or ask something.
+func (api *StreamingAPI) externalBuilderStatus(ctx context.Context, op externalBuilderOperation, wait time.Duration) externalBuilderStatusView {
+	deadline := time.Now().Add(wait)
+	for {
 		pending := []virtualtools.HumanFeedbackRequest{}
 		if op.Status == "running" && api.externalBuilderActive(op) != nil {
 			pending = externalBuilderPending(op)
 		}
-		externalJSON(w, struct {
-			externalBuilderOperation
-			Pending    []virtualtools.HumanFeedbackRequest `json:"pending_inputs"`
-			NeedsInput bool                                `json:"needs_user_input"`
-		}{op, pending, len(pending) > 0})
+		view := externalBuilderStatusView{op, pending, len(pending) > 0}
+		if view.NeedsInput || (op.Status != "queued" && op.Status != "running") || !time.Now().Before(deadline) {
+			return view
+		}
+		select {
+		case <-ctx.Done():
+			return view
+		case <-time.After(500 * time.Millisecond):
+		}
+		fresh, err := readExternalBuilder(ctx, op.ID)
+		if err != nil {
+			return view
+		}
+		op = fresh
 	}
 }
+
 func externalBuilderPending(op externalBuilderOperation) []virtualtools.HumanFeedbackRequest {
 	rows := []virtualtools.HumanFeedbackRequest{}
 	if op.StartedAt.IsZero() {
@@ -347,13 +379,29 @@ func externalBuilderPending(op externalBuilderOperation) []virtualtools.HumanFee
 }
 
 func (api *StreamingAPI) submitExternalBuilder(w http.ResponseWriter, r *http.Request, args map[string]interface{}, workflow DiscoveredWorkflow) {
+	op, ok := api.submitExternalBuilderOperation(w, r, args, workflow)
+	if !ok {
+		return
+	}
+	// The submit lock is released by now, so waiting never blocks this
+	// person's other submissions.
+	if wait := externalCrewWait(args); wait > 0 {
+		externalJSON(w, api.externalBuilderStatus(r.Context(), op, wait))
+		return
+	}
+	externalJSON(w, op)
+}
+
+// submitExternalBuilderOperation records (or finds the retried) operation and
+// queues it. It writes the error response itself and returns false on failure.
+func (api *StreamingAPI) submitExternalBuilderOperation(w http.ResponseWriter, r *http.Request, args map[string]interface{}, workflow DiscoveredWorkflow) (externalBuilderOperation, bool) {
 	claims := GetUserFromContext(r.Context())
 	message := externalArg(args, "message")
 	submission := externalArg(args, "submission_id")
 	requestedSession := externalArg(args, "session_id")
 	if strings.TrimSpace(message) == "" || len(message) > 32000 || strings.TrimSpace(submission) == "" || len(submission) > 128 {
 		externalError(w, 400, "invalid_arguments", "message and submission_id are required within their size limits")
-		return
+		return externalBuilderOperation{}, false
 	}
 	// Serialize selection and reservation across connections for the same person.
 	lock := productConversationRegistryMutex("external-builder:" + claims.UserID + ":" + workflow.WorkspacePath)
@@ -362,42 +410,41 @@ func (api *StreamingAPI) submitExternalBuilder(w http.ResponseWriter, r *http.Re
 	s, err := openExternalBuilderStore()
 	if err != nil {
 		externalError(w, 503, "storage_unavailable", err.Error())
-		return
+		return externalBuilderOperation{}, false
 	}
 	defer s.Close()
 	old, err := scanExternalBuilder(s.db.QueryRowContext(r.Context(), `SELECT `+externalBuilderColumns+` FROM external_builder_operations WHERE user_id=? AND grant_id=? AND submission_id=?`, claims.UserID, claims.AccessToken.ID, submission))
 	if err == nil {
 		if old.Message != message || old.WorkflowID != workflow.Manifest.ID || (requestedSession != "" && old.SessionID != requestedSession) {
 			externalError(w, 409, "submission_conflict", "submission_id was already used with another payload")
-			return
+			return externalBuilderOperation{}, false
 		}
 		if old.Status == "queued" {
 			if err := api.ensureExternalBuilderQueued(r.Context(), claims, old); err != nil {
 				externalError(w, 503, "queue_unavailable", err.Error())
-				return
+				return externalBuilderOperation{}, false
 			}
 		}
-		externalJSON(w, old)
-		return
+		return old, true
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		externalError(w, 503, "storage_unavailable", err.Error())
-		return
+		return externalBuilderOperation{}, false
 	}
 	var pending int
 	if err := s.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM external_builder_operations WHERE user_id=? AND status IN ('queued','running')`, claims.UserID).Scan(&pending); err != nil {
 		externalError(w, 503, "storage_unavailable", err.Error())
-		return
+		return externalBuilderOperation{}, false
 	}
 	if pending >= 16 {
 		externalError(w, 429, "builder_busy", "Finish or cancel pending Builder operations before submitting more")
-		return
+		return externalBuilderOperation{}, false
 	}
 	session := requestedSession
 	if session != "" {
 		if _, _, err = api.externalBuilderSession(r, workflow.WorkspacePath, session); err != nil {
 			externalError(w, 404, "session_not_found", "Your workflow chat was not found")
-			return
+			return externalBuilderOperation{}, false
 		}
 	} else {
 		if live := api.findLiveWorkflowBuilderSession(r.Context(), workflow.Manifest.ID, workflow.WorkspacePath); live != nil {
@@ -407,7 +454,7 @@ func (api *StreamingAPI) submitExternalBuilder(w http.ResponseWriter, r *http.Re
 			restored, restoreErr := api.restoreLatestBuilderConversation(r.Context(), workflow.Manifest.ID, workflow.WorkspacePath)
 			if restoreErr != nil {
 				externalError(w, 503, "history_unavailable", restoreErr.Error())
-				return
+				return externalBuilderOperation{}, false
 			}
 			if restored != nil {
 				session = restored.SessionID
@@ -416,7 +463,7 @@ func (api *StreamingAPI) submitExternalBuilder(w http.ResponseWriter, r *http.Re
 		if session != "" {
 			if _, _, err = api.externalBuilderSession(r, workflow.WorkspacePath, session); err != nil {
 				externalError(w, 409, "session_unavailable", "The current workflow chat cannot be safely resumed")
-				return
+				return externalBuilderOperation{}, false
 			}
 		}
 		// Before the queued first turn materializes history, a second connection
@@ -432,13 +479,13 @@ func (api *StreamingAPI) submitExternalBuilder(w http.ResponseWriter, r *http.Re
 	_, err = s.db.ExecContext(r.Context(), `INSERT INTO external_builder_operations (id,user_id,grant_id,workflow_id,workspace,session_id,submission_id,message,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`, op.ID, op.UserID, op.GrantID, op.WorkflowID, op.Workspace, op.SessionID, op.SubmissionID, op.Message, op.Status, op.CreatedAt.UnixNano())
 	if err != nil {
 		externalError(w, 503, "storage_unavailable", err.Error())
-		return
+		return externalBuilderOperation{}, false
 	}
 	if err := api.ensureExternalBuilderQueued(r.Context(), claims, op); err != nil {
 		externalError(w, 503, "queue_unavailable", err.Error())
-		return
+		return externalBuilderOperation{}, false
 	}
-	externalJSON(w, op)
+	return op, true
 }
 
 func (api *StreamingAPI) runQueuedExternalBuilder(ctx context.Context, turn queuedConversationTurn, reqMap map[string]interface{}) (internalSessionTurnResult, error) {
