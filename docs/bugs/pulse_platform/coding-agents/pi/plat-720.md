@@ -28,6 +28,6 @@ The browser's provider API client gives every request 30 s; the server waits up 
 
 `byokTestKey` and `byokTryModel` wait 60 s.
 
-## Also reported (not changed here)
+## Also: a key's model could not be changed (422)
 
-"Cannot change the model": the chat's Models panel offers only the key's starred models; more are added through Browse <service> models, star, Save picks. The Crew still had the key's first pick saved. Waiting for the member to confirm whether that was the flow; if a pick should also switch the chat, change the browser so selecting a model saves it as a pick and selects it.
+The member then found the cause: `Request failed with status code 422 model "nvidia/z-ai/glm-5.3-flash" is not offered for engine "pi-cli"`. The product chat checked the model against the platform catalog (`providerOptionOffersModel`), which does not hold models picked on a person's own key (or custom ids the Pi picker invites). Pi now accepts any well-formed `<service>/<model>` id; the account's own model list is still enforced when the turn runs. Test `TestPiAcceptsServiceModelsFromAPersonsKey`.

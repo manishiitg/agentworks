@@ -291,6 +291,13 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 // the platform's model catalog lists for its provider (the same catalog the
 // composer's switcher is filled from when the engine declares no curation).
 func providerOptionOffersModel(option agentprofiles.ProviderOption, modelID string) bool {
+	// Pi runs any "<service>/<model>" its key's service offers: the models a person picked on their own key
+	// (OpenRouter, NVIDIA NIM, ...) and custom ids typed into the picker are not in the platform catalog, and
+	// rejecting them made a key account's model impossible to change (422, Excellence 2026-10-08, PLAT-720).
+	// Which models an account may use is the account's own list, enforced when the turn runs.
+	if strings.EqualFold(strings.TrimSpace(option.Provider), "pi-cli") && piServiceModelID(modelID) {
+		return true
+	}
 	if len(option.Models) > 0 {
 		for _, id := range option.Models {
 			if strings.EqualFold(strings.TrimSpace(id), modelID) {
@@ -300,6 +307,26 @@ func providerOptionOffersModel(option agentprofiles.ProviderOption, modelID stri
 		return false
 	}
 	return providerOffersModel(option.Provider, modelID)
+}
+
+// piServiceModelID is a "<service>/<model>" id: a lowercase service name, then a non-empty model path of
+// ordinary id characters (NVIDIA's "nvidia/z-ai/glm-5.3-flash", OpenRouter's "openrouter/vendor/model:free").
+func piServiceModelID(modelID string) bool {
+	service, model, ok := strings.Cut(strings.TrimSpace(modelID), "/")
+	if !ok || service == "" || model == "" || len(modelID) > 200 {
+		return false
+	}
+	for _, r := range service {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	for _, r := range model {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_./:@+", r)) {
+			return false
+		}
+	}
+	return true
 }
 
 // reasoningEffortOffered reports whether effort is one of the engine's
