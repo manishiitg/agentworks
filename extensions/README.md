@@ -8,9 +8,9 @@ See [Install and connect](../docs/core/browser.md#install-and-connect) for Chrom
 setup and [Extension development and deployment](../docs/core/browser.md#extension-development-and-deployment)
 for packaging, split-service configuration and real browser checks.
 
-Implementation tracking: [PLAT-510](../docs/bugs/pulse_platform/browser/browser/plat-510.md),
-[PLAT-513](../docs/bugs/pulse_platform/browser/browser/plat-513.md) and
-[PLAT-516](../docs/bugs/pulse_platform/browser/browser/plat-516.md) and
-[PLAT-524](../docs/bugs/pulse_platform/crew/browser/plat-524.md) and
-[PLAT-530](../docs/bugs/pulse_platform/browser/browser/plat-530.md) and
-[PLAT-532](../docs/bugs/pulse_platform/browser/browser/plat-532.md).
+Implementation tracking: PLAT-510,
+PLAT-513 and
+PLAT-516 and
+PLAT-524 and
+PLAT-530 and
+PLAT-532.

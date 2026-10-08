@@ -54,7 +54,7 @@ session being pasted into.
   services and run `./deploy.sh slotcheck <server>`. Restarting individual user
   services alone retains stale groups. Do not repair this by opening private
   folders, weakening the sandbox or running user commands as the service account.
-  Incident: [PLAT-650](../bugs/pulse_platform/dominion/deployment/plat-650.md).
+  Incident: PLAT-650.
 - With slots on, shell commands require a folder guard — unguarded commands
   are refused rather than run as the shared account.
 - Freeing a slot releases the table entry; clear the slot's runtime files

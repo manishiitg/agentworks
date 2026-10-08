@@ -15,7 +15,7 @@ Start with the operator journey, then use the subsystem references when you need
 - [Security](security/README.md): the security model, per-user Linux accounts, and provider credentials.
 - [Relays](relay/README.md): versioned agent chains you run from anywhere — builder flow, releases, and the runs API.
 
-`docs/bugs/` is an incident archive — see [its index](bugs/README.md), which groups the 2026-08-01/02 investigations into how the agent-facing tool and permission contract actually behaves. `docs/refactor/` records implementation migrations — see [its index](refactor/README.md), where status distinguishes a shipped design from one still being built. Neither folder is the recommended entry point for operators, but the bugs index is the fastest way to understand why an agent is told one thing and the runtime does another.
+`docs/bugs/` is an incident archive — see its index, which groups the 2026-08-01/02 investigations into how the agent-facing tool and permission contract actually behaves. `docs/refactor/` records implementation migrations — see [its index](refactor/README.md), where status distinguishes a shipped design from one still being built. Neither folder is the recommended entry point for operators, but the bugs index is the fastest way to understand why an agent is told one thing and the runtime does another.
 
 ## Bot Connectors & Messaging
 
@@ -205,7 +205,7 @@ this is the complete map.
 - [Workflow Scheduling](workflow/workflow_scheduling.md)
 - [Workflow Shell Working Directory](workflow/workflow_shell_working_directory.md)
 
-### Bugs ([index](bugs/README.md))
+### Bugs (index)
 
 Incident archive — 350+ investigations, browsed via its index, not listed here.
 

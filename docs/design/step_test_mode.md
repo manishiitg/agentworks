@@ -1,7 +1,7 @@
 # Step test mode
 
-Ticket: [PLAT-562](../bugs/pulse_platform/goals/steps/general/plat-562.md). Asked for by
-[PLAT-559](../bugs/pulse_platform/goals/pulse/general/plat-559.md) and [A simpler Pulse](pulse_simplified.md)
+Ticket: PLAT-562. Asked for by
+PLAT-559 and [A simpler Pulse](pulse_simplified.md)
 ("A test mode for steps with external effects", "Goal for QA").
 
 ## Goal

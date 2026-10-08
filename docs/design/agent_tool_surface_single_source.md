@@ -16,7 +16,7 @@ AgentWorks now declares host chat capability admission in
 `agent_go/internal/agentworksproduct/product.yaml` under `chat_policy`.
 `workflow_chat_policy.go` resolves mode, origin and read-only access before
 registration. The MCP installer bug and tests are tracked in
-[PLAT-307](../bugs/pulse_platform/sandbox/tools/plat-307.md).
+PLAT-307.
 
 Builder and Run are modes. Scheduled execution is an origin, not a third chat
 mode. Pulse maintenance and child agents retain explicit improvement-role
@@ -306,7 +306,7 @@ Steps 1 and 2 independently close a shipped bug class and can land separately.
 
 1. ~~Skills register through `AttachSkill`, a separate method. In scope for the
    gate, or governed separately?~~ **Answered 2026-08-17 by
-   [PLAT-125](../bugs/pulse_platform/goals/steps/tools/plat-125.md): governed separately, and by
+   PLAT-125: governed separately, and by
    the same tool set — selected at materialisation time rather than by a
    registration gate.**
 

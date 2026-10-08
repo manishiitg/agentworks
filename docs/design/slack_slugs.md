@@ -1,6 +1,6 @@
 # Slack slugs: one Slack app for many workflows, Crews and Codes
 
-Ticket: [PLAT-668](../bugs/pulse_platform/integrations/slack/plat-668.md). Owner decisions 2026-10-07.
+Ticket: PLAT-668. Owner decisions 2026-10-07.
 
 Status: built on main (2026-10-07), not deployed; see the ticket for what is left. How it works in the code:
 [docs/core/slack_connections.md](../core/slack_connections.md#slugs-one-bot-many-targets-plat-668).

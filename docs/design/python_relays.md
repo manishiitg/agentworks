@@ -1,6 +1,6 @@
 # Python Relays MVP
 
-Tracked by [PLAT-611](../bugs/pulse_platform/relays/execution/plat-611.md).
+Tracked by PLAT-611.
 
 ## Product contract
 
@@ -140,7 +140,7 @@ external services using ordinary Python clients.
 
 ## Graph annotations in Python source
 
-[PLAT-640](../bugs/pulse_platform/relays/frontend-chat/plat-640.md) replaces the
+PLAT-640 replaces the
 separate Markdown overview proposed in PLAT-637. Graph comments live beside the
 implementation and are published as part of the exact frozen `relay.py`.
 Execution ignores these display comments; malformed/missing annotations do not
@@ -188,7 +188,7 @@ comments without changing behaviour. Existing legacy graph Relays are unchanged.
 
 ## Shared trigger admission
 
-[PLAT-638](../bugs/pulse_platform/relays/triggers/plat-638.md) fixes shared API
+PLAT-638 fixes shared API
 trigger admission and listing for Python Relays: they expose no workflow step or
 route inventory and must not load `planning/plan.json`. A function invokes the
 Python entrypoint. Workflow step targets and payload routing are rejected,

@@ -7,7 +7,7 @@ The extension policy includes PLAT-569–574 (2026-10-06); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
 deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
-their own release verification. See [PLAT-393](../bugs/pulse_platform/browser/browser/plat-393.md).
+their own release verification. See PLAT-393.
 The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
 must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
 
@@ -77,11 +77,11 @@ Neither dependency requires a source change for this feature.
 
 ## Personal Chrome extension
 
-Tracking: [PLAT-510](../bugs/pulse_platform/browser/browser/plat-510.md),
-[PLAT-513](../bugs/pulse_platform/browser/browser/plat-513.md) and
-[PLAT-516](../bugs/pulse_platform/browser/browser/plat-516.md) and
-[PLAT-524](../bugs/pulse_platform/crew/browser/plat-524.md) and
-[PLAT-530](../bugs/pulse_platform/browser/browser/plat-530.md).
+Tracking: PLAT-510,
+PLAT-513 and
+PLAT-516 and
+PLAT-524 and
+PLAT-530.
 
 Let a Code, Crew or workflow agent use explicitly shared tabs in the user's
 existing Chrome profile, locally or from a hosted platform. Keep the existing
@@ -98,7 +98,7 @@ with a Connected tooltip and accessible description. This remains visible while
 another pane is open. A selected extension can be connected with zero shared
 tabs; otherwise active live browser sessions count. Disconnects and failed status
 requests clear the dot, and completed recordings never count as live connections.
-Tracking: [PLAT-542](../bugs/pulse_platform/app/navigation/plat-542.md).
+Tracking: PLAT-542.
 
 ### Install and connect
 
@@ -173,7 +173,7 @@ rotate the token; it registers/persists this authorized project on the account
 code through PairForProfile. It is intentionally not a read-only request.
 **Reset connection code** is a separate confirmed action.
 Pasting the code into another browser still replaces that project's binding.
-Tracking: [PLAT-574](../bugs/pulse_platform/browser/browser/plat-574.md).
+Tracking: PLAT-574.
 
 The private credential survives server restarts in the existing 0600 file.
 Account Reset rotates it and closes all of that account's live connections;
@@ -206,7 +206,7 @@ before step tool assembly. Dedicated execution, message-sequence and todo tool
 sessions register under that parent run, so fresh script/CLI HTTP calls resolve
 the same extension while keeping the child's file grants. Dropping account
 identity must never turn a selected extension into a local-CDP fallback.
-Tracking: [PLAT-546](../bugs/pulse_platform/browser/browser/plat-546.md).
+Tracking: PLAT-546.
 
 Live bindings last at most eight hours and remain process-local. Server selection
 is recorded without credentials or target IDs. Extension 0.4.0 remembers explicitly
@@ -241,7 +241,7 @@ permission checks to clear; Chrome rechecks permissions on every attempt. This
 wait never retries navigation, evaluation, clicks or typing. The full local Chrome regression and an uninterrupted RTS SDE Private retry
 pass new-tab creation, existing-tab navigation, snapshots and reading/listing two
 tabs in one group; no login or authenticated application action was attempted.
-Tracking: [PLAT-569](../bugs/pulse_platform/browser/browser/plat-569.md).
+Tracking: PLAT-569.
 
 Disconnect in the popup removes that project's remembered pairing before
 stopping its debugger/socket; Disconnect all removes all remembered pairings.
@@ -285,7 +285,7 @@ it matches the qualified host version (at least 0.38.2). Pairing credentials and
 physical tab grants remain unchanged. Diagnostics include sanitized extension
 version and per-request elapsed milliseconds, with each completion keeping its
 own method identity even when requests overlap. Tracking:
-[PLAT-599](../bugs/pulse_platform/browser/browser/plat-599.md).
+PLAT-599.
 
 Commands for a binding are serialized. In Code, Browser Bridge 0.4.6 negotiates
 private chat clients: each trusted root conversation has its own native session,
@@ -313,7 +313,7 @@ tab grants. Server/worker reconnect restores the same chat ownership regardless
 of which chat acts first; browser restart clears these tab grants. No page is
 adopted by URL, title, group or foreground state. A lost connection invalidates
 the CDP client; it does not restart Chrome, retry mutations or fall back to a
-managed browser. Tracking: [PLAT-624](../bugs/pulse_platform/browser/browser/plat-624.md).
+managed browser. Tracking: PLAT-624.
 Choosing Workspace browser or direct connection in the app
 returns future calls to the ordinary browser; Stop in the extension leaves a disconnected selection so
 the next tool call explains that Chrome was stopped.
@@ -347,10 +347,10 @@ reader starts. One background worker caches other/new project names and refreshe
 names every five minutes. Heartbeats copy cached values, never run name lookups;
 rename updates appear on the next heartbeat after refresh, or on reconnect.
 Live access checks still run on every heartbeat. This does not move or share tabs.
-Tracking: [PLAT-586](../bugs/pulse_platform/browser/browser/plat-586.md). Missing names/older servers fall back to the
+Tracking: PLAT-586. Missing names/older servers fall back to the
 unprefixed folder basename. The copied connection still retains its legacy brand
 field for compatibility with old extension packages, but 0.4.3 group titles ignore
-it. Tracking: [PLAT-573](../bugs/pulse_platform/browser/browser/plat-573.md).
+it. Tracking: PLAT-573.
 
 Extension commands keep the user's active tab by default. The optional
 `agent_browser` `active=true` parameter permits Target.activateTarget,
@@ -373,7 +373,7 @@ logs validated metadata under `[CHROME_EXTENSION]`, with at most 4096 messages
 per connection per minute. It excludes credentials, URLs, page contents and CDP
 parameters. Last method is context, not proof that a command caused a detach.
 Human revocation still removes the grant; logging adds no automatic reattachment.
-Investigation: [PLAT-569](../bugs/pulse_platform/browser/browser/plat-569.md).
+Investigation: PLAT-569.
 
 Console/errors read bounded per-target relay caches (100 entries per kind,
 2048 bytes per text), including child sessions. Removing a shared target or
@@ -386,11 +386,11 @@ browser socket folder (`artifacts/`), which remains visible in the persistent
 browser daemon's original Linux mount namespace. The trusted workspace transfer
 checks that staging belongs to the current connection and publishes only into
 the calling session's allowed workspace output. No shared `/tmp` grant is added.
-See [PLAT-575](../bugs/pulse_platform/browser/browser/plat-575.md).
+See PLAT-575.
 The trusted folder guard also marks the extension transport. Relay commands do
 not consume headless per-chat/global session limits despite their managed
 sandbox session names; ordinary headless commands retain those limits.
-See [PLAT-585](../bugs/pulse_platform/browser/browser/plat-585.md).
+See PLAT-585.
 
 #### Extension video recording
 
@@ -412,7 +412,7 @@ the logical recording session leaves the shared tab/debugger attached. Target
 metadata requests cannot read another session's target, and a debugger loss
 interrupts the take rather than resuming from a stale frame. A changed browser
 connection cannot resume a prior recording lease. Stop before disconnecting.
-Tracking: [PLAT-587](../bugs/pulse_platform/browser/browser/plat-587.md).
+Tracking: PLAT-587.
 
 #### Browser documentation
 
@@ -478,9 +478,9 @@ wrong capability and target revocation through real WebSocket requests. Verify a
 build the server/frontend and package the unpacked extension as a downloadable
 ZIP. Record actual checks and remaining qualifications in the linked platform tickets.
 Real Chrome and Edge qualification for the current behavior is recorded in
-[PLAT-516](../bugs/pulse_platform/browser/browser/plat-516.md). Browser/server restart,
+PLAT-516. Browser/server restart,
 offline Disconnect and remembered pairing checks are recorded in
-[PLAT-532](../bugs/pulse_platform/browser/browser/plat-532.md); deployment remains separate.
+PLAT-532; deployment remains separate.
 
 References: [agent-browser CDP](https://agent-browser.dev/cdp-mode),
 [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger),
@@ -1179,7 +1179,7 @@ unchanged. Watch-only users cannot send clipboard or navigation actions.
 **Fill width** uses the panel width with vertical scrolling; **Fit page** keeps
 the whole viewport visible. Browser is a workspace view (the toolbar group is
 currently Pulse), not a Setup page; mode/connection settings remain behind its
-gear button. Implementation and qualification: [PLAT-382](../bugs/pulse_platform/browser/browser/plat-382.md).
+gear button. Implementation and qualification: PLAT-382.
 
 ### Runtime mode changes
 
@@ -1467,10 +1467,10 @@ rollout does not resolve these direct-CDP/managed-runtime issues.
 
 | Issue | Scope and remaining work |
 | --- | --- |
-| [PLAT-520](../bugs/pulse_platform/browser/browser/plat-520.md) | Direct-CDP listing, known-tab selection and exact-URL reuse currently expose the configured browser; ownership is bookkeeping, not target authorization. Define/enforce the complete boundary and redact label conflicts. |
-| [PLAT-521](../bugs/pulse_platform/browser/browser/plat-521.md) | Global managed-browser eviction can stop an unrelated idle session; reject or reclaim only an authorized victim. |
-| [PLAT-522](../bugs/pulse_platform/browser/browser/plat-522.md) | Force cleanup trusts persisted PIDs; validate process identity and reject special/system PIDs before signaling. |
-| [PLAT-523](../bugs/pulse_platform/browser/browser/plat-523.md) | Text-based dead-session classification can reset a healthy runtime; corroborate transport failures with execution-host health. |
+| PLAT-520 | Direct-CDP listing, known-tab selection and exact-URL reuse currently expose the configured browser; ownership is bookkeeping, not target authorization. Define/enforce the complete boundary and redact label conflicts. |
+| PLAT-521 | Global managed-browser eviction can stop an unrelated idle session; reject or reclaim only an authorized victim. |
+| PLAT-522 | Force cleanup trusts persisted PIDs; validate process identity and reject special/system PIDs before signaling. |
+| PLAT-523 | Text-based dead-session classification can reset a healthy runtime; corroborate transport failures with execution-host health. |
 
 The extension uses a separate account/project relay and shares only that project's
 authorized tabs. Direct-CDP locks prevent simultaneous commands from racing;

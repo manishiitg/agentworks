@@ -2,7 +2,7 @@
 
 Status: core account selection is implemented. The Providers/product setup boundary
 is fixed on main as of 2026-10-03; rollout and live qualification status are
-tracked in [PLAT-386](../bugs/pulse_platform/app/models/plat-386.md). Historical
+tracked in PLAT-386. Historical
 proposal and baseline sections below describe the design's evolution; they are
 not claims that every proposed account feature has shipped.
 
@@ -49,8 +49,8 @@ saved supported effort through the runtime adapter, not only the UI.
 
 Source behavior and verification are in PLAT-386. Cursor account-scoped model
 filtering and native pricing qualification remain open in
-[PLAT-387](../bugs/pulse_platform/app/models/plat-387.md) and
-[PLAT-388](../bugs/pulse_platform/ops/cost/plat-388.md).
+PLAT-387 and
+PLAT-388.
 
 ## Baseline implementation before account support
 
@@ -408,7 +408,7 @@ Missing/identical fixtures fail the live account matrix. It uses real CLI execut
 
 ## Builder provider-switch incident tracking
 
-[PLAT-099](../bugs/pulse_platform/coding-agents/sessions/plat-099.md) tracks the
+PLAT-099 tracks the
 2026-09-18 Confida recurrence: compare selected provider/model/account before
 retained delivery, carry the manifest account ID into runtime construction, and
 resolve the workflow workspace before durable receipt comparison. PLAT-324

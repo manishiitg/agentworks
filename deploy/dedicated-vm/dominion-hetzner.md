@@ -30,7 +30,7 @@ Since 2026-10-07, `./deploy.sh dominion` uses the shared build/deployer and
 `products/dominion/` in the private deployments repository. The former native script remains only
 as `dominion-legacy`; sections below retain its historical setup details.
 
-[PLAT-646](../../docs/bugs/pulse_platform/dominion/deployment/plat-646.md) completed
+PLAT-646 completed
 the one-time Vault setup and corrected the stale product allowlist in .env.
 Dominion now installs every requested product: Dominion, Goals, Crew, Code,
 Relays, Vault and Brain. The managed product profile replaces AGENT_PRODUCTS on
@@ -276,7 +276,7 @@ Landlock denies the exec, `rc=126: Permission denied`, no login/config
 error, no hint it's a permissions problem. This is exactly what happened
 to the `alpaca` CLI (`tectonicusadaytrading`'s trading step): installed,
 on PATH, working login — and unable to launch from inside a workflow step
-for the same reason for over a week (see [PLAT-281](../../docs/bugs/pulse_platform/sandbox/confinement/plat-281.md)).
+for the same reason for over a week (see PLAT-281).
 
 **Any CLI tool installed under `/srv/dominion/tools` that a *workflow
 step* (not the agent process itself) will invoke needs an explicit grant**
@@ -294,7 +294,7 @@ verification endpoint for this — the `/health` sandbox check only proves
 the launcher itself works, not that a specific path is granted; confirm by
 actually running the tool from inside a real workflow step, or by
 reproducing directly against the shipped launcher binary the way
-[PLAT-281](../../docs/bugs/pulse_platform/sandbox/confinement/plat-281.md) did.
+PLAT-281 did.
 
 ### A workflow step CAN install packages — and what that relies on (PLAT-283)
 
@@ -628,4 +628,4 @@ steps/chats to finish, refresh the user manager as root with
 health, actual process groups and the slot self-test. Individual user-service
 restarts alone do not pick up new groups. Do not repair stale groups by opening
 private files or changing the sandbox. See
-[PLAT-650](../../docs/bugs/pulse_platform/dominion/deployment/plat-650.md).
+PLAT-650.

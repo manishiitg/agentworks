@@ -26,10 +26,10 @@ and converted chats
 
 **Related:**
 [mcpagent_public_api_simplification.md](mcpagent_public_api_simplification.md),
-[custom_tool_category_as_agent_addressing.md](../bugs/custom_tool_category_as_agent_addressing.md),
-[pulse_fixer_sqlite_readonly_wal_and_schema_guessing.md](../bugs/pulse_fixer_sqlite_readonly_wal_and_schema_guessing.md),
-[stage_agents_cannot_read_skills_or_query_db.md](../bugs/stage_agents_cannot_read_skills_or_query_db.md),
-[PLAT-003](../bugs/pulse_platform/goals/steps/database/plat-003.md)
+custom_tool_category_as_agent_addressing.md,
+pulse_fixer_sqlite_readonly_wal_and_schema_guessing.md,
+stage_agents_cannot_read_skills_or_query_db.md,
+PLAT-003
 
 ## Decision proposed for review
 

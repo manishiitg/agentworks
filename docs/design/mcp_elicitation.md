@@ -57,4 +57,4 @@ mcp-go client: the elicitation form, the answer and the finished run worked,
 and clients without the capability (and Claude Code 2.1.292 headless) used
 poll/reply. Clients that render forms (interactive Claude Code, Claude.ai,
 Cowork, ChatGPT) are not yet verified. See
-[PLAT-652](../bugs/pulse_platform/integrations/mcp/plat-652.md).
+PLAT-652.
