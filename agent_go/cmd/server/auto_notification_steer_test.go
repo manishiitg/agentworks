@@ -194,6 +194,39 @@ func TestSteerBackgroundAgentCompletionDefersPlainDelegation(t *testing.T) {
 	}
 }
 
+// Regression: four sibling chats answered a Code chat's asks; the last
+// answer was steered into the turn that was answering the previous one. That
+// turn ended right after, so the reply to the steered answer (the summary of
+// all four) was never recorded or shown. A completion must not be steered
+// into a running auto-notification turn; it is queued as its own turn.
+func TestSteerBackgroundAgentCompletionQueuesBehindAnAutoNotificationTurn(t *testing.T) {
+	store := internalevents.NewEventStore(10)
+	defer store.Stop()
+
+	sessionID := "code-asker"
+	api := &StreamingAPI{
+		eventStore:       store,
+		runningAgents:    map[string]*mcpagent.Agent{sessionID: testCodingAgent(llm.ProviderClaudeCode, "claude-code")},
+		runningAgentsMux: sync.RWMutex{},
+		agentCancelFuncs: map[string]context.CancelFunc{sessionID: func() {}},
+		agentCancelMux:   sync.RWMutex{},
+		bgAgentRegistry:  NewBackgroundAgentRegistry(),
+		activeSessions:   map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, IsSyntheticTurn: true}},
+	}
+	bg := &BackgroundAgent{ID: "function-call-aska-0003", Name: "Ask activeeyes", SessionID: sessionID, Status: BGAgentCompleted, Result: "answer"}
+	api.bgAgentRegistry.Register(sessionID, bg)
+
+	if api.steerBackgroundAgentCompletion(sessionID, bg.ID) {
+		t.Fatal("a completion was steered into a running auto-notification turn; it must be queued as its own turn")
+	}
+	bg.mu.RLock()
+	notified := bg.completionNotification == completionNotificationDelivered
+	bg.mu.RUnlock()
+	if notified {
+		t.Fatal("the queued completion was marked delivered")
+	}
+}
+
 func testCodingAgent(provider llm.Provider, model string) *mcpagent.Agent {
 	agent := &mcpagent.Agent{}
 	mcpagent.ApplyAgentResumeHandle(agent, &mcpagent.AgentSessionHandle{

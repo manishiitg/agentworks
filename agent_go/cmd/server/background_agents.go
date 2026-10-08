@@ -2679,6 +2679,15 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 		log.Printf("[BG AGENT] Deferring plain delegation completion for agent %s in session %s to a separate synthetic turn", agentID, sessionID)
 		return false
 	}
+	// Never steer into a running auto-notification turn: it ends as soon as
+	// its own reply is done, so the reply to a completion typed into it is
+	// never recorded or shown. Queue it; it runs as its own turn right after
+	// (a Code chat asked four sibling chats; the last answer was steered into
+	// the previous answer's turn and the summary of all four never showed).
+	if api.isSyntheticTurn(sessionID) {
+		log.Printf("[BG AGENT] Session %s is running an auto-notification turn; queueing completion for agent %s as its own turn", sessionID, agentID)
+		return false
+	}
 
 	// Atomically claim delivery. Multiple completion/retry loops can reach this
 	// function at once; checking notified and setting it only after I/O allowed
