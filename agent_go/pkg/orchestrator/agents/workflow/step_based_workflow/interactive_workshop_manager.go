@@ -4671,6 +4671,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Email addresses the Pulse review summary is sent TO, stored in workflow.json capabilities.notifications.pulse_summary_recipients and applied automatically to every pulse_summary send. Use when Pulse findings should reach different people than the run outcome. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Denylists still apply on top.",
 				},
+				"after_manual_run": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"description":          "What happens after a full run started from a chat (not a schedule): backup saves workflow state when it changed, publish refreshes the published report when it changed, notify sends the run summary. Each schedule has its own after_run (create_schedule/update_schedule).",
+					"properties": map[string]interface{}{
+						"backup":  map[string]interface{}{"type": "boolean"},
+						"publish": map[string]interface{}{"type": "boolean"},
+						"notify":  map[string]interface{}{"type": "boolean"},
+					},
+				},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
 					"description": "One enabled Gmail connection ID to send this workflow's notify_user emails FROM, for both run and Pulse summaries. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
@@ -5317,6 +5327,47 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v pulse_configured=%v run_recipients=%d pulse_recipients=%d", strings.TrimSpace(runInstructions) != "", strings.TrimSpace(pulseInstructions) != "", len(runRecipients), len(pulseRecipients)))
+			}
+
+			// --- After a manual run: backup, publish, notify (PLAT-697 phase 0) ---
+			if raw, provided := args["after_manual_run"]; provided && raw != nil {
+				opts, ok := raw.(map[string]interface{})
+				if !ok {
+					return "Error: after_manual_run must be an object {backup, publish, notify}.", nil
+				}
+				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
+				if readErr != nil {
+					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
+				}
+				var manifest map[string]interface{}
+				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
+					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
+				}
+				current, _ := manifest["after_manual_run"].(map[string]interface{})
+				next := map[string]interface{}{"backup": false, "publish": false, "notify": false}
+				for key := range next {
+					if v, ok := current[key].(bool); ok {
+						next[key] = v
+					}
+					if v, given := opts[key]; given {
+						b, isBool := v.(bool)
+						if !isBool {
+							return fmt.Sprintf("Error: after_manual_run.%s must be true or false.", key), nil
+						}
+						next[key] = b
+					}
+				}
+				manifest["after_manual_run"] = next
+				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
+				if marshalErr != nil {
+					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
+				}
+				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
+					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
+				}
+				anyChanged = true
+				sb.WriteString(fmt.Sprintf("\n### After a manual run (updated)\nbackup=%v publish=%v notify=%v\n", next["backup"], next["publish"], next["notify"]))
 			}
 
 			// --- Workflow-scoped one-way Slack webhook ---
