@@ -331,6 +331,18 @@ const goalLeadAskClosingRules = "End your reply with either one line `question: 
 // from the Pulse tab, relayed by their Builder chat, or sent on Slack.
 const goalLeadOwnerDirectionRules = `When they ask how the goal is doing or why you did something, answer from this conversation, goal memory, the decision log and your recorded checks. Direction that should last goes to goal memory (record_pulse_goal_memory, source owner_answer, in their words). Time-boxed direction becomes a proposed focus area (record_pulse_focus_area action=propose, with an end date and its own check), which they confirm with one click in the Pulse tab. A change to the goal itself is a proposed soul.md edit in your reply: never edit soul.md. Anything beyond your permission levels: prepare it and say what you need. Say in your reply what you recorded or proposed.`
 
+// goalLeadMessageOpen / goalLeadMessageClose wrap the words a person sent, so
+// the chat view can show just those words instead of the whole turn text
+// (frontend chatMessageContent.ts pulseTurnDisplayText).
+const (
+	goalLeadMessageOpen  = "--- message ---"
+	goalLeadMessageClose = "--- end of message ---"
+)
+
+func goalLeadMarkedMessage(body string) string {
+	return goalLeadMessageOpen + "\n" + strings.TrimSpace(body) + "\n" + goalLeadMessageClose
+}
+
 // goalLeadNow is the clock of Pulse turns (tests move it a day).
 var goalLeadNow = time.Now
 
@@ -404,7 +416,7 @@ func goalLeadTurnQuery(label, workspacePath string, firstTurn bool, turn goalLea
 
 Reply briefly and plainly. %s %s
 
-%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), strings.TrimSpace(turn.Body), goalLeadOwnerDirectionRules, goalLeadAskClosingRules, autonomyText)
+%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), goalLeadMarkedMessage(turn.Body), goalLeadOwnerDirectionRules, goalLeadAskClosingRules, autonomyText)
 			break
 		}
 		fmt.Fprintf(&b, `PULSE TURN: [Function call %s] %s, working on this workflow (workspace_path=%q), asks the Pulse (ask_pulse), %s. %s
@@ -413,7 +425,7 @@ Reply briefly and plainly. %s %s
 
 Answer as a recommendation: what you recommend and why, the evidence and your confidence. Say plainly when it is the owner's call, or when you do not know the owner's preference (goal memory holds what they already said). You never decide the owner's preferences and you cannot answer decision requests. Your final reply is returned to the caller as the answer: make it self-contained, the caller does not see this conversation. Do not run anything for it beyond your permission levels. %s
 
-%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), strings.TrimSpace(turn.Body), goalLeadAskClosingRules, autonomyText)
+%s`, firstNonEmptyTrimmed(turn.CallID, "-"), from, workspacePath, date, goalLeadAskThreadLine(turn), goalLeadMarkedMessage(turn.Body), goalLeadAskClosingRules, autonomyText)
 	default:
 		where := "in the Pulse tab; your reply shows in the Pulse chat tab"
 		if turn.Kind == goalLeadTurnSlack {
@@ -425,7 +437,7 @@ Answer as a recommendation: what you recommend and why, the evidence and your co
 
 Reply briefly and plainly. %s
 
-%s`, from, where, date, workspacePath, strings.TrimSpace(turn.Body), goalLeadOwnerDirectionRules, autonomyText)
+%s`, from, where, date, workspacePath, goalLeadMarkedMessage(turn.Body), goalLeadOwnerDirectionRules, autonomyText)
 	}
 	return b.String()
 }

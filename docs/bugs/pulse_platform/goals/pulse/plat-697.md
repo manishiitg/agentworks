@@ -426,3 +426,4 @@ Left / risks:
 ## Run goal check now (2026-10-08)
 
 The daily goal check is skipped while schedules are globally paused (`launchDueGoalChecks` returns early), so the owner never saw one. The goal status card has a **Run goal check now** button (`POST /api/scheduler/workflows/goal-check-run`, write access) that starts the same run as the scheduled check (`TriggerGoalCheck`). With all schedules paused that check is report-only, as designed.
+- 2026-10-08: the Pulse chat tab showed whole turn instructions as the owner message; Pulse turns now mark the words a person sent and the chat shows only those (automatic turns show a short label). Enter sends in Talk to Pulse. "Run Goal Work now" on a goal workflow starts Goal Work in the Pulse conversation instead of `/run-goal-work` in the Builder chat.

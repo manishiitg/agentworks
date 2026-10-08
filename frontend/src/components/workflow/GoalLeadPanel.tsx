@@ -202,7 +202,7 @@ export function TalkToPulse({ workspacePath, sessionId }: { workspacePath: strin
     <div className="mt-1.5 flex items-end gap-2">
       <textarea aria-label="Message to Pulse" value={draft} onChange={event => setDraft(event.target.value)} rows={1}
         placeholder="Why did you pause the growth runs? / Focus on new subscribers this month."
-        onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send() }}
+        onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }}
         className="min-w-0 flex-1 resize-none rounded-md border bg-background px-2 py-1.5 text-xs leading-5" />
       <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary disabled:opacity-50">

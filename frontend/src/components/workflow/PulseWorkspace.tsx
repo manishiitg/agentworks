@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react'
 import { agentApi } from '../../services/api'
+import { schedulerApi } from '../../api/scheduler'
 import { findProductCommand } from '../../commands/registry'
 import type { CommandContext } from '../../commands/types'
 import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
@@ -301,6 +302,22 @@ export function PulseWorkspace({
     }
   }, [manualReviewStarting, workspacePath])
 
+  // A workflow with a goal: Goal Work runs in its Pulse conversation (a Pulse
+  // pass), not as /run-goal-work in the Builder chat (PLAT-697).
+  const runPulseGoalWorkNow = useCallback(async () => {
+    if (manualReviewStarting) return
+    setManualReviewStarting('strategic_review')
+    try {
+      await schedulerApi.runPulse(workspacePath)
+      useChatStore.getState().addToast('Goal Work started in the Pulse chat tab', 'success')
+    } catch (err) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data
+      useChatStore.getState().addToast(typeof data === 'string' && data.trim() ? data.trim() : 'Could not start Goal Work', 'error')
+    } finally {
+      setManualReviewStarting(null)
+    }
+  }, [manualReviewStarting, workspacePath])
+
   useEffect(() => {
     const onRefresh = () => { void load(false) }
     window.addEventListener(WORKFLOW_LOG_REFRESH_EVENT, onRefresh)
@@ -417,7 +434,7 @@ export function PulseWorkspace({
         <SoulViewer workspacePath={workspacePath} pulseSummary />
         <GoalProgress workspacePath={workspacePath} impact={impact} />
         <PulseGoalWork workspacePath={workspacePath} items={goalWork} autonomy={autonomy} autonomySaving={autonomySaving}
-          onChangeAutonomy={onChangeAutonomy} onRunGoalWork={() => { void runReviewNow('strategic_review') }}
+          onChangeAutonomy={onChangeAutonomy} onRunGoalWork={() => { void (goalLeadOwnsReviews ? runPulseGoalWorkNow() : runReviewNow('strategic_review')) }}
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}
           playbookFocusAreas={playbookFocuses.flatMap(item => item.focusAreas.map(area => ({ area, source: item.playbookTitle })))}
           running={manualReviewStarting === 'strategic_review'} />
