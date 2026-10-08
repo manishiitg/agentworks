@@ -371,7 +371,7 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	}
 	_, autonomyText := goalWorkAutonomy(ctx, workspacePath)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
-		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (manish): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (daily goal check, Goal Work, a failed run). Any other message is the owner. " + goalLeadOwnerDirectionRules +
+		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (daily goal check, Goal Work, a failed run). Any other message is the owner. " + goalLeadOwnerDirectionRules +
 		"\n\n" + autonomyText
 }
 
