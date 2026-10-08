@@ -1,5 +1,5 @@
-// Package localfiles is the file-only protocol for an outbound laptop executor.
-// Absolute roots and credentials never appear in messages to the server.
+// Package localfiles is the file and shell protocol for an outbound laptop executor.
+// Absolute roots are omitted from grant metadata; command output can contain local paths.
 package localfiles
 
 import (
@@ -17,6 +17,7 @@ func ValidID(id string) bool { return safeID.MatchString(id) }
 
 type Resource struct {
 	ID       string         `json:"id"`
+	Shell    bool           `json:"shell,omitempty"`
 	Writable bool           `json:"writable"`
 	Guard    wf.FolderGuard `json:"guard"`
 }
@@ -38,6 +39,9 @@ func (h Hello) Validate() error {
 		if err := r.Guard.Validate(); err != nil {
 			return err
 		}
+		if r.Shell && !r.Writable {
+			return fmt.Errorf("shell resource requires a writable folder")
+		}
 		if !r.Writable && len(r.Guard.WritePaths) > 0 {
 			return fmt.Errorf("read-only resource has write grants")
 		}
@@ -52,11 +56,14 @@ type Request struct {
 	ResourceID       string          `json:"resource_id"`
 	Operation        string          `json:"operation"`
 	Path             string          `json:"path"`
+	Command          string          `json:"command,omitempty"`
+	TimeoutSeconds   int             `json:"timeout_seconds,omitempty"`
 	Content          string          `json:"content,omitempty"`
 	ExpectedRevision string          `json:"expected_revision,omitempty"`
 	RequestID        string          `json:"request_id,omitempty"`
 }
 type Response struct {
+	Shell   *ShellResult     `json:"shell,omitempty"`
 	Code    string           `json:"code,omitempty"`
 	ID      string           `json:"id"`
 	Status  int              `json:"status"`
@@ -64,4 +71,33 @@ type Response struct {
 	File    *wf.File         `json:"file,omitempty"`
 	Entries []wf.Entry       `json:"entries,omitempty"`
 	Receipt *wf.WriteReceipt `json:"receipt,omitempty"`
+}
+
+const DefaultShellTimeout = 60
+const MaxShellTimeout = 300
+const MaxShellCommandBytes = 64 << 10
+const MaxShellOutputBytes = 1 << 20
+
+type ShellResult struct {
+	RequestID string          `json:"request_id"`
+	Identity  wf.EditIdentity `json:"identity"`
+	Stdout    string          `json:"stdout"`
+	Stderr    string          `json:"stderr"`
+	ExitCode  int             `json:"exit_code"`
+	TimedOut  bool            `json:"timed_out"`
+	Truncated bool            `json:"truncated"`
+}
+
+func (r Request) ShellTimeout() int {
+	if r.TimeoutSeconds == 0 {
+		return DefaultShellTimeout
+	}
+	return r.TimeoutSeconds
+}
+
+func (r Request) ValidateShell() error {
+	if len(r.Command) == 0 || len(r.Command) > MaxShellCommandBytes || r.ShellTimeout() < 1 || r.ShellTimeout() > MaxShellTimeout || len(r.RequestID) == 0 || len(r.RequestID) > 128 {
+		return fmt.Errorf("shell requires a bounded command, request_id and timeout_seconds between 1 and 300")
+	}
+	return nil
 }

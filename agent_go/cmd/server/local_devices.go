@@ -156,7 +156,7 @@ func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
 	if target == nil {
 		return "\nThis Code chat is in Local mode, with no folder selected yet. Only conversation and the Local CLI connection, Costs and Models views are available. Ask the user to connect their CLI and select a folder before file work. MCP connections, skills, secrets, background agents and server file/terminal/browser tools are disabled. Never substitute server files.\n"
 	}
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files, and execute_local_shell_command for laptop commands when granted with --shell; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
@@ -339,7 +339,7 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	if err != nil {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is unavailable"}
 	}
-	if request.Operation == "write" && !userAccessForClaims(current).CanEdit {
+	if (request.Operation == "write" || request.Operation == "shell") && !userAccessForClaims(current).CanEdit {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is read-only"}
 	}
 	value, ok := api.localDevices.Load(claims.UserID + "/" + deviceID)
@@ -372,11 +372,20 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 			break
 		}
 	}
+	shell := request.Operation == "shell"
 	write := request.Operation == "write"
 	if resource == nil || !resource.Guard.Allows(p, write) || write && (!resource.Writable || wf.ProtectedWrite(p)) {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "File is outside device grants or protected"}
 	}
-	if request.Operation != "read" && request.Operation != "list" && !write {
+	if shell {
+		if !resource.Shell || !resource.Writable || !resource.Guard.Allows(p, true) {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Shell is not granted in this folder"}
+		}
+		if err := request.ValidateShell(); err != nil {
+			return localfiles.Response{}, &wf.FileError{Status: 400, Message: err.Error()}
+		}
+	}
+	if request.Operation != "read" && request.Operation != "list" && !write && !shell {
 		return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Unsupported device operation"}
 	}
 	if write && (request.RequestID == "" || request.ExpectedRevision == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes) {
@@ -390,6 +399,15 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	}
 	request.Identity = wf.EditIdentity{UserID: current.UserID, Username: current.Username, ConnectionID: device.claims.AccessToken.ID, Source: "server_local_executor", DeviceID: device.hello.DeviceID}
 	request.ID = uuid.NewString()
+	if shell {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(request.ShellTimeout()+10)*time.Second)
+		defer cancel()
+	}
+	unknown := "write outcome may be unknown, reconcile with the same request_id"
+	if shell {
+		unknown = "command outcome may be unknown; reconnect and check the same request_id, never rerun automatically"
+	}
 	reply := make(chan localfiles.Response, 1)
 	device.pendingMu.Lock()
 	device.pending[request.ID] = reply
@@ -401,7 +419,7 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	device.writeMu.Unlock()
 	if err != nil {
 		device.conn.Close()
-		return localfiles.Response{}, &wf.FileError{Status: 503, Message: "Device disconnected; write outcome may be unknown, reconcile with the same request_id"}
+		return localfiles.Response{}, &wf.FileError{Status: 503, Message: "Device disconnected; " + unknown}
 	}
 	select {
 	case response := <-reply:
@@ -410,9 +428,18 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 		}
 		return response, nil
 	case <-device.done:
-		return localfiles.Response{}, &wf.FileError{Status: 503, Message: "Device disconnected; write outcome may be unknown, reconcile with the same request_id"}
+		return localfiles.Response{}, &wf.FileError{Status: 503, Message: "Device disconnected; " + unknown}
 	case <-ctx.Done():
-		return localfiles.Response{}, &wf.FileError{Status: 504, Message: "Device request timed out; reconcile writes with the same request_id"}
+		if shell {
+			device.writeMu.Lock()
+			device.conn.SetWriteDeadline(time.Now().Add(time.Second))
+			cancelErr := device.conn.WriteJSON(localfiles.Request{ID: request.ID, Operation: "cancel"})
+			device.writeMu.Unlock()
+			if cancelErr != nil {
+				device.conn.Close()
+			}
+		}
+		return localfiles.Response{}, &wf.FileError{Status: 504, Message: "Device request timed out; " + unknown}
 	}
 }
 func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Request) {
@@ -429,19 +456,23 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 		return nil
 	}
 	selected := *target
-	writable := false
+	writable, shellGranted := false, false
 	for _, hello := range api.localDeviceList(claims) {
 		if hello.DeviceID == selected.DeviceID {
 			for _, resource := range hello.Resources {
 				if resource.ID == selected.ResourceID {
 					writable = resource.Writable
+					shellGranted = resource.Shell
 				}
 			}
 		}
 	}
-	for _, name := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file"} {
+	for _, name := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command"} {
 		tool := name
 		if tool == "write_local_file" && (readOnly || !writable || !userAccessForClaims(claims).CanEdit) {
+			continue
+		}
+		if tool == "execute_local_shell_command" && (readOnly || !shellGranted || !writable || !userAccessForClaims(claims).CanEdit) {
 			continue
 		}
 		props := map[string]interface{}{}
@@ -462,10 +493,21 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 				required = append(required, field)
 			}
 		}
+		if tool == "execute_local_shell_command" {
+			description = "Run a sandboxed shell command on the selected laptop, not this server. path is the relative working directory (use . for the root). Use for builds, tests, git and other project commands. Explicit blocked/read-only paths remain enforced. Commands have broader project-file authority than raw file edits. Output is bounded; timeout_seconds defaults to 60 and is at most 300. Use a unique request_id; identical retries return a saved result, and an uncertain outcome must never be rerun automatically."
+			props["command"] = map[string]interface{}{"type": "string", "minLength": 1, "maxLength": localfiles.MaxShellCommandBytes}
+			props["request_id"] = map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128}
+			props["timeout_seconds"] = map[string]interface{}{"type": "integer", "minimum": 1, "maximum": localfiles.MaxShellTimeout}
+			required = append(required, "command", "request_id")
+		}
 		// A live local grant is the explicit capability declaration. External token
 		// sessions cannot receive it, and the gate's deny overlays still apply.
 		gate.Declare(tool)
-		err := registrar.RegisterCustomTool(tool, description, map[string]interface{}{"type": "object", "properties": props, "required": required, "additionalProperties": false}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		registrationTimeout := 40 * time.Second
+		if tool == "execute_local_shell_command" {
+			registrationTimeout = time.Duration(localfiles.MaxShellTimeout+15) * time.Second
+		}
+		err := registrar.RegisterCustomToolWithTimeout(tool, description, map[string]interface{}{"type": "object", "properties": props, "required": required, "additionalProperties": false}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller := GetUserFromContext(ctx)
 			if caller == nil {
 				caller = claims
@@ -493,9 +535,29 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 				if externalArg(args, "device_id") != selected.DeviceID || externalArg(args, "resource_id") != selected.ResourceID {
 					return "", errors.New("file target differs from this Code's selected computer folder")
 				}
-				operation := map[string]string{"list_local_files": "list", "read_local_file": "read", "write_local_file": "write"}[tool]
+				operation := map[string]string{"list_local_files": "list", "read_local_file": "read", "write_local_file": "write", "execute_local_shell_command": "shell"}[tool]
 				request := localfiles.Request{ResourceID: externalArg(args, "resource_id"), Operation: operation, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id")}
-				operationCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+				timeout := 35 * time.Second
+				if operation == "shell" {
+					request.Command = externalArg(args, "command")
+					if raw, ok := args["timeout_seconds"]; ok {
+						number, ok := raw.(float64)
+						if !ok {
+							if integer, isInt := raw.(int); isInt {
+								number, ok = float64(integer), true
+							}
+						}
+						if !ok || number < 1 || number > localfiles.MaxShellTimeout || number != float64(int(number)) {
+							return "", errors.New("timeout_seconds must be an integer between 1 and 300")
+						}
+						request.TimeoutSeconds = int(number)
+					}
+					if err := request.ValidateShell(); err != nil {
+						return "", err
+					}
+					timeout = time.Duration(request.ShellTimeout()+10) * time.Second
+				}
+				operationCtx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
 				response, err := api.localDeviceCall(operationCtx, caller, externalArg(args, "device_id"), request)
 				if err != nil {
@@ -505,7 +567,7 @@ func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegist
 			}
 			data, err := json.Marshal(result)
 			return string(data), err
-		}, "local_files")
+		}, registrationTimeout, "local_files")
 		if err != nil {
 			return fmt.Errorf("register %s: %w", tool, err)
 		}

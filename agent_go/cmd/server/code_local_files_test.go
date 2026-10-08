@@ -39,7 +39,7 @@ func TestCodeLocalFilesDisableServerProductFeaturesAndTools(t *testing.T) {
 			t.Fatalf("disabled local-mode tool %s was admitted", tool)
 		}
 	}
-	for _, tool := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file", "list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
+	for _, tool := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command", "list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
 		gate.Declare(tool)
 		if !gate.Allows(tool) {
 			t.Fatalf("coding tool %s was disabled", tool)

@@ -51,6 +51,9 @@ type Isolator struct {
 	// Opt-in and additive: every existing caller that leaves this false gets
 	// byte-for-byte the same profile as before.
 	StrictAllowlist bool
+	// PrivateScratch avoids granting shared macOS temporary folders and shared browser state.
+	// Use for the outbound local executor, whose grant is a single project.
+	PrivateScratch bool
 	// AllowNetwork opts a StrictAllowlist caller into outbound network access.
 	// macOS's sandbox-exec does NOT support scoping this to specific hosts —
 	// (remote ip "some-host:443") is rejected outright ("host must be * or
@@ -586,7 +589,9 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 		sb.WriteString("(allow ipc-posix-shm-read-data)\n")
 		sb.WriteString("(allow ipc-posix-shm)\n")
 		sb.WriteString("(allow file-read-metadata (literal \"/\") (literal \"/var\") (literal \"/etc\"))\n")
-		sb.WriteString("(allow file-read* (subpath \"/var\"))\n\n")
+		if !iso.PrivateScratch {
+			sb.WriteString("(allow file-read* (subpath \"/var\"))\n\n")
+		}
 	}
 
 	// The shell itself (and ordinary tools resolving relative/absolute paths)
@@ -622,11 +627,13 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 		sb.WriteString("(allow file-read* file-write* file-ioctl (literal \"/dev/ptmx\") (regex #\"^/dev/ttys[0-9]+$\"))\n\n")
 	}
 
-	sb.WriteString("; Scratch space for ordinary temp files (compiler/interpreter caches, etc.)\n")
-	sb.WriteString("(allow file-read* file-write*\n")
-	sb.WriteString("  (subpath \"/private/tmp\")\n")
-	sb.WriteString("  (subpath \"/private/var/folders\")\n")
-	sb.WriteString(")\n\n")
+	if !iso.PrivateScratch {
+		sb.WriteString("; Scratch space for ordinary temp files (compiler/interpreter caches, etc.)\n")
+		sb.WriteString("(allow file-read* file-write*\n")
+		sb.WriteString("  (subpath \"/private/tmp\")\n")
+		sb.WriteString("  (subpath \"/private/var/folders\")\n")
+		sb.WriteString(")\n\n")
+	}
 
 	workDir := canonicalPath(iso.WorkDir)
 	if workDir != "" {

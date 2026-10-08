@@ -6,7 +6,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 export interface CodeLocalFileTarget { device_id: string; resource_id: string }
 export type CodeFilesPreference = { location: 'server' } | { location: 'computer'; target?: CodeLocalFileTarget }
 export interface LocalFolderGuard { read_paths?: string[]; write_paths?: string[]; read_only_paths?: string[]; blocked_write_paths?: string[]; blocked_paths?: string[] }
-export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; guard: LocalFolderGuard }[] }
+export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; shell?: boolean; guard: LocalFolderGuard }[] }
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 

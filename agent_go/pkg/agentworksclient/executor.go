@@ -13,7 +13,7 @@ import (
 )
 
 // ServeExecutor creates an authenticated outbound socket. No local listener is
-// opened, and the local executor independently checks every file request.
+// opened, and the local executor independently checks every file and shell request.
 func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executor, connected func()) error {
 	token, err := c.authToken(ctx)
 	if err != nil {
@@ -33,6 +33,8 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 		return fmt.Errorf("executor connection failed: %w", err)
 	}
 	defer conn.Close()
+	connectionCtx, cancelConnection := context.WithCancel(ctx)
+	defer cancelConnection()
 	conn.SetReadLimit(localfiles.MaxMessageBytes)
 	conn.SetReadDeadline(time.Now().Add(75 * time.Second))
 	conn.SetPongHandler(func(string) error { return conn.SetReadDeadline(time.Now().Add(75 * time.Second)) })
@@ -76,6 +78,19 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			}
 		}
 	}()
+	// Keep reading while commands run, so heartbeats and disconnects can
+	// cancel the operation instead of waiting for the shell timeout.
+	slots := make(chan struct{}, 8)
+	var operations sync.WaitGroup
+	var activeMu sync.Mutex
+	active := map[string]context.CancelFunc{}
+	defer func() { cancelConnection(); operations.Wait() }()
+	send := func(result localfiles.Response) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
+		return conn.WriteJSON(result)
+	}
 	for {
 		var request localfiles.Request
 		if err = conn.ReadJSON(&request); err != nil {
@@ -84,15 +99,39 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			}
 			return err
 		}
-		operationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		result := executor.Execute(operationCtx, request)
-		cancel()
-		writeMu.Lock()
-		conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
-		err = conn.WriteJSON(result)
-		writeMu.Unlock()
-		if err != nil {
-			return err
+		if request.Operation == "cancel" {
+			activeMu.Lock()
+			if cancel := active[request.ID]; cancel != nil {
+				cancel()
+			}
+			activeMu.Unlock()
+			continue
 		}
+		select {
+		case slots <- struct{}{}:
+		default:
+			if err = send(localfiles.Response{ID: request.ID, Status: 429, Error: "executor is busy"}); err != nil {
+				return err
+			}
+			continue
+		}
+		timeout := 30 * time.Second
+		if request.Operation == "shell" && request.ValidateShell() == nil {
+			timeout = time.Duration(request.ShellTimeout()+5) * time.Second
+		}
+		operationCtx, cancel := context.WithTimeout(connectionCtx, timeout)
+		activeMu.Lock()
+		active[request.ID] = cancel
+		activeMu.Unlock()
+		operations.Add(1)
+		go func(request localfiles.Request) {
+			defer operations.Done()
+			defer func() { <-slots }()
+			defer func() { cancel(); activeMu.Lock(); delete(active, request.ID); activeMu.Unlock() }()
+			result := executor.Execute(operationCtx, request)
+			if err := send(result); err != nil {
+				conn.Close()
+			}
+		}(request)
 	}
 }

@@ -18,7 +18,7 @@ export function CodeChatModeSwitch({ sessionId, disabled = false }: { sessionId:
       <Button type="button" size="sm" variant={!local ? 'secondary' : 'ghost'} aria-pressed={!local} disabled={disabled || !sessionId} onClick={() => select('server')}>Server</Button>
       <Button type="button" size="sm" variant={local ? 'secondary' : 'ghost'} aria-pressed={local} disabled={disabled || !sessionId} onClick={() => select('local')}>Local</Button>
     </div>
-    <span className="text-xs text-muted-foreground">{local ? 'Minimal tools · local files via CLI' : 'Website tools and server files'}</span>
+    <span className="text-xs text-muted-foreground">{local ? 'Minimal tools · local files and commands via CLI' : 'Website tools and server files'}</span>
     {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
   </div>
 }

@@ -124,3 +124,13 @@ it('switches this chat between Server and minimal Local mode before choosing a f
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   expect(transport.post).not.toHaveBeenCalled()
 })
+
+it('shows shell capability and a CLI command that grants local builds and tests', async () => {
+  writeCodeFilesPreference(session, { location: 'computer', target })
+  transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
+  const { host } = await render(true)
+  expect(host.textContent).toContain('--write-folder project=/absolute/path/to/project --shell project')
+  expect(host.textContent).toContain('Files and commands')
+  expect(host.textContent).toContain('Shell commands enabled on this computer')
+  expect(transport.post).not.toHaveBeenCalled()
+})

@@ -722,7 +722,7 @@ workflow access and the unconditional protected-path policy. A tool call cannot
 change these grants. Narrow read grants also apply to raw file reads/downloads;
 execution and typed tools retain their separately authorized scopes.
 
-## Server agents using local files
+## Server agents using local files and commands
 
 The dedicated executor command opens an outbound authenticated connection to the
 AgentWorks server. It does not start a local model or a listening HTTP server.
@@ -735,14 +735,23 @@ agentworks --config /absolute/path/private/executor.json executor connect \
   --device work-laptop \
   --folder reference=/absolute/path/reference \
   --write-folder project=/absolute/path/project \
+  --shell project \
   --read-only generated --block secrets
 ```
 
-`--folder` grants reads only. `--write-folder` allows guarded writes; protected
-plans/configuration/database/private paths remain blocked. `--block` and
+`--folder` grants reads only. `--write-folder` allows guarded raw file writes;
+protected plans/configuration/database/private paths remain blocked in those tools.
+`--shell project` additionally authorizes commands in the writable `project` alias,
+including builds, tests, git and package installation. Shell programs have broader
+project-file authority than raw writes; use `--block` and `--read-only` for paths
+commands must not access or modify. CLI credentials and receipt state stay denied.
+Commands use the filesystem sandbox and a sanitized environment; if the sandbox
+cannot enforce the grants, execution fails. Linux uses the launcher embedded in
+the CLI with Landlock; macOS uses sandbox-exec. Linux exclusions must exist
+before a command runs, and nested exclusions require supported user/mount namespaces. `--block` and
 `--read-only` accept repeatable relative paths and apply to each shared folder.
-Aliases and relative grants are sent to the server; absolute local paths stay
-local. `--state-dir` can select private durable receipt storage, which must be
+Aliases and relative grants are sent to the server; absolute roots are omitted
+from grant metadata (shell output may contain local paths). `--state-dir` can select private durable receipt storage, which must be
 outside every shared folder. Read-only folders require no writable state. Writable folders also need a writable private sibling
 `.<folder>-file-edits/` for a shared serialization lock; a read-only grant never
 writes inside the shared folder. Default receipt storage is beside the CLI config in
@@ -759,7 +768,7 @@ The chat, agent and selected model continue running on the server.
 The right side shows only **Local CLI connection**, **Costs and usage**, and
 **Models**. The connection panel provides CLI setup, folder selection, status
 and disconnect. There is no local file browser/editor; ask the agent in chat
-to read or edit the shared files.
+to read/edit the shared files or run commands when the selected alias allows shell execution.
 
 Local mode applies a separate minimal tool policy even before a folder is selected.
 The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
@@ -771,17 +780,23 @@ this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
 Every file action validates live ownership, authorization and folder grants.
 Changing the selected folder or permissions refreshes retained tools between
 turns. Offline bindings retain their restrictions: chat can continue, but local
-file operations fail without server-file fallback. Writes retain revision checks,
+file and shell operations fail without server fallback. Writes retain revision checks,
 request IDs and durable receipts for identical retries.
 
 Local tools are available only to interactive **Code** chats. Crew, Brain, Vault,
-schedules and connector turns do not acquire them. The CLI cannot run laptop
-builds/tests or browsers. Requested file contents reach the server and LLM.
+schedules and connector turns do not acquire them. The CLI runs laptop builds/tests
+when shell is granted. Browser tools remain disabled. File contents and command
+output reach the server and LLM; output may include absolute local paths.
 Provider credentials needed by the selected server model remain available.
 
 In a Code chat with a local file connection selected, the server agent receives `list_local_devices`,
 `list_local_files`, `read_local_file` and, for writable accounts/turns,
-`write_local_file`. Specify `device_id`, `resource_id` (folder alias) and relative
+`write_local_file`. A writable alias with `--shell` also receives
+`execute_local_shell_command`, accepting `command`, relative working-directory
+`path` (`.` for the root), `request_id` and optional `timeout_seconds`.
+Commands default to 60 seconds, allow up to 300, and capture up to 1 MiB per output
+stream. Cancellation and connection loss terminate active command process groups.
+Specify `device_id`, `resource_id` (folder alias) and relative
 `path`; writes additionally require `content`, `expected_revision` and
 `request_id`. File contents read by the agent reach the server and its LLM provider.
 Public MCP connections and shared bot-route identities do not receive these tools.
@@ -795,13 +810,18 @@ there is no fallback to server files. The CLI reconnects with backoff and renewe
 credentials. Duplicate live device IDs are refused. Pending requests fail on
 disconnect, and write outcomes may be uncertain: reconnect, reuse the identical
 write request ID/payload to reconcile its receipt, then reread current content.
+Shell requests save durable results: an identical completed request returns its
+result without rerunning. An interrupted request with an unknown result is refused;
+inspect local state before starting another command. Revocation cancels active
+commands when the socket closes, including at the next heartbeat for idle dispatch.
 Revoking the connection or disabling its account blocks dispatch immediately and
 closes idle sockets at the next heartbeat. Website chat tools are assembled at
 turn startup, so send a new Code message after connecting and selecting a folder.
 
 Device sockets are held by one backend process. Use a single backend or routing
 affinity so the website chat reaches the process holding its device connection.
-Schedules and local shell/browser tools are not part of this release. The old
+Schedules and browser tools remain excluded from Local mode; laptop shell commands
+are supported through the CLI grant. The old
 transparent workflow router, placement/move APIs and remote `mcp_only` override
 have been removed; local agents access server workflows through public MCP.
 

@@ -52,6 +52,9 @@ var cliOperationGroups = []struct {
 }
 
 func main() {
+	if handled, code := localShellLauncher(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))

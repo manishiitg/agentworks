@@ -17,8 +17,9 @@ import (
 // Grant is local configuration, never accepted from the server.
 type Grant struct {
 	Resource
-	Root  string
-	State string
+	Root         string
+	State        string
+	PrivatePaths []string
 }
 type Executor struct {
 	Hello   Hello
@@ -138,6 +139,8 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 		var receipt wf.WriteReceipt
 		receipt, err = e.editors[g.ID].Write(ctx, wf.WriteRequest{Root: ".", Path: r.Path, Content: r.Content, ExpectedRevision: r.ExpectedRevision, RequestID: r.RequestID, Actor: e.Hello.DeviceID + "/" + g.ID, Identity: r.Identity, Guard: &g.Guard})
 		result.Receipt = &receipt
+	case "shell":
+		result.Shell, err = e.shell(ctx, g, r)
 	case "list":
 		result.Entries, err = e.list(ctx, g, r.Path)
 	default:
