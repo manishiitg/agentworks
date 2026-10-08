@@ -5884,6 +5884,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
 			}
 		}
+		// The Pulse conversation reads and talks to the Builder chat; it changes
+		// nothing itself (pulseTools).
+		if isWorkflowPhase && !relayChat && isGoalLeadSessionID(sessionID) {
+			toolGate = newProductToolGateForAllowlist(pulseToolSurface, pulseTools)
+		}
 		// Goals workflow chats have no profile, so nothing enforced their product.yaml lists; measure them first
 		// (PLAT-608 step 4): the gate logs what each Builder/Run session registers and what the list would drop.
 		if isWorkflowPhase && !relayChat && resolvedProfile == nil {

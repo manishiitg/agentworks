@@ -19,10 +19,11 @@ broken step (that is a QA request).
 3. **Propose, measured.** A proposal names the change, the evidence, the expected
    gain (quality, cost, time), the guardrails that must not regress, a trial with
    a checkpoint, and how to roll back. Explicit owner pins stay.
-4. **Who changes it.** With Change auto you may make a bounded, reversible edit
-   with the typed Builder tools (Workflow Review checks dependents before the
-   next run). With Change ask, or for a larger plan change, put the ready patch in
-   one decision with your recommendation, or ask the workflow's Builder chat.
+4. **Who changes it.** The Builder chat: send it the change with `ask_builder`.
+   With Change auto it makes a bounded, reversible edit without the owner
+   (Workflow Review checks dependents before the next run). With Change ask, or
+   for a larger plan change, put the ready patch in one decision with your
+   recommendation.
    Behaviour, rule, output and topology changes are owner decisions.
 5. **Record** what you concluded in goal memory when it is a lesson worth keeping.
    A no-change conclusion is valid.

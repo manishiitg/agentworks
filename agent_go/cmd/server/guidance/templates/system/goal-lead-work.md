@@ -22,10 +22,9 @@ architecture skill, a QA request).
    workflow or Crew already has (`search_platform`); a `soul.md` constraint that
    appears to cost the goal.
 4. **Do 1-3 bounded items now** (up to 5 when the goal is far behind, preferring
-   real outcomes over plans). Prepare under `pulse/work/<YYYY-MM-DD>/`. Run,
-   Outward and Change follow the permission levels the tools enforce: auto, do it
-   and record it; ask, prepare it fully and create one decision with your
-   recommendation. Record each item with `record_pulse_goal_work`: the gap as
+   real outcomes over plans). You change and run nothing yourself: ask the
+   Builder chat (`ask_builder`) to do it. At an auto level it does so without
+   the owner; at ask, put it in one decision with your recommendation. Record each item with `record_pulse_goal_work`: the gap as
    title, what you did, links, the metric, expected direction, `check_at`, and a
    short "why this should move <metric>": own data first (numbers, window,
    sample), external evidence labelled by strength, the mechanism, confidence and

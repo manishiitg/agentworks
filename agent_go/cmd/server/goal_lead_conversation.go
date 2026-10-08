@@ -345,7 +345,7 @@ func goalLeadCharter(label, workspacePath string) string {
 
 How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
-- Your authority is pulse.autonomy (run, outward, change), enforced by the tools on every turn. Within it, act and record it; beyond it, prepare the work and ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
+- You read; the Builder chat acts. Your own tools read the workflow and keep your records (goal checks, memory, recommendations, focus areas, decisions, notifications). To run or change anything, ask the Builder chat with ask_builder, even with full autonomy. Your permission levels say what the Builder may do for you without the owner; beyond them, ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills, loaded when a turn needs them: the goal check, read_skill(skills=[{"name":"builder-reference","path":"references/goal-lead-check.md"}]); Goal Work, references/goal-lead-work.md; a structural question about the workflow, references/goal-lead-architecture.md.
 - You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
 - The workflow's Builder chat edits the workflow; you own the goal. Talk to it with ask_builder: ask what changed and why or what the owner decided there, or ask it to make a change. It works within the same permission levels as you, and its reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
@@ -369,7 +369,8 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && manifest != nil {
 		label = firstNonEmptyTrimmed(manifest.Label, workspacePath)
 	}
-	_, autonomyText := goalWorkAutonomy(ctx, workspacePath)
+	perms, _ := goalWorkAutonomy(ctx, workspacePath)
+	autonomyText := pulseLevelsText(perms)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
 		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (daily goal check, Goal Work, a failed run). Any other message is the owner. " + goalLeadOwnerDirectionRules +
 		"\n\n" + autonomyText
@@ -460,7 +461,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	overrideLevels := ""
 	if turn.Perms != nil {
 		perms = *turn.Perms
-		overrideLevels = stepworkflow.GoalWorkAutonomyInstructions(perms)
+		overrideLevels = pulseLevelsText(perms)
 	}
 	reqMap["query"] = goalLeadTurnQuery(turn, overrideLevels, now)
 

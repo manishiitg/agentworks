@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Pulse reads; the Builder chat acts
+
+Pulse's own tools are read-only plus its records (goal checks, memory,
+recommendations, focus areas, decisions, notifications) and `ask_builder`
+(`pulseTools`, an allow-list gate). Running, changing the plan, schedules,
+secrets, models or skills is done by the Builder chat when Pulse asks, held to
+Pulse's permission levels, even with full autonomy. Pulse's system prompt is
+its own, about the goal only, not the Builder prompt. Why: the owner wants one
+editor (the Builder, visible in his chat) and Pulse as the goal owner that
+reads and directs; the Builder toolset had also given Pulse unguarded secret,
+vault, model and skill tools. [PLAT-697](bugs/pulse_platform/goals/pulse/plat-697.md).
+
 ### 2026-10-08 — The Builder chat and Pulse talk as two agents, in plain messages
 
 A message between the Builder chat and the workflow's Pulse is plain text with

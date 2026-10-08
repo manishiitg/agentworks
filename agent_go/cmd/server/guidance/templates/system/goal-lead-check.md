@@ -25,10 +25,10 @@ own continuing conversation.
 5. **On track** (measured recently, moving or holding, its work running, no
    alarm): `record_pulse_goal_check(status="on_track", key_number, summary)` and
    stop. No message.
-6. **Otherwise act** within the permission levels of the turn, smallest useful
-   step first. Run auto: you may run the existing goal-driving step or route once
-   when it is clearly what the goal needs and every constraint holds. At ask,
-   prepare it. When the owner is needed, create ONE batched
+6. **Otherwise act**, smallest useful step first, through the Builder chat: ask
+   it (`ask_builder`) to run the goal-driving step or route, or make the change
+   the goal needs. At an auto level it does so without the owner; at ask, prepare
+   it as a decision. When the owner is needed, create ONE batched
    `create_human_input_request(source="strategic_review", input_id="goal-check-<date>")`
    and attach your recommendation with `record_pulse_recommendation` (a safe
    default by a time only when one is safe). Reuse a pending goal-check decision.
