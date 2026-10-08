@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +43,40 @@ func TestExternalFileReadsUseSharedFilesystemWithoutWorkflowFilesEndpoint(t *tes
 	} {
 		if _, err := externalFileRequest(ctx, req); err == nil {
 			t.Fatalf("accepted invalid request %+v", req)
+		}
+	}
+}
+
+func TestExternalFileGuardsApplyBeforePaginationAndSearch(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	root := filepath.Join(docs, "Workflow", "one")
+	for _, dir := range []string{"aaa-denied", "visible"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 101; i++ {
+		if err := os.WriteFile(filepath.Join(root, "aaa-denied", fmt.Sprintf("%03d.txt", i)), []byte("needle"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := os.WriteFile(filepath.Join(root, "visible", name), []byte("needle"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{FileGuard: &wf.FolderGuard{ReadPaths: []string{"visible"}}}})
+	for _, op := range []string{"list", "search"} {
+		req := wf.Request{Root: "Workflow/one", Operation: op, Path: ".", Glob: "**/*.txt", Query: "needle", Limit: 1}
+		first, err := externalFileRequest(ctx, req)
+		if err != nil || len(first.Entries) != 1 || first.Entries[0].Path != "visible/first.txt" || first.NextOffset != 1 {
+			t.Fatalf("%s first page: %+v %v", op, first, err)
+		}
+		req.Offset = first.NextOffset
+		second, err := externalFileRequest(ctx, req)
+		if err != nil || len(second.Entries) != 1 || second.Entries[0].Path != "visible/second.txt" {
+			t.Fatalf("%s second page: %+v %v", op, second, err)
 		}
 	}
 }

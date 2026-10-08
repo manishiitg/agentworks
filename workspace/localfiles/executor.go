@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -29,6 +30,9 @@ type Executor struct {
 }
 
 func Open(deviceID string, grants []Grant) (*Executor, error) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		return nil, fmt.Errorf("the local executor supports macOS and Linux")
+	}
 	grants = append([]Grant(nil), grants...)
 	for i := range grants {
 		// Local folders always support shell commands; writable controls edits. The advertised
@@ -39,6 +43,34 @@ func Open(deviceID string, grants []Grant) (*Executor, error) {
 		grants[i].Root, err = filepath.Abs(grants[i].Root)
 		if err != nil {
 			return nil, err
+		}
+		canonicalRoot, err := filepath.EvalSymlinks(grants[i].Root)
+		if err != nil {
+			return nil, err
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		if resolved, err := filepath.EvalSymlinks(home); err == nil {
+			home = resolved
+		}
+		if containsPath(canonicalRoot, home) {
+			return nil, fmt.Errorf("share a project folder, not your home directory or its parents")
+		}
+		for _, other := range grants {
+			for _, private := range other.PrivatePaths {
+				private, err = filepath.Abs(private)
+				if err != nil {
+					return nil, err
+				}
+				if resolved, err := filepath.EvalSymlinks(private); err == nil {
+					private = resolved
+				}
+				if containsPath(canonicalRoot, private) {
+					return nil, fmt.Errorf("executor credentials and private state must be outside every shared folder")
+				}
+			}
 		}
 		if grants[i].State == "" {
 			grants[i].State, err = wf.DefaultStateDir(grants[i].Root)
@@ -109,6 +141,16 @@ func Open(deviceID string, grants []Grant) (*Executor, error) {
 		}
 	}
 	return e, nil
+}
+
+func containsPath(root, file string) bool {
+	// macOS volumes can resolve different casing to the same credential path.
+	// This predicate denies grants; conservative alias matching only narrows them.
+	if runtime.GOOS == "darwin" {
+		root, file = strings.ToLower(root), strings.ToLower(file)
+	}
+	relative, err := filepath.Rel(root, file)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 func (e *Executor) Close() {
 	for _, editor := range e.editors {

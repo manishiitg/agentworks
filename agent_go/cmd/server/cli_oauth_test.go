@@ -194,7 +194,7 @@ func TestCLIExecutorScopesAreExplicitAndIndependent(t *testing.T) {
 	for _, test := range []struct {
 		scopes []string
 		valid  bool
-	}{{[]string{"devices:connect"}, true}, {[]string{"workflows:read", "files:read", "files:write", "devices:connect"}, true}, {[]string{"devices:connect", "devices:connect"}, false}, {[]string{"files:write", "devices:connect"}, false}, {[]string{"plan:write", "devices:connect"}, false}} {
+	}{{[]string{"devices:connect"}, true}, {[]string{"workflows:read", "files:read", "files:write", "devices:connect"}, false}, {[]string{"devices:connect", "devices:connect"}, false}, {[]string{"files:write", "devices:connect"}, false}, {[]string{"plan:write", "devices:connect"}, false}} {
 		_, valid := validCLIOAuthScopes(test.scopes)
 		if valid != test.valid {
 			t.Fatalf("scopes %v: %v", test.scopes, valid)

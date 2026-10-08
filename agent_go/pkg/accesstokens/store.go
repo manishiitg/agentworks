@@ -151,6 +151,9 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("files:write") && (!t.Allows("files:read") || !t.Allows("workflows:read")) {
 		return errors.New("files:write requires files:read and workflows:read")
 	}
+	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
+		return errors.New("devices:connect must be approved separately from other permissions")
+	}
 	if t.FileGuard != nil && !t.Allows("files:write") {
 		return errors.New("file guards require files:write")
 	}

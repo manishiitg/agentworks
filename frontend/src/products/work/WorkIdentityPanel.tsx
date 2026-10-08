@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
@@ -27,8 +27,9 @@ import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
-import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useChatStore } from '../../stores/useChatStore'
+
+const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
 export type WorkIdentityTab = 'general' | 'models'
 
@@ -89,7 +90,7 @@ function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateId
           </Button>
         </div>
       </SettingsCard>
-      <CodeLocalFilesSettings sessionId={sessionId} />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} /></Suspense>
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
 	"os"
 	"path/filepath"
 )
@@ -16,6 +17,13 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if info, err := os.Stat(path); err == nil {
 		perm = info.Mode().Perm()
 	}
+	original, err := os.Open(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if original != nil {
+		defer original.Close()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
@@ -27,16 +35,22 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		cleanup()
 		return err
 	}
+	if original != nil {
+		err = filemetadata.Preserve(tmp, original)
+	} else {
+		err = tmp.Chmod(perm)
+	}
+	if err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		cleanup()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
 		cleanup()
 		return err
 	}

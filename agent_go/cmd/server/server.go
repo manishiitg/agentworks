@@ -6854,7 +6854,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
 			if codeLocalFileTurn(req, resolvedProfile) {
-				if err := api.registerLocalWorkspaceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, req.CodeLocalFiles); err != nil {
+				if err := api.registerLocalWorkspaceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, req.CodeLocalFiles); err != nil {
 					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
 					return
 				}
@@ -14209,6 +14209,9 @@ func (e *queryAdmissionError) Unwrap() error { return e.err }
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
 func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest, currentUserID, sessionID string) (*resolvedAgentProfile, WorkflowAccessLevel, *queryAdmissionError) {
+	if api.codeLocalSession(sessionID) && (req.TriggeredBy != "" && req.TriggeredBy != "interactive" || req.BotPlatform != "" || req.IsAutoNotification || req.ParentSessionID != "" || req.SessionKind != "" || req.PulseLifecycleTurn || !websiteDeviceClaims(GetUserFromContext(ctx))) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Local Code sessions cannot receive automated or other-chat turns"), invalidProfile: true}
+	}
 	resolvedProfile, err := api.resolveAgentProfileForQuery(ctx, req, currentUserID, sessionID)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}

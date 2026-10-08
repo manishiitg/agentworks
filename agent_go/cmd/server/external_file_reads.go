@@ -186,6 +186,7 @@ func externalPathPrivate(crewRoot bool, p string) bool {
 }
 
 func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool) (wf.Result, error) {
+	guard := externalFileGuard(ctx, crewRoot)
 	if req.Limit <= 0 {
 		req.Limit = 100
 	}
@@ -225,6 +226,12 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 			return walkErr
 		}
 		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !guard.Allows(name, false) && !(d.IsDir() && guard.AllowsTraversal(name)) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -297,6 +304,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		result.NextOffset = end
 	}
 	return result, nil
+}
+
+func externalFileGuard(ctx context.Context, crewRoot bool) *wf.FolderGuard {
+	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
+		return claims.AccessToken.FileGuard
+	}
+	return nil
 }
 
 func externalRootUsesSharedKnowledge(root *os.Root) bool {

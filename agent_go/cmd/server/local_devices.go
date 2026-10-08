@@ -68,6 +68,25 @@ func codeLocalFileTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
 	return req.CodeLocalFiles != nil && codeLocalModeTurn(req, profile)
 }
 
+func (api *StreamingAPI) codeLocalSession(sessionID string) bool {
+	api.lastQueryMu.RLock()
+	req, ok := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	return ok && req.AgentProfileID == "code" && (req.CodeChatMode == "local" || req.CodeLocalFiles != nil)
+}
+
+// Retained tool callbacks are reused between turns. Check the live turn and
+// binding on every call, rather than trusting their original registration.
+func (api *StreamingAPI) localWorkspaceTurnAllowed(sessionID, owner string, target codeLocalFileTarget) bool {
+	api.lastQueryMu.RLock()
+	req, ok := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	if !ok || req.userID != owner || req.CodeLocalFiles == nil || *req.CodeLocalFiles != target || api.isSyntheticTurn(sessionID) {
+		return false
+	}
+	return codeLocalFileTurn(req, &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: req.AgentProfileID}})
+}
+
 // Narrow this turn's resolved copy; the server project and its existing
 // schedules/connections remain unchanged. Offline bindings keep the policy.
 func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool, []string) {
@@ -160,7 +179,7 @@ func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
 	if target == nil {
 		return "\nThis Code chat is in Local mode, with no folder selected yet. Only conversation and the Local CLI connection, Costs and Models views are available. Ask the user to connect their CLI and select a folder before file work. MCP connections, skills, secrets, background agents and server file/terminal/browser tools are disabled. Never substitute server files.\n"
 	}
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use the existing execute_shell_command for local inspection, reads, writes, builds, tests and git, and diff_patch_workspace_file for edits. These tools are bound to this laptop folder internally and run on the laptop. Paths are relative to its root, or absolute underneath it. Read files with shell commands such as cat, sed or head. No separate local tools or device arguments are needed. Shell is enabled automatically; read-only folder grants remain read-only in the sandbox. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use the existing execute_shell_command for local inspection, reads, writes, builds, tests and git, and diff_patch_workspace_file for edits. These tools are bound to this laptop folder internally and run on the laptop. Paths are relative to its root, or absolute underneath it. Read files with shell commands such as cat, sed or head. No separate local tools or device arguments are needed. Shell is enabled automatically; read-only folder grants remain read-only in the sandbox. The same chat, agent, model, project settings and server runtime remain in use. File contents and command output returned by tools reach the server/model and may be retained in server conversation history under its normal administrator and Code reviewer access rules. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
@@ -248,7 +267,7 @@ func (api *StreamingAPI) handleLocalDeviceConnect(w http.ResponseWriter, r *http
 	}
 	key := claims.UserID + "/" + hello.DeviceID
 	if _, loaded := api.localDevices.LoadOrStore(key, device); loaded {
-		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "device is already connected"), time.Now().Add(time.Second))
+		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "device is already connected"), time.Now().Add(time.Second))
 		return
 	}
 	defer func() { api.localDevices.CompareAndDelete(key, device); close(device.done) }()
@@ -472,7 +491,7 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 }
 
 // Reuse the bridge's canonical names and schemas; only the execution target changes.
-func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, target *codeLocalFileTarget) error {
+func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, sessionID string, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
 		return nil
 	}
@@ -514,6 +533,9 @@ func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolReg
 		description += " The selected computer/folder is bound internally. The folder root is the command working directory; relative paths start there and absolute paths must stay underneath the grants. Never use server files as a fallback."
 		gate.Declare(tool)
 		err = registrar.RegisterCustomToolWithTimeout(tool, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
+			if !api.localWorkspaceTurnAllowed(sessionID, claims.UserID, selected) {
+				return "", errors.New("local workspace tools require the current interactive website turn and selected folder")
+			}
 			caller := GetUserFromContext(ctx)
 			if caller == nil {
 				caller = claims

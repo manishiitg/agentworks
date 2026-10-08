@@ -53,3 +53,35 @@ func TestExecutorLocalGrantsCannotBeWidenedByServer(t *testing.T) {
 		t.Fatalf("list %+v", got)
 	}
 }
+
+func TestExecutorRejectsBroadRootsAndPrivateCredentialsAcrossAliases(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	project := filepath.Join(home, "project")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	config := filepath.Join(project, "executor.json")
+	if err := os.WriteFile(config, []byte("private tokens"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{string(filepath.Separator), base, home} {
+		if e, err := Open("laptop", []Grant{{Resource: Resource{ID: "project"}, Root: root, State: filepath.Join(base, "state")}}); err == nil {
+			e.Close()
+			t.Fatalf("broad root accepted: %s", root)
+		}
+	}
+	grants := []Grant{{Resource: Resource{ID: "project"}, Root: project, State: filepath.Join(base, "state")}, {Resource: Resource{ID: "reference"}, Root: t.TempDir(), State: filepath.Join(base, "state2"), PrivatePaths: []string{config}}}
+	if e, err := Open("laptop", grants); err == nil {
+		e.Close()
+		t.Fatal("another alias exposed executor credentials")
+	}
+	grants = grants[:1]
+	grants[0].PrivatePaths = []string{filepath.Join(base, "private-config.json")}
+	if e, err := Open("laptop", grants); err != nil {
+		t.Fatal(err)
+	} else {
+		e.Close()
+	}
+}

@@ -62,7 +62,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
         </div>
         {confirmServer && <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
           <p className="text-sm font-medium">Switch this chat to server files?</p>
-          <p className="text-xs leading-5 text-muted-foreground">Future file edits and commands will use the server workspace. This chat’s normal Code features, including MCP connections, skills, secrets, integrations, schedules and dashboards, become available again. Laptop files stay on your computer and are not copied to the server. The CLI keeps running until you stop it with Ctrl-C.</p>
+          <p className="text-xs leading-5 text-muted-foreground">Future file edits and commands will use the server workspace. This chat’s normal Code features, including MCP connections, skills, secrets, integrations, schedules and dashboards, become available again. Switching does not move or sync your laptop project. Earlier messages and tool results remain in server chat history. The CLI keeps running until you stop it with Ctrl-C.</p>
           <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => savePreference({ location: 'server' })}>Switch to server files</Button><Button size="sm" variant="ghost" onClick={() => setConfirmServer(false)}>Keep local connection</Button></div>
         </div>}
         <ComputerSetup />
@@ -76,7 +76,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
           <p className="text-sm font-medium">{local ? 'Change this chat’s local folder' : 'Use local files for this chat'}</p>
           <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
             <li>File access and shell commands will use {draftResource.deviceId} / {draftResource.id}. {draftResource.writable ? 'The agent can change files and run builds, tests and git commands within your CLI permissions.' : 'This folder is read only: the agent can inspect files and run commands that do not change them.'}</li>
-            <li>Your agent and model stay on the server. File contents and command output are sent to the server and model provider.</li>
+            <li>Your agent and model stay on the server. File contents and command output are sent to the server and model provider and may be saved in server chat history. People with authorized administrator or Code review access can read that history.</li>
             <li>MCP connections, reusable skills, project secrets, integrations, schedules, dashboards, browser tools and background agents are unavailable in Local mode.</li>
             <li>{local ? 'The previous folder will no longer be used by this chat; files are not moved.' : 'Server files will no longer be used by this chat; files are not moved.'} If the CLI disconnects, local actions fail until it reconnects. Other chats and existing server schedules stay unchanged.</li>
           </ul>

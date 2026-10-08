@@ -34,10 +34,19 @@ func (g *FolderGuard) Validate() error {
 	return nil
 }
 func within(p string, paths []string) bool {
-	p = strings.ToLower(p)
 	for _, prefix := range paths {
-		prefix = strings.ToLower(prefix)
 		if prefix == "." || p == prefix || strings.HasPrefix(p, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// Exclusions conservatively cover casing aliases on insensitive filesystems.
+// Allow-lists never fold case: src and SRC can be different directories.
+func excluded(p string, paths []string) bool {
+	for _, prefix := range paths {
+		if within(strings.ToLower(p), []string{strings.ToLower(prefix)}) {
 			return true
 		}
 	}
@@ -47,11 +56,11 @@ func (g *FolderGuard) Allows(p string, write bool) bool {
 	if g == nil {
 		return true
 	}
-	if within(p, g.BlockedPaths) {
+	if excluded(p, g.BlockedPaths) {
 		return false
 	}
 	if write {
-		return within(p, g.WritePaths) && !within(p, g.ReadOnlyPaths) && !within(p, g.BlockedWritePaths)
+		return within(p, g.WritePaths) && !excluded(p, g.ReadOnlyPaths) && !excluded(p, g.BlockedWritePaths)
 	}
 	return within(p, g.ReadPaths) || within(p, g.WritePaths) || within(p, g.ReadOnlyPaths)
 }
@@ -62,7 +71,7 @@ func ProtectedWrite(p string) bool {
 		return true
 	}
 	for _, part := range strings.Split(strings.ToLower(p), "/") {
-		if part == "planning" || part == "runs" || part == "human_inputs" || part == "chat_history" || part == "knowledgebase" || part == "db" || part == "workflow.json" || part == "plan.json" || part == "step_config.json" || part == ".env" || part == "credentials.json" || part == "token.json" {
+		if part == "planning" || part == "runs" || part == "human_inputs" || part == "chat_history" || part == "knowledgebase" || part == "db" || part == "costs" || part == "workflow.json" || part == "workflow.json.kb-lock" || part == "schedule-runs.json" || part == "product.json" || part == "functions.json" || part == "plan.json" || part == "step_config.json" || part == ".env" || part == "credentials.json" || part == "token.json" {
 			return true
 		}
 		ext := path.Ext(part)
@@ -78,7 +87,7 @@ func (g *FolderGuard) AllowsTraversal(p string) bool {
 	if g == nil || g.Allows(p, false) {
 		return true
 	}
-	if within(p, g.BlockedPaths) {
+	if excluded(p, g.BlockedPaths) {
 		return false
 	}
 	for _, paths := range [][]string{g.ReadPaths, g.WritePaths, g.ReadOnlyPaths} {

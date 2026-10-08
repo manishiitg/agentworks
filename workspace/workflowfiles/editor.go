@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	_ "modernc.org/sqlite"
 )
@@ -297,6 +298,13 @@ func revision(data []byte) string {
 	return Revision(data)
 }
 func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) error {
+	original, err := root.Open(name)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if original != nil {
+		defer original.Close()
+	}
 	entropy := make([]byte, 16)
 	if _, err := rand.Read(entropy); err != nil {
 		return err
@@ -310,6 +318,9 @@ func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) 
 	err = f.Chmod(mode)
 	if err == nil {
 		_, err = f.Write(data)
+	}
+	if err == nil && original != nil {
+		err = filemetadata.Preserve(f, original)
 	}
 	if err == nil {
 		err = f.Sync()
@@ -369,16 +380,29 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	fingerprintData, _ := json.Marshal(r)
 	fingerprint := Revision(append([]byte(e.rootIdentity), fingerprintData...))
 	key := Revision([]byte(r.Actor+"\x00"+scope+"\x00"+r.RequestID)) + ".json"
+	scoped, err := OpenDirectory(e.root, scope, false)
+	if err != nil {
+		return WriteReceipt{}, err
+	}
+	defer scoped.Close()
 	if held, _ := ctx.Value(editorBatchKey{}).(*Editor); held != e {
-		conn, err := e.db.Conn(ctx)
-		if err != nil {
-			return WriteReceipt{}, err
+		if scope != "." {
+			release, err := LockWorkspace(ctx, scoped.Name())
+			if err != nil {
+				return WriteReceipt{}, err
+			}
+			defer release()
+		} else {
+			conn, err := e.db.Conn(ctx)
+			if err != nil {
+				return WriteReceipt{}, err
+			}
+			defer conn.Close()
+			if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+				return WriteReceipt{}, err
+			}
+			defer conn.ExecContext(context.Background(), "ROLLBACK")
 		}
-		defer conn.Close()
-		if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-			return WriteReceipt{}, err
-		}
-		defer conn.ExecContext(context.Background(), "ROLLBACK")
 	}
 	var record editRecord
 	if data, _, readErr := readRegular(e.state, key); readErr != nil {
@@ -394,11 +418,6 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 			return record.Receipt, nil
 		}
 	}
-	scoped, err := OpenDirectory(e.root, scope, false)
-	if err != nil {
-		return WriteReceipt{}, err
-	}
-	defer scoped.Close()
 	parent, err := OpenDirectory(scoped, path.Dir(p), true)
 	if err != nil {
 		return WriteReceipt{}, err
@@ -537,7 +556,7 @@ func DefaultStateDir(rootDir string) (string, error) {
 		if !filepath.IsAbs(configured) {
 			return "", fmt.Errorf("WORKSPACE_FILE_STATE_DIR must be absolute")
 		}
-		return filepath.Clean(configured), nil
+		return filepath.Join(filepath.Clean(configured), Revision([]byte(rootDir))), nil
 	}
 	if configured := os.Getenv("AGENTWORKS_STATE_ROOT"); configured != "" {
 		if !filepath.IsAbs(configured) {

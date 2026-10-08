@@ -699,7 +699,11 @@ Call `write_file` through MCP `call_tool`, or `agentworks files write --input ed
 
 The caller needs current account/workflow edit rights. Plans, `workflow.json`,
 runtime run records, databases, private files and shared Brain content cannot be
-edited this way. Use their typed tools. Writes accept UTF-8 text up to 2 MiB.
+edited this way. This includes `costs/`, `schedule-runs.json`, the knowledge lock,
+`product.json` and `functions.json`. Use their typed tools. Authorized authors can
+edit `code/<step>/` sources, including scheduled code; these source edits do not
+apply Builder expected-hash checks. Use Builder for checked plan-linked edits.
+Writes accept UTF-8 text up to 2 MiB.
 Reusing the same request ID and arguments returns its durable receipt; different
 arguments fail. A stale revision fails; read and reconcile before submitting a
 new write. The workspace service retains private audit records outside documents.
@@ -727,6 +731,14 @@ execution and typed tools retain their separately authorized scopes.
 The dedicated executor command opens an outbound authenticated connection to the
 AgentWorks server. It does not start a local model or a listening HTTP server.
 Use a separate CLI config to keep ordinary remote MCP credentials independent:
+
+`devices:connect` must be approved alone; combining it with workflow/MCP scopes
+is rejected. Share a project directory: the executor refuses your home directory,
+its parents, and any folder containing the CLI config or private state, including
+through another grant alias. Raw file operations also exclude private key files
+such as `.pem`, `.key`, `.p12`, `.pfx` and `.kdbx`. Shell programs have broader
+authority within a writable grant; keep credentials outside it and explicitly
+block any sensitive project directories.
 
 ```sh
 agentworks --config /absolute/path/private/executor.json login \
@@ -757,6 +769,9 @@ receipt storage and a writable private sibling `.<folder>-file-edits/` for a
 shared serialization lock; a read-only grant never
 writes inside the shared folder. Default receipt storage is beside the CLI config in
 `executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
+The CLI automatically reconnects after transport interruptions, including while
+the server waits for an old socket to expire. It never retries a mutation whose
+outcome is uncertain.
 
 ### Code website: connect local files to the current chat
 
@@ -771,6 +786,10 @@ then **Switch to server files** after reviewing what changes. You cannot change
 connections during a running turn. The browser remembers the binding for your
 account, server workspace and chat only.
 The chat, agent and selected model continue running on the server.
+File contents and command output returned by tools reach the server/model and may
+remain in server chat history, accessible to authorized administrators and Code
+reviewers. Switching modes does not erase earlier history. Automated notifications,
+other chats, schedules and connector turns cannot drive a Local chat's executor.
 
 Coding CLI models such as Claude Code also need the server's internal
 `mcpbridge` executable. Release builds ship it beside the server binary, and the
@@ -866,9 +885,17 @@ IDs in these records are identifiers, never secret token values.
 For container deployments with a read-only parent of the documents mount, set
 `WORKSPACE_FILE_STATE_DIR` to a writable private directory outside documents.
 Mount that state directory into both the workspace service and any agent service
-using the mounted Builder writer, and configure the corresponding path on each.
+using the mounted Builder writer, and configure the same path and OS service
+identity on each. Locks and receipts use a subdirectory keyed by the canonical
+workspace path; both services must see the same document paths. The supplied
+Docker and rootless service configurations share this state.
 Otherwise configured `AGENTWORKS_STATE_ROOT/file-edits/<root-hash>/` is used when
 available; the fallback is the private sibling `.<folder>-file-edits/`. Normal
 managed document editing shares this lock and therefore also requires the state
 location to be writable. Local executors honor the same state override for locks;
 `--state-dir` selects their separate durable receipt directory.
+Managed edits, version restores and MCP/Builder writes share a workflow/project
+lock, so a long operation on one workflow does not block another. Atomic replacements
+preserve Unix ownership and permissions, plus Linux access ACLs, and fail before
+replacement if these cannot be retained. Receipt storage has no automatic pruning;
+operators must include it in their retention and storage policy.

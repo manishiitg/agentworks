@@ -409,6 +409,9 @@ func TestNonExpiringLocalTokenPersistenceAndRemoval(t *testing.T) {
 
 func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 	now := time.Now()
+	if err := Validate(Token{Name: "Mixed", UserID: "owner", Scopes: []string{"devices:connect", "workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}, now); err == nil {
+		t.Fatal("device permission combined with replacing workflow token")
+	}
 	store, err := Open(filepath.Join(t.TempDir(), "auth", "tokens.sqlite"))
 	if err != nil {
 		t.Fatal(err)

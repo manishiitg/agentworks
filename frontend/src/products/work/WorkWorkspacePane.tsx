@@ -25,7 +25,6 @@ import type { ProductIdentity, ProductIdentityPatch } from '../../platform/chat/
 import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPanel'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { WorkIdentityPanel } from './WorkIdentityPanel'
-import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
@@ -45,6 +44,7 @@ const ReportHumanInputPanel = lazy(() => import('../../components/workflow/Repor
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
+const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
 export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
@@ -336,7 +336,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
 
   // Every other saved or agent-requested view lands on the connection controls.
   if (localCodeSession && view !== 'identity' && view !== 'costs') {
-    return <div className="h-full overflow-y-auto bg-background p-4"><CodeLocalFilesSettings sessionId={activeSessionId || ''} /></div>
+    return <div className="h-full overflow-y-auto bg-background p-4"><Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={activeSessionId || ''} /></Suspense></div>
   }
 
   if (!isWorkWorkspaceViewEnabled(view, undefined, localCodeSession)) {

@@ -9,6 +9,7 @@ User=video-studio
 Group=video-studio
 EnvironmentFile=/opt/video-studio/.env
 Environment=HOME=/var/lib/video-studio
+Environment=AGENTWORKS_STATE_ROOT=/var/lib/video-studio/agentworks-state
 Environment=AGENT_BROWSER_CDP_ENABLED=false
 WorkingDirectory=/opt/video-studio/current
 ExecStart=/opt/video-studio/current/bin/video-studio-workspace server --port 8080 --docs-dir /data/video-studio/docs

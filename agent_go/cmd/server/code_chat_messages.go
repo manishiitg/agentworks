@@ -282,6 +282,9 @@ func (api *StreamingAPI) runCodeChatCall(call *crewFunctionCall, target triggerT
 // codeChatTurnRequest builds the turn in the target chat's existing
 // conversation, re-checking that it is still that chat of the same Code.
 func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string, target triggerTarget, text, fromLabel string) (map[string]interface{}, string, error) {
+	if api != nil && target.Chat != nil && api.codeLocalSession(target.Chat.SessionID) {
+		return nil, "", fmt.Errorf("Local Code chats cannot receive asks from other chats")
+	}
 	unavailable := fmt.Errorf("that chat is no longer available")
 	if api == nil || api.agentProfiles == nil || target.Chat == nil {
 		return nil, "", unavailable

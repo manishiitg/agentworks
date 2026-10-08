@@ -78,6 +78,7 @@ func externalRemoteReadFile(ctx context.Context, root, p string) (wf.File, error
 }
 
 func externalRemoteListFiles(ctx context.Context, req wf.Request, p string) (wf.Result, error) {
+	guard := externalFileGuard(ctx, externalIsCrewRoot(req.Root))
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
@@ -134,6 +135,9 @@ func externalRemoteListFiles(ctx context.Context, req wf.Request, p string) (wf.
 			return wf.Result{}, err
 		}
 		if wf.Private(item.Path) {
+			continue
+		}
+		if !guard.Allows(item.Path, false) && !(item.Type == "folder" && guard.AllowsTraversal(item.Path)) {
 			continue
 		}
 		rel := strings.TrimPrefix(strings.TrimPrefix(item.Path, p), "/")

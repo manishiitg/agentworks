@@ -192,7 +192,10 @@ func (g *productToolGate) DenyWhere(denied func(string) bool) {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.deny = denied
+	previous := g.deny
+	g.deny = func(name string) bool {
+		return previous != nil && previous(name) || denied != nil && denied(name)
+	}
 }
 
 // Allows reports the current policy without recording a registration attempt.

@@ -97,7 +97,7 @@ func CreateDocument(c *gin.Context) {
 		})
 		return
 	}
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, req.FilePath)
 	if !ok {
 		return
 	}
@@ -1243,7 +1243,7 @@ func MoveDocument(c *gin.Context) {
 		})
 		return
 	}
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, filePathParam, req.DestinationPath)
 	if !ok {
 		return
 	}
@@ -1495,6 +1495,12 @@ func RestoreFileVersion(c *gin.Context) {
 		return
 	}
 
+	release, ok := lockFileMutation(c)
+	if !ok {
+		return
+	}
+	defer release()
+
 	// Restore the version
 	versionManager := utils.NewGitVersionManager(docsDir)
 	if err := versionManager.RestoreFileVersion(filePath, req.CommitHash); err != nil {
@@ -1527,7 +1533,7 @@ func CreateFolder(c *gin.Context) {
 		})
 		return
 	}
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, req.FolderPath)
 	if !ok {
 		return
 	}
@@ -1619,7 +1625,7 @@ func CopyFolder(c *gin.Context) {
 		})
 		return
 	}
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, req.SourcePath, req.DestinationPath)
 	if !ok {
 		return
 	}
@@ -1821,7 +1827,7 @@ func CopyFolder(c *gin.Context) {
 
 // DeleteFolder handles DELETE /api/folders/*folderpath
 func DeleteFolder(c *gin.Context) {
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, strings.TrimSuffix(c.Param("folderpath"), "/files"))
 	if !ok {
 		return
 	}
@@ -1920,7 +1926,7 @@ func DeleteFolder(c *gin.Context) {
 
 // DeleteAllFilesInFolder handles DELETE /api/folders/*folderpath/files
 func DeleteAllFilesInFolder(c *gin.Context, folderPathParam string, confirm bool) {
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, folderPathParam)
 	if !ok {
 		return
 	}
@@ -2060,7 +2066,7 @@ func UploadFile(c *gin.Context) {
 		})
 		return
 	}
-	release, ok := lockFileMutation(c)
+	release, ok := lockFileMutation(c, req.FolderPath)
 	if !ok {
 		return
 	}

@@ -272,6 +272,9 @@ func validCLIOAuthScopes(requested []string) ([]string, bool) {
 		}
 	}
 	if len(ordinary) > 0 {
+		if device {
+			return nil, false
+		}
 		var valid bool
 		ordinary, valid = validMCPOAuthScopes(strings.Join(ordinary, " "))
 		if !valid {

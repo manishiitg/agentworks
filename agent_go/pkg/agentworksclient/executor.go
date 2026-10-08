@@ -46,6 +46,9 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 		Connected bool `json:"connected"`
 	}
 	if err = conn.ReadJSON(&ack); err != nil || !ack.Connected {
+		if websocket.IsCloseError(err, websocket.CloseTryAgainLater) {
+			return &APIError{Status: 409, Code: "device_busy", Message: "The previous device connection is still closing; reconnect with backoff."}
+		}
 		if websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
 			return &APIError{Status: 409, Code: "executor_rejected", Message: "Device ID is already connected or the executor handshake was rejected."}
 		}

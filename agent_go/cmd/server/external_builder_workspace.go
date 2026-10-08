@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -94,17 +94,10 @@ func externalBuilderFilePath(input string, write bool) (string, error) {
 	return p, nil
 }
 
-var externalBuilderFileWriteMu sync.Mutex
-
 // Revision validation and replacement are serialized for MCP file edits. The
 // normal Builder single-runner boundary prevents parallel Builder turns; a
 // browser's independent direct file editor should reread after a conflict.
 func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expected string) (wf.Result, error) {
-	release, lockErr := wf.LockWorkspace(ctx, getWorkspaceDocsAbsPath())
-	if lockErr != nil {
-		return wf.Result{}, lockErr
-	}
-	defer release()
 	if err := ctx.Err(); err != nil {
 		return wf.Result{}, err
 	}
@@ -122,8 +115,11 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err != nil || !strings.HasPrefix(rootPath, "Workflow/") || len(strings.Split(rootPath, "/")) != 2 {
 		return wf.Result{}, errors.New("invalid workflow root")
 	}
-	externalBuilderFileWriteMu.Lock()
-	defer externalBuilderFileWriteMu.Unlock()
+	release, lockErr := wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath)))
+	if lockErr != nil {
+		return wf.Result{}, lockErr
+	}
+	defer release()
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, fmt.Errorf("external Builder file writes require the local workspace mount: %w", err)
@@ -257,11 +253,6 @@ func (api *StreamingAPI) externalBuilderFileCall(w http.ResponseWriter, r *http.
 }
 
 func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected string) (wf.Result, error) {
-	release, lockErr := wf.LockWorkspace(ctx, getWorkspaceDocsAbsPath())
-	if lockErr != nil {
-		return wf.Result{}, lockErr
-	}
-	defer release()
 	if err := ctx.Err(); err != nil {
 		return wf.Result{}, err
 	}
@@ -275,8 +266,11 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 	if p, err = externalBuilderFilePath(p, true); err != nil {
 		return wf.Result{}, err
 	}
-	externalBuilderFileWriteMu.Lock()
-	defer externalBuilderFileWriteMu.Unlock()
+	release, lockErr := wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath)))
+	if lockErr != nil {
+		return wf.Result{}, lockErr
+	}
+	defer release()
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, err

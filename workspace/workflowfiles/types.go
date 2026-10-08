@@ -67,6 +67,10 @@ func CleanRelative(p string) (string, error) {
 // ordinary workflow files; the list mirrors managedCodingAgentProjectionWritePaths.
 func Private(p string) bool {
 	for _, part := range strings.Split(strings.ToLower(p), "/") {
+		switch path.Ext(part) {
+		case ".pem", ".key", ".p12", ".pfx", ".kdbx":
+			return true
+		}
 		// Hidden workspace folders may hold credentials, tool state, and
 		// downloaded packages. Expose workflow-authored source through its
 		// ordinary code/, learnings/, and knowledgebase/ paths instead.

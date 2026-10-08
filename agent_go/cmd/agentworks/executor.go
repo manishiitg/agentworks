@@ -73,7 +73,7 @@ func executorCommand(o *options) *cobra.Command {
 				return nil
 			}
 			var apiErr *agentworksclient.APIError
-			if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 409) {
+			if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 409 && apiErr.Code != "device_busy") {
 				return err
 			}
 			fmt.Fprintf(o.stderr, "Executor disconnected; reconnecting in %s.\n", delay)

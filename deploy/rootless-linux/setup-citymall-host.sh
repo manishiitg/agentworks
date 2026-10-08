@@ -134,6 +134,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=/srv/citymall/.env
 Environment=HOME=/srv/citymall/home
+Environment=AGENTWORKS_STATE_ROOT=/srv/citymall/state
 WorkingDirectory=/srv/citymall/current
 ExecStart=/srv/citymall/current/bin/citymall-workspace server --host 127.0.0.1 --port 25001 --docs-dir /srv/citymall/data/docs
 StandardOutput=append:/srv/citymall/logs/workspace.log
@@ -154,6 +155,7 @@ Type=simple
 EnvironmentFile=/srv/citymall/.env
 Environment=HOME=/srv/citymall/home
 Environment=MCP_BRIDGE_BINARY=/srv/citymall/current/bin/mcpbridge
+Environment=AGENTWORKS_STATE_ROOT=/srv/citymall/state
 WorkingDirectory=/srv/citymall/current
 ExecStart=/srv/citymall/current/bin/citymall-agent server --host 127.0.0.1 --port 25000 --log-level info --log-file /srv/citymall/logs/agent.log --mcp-config /srv/citymall/current/configs/mcp_servers_citymall.json --max-turns 100
 StandardOutput=append:/srv/citymall/logs/agent.log

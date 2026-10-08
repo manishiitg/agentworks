@@ -166,23 +166,32 @@ policy**, with blocked/read-only/protected paths taking precedence.
 | `code/task.py`, `docs/process.md` | Allowed within effective write grants |
 | A folder granted only for reading | Rejected |
 | `planning/*`, including `planning/plan.json` and step configuration | Rejected; use typed plan tools |
-| `workflow.json` | Rejected; use typed workflow/configuration tools |
+| `workflow.json`, `product.json`, `functions.json`, `workflow.json.kb-lock` | Rejected; use typed workflow/configuration tools |
+| `costs/*`, `schedule-runs.json` | Rejected; runtime-managed records |
 | Databases and their journal files | Rejected; use scoped database tools |
 | Secret stores, authentication files, private runtime/audit state | Rejected |
 | Another workflow, a path outside the grant, or a symlink escape | Rejected |
 
 A `files:write` grant permits authoring executable source: later runs may execute
 that source. It must therefore require authoring authority, not merely run or
-read permission. It does not grant shell execution, plan writes or Vault access.
+read permission. This intentionally includes `code/<step>/`: editable authors
+can change source without Builder's description-hash/code-lock validation.
+Use Builder when those authoring checks are required. Direct source access is
+not offered to run-only or read-only accounts. It does not grant shell execution,
+plan writes or Vault access.
 
 ### Revisions, durability and retries
 
 The file-owning service must check the revision and replace the file under one
-shared SQLite serialization boundary outside the documents root. MCP, browser
-editing, document patch/move/delete/upload and Builder file edits use it. Direct
+shared SQLite serialization boundary per workflow or product project. MCP, browser
+editing, version restores, document patch/move/delete/upload and Builder file edits
+use the same physical scope. A long folder operation in one workflow does not
+hold another workflow's lock. Direct
 filesystem edits by other processes cannot be made transactional by this API.
 
-Stage and atomically replace the file while preserving appropriate file modes.
+Stage and atomically replace the file while preserving its Unix owner/group and
+ordinary permission bits. Linux replacements also retain the access ACL; a
+service unable to preserve ownership refuses the replacement before rename.
 Record caller, workflow, path, request ID, previous/resulting revision and
 recoverable history. Fail closed when required authorization or audit storage
 is unavailable. If the file changed but receipt confirmation failed, report an
@@ -193,14 +202,20 @@ that ID with a different payload is rejected. A revision conflict requires
 rereading and reconciling; it must not turn into an unconditional overwrite.
 
 The shared `workflowfiles` editor owns guarded writes and durable receipts at
-`WORKSPACE_FILE_STATE_DIR`, or under configured `AGENTWORKS_STATE_ROOT`, with
+per-root hashed directories beneath `WORKSPACE_FILE_STATE_DIR`, or under
+configured `AGENTWORKS_STATE_ROOT`, with
 `.<docs-folder>-file-edits/` as the private sibling fallback. Records
 include authenticated user ID/name, connection ID, source, logical root, path,
 request ID, before-content up to 128 KiB and
 both revisions. Prepared records reconcile an interrupted atomic replacement.
 Builder's existing operation audit remains separate; its mounted file writer
 participates in the same serialization lock. Public writes always use the
-file-owning service and therefore support separate service volumes.
+file-owning service and therefore support separate service volumes. Agent and
+workspace services must use the same shared private state directory and service
+identity when both mount the documents. Docker Compose uses a shared state
+volume; rootless/systemd deployments configure matching state roots. Receipts
+are not automatically pruned; operators must retain request outcomes when
+planning audit retention.
 
 ## 4. Server → local through the CLI executor
 
@@ -242,6 +257,9 @@ server and LLM. The CLI accepts requests over its existing outbound connection.
    it has no Server/Local switch. Opening setup keeps server mode active.
 2. Install the CLI, sign in with `devices:connect`, and run
    `agentworks executor connect` with named folder grants.
+   This scope is exclusive and cannot be combined with remote MCP permissions.
+   The executor refuses the home directory, its parents and any shared folder
+   containing its credential config or private state. Share individual projects.
 3. Select the computer and shared folder, review the consequences, then explicitly
    click **Use this folder**. Selection alone does not change the mode. The browser remembers this binding
    for the account, server workspace and current chat only.
@@ -252,6 +270,8 @@ server and LLM. The CLI accepts requests over its existing outbound connection.
 5. The agent uses the existing shell and patch tools against the laptop from chat. MCP connections, skills,
    project/Vault secrets and background agents are excluded from local turns.
    Provider authentication remains available for the selected server model.
+   Returned file contents and command output may be retained in server chat
+   history, accessible through normal administrator and Code review permissions.
 6. Disconnect asks the user to review the restored server file access and features,
    then explicitly choose **Switch to server files**. Connection changes are
    unavailable while a turn is running. Saved configuration and other chats
@@ -260,6 +280,9 @@ server and LLM. The CLI accepts requests over its existing outbound connection.
 Only interactive Code turns receive local tools. Crew, Brain, Vault, schedules,
 messaging turns and unattended agents do not inherit this binding. Native
 server filesystem/terminal/browser tools are disabled for connected turns.
+Retained callbacks check the current turn and selected binding on every call.
+Local sessions refuse synthetic notifications, notification steering and asks
+from other chats; a registration from an earlier turn grants no new authority.
 
 ### Authority and failures
 
