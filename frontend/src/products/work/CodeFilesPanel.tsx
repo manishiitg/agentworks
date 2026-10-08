@@ -22,8 +22,8 @@ function ComputerSetup() {
       <CopyCommand command={`curl -fsSL '${`${base}/api/downloads/cli/install-agentworks.sh`.replace(/'/g, "'\\''")}' | sh -s -- --server ${quoted} --no-login`} />
       <CopyCommand command={`agentworks --config ~/.config/agentworks/executor.json login --server ${quoted} --scopes devices:connect`} />
       <p>Approve the browser sign-in. Replace the path below with your project folder:</p>
-      <CopyCommand command="agentworks --config ~/.config/agentworks/executor.json executor connect --device my-computer --write-folder project=/absolute/path/to/project --shell project" />
-      <p className="text-xs text-muted-foreground">This allows file edits and sandboxed commands such as builds and tests. Omit --shell project to share files without commands; use --folder instead of --write-folder for read-only files. Keep the command running; Ctrl-C disconnects. Folders and permissions are approved on your computer.</p>
+      <CopyCommand command="agentworks --config ~/.config/agentworks/executor.json executor connect --device my-computer --write-folder project=/absolute/path/to/project" />
+      <p className="text-xs text-muted-foreground">This allows file edits and sandboxed commands such as builds and tests. Shell commands are enabled automatically for every shared folder. Use --folder instead of --write-folder to allow inspection without file changes. Keep the command running; Ctrl-C disconnects. Folders and permissions are approved on your computer.</p>
     </div>
   </details>
 }
@@ -56,10 +56,10 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
         }}>
           <option value="">Choose a folder…</option>
           {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
-          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? 'Files and commands' : folder.writable ? 'Can edit' : 'Read only'}</option>))}
+          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? folder.writable ? 'Files and commands' : 'Read-only files and commands' : folder.writable ? 'Can edit' : 'Read only'}</option>))}
         </select>
-        {resource && <p className="text-xs text-muted-foreground">{resource.shell ? 'Shell commands enabled on this computer for the selected folder.' : 'Shell commands disabled. Reconnect the CLI with --write-folder and --shell for this folder alias to enable builds and tests.'}</p>}
-        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. The right side shows only this CLI connection, Costs and Models. Files and granted shell commands are available through the agent in chat. MCP connections, skills, secrets and background agents are disabled in Local mode, including before folder selection. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
+        {resource && <p className="text-xs text-muted-foreground">{resource.shell ? 'Shell commands enabled on this computer for the selected folder.' : 'Update and reconnect your CLI to enable shell commands for this folder.'}</p>}
+        <p className="text-xs text-muted-foreground">This browser remembers the connection for this chat only. The right side shows only this CLI connection, Costs and Models. The agent can inspect files, edit them and run commands within your folder permissions. MCP connections, skills, secrets and background agents are disabled in Local mode, including before folder selection. Other Code chats keep their own file access. Disconnect here to return this chat to server files; Ctrl-C in the CLI stops sharing the computer folder.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>}
     {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}

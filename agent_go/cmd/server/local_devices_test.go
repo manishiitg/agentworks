@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -83,18 +86,23 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatalf("cross-user %v", err)
 	}
 	registrar := &recordingRegistrar{}
-	if err = api.registerLocalDeviceTools(registrar, newProductToolGate(nil), owner, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 4 {
+	if err = api.registerLocalWorkspaceTools(registrar, newProductToolGate(nil), owner, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 2 {
 		t.Fatalf("tools %+v %v", registrar.tools, err)
 	}
-	if _, err = registrar.tools["read_local_file"].exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider"}), map[string]interface{}{"device_id": "laptop", "resource_id": "project", "path": "readme.md"}); err == nil {
-		t.Fatal("conflicting tool owner admitted")
+	for _, definition := range append(workspace.GetShellToolDefinitions(), workspace.GetDiffPatchToolDefinitions()...) {
+		data, _ := json.Marshal(definition.Function.Parameters)
+		var expected map[string]interface{}
+		json.Unmarshal(data, &expected)
+		if !reflect.DeepEqual(expected, registrar.tools[definition.Function.Name].params) {
+			t.Fatalf("local tool changed bridge schema: %s", definition.Function.Name)
+		}
 	}
-	if _, err = registrar.tools["read_local_file"].exec(t.Context(), map[string]interface{}{"device_id": "laptop", "resource_id": "another-folder", "path": "readme.md"}); err == nil {
-		t.Fatal("Code tool escaped its selected folder")
+	if _, err = registrar.tools["execute_shell_command"].exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider"}), map[string]interface{}{"command": "cat readme.md"}); err == nil {
+		t.Fatal("conflicting tool owner admitted")
 	}
 	tokenClaims := writeTestClaims("owner")
 	reg := &recordingRegistrar{}
-	api.registerLocalDeviceTools(reg, newProductToolGate(nil), tokenClaims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"})
+	api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), tokenClaims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"})
 	if len(reg.tools) != 0 {
 		t.Fatal("public MCP received local device tools")
 	}
@@ -192,7 +200,7 @@ func TestLocalDeviceToolsRejectConnectorPrincipals(t *testing.T) {
 			t.Fatalf("connector admitted %+v", claims)
 		}
 		reg := &recordingRegistrar{}
-		if err := api.registerLocalDeviceTools(reg, newProductToolGate(nil), claims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(reg.tools) != 0 {
+		if err := api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), claims, false, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(reg.tools) != 0 {
 			t.Fatalf("connector tool registration %+v %v", reg.tools, err)
 		}
 	}
@@ -205,7 +213,10 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	hello := localfiles.Hello{Version: localfiles.Version, DeviceID: "shell-laptop", Resources: []localfiles.Resource{{ID: "project", Writable: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}}}
+	hello := localfiles.Hello{Version: localfiles.Version, DeviceID: "shell-laptop", Resources: []localfiles.Resource{{ID: "project", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}}}
+	hello.Resources = append(hello.Resources,
+		localfiles.Resource{ID: "reference", Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}}},
+		localfiles.Resource{ID: "older-cli", Writable: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}})
 	if err = conn.WriteJSON(hello); err != nil {
 		t.Fatal(err)
 	}
@@ -216,19 +227,28 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	target := &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: "project"}
 	reg := &recordingRegistrar{}
-	if err = api.registerLocalDeviceTools(reg, newProductToolGate(nil), owner, false, target); err != nil {
+	if err = api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), owner, false, target); err != nil {
 		t.Fatal(err)
 	}
-	tool, ok := reg.tools["execute_local_shell_command"]
+	for _, resource := range []string{"reference", "older-cli"} {
+		inspect := &recordingRegistrar{}
+		if err := api.registerLocalWorkspaceTools(inspect, newProductToolGate(nil), owner, false, &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: resource}); err != nil {
+			t.Fatal(err)
+		}
+		if len(inspect.tools) != 1 || inspect.tools["execute_shell_command"].exec == nil {
+			t.Fatalf("inspection tools for %s: %+v", resource, inspect.tools)
+		}
+	}
+	tool, ok := reg.tools["execute_shell_command"]
 	if !ok {
 		t.Fatal("shell tool missing")
 	}
 	readonly := &recordingRegistrar{}
-	api.registerLocalDeviceTools(readonly, newProductToolGate(nil), owner, true, target)
-	if _, ok := readonly.tools["execute_local_shell_command"]; ok {
+	api.registerLocalWorkspaceTools(readonly, newProductToolGate(nil), owner, true, target)
+	if _, ok := readonly.tools["execute_shell_command"]; ok {
 		t.Fatal("read-only turn received shell")
 	}
-	args := map[string]interface{}{"device_id": "shell-laptop", "resource_id": "project", "path": ".", "command": "npm test", "request_id": "test-command", "timeout_seconds": float64(120)}
+	args := map[string]interface{}{"command": "npm test", "timeout": float64(120), "device_id": "forged-device", "resource_id": "forged-folder", "path": "../escape"}
 	returned := make(chan error, 1)
 	go func() {
 		output, err := tool.exec(t.Context(), args)
@@ -242,10 +262,29 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	if err = conn.ReadJSON(&dispatched); err != nil {
 		t.Fatal(err)
 	}
-	if dispatched.Operation != "shell" || dispatched.Command != "npm test" || dispatched.ResourceID != "project" || dispatched.TimeoutSeconds != 120 || dispatched.Identity.UserID != "owner" || dispatched.Identity.Source != "server_local_executor" {
+	if dispatched.Path != "." || dispatched.RequestID == "" || dispatched.Operation != "shell" || dispatched.Command != "npm test" || dispatched.ResourceID != "project" || dispatched.TimeoutSeconds != 120 || dispatched.Identity.UserID != "owner" || dispatched.Identity.Source != "server_local_executor" {
 		t.Fatalf("not routed to laptop %+v", dispatched)
 	}
 	if err = conn.WriteJSON(localfiles.Response{ID: dispatched.ID, Status: 200, Shell: &localfiles.ShellResult{Stdout: "laptop-result", ExitCode: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-returned; err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		output, err := reg.tools["diff_patch_workspace_file"].exec(t.Context(), map[string]interface{}{"filepath": "one.txt", "diff": "@@ -1 +1 @@\n-old\n+new\n"})
+		if err == nil && !strings.Contains(output, `"applied":true`) {
+			err = errors.New("patch result lost")
+		}
+		returned <- err
+	}()
+	if err = conn.ReadJSON(&dispatched); err != nil {
+		t.Fatal(err)
+	}
+	if dispatched.Operation != "patch" || dispatched.ResourceID != "project" || dispatched.Path != "one.txt" || dispatched.RequestID == "" || dispatched.Identity.UserID != "owner" {
+		t.Fatalf("not routed laptop patch %+v", dispatched)
+	}
+	if err = conn.WriteJSON(localfiles.Response{ID: dispatched.ID, Status: 200, Patches: []wf.WriteReceipt{{Path: "one.txt", Applied: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = <-returned; err != nil {
@@ -257,13 +296,9 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 			t.Fatalf("shell path admitted %s %v", path, err)
 		}
 	}
-	args["timeout_seconds"] = float64(1.5)
+	args["timeout"] = float64(1.5)
 	if _, err = tool.exec(t.Context(), args); err == nil {
 		t.Fatal("fractional timeout admitted")
-	}
-	args["resource_id"] = "another-folder"
-	if _, err = tool.exec(t.Context(), args); err == nil {
-		t.Fatal("shell target escaped chat")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
@@ -281,7 +316,7 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	if cancellation.Operation != "cancel" || cancellation.ID != dispatched.ID {
 		t.Fatalf("no laptop cancellation %+v", cancellation)
 	}
-	if err = <-returned; wf.StatusCode(err) != 504 || !strings.Contains(err.Error(), "never rerun") {
+	if err = <-returned; wf.StatusCode(err) != 504 || !strings.Contains(err.Error(), "inspect local files") {
 		t.Fatalf("cancellation lost uncertain outcome %v", err)
 	}
 }

@@ -33,13 +33,13 @@ func TestCodeLocalFilesDisableServerProductFeaturesAndTools(t *testing.T) {
 	}
 	resolved := &resolvedAgentProfile{Definition: localProfile, CodeLocalFiles: &codeLocalFileTarget{DeviceID: "offline-laptop", ResourceID: "project"}, CodeLocalDisabledTools: blockedTools}
 	gate := newProductToolGate(resolved)
-	for _, tool := range []string{"create_project_schedule", "create_project_trigger", "preview_report", "query_workflow_db", "get_report_link", "google_workspace_cli", "configure_slack_bot", "slack", "list_gmail_connections", "manage_gmail_trigger", "manage_my_mcp_servers", "list_skills", "update_project_skill_selection", "list_secrets", "read_skill", "run_in_background", "delegate", "execute_shell_command", "arbitrary_external_mcp_tool"} {
+	for _, tool := range []string{"create_project_schedule", "create_project_trigger", "preview_report", "query_workflow_db", "get_report_link", "google_workspace_cli", "configure_slack_bot", "slack", "list_gmail_connections", "manage_gmail_trigger", "manage_my_mcp_servers", "list_skills", "update_project_skill_selection", "list_secrets", "read_skill", "run_in_background", "delegate", "list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command", "arbitrary_external_mcp_tool"} {
 		gate.Declare(tool) // Another registration path must not restore it.
 		if gate.Admit(tool) {
 			t.Fatalf("disabled local-mode tool %s was admitted", tool)
 		}
 	}
-	for _, tool := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command", "list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
+	for _, tool := range []string{"execute_shell_command", "diff_patch_workspace_file", "list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
 		gate.Declare(tool)
 		if !gate.Allows(tool) {
 			t.Fatalf("coding tool %s was disabled", tool)

@@ -16,7 +16,10 @@ var safeID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 func ValidID(id string) bool { return safeID.MatchString(id) }
 
 type Resource struct {
-	ID       string         `json:"id"`
+	ID string `json:"id"`
+	// Capabilities distinguish older CLIs. New executors always support shell;
+	// writable folders also support guarded patches. These are not opt-in flags.
+	Patch    bool           `json:"patch,omitempty"`
 	Shell    bool           `json:"shell,omitempty"`
 	Writable bool           `json:"writable"`
 	Guard    wf.FolderGuard `json:"guard"`
@@ -39,9 +42,6 @@ func (h Hello) Validate() error {
 		if err := r.Guard.Validate(); err != nil {
 			return err
 		}
-		if r.Shell && !r.Writable {
-			return fmt.Errorf("shell resource requires a writable folder")
-		}
 		if !r.Writable && len(r.Guard.WritePaths) > 0 {
 			return fmt.Errorf("read-only resource has write grants")
 		}
@@ -63,14 +63,15 @@ type Request struct {
 	RequestID        string          `json:"request_id,omitempty"`
 }
 type Response struct {
-	Shell   *ShellResult     `json:"shell,omitempty"`
-	Code    string           `json:"code,omitempty"`
-	ID      string           `json:"id"`
-	Status  int              `json:"status"`
-	Error   string           `json:"error,omitempty"`
-	File    *wf.File         `json:"file,omitempty"`
-	Entries []wf.Entry       `json:"entries,omitempty"`
-	Receipt *wf.WriteReceipt `json:"receipt,omitempty"`
+	Patches []wf.WriteReceipt `json:"patches,omitempty"`
+	Shell   *ShellResult      `json:"shell,omitempty"`
+	Code    string            `json:"code,omitempty"`
+	ID      string            `json:"id"`
+	Status  int               `json:"status"`
+	Error   string            `json:"error,omitempty"`
+	File    *wf.File          `json:"file,omitempty"`
+	Entries []wf.Entry        `json:"entries,omitempty"`
+	Receipt *wf.WriteReceipt  `json:"receipt,omitempty"`
 }
 
 const DefaultShellTimeout = 60

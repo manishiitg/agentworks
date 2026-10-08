@@ -46,7 +46,7 @@ Implemented now:
   Offline bindings retain these restrictions. Disconnect restores normal Code.
   Other chats and existing server schedules/connections are unchanged.
 
-The executor supports files and explicitly granted laptop shell commands, including builds and tests. Browser tools, laptop workflow routing,
+The executor supports files and laptop shell commands enabled automatically for every shared folder, including builds and tests. Browser tools, laptop workflow routing,
 schedules, device-management panels, public history/restore APIs and retention
 policies are outside this change.
 Before-content history is capped at 128 KiB per write; full revisions are retained.
@@ -214,11 +214,18 @@ flowchart LR
     F -->|Result and durable receipt| A
 ```
 
-The server owns the agent loop and LLM. The CLI lists, reads and writes files
-and executes shell commands under locally approved folder aliases. Enable commands
-with `--write-folder project=/absolute/path/project --shell project`. The website
-agent receives `execute_local_shell_command`, which runs on the laptop through
-the existing outbound connection. File contents and command output reach the server and LLM.
+The server owns the agent loop and LLM. Local Code reuses the existing MCP bridge
+tools and schemas: `execute_shell_command` (`command`, optional `timeout`) and,
+for writable folders, `diff_patch_workspace_file` (`filepath`, `diff`). Only their
+execution target changes. The selected laptop and folder are bound internally;
+the agent does not receive new local file tools or device-selection arguments.
+Reads and listing use shell commands such as `cat`, `sed`, `head` and `ls`.
+
+Shell commands are enabled automatically for every folder shared through the CLI.
+`--folder` uses a read-only filesystem sandbox; `--write-folder` permits file
+changes and patch tools, including builds and tests that write project files.
+No separate shell flag is required. File contents and command output reach the
+server and LLM. The CLI accepts requests over its existing outbound connection.
 
 ### Connection and website experience
 
@@ -233,7 +240,7 @@ the existing outbound connection. File contents and command output reach the ser
    **Models**. The connection panel shows setup, folder permissions, status
    and disconnect. No file editor, terminal, browser, dashboard, automation,
    integrations or general project settings are shown.
-5. The agent uses local file and granted shell tools from chat. MCP connections, skills,
+5. The agent uses the existing shell and patch tools against the laptop from chat. MCP connections, skills,
    project/Vault secrets and background agents are excluded from local turns.
    Provider authentication remains available for the selected server model.
 6. Disconnect restores normal Code mode. Saved configuration and other chats
@@ -246,13 +253,16 @@ server filesystem/terminal/browser tools are disabled for connected turns.
 ### Authority and failures
 
 Every dispatch validates website ownership and live connection authorization.
-The CLI independently checks local grants. Raw file tools apply protected-file
-rules and revision checks. Shell is a separate explicit grant: arbitrary programs
+The CLI independently checks local grants. Patches reuse the existing parser and
+diff application, validate every file before mutation, and apply protected-file
+rules and revision checks. Shell is available for read-only and writable folders.
+Within writable grants, arbitrary programs
 can modify project files, including git metadata, plans or databases. OS sandboxing
 limits filesystem access to folder grants and runtime system/scratch paths and
 enforces `--block` and `--read-only` exclusions. CLI credentials and receipt state
-are denied, and command environments omit login/provider secrets. Shell permission
-requires a writable folder and an editable owner account. A missing sandbox
+are denied, and command environments omit login/provider secrets. Shell execution
+requires an editable owner account; read-only folder grants allow inspection but
+block writes in the OS sandbox. A missing sandbox
 refuses execution; commands never fall back to server execution. Absolute roots
 are omitted from grant metadata; command output can contain local paths.
 
@@ -260,15 +270,18 @@ An offline device retains the binding and restrictions. Ordinary chat can
 continue; local file and shell calls fail without server fallback. Connection controls
 remain available during setup and offline.
 
-Writes require a revision and unique request ID. Private receipts survive CLI
-reconnects and restarts. Retry an uncertain write with its identical request;
-never resend it blindly under a new ID. Shell requests also require a unique
-request ID. Completed results survive reconnects/restarts; an interrupted command
-with an unknown outcome is not executed again automatically. Commands return stdout,
-stderr and exit code, capture at most 1 MiB per stream, default to a 60-second
-timeout and allow at most 300 seconds. Cancellation, disconnect and revocation
-stop active commands and their process groups. Builds/tests run on the laptop;
-typed workflow editing, laptop workflow routing and browser tools remain excluded.
+Patch operations use revision checks and authenticated write receipts. Request
+identities are generated internally, rather than added to the bridge tool schemas.
+Both read-only and writable folders use private command receipt storage outside
+the shared folder. The transport never retries mutations automatically. Completed
+shell results survive reconnects/restarts; an interrupted command with an unknown
+outcome is not executed again under the same request identity. Inspect current
+files before deciding to issue another patch or command after an uncertain result.
+Commands return the existing bridge stdout/stderr/exit-code response, capture at
+most 1 MiB per stream, default to 60 seconds and allow at most 300 seconds.
+Cancellation, disconnect and revocation stop active commands and their process
+groups. Builds/tests run on the laptop; typed workflow editing, laptop workflow
+routing and browser tools remain excluded.
 Linux uses the launcher embedded in the CLI with Landlock; macOS uses sandbox-exec.
 
 The device registry currently lives in one backend process. Multiple instances

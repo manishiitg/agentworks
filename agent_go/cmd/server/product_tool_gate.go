@@ -94,8 +94,9 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 		// boundary so registration cannot restore server capabilities.
 		gate.DenyWhere(func(name string) bool {
 			switch name {
-			case "list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command",
-				"list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification":
+			case "execute_shell_command", "diff_patch_workspace_file":
+				return resolved.CodeLocalFiles == nil
+			case "list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification":
 				return false
 			default:
 				return true

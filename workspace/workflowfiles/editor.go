@@ -369,15 +369,17 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	fingerprintData, _ := json.Marshal(r)
 	fingerprint := Revision(append([]byte(e.rootIdentity), fingerprintData...))
 	key := Revision([]byte(r.Actor+"\x00"+scope+"\x00"+r.RequestID)) + ".json"
-	conn, err := e.db.Conn(ctx)
-	if err != nil {
-		return WriteReceipt{}, err
+	if held, _ := ctx.Value(editorBatchKey{}).(*Editor); held != e {
+		conn, err := e.db.Conn(ctx)
+		if err != nil {
+			return WriteReceipt{}, err
+		}
+		defer conn.Close()
+		if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+			return WriteReceipt{}, err
+		}
+		defer conn.ExecContext(context.Background(), "ROLLBACK")
 	}
-	defer conn.Close()
-	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-		return WriteReceipt{}, err
-	}
-	defer conn.ExecContext(context.Background(), "ROLLBACK")
 	var record editRecord
 	if data, _, readErr := readRegular(e.state, key); readErr != nil {
 		return WriteReceipt{}, readErr
@@ -591,4 +593,38 @@ func ErrorDetails(err error) (string, string) {
 		code = "too_large"
 	}
 	return code, message
+}
+
+// Serialized holds the shared workspace lock across a managed batch. Writes on
+// this editor reuse it; other writers retain their usual revision checks.
+type editorBatchKey struct{}
+
+func (e *Editor) Serialized(ctx context.Context, fn func(context.Context) error) error {
+	conn, err := e.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.Background(), "ROLLBACK")
+	return fn(context.WithValue(ctx, editorBatchKey{}, e))
+}
+
+// RemoveCreatedLocked rolls back a new file in an already serialized batch.
+func (e *Editor) RemoveCreatedLocked(ctx context.Context, p string) error {
+	if held, _ := ctx.Value(editorBatchKey{}).(*Editor); held != e {
+		return fmt.Errorf("batch lock required")
+	}
+	p, err := CleanRelative(p)
+	if err != nil || ProtectedWrite(p) {
+		return fmt.Errorf("invalid rollback path")
+	}
+	parent, err := OpenDirectory(e.root, path.Dir(p), false)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	return parent.Remove(path.Base(p))
 }

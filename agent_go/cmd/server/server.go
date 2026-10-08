@@ -6554,6 +6554,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WORKSPACE TOOLS] Registering %d workspace tools for %s", len(workspaceTools), workspaceToolModeLabel)
 
 			for _, tool := range workspaceTools {
+				// Local mode uses the same definitions with laptop executors registered below.
+				if codeLocalModeTurn(req, resolvedProfile) {
+					continue
+				}
 				if tool.Function == nil {
 					log.Printf("[WORKSPACE TOOLS] Warning: Skipping tool with nil Function")
 					continue
@@ -6850,7 +6854,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
 			if codeLocalFileTurn(req, resolvedProfile) {
-				if err := api.registerLocalDeviceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, req.CodeLocalFiles); err != nil {
+				if err := api.registerLocalWorkspaceTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, req.CodeLocalFiles); err != nil {
 					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
 					return
 				}

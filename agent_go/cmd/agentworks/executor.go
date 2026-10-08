@@ -15,7 +15,7 @@ import (
 
 func executorCommand(o *options) *cobra.Command {
 	var deviceID, stateDir string
-	var folders, writeFolders, blocked, readOnly, shellFolders []string
+	var folders, writeFolders, blocked, readOnly []string
 	root := &cobra.Command{Use: "executor", Short: "Share explicitly selected local folders with server agents"}
 	connect := &cobra.Command{Use: "connect", Args: cobra.NoArgs, Short: "Keep an outbound authenticated file and shell connection open; Ctrl-C disconnects", RunE: func(cmd *cobra.Command, _ []string) error {
 		if !localfiles.ValidID(deviceID) {
@@ -32,13 +32,6 @@ func executorCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		shells := map[string]bool{}
-		for _, alias := range shellFolders {
-			if !localfiles.ValidID(alias) {
-				return errors.New("--shell requires a folder alias")
-			}
-			shells[alias] = true
-		}
 		var grants []localfiles.Grant
 		for _, group := range []struct {
 			values   []string
@@ -53,21 +46,10 @@ func executorCommand(o *options) *cobra.Command {
 				if group.writable {
 					guard.WritePaths = []string{"."}
 				}
-				grants = append(grants, localfiles.Grant{Resource: localfiles.Resource{ID: alias, Writable: group.writable, Shell: shells[alias], Guard: guard}, Root: folder, State: filepath.Join(stateDir, alias), PrivatePaths: []string{config}})
+				grants = append(grants, localfiles.Grant{Resource: localfiles.Resource{ID: alias, Writable: group.writable, Shell: true, Guard: guard}, Root: folder, State: filepath.Join(stateDir, alias), PrivatePaths: []string{config}})
 			}
 		}
-		for alias := range shells {
-			found := false
-			for _, grant := range grants {
-				if grant.ID == alias && grant.Writable {
-					found = true
-				}
-			}
-			if !found {
-				return fmt.Errorf("--shell %s requires a matching --write-folder", alias)
-			}
-		}
-		if len(shells) > 0 {
+		if len(grants) > 0 {
 			if err := configureLocalShellSandbox(); err != nil {
 				return err
 			}
@@ -107,8 +89,7 @@ func executorCommand(o *options) *cobra.Command {
 	}}
 	connect.Flags().StringVar(&deviceID, "device", "", "Stable device ID, e.g. work-laptop")
 	connect.Flags().StringArrayVar(&folders, "folder", nil, "Read-only folder ALIAS=/absolute/path (repeatable)")
-	connect.Flags().StringArrayVar(&writeFolders, "write-folder", nil, "Writable folder ALIAS=/absolute/path for guarded file edits (repeatable; raw plan writes remain blocked)")
-	connect.Flags().StringArrayVar(&shellFolders, "shell", nil, "Allow sandboxed commands in a writable folder alias (repeatable; broader authority than guarded file edits)")
+	connect.Flags().StringArrayVar(&writeFolders, "write-folder", nil, "Writable folder ALIAS=/absolute/path with file edits and sandboxed shell commands (repeatable)")
 	connect.Flags().StringArrayVar(&blocked, "block", nil, "Blocked relative path on every shared folder (repeatable)")
 	connect.Flags().StringArrayVar(&readOnly, "read-only", nil, "Read-only relative path on every writable folder (repeatable)")
 	connect.Flags().StringVar(&stateDir, "state-dir", "", "Private receipt storage outside all shared folders")

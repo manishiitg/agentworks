@@ -18,8 +18,8 @@ func TestExecutorLocalGrantsCannotBeWidenedByServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	if _, err := os.Stat(filepath.Join(base, "state")); !os.IsNotExist(err) {
-		t.Fatalf("read-only connection created writable state: %v", err)
+	if _, err := os.Stat(filepath.Join(base, "state")); err != nil {
+		t.Fatalf("missing private command receipts: %v", err)
 	}
 	r := Request{ID: "one", ResourceID: "project", Operation: "read", Path: "readme.md"}
 	result := e.Execute(context.Background(), r)

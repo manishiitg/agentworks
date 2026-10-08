@@ -116,6 +116,9 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			continue
 		}
 		timeout := 30 * time.Second
+		if request.Operation == "patch" {
+			timeout = 180 * time.Second
+		}
 		if request.Operation == "shell" && request.ValidateShell() == nil {
 			timeout = time.Duration(request.ShellTimeout()+5) * time.Second
 		}

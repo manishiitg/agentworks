@@ -26,7 +26,7 @@ func shellFixture(t *testing.T) (*Executor, Grant) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	g := Grant{Resource: Resource{ID: "project", Writable: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}, Root: root, State: filepath.Join(base, "state")}
+	g := Grant{Resource: Resource{ID: "project", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}, Root: root, State: filepath.Join(base, "state")}
 	for _, dir := range []string{"blocked", "locked"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
 			t.Fatal(err)
@@ -37,6 +37,9 @@ func shellFixture(t *testing.T) (*Executor, Grant) {
 		t.Fatal(err)
 	}
 	t.Cleanup(e.Close)
+	if !e.Hello.Resources[0].Shell {
+		t.Fatal("writable folder did not enable shell automatically")
+	}
 	return e, g
 }
 func shellRequest(command, id string) Request {
@@ -131,17 +134,37 @@ func TestLocalShellTimeoutCancellationAndBoundedOutput(t *testing.T) {
 		t.Fatalf("output %+v", got)
 	}
 }
-func TestLocalShellRequiresSeparateGrant(t *testing.T) {
-	e, err := Open("laptop", []Grant{{Resource: Resource{ID: "project", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}}, Root: t.TempDir(), State: filepath.Join(t.TempDir(), "state")}})
+func TestLocalShellReadOnlyFoldersCanInspectButCannotWrite(t *testing.T) {
+	capability := security.CurrentSandboxCapability()
+	if !capability.Available || runtime.GOOS == "linux" && capability.Backend != "landlock" {
+		t.Skip("OS sandbox unavailable")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "readme"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e, err := Open("laptop", []Grant{{Resource: Resource{ID: "project", Guard: wf.FolderGuard{ReadPaths: []string{"."}}}, Root: root, State: filepath.Join(t.TempDir(), "state")}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	if got := e.Execute(t.Context(), shellRequest("echo unapproved", "no-grant")); got.Status != 403 {
-		t.Fatalf("shell grant bypass %+v", got)
+	if !e.Hello.Resources[0].Shell || e.Hello.Resources[0].Writable {
+		t.Fatal("incorrect read-only capabilities")
 	}
-	if err := (Hello{Version: Version, DeviceID: "laptop", Resources: []Resource{{ID: "project", Shell: true}}}).Validate(); err == nil {
-		t.Fatal("read-only shell grant admitted")
+	got := e.Execute(t.Context(), shellRequest("cat readme", "inspect"))
+	if got.Status != 200 || got.Shell == nil || got.Shell.Stdout != "original" {
+		t.Fatalf("read-only inspection %+v %+v", got, got.Shell)
+	}
+	got = e.Execute(t.Context(), shellRequest("echo changed > readme", "write-denied"))
+	if got.Status != 200 || got.Shell == nil || got.Shell.ExitCode == 0 {
+		t.Fatalf("read-only command wrote %+v %+v", got, got.Shell)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "readme"))
+	if err != nil || string(data) != "original" {
+		t.Fatalf("file changed %s %v", data, err)
+	}
+	if err := e.Hello.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestLocalShellRejectsInvalidRequests(t *testing.T) {

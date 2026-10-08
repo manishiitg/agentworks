@@ -31,12 +31,22 @@ type Executor struct {
 func Open(deviceID string, grants []Grant) (*Executor, error) {
 	grants = append([]Grant(nil), grants...)
 	for i := range grants {
+		// Local folders always support shell commands; writable controls edits. The advertised
+		// field is protocol capability metadata, not a separate permission.
+		grants[i].Shell = true
+		grants[i].Patch = grants[i].Writable
 		var err error
 		grants[i].Root, err = filepath.Abs(grants[i].Root)
 		if err != nil {
 			return nil, err
 		}
-		if grants[i].Writable {
+		if grants[i].State == "" {
+			grants[i].State, err = wf.DefaultStateDir(grants[i].Root)
+			if err != nil {
+				return nil, err
+			}
+		}
+		{
 			grants[i].State, err = filepath.Abs(grants[i].State)
 			if err != nil {
 				return nil, err
@@ -58,12 +68,7 @@ func Open(deviceID string, grants []Grant) (*Executor, error) {
 			return nil, err
 		}
 		e.roots[g.ID] = root
-		var editor *wf.Editor
-		if g.Writable {
-			editor, err = wf.OpenEditor(g.Root, g.State)
-		} else {
-			editor, err = wf.OpenReadOnlyEditor(g.Root)
-		}
+		editor, err := wf.OpenEditor(g.Root, g.State)
 		if err != nil {
 			e.Close()
 			return nil, err
@@ -74,9 +79,6 @@ func Open(deviceID string, grants []Grant) (*Executor, error) {
 	// Neither audit receipts nor the shared lock database may be visible
 	// through another alias in this same connection.
 	for _, g := range grants {
-		if !g.Writable {
-			continue
-		}
 		state, _ := filepath.EvalSymlinks(g.State)
 		lockState, err := wf.DefaultStateDir(g.Root)
 		if err == nil {
@@ -139,6 +141,8 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 		var receipt wf.WriteReceipt
 		receipt, err = e.editors[g.ID].Write(ctx, wf.WriteRequest{Root: ".", Path: r.Path, Content: r.Content, ExpectedRevision: r.ExpectedRevision, RequestID: r.RequestID, Actor: e.Hello.DeviceID + "/" + g.ID, Identity: r.Identity, Guard: &g.Guard})
 		result.Receipt = &receipt
+	case "patch":
+		result.Patches, err = e.patch(ctx, g, r)
 	case "shell":
 		result.Shell, err = e.shell(ctx, g, r)
 	case "list":

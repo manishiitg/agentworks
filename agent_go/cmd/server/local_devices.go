@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -125,6 +126,9 @@ func restrictCodeLocalFeatures(profile *agentprofiles.Profile) (map[string]bool,
 			profile.ResolvedFeatures[i].PromptExtension = "The right side offers Local CLI connection, Costs and Models. Use list_ui_capabilities before requesting a view."
 		}
 	}
+	// Existing workspace tool names are routed to the laptop by the local registrar.
+	delete(blockedTools, "execute_shell_command")
+	delete(blockedTools, "diff_patch_workspace_file")
 	profile.ToolPolicy.Enabled = withoutCodeLocalValues(profile.ToolPolicy.Enabled, blockedTools)
 	names := make([]string, 0, len(blockedTools))
 	for name := range blockedTools {
@@ -156,7 +160,7 @@ func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
 	if target == nil {
 		return "\nThis Code chat is in Local mode, with no folder selected yet. Only conversation and the Local CLI connection, Costs and Models views are available. Ask the user to connect their CLI and select a folder before file work. MCP connections, skills, secrets, background agents and server file/terminal/browser tools are disabled. Never substitute server files.\n"
 	}
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use list_local_files, read_local_file and write_local_file for the connected files, and execute_local_shell_command for laptop commands when granted with --shell; paths are relative to this folder. Read first for the revision and preserve request_id for identical write retries. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use the existing execute_shell_command for local inspection, reads, writes, builds, tests and git, and diff_patch_workspace_file for edits. These tools are bound to this laptop folder internally and run on the laptop. Paths are relative to its root, or absolute underneath it. Read files with shell commands such as cat, sed or head. No separate local tools or device arguments are needed. Shell is enabled automatically; read-only folder grants remain read-only in the sandbox. The same chat, agent, model, project settings and server runtime remain in use. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
@@ -339,7 +343,7 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	if err != nil {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is unavailable"}
 	}
-	if (request.Operation == "write" || request.Operation == "shell") && !userAccessForClaims(current).CanEdit {
+	if (request.Operation == "write" || request.Operation == "shell" || request.Operation == "patch") && !userAccessForClaims(current).CanEdit {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is read-only"}
 	}
 	value, ok := api.localDevices.Load(claims.UserID + "/" + deviceID)
@@ -360,11 +364,9 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 		device.conn.Close()
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Device connection permission expired or was revoked"}
 	}
-	p, err := wf.CleanRelative(request.Path)
-	if err != nil || wf.Private(p) {
-		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Private or invalid file path"}
-	}
-	request.Path = p
+	patch := request.Operation == "patch"
+	shell := request.Operation == "shell"
+	write := request.Operation == "write"
 	var resource *localfiles.Resource
 	for i := range device.hello.Resources {
 		if device.hello.Resources[i].ID == request.ResourceID {
@@ -372,24 +374,38 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 			break
 		}
 	}
-	shell := request.Operation == "shell"
-	write := request.Operation == "write"
-	if resource == nil || !resource.Guard.Allows(p, write) || write && (!resource.Writable || wf.ProtectedWrite(p)) {
-		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "File is outside device grants or protected"}
+	if resource == nil {
+		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Folder is not shared"}
 	}
-	if shell {
-		if !resource.Shell || !resource.Writable || !resource.Guard.Allows(p, true) {
-			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Shell is not granted in this folder"}
+	if patch {
+		// All diff targets, including absolute local paths and multi-file patches,
+		// are checked independently by the file-owning CLI before any write.
+		if !resource.Writable || !resource.Patch || request.RequestID == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Patch requires a writable folder, current CLI and bounded diff"}
 		}
-		if err := request.ValidateShell(); err != nil {
-			return localfiles.Response{}, &wf.FileError{Status: 400, Message: err.Error()}
+	} else {
+		p, err := wf.CleanRelative(request.Path)
+		if err != nil || wf.Private(p) {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Private or invalid file path"}
 		}
-	}
-	if request.Operation != "read" && request.Operation != "list" && !write && !shell {
-		return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Unsupported device operation"}
-	}
-	if write && (request.RequestID == "" || request.ExpectedRevision == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes) {
-		return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Writes require a revision, request_id and bounded text"}
+		request.Path = p
+		if !resource.Guard.Allows(p, write) || write && (!resource.Writable || wf.ProtectedWrite(p)) {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "File is outside device grants or protected"}
+		}
+		if shell {
+			if !resource.Shell || !resource.Guard.Allows(p, resource.Writable) {
+				return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Shell requires a current CLI and an allowed working directory"}
+			}
+			if err := request.ValidateShell(); err != nil {
+				return localfiles.Response{}, &wf.FileError{Status: 400, Message: err.Error()}
+			}
+		}
+		if request.Operation != "read" && request.Operation != "list" && !write && !shell {
+			return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Unsupported device operation"}
+		}
+		if write && (request.RequestID == "" || request.ExpectedRevision == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes) {
+			return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Writes require a revision, request_id and bounded text"}
+		}
 	}
 	select {
 	case device.slots <- struct{}{}:
@@ -405,8 +421,11 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 		defer cancel()
 	}
 	unknown := "write outcome may be unknown, reconcile with the same request_id"
+	if patch {
+		unknown = "patch outcome may be unknown; reconnect and inspect files before issuing another patch"
+	}
 	if shell {
-		unknown = "command outcome may be unknown; reconnect and check the same request_id, never rerun automatically"
+		unknown = "command outcome may be unknown; reconnect and inspect local files before issuing another command"
 	}
 	reply := make(chan localfiles.Response, 1)
 	device.pendingMu.Lock()
@@ -430,7 +449,7 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	case <-device.done:
 		return localfiles.Response{}, &wf.FileError{Status: 503, Message: "Device disconnected; " + unknown}
 	case <-ctx.Done():
-		if shell {
+		if shell || patch {
 			device.writeMu.Lock()
 			device.conn.SetWriteDeadline(time.Now().Add(time.Second))
 			cancelErr := device.conn.WriteJSON(localfiles.Request{ID: request.ID, Operation: "cancel"})
@@ -451,125 +470,109 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
 }
-func (api *StreamingAPI) registerLocalDeviceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, target *codeLocalFileTarget) error {
+
+// Reuse the bridge's canonical names and schemas; only the execution target changes.
+func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
 		return nil
 	}
 	selected := *target
-	writable, shellGranted := false, false
+	patchSupported, shellSupported := false, false
 	for _, hello := range api.localDeviceList(claims) {
 		if hello.DeviceID == selected.DeviceID {
 			for _, resource := range hello.Resources {
 				if resource.ID == selected.ResourceID {
-					writable = resource.Writable
-					shellGranted = resource.Shell
+					patchSupported, shellSupported = resource.Writable && resource.Patch, resource.Shell
 				}
 			}
 		}
 	}
-	for _, name := range []string{"list_local_devices", "list_local_files", "read_local_file", "write_local_file", "execute_local_shell_command"} {
-		tool := name
-		if tool == "write_local_file" && (readOnly || !writable || !userAccessForClaims(claims).CanEdit) {
-			continue
+	if readOnly || !userAccessForClaims(claims).CanEdit {
+		return nil
+	}
+	tools := workspace.GetShellToolDefinitions()
+	if !shellSupported {
+		tools = nil
+	}
+	if patchSupported {
+		tools = append(tools, workspace.GetDiffPatchToolDefinitions()...)
+	}
+	for _, definition := range tools {
+		tool := definition.Function.Name
+		encoded, err := json.Marshal(definition.Function.Parameters)
+		if err != nil {
+			return err
 		}
-		if tool == "execute_local_shell_command" && (readOnly || !shellGranted || !writable || !userAccessForClaims(claims).CanEdit) {
-			continue
+		var params map[string]interface{}
+		if err = json.Unmarshal(encoded, &params); err != nil {
+			return err
 		}
-		props := map[string]interface{}{}
-		required := []string{}
-		description := "List your connected laptop executors and named folders. Files stay local; the agent and LLM run on this server."
-		if tool != "list_local_devices" {
-			description = "Access a file in an explicitly shared local folder. Paths are relative to the folder alias. Offline devices fail without a server-file fallback."
-			for _, field := range []string{"device_id", "resource_id", "path"} {
-				props[field] = map[string]interface{}{"type": "string"}
-				required = append(required, field)
-			}
+		description := "Apply a diff patch to files in the selected laptop folder. Uses the existing unified diff and multi-file Begin Patch formats. filepath is required for a unified diff and optional when Begin Patch headers identify the files. All paths and hunks are checked before writing; edits follow the locally approved folder guards and protected-file rules."
+		if tool == "execute_shell_command" {
+			description = "Execute a shell command on the selected laptop with sh -c and return stdout, stderr and exit code. Read/list files with cat, sed, head or ls; run builds, tests, git and other commands within the locally approved folder permissions. Read-only folders allow inspection but block writes. timeout defaults to 60 seconds and is limited to 300. Use $TMPDIR for private scratch; the command environment does not include laptop login/provider secrets."
 		}
-		description += fmt.Sprintf(" This Code uses only device_id=%q, resource_id=%q.", selected.DeviceID, selected.ResourceID)
-		if tool == "write_local_file" {
-			description += " Read first for expected_revision (missing for new files). Each write needs a unique request_id; identical retries return its receipt. Plans, databases and private files are protected."
-			for _, field := range []string{"content", "expected_revision", "request_id"} {
-				props[field] = map[string]interface{}{"type": "string"}
-				required = append(required, field)
-			}
-		}
-		if tool == "execute_local_shell_command" {
-			description = "Run a sandboxed shell command on the selected laptop, not this server. path is the relative working directory (use . for the root). Use for builds, tests, git and other project commands. Explicit blocked/read-only paths remain enforced. Commands have broader project-file authority than raw file edits. Output is bounded; timeout_seconds defaults to 60 and is at most 300. Use a unique request_id; identical retries return a saved result, and an uncertain outcome must never be rerun automatically."
-			props["command"] = map[string]interface{}{"type": "string", "minLength": 1, "maxLength": localfiles.MaxShellCommandBytes}
-			props["request_id"] = map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128}
-			props["timeout_seconds"] = map[string]interface{}{"type": "integer", "minimum": 1, "maximum": localfiles.MaxShellTimeout}
-			required = append(required, "command", "request_id")
-		}
-		// A live local grant is the explicit capability declaration. External token
-		// sessions cannot receive it, and the gate's deny overlays still apply.
+		description += " The selected computer/folder is bound internally. The folder root is the command working directory; relative paths start there and absolute paths must stay underneath the grants. Never use server files as a fallback."
 		gate.Declare(tool)
-		registrationTimeout := 40 * time.Second
-		if tool == "execute_local_shell_command" {
-			registrationTimeout = time.Duration(localfiles.MaxShellTimeout+15) * time.Second
-		}
-		err := registrar.RegisterCustomToolWithTimeout(tool, description, map[string]interface{}{"type": "object", "properties": props, "required": required, "additionalProperties": false}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		err = registrar.RegisterCustomToolWithTimeout(tool, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller := GetUserFromContext(ctx)
 			if caller == nil {
 				caller = claims
 			}
 			if !websiteDeviceClaims(caller) || caller.UserID != claims.UserID {
-				return "", errors.New("local device owner mismatch")
+				return "", errors.New("local workspace owner mismatch")
 			}
-			var result any
-			if tool == "list_local_devices" {
-				devices := []localfiles.Hello{}
-				for _, hello := range api.localDeviceList(caller) {
-					if hello.DeviceID != selected.DeviceID {
-						continue
-					}
-					for _, resource := range hello.Resources {
-						if resource.ID == selected.ResourceID {
-							hello.Resources = []localfiles.Resource{resource}
-							devices = append(devices, hello)
-							break
+			request := localfiles.Request{ResourceID: selected.ResourceID, RequestID: uuid.NewString()}
+			timeout := 180 * time.Second
+			if tool == "execute_shell_command" {
+				request.Operation = "shell"
+				request.Path = "."
+				request.Command = externalArg(args, "command")
+				if raw, ok := args["timeout"]; ok {
+					number, ok := raw.(float64)
+					if !ok {
+						if integer, isInt := raw.(int); isInt {
+							number, ok = float64(integer), true
 						}
 					}
-				}
-				result = map[string]any{"devices": devices}
-			} else {
-				if externalArg(args, "device_id") != selected.DeviceID || externalArg(args, "resource_id") != selected.ResourceID {
-					return "", errors.New("file target differs from this Code's selected computer folder")
-				}
-				operation := map[string]string{"list_local_files": "list", "read_local_file": "read", "write_local_file": "write", "execute_local_shell_command": "shell"}[tool]
-				request := localfiles.Request{ResourceID: externalArg(args, "resource_id"), Operation: operation, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id")}
-				timeout := 35 * time.Second
-				if operation == "shell" {
-					request.Command = externalArg(args, "command")
-					if raw, ok := args["timeout_seconds"]; ok {
-						number, ok := raw.(float64)
-						if !ok {
-							if integer, isInt := raw.(int); isInt {
-								number, ok = float64(integer), true
-							}
-						}
-						if !ok || number < 1 || number > localfiles.MaxShellTimeout || number != float64(int(number)) {
-							return "", errors.New("timeout_seconds must be an integer between 1 and 300")
-						}
-						request.TimeoutSeconds = int(number)
+					if !ok || number < 1 || number > localfiles.MaxShellTimeout || number != float64(int(number)) {
+						return "", errors.New("timeout must be an integer between 1 and 300")
 					}
-					if err := request.ValidateShell(); err != nil {
-						return "", err
-					}
-					timeout = time.Duration(request.ShellTimeout()+10) * time.Second
+					request.TimeoutSeconds = int(number)
 				}
-				operationCtx, cancel := context.WithTimeout(ctx, timeout)
-				defer cancel()
-				response, err := api.localDeviceCall(operationCtx, caller, externalArg(args, "device_id"), request)
-				if err != nil {
+				if err := request.ValidateShell(); err != nil {
 					return "", err
 				}
-				result = response
+				timeout = time.Duration(request.ShellTimeout()+10) * time.Second
+			} else {
+				request.Operation = "patch"
+				request.Path = externalArg(args, "filepath")
+				request.Content = externalArg(args, "diff")
+				if request.Content == "" {
+					return "", errors.New("diff is required")
+				}
 			}
-			data, err := json.Marshal(result)
+			operationCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			response, err := api.localDeviceCall(operationCtx, caller, selected.DeviceID, request)
+			if err != nil {
+				return "", err
+			}
+			if tool == "execute_shell_command" {
+				if response.Shell == nil {
+					return "", errors.New("local executor returned no command result")
+				}
+				result := response.Shell
+				return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut})
+			}
+			files := []map[string]interface{}{}
+			for _, receipt := range response.Patches {
+				files = append(files, map[string]interface{}{"filepath": receipt.Path, "created": receipt.PreviousRevision == "missing"})
+			}
+			data, err := json.Marshal(map[string]interface{}{"data": map[string]interface{}{"applied": true, "files": files}})
 			return string(data), err
-		}, registrationTimeout, "local_files")
+		}, time.Duration(localfiles.MaxShellTimeout+15)*time.Second, "workspace_advanced")
 		if err != nil {
-			return fmt.Errorf("register %s: %w", tool, err)
+			return fmt.Errorf("register local workspace tool %s: %w", tool, err)
 		}
 	}
 	return nil

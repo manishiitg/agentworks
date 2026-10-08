@@ -25,12 +25,12 @@ type shellRecord struct {
 	Result      *ShellResult `json:"result,omitempty"`
 }
 
-// Shell permission is distinct from raw-file permission: arbitrary programs can
+// Local folders support shell commands: arbitrary programs can
 // edit project files (including git metadata and databases). The OS sandbox
 // carries explicit folder exclusions; it is never replaced by command parsing.
 func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult, error) {
-	if !g.Shell || !g.Writable {
-		return nil, &wf.FileError{Status: 403, Message: "shell commands are not granted; reconnect with --write-folder and --shell for this alias"}
+	if !g.Shell {
+		return nil, &wf.FileError{Status: 403, Message: "update and reconnect the CLI to enable shell commands"}
 	}
 	if err := r.ValidateShell(); err != nil {
 		return nil, &wf.FileError{Status: 400, Message: err.Error()}
@@ -39,8 +39,8 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if err != nil {
 		return nil, &wf.FileError{Status: 400, Message: "invalid shell working directory"}
 	}
-	if wf.Private(p) || !g.Guard.Allows(p, true) {
-		return nil, &wf.FileError{Status: 403, Message: "shell working directory is outside writable grants"}
+	if wf.Private(p) || !g.Guard.Allows(p, g.Writable) {
+		return nil, &wf.FileError{Status: 403, Message: "shell working directory is outside folder grants"}
 	}
 	dir, err := wf.OpenDirectory(e.roots[g.ID], p, false)
 	if err != nil {

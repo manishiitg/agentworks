@@ -735,15 +735,15 @@ agentworks --config /absolute/path/private/executor.json executor connect \
   --device work-laptop \
   --folder reference=/absolute/path/reference \
   --write-folder project=/absolute/path/project \
-  --shell project \
   --read-only generated --block secrets
 ```
 
-`--folder` grants reads only. `--write-folder` allows guarded raw file writes;
-protected plans/configuration/database/private paths remain blocked in those tools.
-`--shell project` additionally authorizes commands in the writable `project` alias,
-including builds, tests, git and package installation. Shell programs have broader
-project-file authority than raw writes; use `--block` and `--read-only` for paths
+`--folder` shares a read-only folder; shell commands can inspect its files but
+cannot modify them. `--write-folder` also permits edits and the existing patch
+tool; protected plans/configuration/database/private paths remain blocked in patches.
+Every shared folder automatically enables shell commands; no separate flag is
+required. Writable folders support builds, tests, git and package installation.
+Shell programs have broader project-file authority than patches; use `--block` and `--read-only` for paths
 commands must not access or modify. CLI credentials and receipt state stay denied.
 Commands use the filesystem sandbox and a sanitized environment; if the sandbox
 cannot enforce the grants, execution fails. Linux uses the launcher embedded in
@@ -752,8 +752,9 @@ before a command runs, and nested exclusions require supported user/mount namesp
 `--read-only` accept repeatable relative paths and apply to each shared folder.
 Aliases and relative grants are sent to the server; absolute roots are omitted
 from grant metadata (shell output may contain local paths). `--state-dir` can select private durable receipt storage, which must be
-outside every shared folder. Read-only folders require no writable state. Writable folders also need a writable private sibling
-`.<folder>-file-edits/` for a shared serialization lock; a read-only grant never
+outside every shared folder. Both read-only and writable folders need private
+receipt storage and a writable private sibling `.<folder>-file-edits/` for a
+shared serialization lock; a read-only grant never
 writes inside the shared folder. Default receipt storage is beside the CLI config in
 `executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
 
@@ -768,7 +769,7 @@ The chat, agent and selected model continue running on the server.
 The right side shows only **Local CLI connection**, **Costs and usage**, and
 **Models**. The connection panel provides CLI setup, folder selection, status
 and disconnect. There is no local file browser/editor; ask the agent in chat
-to read/edit the shared files or run commands when the selected alias allows shell execution.
+to read/edit the shared files or run commands within the selected folder’s permissions.
 
 Local mode applies a separate minimal tool policy even before a folder is selected.
 The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
@@ -780,26 +781,28 @@ this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
 Every file action validates live ownership, authorization and folder grants.
 Changing the selected folder or permissions refreshes retained tools between
 turns. Offline bindings retain their restrictions: chat can continue, but local
-file and shell operations fail without server fallback. Writes retain revision checks,
-request IDs and durable receipts for identical retries.
+file and shell operations fail without server fallback. Patches retain revision checks and authenticated receipts. Request identities
+are generated internally; the transport never automatically retries mutations.
 
 Local tools are available only to interactive **Code** chats. Crew, Brain, Vault,
 schedules and connector turns do not acquire them. The CLI runs laptop builds/tests
-when shell is granted. Browser tools remain disabled. File contents and command
+within writable folder grants. Browser tools remain disabled. File contents and command
 output reach the server and LLM; output may include absolute local paths.
 Provider credentials needed by the selected server model remain available.
 
-In a Code chat with a local file connection selected, the server agent receives `list_local_devices`,
-`list_local_files`, `read_local_file` and, for writable accounts/turns,
-`write_local_file`. A writable alias with `--shell` also receives
-`execute_local_shell_command`, accepting `command`, relative working-directory
-`path` (`.` for the root), `request_id` and optional `timeout_seconds`.
-Commands default to 60 seconds, allow up to 300, and capture up to 1 MiB per output
-stream. Cancellation and connection loss terminate active command process groups.
-Specify `device_id`, `resource_id` (folder alias) and relative
-`path`; writes additionally require `content`, `expected_revision` and
-`request_id`. File contents read by the agent reach the server and its LLM provider.
-Public MCP connections and shared bot-route identities do not receive these tools.
+Local Code reuses the existing MCP bridge names and schemas:
+`execute_shell_command` accepts `command` and optional `timeout`;
+`diff_patch_workspace_file` accepts `filepath` and `diff` for writable folders.
+The selected laptop/folder is bound internally. No new local read/list/write
+agent tools, device IDs or request IDs are added to the tool interface. Read and
+list files with shell commands such as `cat`, `sed`, `head` and `ls`. Commands
+start at the selected folder root; absolute paths must stay within its grants.
+Patches support the existing unified diff and multi-file `*** Begin Patch`
+formats, reuse the existing parser/application, and check all file paths/hunks
+before writing. Commands default to 60 seconds, allow up to 300, and capture up
+to 1 MiB per output stream. Cancellation and connection loss terminate active
+command process groups. Public MCP and bot-route identities do not receive this
+laptop execution binding. Read-only accounts/turns do not receive mutating tools.
 
 The website backend exposes owner-authenticated `GET /api/devices` for connection
 selection/status. File operations are available to the local-connected Code
@@ -808,8 +811,8 @@ agent through its scoped tools; there is no separate website file editor API.
 Ctrl-C stops sharing. Network loss or laptop sleep makes the device unavailable;
 there is no fallback to server files. The CLI reconnects with backoff and renewed
 credentials. Duplicate live device IDs are refused. Pending requests fail on
-disconnect, and write outcomes may be uncertain: reconnect, reuse the identical
-write request ID/payload to reconcile its receipt, then reread current content.
+disconnect, and mutation outcomes may be uncertain: reconnect and inspect current
+files before deciding whether another patch or command is needed.
 Shell requests save durable results: an identical completed request returns its
 result without rerunning. An interrupted request with an unknown result is refused;
 inspect local state before starting another command. Revocation cancels active
