@@ -213,6 +213,9 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	visited := 0
 	var scannedBytes int64
 	truncated := false
+	depthLimited := false
+	searchedFiles := 0
+	queryLower := strings.ToLower(req.Query)
 	err := fs.WalkDir(root.FS(), p, func(name string, d fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -243,7 +246,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		if strings.Count(rel, "/") >= req.Depth {
 			if d.IsDir() {
-				truncated = true
+				depthLimited = true
 				return fs.SkipDir
 			}
 			return nil
@@ -261,7 +264,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		if req.Operation == "list" {
 			all = append(all, entry)
-		} else if st.Mode().IsRegular() && st.Size() <= wf.MaxFileBytes {
+		} else if strings.Contains(strings.ToLower(rel), queryLower) {
+			// A search also finds files and folders by name, so "components"
+			// finds src/components, not only text inside files.
+			all = append(all, entry)
+		}
+		if req.Operation == "search" && st.Mode().IsRegular() && st.Size() <= wf.MaxFileBytes {
+			searchedFiles++
 			scannedBytes += st.Size()
 			if scannedBytes > 64<<20 {
 				truncated = true
@@ -299,9 +308,15 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	}
 	start := min(req.Offset, len(all))
 	end := min(start+req.Limit, len(all))
-	result := wf.Result{File: wf.File{Path: p, Exists: true}, Entries: all[start:end], Truncated: truncated}
+	result := wf.Result{File: wf.File{Path: p, Exists: true}, Entries: all[start:end], Truncated: truncated, DepthLimited: depthLimited, Searched: searchedFiles}
 	if len(all) > end {
 		result.NextOffset = end
+	}
+	if depthLimited && req.Operation == "search" {
+		result.Note = fmt.Sprintf("Folders deeper than depth %d were not searched; raise depth (max 8) or search a subfolder with path.", req.Depth)
+	}
+	if len(result.Entries) == 0 && req.Operation == "search" {
+		result.Note = strings.TrimSpace(fmt.Sprintf("No file name or text under %q contains %q (searched %d files at depth %d). %s", p, req.Query, searchedFiles, req.Depth, result.Note))
 	}
 	return result, nil
 }

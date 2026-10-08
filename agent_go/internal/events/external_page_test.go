@@ -2,7 +2,10 @@ package events
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	pkgevents "github.com/manishiitg/mcpagent/events"
 )
 
 func TestForwardEventPageBoundsInitialPageAndMaintainsFilteredCursor(t *testing.T) {
@@ -59,5 +62,46 @@ func TestForwardEventPageCapsStructuralEvents(t *testing.T) {
 	page := store.GetForwardEventPage("s", 0, 5000)
 	if len(page.Events) != 200 || page.Events[0].ID != "1" || !page.HasMore || page.LastProcessedIndex != 200 {
 		t.Fatalf("page not bounded: %+v", page)
+	}
+}
+
+// MCP feedback 2026-10-08: run_status pages were 400-600 KB because every event
+// carries its full tool output and the limit counted events. A page must stop
+// at its size budget and continue from the last event it returned.
+func TestForwardEventPageStopsAtItsSizeBudgetAndContinues(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	store.InitializeSession("s", 0)
+	big := strings.Repeat("x", 3000)
+	rows := []Event{}
+	for i := 0; i < 6; i++ {
+		rows = append(rows, Event{ID: fmt.Sprint(i), Type: "user_message", Data: &pkgevents.AgentEvent{Data: &pkgevents.UserMessageEvent{Content: big}}})
+	}
+	store.events["s"] = rows
+	first := store.GetForwardEventPageBudget("s", -1, 50, 7000)
+	if len(first.Events) != 2 || !first.HasMore || first.LastProcessedIndex != 1 {
+		t.Fatalf("first page = %d events, more=%v, last=%d; want 2 events within the budget, more to come, last index 1", len(first.Events), first.HasMore, first.LastProcessedIndex)
+	}
+	rest := store.GetForwardEventPageBudget("s", first.LastProcessedIndex, 50, 0)
+	if len(rest.Events) != 4 || rest.Events[0].ID != "2" {
+		t.Fatalf("continuing returned %d events starting at %q, want the remaining 4 from id 2", len(rest.Events), rest.Events[0].ID)
+	}
+}
+
+func TestLatestAnswerPrefersTheMainReplyAndIgnoresOlderTurns(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	store.InitializeSession("s", 0)
+	reply := func(typ, text string) Event {
+		return Event{Type: typ, Data: &pkgevents.AgentEvent{Data: &pkgevents.UserMessageEvent{Content: text}}}
+	}
+	store.events["s"] = []Event{reply("unified_completion", "first answer")}
+	after := store.LastIndex("s")
+	if _, ok := store.LatestAnswer("s", after); ok {
+		t.Fatal("an answer from before the turn started was returned")
+	}
+	store.events["s"] = append(store.events["s"], reply("llm_generation_end", "second answer"), reply("background_agent_completed", "a background agent finished"))
+	if got, _ := store.LatestAnswer("s", after); got != "second answer" {
+		t.Fatalf("LatestAnswer = %q, want the main reply, not the background agent's", got)
 	}
 }

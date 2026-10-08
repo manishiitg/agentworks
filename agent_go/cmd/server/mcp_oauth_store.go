@@ -216,9 +216,31 @@ func (s *mcpOAuthStore) Request(ctx context.Context, raw string) (mcpOAuthReques
 }
 
 func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims, approve bool, selected ...[]string) (mcpOAuthRequest, string, error) {
+	return s.DecideScoped(ctx, raw, user, approve, false, selected...)
+}
+
+// mcpOAuthReadScopes are the scopes a read-only connection may keep.
+var mcpOAuthReadScopes = map[string]bool{"workflows:read": true, "files:read": true, "crews:read": true, "knowledgebase:read": true}
+
+// DecideScoped is Decide with an optional read-only choice by the person
+// approving: the connection keeps only the read scopes it asked for, so a
+// client can be handed to a reporting agent that cannot run, write or manage.
+func (s *mcpOAuthStore) DecideScoped(ctx context.Context, raw string, user *UserClaims, approve, readOnly bool, selected ...[]string) (mcpOAuthRequest, string, error) {
 	req, err := s.Request(ctx, raw)
 	if err != nil {
 		return req, "", err
+	}
+	if approve && readOnly {
+		kept := []string{}
+		for _, scope := range req.Scopes {
+			if mcpOAuthReadScopes[scope] {
+				kept = append(kept, scope)
+			}
+		}
+		if len(kept) == 0 {
+			return req, "", &mcpOAuthRefusal{errors.New("this app asked only for access that is not read-only")}
+		}
+		req.Scopes = kept
 	}
 	var workflowIDs []string
 	if len(selected) > 0 {

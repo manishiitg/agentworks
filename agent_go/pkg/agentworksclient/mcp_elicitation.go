@@ -32,6 +32,15 @@ type FunctionElicitationHost struct {
 	AllowLegacySession bool
 }
 
+// elicitationFamily is one kind of pending question the client may be asked:
+// the tool that reads it, the tool that answers it, and which argument names
+// the call, operation or session the question belongs to.
+type elicitationFamily struct {
+	get, reply string
+	idField    string // call_id, operation_id or session_id
+	workflow   bool   // the tools are workflow-scoped
+}
+
 type functionElicitationState struct {
 	Target     string `json:"target"`
 	CallID     string `json:"call_id"`
@@ -39,26 +48,84 @@ type functionElicitationState struct {
 	WorkflowID string `json:"workflow_id,omitempty"`
 }
 
+// functionCallStatus reads a status response from any family. Function calls
+// name a question request_id/message; Builder and Run chats name it
+// unique_id/message_for_user.
 type functionCallStatus struct {
-	CallID        string `json:"call_id"`
-	CanReply      *bool  `json:"can_reply,omitempty"`
-	PendingInputs []struct {
-		RequestID     string   `json:"request_id"`
-		Message       string   `json:"message"`
-		Options       []string `json:"options"`
-		AllowFeedback bool     `json:"allow_feedback"`
-	} `json:"pending_inputs"`
+	CallID      string `json:"call_id"`
+	OperationID string `json:"operation_id"`
+	SessionID   string `json:"session_id"`
+	CanReply    *bool  `json:"can_reply,omitempty"`
+	// Pending is every pending question, whichever names it used.
+	PendingInputs []pendingInput `json:"pending_inputs"`
 }
 
-func functionElicitationTools(target string) (get, reply string) {
+type pendingInput struct {
+	RequestID      string   `json:"request_id"`
+	UniqueID       string   `json:"unique_id"`
+	Message        string   `json:"message"`
+	MessageForUser string   `json:"message_for_user"`
+	Options        []string `json:"options"`
+	AllowFeedback  bool     `json:"allow_feedback"`
+}
+
+func (p pendingInput) id() string {
+	if p.RequestID != "" {
+		return p.RequestID
+	}
+	return p.UniqueID
+}
+
+func (p pendingInput) text() string {
+	if strings.TrimSpace(p.Message) != "" {
+		return p.Message
+	}
+	return p.MessageForUser
+}
+
+// id is the call, operation or session ID the family's tools take.
+func (s functionCallStatus) idFor(f elicitationFamily) string {
+	switch f.idField {
+	case "operation_id":
+		return s.OperationID
+	case "session_id":
+		return s.SessionID
+	}
+	return s.CallID
+}
+
+func elicitationFamilyFor(target string) (elicitationFamily, bool) {
 	switch target {
 	case "ask_crew", "call_crew_function", "get_crew_function_call":
-		return "get_crew_function_call", "reply_crew_function_call"
+		return elicitationFamily{get: "get_crew_function_call", reply: "reply_crew_function_call", idField: "call_id"}, true
 	case "call_workflow_function", "get_workflow_function_call":
-		return "get_workflow_function_call", "reply_workflow_function_call"
-	default:
-		return "", ""
+		return elicitationFamily{get: "get_workflow_function_call", reply: "reply_workflow_function_call", idField: "call_id", workflow: true}, true
+	case "builder_status":
+		return elicitationFamily{get: "builder_status", reply: "builder_reply_input", idField: "operation_id", workflow: true}, true
+	case "chat", "run_status":
+		return elicitationFamily{get: "run_status", reply: "run_reply_input", idField: "session_id", workflow: true}, true
 	}
+	return elicitationFamily{}, false
+}
+
+// pollArgs and replyArgs build the arguments of the family's tools.
+func (f elicitationFamily) pollArgs(state functionElicitationState) map[string]any {
+	args := map[string]any{f.idField: state.CallID}
+	if f.workflow {
+		args["workflow_id"] = state.WorkflowID
+	}
+	if f.get == "run_status" {
+		args["compact"] = true
+	}
+	return args
+}
+
+func (f elicitationFamily) replyArgs(state functionElicitationState, answer string) map[string]any {
+	args := f.pollArgs(state)
+	delete(args, "compact")
+	args["request_id"] = state.RequestID
+	args["response"] = answer
+	return args
 }
 
 // ClientCanElicit reports whether this request's client accepts form
@@ -82,12 +149,12 @@ func (h FunctionElicitationHost) ClientCanElicit(ctx context.Context) bool {
 // answerable, non-sensitive question in a successful function-call result,
 // or nil to return the ordinary result.
 func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string, args map[string]any, raw json.RawMessage) *mcp.CallToolResult {
-	get, reply := functionElicitationTools(target)
-	if get == "" || !h.ClientCanElicit(ctx) || !h.Available(get) || !h.Available(reply) {
+	family, ok := elicitationFamilyFor(target)
+	if !ok || !h.ClientCanElicit(ctx) || !h.Available(family.get) || !h.Available(family.reply) {
 		return nil
 	}
 	var status functionCallStatus
-	if err := json.Unmarshal(raw, &status); err != nil || status.CallID == "" || len(status.PendingInputs) == 0 {
+	if err := json.Unmarshal(raw, &status); err != nil || status.idFor(family) == "" || len(status.PendingInputs) == 0 {
 		return nil
 	}
 	// A workflow reader may see questions but cannot answer them.
@@ -95,11 +162,11 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 		return nil
 	}
 	input := status.PendingInputs[0]
-	if input.RequestID == "" || strings.TrimSpace(input.Message) == "" || SecretQuestion(input.Message) {
+	if input.id() == "" || strings.TrimSpace(input.text()) == "" || SecretQuestion(input.text()) {
 		return nil
 	}
-	state := functionElicitationState{Target: target, CallID: status.CallID, RequestID: input.RequestID}
-	if get == "get_workflow_function_call" {
+	state := functionElicitationState{Target: target, CallID: status.idFor(family), RequestID: input.id()}
+	if family.workflow {
 		state.WorkflowID, _ = args["workflow_id"].(string)
 		if state.WorkflowID == "" {
 			return nil
@@ -110,7 +177,7 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 		return nil
 	}
 	answer := map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}
-	message := input.Message
+	message := input.text()
 	if len(input.Options) > 0 {
 		if input.AllowFeedback {
 			message += " Suggested choices: " + strings.Join(input.Options, ", ") + ". You may also enter another answer."
@@ -118,7 +185,7 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 			answer["enum"] = input.Options
 		}
 	}
-	return server.NewInputRequestBuilder(string(encoded)).Elicit(input.RequestID, mcp.ElicitationParams{
+	return server.NewInputRequestBuilder(string(encoded)).Elicit(input.id(), mcp.ElicitationParams{
 		Mode: mcp.ElicitationModeForm, Message: message,
 		RequestedSchema: map[string]any{"type": "object", "properties": map[string]any{"response": answer},
 			"required": []string{"response"}, "additionalProperties": false},
@@ -137,16 +204,18 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 	if err := json.Unmarshal([]byte(request.Params.RequestState), &state); err != nil || state.Target != target || state.CallID == "" || state.RequestID == "" {
 		return mcp.NewToolResultError("invalid_request_state: the elicitation does not match this tool call")
 	}
-	get, reply := functionElicitationTools(target)
-	if get == "" || !h.Available(get) {
+	family, known := elicitationFamilyFor(target)
+	if !known || !h.Available(family.get) {
 		return mcp.NewToolResultError("insufficient_scope: function-call polling is unavailable")
 	}
-	if strings.HasPrefix(target, "get_") {
-		if callID, _ := args["call_id"].(string); callID != state.CallID {
-			return mcp.NewToolResultError("invalid_request_state: call_id changed during elicitation")
+	// A retried poll must name the same call, operation or session; a retried
+	// chat has no such argument yet (its session was created by the first call).
+	if strings.HasPrefix(target, "get_") || target == "builder_status" || target == "run_status" {
+		if id, _ := args[family.idField].(string); id != state.CallID {
+			return mcp.NewToolResultError("invalid_request_state: " + family.idField + " changed during elicitation")
 		}
 	}
-	if get == "get_workflow_function_call" {
+	if family.workflow {
 		workflowID, _ := args["workflow_id"].(string)
 		if workflowID == "" || workflowID != state.WorkflowID {
 			return mcp.NewToolResultError("invalid_request_state: workflow_id changed during elicitation")
@@ -158,8 +227,8 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 	}
 	switch response.Action {
 	case mcp.ElicitationResponseActionAccept:
-		if !h.Available(reply) {
-			return mcp.NewToolResultError("insufficient_scope: answering this function call is unavailable")
+		if !h.Available(family.reply) {
+			return mcp.NewToolResultError("insufficient_scope: answering this question is unavailable")
 		}
 		content, ok := response.Content.(map[string]any)
 		if !ok {
@@ -169,11 +238,7 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 		if !ok || strings.TrimSpace(answer) == "" {
 			return mcp.NewToolResultError("invalid_input_response: response must be nonempty text")
 		}
-		replyArgs := map[string]any{"call_id": state.CallID, "request_id": state.RequestID, "response": answer}
-		if state.WorkflowID != "" {
-			replyArgs["workflow_id"] = state.WorkflowID
-		}
-		if _, failure := h.Call(ctx, reply, replyArgs); failure != nil {
+		if _, failure := h.Call(ctx, family.reply, family.replyArgs(state, answer)); failure != nil {
 			return failure
 		}
 	case mcp.ElicitationResponseActionDecline, mcp.ElicitationResponseActionCancel:
@@ -181,11 +246,7 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 	default:
 		return mcp.NewToolResultError("invalid_input_response: unknown elicitation action")
 	}
-	getArgs := map[string]any{"call_id": state.CallID}
-	if state.WorkflowID != "" {
-		getArgs["workflow_id"] = state.WorkflowID
-	}
-	raw, failure := h.Call(ctx, get, getArgs)
+	raw, failure := h.Call(ctx, family.get, family.pollArgs(state))
 	if failure != nil {
 		return failure
 	}

@@ -302,12 +302,13 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 	var input struct {
 		Decision    string   `json:"decision"`
 		WorkflowIDs []string `json:"workflow_ids"`
+		ReadOnly    bool     `json:"read_only"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Decision != "approve" && input.Decision != "deny" {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	request, code, err := store.Decide(r.Context(), id, claims, input.Decision == "approve", input.WorkflowIDs)
+	request, code, err := store.DecideScoped(r.Context(), id, claims, input.Decision == "approve", input.ReadOnly, input.WorkflowIDs)
 	if err != nil {
 		var refused *mcpOAuthRefusal
 		if errors.As(err, &refused) {

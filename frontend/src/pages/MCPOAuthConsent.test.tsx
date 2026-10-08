@@ -102,3 +102,17 @@ it('explains direct file write consent and the protected plan boundary', async (
     expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
   } finally { await view.cleanup() }
 })
+
+// Owner 2026-10-08: the person approving can hand an app read-only access; the
+// server then keeps only the read scopes (mcp_oauth_test.go).
+it('sends read_only only when the person turns Read only on', async () => {
+  const view = await mount(['workflows:read', 'runs:execute'])
+  try {
+    const toggle = view.host.querySelector('button[role=switch]') as HTMLButtonElement
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    await act(async () => toggle.click())
+    const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    await act(async () => allow.click())
+    expect(api.post).toHaveBeenCalledWith(expect.any(String), { decision: 'approve', workflow_ids: [], read_only: true })
+  } finally { await view.cleanup() }
+})

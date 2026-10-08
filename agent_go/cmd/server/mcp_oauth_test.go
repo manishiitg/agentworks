@@ -185,6 +185,23 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Read only (owner, 2026-10-08): approving as read-only keeps just the read
+	// scopes the app asked for, whatever else it requested.
+	roReq, err := store.SaveRequest(t.Context(), mcpOAuthRequest{ClientID: fresh.ID, RedirectURI: "https://second.example/callback", Resource: resource, State: "state", Scopes: []string{"workflows:read", "runs:execute"}, Challenge: pkce, ExpiresAt: grant.Expires})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, roCode, err := store.DecideScoped(t.Context(), roReq, &UserClaims{UserID: GetDefaultUserID(), Username: "owner"}, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roGrant, _, _, err := store.ExchangeCode(t.Context(), roCode, fresh.ID, "https://second.example/callback", resource, verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(roGrant.Scopes, ",") != "workflows:read" {
+		t.Fatalf("read-only grant kept %v, want only workflows:read", roGrant.Scopes)
+	}
 	listed := request("GET", mcpOAuthConnectionsPath, "", jwt, "")
 	if listed.Code != 200 || !strings.Contains(listed.Body.String(), "Second client") || strings.Contains(listed.Body.String(), freshAccess) {
 		t.Fatal(listed.Code, listed.Body)

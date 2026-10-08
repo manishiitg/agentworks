@@ -134,7 +134,29 @@ func (api *StreamingAPI) externalChat(w http.ResponseWriter, r *http.Request, ar
 	if persisted {
 		query.RestoredConversationSessionID = sessionID
 	}
-	api.forwardRunTurn(w, r, query, sessionID, workflow)
+	wait := time.Duration(externalInt(args, "wait_seconds", 0)) * time.Second
+	if wait <= 0 {
+		api.forwardRunTurn(w, r, query, sessionID, workflow)
+		return
+	}
+	if wait > time.Duration(externalCrewMaxWaitSeconds)*time.Second {
+		wait = time.Duration(externalCrewMaxWaitSeconds) * time.Second
+	}
+	// Wait for the reply (or a question) so a short question needs one call.
+	afterIndex := -1
+	if api.eventStore != nil {
+		afterIndex = api.eventStore.LastIndex(sessionID)
+	}
+	buffered := &externalBufferedResponse{}
+	api.forwardRunTurn(buffered, r, query, sessionID, workflow)
+	var started map[string]interface{}
+	if buffered.status >= 400 || json.Unmarshal(buffered.body.Bytes(), &started) != nil || started == nil {
+		buffered.flushTo(w)
+		return
+	}
+	started["session_id"] = sessionID
+	api.externalWaitForTurn(started, sessionID, afterIndex, wait)
+	externalJSON(w, started)
 }
 
 func (api *StreamingAPI) forwardRunTurn(w http.ResponseWriter, r *http.Request, query QueryRequest, sessionID string, workflow DiscoveredWorkflow) {
@@ -355,8 +377,18 @@ func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	page := storeevents.ForwardEventPage{GetEventsResult: storeevents.GetEventsResult{Events: []storeevents.Event{}, LastProcessedIndex: -1}}
+	compact := externalBoolArg(args, "compact")
 	if api.eventStore != nil {
-		page = api.eventStore.GetForwardEventPage(sessionID, since, limit)
+		// Compact status omits the events; the full page is bounded by size,
+		// not only by count (every event carries its full tool output).
+		if compact {
+			page = api.eventStore.GetForwardEventPage(sessionID, since, 1)
+			page.Events = nil
+			page.LastProcessedIndex = api.eventStore.LastIndex(sessionID)
+			page.HasMore = false
+		} else {
+			page = api.eventStore.GetForwardEventPageBudget(sessionID, since, limit, externalRunPageBytes)
+		}
 	}
 	response := map[string]interface{}{
 		"session_id": sessionID, "events": page.Events, "has_more": page.HasMore,
@@ -395,6 +427,18 @@ func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Reques
 		// A durable transcript alone cannot establish the outcome of the
 		// last turn after a restart. Do not incorrectly report completion.
 		response["session_status"] = "inactive"
+	}
+	// turn_status and, when idle, the newest reply at the top level.
+	api.externalTurnFields(response, sessionID, len(pending) > 0 || (active != nil && active.NeedsUserInput))
+	if compact {
+		delete(response, "events")
+		delete(response, "has_more")
+		delete(response, "cursor_reset")
+		delete(response, "first_available_index")
+		delete(response, "history_available")
+		delete(response, "events_available")
+		delete(response, "runtime_state")
+		response["note"] = "Compact status: no events. Omit compact to page through events."
 	}
 	externalJSON(w, response)
 }
@@ -504,6 +548,15 @@ func (api *StreamingAPI) externalScheduleRuns(w http.ResponseWriter, r *http.Req
 	}
 	if runs == nil {
 		runs = []ScheduleRunEntry{}
+	}
+	if externalBoolArg(args, "compact") {
+		rows := make([]map[string]any, 0, len(runs))
+		for _, run := range runs {
+			rows = append(rows, externalCompactScheduleRun(run))
+		}
+		end := offset + len(rows)
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedule_id": scheduleID, "schedule_deleted": !known, "runs": rows, "total": total, "next_offset": end, "has_more": end < total})
+		return
 	}
 	end := offset + len(runs)
 	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedule_id": scheduleID, "schedule_deleted": !known, "runs": runs, "total": total, "next_offset": end, "has_more": end < total})

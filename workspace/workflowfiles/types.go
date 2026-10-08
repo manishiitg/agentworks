@@ -41,7 +41,14 @@ type Result struct {
 	File
 	Entries    []Entry `json:"entries,omitempty"`
 	NextOffset int     `json:"next_offset,omitempty"`
-	Truncated  bool    `json:"truncated,omitempty"`
+	// Truncated means the scan stopped at a size or count cap, so there may be
+	// more results. DepthLimited means folders deeper than depth were skipped.
+	Truncated    bool `json:"truncated,omitempty"`
+	DepthLimited bool `json:"depth_limited,omitempty"`
+	// Searched counts the files whose contents a search read.
+	Searched int `json:"searched,omitempty"`
+	// Note says what an empty or partial result means.
+	Note string `json:"note,omitempty"`
 }
 
 func Revision(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }
