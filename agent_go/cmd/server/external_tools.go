@@ -645,7 +645,7 @@ func externalFailure(w http.ResponseWriter, err error) {
 	externalError(w, status, code, err.Error())
 }
 func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
-	req := wf.Request{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Query: externalArg(args, "query"), Glob: externalArg(args, "glob"), Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 4)}
+	req := wf.Request{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Query: externalArg(args, "query"), Glob: externalArg(args, "glob"), Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 0)}
 	switch name {
 	case "write_file":
 		api.externalWriteFile(w, r, args, workflow)

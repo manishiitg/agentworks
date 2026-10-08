@@ -194,7 +194,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		return wf.Result{}, &externalUpstreamError{400, "invalid pagination"}
 	}
 	if req.Depth <= 0 {
+		// A search covers the whole workflow unless the caller narrows it; a
+		// listing stays shallow (MCP feedback, 2026-10-08: a plain search at
+		// depth 4 skipped everything below and looked empty).
 		req.Depth = 4
+		if req.Operation == "search" {
+			req.Depth = 8
+		}
 	}
 	if req.Depth > 8 {
 		return wf.Result{}, &externalUpstreamError{400, "depth exceeds 8"}

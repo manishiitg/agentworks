@@ -171,3 +171,43 @@ func TestExternalFileReadsUseSharedAssetsWhenWorkspaceIsRemote(t *testing.T) {
 		t.Fatalf("missing remote directory = %v", err)
 	}
 }
+
+// MCP feedback 2026-10-08: a plain search for "components" returned an empty
+// stub with truncated:true, so the caller could not tell "no match" from "did
+// not look". A search must find names as well as text, reach deep files by
+// default, say what an empty result means, and keep depth-limited apart from a
+// cap (truncated).
+func TestExternalFileSearchFindsNamesAndDeepTextAndExplainsEmptyResults(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	root := filepath.Join(docs, "Workflow", "site")
+	for name, content := range map[string]string{
+		"src/components/Button.tsx": "export const Button = 1\n",
+		"src/a/b/c/d/e/deep.txt":    "buried needle\n",
+		"notes.md":                  "nothing here\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	byName, err := externalFileRequest(ctx, wf.Request{Root: "Workflow/site", Operation: "search", Path: ".", Query: "components"})
+	if err != nil || len(byName.Entries) == 0 || !strings.Contains(byName.Entries[0].Path, "components") {
+		t.Fatalf("search by name = %+v, %v", byName, err)
+	}
+	deep, err := externalFileRequest(ctx, wf.Request{Root: "Workflow/site", Operation: "search", Path: ".", Query: "needle"})
+	if err != nil || len(deep.Entries) != 1 || deep.Entries[0].Line != 1 || deep.Truncated || deep.DepthLimited {
+		t.Fatalf("a default search must reach a file six folders down without flags: %+v, %v", deep, err)
+	}
+	empty, err := externalFileRequest(ctx, wf.Request{Root: "Workflow/site", Operation: "search", Path: ".", Query: "absent-term"})
+	if err != nil || len(empty.Entries) != 0 || empty.Searched == 0 || !strings.Contains(empty.Note, "No file name or text") {
+		t.Fatalf("an empty search must say what it searched: %+v, %v", empty, err)
+	}
+	shallow, err := externalFileRequest(ctx, wf.Request{Root: "Workflow/site", Operation: "search", Path: ".", Query: "needle", Depth: 2})
+	if err != nil || len(shallow.Entries) != 0 || !shallow.DepthLimited || shallow.Truncated || !strings.Contains(shallow.Note, "depth 2") {
+		t.Fatalf("a shallow search must report depth_limited, not truncated: %+v, %v", shallow, err)
+	}
+}
