@@ -403,7 +403,7 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	autonomyText := pulseLevelsText(perms)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
 		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (goal check, Goal Work, a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
-		"\n\n" + autonomyText
+		"\n\n" + autonomyText + "\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))
 }
 
 func goalLeadSystemSectionKey(section string) string {

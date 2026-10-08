@@ -4671,6 +4671,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Email addresses the Pulse review summary is sent TO, stored in workflow.json capabilities.notifications.pulse_summary_recipients and applied automatically to every pulse_summary send. Use when Pulse findings should reach different people than the run outcome. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Denylists still apply on top.",
 				},
+				"pulse_pace": map[string]interface{}{
+					"type":        "string",
+					"enum":        []interface{}{"calm", "steady", "aggressive"},
+					"description": "How hard Pulse pushes on the goal, only when the owner asks: calm (checks every 1-7 days, failures wait), steady (default, 6h-3d), aggressive (1-24h, failures wake it at once).",
+				},
 				"pulse_enabled": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Turn the workflow's Pulse on or off, only when the owner asks. On: an agent owns the goal in soul/soul.md (needs that file). Off: the owner manages the workflow.",
@@ -5331,6 +5336,39 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v pulse_configured=%v run_recipients=%d pulse_recipients=%d", strings.TrimSpace(runInstructions) != "", strings.TrimSpace(pulseInstructions) != "", len(runRecipients), len(pulseRecipients)))
+			}
+
+			// --- Pulse pace (owner, 2026-10-08) ---
+			if raw, provided := args["pulse_pace"]; provided && raw != nil {
+				pace, ok := raw.(string)
+				pace = strings.ToLower(strings.TrimSpace(pace))
+				if !ok || (pace != "calm" && pace != "steady" && pace != "aggressive") {
+					return "Error: pulse_pace must be calm, steady or aggressive.", nil
+				}
+				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
+				if readErr != nil {
+					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
+				}
+				var manifest map[string]interface{}
+				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
+					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
+				}
+				pulse, _ := manifest["pulse"].(map[string]interface{})
+				if pulse == nil {
+					pulse = map[string]interface{}{}
+				}
+				pulse["pace"] = pace
+				manifest["pulse"] = pulse
+				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
+				if marshalErr != nil {
+					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
+				}
+				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
+					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
+				}
+				anyChanged = true
+				sb.WriteString(fmt.Sprintf("\n### Pulse pace (updated)\nPulse pace is %s.\n", pace))
 			}
 
 			// --- Pulse on or off (owner, 2026-10-08) ---

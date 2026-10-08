@@ -102,7 +102,8 @@ func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
 		// No automatic fix runs (owner, 2026-10-08): a failed run wakes the
 		// Pulse conversation once and it asks the Builder chat to fix it; a
 		// workflow without a soul.md runs like Pulse off.
-		if workflowHasGoal(ctx, item.WorkspacePath) {
+		// A calm pace leaves failures to the next goal check.
+		if workflowHasGoal(ctx, item.WorkspacePath) && workflowPulsePace(ctx, item.WorkspacePath).WakeOnFailure {
 			s.wakeGoalLeadOnRunFailures(ctx, item.WorkspacePath, now)
 		}
 	}

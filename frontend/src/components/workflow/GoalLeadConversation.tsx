@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Crosshair, Loader2, X } from 'lucide-react'
+import { Check, Crosshair, Loader2, Plus, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { PulseFocusArea } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -29,8 +29,26 @@ export function FocusAreasCard({ workspacePath, areas, onChanged }: {
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState('')
+  const [text, setText] = useState('')
+  const [endDate, setEndDate] = useState(() => new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10))
   const open = areas.filter(area => area.status === 'active' || area.status === 'proposed')
-  if (open.length === 0) return null
+  const full = open.length >= 3
+
+  const add = async () => {
+    const value = text.trim()
+    if (!value) return
+    setBusy('add')
+    try {
+      const result = await agentApi.updateGoalLeadFocusArea(workspacePath, { action: 'add', text: value, end_date: endDate })
+      if (!result.success) throw new Error(result.error || 'Could not add the focus area.')
+      setText('')
+      onChanged()
+    } catch (err) {
+      useChatStore.getState().addToast(errorText(err, 'Could not add the focus area.'), 'error')
+    } finally {
+      setBusy('')
+    }
+  }
 
   const act = async (area: PulseFocusArea, action: 'confirm' | 'reject' | 'close') => {
     setBusy(`${action}:${area.id}`)
@@ -47,7 +65,8 @@ export function FocusAreasCard({ workspacePath, areas, onChanged }: {
 
   return <section aria-label="Focus areas" className="rounded-lg border bg-background p-3">
     <div className="flex items-center gap-2"><Crosshair className="h-4 w-4 text-primary" /><h3 className="text-xs font-semibold">Focus areas</h3>
-      <span className="text-[11px] text-muted-foreground">What matters now</span></div>
+      <span className="text-[11px] text-muted-foreground">What matters now, up to 3, each with an end date. Pulse looks here first and tracks each on its goal check.</span></div>
+    {open.length === 0 && <p className="mt-2 rounded-md border border-dashed px-2.5 py-2 text-[11px] text-muted-foreground">None yet. Pulse picks its own priorities from your goal, and may propose one here for you to confirm.</p>}
     <ul className="mt-2 space-y-2">
       {open.map(area => <li key={area.id} aria-label={`Focus area: ${area.text}`} className={`rounded-md border p-2 text-xs ${area.status === 'proposed' ? 'border-dashed border-primary/40 bg-primary/5' : 'bg-card/50'}`}>
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -76,5 +95,17 @@ export function FocusAreasCard({ workspacePath, areas, onChanged }: {
         </div>
       </li>)}
     </ul>
+    {!full && <div className="mt-2 flex flex-wrap items-center gap-2">
+      <input value={text} onChange={event => setText(event.target.value)} maxLength={300} disabled={busy !== ''}
+        onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void add() } }}
+        placeholder="Add one, e.g. Get publishing back to 2 posts a week" aria-label="New focus area"
+        className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-xs" />
+      <label className="flex items-center gap-1 text-[11px] text-muted-foreground">until
+        <input type="date" value={endDate} onChange={event => setEndDate(event.target.value)} aria-label="Focus area end date"
+          className="rounded-md border bg-background px-1.5 py-0.5 text-[11px]" /></label>
+      <button type="button" onClick={() => void add()} disabled={!text.trim() || busy !== ''}
+        className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium hover:bg-muted disabled:opacity-50">
+        {busy === 'add' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}Add</button>
+    </div>}
   </section>
 }

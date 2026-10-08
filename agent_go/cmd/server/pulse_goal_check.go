@@ -23,12 +23,10 @@ import (
 // shown at the top of the Pulse tab and leads the Pulse summary notification.
 
 const (
-	// goalCheckInterval: the next goal check when the Pulse chose no time.
-	// Each check may choose its next one (next_check_in_hours) within
-	// goalCheckMinGap..goalCheckMaxGap (owner, 2026-10-08).
+	// goalCheckInterval: the next goal check when an older check recorded no
+	// time. Newer checks store the time the Pulse chose within its pace
+	// (pulse_pace.go).
 	goalCheckInterval = 24 * time.Hour
-	goalCheckMinGap   = time.Hour
-	goalCheckMaxGap   = 7 * 24 * time.Hour
 	// goalCheckRetryGap stops a goal check that did not record a result from
 	// being started again every tick.
 	goalCheckRetryGap = 3 * time.Hour
@@ -332,15 +330,16 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	}
 	// The Pulse chooses its next check: hours from now, within 1 hour and 7
 	// days; none means a day.
-	nextGap := goalCheckInterval
+	pace := workflowPulsePace(ctx, workspacePath)
+	nextGap := pace.DefaultGap
 	nextReason := strings.TrimSpace(stringToolArg(args, "next_check_reason"))
 	if hours, ok := args["next_check_in_hours"].(float64); ok && hours > 0 {
 		nextGap = time.Duration(hours * float64(time.Hour))
-		if nextGap < goalCheckMinGap {
-			nextGap = goalCheckMinGap
+		if nextGap < pace.MinGap {
+			nextGap = pace.MinGap
 		}
-		if nextGap > goalCheckMaxGap {
-			nextGap = goalCheckMaxGap
+		if nextGap > pace.MaxGap {
+			nextGap = pace.MaxGap
 		}
 	} else {
 		nextReason = ""
@@ -477,9 +476,9 @@ Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, 
 3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary, next_check_in_hours, next_check_reason) and stop. No notification.
 4. Otherwise act within the permission levels below, smallest useful step first. You run and change nothing yourself: ask the Builder chat (ask_builder) to run the goal-driving step or route, or to make the change. At an auto level it does so without the owner; at ask, prepare it as a decision. Then, if something important needs the owner, ask the Builder chat to raise ONE decision for the owner that names the problem in one line, with the options; it tells you the decision id, and you attach your recommendation with record_pulse_recommendation (with a safe default by a time only when one is safe). Ask it to reuse a pending goal-check decision instead of raising another. Never guess the owner's preference: say you do not know it.
 5. Call record_pulse_goal_check once with status (at_risk, off_track or not_measured), key_number (the key goal number and its date, e.g. "+2 subscribers on 7 Oct"), a plain one or two sentence summary, action_taken, and decision_id when the Builder raised one.
-   Choose when to check next with next_check_in_hours (1 to 168) and a short next_check_reason: soon after the next run that should move the goal, a few hours while a fix you asked for is pending, or days for a workflow that runs weekly. Without it the next check is in 24 hours. A failed run wakes you anyway.
+   Choose when to check next with next_check_in_hours and a short next_check_reason, within your pace below: soon after the next run that should move the goal, a few hours while a fix you asked for is pending, or days for a workflow that runs weekly.
 6. You send no notifications. When the owner should know (the goal is off track, a decision waits), tell the Builder chat with ask_builder in a few plain lines: the status, key number and when it was last measured, what you did and what you need; it decides whether to notify the owner.%s%s
-7. Then Goal Work, in this same turn: if something within your level would move the goal (load the goal-lead-work skill), get 1-3 bounded items done through the Builder chat and record each with record_pulse_goal_work. Skip it when the check found nothing worth doing; that is a valid answer. There is no separate Goal Work pass: your next turn is the time you chose with next_check_in_hours, or sooner when a run fails.
+7. Then Goal Work, in this same turn: if something within your level would move the goal (load the goal-lead-work skill), get bounded items done through the Builder chat (as many as your pace allows) and record each with record_pulse_goal_work. Skip it when the check found nothing worth doing; that is a valid answer. There is no separate Goal Work pass: your next turn is the time you chose with next_check_in_hours, or sooner when a run fails.
 
-%s`, pulseRunID, facts, goalLead, routing, finalizerRichEmailInstruction, autonomyText) + pausedRule}
+%s`, pulseRunID, facts, goalLead, routing, finalizerRichEmailInstruction, autonomyText) + "\n\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath)) + pausedRule}
 }

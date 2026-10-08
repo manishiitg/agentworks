@@ -34,6 +34,11 @@ owner's `#pulse`. Follow Pulse's intent, not just its words.
 **Always the owner's:** spending money, deleting steps or schedules, replacing
 the plan, editing `soul.md`, re-enabling schedules the owner paused.
 
+**Pace:** how hard Pulse pushes (`update_workflow_config(pulse_pace=calm|steady|aggressive)`
+when the owner asks): calm checks every 1-7 days and leaves failures to the next
+check; steady (default) every 6 hours to 3 days; aggressive every 1-24 hours and
+wakes on a failure at once. Autonomy is what Pulse may do; pace is how fast.
+
 **Turning Pulse on or off:** `update_workflow_config(pulse_enabled=true|false)`
 when the owner asks. Pulse needs the goal in `soul/soul.md` first: if it is
 missing, help the owner write it. With Pulse off, the owner manages the

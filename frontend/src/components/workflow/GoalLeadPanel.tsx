@@ -8,6 +8,7 @@ import { openReportHumanInputAnswerInChat } from '../../utils/reportHumanInputCh
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { openPulseChatTab } from '../../utils/pulseChatTab'
 import { FocusAreasCard } from './GoalLeadConversation'
+import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseAutonomy'
 
 // The Pulse's part of the Pulse tab (PLAT-697 phase 3), under the goal
 // status card: Needs you with the Pulse's recommendation (Accept / Change,
@@ -274,6 +275,11 @@ export function GoalLeadPanel({ workspacePath }: { workspacePath: string }) {
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const reload = () => { void load() }
+    window.addEventListener(PULSE_FOCUS_AREAS_CHANGED_EVENT, reload)
+    return () => window.removeEventListener(PULSE_FOCUS_AREAS_CHANGED_EVENT, reload)
+  }, [load])
   useLiveRefetch(() => { void load() }, { kinds: ['human_inputs'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0 })
 
   return <div className="mb-3 space-y-3" aria-label="Pulse">

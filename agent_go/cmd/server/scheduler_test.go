@@ -2051,7 +2051,7 @@ func TestGoalWorkAutonomyTextMatchesTheEnforcedLevels(t *testing.T) {
 	if !perms.Run || perms.Outward || perms.Change {
 		t.Fatalf("defaults are run auto, outward and change ask, got %+v", perms)
 	}
-	for _, want := range []string{"The tools hold them", "Run permission: auto", "Outward permission: ask", "Change permission: ask", "checked by the Workflow Review first"} {
+	for _, want := range []string{"The tools hold them", "level 1 of 5, Measure", "✓ 1 Measure", "checked by the Workflow Review first"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("autonomy text missing %q:\n%s", want, text)
 		}

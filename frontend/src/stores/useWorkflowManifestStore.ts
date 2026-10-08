@@ -8,8 +8,7 @@ import type {
   WorkflowExecutionDefaults,
   WorkflowOwnership,
   WorkflowScheduleEntry,
-  PulseAutonomyLevel, PulseAutonomyRun, PulseReviewerModule,
-} from '../services/api-types'
+  PulseAutonomyLevel, PulseAutonomyRun, PulseReviewerModule, PulsePace } from '../services/api-types'
 import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
 export interface WorkflowManifestState {
@@ -41,6 +40,8 @@ export interface WorkflowManifestState {
     schedules?: WorkflowScheduleEntry[]
     pulse_enabled?: boolean
     pulse_disabled_review_modules?: PulseReviewerModule[]
+    pulse_autonomy_level?: number
+    pulse_pace?: PulsePace
     pulse_autonomy_run?: PulseAutonomyRun
     pulse_autonomy_outward?: PulseAutonomyLevel
     pulse_autonomy_change?: PulseAutonomyLevel

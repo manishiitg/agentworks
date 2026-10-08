@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
-import { CheckCircle2, Crosshair, FileText, Hourglass, Lightbulb, Loader2, Play, Plus, Scale, X } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle2, FileText, Lightbulb, Loader2, Play, Plus, Scale } from 'lucide-react'
+import { agentApi } from '../../services/api'
+import { useChatStore } from '../../stores/useChatStore'
+import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseAutonomy'
 import type { PulseAutonomy, PulseGoalWorkItem } from '../../services/api-types'
-import { AUTONOMY_LEVELS, autonomyLevelIndex } from './pulseAutonomy'
 import { openReportFileInViewer } from './reportWidgets/tableHelpers'
 
 // Goal Work is Pulse's main job (docs/design/pulse_goal_work.md): work Pulse
@@ -88,59 +90,41 @@ function Section({ title, hint, icon: Icon, items, empty, workspacePath }: {
   </section>
 }
 
-const MAX_FOCUS_AREAS = 10
-
-// FocusAreas: the user's own priorities for Goal Work (workflow.json
-// pulse.focus_areas), editable here, with installed playbooks' strategy focus
-// shown read-only underneath so there is one place to see what Goal Work is
-// pointed at.
-function FocusAreas({ areas, saving, onSave, playbookAreas }: {
-  areas: string[]; saving: boolean; onSave?: (areas: string[]) => Promise<boolean>
-  playbookAreas: Array<{ area: string; source: string }>
-}) {
-  const [draft, setDraft] = useState<string[]>(areas)
-  const [adding, setAdding] = useState('')
-  useEffect(() => { setDraft(areas) }, [areas])
-  const dirty = draft.join('\n') !== areas.join('\n')
-  const add = () => {
-    const value = adding.trim()
-    if (!value || draft.length >= MAX_FOCUS_AREAS || draft.some(item => item.toLowerCase() === value.toLowerCase())) return
-    setDraft([...draft, value])
-    setAdding('')
+// Focus areas live in one card at the top of the Pulse tab (GoalLeadPanel);
+// playbook focus areas show here as suggestions the owner can adopt there.
+function PlaybookFocusSuggestions({ workspacePath, areas }: { workspacePath: string; areas: Array<{ area: string; source: string }> }) {
+  const [busy, setBusy] = useState('')
+  if (areas.length === 0) return null
+  const adopt = async (area: string) => {
+    setBusy(area)
+    try {
+      const end = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+      const result = await agentApi.updateGoalLeadFocusArea(workspacePath, { action: 'add', text: area, end_date: end })
+      if (!result.success) throw new Error(result.error || 'Could not adopt the focus area.')
+      window.dispatchEvent(new CustomEvent(PULSE_FOCUS_AREAS_CHANGED_EVENT))
+      useChatStore.getState().addToast('Focus area added', 'success')
+    } catch (err) {
+      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not adopt the focus area.', 'error')
+    } finally {
+      setBusy('')
+    }
   }
-  return <section aria-label="Focus areas" className="rounded-xl border bg-background p-4">
-    <div className="flex items-center gap-2"><Crosshair className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Focus areas</h3></div>
-    <p className="mt-1 text-xs text-muted-foreground">Where Goal Work should look first. It still considers anything that moves your goals, and your goals and rules always win.</p>
-    <ul className="mt-3 space-y-1.5">
-      {draft.map((area, index) => <li key={area} className="flex items-start gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs">
-        <span className="min-w-0 flex-1">{area}</span>
-        <button type="button" aria-label={`Remove focus area ${area}`} disabled={!onSave || saving} onClick={() => setDraft(draft.filter((_, i) => i !== index))}
-          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="h-3 w-3" /></button>
-      </li>)}
-      {draft.length === 0 && <li className="rounded-md border border-dashed px-2.5 py-2 text-xs text-muted-foreground">No focus areas yet. Goal Work picks its own priorities from your goals.</li>}
-    </ul>
-    {onSave && <div className="mt-2 flex flex-wrap items-center gap-2">
-      <input value={adding} onChange={event => setAdding(event.target.value)} maxLength={300} disabled={saving || draft.length >= MAX_FOCUS_AREAS}
-        onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add() } }}
-        placeholder={draft.length >= MAX_FOCUS_AREAS ? 'Up to 10 focus areas' : 'e.g. Find more audience strategies like SaaS Builder'}
-        aria-label="New focus area" className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-xs" />
-      <button type="button" onClick={add} disabled={!adding.trim() || saving || draft.length >= MAX_FOCUS_AREAS}
-        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"><Plus className="h-3 w-3" />Add</button>
-      {dirty && <button type="button" onClick={() => { void onSave(draft) }} disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-50">
-        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}Save</button>}
-    </div>}
-    {playbookAreas.length > 0 && <div className="mt-3 border-t pt-2">
-      <p className="text-[11px] font-medium text-muted-foreground">From installed playbooks</p>
-      <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">{playbookAreas.map(item => <li key={`${item.source}:${item.area}`}>{item.area} <span className="opacity-70">· {item.source}</span></li>)}</ul>
-    </div>}
+  return <section aria-label="Playbook focus suggestions" className="rounded-lg border bg-background px-3 py-2 text-[11px]">
+    <p className="font-medium text-muted-foreground">Focus suggestions from installed playbooks</p>
+    <ul className="mt-1 space-y-1">{areas.map(item => <li key={`${item.source}:${item.area}`} className="flex items-center gap-2">
+      <span className="min-w-0 flex-1 text-foreground">{item.area} <span className="text-muted-foreground">· {item.source}</span></span>
+      <button type="button" disabled={busy !== ''} onClick={() => void adopt(item.area)}
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 hover:bg-muted disabled:opacity-50">
+        {busy === item.area ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}Adopt</button>
+    </li>)}</ul>
   </section>
 }
 
-export function PulseGoalWork({ workspacePath, items, autonomy, autonomySaving = false, onChangeAutonomy, onRunGoalWork, running = false, runBlockedReason, focusAreas = [], focusSaving = false, onSaveFocusAreas, playbookFocusAreas = [] }: {
+export function PulseGoalWork({ workspacePath, items, onRunGoalWork, running = false, runBlockedReason, playbookFocusAreas = [] }: {
   workspacePath: string
   items: PulseGoalWorkItem[]
-  autonomy: PulseAutonomy
+  /** Shown at the top of the Pulse tab now (AutonomySlider); kept for callers. */
+  autonomy?: PulseAutonomy
   autonomySaving?: boolean
   onChangeAutonomy?: (next: PulseAutonomy) => void
   onRunGoalWork?: () => void
@@ -169,7 +153,7 @@ export function PulseGoalWork({ workspacePath, items, autonomy, autonomySaving =
       </button>
     </section>
 
-    <FocusAreas areas={focusAreas} saving={focusSaving} onSave={onSaveFocusAreas} playbookAreas={playbookFocusAreas} />
+    <PlaybookFocusSuggestions workspacePath={workspacePath} areas={playbookFocusAreas} />
 
     <Section title="Did for you" hint="Work Pulse completed or prepared, what it should move, and whether it worked." icon={CheckCircle2}
       items={didForYou} empty="Nothing yet. After its next pass, Pulse lists the work it did here." workspacePath={workspacePath} />
@@ -182,28 +166,6 @@ export function PulseGoalWork({ workspacePath, items, autonomy, autonomySaving =
       <ul className="mt-2 space-y-1 text-muted-foreground">{keptRules.map(item => <li key={item.id}>{item.constraint_text || item.title}{item.effect_note ? `: ${item.effect_note}` : ''}</li>)}</ul>
     </details>}
 
-    <AutonomySlider autonomy={autonomy} saving={autonomySaving} onChange={onChangeAutonomy} />
   </div>
 }
 
-function AutonomySlider({ autonomy, saving, onChange }: {
-  autonomy: PulseAutonomy
-  saving: boolean
-  onChange?: (next: PulseAutonomy) => void
-}) {
-  const index = autonomyLevelIndex(autonomy)
-  const level = AUTONOMY_LEVELS[index]
-  return <section aria-label="Pulse autonomy" className="rounded-lg border bg-background px-3 py-2">
-    <div className="flex items-center justify-between gap-3">
-      <label htmlFor="pulse-autonomy" className="flex items-center gap-1.5 text-xs font-semibold"><Hourglass className="h-3.5 w-3.5 text-primary" />Pulse autonomy</label>
-      <span className="text-[11px] font-medium text-primary">{level.label}</span>
-    </div>
-    <input id="pulse-autonomy" type="range" min={0} max={AUTONOMY_LEVELS.length - 1} step={1} value={index}
-      disabled={!onChange || saving} aria-valuetext={level.label}
-      className="reasoning-effort-slider reasoning-effort-slider--compact mt-2 w-full disabled:opacity-50"
-      style={{ ['--reasoning-effort-fill' as string]: `${(index / (AUTONOMY_LEVELS.length - 1)) * 100}%` }}
-      onChange={event => onChange?.(AUTONOMY_LEVELS[Number(event.target.value)].value)} />
-    <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">{AUTONOMY_LEVELS.map(item => <span key={item.label}>{item.label}</span>)}</div>
-    <p className="mt-1 text-[11px] leading-4 text-muted-foreground" title="Your goals and rules in soul.md stay yours at every level: Pulse can challenge a rule, but only you change it.">{level.summary}</p>
-  </section>
-}

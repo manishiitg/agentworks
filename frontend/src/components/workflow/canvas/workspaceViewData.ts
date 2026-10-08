@@ -8,7 +8,7 @@ import type {
   PulsePlanDriftDueItem,
   PulseReviewFocus,
   PulseReviewerModule,
-  VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseAutonomy, WorkflowRunSetup } from '../../../services/api-types'
+  VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseAutonomy, PulsePace, WorkflowRunSetup } from '../../../services/api-types'
 import type { PulseOverview } from '../PulseView'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
@@ -45,6 +45,9 @@ export interface PulseData {
   refresh: (showLoading?: boolean) => Promise<void>
   hasSoul: boolean
   runSetup: WorkflowRunSetup | null
+  pace: PulsePace
+  paceSaving: boolean
+  setPace: (next: PulsePace) => void
 }
 
 /** The flow view's shell state. `loading` and `error` replace the whole pane

@@ -10,10 +10,13 @@ func TestResolvePulseAutonomyDefaultsAndValidation(t *testing.T) {
 		in   *WorkflowPulseAutonomy
 		want PulseAutonomyLevels
 	}{
-		{nil, PulseAutonomyLevels{Run: "auto", Outward: "ask", Change: "ask"}},
-		{&WorkflowPulseAutonomy{}, PulseAutonomyLevels{Run: "auto", Outward: "ask", Change: "ask"}},
-		{&WorkflowPulseAutonomy{Run: "ask"}, PulseAutonomyLevels{Run: "ask", Outward: "ask", Change: "ask"}},
-		{&WorkflowPulseAutonomy{Outward: " AUTO ", Change: "auto"}, PulseAutonomyLevels{Run: "auto", Outward: "auto", Change: "auto"}},
+		{nil, PulseAutonomyLevels{Level: 1, Run: "auto", Outward: "ask", Change: "ask"}},
+		{&WorkflowPulseAutonomy{}, PulseAutonomyLevels{Level: 1, Run: "auto", Outward: "ask", Change: "ask"}},
+		{&WorkflowPulseAutonomy{Run: "ask"}, PulseAutonomyLevels{Level: 0, Run: "ask", Outward: "ask", Change: "ask"}},
+		{&WorkflowPulseAutonomy{Outward: " AUTO ", Change: "auto"}, PulseAutonomyLevels{Level: 5, Run: "auto", Outward: "auto", Change: "auto"}},
+		// Owner 2026-10-08: the six-level ladder; the level decides, and the
+		// old switches are derived for older readers.
+		{&WorkflowPulseAutonomy{Level: intPtr(3), Run: "ask"}, PulseAutonomyLevels{Level: 3, Run: "auto", Outward: "ask", Change: "auto"}},
 	}
 	for _, c := range cases {
 		got, err := resolvePulseAutonomy(c.in)
@@ -26,7 +29,12 @@ func TestResolvePulseAutonomyDefaultsAndValidation(t *testing.T) {
 			t.Errorf("resolvePulseAutonomy(%+v) should reject an unknown level", bad)
 		}
 	}
+	if _, err := resolvePulseAutonomy(&WorkflowPulseAutonomy{Level: intPtr(6)}); err == nil {
+		t.Error("a level above 5 must be rejected")
+	}
 	if _, err := resolvePulseAutonomy(&WorkflowPulseAutonomy{Change: "yes"}); err == nil || !strings.Contains(err.Error(), "pulse.autonomy.change") {
 		t.Errorf("error should name the field, got %v", err)
 	}
 }
+
+func intPtr(v int) *int { return &v }
