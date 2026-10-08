@@ -85,6 +85,28 @@ describe('PlannerFileList Work controls', () => {
       await act(async () => root.unmount()); host.remove()
     }
   })
+  it('shows a folder the server confirmed empty without an arrow, and keeps the arrow on any other folder', async () => {
+    const files = [file('a-empty', 'folder', []), file('b-unknown', 'folder', [])]
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<TooltipProvider><PlannerFileList
+        files={files} loading={false} error={null}
+        onFolderClick={() => undefined} onFileClick={() => undefined}
+        onFileDelete={() => undefined} onFolderDelete={() => undefined}
+        onRetry={() => undefined} expandedFolders={new Set()}
+        chatFileContext={[]} addFileToContext={() => undefined}
+        emptyFolders={new Set(['a-empty'])}
+      /></TooltipProvider>))
+      const row = (path: string) => host.querySelector(`[data-filepath="${path}"]`) as HTMLElement
+      expect(row('a-empty').textContent).toContain('empty')
+      expect(row('a-empty').querySelector('svg.lucide-chevron-right')).toBeNull()
+      expect(row('b-unknown').textContent).not.toContain('empty')
+      expect(row('b-unknown').querySelector('svg.lucide-chevron-right')).not.toBeNull()
+    } finally {
+      await act(async () => root.unmount()); host.remove()
+    }
+  })
   it('can hide send-to-chat everywhere and actions on the project root only', async () => {
     const files = [file('my-project', 'folder', [file('my-project/frontend', 'folder')])]
     const host = document.createElement('div')

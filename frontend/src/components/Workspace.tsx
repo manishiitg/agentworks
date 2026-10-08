@@ -872,17 +872,35 @@ export default function Workspace({
   }
 
   // Handle folder click - only folders are clickable now
-  const handleFolderClick = (folder: PlannerFile) => {
-    if (folder.type === 'folder') {
-      // Toggle folder expansion
-      if (expandedFolders.has(folder.filepath)) {
-        // Collapse folder
-        toggleFolder(folder.filepath)
-      } else {
-        // Expand folder - children are already loaded
-        toggleFolder(folder.filepath)
-      }
+  // Folders the server confirmed hold nothing. The tree gives every folder an empty child list, loaded or not, and the
+  // first load stops two levels down, so "no children" alone cannot show a folder is empty. The first expand of such
+  // a folder asks the server for just that folder; a tree reload drops the answers, and the next expand asks again.
+  const [emptyFolders, setEmptyFolders] = useState<ReadonlySet<string>>(() => new Set())
+  const checkingFolders = useRef(new Set<string>())
+  useEffect(() => { setEmptyFolders(current => current.size === 0 ? current : new Set()) }, [files])
+  const verifyFolderEmpty = useCallback(async (folder: PlannerFile) => {
+    const apiPath = getOriginalFilePath(folder)
+    checkingFolders.current.add(folder.filepath)
+    try {
+      const response = await agentApi.getPlannerFiles(apiPath, -1, 1)
+      if (!response?.success) return
+      const entries: PlannerFile[] = []
+      const collect = (nodes: PlannerFile[]) => { for (const node of nodes) { if (node.filepath !== apiPath && node.filepath !== folder.filepath) entries.push(node); if (node.children?.length) collect(node.children) } }
+      collect(Array.isArray(response.data) ? response.data : [])
+      if (entries.length === 0) setEmptyFolders(current => new Set(current).add(folder.filepath))
+    } catch {
+      // Unknown stays unknown: the arrow remains.
+    } finally {
+      checkingFolders.current.delete(folder.filepath)
     }
+  }, [getOriginalFilePath])
+  const handleFolderClick = (folder: PlannerFile) => {
+    if (folder.type !== 'folder') return
+    const hasChildren = !!folder.children?.length
+    if (!hasChildren && emptyFolders.has(folder.filepath)) return // known empty: nothing to open
+    const expanding = !expandedFolders.has(folder.filepath)
+    toggleFolder(folder.filepath)
+    if (expanding && !hasChildren && !isSelectionMode && !checkingFolders.current.has(folder.filepath)) void verifyFolderEmpty(folder)
   }
 
   // Handle file delete
@@ -1875,6 +1893,7 @@ export default function Workspace({
                 selectedFiles={selectedFiles}
                 onToggleFileSelection={toggleFileSelection}
                 onSelectFileAndEnterSelectionMode={selectFileAndEnterSelectionMode}
+                emptyFolders={emptyFolders}
                 scrollContainerRef={workspaceScrollRef}
               />
 
