@@ -127,7 +127,7 @@ class TransportTest(unittest.TestCase):
         for word in ("DEPLOY_BUILD_TRANSPORT=auto|github|stream", "publish [build]"):
             self.assertIn(word, help_text)
         # Hetzner products still copy from /srv/_builds
-        self.assertIn('printf \'%s\\n\' "$BUILDS_DIR/$PREBUILT_NAME" > "$STAGING/prebuilt"', text)
+        self.assertIn('printf \'%s\\n\' "$PREBUILT_PATH" > "$STAGING/prebuilt"', text)
 
 
 if __name__ == "__main__":
