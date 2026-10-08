@@ -17,6 +17,18 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Local Code: one command in the project folder, always read and write
+
+- **Decided.** `agentworks start` (`agent_go/cmd/agentworks/share.go`) shares the folder you are in: read and write with
+  shell commands, named after the computer and the folder, signing in on first use (`devices:connect` only). It asks
+  background or terminal, and whether to open the website (flags skip the questions); `stop`, `status` and `start --debug`
+  go with it. The website no longer asks for a folder path, computer name or access level: its setup is install, then
+  `start`, plus a Verify connection button, and the `start` link (`?local_device=&local_folder=`) opens Code with that folder
+  as the default for Code chats without their own choice (12 hours). A read-only share is no longer offered there;
+  `executor connect --folder` stays as the advanced command.
+- **Why.** Typing an absolute path and a computer name into a form and pasting a long command was the most error-prone part
+  of the flow; the agent exists to edit and build, which needs write. Owner decision. Ticket: PLAT-729.
+
 ### 2026-10-08 — Crews are shared with everyone by default; the owner can make one private
 
 - **Decided.** `projectSharingEnabled` (`agent_go/cmd/server/project_sharing.go`) is on unless

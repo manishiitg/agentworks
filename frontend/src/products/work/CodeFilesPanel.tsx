@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Check, Copy, Download, FolderOpen, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
-import { Input } from '../../components/ui/Input'
 import { useChatStore } from '../../stores/useChatStore'
 import { getApiBaseUrl } from '../../services/api'
 import { useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
@@ -40,39 +39,21 @@ function SetupStep({ number, title, children }: { number: number; title: string;
 
 function ComputerSetup({ connected, reconnecting }: { connected: boolean; reconnecting: boolean }) {
   const base = getApiBaseUrl() || window.location.origin
-  const [folder, setFolder] = useState('')
-  const [device, setDevice] = useState('my-computer')
-  const [writable, setWritable] = useState(true)
-  const [downloads, setDownloads] = useState(false)
-  const value = folder.trim()
-  const validFolder = value.startsWith('/') && value !== '/' || value.startsWith('~/') && value.length > 2
-  const validDevice = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(device)
-  const project = value.startsWith('~/') ? `"$HOME"/${shellQuote(value.slice(2))}` : shellQuote(value)
-  const cli = '"$HOME/.local/bin/agentworks" --config "$HOME/.config/agentworks/executor.json"'
-  const command = `${cli} executor connect --device ${shellQuote(device)} ${writable ? '--write-folder' : '--folder'} project=${validFolder ? project : '/absolute/path/to/project'}${downloads ? ' --downloads' : ''}`
+  const cli = '"$HOME/.local/bin/agentworks"'
   return <details className="group rounded-xl border border-border bg-background" open={!connected && !reconnecting}>
     <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
-      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects your files. Already installed? Start at step 2.</p>
+      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects your project folder. Already installed? Start at step 2.</p>
       <SetupStep number={1} title="Install the CLI">
         <CopyCommand label="install command" command={`curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`} />
         <p className="text-xs text-muted-foreground">Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.</p>
       </SetupStep>
-      <SetupStep number={2} title="Sign in to this server">
-        <CopyCommand label="sign-in command" command={`${cli} login --server ${shellQuote(base)} --scopes devices:connect`} />
-        <p className="text-xs leading-5 text-muted-foreground">A browser opens. Approve the local connection, then return to your terminal. This sign-in is separate from remote MCP access.</p>
+      <SetupStep number={2} title="Go to your project folder and start">
+        <CopyCommand label="start command" command={`cd /path/to/your/project && ${cli} start --server ${shellQuote(base)}`} />
+        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with read and write access, and the agent can run commands there. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and whether to open this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
       </SetupStep>
-      <SetupStep number={3} title="Choose what to share">
-        <div className="space-y-3">
-          <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-project-folder">Project folder on your computer</label><Input id="local-project-folder" value={folder} onChange={event => setFolder(event.target.value)} placeholder="~/Projects/my-app" autoComplete="off" spellCheck={false} /><p className="text-xs text-muted-foreground">Use an absolute path or ~/… . Paths with spaces are supported.</p>{value && !validFolder && <p className="text-xs text-destructive">Enter a project path, not your home folder or /.</p>}</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-computer-name">Computer name</label><Input id="local-computer-name" value={device} onChange={event => setDevice(event.target.value)} autoComplete="off" spellCheck={false} />{!validDevice && <p className="text-xs text-destructive">Use letters, numbers, dashes or underscores.</p>}</div>
-            <div className="space-y-1"><label className="text-xs font-medium" htmlFor="local-project-access">Project access</label><select id="local-project-access" className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs" value={writable ? 'write' : 'read'} onChange={event => setWritable(event.target.value === 'write')}><option value="write">Read and write</option><option value="read">Read only</option></select></div>
-          </div>
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3"><input type="checkbox" className="mt-0.5" checked={downloads} onChange={event => setDownloads(event.target.checked)} /><span><span className="flex items-center gap-1.5 text-xs font-medium"><Download className="h-3.5 w-3.5" />Also share Downloads</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">Allow reading and changing files in ~/Downloads alongside this project. Off unless you enable it.</span></span></label>
-          <CopyCommand label="connection command" command={command} disabled={!validFolder || !validDevice} />
-          <p className="text-xs leading-5 text-muted-foreground">{!validFolder ? 'Enter your project folder to copy a ready-to-run command. ' : ''}Shell commands are enabled automatically. Read-only access blocks changes to the project. Keep this terminal running; Ctrl-C disconnects.</p>
-        </div>
+      <SetupStep number={3} title="Check it, stop it, or fix it">
+        <p className="text-xs leading-5 text-muted-foreground">Press <span className="font-medium">Verify connection</span> below to confirm this computer is connected. <code className="font-mono">agentworks stop</code> ends sharing for the current folder, <code className="font-mono">agentworks status</code> lists what is shared, and <code className="font-mono">agentworks start --debug</code> prints diagnostics and every request from the server if something does not work. Add <code className="font-mono">--block .env</code> to hide a file, or <code className="font-mono">--downloads</code> to also share ~/Downloads.</p>
       </SetupStep>
     </div>
   </details>
@@ -88,6 +69,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
   const [draftKey, setDraftKey] = useState(selectedKey)
   const [confirmServer, setConfirmServer] = useState(false)
   const [settingError, setSettingError] = useState<string | null>(null)
+  const [verified, setVerified] = useState(false)
   const busy = useChatStore(state => Object.values(state.chatTabs).some(tab => tab.sessionId === sessionId && (tab.isStreaming || tab.hasRunningBgAgents)))
   const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(local || setupOpen)
   useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
@@ -120,7 +102,10 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
         {local && resource && <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
         {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3"><p className="text-xs font-medium">Reconnect your computer to continue file work</p><p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
         <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} />
-        <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="ghost" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button></div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="outline" disabled={refreshing} onClick={() => { setVerified(true); refresh() }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button></div>
+          {verified && checked && !refreshing && <p role="status" className={`text-xs leading-5 ${devices.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{error ? error : devices.length ? `Connected: ${devices.flatMap(device => device.resources.map(folder => `${device.device_id} / ${folder.id}`)).join(', ')}.` : 'Nothing is connected yet. Run agentworks start inside your project folder; if it does not connect, agentworks start --debug shows why.'}</p>}
+        </div>
         <label className="block text-xs font-medium" htmlFor="code-local-folder">Computer and shared folder</label>
         <select id="code-local-folder" aria-label="Computer and shared folder" value={draftKey} disabled={busy} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDraftKey(event.target.value); setConfirmServer(false) }}>
           <option value="">Choose a folder…</option>

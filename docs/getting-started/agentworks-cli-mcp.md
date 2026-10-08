@@ -728,6 +728,24 @@ execution and typed tools retain their separately authorized scopes.
 
 ## Server agents using local files and commands
 
+### The short way: `agentworks start`
+
+Install the CLI, `cd` into your project folder and run:
+
+```sh
+agentworks start --server https://your-agentworks.example   # first time; later just: agentworks start
+```
+
+It signs you in the first time (a browser approval limited to sharing local folders), shares the current folder with
+read and write access and shell commands, and keeps the connection open. It asks whether to run in the background or keep
+the terminal open (`--background` / `--foreground` skip the question), and whether to open the website (`--open` /
+`--no-open`); the website then opens Code with the shared folder as the default for new Code chats (Local mode).
+`agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
+shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
+sandbox) and logs every file and command request from the server. `--block <path>` hides a file or folder, `--downloads`
+also shares `~/Downloads`. In the website, **Verify connection** (Code settings) confirms the computer is connected.
+The sections below describe the lower-level `executor connect` command that `start` is built on.
+
 The dedicated executor command opens an outbound authenticated connection to the
 AgentWorks server. It does not start a local model or a listening HTTP server.
 Use a separate CLI config to keep ordinary remote MCP credentials independent:

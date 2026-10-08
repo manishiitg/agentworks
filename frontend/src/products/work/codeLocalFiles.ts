@@ -24,7 +24,30 @@ function parse(value: string | null): CodeFilesPreference {
   } catch { /* Unknown preferences use server files. */ }
   return { location: 'server' }
 }
-export function readCodeFilesPreference(sessionId: string) { return parse(stored(preferenceKey(sessionId))) }
+// `agentworks start` opens the site with the computer and folder it just shared; that becomes the default for Code chats
+// that have no choice of their own, for 12 hours, so the chat starts in Local mode. A chat's own choice always wins.
+const defaultKey = 'code-files-default-local'
+const defaultTtlMs = 12 * 60 * 60 * 1000
+export function setDefaultLocalTarget(target: CodeLocalFileTarget) {
+  if (!validID.test(target.device_id) || !validID.test(target.resource_id)) return
+  try { localStorage.setItem(defaultKey, JSON.stringify({ target, at: Date.now() })) } catch { /* Without storage the chat stays on server files. */ }
+  window.dispatchEvent(new Event(changed))
+}
+function defaultLocalTarget(): CodeLocalFileTarget | undefined {
+  try {
+    const saved = JSON.parse(localStorage.getItem(defaultKey) || 'null')
+    const target = saved?.target
+    if (saved && Date.now() - saved.at < defaultTtlMs && typeof target?.device_id === 'string' && typeof target?.resource_id === 'string' && validID.test(target.device_id) && validID.test(target.resource_id)) return target
+  } catch { /* An unreadable default is no default. */ }
+  return undefined
+}
+function effectiveRaw(key: string) {
+  const own = stored(key)
+  if (own !== null) return own
+  const target = defaultLocalTarget()
+  return target ? JSON.stringify({ location: 'computer', target }) : null
+}
+export function readCodeFilesPreference(sessionId: string) { return parse(effectiveRaw(preferenceKey(sessionId))) }
 export function writeCodeFilesPreference(sessionId: string, pref: CodeFilesPreference) {
   localStorage.setItem(preferenceKey(sessionId), JSON.stringify(pref))
   window.dispatchEvent(new Event(changed))
@@ -38,7 +61,7 @@ export function useCodeFilesPreference(sessionId: string) {
   const user = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const key = useMemo(() => preferenceKey(sessionId), [sessionId, user, workspace])
-  const raw = useSyncExternalStore(subscribe, () => stored(key), () => null)
+  const raw = useSyncExternalStore(subscribe, () => effectiveRaw(key), () => null)
   return useMemo(() => parse(raw), [raw])
 }
 /** The selection is context, never authority; the backend rechecks local grants. */

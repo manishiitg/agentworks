@@ -97,7 +97,7 @@ func newCommand(o *options) *cobra.Command {
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
-	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o))
+	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), serveShareCommand(o))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
 	toolsCmd.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, Short: "List tools with authoritative JSON schemas", RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := o.client()
@@ -257,47 +257,10 @@ func loginCommand(o *options) *cobra.Command {
 			return err
 		}
 		if !tokenStdin {
-			client, err := agentworksclient.New(cfg.Server, "")
-			if err != nil {
+			if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
 				return err
 			}
-			device, err := client.StartDeviceAuthorization(cmd.Context(), scopes...)
-			if err != nil {
-				return fmt.Errorf("start browser sign in: %w", err)
-			}
-			fmt.Fprintln(o.stderr, "Open this link to sign in and approve AgentWorks CLI:")
-			fmt.Fprintln(o.stderr, device.VerificationURIComplete)
-			fmt.Fprintln(o.stderr, "Confirm the browser shows code:", device.UserCode)
-			if !noBrowser {
-				openLoginBrowser(device.VerificationURIComplete)
-			}
-			waitCtx, cancel := context.WithTimeout(cmd.Context(), time.Duration(device.ExpiresIn)*time.Second)
-			defer cancel()
-			interval := time.Duration(device.Interval) * time.Second
-			for {
-				tokens, err := client.PollDeviceAuthorization(waitCtx, device.DeviceCode)
-				if err == nil {
-					cfg.Token = tokens.AccessToken
-					cfg.RefreshToken = tokens.RefreshToken
-					cfg.ExpiresAt = time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
-					if err := agentworksclient.SaveConfig(path, cfg); err != nil {
-						return err
-					}
-					return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
-				}
-				var apiErr *agentworksclient.APIError
-				if !errors.As(err, &apiErr) || (apiErr.Code != "authorization_pending" && apiErr.Code != "slow_down") {
-					return fmt.Errorf("browser sign in: %w", err)
-				}
-				if apiErr.Code == "slow_down" {
-					interval += 2 * time.Second
-				}
-				select {
-				case <-waitCtx.Done():
-					return fmt.Errorf("browser sign in expired: %w", waitCtx.Err())
-				case <-time.After(interval):
-				}
-			}
+			return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
 		}
 		secret, err := io.ReadAll(io.LimitReader(o.stdin, 1025))
 		if err != nil {
@@ -326,6 +289,48 @@ func loginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&scopes, "scopes", nil, "Explicit permissions for this connection (e.g. devices:connect for the local executor)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the approval link without opening a browser")
 	return cmd
+}
+
+// browserLogin signs in through the browser (device authorization) and saves the renewable connection to path.
+func (o *options) browserLogin(ctx context.Context, cfg agentworksclient.Config, path string, scopes []string, noBrowser bool) error {
+	client, err := agentworksclient.New(cfg.Server, "")
+	if err != nil {
+		return err
+	}
+	device, err := client.StartDeviceAuthorization(ctx, scopes...)
+	if err != nil {
+		return fmt.Errorf("start browser sign in: %w", err)
+	}
+	fmt.Fprintln(o.stderr, "Open this link to sign in and approve AgentWorks CLI:")
+	fmt.Fprintln(o.stderr, device.VerificationURIComplete)
+	fmt.Fprintln(o.stderr, "Confirm the browser shows code:", device.UserCode)
+	if !noBrowser {
+		openLoginBrowser(device.VerificationURIComplete)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(device.ExpiresIn)*time.Second)
+	defer cancel()
+	interval := time.Duration(device.Interval) * time.Second
+	for {
+		tokens, err := client.PollDeviceAuthorization(waitCtx, device.DeviceCode)
+		if err == nil {
+			cfg.Token = tokens.AccessToken
+			cfg.RefreshToken = tokens.RefreshToken
+			cfg.ExpiresAt = time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
+			return agentworksclient.SaveConfig(path, cfg)
+		}
+		var apiErr *agentworksclient.APIError
+		if !errors.As(err, &apiErr) || (apiErr.Code != "authorization_pending" && apiErr.Code != "slow_down") {
+			return fmt.Errorf("browser sign in: %w", err)
+		}
+		if apiErr.Code == "slow_down" {
+			interval += 2 * time.Second
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("browser sign in expired: %w", waitCtx.Err())
+		case <-time.After(interval):
+		}
+	}
 }
 
 func openLoginBrowser(link string) {

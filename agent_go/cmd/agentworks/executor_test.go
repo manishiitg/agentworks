@@ -155,3 +155,62 @@ func TestExecutorRetriesAStaleDeviceConnection(t *testing.T) {
 		t.Fatal("did not stop")
 	}
 }
+
+// `agentworks start` shares the folder you are standing in, read and write with shell, named after the folder and the
+// computer, with no flags: the one-command flow the setup page describes.
+func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	project := filepath.Join(t.TempDir(), "My App")
+	if err := os.Mkdir(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(project)
+	received := make(chan localfiles.Hello, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var hello localfiles.Hello
+		if conn.ReadJSON(&hello) != nil || conn.WriteJSON(map[string]bool{"connected": true}) != nil {
+			return
+		}
+		received <- hello
+		var request any
+		_ = conn.ReadJSON(&request)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	finished := make(chan int, 1)
+	go func() {
+		finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+			if key == "AGENTWORKS_TOKEN" {
+				return "test-token"
+			}
+			return ""
+		})
+	}()
+	select {
+	case hello := <-received:
+		if hello.DeviceID != defaultDeviceName() || len(hello.Resources) != 1 {
+			t.Fatalf("hello %+v", hello)
+		}
+		if r := hello.Resources[0]; r.ID != "my-app" || !r.Writable || !r.Shell {
+			t.Fatalf("the folder must be shared read-and-write with shell, named after the folder: %+v", r)
+		}
+	case code := <-finished:
+		t.Fatalf("start exited %d: %s", code, stderr.String())
+	case <-time.After(10 * time.Second):
+		t.Fatal("start did not connect")
+	}
+	cancel()
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("start did not stop")
+	}
+}

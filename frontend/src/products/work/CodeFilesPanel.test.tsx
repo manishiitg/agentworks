@@ -13,7 +13,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
 import { CodeChatConnectionStatus } from './CodeChatConnectionStatus'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, setDefaultLocalTarget, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -63,7 +63,7 @@ it('keeps connection controls in Settings and links there from Files', async () 
 it('connects the current session and shows only CLI connection controls', async () => {
   const { host, showFiles } = await render(true)
   await click(host, 'Connect local files')
-  expect(host.textContent).toContain('--scopes devices:connect')
+  expect(host.textContent).toContain('/agentworks" start --server')
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
   expect(codeLocalFilesForChat(session)).toBeUndefined()
@@ -101,7 +101,7 @@ it('preserves offline selections without rendering server files or silently wide
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render()
   expect(host.textContent).toContain('Offline')
-  expect(host.textContent).toContain('--scopes devices:connect')
+  expect(host.textContent).toContain('/agentworks" start --server')
   expect(host.textContent).toContain('Costs and Models')
   expect(host.textContent).not.toContain('Server source')
   expect(codeLocalFilesForChat(session)).toEqual(target)
@@ -156,34 +156,40 @@ it('shows shell capability and a CLI command that enables local builds and tests
   writeCodeFilesPreference(session, { location: 'computer', target })
   transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
   const { host } = await render(true)
-  expect(host.textContent).toContain('--write-folder project=/absolute/path/to/project')
-  expect(host.textContent).not.toContain('--shell')
-  expect(host.textContent).toContain('Shell commands are enabled automatically')
+  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).not.toContain('--write-folder')
+  expect(host.textContent).not.toContain('Read only')
   expect(host.textContent).toContain('Files and commands')
   expect(host.textContent).toContain('Shell commands enabled on this computer')
   expect(transport.post).not.toHaveBeenCalled()
 })
 
-it('requires a project path and explicitly opts in to writable Downloads in the setup command', async () => {
+it('shows one start command with no folder form, and Verify connection says what it found', async () => {
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render(true)
   await click(host, 'Connect local files')
-  const copy = host.querySelector<HTMLButtonElement>('[aria-label="Copy connection command"]')!
-  const downloads = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!
-  expect(copy.disabled).toBe(true)
-  expect(downloads.checked).toBe(false)
-  expect(host.textContent).not.toContain('--downloads')
-  const input = host.querySelector<HTMLInputElement>('#local-project-folder')!
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, "~/Projects/my app's files")
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  })
-  expect(copy.disabled).toBe(false)
-  expect(host.textContent).toContain(`project="$HOME"/'Projects/my app'\\''s files'`)
-  await act(async () => downloads.click())
-  expect(host.textContent).toContain('--downloads')
+  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('agentworks stop')
+  expect(host.textContent).toContain('agentworks start --debug')
+  expect(host.querySelector('#local-project-folder')).toBeNull()
+  expect(host.textContent).not.toContain('Nothing is connected yet')
+  await click(host, 'Verify connection')
+  expect(host.textContent).toContain('Nothing is connected yet')
+  transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
+  await click(host, 'Verify connection')
+  expect(host.textContent).toContain('Connected: laptop / project.')
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   expect(transport.post).not.toHaveBeenCalled()
+})
+
+it('a folder opened by `agentworks start` makes chats without their own choice Local, and a chat choice wins', () => {
+  setDefaultLocalTarget(target)
+  expect(codeChatModeForChat('fresh-chat')).toBe('local')
+  expect(codeLocalFilesForChat('fresh-chat')).toEqual(target)
+  writeCodeFilesPreference('server-chat', { location: 'server' })
+  expect(codeChatModeForChat('server-chat')).toBe('server')
+  setDefaultLocalTarget({ device_id: '../bad', resource_id: 'project' })
+  expect(codeLocalFilesForChat('fresh-chat')).toEqual(target)
 })
 
 it('shows Downloads permission before switching and on the connected summary', async () => {
@@ -197,7 +203,7 @@ it('shows Downloads permission before switching and on the connected summary', a
   expect(host.textContent).toContain('Project: read only')
   expect(host.textContent).toContain('Downloads: read and write')
   const calls = transport.get.mock.calls.length
-  await click(host, 'Check connection')
+  await click(host, 'Verify connection')
   expect(transport.get.mock.calls.length).toBe(calls + 1)
   expect(codeLocalFilesForChat(session)).toEqual(target)
 })

@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
 const MaxBodyBytes = 16 << 20
@@ -39,6 +41,14 @@ type Client struct {
 	token         string
 	tokenProvider func(context.Context) (string, error)
 	http          *http.Client
+	// executorTrace, when set, is told about every request the local executor served (agentworks start --debug).
+	executorTrace func(request localfiles.Request, response localfiles.Response, took time.Duration)
+}
+
+// WithExecutorTrace reports each served file or shell request, for debugging a local connection.
+func (c *Client) WithExecutorTrace(trace func(request localfiles.Request, response localfiles.Response, took time.Duration)) *Client {
+	c.executorTrace = trace
+	return c
 }
 
 // WithTokenProvider resolves a browser-login credential before each request.

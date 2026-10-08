@@ -134,7 +134,11 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			defer operations.Done()
 			defer func() { <-slots }()
 			defer func() { cancel(); activeMu.Lock(); delete(active, request.ID); activeMu.Unlock() }()
+			began := time.Now()
 			result := executor.Execute(operationCtx, request)
+			if c.executorTrace != nil {
+				c.executorTrace(request, result, time.Since(began))
+			}
 			if err := send(result); err != nil {
 				conn.Close()
 			}
