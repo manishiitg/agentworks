@@ -37,7 +37,8 @@ func materializeReferenceSkillWithMCP(mode string, mcpManagement bool) *llmtypes
 		Intro:            spec.Intro,
 		Render:           renderReferenceKind,
 		Select: func(kind string, meta kindMeta) bool {
-			return kind != "workspace-views" && (mcpManagement || kind != "integration-discovery") && (mode == "" || modeAllowedIn(kind, mode, referenceKinds))
+			// Pulse's skills live only in Pulse's own pack (MaterializePulseSkill).
+			return kind != "workspace-views" && !isPulseSkillKind(kind) && (mcpManagement || kind != "integration-discovery") && (mode == "" || modeAllowedIn(kind, mode, referenceKinds))
 		},
 	})
 }

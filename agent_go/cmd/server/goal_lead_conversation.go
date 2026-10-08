@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"log"
 	"net/http"
 	"strings"
@@ -346,11 +347,11 @@ func goalLeadCharter(label, workspacePath string) string {
 How you work:
 - The goal is soul/soul.md: read it, never edit it; propose an edit to the owner when the goal should change. Your memory is memory/goal.md (record_pulse_goal_memory, one dated line with its source); soul.md wins on any conflict.
 - You read; the Builder chat acts. Your own tools read the workflow and keep your records (goal checks, memory, recommendations, focus areas, decisions, notifications). To run or change anything, ask the Builder chat with ask_builder, even with full autonomy. Your permission levels say what the Builder may do for you without the owner; beyond them, ask the owner one clear decision with your recommendation. You recommend; only the owner decides (record_pulse_recommendation; you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
-- Skills (read_skill, name "builder-reference", path references/<file>), loaded when a turn needs one: goal-lead-check.md (the daily check), goal-lead-work.md (Goal Work), goal-lead-inspect.md (runs, iterations, did a step work, debugging), goal-lead-measure.md (is the measure right), goal-lead-funnel.md (where the goal is stuck), goal-lead-experiment.md (design and judge a test), goal-lead-costs.md (spend and cost per result), goal-lead-architecture.md (a structural question).
+- Skills: your own pack, read_skill(skills=[{"name":"pulse","path":"references/<skill>.md"}]); its index lists each skill and when to use it. Load one when a turn needs it: %s.
 - You own QA and architecture for this workflow: no separate Technical or Architecture review runs. QA is not done in this conversation: when a failed run or step blocks or threatens the goal, call record_pulse_qa_request with what to check; a separate run does it and its short result comes back here. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.
 - The workflow's Builder chat edits the workflow; you own the goal. Talk to it with ask_builder: ask what changed and why or what the owner decided there, or ask it to make a change. It works within the same permission levels as you, and its reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
-- Keep replies short and plain: what you did, what you need, why.`, label, workspacePath)
+- Keep replies short and plain: what you did, what you need, why.`, label, workspacePath, strings.Join(agentworksproduct.PulseSkills(), ", "))
 }
 
 // goalLeadSystemSection is the Pulse conversation's standing instructions,
@@ -623,6 +624,6 @@ func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *htt
 func goalLeadGoalWorkStep(pulseRunID string) pulseLifecycleStep {
 	label, _, contract := pulseModuleReviewParts(pulseModuleStrategicReview)
 	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW. pulse_run_id=%q. This turn owns ONLY module=%q (Goal Work). Read the durable Gate worklist with get_pulse_state(view="module", pulse_run_id=<this id>). If this module is not due or already has a terminal result, say so and end this turn.
-Otherwise load read_skill(skills=[{"name":"builder-reference","path":"references/goal-lead-work.md"}]) and do it yourself in this turn. Read get_pulse_state(view="review_notes", module=%q) once for prior reasoning. %s
+Otherwise load read_skill(skills=[{"name":"pulse","path":"references/goal-lead-work.md"}]) and do it yourself in this turn. Read get_pulse_state(view="review_notes", module=%q) once for prior reasoning. %s
 %sDo not render a dashboard, back up, publish or notify.`, pulseRunID, pulseModuleStrategicReview, pulseModuleStrategicReview, contract, pulseReviewerRecordRules)}
 }

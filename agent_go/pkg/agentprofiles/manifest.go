@@ -51,6 +51,7 @@ type ChatPromptSource struct {
 // PulseDefinition is product.yaml's pulse section.
 type PulseDefinition struct {
 	Tools      []string `yaml:"tools"`
+	Skills     []string `yaml:"skills"`
 	WritePaths []string `yaml:"write_paths"`
 }
 

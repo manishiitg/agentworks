@@ -497,6 +497,15 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 					return fmt.Errorf("attach Relay Builder skill %s: %w", skill.Name, err)
 				}
 			}
+		} else if isGoalLeadSessionID(sessionID) {
+			// Pulse gets its own pack, from product.yaml pulse.skills.
+			skill, err := guidance.MaterializePulseSkill(agentworksproduct.PulseSkills())
+			if err != nil {
+				return fmt.Errorf("pulse skills: %w", err)
+			}
+			if err := definitionAgent.AttachSkill(skill); err != nil {
+				return fmt.Errorf("attach pulse skills: %w", err)
+			}
 		} else {
 			workshopMode := phaseTemplateVars["WorkshopMode"]
 			if err := guidance.AttachConfiguredReferenceSurface(workshopMode, mcpManagement, agentworksproduct.ChatSkills(policy.Mode), func(skill *llmtypes.Skill) error {

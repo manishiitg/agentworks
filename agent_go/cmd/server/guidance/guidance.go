@@ -137,6 +137,8 @@ var referenceKinds = map[string]kindMeta{
 	"goal-lead-funnel":       {Group: "system", Description: "Pulse skill: find the bottleneck from the work to the goal, compare segments and cost per outcome."},
 	"goal-lead-experiment":   {Group: "system", Description: "Pulse skill: design a test (one change, baseline, sample, stop rule) and judge it honestly."},
 	"goal-lead-costs":        {Group: "system", Description: "Pulse skill: read the cost ledger, find spikes and costly steps, judge cost per goal result."},
+	"goal-lead-memory":       {Group: "system", Description: "Pulse skill: keep goal memory true and short: sections, sources, updating, consolidating, using it."},
+	"goal-lead-tickets":      {Group: "system", Description: "Pulse skill: open, dedupe, rank, hand off, chase and close Pulse tickets by goal impact."},
 	"ops-review":             {Group: "system", Description: "Operations lens: conditional Technical Review diagnostics for outcome, reliability, efficiency, or structural evidence.", Modes: []string{"workshop"}},
 	"specialize-advisors":    {Group: "system", Description: "Owner-approved workflow-specific advisor lenses; loaded by the advisor-specialization revise path.", Modes: []string{"workshop"}},
 	"fix-verification":       {Group: "system", Description: "Proportional immediate checks for bounded repairs. Record what actually passed; changed_unverified still closes an applied fix when stronger runtime proof is unavailable. Reopen only on reproduction, with no future-run verification queue. Load before applying fixes.", Modes: []string{"workshop"}},

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"slices"
 	"testing"
@@ -38,6 +39,11 @@ func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 		if !gate.Admit(name) {
 			t.Fatalf("Pulse must get %s", name)
 		}
+	}
+	// Pulse's own skill pack comes from product.yaml pulse.skills, every listed skill with its file.
+	pack, err := guidance.MaterializePulseSkill(agentworksproduct.PulseSkills())
+	if err != nil || pack.Name != "pulse" || len(pack.SupportingFiles) != len(agentworksproduct.PulseSkills()) {
+		t.Fatalf("pulse skill pack = %v, %v", pack, err)
 	}
 	if got := agentworksproduct.PulseWritePaths(); len(got) != 2 || got[0] != "pulse/" || got[1] != "memory/" {
 		t.Fatalf("Pulse may write only pulse/ and memory/, product.yaml says %v", got)

@@ -175,6 +175,18 @@ chat_policy:
 # and the only workflow folders it may write; the rest is read-only to it.
 # execute_shell_command stays because a coding CLI reaches its tools through it.
 pulse:
+  # Pulse's own skill pack ("pulse"), loaded with read_skill(name="pulse").
+  skills:
+    - goal-lead-check
+    - goal-lead-work
+    - goal-lead-memory
+    - goal-lead-tickets
+    - goal-lead-inspect
+    - goal-lead-measure
+    - goal-lead-funnel
+    - goal-lead-experiment
+    - goal-lead-costs
+    - goal-lead-architecture
   write_paths:
     - pulse/
     - memory/
