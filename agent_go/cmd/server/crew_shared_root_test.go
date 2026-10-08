@@ -438,6 +438,22 @@ func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessReader || !newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
 		t.Fatal("with sharing on, a user with the Crew product is a reader")
 	}
+	// The owner can keep one Crew to themselves while sharing is on (PLAT-725).
+	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, true); err != nil {
+		t.Fatal(err)
+	}
+	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessNone || newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
+		t.Fatal("another user still has access to a Crew its owner made private")
+	}
+	if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ref.Root); err == nil {
+		t.Fatalf("another user opened a private Crew: %+v", got)
+	}
+	if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner {
+		t.Fatal("the owner lost access to their private Crew")
+	}
+	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, false); err != nil {
+		t.Fatal(err)
+	}
 	f.WithSharing(false)
 	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessNone {
 		t.Fatal("with sharing off, another user has access to a private Crew")

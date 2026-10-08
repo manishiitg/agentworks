@@ -134,8 +134,9 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		}
 		p.Owners = []string{owner}
 		p.Audience = append([]string{}, p.Owners...)
-		// A Code project is private to its owner, so its owner is its whole audience; a Crew can be shared.
-		if projectSharingEnabled() && !isCodeProjectPath(root) {
+		// A Code project is private to its owner, so its owner is its whole audience; a shared Crew reaches every user
+		// of the Crew product.
+		if !isCodeProjectPath(root) && crewSharedWithOthers(root) {
 			directory, err := loadUserDirectory()
 			if err != nil || directory == nil {
 				return nil, fmt.Errorf("Crew audience is unavailable")

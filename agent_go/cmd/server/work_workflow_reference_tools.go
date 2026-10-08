@@ -29,9 +29,8 @@ func accessibleProjectIcon(icon, name string) string {
 }
 
 func listAccessibleCrewProjects(ctx context.Context, userID, query string) ([]map[string]interface{}, error) {
-	// Crews are shared server-wide: list the caller's own Crews (logical
-	// Chats/Work/projects/<x> paths) and every other owner's Crews (physical
-	// _users/<owner>/... paths), all read-write for Crew-to-Crew work.
+	// List the caller's own Crews (logical Chats/Work/projects/<x> paths) and every other owner's Crews that are
+	// shared with others (physical _users/<owner>/... or Crew/<x> paths), all read-write for Crew-to-Crew work.
 	items, err := listCrewProjectsForOwner(ctx, userID, userID, query)
 	if err != nil {
 		return nil, err
@@ -91,6 +90,10 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 			continue
 		}
 		seen[candidate] = true
+		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
+		if access != "owner" && !crewSharedWithOthers(strings.TrimSuffix(candidate, "/product.json")) {
+			continue
+		}
 		raw, found, readErr := store.read(ctx, candidate)
 		if readErr != nil {
 			return nil, fmt.Errorf("read Crew manifest %s: %w", candidate, readErr)

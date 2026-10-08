@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -306,6 +307,9 @@ func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile
 		// root and as a top-level item, yielding the same manifest twice.
 		seenManifests[candidate] = true
 		projectRoot := strings.TrimSuffix(candidate, "/product.json")
+		if !crewSharedWithOthers(projectRoot) {
+			continue
+		}
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
 		if err != nil {
 			continue
@@ -614,4 +618,81 @@ func (api *StreamingAPI) whatsappOtherCrews(ctx context.Context, userID string) 
 		}
 	}
 	return crews
+}
+
+// GET /api/agent-profiles/{id}/project-sharing: the folders of the caller's own Crews they made private (every other
+// Crew they own is shared with every user of the Crew product while project sharing is on).
+func (api *StreamingAPI) handleGetProjectSharing(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !strings.EqualFold(strings.TrimSpace(mux.Vars(r)["id"]), crewProfileID) || !userAllowedProduct(claims, "work") {
+		writeAgentProfileError(w, http.StatusNotFound, "projects not found")
+		return
+	}
+	all, err := defaultProjectOwners().All()
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "project sharing is unavailable")
+		return
+	}
+	owner := cleanManifestOwner(claims.UserID)
+	private := []string{}
+	for _, rec := range all {
+		if rec.Product == "work" && rec.Private && rec.OwnerID == owner {
+			private = append(private, rec.Folder)
+		}
+	}
+	sort.Strings(private)
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"sharing": projectSharingEnabled(), "private_folders": private})
+}
+
+// PUT /api/agent-profiles/{id}/projects/{project_id}/sharing {"private": bool}: the owner keeps one Crew to themselves
+// or shares it again. Only the registered owner; the choice is kept in the server-controlled owner registry.
+func (api *StreamingAPI) handlePutProjectSharing(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	profileID := strings.TrimSpace(mux.Vars(r)["id"])
+	projectID := strings.TrimSpace(mux.Vars(r)["project_id"])
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !strings.EqualFold(profileID, crewProfileID) || projectID == "" || api == nil || api.agentProfiles == nil {
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	var body struct {
+		Private *bool `json:"private"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Private == nil {
+		writeAgentProfileError(w, http.StatusBadRequest, `body must be {"private": true|false}`)
+		return
+	}
+	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
+	if err != nil || !userAllowedProduct(claims, profile.Product) {
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	crew, err := resolveCrewProjectBinding(r.Context(), claims.UserID, profile, projectID, "")
+	if err != nil || !crew.OwnedByCaller {
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	id, ok := projectIdentityOf(crew.Binding.WorkspacePath)
+	if !ok || id.Product != "work" {
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	registry := defaultProjectOwners()
+	if err := registry.Register(projectOwnerRecord{Product: id.Product, Folder: id.Folder, OwnerID: claims.UserID, ProjectID: projectID, Shared: id.Shared}); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "could not record the Crew's owner")
+		return
+	}
+	if err := registry.SetPrivate(id.Product, id.Folder, *body.Private); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "could not change the Crew's sharing")
+		return
+	}
+	log.Printf("[CREW_SHARING] %s set %s/%s private=%v", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, *body.Private)
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"private": *body.Private, "folder": id.Folder})
 }

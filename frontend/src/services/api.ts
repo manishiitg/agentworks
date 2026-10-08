@@ -1332,6 +1332,21 @@ export const agentApi = {
     return response.data
   },
 
+  /** Whether Crews are shared on this server, and the folders of the caller's own Crews they made private. */
+  getProjectSharing: async (profileId: string): Promise<{ sharing: boolean; private_folders: string[] }> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/project-sharing`)
+    return response.data
+  },
+
+  /** The owner keeps one Crew to themselves (private) or shares it with everyone who has Crews again. */
+  setProjectPrivate: async (profileId: string, projectId: string, isPrivate: boolean): Promise<{ private: boolean; folder: string }> => {
+    const response = await api.put(
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/sharing`,
+      { private: isPrivate },
+    )
+    return response.data
+  },
+
   deleteAgentProfileProject: async (profileId: string, projectId: string): Promise<{ success: boolean }> => {
     const response = await api.delete(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`,

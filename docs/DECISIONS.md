@@ -17,11 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
-### 2026-10-08 — Project sharing is on by default again
+### 2026-10-08 — Crews are shared with everyone by default; the owner can make one private
 
 - **Decided.** `projectSharingEnabled` (`agent_go/cmd/server/project_sharing.go`) is on unless
-  `AGENTWORKS_PROJECT_SHARING=off`. Another user with the Crew product sees and opens an owner's Crew as a
-  reader, as before 2026-10-01. Code workspaces stay private.
+  `AGENTWORKS_PROJECT_SHARING=off`. Every other user with the Crew product sees and opens an owner's Crew as a
+  reader, as before 2026-10-01, unless the owner made that Crew private (lock button in the Crew picker;
+  `PUT /api/agent-profiles/work/projects/{id}/sharing`). The flag is `private` in the server-controlled owner
+  registry, so no project file or agent turn can change it; `crewSharedWithOthers` is the one check used by
+  Crew access, reader binding, the shared-Crew list, `list_crews` and the Brain audience. Code workspaces stay private.
 - **Why.** The 2026-10-01 reason (a reader's commands ran as their own slot and could not work in the owner's
   folder) no longer holds: Crew turns run as the app account (2026-10-04). With sharing off, `list_crews`
   listed Crews that `get_crew` and `ask_crew` then refused. Owner decision. Ticket: PLAT-725.

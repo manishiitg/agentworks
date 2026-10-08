@@ -203,6 +203,13 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if !projectSharingEnabled() {
 		return denied()
 	}
+	// A Crew its owner made private resolves for nobody else.
+	reader := func(ownerID string, binding productConversationBinding) (crewProjectBinding, error) {
+		if !crewSharedWithOthers(binding.WorkspacePath) {
+			return denied()
+		}
+		return readerCrewProjectBinding(ownerID, binding), nil
+	}
 	// A Crew at the shared root (PLAT-442 step 4) has its owner in the server's registry: one listing of Crew/ finds
 	// it whoever the owner is (not the caller, whose own were tried above).
 	var sharedOwner string
@@ -214,7 +221,7 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		sharedOwner = owner
 		return true
 	}); err == nil {
-		return readerCrewProjectBinding(sharedOwner, shared), nil
+		return reader(sharedOwner, shared)
 	} else if !errors.Is(err, errProjectNotFound) {
 		return denied()
 	}
@@ -225,13 +232,13 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		if err != nil {
 			return denied()
 		}
-		return readerCrewProjectBinding(ownerID, binding), nil
+		return reader(ownerID, binding)
 	}
 	ownerID, binding, err := scanCrewProjectOwners(ctx, callerID, profile, projectID, store)
 	if err != nil {
 		return denied()
 	}
-	return readerCrewProjectBinding(ownerID, binding), nil
+	return reader(ownerID, binding)
 }
 
 // readerCrewProjectBinding strips the manifest coupling from a verified

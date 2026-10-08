@@ -51,6 +51,9 @@ type projectOwnerRecord struct {
 	Shared bool `json:"shared,omitempty"`
 	// Aliases are the old physical roots of a moved Crew (_users/<owner>/Chats/Work/projects/<folder>).
 	Aliases []string `json:"aliases,omitempty"`
+	// Private is the owner's restriction of a Crew to themselves; a Crew is shared with every user of the Crew product
+	// otherwise (crewSharedWithOthers).
+	Private bool `json:"private,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -232,6 +235,23 @@ func (r *projectOwnerRegistry) SetShared(product, folder string, shared bool) er
 			return false, nil
 		}
 		current.Shared = shared
+		projects[key] = current
+		return true, nil
+	})
+}
+
+// SetPrivate records the owner's choice to keep a registered Crew to themselves (true) or share it (false).
+func (r *projectOwnerRegistry) SetPrivate(product, folder string, private bool) error {
+	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if current.Private == private {
+			return false, nil
+		}
+		current.Private = private
 		projects[key] = current
 		return true, nil
 	})

@@ -1,7 +1,7 @@
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Lock, Plus, Trash2, Users } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -747,6 +747,35 @@ function WorkTopBarControl({
   deletingProjectId: string | null
 }) {
   const [open, setOpen] = useState(false)
+  // Crews are shared with everyone who has Crews unless the owner makes one private (PLAT-725).
+  const sharingControls = product.profileId === 'work'
+  const [sharing, setSharing] = useState<{ on: boolean; privateFolders: Set<string> } | null>(null)
+  const [savingSharingId, setSavingSharingId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open || !sharingControls) return
+    let cancelled = false
+    agentApi.getProjectSharing(product.profileId)
+      .then(result => { if (!cancelled) setSharing({ on: result.sharing, privateFolders: new Set(result.private_folders ?? []) }) })
+      .catch(() => { if (!cancelled) setSharing(null) })
+    return () => { cancelled = true }
+  }, [open, product.profileId, sharingControls])
+  const toggleSharing = async (session: WorkSession, makePrivate: boolean) => {
+    setSavingSharingId(session.id)
+    try {
+      const result = await agentApi.setProjectPrivate(product.profileId, session.id, makePrivate)
+      setSharing(current => {
+        const privateFolders = new Set(current?.privateFolders ?? [])
+        if (result.private) privateFolders.add(result.folder)
+        else privateFolders.delete(result.folder)
+        return { on: current?.on ?? true, privateFolders }
+      })
+    } catch (cause) {
+      const message = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not change sharing.'
+      useChatStore.getState().addToast(message, 'error')
+    } finally {
+      setSavingSharingId(null)
+    }
+  }
 
   return (
     <TopBarEntitySelector
@@ -800,6 +829,22 @@ function WorkTopBarControl({
                   </span>
                 </span>
               </button>
+              {sharingControls && sharing?.on ? (() => {
+                const isPrivate = sharing.privateFolders.has(session.workspacePath.split('/').filter(Boolean).pop() ?? '')
+                const name = session.identity?.name || session.title
+                return (
+                  <button
+                    type="button"
+                    aria-label={isPrivate ? `Share ${name} with everyone` : `Make ${name} private`}
+                    title={isPrivate ? 'Private: only you. Click to share with everyone who has Crews.' : 'Shared with everyone who has Crews. Click to make it private.'}
+                    disabled={savingSharingId !== null}
+                    onClick={() => { void toggleSharing(session, !isPrivate) }}
+                    className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50 dark:hover:bg-slate-600 dark:hover:text-gray-200"
+                  >
+                    {savingSharingId === session.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isPrivate ? <Lock className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
+                  </button>
+                )
+              })() : null}
               <button
                 type="button"
                 aria-label={`Delete ${product.noun} ${session.identity?.name || session.title}`}
