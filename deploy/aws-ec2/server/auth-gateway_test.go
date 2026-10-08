@@ -270,9 +270,9 @@ func TestNewGatewaySSOOnlyNeedsNoSharedPassword(t *testing.T) {
 	t.Setenv("GATEWAY_SSO_SUPABASE_URL", "https://example.supabase.co")
 	t.Setenv("GATEWAY_SSO_SUPABASE_ANON_KEY", "public-key")
 	t.Setenv("GATEWAY_SSO_REDIRECT_URL", "https://sparkquill.example/auth/google/callback")
-	t.Setenv("GATEWAY_SSO_ALLOWED_EMAILS", " MahimaKh@gmail.com, manisharies.iitg@gmail.com ")
+	t.Setenv("GATEWAY_SSO_ALLOWED_EMAILS", " Member@example.com, owner@example.com ")
 	g := newGateway()
-	if !g.ssoOnly || len(g.password) != 0 || !g.ssoAllowedEmail["mahimakh@gmail.com"] || !g.ssoAllowedEmail["manisharies.iitg@gmail.com"] {
+	if !g.ssoOnly || len(g.password) != 0 || !g.ssoAllowedEmail["member@example.com"] || !g.ssoAllowedEmail["owner@example.com"] {
 		t.Fatal("SSO gateway did not enable the two approved emails without a shared password")
 	}
 }
@@ -294,7 +294,7 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 		tokenRequests++
 		w.Header().Set("Content-Type", "application/json")
 		if tokenRequests == 1 {
-			_, _ = io.WriteString(w, `{"user":{"email":"MahimaKh@gmail.com","email_confirmed_at":"2026-09-24T00:00:00Z"}}`)
+			_, _ = io.WriteString(w, `{"user":{"email":"Member@example.com","email_confirmed_at":"2026-09-24T00:00:00Z"}}`)
 		} else {
 			_, _ = io.WriteString(w, `{"user":{"email":"other@gmail.com","email_confirmed_at":"2026-09-24T00:00:00Z"}}`)
 		}
@@ -307,7 +307,7 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 	g := &gateway{
 		secret: []byte("test-secret-that-is-long-enough"), sessionCookie: sessionCookieName("sparkquill"), frontendDir: frontendDir,
 		ssoOnly: true, ssoURL: supabase.URL, ssoAnonKey: "public-key", ssoRedirectURL: "https://sparkquill.example/auth/google/callback",
-		ssoAllowedEmail: map[string]bool{"mahimakh@gmail.com": true, "manisharies.iitg@gmail.com": true}, ssoClient: supabase.Client(),
+		ssoAllowedEmail: map[string]bool{"member@example.com": true, "owner@example.com": true}, ssoClient: supabase.Client(),
 	}
 	start := httptest.NewRecorder()
 	g.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/auth/google/start?next=%2Factivity", nil))
@@ -358,7 +358,7 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 	}
 
 	// Removing an address blocks its already-issued cookie at the next request.
-	restarted.ssoAllowedEmail = map[string]bool{"manisharies.iitg@gmail.com": true}
+	restarted.ssoAllowedEmail = map[string]bool{"owner@example.com": true}
 	denied := httptest.NewRecorder()
 	restarted.ServeHTTP(denied, request)
 	if denied.Code != http.StatusSeeOther || !strings.HasPrefix(denied.Header().Get("Location"), "/login") {

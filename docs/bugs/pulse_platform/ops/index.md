@@ -9,3 +9,4 @@
 | [deploys](deploys/index.md) | 3 | 0 |
 | [local](local/index.md) | 1 | 0 |
 | [performance](performance/index.md) | 6 | 2 |
+| [repo](repo/index.md) | 1 | 1 |

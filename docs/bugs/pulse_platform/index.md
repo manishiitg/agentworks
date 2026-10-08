@@ -16,7 +16,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
 | [Integrations (Slack, Gmail, WhatsApp, MCP)](integrations/index.md) | 34 | 6 |
-| [Operations (cost, performance, deploys, logs)](ops/index.md) | 32 | 10 |
+| [Operations (cost, performance, deploys, logs)](ops/index.md) | 33 | 11 |
 | [Relays](relays/index.md) | 27 | 5 |
 | [Sandbox and security (slot accounts, isolation, permissions)](sandbox/index.md) | 62 | 13 |
 | [Schedules, triggers and runs](schedules/index.md) | 38 | 9 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-719](ops/repo/plat-719.md) | Company and customer specifics in the public repo | in progress | P1 | [ops/repo](ops/repo/index.md) |
 | [PLAT-718](coding-agents/claude-code/plat-718.md) | Claude Haiku 5.5 replaces Haiku 4.5 | fixed on main | P2 | [coding-agents/claude-code](coding-agents/claude-code/index.md) |
 | [PLAT-717](coding-agents/pi/plat-717.md) | Bring your own model key: OpenRouter, NVIDIA NIM, Groq, Google AI Studio and OpenAI-compatible endpoints through Pi | fixed on main | P2 | [coding-agents/pi](coding-agents/pi/index.md) |
 | [PLAT-716](coding-agents/accounts/plat-716.md) | Check usage times out after 30 s in the browser | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-679](relays/frontend-chat/plat-679.md) | External Relay builder chat cannot find draft test tools | open | P2 | [relays/frontend-chat](relays/frontend-chat/index.md) |
 | [PLAT-678](browser/browser/plat-678.md) | RTS browser relay deadlock from the extension version | fixed on main | P0 | [browser/browser](browser/browser/index.md) |
 | [PLAT-677](vault/groups/plat-677.md) | Vault group descriptions must not name people | open | P2 | [vault/groups](vault/groups/index.md) |
-| [PLAT-676](coding-agents/muse/plat-676.md) | Muse hooks fail on slots: node Permission denied | in progress | P1 | [coding-agents/muse](coding-agents/muse/index.md) |

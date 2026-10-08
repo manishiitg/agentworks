@@ -96,7 +96,7 @@ HTTP 400 on tool calls; leave it off.
 ## Sign-in (pending)
 
 Google through Supabase (`AUTH_PROVIDERS=supabase-google`). Only people in the user directory can sign in: on
-2026-10-08 the owner chose four admins (gaurav@, akram@, nverdhan@citymall.live and the owner's own Gmail) and no
+2026-10-08 the owner chose four admins (three Citymall staff and the owner) and no
 domain-wide rule (`AUTH_ALLOWED_EMAIL_DOMAINS` is not set). An admin adds everyone else; a sign-in never creates an
 account. Until the owner adds these to
 `/srv/citymall/.env` and redeploys, nobody can sign in through the UI:

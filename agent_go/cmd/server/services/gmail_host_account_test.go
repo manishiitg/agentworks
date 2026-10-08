@@ -13,13 +13,13 @@ func TestHostAccountConnectionAdoptsAnAuthenticatedHost(t *testing.T) {
 	now := time.Date(2026, 9, 3, 15, 30, 0, 0, time.UTC)
 	conn, ok := hostAccountConnection(GmailAuthStatus{
 		GwsInstalled: true, Authenticated: true, HasGmailScope: true,
-		Email:  "manish.prakash@realtrainingsys.com",
+		Email:  "owner@example.com",
 		Scopes: []string{"https://www.googleapis.com/auth/gmail.modify", "openid"},
 	}, now)
 	if !ok {
 		t.Fatal("an authenticated host with the Gmail scope must be adopted")
 	}
-	if conn.ID != "gmail_001" || conn.Email != "manish.prakash@realtrainingsys.com" || conn.DisplayName != conn.Email {
+	if conn.ID != "gmail_001" || conn.Email != "owner@example.com" || conn.DisplayName != conn.Email {
 		t.Fatalf("unexpected connection %+v", conn)
 	}
 	if conn.ConfigHome != "" || !conn.Enabled || conn.Status != GmailConnectionConnected {

@@ -12,7 +12,7 @@
 
 ## What happened
 
-Ashutosh's `browser-test` Crew suggested `patelvaibhav122003@gmail.com`.
+Ashutosh's `browser-test` Crew suggested `<a member's email>`.
 Its recorded `list_gmail_connections` result was `connections: []`; no Gmail
 mailbox read was recorded. Vaibhav's workflow used its own private gws store.
 The Crew's Claude account cache named that address, while the generated product

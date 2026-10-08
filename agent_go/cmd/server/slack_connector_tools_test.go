@@ -66,7 +66,7 @@ func TestSlackRouteToolAcceptsAuthenticatedCLIBridgeOwner(t *testing.T) {
 		return tool.exec(operatorCtx, args)
 	}
 	ctx := executor.WithSessionID(context.Background(), "builder-alice")
-	args := map[string]interface{}{"channel_id": "C0BTUQW85L1"}
+	args := map[string]interface{}{"channel_id": "C0TESTCHAN1"}
 	for _, bad := range []context.Context{
 		executor.WithSessionID(context.Background(), "unknown"),
 		context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "bob"}),
@@ -83,7 +83,7 @@ func TestSlackRouteToolAcceptsAuthenticatedCLIBridgeOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	route, found := routes["C0BTUQW85L1"]
+	route, found := routes["C0TESTCHAN1"]
 	if !found || route.WorkflowID != "example" || route.BotGrant != "run" || len(route.BlockedEmails) != 0 {
 		t.Fatalf("unexpected persisted route: %+v", routes)
 	}
@@ -95,25 +95,25 @@ func TestSlackRouteToolAcceptsAuthenticatedCLIBridgeOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	trigger := map[string]interface{}{"type": "trusted_app", "bot_id": "BSENTRY", "group_names": []string{"default"}, "step_id": "analyze", "context": map[string]interface{}{"limit": 10, "lookback_minutes": 30}}
-	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0BTUQW85L1", "trigger": trigger}); err != nil {
+	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0TESTCHAN1", "trigger": trigger}); err != nil {
 		t.Fatal(err)
 	}
 	_, routes, err = api.slackRoutes(context.Background())
-	if err != nil || routes["C0BTUQW85L1"].Trigger == nil {
+	if err != nil || routes["C0TESTCHAN1"].Trigger == nil {
 		t.Fatal("update did not save trigger", err)
 	}
-	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0BTUQW85L1"}); err != nil {
+	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0TESTCHAN1"}); err != nil {
 		t.Fatal(err)
 	}
 	_, routes, err = api.slackRoutes(context.Background())
-	if err != nil || routes["C0BTUQW85L1"].Trigger == nil {
+	if err != nil || routes["C0TESTCHAN1"].Trigger == nil {
 		t.Fatal("omission removed trigger")
 	}
-	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0BTUQW85L1", "trigger": nil}); err != nil {
+	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0TESTCHAN1", "trigger": nil}); err != nil {
 		t.Fatal(err)
 	}
 	_, routes, err = api.slackRoutes(context.Background())
-	if err != nil || routes["C0BTUQW85L1"].Trigger != nil {
+	if err != nil || routes["C0TESTCHAN1"].Trigger != nil {
 		t.Fatal("null did not clear trigger")
 	}
 	api.botExecutionSessions.Store("builder-alice", botExecutionSession{})

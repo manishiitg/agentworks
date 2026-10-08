@@ -34,7 +34,7 @@
    user's namespace. Folder Guard blocks sibling user directories even when two
    people can access the same workflow.
 3. Account identity is canonicalized before the path is selected. The owner
-   account `manisharies.iitg@gmail.com` and the read-only
+   account `<a member's email>` and the read-only
    `manish@confida.ai` account do not share an internal user ID or chat folder.
 4. Unattributed legacy files are never silently assigned to the current viewer.
    They move to `conversation/system/` until an explicit owner mapping is

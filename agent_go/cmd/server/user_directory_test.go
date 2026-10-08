@@ -230,9 +230,9 @@ func TestSSOSignInNeverCreatesAnAccountForAStranger(t *testing.T) {
 }
 
 func TestExternalLoginLinksExistingAccountAndKeepsStableID(t *testing.T) {
-	content := withMemoryUserDirectory(t, `{"users":[{"id":"existing-manish","username":"manish","email":"manish.prakash@realtrainingsys.com","admin":true,"can_create":true,"products":[]}]}`)
+	content := withMemoryUserDirectory(t, `{"users":[{"id":"existing-manish","username":"manish","email":"owner@example.com","admin":true,"can_create":true,"products":[]}]}`)
 	rec := ensureDirectoryUserForExternal("supabase-user-id", &ExternalUser{
-		ExternalID: "supabase-user-id", Email: "MANISH.PRAKASH@realtrainingsys.com", Username: "Manish Prakash", Provider: "supabase-google",
+		ExternalID: "supabase-user-id", Email: "OWNER@example.com", Username: "Manish Prakash", Provider: "supabase-google",
 	})
 	if rec == nil || rec.ID != "existing-manish" || rec.SSO == nil || rec.SSO.Provider != "supabase-google" || rec.SSO.ExternalID != "supabase-user-id" {
 		t.Fatalf("existing account was not linked: %+v", rec)

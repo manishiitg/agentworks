@@ -12,7 +12,7 @@
 
 ## What happened
 
-Ankita Manna (`ankitamanna2003@gmail.com`) is a creator, not an admin. Her Codex
+A member is a creator, not an admin. Her Codex
 connection `Client API key` is private (`api_key`, user scope, no sharing grants).
 A server-side equality check confirmed that `/srv/agents/home/.codex/auth.json`
 contained the same key as that private encrypted connection. No key values or
@@ -64,10 +64,10 @@ private-account admission tests for the underlying fix are recorded in PLAT-615.
 ## Wider exposure audit, October 6
 
 The seven affected Code runtime homes map to six users: Utkarsh
-(`ubarnwal0802@gmail.com`, two workspaces), Vishwas (`vishwascharan11@gmail.com`),
-Abhishek (`abhisheks33537@gmail.com`), Manish (`manish@excellencetechnologies.in`),
-Nitish (`nitish000000kushwaha@gmail.com`) and Vaibhav
-(`vaibhavpatel122003@gmail.com`). Three additional isolated runtime homes were
+ (two workspaces), Vishwas,
+Abhishek, Manish,
+Nitish and Vaibhav
+. Three additional isolated runtime homes were
 also linked. These runtimes could reach Ankita's shared key; this does not prove
 provider usage or exposure of those users' own private credentials.
 
