@@ -624,26 +624,36 @@ func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *htt
 		return
 	}
 	if !workflowHasGoal(r.Context(), workspacePath) {
-		http.Error(w, "this workflow has no goal yet (soul.md and a primary goal metric); set one up in the Builder chat first", http.StatusConflict)
+		http.Error(w, "this workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md); set it up in the Builder chat first", http.StatusConflict)
 		return
 	}
-	from := "the owner"
-	if claims := GetUserFromContext(r.Context()); claims != nil {
-		from = firstNonEmptyTrimmed(claims.Username, claims.Email, claims.UserID, from)
-	}
-	if err := appendGoalLeadMessage(r.Context(), workspacePath, GoalLeadMessage{Role: goalLeadTurnOwner, Source: from, Text: message}); err != nil {
+	if err := api.sendGoalLeadOwnerMessage(r.Context(), workspacePath, message); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// sendGoalLeadOwnerMessage logs the owner's message in the Pulse conversation
+// and runs it as a Pulse turn in the background (the Pulse tab's direct box
+// and the MCP builder_pulse_chat tool).
+func (api *StreamingAPI) sendGoalLeadOwnerMessage(ctx context.Context, workspacePath, message string) error {
+	from := "the owner"
+	if claims := GetUserFromContext(ctx); claims != nil {
+		from = firstNonEmptyTrimmed(claims.Username, claims.Email, claims.UserID, from)
+	}
+	if err := appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: goalLeadTurnOwner, Source: from, Text: message}); err != nil {
+		return err
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
+		turnCtx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
 		defer cancel()
-		if _, _, err := api.runGoalLeadTurn(ctx, workspacePath, goalLeadTurn{Kind: goalLeadTurnOwner, From: from, Body: message, Logged: true}); err != nil {
+		if _, _, err := api.runGoalLeadTurn(turnCtx, workspacePath, goalLeadTurn{Kind: goalLeadTurnOwner, From: from, Body: message, Logged: true}); err != nil {
 			log.Printf("[PULSE] owner message turn for %s failed: %v", workspacePath, err)
 		}
 	}()
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	return nil
 }
 
 // goalLeadGoalWorkStep is the full Pulse's strategic_review turn as the Goal

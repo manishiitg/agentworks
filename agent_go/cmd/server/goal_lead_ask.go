@@ -212,12 +212,17 @@ func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, ma
 		if isGoalLeadSessionID(sessionID) {
 			return "", fmt.Errorf("the Pulse cannot ask itself")
 		}
+		// Pulse is talked to from the app and MCP, not from Slack or other bot
+		// conversations (owner, 2026-10-08).
+		if api.sessionIsBotConversation(sessionID) {
+			return "", fmt.Errorf("Pulse is not available from Slack or other bot conversations; tell the person to talk to Pulse from the workflow's Builder chat in AgentWorks (#pulse) or an MCP client")
+		}
 		workspacePath, claims, err := api.pulseToolScope(ctx, "", false)
 		if err != nil {
 			return "", err
 		}
 		if !workflowHasGoal(ctx, workspacePath) {
-			return "", fmt.Errorf("this workflow has no goal yet: it needs soul.md and a primary goal metric")
+			return "", fmt.Errorf("this workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md)")
 		}
 		wait := 60 * time.Second
 		if raw, ok := args["wait_seconds"]; ok {
@@ -299,4 +304,14 @@ func createGoalLeadChatKindTools() []llmtypes.Tool {
 			}),
 		}},
 	}
+}
+
+// sessionIsBotConversation reports a Slack (or other bot) conversation, or a
+// chat started from one.
+func (api *StreamingAPI) sessionIsBotConversation(sessionID string) bool {
+	if _, bot := api.botExecutionForSession(sessionID); bot {
+		return true
+	}
+	info, ok := api.getActiveSession(sessionID)
+	return ok && info != nil && (info.BotPlatform != "" || strings.HasPrefix(info.TurnProvider, "bot_"))
 }

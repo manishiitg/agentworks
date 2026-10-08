@@ -436,7 +436,7 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "Builder catalog")
-	for _, name := range []string{"builder_chat", "builder_status", "builder_reply_input", "builder_cancel", "builder_file_history", "builder_restore_file"} {
+	for _, name := range []string{"builder_chat", "builder_status", "builder_reply_input", "builder_cancel", "builder_file_history", "builder_restore_file", "builder_pulse_chat", "builder_pulse_status"} {
 		if !strings.Contains(marshalStructured(t, spec), name) {
 			t.Fatalf("enabled scoped catalog missing %s", name)
 		}

@@ -185,7 +185,7 @@ pulse:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [create_workflow, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file]
+    external_tools: [create_workflow, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, builder_pulse_chat, builder_pulse_status]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse
