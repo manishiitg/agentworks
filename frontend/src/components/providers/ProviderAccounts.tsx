@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Users, Plus, ShieldCheck, UserRound, LogIn, Loader2, X, Share2, Lock, MoreHorizontal } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
@@ -7,8 +7,9 @@ import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
-import ByokSetup from './ByokSetup'
-import ByokModelBrowser from './ByokModelBrowser'
+// Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
+const ByokSetup = lazy(() => import('./ByokSetup'))
+const ByokModelBrowser = lazy(() => import('./ByokModelBrowser'))
 import { byokServiceOf } from '../../utils/byok'
 import { allowedModelsSummary, allowedModelsText } from '../../utils/allowedModels'
 import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
@@ -270,7 +271,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   )
   const keyModelsEditor = (record: ProviderConnection) => keyModelsDraft?.id === record.id && (
     <div className="mt-3 w-full space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-      <ByokModelBrowser request={{ connection_id: record.id, workspace_path: workspacePath }} service={record.underlying_provider} value={keyModelsDraft.picks} onChange={picks => setKeyModelsDraft({ id: record.id, picks })} manualIds={record.underlying_provider === 'openai-compatible'} />
+      <Suspense fallback={null}><ByokModelBrowser request={{ connection_id: record.id, workspace_path: workspacePath }} service={record.underlying_provider} value={keyModelsDraft.picks} onChange={picks => setKeyModelsDraft({ id: record.id, picks })} manualIds={record.underlying_provider === 'openai-compatible'} /></Suspense>
       <div className="flex gap-2">
         <button type="button" disabled={busy || keyModelsDraft.picks.length === 0} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50" onClick={() => void saveModels(record, keyModelsDraft.picks).then(() => setKeyModelsDraft(null))}>{busy ? 'Saving…' : 'Save models'}</button>
         <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => setKeyModelsDraft(null)}>Cancel</button>
@@ -513,9 +514,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Pi: adding an account is the guided "Use your own model key" flow.
   const keySetup = adding && !editingId && provider === 'pi-cli' && (
     <div className={formOnly ? '' : 'mt-4 border-t border-gray-200 pt-4 dark:border-gray-700'}>
-      <ByokSetup initialService={addService} disabled={disabled || !personalAllowed} onCancel={cancel} onSaved={record => {
+      <Suspense fallback={null}><ByokSetup initialService={addService} disabled={disabled || !personalAllowed} onCancel={cancel} onSaved={record => {
         setConnections(current => [...current, record]); setAdding(false); resetForm(); changed(); onSelect?.(record.id)
-      }} />
+      }} /></Suspense>
     </div>
   )
   const addForm = keySetup || adding && (

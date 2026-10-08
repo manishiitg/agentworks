@@ -80,3 +80,7 @@ Kimi.
 - Pi itself reaches a custom endpoint without the private-address check (only
   the setup calls are guarded, and the URL is checked when saved).
 - Not deployed.
+
+## 2026-10-08: bundle budget
+
+The first Excellence deploy stopped at the build: the eager JavaScript was 1034.72 kB gzip against the 1030 kB budget. The key setup and model browser now load on first use (React.lazy).

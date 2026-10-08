@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrainCircuit, ChevronDown, Gauge, KeyRound, Loader2 } from 'lucide-react'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -8,8 +8,9 @@ import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLM
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type ByokModel, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import ModalPortal from '../../components/ui/ModalPortal'
-import ByokSetup from '../../components/providers/ByokSetup'
-import ByokModelBrowser from '../../components/providers/ByokModelBrowser'
+// Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
+const ByokSetup = lazy(() => import('../../components/providers/ByokSetup'))
+const ByokModelBrowser = lazy(() => import('../../components/providers/ByokModelBrowser'))
 import { byokServiceOf } from '../../utils/byok'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -412,7 +413,7 @@ export function WorkModelsPanel({
               )}
               {keyService && inUseAccount && keyBrowserOpen && keyPicksDraft && (
                 <div className="mt-3 space-y-2 rounded-lg border border-border p-3">
-                  <ByokModelBrowser request={{ connection_id: inUseAccount.id, workspace_path: workspacePath }} service={inUseAccount.underlying_provider} value={keyPicksDraft} onChange={setKeyPicksDraft} manualIds={inUseAccount.underlying_provider === 'openai-compatible'} />
+                  <Suspense fallback={null}><ByokModelBrowser request={{ connection_id: inUseAccount.id, workspace_path: workspacePath }} service={inUseAccount.underlying_provider} value={keyPicksDraft} onChange={setKeyPicksDraft} manualIds={inUseAccount.underlying_provider === 'openai-compatible'} /></Suspense>
                   <button type="button" disabled={keyPicksDraft.length === 0} onClick={() => void saveKeyPicks(keyPicksDraft)} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Save picks</button>
                 </div>
               )}
@@ -457,7 +458,7 @@ export function WorkModelsPanel({
           <ModalPortal>
             <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-gray-950/55 p-3" onMouseDown={event => { if (event.target === event.currentTarget) setKeySetupOpen(false) }}>
               <div role="dialog" aria-modal="true" aria-label="Use your own model key" className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-white p-4 shadow-2xl dark:bg-gray-900">
-                <ByokSetup onCancel={() => setKeySetupOpen(false)} onSaved={(record, picks) => { window.dispatchEvent(new Event('provider-connections-changed')); switchToNewKey(record, picks) }} />
+                <Suspense fallback={null}><ByokSetup onCancel={() => setKeySetupOpen(false)} onSaved={(record, picks) => { window.dispatchEvent(new Event('provider-connections-changed')); switchToNewKey(record, picks) }} /></Suspense>
               </div>
             </div>
           </ModalPortal>
