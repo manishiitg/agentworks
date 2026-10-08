@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 export interface CodeLocalFileTarget { device_id: string; resource_id: string }
@@ -10,9 +11,16 @@ export interface LocalFileDevice { device_id: string; resources: { id: string; w
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
-function preferenceKey(sessionId: string) {
-  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', sessionId])}`
+/** The choice belongs to the Code workspace, not to one chat: a chat nobody has written in yet gets a new random session ID
+ *  after a page refresh, so a per-session choice was forgotten. A session with no known workspace keeps its own choice. */
+function scopeOf(chatTabs: Record<string, { sessionId?: string | null; metadata?: { agentProfileProjectId?: string } }>, sessionId: string) {
+  const project = Object.values(chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId
+  return project ? `workspace:${project}` : sessionId
 }
+function preferenceKeyForScope(scope: string) {
+  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', scope])}`
+}
+function preferenceKey(sessionId: string) { return preferenceKeyForScope(scopeOf(useChatStore.getState().chatTabs, sessionId)) }
 function stored(key: string) { try { return localStorage.getItem(key) } catch { return null } }
 function parse(value: string | null): CodeFilesPreference {
   try {
@@ -60,7 +68,8 @@ function subscribe(listener: () => void) {
 export function useCodeFilesPreference(sessionId: string) {
   const user = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const key = useMemo(() => preferenceKey(sessionId), [sessionId, user, workspace])
+  const scope = useChatStore(state => scopeOf(state.chatTabs, sessionId))
+  const key = useMemo(() => preferenceKeyForScope(scope), [scope, user, workspace])
   const raw = useSyncExternalStore(subscribe, () => effectiveRaw(key), () => null)
   return useMemo(() => parse(raw), [raw])
 }

@@ -64,6 +64,8 @@ import {
 } from '../../utils/reportPreviewPreference'
 
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
+/** In Local mode the right side is only a small connection card: give the chat at least this share of the width. */
+const LOCAL_CODE_MIN_CHAT_SHARE = 0.72
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
@@ -974,6 +976,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const filePreference = useCodeFilesPreference(activeSessionId || '')
   const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
+  const shownSplitRatio = localCodeSession ? Math.max(splitRatio, LOCAL_CODE_MIN_CHAT_SHARE) : splitRatio
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView) => {
@@ -1330,7 +1333,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           ) : (
             <ProductWorkspaceShell
               splitRef={splitLayoutRef}
-              chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={splitRatio}
+              chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
@@ -1409,7 +1412,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               </>}
               divider={
                   <WorkspaceSplitRail
-                    ratio={splitRatio}
+                    ratio={shownSplitRatio}
                     onPointerDown={handleSplitPointerDown}
                     onStep={delta => { if (reportPreviewPreference !== 'mobile') setSplitRatio(splitRatioRef.current + delta, true) }}
                     className="md:row-start-2"

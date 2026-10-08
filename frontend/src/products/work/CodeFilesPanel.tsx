@@ -70,6 +70,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
   const [confirmServer, setConfirmServer] = useState(false)
   const [settingError, setSettingError] = useState<string | null>(null)
   const [verified, setVerified] = useState(false)
+  const [details, setDetails] = useState(false)
   const busy = useChatStore(state => Object.values(state.chatTabs).some(tab => tab.sessionId === sessionId && (tab.isStreaming || tab.hasRunningBgAgents)))
   const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(local || setupOpen)
   useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
@@ -84,6 +85,23 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string }) {
     if (!draftResource) return
     savePreference({ location: 'computer', target: { device_id: draftResource.deviceId, resource_id: draftResource.id } })
   }
+  // Connected in Local mode: a small card about the connection. Everything else (folder choice, setup steps) is under Details.
+  if (local && resource && !details && sessionId) return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="This chat works with files on your computer. Your agent and model run on the server.">
+    <div className="space-y-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><Laptop className="h-4 w-4" /></span>
+        <div className="min-w-0"><p role="status" className="text-sm font-medium">Connected</p><p className="truncate text-xs text-muted-foreground">{selected?.device_id} · {resource.id}</p></div>
+      </div>
+      <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
+      {confirmServer ? <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+        <p className="text-sm font-medium">Switch to server files?</p>
+        <p className="text-xs leading-5 text-muted-foreground">Future file edits and commands use the server workspace. Switching does not move or sync your laptop project. The CLI keeps running until you stop it with agentworks stop.</p>
+        <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => savePreference({ location: 'server' })}>Switch to server files</Button><Button size="sm" variant="ghost" onClick={() => setConfirmServer(false)}>Keep local connection</Button></div>
+      </div> : <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmServer(true)}>Disconnect local files</Button><Button size="sm" variant="ghost" onClick={() => setDetails(true)}>Details</Button></div>}
+      {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
+      {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
+    </div>
+  </SettingsCard>
   return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Choose where this chat works with files. Your agent and model always run on the server.">
     {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : !local && !setupOpen ?
       <Button variant="outline" disabled={busy} onClick={() => setSetupOpen(true)}>Connect local files</Button> : <div className="space-y-3">

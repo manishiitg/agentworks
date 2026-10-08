@@ -3,8 +3,8 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const chats = vi.hoisted(() => ({ chatTabs: {} as Record<string, {sessionId:string; isStreaming:boolean; hasRunningBgAgents?:boolean}> }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (state: typeof chats) => unknown) => selector(chats) }))
+const chats = vi.hoisted(() => ({ chatTabs: {} as Record<string, {sessionId:string; isStreaming:boolean; hasRunningBgAgents?:boolean; metadata?:{agentProfileProjectId?:string}}> }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: Object.assign((selector: (state: typeof chats) => unknown) => selector(chats), { getState: () => chats }) }))
 const account = vi.hoisted(() => ({ user: { id: 'alice' } }))
 const workspace = vi.hoisted(() => ({ activeWorkspaceId: 'hosted' }))
 const transport = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
@@ -180,6 +180,17 @@ it('shows one start command with no folder form, and Verify connection says what
   expect(host.textContent).toContain('Connected: laptop / project.')
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   expect(transport.post).not.toHaveBeenCalled()
+})
+
+it('the connection belongs to the Code workspace, so a refreshed chat with a new session ID is still Local', () => {
+  chats.chatTabs = { a: { sessionId: 'chat-before-refresh', isStreaming: false, metadata: { agentProfileProjectId: 'code-1' } }, b: { sessionId: 'other-project-chat', isStreaming: false, metadata: { agentProfileProjectId: 'code-2' } } }
+  writeCodeFilesPreference('chat-before-refresh', { location: 'computer', target })
+  chats.chatTabs = { a: { sessionId: 'chat-after-refresh', isStreaming: false, metadata: { agentProfileProjectId: 'code-1' } }, b: chats.chatTabs.b }
+  expect(codeChatModeForChat('chat-after-refresh')).toBe('local')
+  expect(codeLocalFilesForChat('chat-after-refresh')).toEqual(target)
+  expect(codeChatModeForChat('other-project-chat')).toBe('server')
+  writeCodeFilesPreference('chat-after-refresh', { location: 'server' })
+  expect(codeChatModeForChat('chat-after-refresh')).toBe('server')
 })
 
 it('a folder opened by `agentworks start` makes chats without their own choice Local, and a chat choice wins', () => {
