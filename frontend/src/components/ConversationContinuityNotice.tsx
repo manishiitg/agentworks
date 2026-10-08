@@ -8,7 +8,7 @@ export function isConversationContinuityNotice(content: string): boolean {
 
 export function ConversationContinuityNotice({ content, timestamp }: { content: string; timestamp?: string }) {
   return (
-    <details className="my-2 w-full rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-left" data-testid="conversation-continuity-notice">
+    <details className="my-1.5 w-full rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-left" data-testid="conversation-continuity-notice">
       <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
         <History className="h-3.5 w-3.5 shrink-0 text-sky-500" />
         <span className="font-medium text-foreground">Conversation restored</span>

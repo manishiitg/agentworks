@@ -550,53 +550,55 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
     )
   }
   return (
-    <article data-testid="terminal-clear-turn-failure" className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+    <article data-testid="terminal-clear-turn-failure" className="my-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5">
       <div className="flex items-start gap-2">
-        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[length:calc(13px*var(--chat-scale,1))] font-semibold text-foreground">{failure.title}</span>
-            {timestamp && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{timestamp}</span>}
+          <div className="flex flex-wrap items-baseline gap-x-2 text-[length:calc(12px*var(--chat-scale,1))] leading-snug">
+            <span className="font-semibold text-foreground">{failure.title}</span>
+            <span className="text-muted-foreground">{failure.message}</span>
+            {timestamp && <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">{timestamp}</span>}
           </div>
-          <p className="mt-1 text-[length:calc(13px*var(--chat-scale,1))] leading-relaxed text-muted-foreground">{failure.message}</p>
-          {failure.actionUrl && (
-            <a
-              href={failure.actionUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted"
-            >
-              {failure.actionLabel || 'Open provider'}
-            </a>
-          )}
-          {failure.retryable && onRetry && (
-            <button
-              type="button"
-              disabled={retrying}
-              className="mt-2 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
-              onClick={async () => {
-                setRetrying(true)
-                try { await onRetry() } finally { setRetrying(false) }
-              }}
-            >
-              {retrying ? 'Retrying…' : 'Retry message'}
-            </button>
-          )}
-          {failure.technicalDetails && (
-            <>
-              <button
-                type="button"
-                onClick={() => setOpen(value => !value)}
-                aria-expanded={open}
-                className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                Technical details
-              </button>
-              {open && (
-                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/60 p-3 text-[11px] leading-snug text-muted-foreground">{failure.technicalDetails}</pre>
+          {(failure.actionUrl || (failure.retryable && onRetry) || failure.technicalDetails) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {failure.actionUrl && (
+                <a
+                  href={failure.actionUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex rounded border border-border px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted"
+                >
+                  {failure.actionLabel || 'Open provider'}
+                </a>
               )}
-            </>
+              {failure.retryable && onRetry && (
+                <button
+                  type="button"
+                  disabled={retrying}
+                  className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
+                  onClick={async () => {
+                    setRetrying(true)
+                    try { await onRetry() } finally { setRetrying(false) }
+                  }}
+                >
+                  {retrying ? 'Retrying…' : 'Retry message'}
+                </button>
+              )}
+              {failure.technicalDetails && (
+                <button
+                  type="button"
+                  onClick={() => setOpen(value => !value)}
+                  aria-expanded={open}
+                  className="flex items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  Technical details
+                </button>
+              )}
+            </div>
+          )}
+          {failure.technicalDetails && open && (
+            <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[10px] leading-snug text-muted-foreground">{failure.technicalDetails}</pre>
           )}
         </div>
       </div>
