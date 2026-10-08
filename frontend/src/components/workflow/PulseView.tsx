@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import { Activity } from 'lucide-react'
+import { PulseIcon } from './pulseIcon'
 import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
 import { GoalLeadPanel } from './GoalLeadPanel'
@@ -90,7 +90,7 @@ export default function PulseView({
   return (
     <div className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
       <WorkspaceViewHeader
-        icon={Activity}
+        icon={PulseIcon}
         title="Pulse"
         helpTopic={`Pulse · ${tab === 'for_you' ? 'For you' : 'Platform health'}`}
         context={<span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${monitorOn ? 'border-primary/25 bg-primary/10 text-primary' : 'border-border bg-muted text-muted-foreground'}`}>

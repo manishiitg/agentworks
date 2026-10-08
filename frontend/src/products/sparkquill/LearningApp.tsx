@@ -1,7 +1,7 @@
 import { SparkQuillSecretsPanel } from './SparkQuillSecretsPanel'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  Activity as PulseIcon,
+  UserRoundCog as PulseIcon,
   ArrowLeft,
   ArrowRight,
   BookOpen,

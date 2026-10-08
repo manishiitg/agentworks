@@ -1,5 +1,4 @@
 import {
-  Activity,
   BellRing,
   BookMarked,
   BookOpen,
@@ -20,6 +19,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
+import { PulseIcon } from './pulseIcon'
 
 /**
  * The single registry of right-side workspace views.
@@ -83,7 +83,7 @@ const VIEWS = [
   // so the legacy `toolbarGroup: 'pulse'` here
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
-  { id: 'pulse', kind: 'inspector', label: 'Pulse', icon: Activity, toolbarGroup: 'pulse', pane: true },
+  { id: 'pulse', kind: 'inspector', label: 'Pulse', icon: PulseIcon, toolbarGroup: 'pulse', pane: true },
   { id: 'human-actions', kind: 'inspector', label: 'Human actions', icon: Hand, toolbarGroup: 'pulse', pane: true },
   { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'pulse', pane: true },
   { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'pulse', pane: true },

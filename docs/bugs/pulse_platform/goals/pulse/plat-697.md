@@ -440,3 +440,4 @@ joins the chat policy fingerprint). The owner's messages reach Pulse as typed. W
 the Builder chat handles Pulse's message, its tools are held to Pulse's levels.
 Tests: `TestGoalLeadCheckContinuesItsConversationAndAnswersAsks` and
 `TestPulseTalksToTheBuilderChatWithinItsLevels` check the behaviour, not wording.
+- 2026-10-08 (owner): Pulse's icon is a person at work (`UserRoundCog`, `components/workflow/pulseIcon.ts`) instead of the heartbeat line, in the Pulse view, its toolbar entry, SparkQuill, and on the "<workflow> Pulse" chat tab.

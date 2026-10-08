@@ -4,6 +4,7 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
+import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -99,6 +100,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       }`}
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
+      {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
       {!isBlank && (status === 'busy'
         ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img" />
         : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
