@@ -195,9 +195,18 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   const pendingDone = !!pendingStatus && ((!signIn.wasSignedIn && pendingStatus.status === 'active') || !!pendingStatus.sign_in_error)
   useEffect(() => {
     if (!signIn.url || !signIn.connectionId || pendingDone || Date.now() > signIn.until) return
-    // Each refresh re-renders the card, which schedules the next one.
-    const timer = window.setTimeout(onChanged, 4000)
-    return () => window.clearTimeout(timer)
+    // A steady interval, not one timeout per render: a refresh that changes nothing does not re-run this effect, so
+    // a single timeout re-read the vault only once and the row updated only by luck of timing (Confida, 2026-10-08).
+    // Coming back to this tab after signing in elsewhere re-reads at once.
+    const timer = window.setInterval(() => { if (Date.now() <= signIn.until) onChanged() }, 4000)
+    const onReturn = () => { if (document.visibilityState === 'visible') onChanged() }
+    document.addEventListener('visibilitychange', onReturn)
+    window.addEventListener('focus', onReturn)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onReturn)
+      window.removeEventListener('focus', onReturn)
+    }
   }, [signIn, pendingDone, onChanged])
 
   const addPerson = async () => {
