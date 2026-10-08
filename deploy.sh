@@ -20,6 +20,7 @@ Servers:
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              trader.tectonicmarkets.com (shared build, like Confida; the owner's testing ground)
   dominion-legacy       Dominion's former own deploy (builds on the box)
+  check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
@@ -553,6 +554,15 @@ if [[ "$SERVER" == slotcheck ]]; then
     *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill, dominion)" >&2; exit 2 ;;
   esac
   exit $?
+fi
+
+# ./deploy.sh check <server|all>: the read-only health check of a server (public site, certificate, compression, MCP,
+# the website's MCP callback list, live release, services, disk, deploy config). The server list and the check live in
+# the private deployments repository (scripts/server_check.py, servers.json).
+if [[ "$SERVER" == check ]]; then
+  checker="$(deployments_dir)/scripts/server_check.py"
+  [[ -f "$checker" ]] || { echo "check needs the private deployments repository at $(deployments_dir) (or AGENTWORKS_DEPLOYMENTS_DIR)" >&2; exit 2; }
+  exec python3 "$checker" "$@"
 fi
 
 # ./deploy.sh report [server]: how each server differs from the standard runtime profile. Read-only, deploys nothing.
