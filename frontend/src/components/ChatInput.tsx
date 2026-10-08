@@ -2493,6 +2493,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       setShowWorkflowDialog(false)
       setHashPosition(-1)
       setWorkflowSearchQuery('')
+      // Back to the textarea, cursor after the tag, so typing continues.
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          const cursorPosition = beforeHash.length + '#pulse '.length
+          textareaRef.current.setSelectionRange(cursorPosition, cursorPosition)
+        }
+      }, 0)
       return
     }
     const tag = referenceTag(workflow)
