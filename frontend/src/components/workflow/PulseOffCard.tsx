@@ -4,6 +4,13 @@ import { timeAgo } from '../scheduler/scheduleRuns/helpers'
 import { PulseIcon } from './pulseIcon'
 import type { ScheduleAfterRun, WorkflowRunSetup } from '../../services/api-types'
 
+const PULSE_DOES = [
+  'Checks the goal daily: is it measured, is it moving, did a run fail.',
+  'Finds what would move the goal and asks the Builder to do it: fix a failing step, set up measurement, try an experiment.',
+  'Remembers what it tried and what worked, so it builds on it instead of repeating itself.',
+  'Asks you when a decision is yours. Talk to it any time with #pulse in the Builder chat.',
+]
+
 function afterRunText(options: ScheduleAfterRun | undefined): string {
   const on = (['backup', 'publish', 'notify'] as const).filter(key => options?.[key])
   return on.length ? on.join(', ') : 'nothing'
@@ -72,8 +79,17 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
           <PulseIcon className="h-4 w-4 text-primary" aria-hidden="true" />
           {pulseOn ? 'Pulse is waiting for a goal' : 'Turn on Pulse'}
         </div>
-        <p className="text-xs text-muted-foreground">
-          An agent owns the goal in soul.md: it checks the goal daily, finds what to improve and asks the Builder to make the changes.
+        <p className="text-xs text-foreground">
+          Pulse is an agent that owns this workflow&apos;s goal, the one written in soul.md, like a teammate who looks after it every day.
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+          {PULSE_DOES.map(item => <li key={item}>{item}</li>)}
+        </ul>
+        <p className="mt-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Useful when</span> the workflow has a number you want to grow (subscribers, leads, sales, quality) and you don&apos;t want to read every run yourself.
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">You stay in control:</span> Pulse only reads; the Builder makes the changes, within the permission levels you set. You can turn it off any time.
         </p>
         <div className="mt-2 flex justify-end">
           {hasSoul ? (
