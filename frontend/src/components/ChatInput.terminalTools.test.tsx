@@ -19,6 +19,7 @@ vi.hoisted(() => {
 vi.mock('./providers/CodingProvidersPanel', () => ({ default: () => null }))
 vi.mock('../commands/user-commands', () => ({ loadAndRegisterUserCommands: vi.fn().mockResolvedValue(undefined) }))
 
+import { codeChatAttachmentFolder } from '../utils/codeChatAttachments'
 import { ChatInput } from './ChatInput'
 import { TerminalFocusLayout } from './TerminalFocusLayout'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
@@ -100,7 +101,7 @@ describe('terminal toolbar shared tools', () => {
     expect(host.querySelector('[aria-label="Code chat mode"]')).toBeNull()
     expect(host.querySelector('[aria-label="File connection: Local files · project"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Open live view"]')).toBeNull()
-    expect(host.querySelector('[aria-label="Attach files"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Attach files"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Browse commands"]')).toBeNull()
     expect(host.querySelector('[data-testid="tour-chat-browser-tools"]')).toBeNull()
     expect(textarea().placeholder).toBe('Work on your local project…')
@@ -109,8 +110,69 @@ describe('terminal toolbar shared tools', () => {
       textarea().dispatchEvent(new Event('input', { bubbles: true }))
     })
     expect(textarea().getAttribute('aria-expanded')).toBe('false')
-    expect(host.querySelector<HTMLInputElement>('input[type="file"]')!.disabled).toBe(true)
+    expect(host.querySelector<HTMLInputElement>('input[type="file"]')!.disabled).toBe(false)
     expect(agentApi.uploadPlannerFile).not.toHaveBeenCalled()
+  })
+
+  it.each(['mode-change', 'unsupported-file'])('keeps Local attachment scope during %s', async scenario => {
+    const sessionId = 'local-code-session'
+    const folder = codeChatAttachmentFolder('Chats/Code/projects/demo', sessionId)
+    await act(async () => {
+      const tab = terminalTab('local-code')
+      tab.viewMode = 'formatted'
+      tab.metadata = { mode: 'multi-agent', agentProfileId: 'code', agentProfileWorkspace: 'Chats/Code/projects/demo' }
+      tab.config!.fileContext = [{ name: 'private.txt', path: 'Chats/Code/projects/demo/private.txt', type: 'file' }]
+      useChatStore.setState({ activeTabId: 'local-code', chatTabs: { 'local-code': tab } })
+      writeCodeFilesPreference(sessionId, { location: 'computer' })
+      renderComposer(undefined, false)
+    })
+    expect(host.textContent).not.toContain('private.txt')
+    if (scenario === 'mode-change') {
+      vi.mocked(agentApi.uploadPlannerFile).mockImplementationOnce(async () => {
+        writeCodeFilesPreference(sessionId, { location: 'server' })
+        return { data: { file_path: `${folder}/screen.png` } } as never
+      })
+    }
+    await act(async () => {
+      const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+      Object.defineProperty(input, 'files', { configurable: true, value: [new File(['fixture'], scenario === 'unsupported-file' ? 'archive.zip' : 'screen.png')] })
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    if (scenario === 'unsupported-file') expect(agentApi.uploadPlannerFile).not.toHaveBeenCalled()
+    expect(useChatStore.getState().getTabConfig('local-code')?.fileContext).toEqual([{ name: 'private.txt', path: 'Chats/Code/projects/demo/private.txt', type: 'file' }])
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+  })
+
+  it.each(['picker', 'paste', 'drop'])('attaches screenshots to this Local chat through %s without invoking laptop or server terminal tools', async method => {
+    const folder = codeChatAttachmentFolder('Chats/Code/projects/demo', 'local-code-session')
+    vi.mocked(agentApi.uploadPlannerFile).mockResolvedValue({ data: { file_path: `${folder}/screen.png` } } as never)
+    await act(async () => {
+      const tab = terminalTab('local-code')
+      tab.viewMode = 'formatted'
+      tab.metadata = { mode: 'multi-agent', agentProfileId: 'code', agentProfileWorkspace: 'Chats/Code/projects/demo' }
+      useChatStore.setState({ activeTabId: 'local-code', chatTabs: { 'local-code': tab } })
+      writeCodeFilesPreference(tab.sessionId!, { location: 'computer', target: { device_id: 'laptop', resource_id: 'project' } })
+      renderComposer(undefined, false)
+    })
+    const file = new File(['fixture'], 'screen.png', { type: 'image/png' })
+    await act(async () => {
+      if (method === 'picker') {
+        const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+        Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      } else {
+        const event = new Event(method === 'paste' ? 'paste' : 'drop', { bubbles: true, cancelable: true })
+        Object.defineProperty(event, method === 'paste' ? 'clipboardData' : 'dataTransfer', { value: { files:[file], items:[{kind:'file',type:'image/png',getAsFile:()=>file}], types:['Files'], getData:()=>'' } })
+        textarea().dispatchEvent(event)
+      }
+      await new Promise(resolve=>setTimeout(resolve,0))
+    })
+    expect(agentApi.uploadPlannerFile).toHaveBeenCalledWith(expect.any(File), folder, expect.any(String))
+    expect(host.textContent).toContain('Attachments are sent to the server and model')
+    expect(host.textContent).toContain('screen.png')
+    expect(useChatStore.getState().getTabConfig('local-code')?.fileContext).toEqual([{ name:'screen.png', path:`${folder}/screen.png`, type:'file' }])
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('uses the Relay catalog for both command picker and typed commands, excluding Pulse', async () => {

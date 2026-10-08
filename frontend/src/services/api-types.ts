@@ -214,6 +214,8 @@ export interface AgentQueryResponse {
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
   code_chat_mode?: 'server' | 'local'
+  /** Read-only uploads for this Local chat; revalidated against the owner/session folder. */
+  code_chat_attachments?: string[]
   /** Code-only selection hint; device ownership and local grants are checked live. */
   code_local_files?: { device_id: string; resource_id: string }
   /** Brain folder context only; the server revalidates visibility. */

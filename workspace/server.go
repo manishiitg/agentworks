@@ -163,6 +163,7 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// File upload route
 		api.POST("/upload", handlers.UploadFile)
+		api.GET("/chat-attachments/*filepath", handlers.GetChatAttachment)
 
 		// Shell execution route
 		api.POST("/execute", requireWorkspaceAPIToken(), handlers.ExecuteShellCommand)

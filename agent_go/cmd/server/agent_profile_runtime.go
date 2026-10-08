@@ -46,6 +46,7 @@ type resolvedAgentProfile struct {
 	// Changing Code source location replaces retained tools/instructions between turns.
 	CodeChatMode           string
 	CodeLocalFiles         *codeLocalFileTarget
+	CodeChatAttachments    []string
 	CodeLocalFilePolicy    string
 	CodeLocalDisabledTools []string
 	// ChatConnections are this chat's own MCP connections: a Code's personal
@@ -114,11 +115,12 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		KnowledgeKey           string                `json:"knowledge_key,omitempty"`
 		CodeChatMode           string                `json:"code_chat_mode,omitempty"`
 		CodeLocalFiles         *codeLocalFileTarget  `json:"code_local_files,omitempty"`
+		CodeChatAttachments    []string              `json:"code_chat_attachments,omitempty"`
 		CodeLocalFilePolicy    string                `json:"code_local_file_policy,omitempty"`
 		CodeLocalDisabledTools []string              `json:"code_local_disabled_tools,omitempty"`
 		Instructions           string                `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions), CodeChatMode: profile.CodeChatMode, CodeLocalFiles: profile.CodeLocalFiles, CodeLocalFilePolicy: profile.CodeLocalFilePolicy, CodeLocalDisabledTools: profile.CodeLocalDisabledTools})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions), CodeChatMode: profile.CodeChatMode, CodeLocalFiles: profile.CodeLocalFiles, CodeLocalFilePolicy: profile.CodeLocalFilePolicy, CodeChatAttachments: profile.CodeChatAttachments, CodeLocalDisabledTools: profile.CodeLocalDisabledTools})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}

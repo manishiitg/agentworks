@@ -831,6 +831,21 @@ access. Saved selections are excluded without changing project settings.
 Other chats and existing schedules/connections are unchanged. Confirming the switch to server files returns
 this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
 
+Local chats also accept **images and text/source files** through the paperclip,
+pasting screenshots or drag-and-drop. Up to 10 attachments, 10 MB each, are
+uploaded to that chat's server folder and sent to the server/model. They are
+read-only context and are **not copied to your computer**. PDFs and archives are
+not supported in this mode yet. Text previews include at most 64 KiB per file
+and 256 KiB per turn; the agent is told when a preview is truncated. Images use
+the existing `read_image` tool, restricted to images attached to the current
+turn. Attachments work without a connected laptop. Image analysis uses confined
+Codex or Claude Code on the server and requires a
+working Linux Landlock runner. Claude additionally needs Python 3 for its
+attachment-only read guard. Cursor image analysis is excluded from Local mode;
+the Code chat itself can still use Cursor. A host without confinement refuses
+image analysis; ask an administrator to enable it. No general server file
+access is enabled.
+
 Every file action validates live ownership, authorization and folder grants.
 Changing the selected folder or permissions refreshes retained tools between
 turns. Offline bindings retain their restrictions: chat can continue, but local

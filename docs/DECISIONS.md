@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Local Code accepts read-only chat attachments
+
+Allow file picking, pasted screenshots and dropped images/text files in Local
+Code. Upload to a server folder scoped to the owner and chat, disclose transfer
+to the server/model, and never copy attachments to the laptop automatically.
+Bound text previews; reuse `read_image` only for the current turn's attached
+images. Nested coding-CLI image analysis uses a temporary copy under Landlock;
+without confinement it fails closed. Local image analysis supports Codex and
+Claude Code; server commands and unrelated file reads are denied. Other
+server files, MCP, skills and secrets remain excluded. Why: users need to show
+screenshots and examples while working on laptop projects.
+[PLAT-720](bugs/pulse_platform/coding-agents/files/plat-720.md).
+
 ### 2026-10-08 — Local agents use MCP; website Code uses an explicit laptop connection
 
 Remove workflow routing/placement: local-to-server access uses the public MCP

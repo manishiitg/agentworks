@@ -35,6 +35,10 @@ retained-tool authority, file guard/lock and rootless replacement gaps.
 - Fix rootless Linux atomic writes: preserve group and effective ACL permissions,
   retaining former-owner access without widening other masked entries. Exercise
   actual unprivileged service/slot/limited-user processes in a Linux container.
+- Enable Local chat images/text uploads via picker, paste and drop. Disclose
+  server/model transfer, bound text previews, and scope the existing image tool
+  to current-turn uploads. Nested image CLIs use temporary copies under Landlock,
+  without widening server/laptop file access or copying uploads to the laptop.
 - Discover bundled server mcpbridge binaries and document deployment requirements.
 
 ## Left

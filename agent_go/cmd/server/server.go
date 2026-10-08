@@ -829,8 +829,9 @@ type QueryRequest struct {
 	// authority: Work maps its workspace_id through the caller's current grants.
 	AgentProfileConversationKey string `json:"agent_profile_conversation_key,omitempty"`
 	// Code source selection is a hint, never file authority.
-	CodeLocalFiles *codeLocalFileTarget `json:"code_local_files,omitempty"`
-	CodeChatMode   string               `json:"code_chat_mode,omitempty"`
+	CodeLocalFiles      *codeLocalFileTarget `json:"code_local_files,omitempty"`
+	CodeChatMode        string               `json:"code_chat_mode,omitempty"`
+	CodeChatAttachments []string             `json:"code_chat_attachments,omitempty"`
 	// Code execution mode: When enabled, only virtual tools are added to LLM
 	// MCP tools are accessed through generated scripts using the on-demand HTTP API specification.
 	UseCodeExecutionMode bool `json:"use_code_execution_mode,omitempty"`
@@ -3988,6 +3989,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, admitErr.Error(), status)
 		return
 	}
+	if err := api.prepareCodeChatAttachments(r.Context(), &req, resolvedProfile, currentUserID, sessionID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
@@ -6553,9 +6558,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("[WORKSPACE TOOLS] Registering %d workspace tools for %s", len(workspaceTools), workspaceToolModeLabel)
 
+			if codeLocalModeTurn(req, resolvedProfile) {
+				image := virtualtools.WrapChatAttachmentImage(api.codeChatImageReader(sessionID, currentUserID), getWorkspaceAPIURL())
+				images := map[string]func(context.Context, map[string]any) (string, error){"read_image": image}
+				if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
+					virtualtools.SetReadImageLLMConfig(images, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig, mergedAPIKeys)
+				}
+				workspaceExecutors["read_image"] = images["read_image"]
+			}
 			for _, tool := range workspaceTools {
 				// Local mode uses the same definitions with laptop executors registered below.
-				if codeLocalModeTurn(req, resolvedProfile) {
+				if codeLocalModeTurn(req, resolvedProfile) && (tool.Function == nil || tool.Function.Name != "read_image") {
 					continue
 				}
 				if tool.Function == nil {

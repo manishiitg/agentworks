@@ -96,6 +96,8 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 			switch name {
 			case "execute_shell_command", "diff_patch_workspace_file":
 				return resolved.CodeLocalFiles == nil
+			case "read_image":
+				return len(resolved.CodeChatAttachments) == 0
 			case "list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification":
 				return false
 			default:

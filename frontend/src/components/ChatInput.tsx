@@ -1,5 +1,6 @@
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
-import { useCodeFilesPreference } from '../products/work/codeLocalFiles'
+import { codeChatAttachmentFolder, codeChatAttachmentPaths, localAttachmentAccept, supportedLocalAttachment } from '../utils/codeChatAttachments'
+import { useCodeFilesPreference, codeChatModeForChat } from '../products/work/codeLocalFiles'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
@@ -646,7 +647,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   
   // Always use tab-specific config (ChatInput is only in multi-agent mode)
   // Memoize to prevent unnecessary re-renders when other config values change
-  const chatFileContext = useMemo(() => tabConfig?.fileContext || [], [tabConfig?.fileContext])
+  const chatFileContext = useMemo(() => {
+    const files = tabConfig?.fileContext || []
+    if (!localCodeMode) return files
+    const attached = codeChatAttachmentPaths(agentProfileWorkspace || '', activeTab?.sessionId || '', files)
+    return files.filter(file => attached.includes(file.path))
+  }, [tabConfig?.fileContext, localCodeMode, agentProfileWorkspace, activeTab?.sessionId])
   const chatPastedAttachments = useMemo(() => tabConfig?.pastedAttachments || [], [tabConfig?.pastedAttachments])
 
   // Get input text from tab config (source of truth for persistence)
@@ -1792,7 +1798,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedImageFiles = getClipboardImageFiles(e.clipboardData)
     if (pastedImageFiles.length > 0) {
-      if (localCodeMode) { e.preventDefault(); addToast('Use a file in your connected folder; uploads to server files are unavailable in Local mode.', 'info'); return }
       e.preventDefault()
       void uploadFilesToChatRef.current(pastedImageFiles)
       return
@@ -2547,6 +2552,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [])
 
   const uploadTargetFolder = useMemo(() => {
+    if (localCodeMode && agentProfileWorkspace && activeTab?.sessionId) return codeChatAttachmentFolder(agentProfileWorkspace, activeTab.sessionId)
     if (agentProfileWorkspace) {
       return `${agentProfileWorkspace.replace(/\/$/, '')}/uploads`
     }
@@ -2561,10 +2567,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return activeWorkflowWorkspacePath || workspaceActiveFolder || 'Workflow'
     }
     return 'Chats'
-  }, [activeWorkflowWorkspacePath, agentProfileWorkspace, selectedModeCategory, workspaceActiveFolder])
+  }, [localCodeMode, activeTab?.sessionId, activeWorkflowWorkspacePath, agentProfileWorkspace, selectedModeCategory, workspaceActiveFolder])
 
   const uploadFilesToChat = useCallback(async (files: File[]) => {
-    if (localCodeMode) { addToast('Use a file in your connected folder; uploads to server files are unavailable in Local mode.', 'info'); return }
+    if (localCodeMode && (!activeTab?.sessionId || !agentProfileWorkspace)) { addToast('Open a Code chat before attaching files.', 'info'); return }
+    if (localCodeMode && (files.some(file => !supportedLocalAttachment(file)) || files.some(file => file.size > 10 * 1024 * 1024) || chatFileContext.length + files.length > 10)) { addToast('Attach up to 10 images or text files, no larger than 10 MB each.', 'info'); return }
     if (files.length === 0 || isUploadingFiles) {
       console.info('[CHAT_UPLOAD] no files selected or upload already in progress', { fileCount: files.length, isUploadingFiles })
       return
@@ -2573,7 +2580,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const uploadIdentity = captureChatIdentity()
     const uploadSessionId = activeTabId ? useChatStore.getState().getTab(activeTabId)?.sessionId : undefined
     const stillOwnsUpload = () => isChatIdentityCurrent(uploadIdentity) && Boolean(activeTabId) &&
-      useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
+      useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId &&
+      (codeChatModeForChat(uploadSessionId || '') === 'local') === localCodeMode
     setIsUploadingFiles(true)
     addToast(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`, 'info')
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
@@ -2609,7 +2617,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (uploadedPaths.length > 0 && stillOwnsUpload()) {
       let insertedIntoTerminal = false
-      const nativeUpload = terminalViewSelected && liveTerminalOffered
+      const nativeUpload = !localCodeMode && terminalViewSelected && liveTerminalOffered
       if (nativeUpload && uploadSessionId && useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') {
         try {
           // Resolve this chat's live pane after the upload, never a global or child terminal.
@@ -2665,7 +2673,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       ).catch(() => {})
 
       addToast(
-        `Uploaded ${uploadedPaths.length}/${files.length} file${files.length > 1 ? 's' : ''} to ${uploadTargetFolder}`,
+        localCodeMode ? `${uploadedPaths.length} attachment${uploadedPaths.length > 1 ? 's' : ''} ready` : `Uploaded ${uploadedPaths.length}/${files.length} file${files.length > 1 ? 's' : ''} to ${uploadTargetFolder}`,
         'success'
       )
 
@@ -2685,7 +2693,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] upload completed', { uploadedCount: uploadedPaths.length, failureCount: failures.length })
 
     setIsUploadingFiles(false)
-  }, [localCodeMode, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
+  }, [localCodeMode, activeTab?.sessionId, agentProfileWorkspace, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -2958,7 +2966,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       </TooltipContent>
     </Tooltip>
   ) : null
-  const attachmentEl = !localCodeMode && (
+  const attachmentEl = (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
@@ -2979,7 +2987,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <p>{isUploadingFiles ? 'Uploading files...' : isProductSurface ? 'Attach files to this project' : `Upload file(s) to ${uploadTargetFolder}`}</p>
+        <p>{isUploadingFiles ? 'Uploading files...' : localCodeMode ? 'Attach images or text files. Attachments are sent to the server and model.' : isProductSurface ? 'Attach files to this project' : `Upload file(s) to ${uploadTargetFolder}`}</p>
       </TooltipContent>
     </Tooltip>
   )
@@ -3065,6 +3073,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {chatFileContext.length > 0 && (
         <div className={`${inputPadX} border-t border-gray-200 dark:border-gray-700`}>
           <FileContextDisplay
+            attachmentMode={localCodeMode}
             files={chatFileContext}
             onRemoveFile={removeFileFromContext}
             onClearAll={clearFileContext}
@@ -3073,8 +3082,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           />
         </div>
       )}
-
-
+      {localCodeMode && chatFileContext.length > 0 && (
+        <p className={`${inputPadX} mb-2 text-xs text-muted-foreground`}>
+          Attachments are sent to the server and model. They are not copied to your computer.
+        </p>
+      )}
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>
@@ -3696,10 +3708,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         <input
           ref={fileUploadInputRef}
           type="file"
+          accept={localCodeMode ? localAttachmentAccept : undefined}
           multiple
           onChange={handleUploadFilesSelected}
           className="hidden"
-          disabled={isUploadingFiles || localCodeMode}
+          disabled={isUploadingFiles}
         />
       </ChatComposerArea>
       

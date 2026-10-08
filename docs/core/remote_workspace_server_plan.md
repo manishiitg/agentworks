@@ -39,6 +39,12 @@ Implemented now:
   The right side shows only **Local CLI connection**, **Costs**, and **Models**.
   The connection panel provides CLI setup, folder selection, status and disconnect.
   File reads, edits and granted laptop shell commands happen through the agent in chat.
+- Local chat attachments support picking, pasting screenshots and dropping images
+  or text/source files (10 files, 10 MB each). Server uploads are owner/chat
+  scoped and read-only to the agent; no automatic laptop copy. Text previews are
+  bounded; the existing `read_image` reads only current-turn attachments. Nested
+  image CLIs receive a temporary copy under Landlock, failing closed if unavailable.
+  Attachment uploads disclose transfer to the server/model.
 - Local-connected turns exclude MCP connections, skills, project/Vault secrets,
   background agents, server terminal/browser tools and other server adapters.
   Dashboards/databases, schedules/triggers and messaging stay disabled. Saved
