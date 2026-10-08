@@ -199,6 +199,9 @@ ssl_certificate $cert/fullchain.pem;
 ssl_certificate_key $cert/privkey.pem;
 include /etc/letsencrypt/options-ssl-nginx.conf;
 ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+# Plain http on the domain goes to https (the bare IP keeps plain http: the certificate does not cover it).
+set \$citymall_redirect "\$scheme:\$host";
+if (\$citymall_redirect = "http:agents.citymall.live") { return 301 https://agents.citymall.live\$request_uri; }
 TLS
   else
     rm -f /etc/nginx/citymall-tls.d/tls.conf
