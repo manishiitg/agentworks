@@ -35,3 +35,7 @@ service HOME was never seen: a deployment could not run Pi on its own OpenAI-com
 ## Left
 
 - Pricing and context limits of the Citymall models are unknown; the picker shows none.
+
+## 2026-10-08
+
+Owner: offer only gpt-6-luna. gpt-5.6-luna removed from the Citymall Pi template (models.json, settings.json).

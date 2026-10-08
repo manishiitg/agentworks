@@ -13,17 +13,9 @@
           "id": "gpt-6-luna",
           "name": "Citymall GPT-6 Luna",
           "baseUrl": "https://cm-ai-images-apim.azure-api.net/chat/v1/gpt-6-luna",
-          "input": ["text"],
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "off": "none"
-          }
-        },
-        {
-          "id": "gpt-5.6-luna",
-          "name": "Citymall GPT-5.6 Luna",
-          "baseUrl": "https://cm-ai-images-apim.azure-api.net/chat/v1/gpt-5.6-luna",
-          "input": ["text", "image"],
+          "input": [
+            "text"
+          ],
           "reasoning": true,
           "thinkingLevelMap": {
             "off": "none"

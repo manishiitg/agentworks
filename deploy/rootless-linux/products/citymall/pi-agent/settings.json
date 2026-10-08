@@ -1,7 +1,6 @@
 {
   "defaultThinkingLevel": "off",
   "modelThinkingLevels": {
-    "citymall/gpt-6-luna": "off",
-    "citymall/gpt-5.6-luna": "off"
+    "citymall/gpt-6-luna": "off"
   }
 }

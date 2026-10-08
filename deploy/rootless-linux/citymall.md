@@ -5,7 +5,7 @@ Ubuntu 26.04 LTS, x86_64, 2 CPUs, 7 GB RAM, 96 GB disk. Tickets: PLAT-710 (serve
 
 Products: Goals (`agentworks`), Crew (`work`), Code, Brain (`knowledgebase`) and Vault (`mcp-gateway`). Relays and the
 others are off. Pi is the only coding agent, on Citymall's own AI gateway, model `citymall/gpt-6-luna`
-(`citymall/gpt-5.6-luna` second).
+(the only model; gpt-5.6-luna was removed on 2026-10-08 at the owner's request).
 
 ## SSH: through the Hetzner jump, the key stays on the laptop
 
