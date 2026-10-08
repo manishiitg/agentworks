@@ -113,6 +113,21 @@ func (e *providerAccountsEnv) list(t *testing.T, user, query string) []providerA
 	return body.Connections
 }
 
+// setDirectoryAdmin makes (or unmakes) id an admin: only an admin's account
+// may be shared with workflows or Crews (PLAT-715).
+func setDirectoryAdmin(t *testing.T, id string, admin bool) {
+	t.Helper()
+	dir, err := readUserDirectoryFile()
+	if err != nil || dir.byID(id) == nil {
+		t.Fatalf("no directory user %s: %v", id, err)
+	}
+	rec := dir.byID(id)
+	rec.Admin, rec.Role = admin, ""
+	if err := saveUserDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func findAccountView(views []providerAccountView, id string) (providerAccountView, bool) {
 	for _, view := range views {
 		if view.ID == id {
@@ -195,6 +210,7 @@ func TestProviderAccountsInstalledAccountAdminsOnly(t *testing.T) {
 // Test 2: an account shared with a workflow.
 func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	setDirectoryAdmin(t, "alice", true)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 
 	keys, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID)
@@ -232,10 +248,35 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodDelete, "/", "bob", nil, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNotFound {
 		t.Fatalf("bob removed Alice's account: %d", w.Code)
 	}
-	// Alice may only share with workflows she can see.
-	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-v"}}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusBadRequest {
-		t.Fatalf("alice shared with a workflow she cannot see: %d", w.Code)
+	// Alice may only share with workflows that exist for her.
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-missing"}}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusBadRequest {
+		t.Fatalf("alice shared with a workflow that does not exist: %d", w.Code)
 	}
+	// PLAT-715: a member shares only with up to 10 named colleagues. Bob
+	// cannot share his account with a workflow or with 11 people; when
+	// Alice stops being an admin her W share stops counting at once.
+	bobAccount := env.addAccount(t, "bob", map[string]interface{}{"provider": "claude-code", "display_name": "Bob Claude", "auth_method": "cli_login"})
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "bob", map[string]interface{}{"sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-v"}}}, map[string]string{"connectionID": bobAccount.ID}); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Only an admin can share a provider account with workflows or Crews") {
+		t.Fatalf("member shared with a workflow: %d %s", w.Code, w.Body.String())
+	}
+	eleven := []string{"p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10", "p11"}
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "bob", map[string]interface{}{"sharing": map[string]interface{}{"mode": "shared", "users": eleven}}, map[string]string{"connectionID": bobAccount.ID}); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "up to 10 named colleagues") {
+		t.Fatalf("member shared with 11 people: %d %s", w.Code, w.Body.String())
+	}
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "bob", map[string]interface{}{"sharing": map[string]interface{}{"mode": "shared", "users": []string{"carol"}}}, map[string]string{"connectionID": bobAccount.ID}); w.Code != http.StatusNoContent {
+		t.Fatalf("member shared with a named colleague: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := env.resolveForRun("carol", "", "claude-code", bobAccount.ID); err != nil {
+		t.Fatalf("carol on the account bob shared with her: %v", err)
+	}
+	setDirectoryAdmin(t, "alice", false)
+	if _, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID); err == nil {
+		t.Fatal("a member's workflow share still admitted bob")
+	}
+	if view, ok := findAccountView(env.list(t, "alice", ""), account.ID); !ok || view.Sharing == nil || view.Sharing.Mode != providerSharingPrivate {
+		t.Fatalf("member owner's view of a workflow share: %+v", view)
+	}
+	setDirectoryAdmin(t, "alice", true)
 
 	// Alice removes W: Bob's next W turn is refused with the clear error.
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
@@ -296,6 +337,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 
 	// Crew share: every chat of Alice's Crew, by anyone with access, may use it.
 	crew := "_users/alice/Chats/Work/projects/c1"
+	setDirectoryAdmin(t, "alice", true) // Crew shares are admin-only (PLAT-715)
 	crewAccount := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Crew login", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "crews": []string{crew}}})
 	if _, err := env.resolveForRun("bob", crew+"/notes", "claude-code", crewAccount.ID); err != nil {
 		t.Fatalf("bob chatting with Alice's Crew: %v", err)
@@ -492,6 +534,7 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
         {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
         {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
         {"id":"carol","username":"carol","can_create":true}]}`)
+	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
@@ -575,6 +618,7 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	// The account-wide report still includes historical use in work the
 	// account owner can no longer open. The Costs overview only includes
 	// work in its own visible total.
+	setDirectoryAdmin(t, "alice", false) // as a member she cannot open V
 	turn("bob", "Workflow/v", account.ID, "bob-v", 2)
 	if row := accountRow(costs("alice"), account.ID); row == nil || row.Total.TotalCostUSD < 2.74 || !hasSplit(row, "hidden:workflow", "bob") {
 		t.Fatalf("owner's account-wide history should include masked work: %+v", row)

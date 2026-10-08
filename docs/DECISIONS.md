@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-08 — Only admins share provider accounts with workflows or Crews
+
+A member may share their own provider account only with named colleagues, at
+most 10; sharing with workflows or Crews (which reaches everyone who can run
+them) and with more people is for admins. Enforced when sharing is saved and
+at use: for an owner who is not currently an admin, only the first 10 named
+people count (`effectiveProviderSharing`). Why: owner, 2026-10-08, only
+admins make an account usable by everyone.
+[PLAT-715](bugs/pulse_platform/coding-agents/accounts/plat-715.md).
+
 ### 2026-10-08 — Allowed models per person on the shared accounts, like token limits
 
 A shared server account's model list (Providers → the account → Models) is

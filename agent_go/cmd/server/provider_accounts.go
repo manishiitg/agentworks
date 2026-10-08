@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -725,7 +726,8 @@ func (api *StreamingAPI) userAccountAdmission(ctx context.Context, record stored
 	if record.OwnerUserID == principal {
 		return "owner"
 	}
-	sharing := record.Sharing
+	// A member owner's account reaches at most 10 named people (PLAT-715).
+	sharing := effectiveProviderSharing(record)
 	if sharing == nil || sharing.Mode != providerSharingShared {
 		return ""
 	}
@@ -780,6 +782,32 @@ type ProviderConnectionSharing struct {
 	Users     []string `json:"users,omitempty"`
 }
 
+// errProviderSharingAdminOnly refuses a member's workflow or Crew share.
+var errProviderSharingAdminOnly = errors.New("Only an admin can share a provider account with workflows or Crews; you can share it with up to 10 named colleagues.")
+
+// memberShareUserLimit is how many named people a member's account may be
+// shared with; an admin's account takes up to the general 200 entries.
+const memberShareUserLimit = 10
+
+// effectiveProviderSharing is the sharing that counts for an account: an
+// admin owner's as saved; a member owner's keeps only its first 10 named
+// people (workflow and Crew entries, saved before PLAT-715 or while the owner
+// was an admin, are ignored). Nil or private stays as is.
+func effectiveProviderSharing(record storedProviderConnection) *ProviderConnectionSharing {
+	sharing := record.Sharing
+	if sharing == nil || sharing.Mode != providerSharingShared || principalIsAdmin(record.OwnerUserID) {
+		return sharing
+	}
+	users := sharing.Users
+	if len(users) > memberShareUserLimit {
+		users = users[:memberShareUserLimit]
+	}
+	if len(users) == 0 {
+		return &ProviderConnectionSharing{Mode: providerSharingPrivate}
+	}
+	return &ProviderConnectionSharing{Mode: providerSharingShared, Users: append([]string(nil), users...)}
+}
+
 // normalizeProviderSharing validates a sharing request against what the
 // owner can see: only workflows, Crews and people visible to the owner may
 // be named. A private account keeps no lists.
@@ -793,6 +821,17 @@ func (api *StreamingAPI) normalizeProviderSharing(ctx context.Context, ownerID s
 	}
 	if mode != providerSharingShared {
 		return nil, fmt.Errorf("sharing mode must be private or shared")
+	}
+	// A member may share their own account with up to 10 named colleagues;
+	// only an admin may share with workflows or Crews (which reach everyone
+	// who can run them) or with more people (PLAT-715).
+	if !principalIsAdmin(ownerID) {
+		if len(request.Workflows)+len(request.Crews) > 0 {
+			return nil, errProviderSharingAdminOnly
+		}
+		if len(request.Users) > memberShareUserLimit {
+			return nil, fmt.Errorf("you can share a provider account with up to %d named colleagues; only an admin can share it more widely", memberShareUserLimit)
+		}
 	}
 	if len(request.Workflows)+len(request.Crews)+len(request.Users) > 200 {
 		return nil, fmt.Errorf("too many sharing entries")

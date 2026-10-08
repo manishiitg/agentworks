@@ -90,19 +90,25 @@ const crewOptions = (targets: ProviderShareTargets) => targets.crews.map(item =>
 const userOptions = (targets: ProviderShareTargets) => targets.users.filter(item => !item.self).map(item => ({ id: item.id, label: item.name, detail: item.email }))
 
 /** "Who can use it" for a user account: private, or shared with workflows, Crews and people. */
-export function SharingFields({ value, onChange, disabled }: {
+/** A member may share their own account with this many named colleagues (PLAT-715). */
+export const MEMBER_SHARE_USER_LIMIT = 10
+
+export function SharingFields({ value, onChange, disabled, peopleOnly = false }: {
   value: ProviderAccountSharing
   onChange: (value: ProviderAccountSharing) => void
   disabled?: boolean
+  /** A member's account: named colleagues only, at most 10; workflows and Crews are for admins. */
+  peopleOnly?: boolean
 }) {
   const shared = value.mode === 'shared'
+  const overLimit = peopleOnly && (value.users?.length ?? 0) > MEMBER_SHARE_USER_LIMIT
   const { targets, error } = useShareTargets(shared)
   return (
     <fieldset className="space-y-3" disabled={disabled}>
       <legend className="text-xs font-medium text-gray-700 dark:text-gray-300">Who can use it</legend>
       <div className="flex flex-wrap gap-4 text-sm text-gray-800 dark:text-gray-200">
         <label className="inline-flex items-center gap-2"><input type="radio" name="account-sharing" checked={!shared} onChange={() => onChange({ mode: 'private' })} /> Private</label>
-        <label className="inline-flex items-center gap-2"><input type="radio" name="account-sharing" checked={shared} onChange={() => onChange({ mode: 'shared', workflows: value.workflows ?? [], crews: value.crews ?? [], users: value.users ?? [] })} /> Shared with workflows, Crews and people</label>
+        <label className="inline-flex items-center gap-2"><input type="radio" name="account-sharing" checked={shared} onChange={() => onChange(peopleOnly ? { mode: 'shared', users: value.users ?? [] } : { mode: 'shared', workflows: value.workflows ?? [], crews: value.crews ?? [], users: value.users ?? [] })} /> {peopleOnly ? `Shared with named colleagues (up to ${MEMBER_SHARE_USER_LIMIT})` : 'Shared with workflows, Crews and people'}</label>
       </div>
       {!shared && <p className="text-xs text-gray-500 dark:text-gray-400">Only your own runs use this account.</p>}
       {shared && <>
@@ -110,11 +116,16 @@ export function SharingFields({ value, onChange, disabled }: {
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{SHARING_WARNING}
         </p>
         {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-        <div className="grid gap-3 sm:grid-cols-3">
+        {peopleOnly ? <>
+          <PickList label="People" options={userOptions(targets)} selected={value.users ?? []} onChange={users => onChange({ mode: 'shared', users })} emptyText="No other people." />
+          <p className={`text-xs ${overLimit ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+            {overLimit ? `Pick at most ${MEMBER_SHARE_USER_LIMIT} people.` : `Up to ${MEMBER_SHARE_USER_LIMIT} people. Only an admin can share an account with workflows or Crews.`}
+          </p>
+        </> : <div className="grid gap-3 sm:grid-cols-3">
           <PickList label="Workflows" options={workflowOptions(targets)} selected={value.workflows ?? []} onChange={workflows => onChange({ ...value, workflows })} emptyText="No workflows." />
           <PickList label="Crews" options={crewOptions(targets)} selected={value.crews ?? []} onChange={crews => onChange({ ...value, crews })} emptyText="No Crews." />
           <PickList label="People" options={userOptions(targets)} selected={value.users ?? []} onChange={users => onChange({ ...value, users })} emptyText="No other people." />
-        </div>
+        </div>}
       </>}
     </fieldset>
   )

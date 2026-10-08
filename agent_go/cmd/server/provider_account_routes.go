@@ -226,7 +226,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		if !view.CanManage {
 			view.Sharing = nil
 			view.OwnerUserID = ""
-		} else if view.Sharing == nil {
+		} else if view.Sharing = effectiveProviderSharing(record); view.Sharing == nil {
 			view.Sharing = &ProviderConnectionSharing{Mode: providerSharingPrivate}
 		}
 		views = append(views, view)

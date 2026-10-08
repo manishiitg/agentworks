@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-715](plat-715.md) | Only admins share provider accounts widely | fixed on main | P2 |
 | [PLAT-714](plat-714.md) | Model limits per person, matching token limits | fixed on main | P2 |
 | [PLAT-713](plat-713.md) | Private CLI sign-ins leak into the shared server account | open | P1 |
 | [PLAT-706](plat-706.md) | A chat's account never changes by itself after a provider switch | fixed on main | P1 |

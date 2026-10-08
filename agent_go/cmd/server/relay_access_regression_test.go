@@ -17,6 +17,7 @@ import (
 
 func TestRelayPublishedSharedProviderAccount(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Shared Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	draft := "Workflow/w"
 	release := relayReleaseWorkspace(draft, "v1")

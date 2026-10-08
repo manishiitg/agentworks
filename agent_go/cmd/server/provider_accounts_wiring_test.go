@@ -67,6 +67,7 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID strin
 // configured mode (hybrid), and so does a Code turn.
 func TestProviderAccountsSharedAccountAndCodeTurnsAreFull(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	env.setWorkflowW(t, account.ID)
 	if mode, code := env.queryToolsMode(t, "bob", "bob-builder"); mode != "full" {
@@ -121,6 +122,7 @@ func TestProviderAccountsSharedAccountAndCodeTurnsAreFull(t *testing.T) {
 // workspace; a scheduled run uses the workflow owner.
 func TestProviderAccountsDelegationAndScheduledScopes(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	env.setWorkflowW(t, account.ID)
 	ctx := context.WithValue(context.Background(), common.UserIDKey, "bob")

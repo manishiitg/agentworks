@@ -97,6 +97,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const manage = !onSelect && !formOnly && !selectionOnly
   const canReview = useCanReviewCode()
   const [connections, setConnections] = useState<ProviderConnection[]>([])
+  // The server account row is manageable only by admins; members share their own accounts only with named colleagues (PLAT-715).
+  const isAdmin = connections.some(record => accountRelation(record) === 'server' && record.can_manage === true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [modelsId, setModelsId] = useState<string | null>(null)
@@ -314,7 +316,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   ))
   const sharingEditor = (record: ProviderConnection) => sharingId === record.id && (
     <form className="mt-3 w-full space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveSharing(record) }}>
-      <SharingFields value={sharingDraft} onChange={setSharingDraft} disabled={busy} />
+      <SharingFields value={sharingDraft} onChange={setSharingDraft} disabled={busy} peopleOnly={!isAdmin} />
       <div className="flex gap-2">
         <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save sharing'}</button>
         <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setSharingId(null)}>Cancel</button>
@@ -491,7 +493,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       {authMethod !== 'cli_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
       {provider === 'claude-code' && authMethod !== 'cli_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Generate a token with <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">claude setup-token</code> for the account you want to add.</p>}
       {provider === 'pi-cli' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Pi provider ID<input required value={underlyingProvider} onChange={event => setUnderlyingProvider(event.target.value)} className={inputClass} /></label>}
-      {!editingId && manage && <SharingFields value={newSharing} onChange={setNewSharing} disabled={busy} />}
+      {!editingId && manage && <SharingFields value={newSharing} onChange={setNewSharing} disabled={busy} peopleOnly={!isAdmin} />}
       <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Credentials are encrypted. Nobody else sees them, even when the account is shared.</p>
       <div className="flex items-center gap-2">
         <button disabled={busy || disabled || !personalAllowed} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Saving…' : editingId ? 'Update account' : authMethod === 'cli_login' ? 'Save and sign in' : 'Save account'}</button>

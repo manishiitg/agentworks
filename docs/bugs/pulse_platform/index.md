@@ -11,7 +11,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [Browser and browser automation](browser/index.md) | 52 | 11 |
 | [Chat delivery (streaming, steering, restore)](chat/index.md) | 34 | 9 |
 | [Code](code/index.md) | 13 | 0 |
-| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 80 | 21 |
+| [Coding agents (Claude, Codex, Cursor, Pi, Muse, Agy and the bridge)](coding-agents/index.md) | 81 | 21 |
 | [Crew](crew/index.md) | 23 | 6 |
 | [Dominion](dominion/index.md) | 3 | 0 |
 | [Goals (workflows: steps, plans, Pulse, evaluation, learnings)](goals/index.md) | 180 | 38 |
@@ -27,6 +27,7 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 
 | Ticket | Title | State | Priority | Folder |
 |---|---|---|---|---|
+| [PLAT-715](coding-agents/accounts/plat-715.md) | Only admins share provider accounts widely | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-714](coding-agents/accounts/plat-714.md) | Model limits per person, matching token limits | fixed on main | P2 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-713](coding-agents/accounts/plat-713.md) | Private CLI sign-ins leak into the shared server account | open | P1 | [coding-agents/accounts](coding-agents/accounts/index.md) |
 | [PLAT-712](brain/access/plat-712.md) | Brain chat on Pi: brain_browse refused with 'A workflow, Crew or Code session is required' | open | P2 | [brain/access](brain/access/index.md) |
@@ -66,4 +67,3 @@ How tickets work: [README](README.md). Each folder lists its own tickets.
 | [PLAT-675](chat/rendering/plat-675.md) | Report links to a dead localhost port | fixed on main | P2 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-674](chat/rendering/plat-674.md) | Rare product tips while the agent works | fixed on main | P3 | [chat/rendering](chat/rendering/index.md) |
 | [PLAT-673](browser/access/plat-673.md) | Code and Crew browser stuck loading for read-only members | fixed on main | P1 | [browser/access](browser/access/index.md) |
-| [PLAT-672](brain/agents/plat-672.md) | Brain: say which folder is missing | fixed on main | P2 | [brain/agents](brain/agents/index.md) |

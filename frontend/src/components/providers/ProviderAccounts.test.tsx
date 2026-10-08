@@ -155,6 +155,14 @@ it('adds an account shared with a workflow after showing the billing warning', a
   expect(llmConfigService.addProviderConnection).toHaveBeenCalledWith({ provider: 'claude-code', display_name: 'Team key', credential: 'sk-token', sharing: { mode: 'shared', workflows: ['wf-1'], crews: [], users: [] } })
 })
 
+it('offers a member only named colleagues, up to 10, when sharing (PLAT-715)', async () => {
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, can_manage: false }, own])
+  const container = await render(<ProviderAccounts provider="claude-code" />)
+  await click(await menuItem(container, 'More for My Max', 'Who can use it'))
+  expect(container.textContent).toContain('Shared with named colleagues (up to 10)')
+  expect(container.textContent).not.toContain('Shared with workflows, Crews and people')
+})
+
 it('shows server validation text when saving fails', async () => {
   vi.mocked(llmConfigService.updateProviderConnection).mockRejectedValue({ response: { status: 400, data: 'sharing names a workflow you cannot open' } })
   const container = await render(<ProviderAccounts provider="claude-code" />)
