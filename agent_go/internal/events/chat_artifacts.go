@@ -124,7 +124,7 @@ func summarizeChatArtifactEvent(event Event, artifactID string, originalSize, te
 	}
 	if metadata, ok := payload["metadata"].(map[string]interface{}); ok {
 		bounded := make(map[string]interface{})
-		for _, key := range []string{"kind", "message_id", "client_message_id", "display_content", "turn_id", "provider", "confirmation", "delivery_status", "source"} {
+		for _, key := range []string{"kind", "message_id", "client_message_id", "display_content", "turn_id", "provider", "confirmation", "delivery_status", "source", "sender_label"} {
 			if value, exists := metadata[key]; exists {
 				if text, isText := value.(string); isText {
 					bounded[key] = truncateArtifactSummary(text, 2*1024)

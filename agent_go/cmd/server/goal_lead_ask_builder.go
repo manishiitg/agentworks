@@ -252,6 +252,10 @@ func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target trigg
 	call.RunID, call.RunIDs = session, []string{session}
 	call.mu.Unlock()
 	call.persist()
+	// The chat shows this message as sent by Pulse, with its icon.
+	if api.eventStore != nil {
+		api.eventStore.ExpectUserMessageSender(session, "pulse", caller.Label)
+	}
 	// The Builder chat's tools for this turn are held to the Pulse's own
 	// levels; deleting, replacing the plan and migrations stay refused.
 	release := beginGoalWorkTurn(session, perms)

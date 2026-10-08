@@ -662,10 +662,13 @@ type EventStore struct {
 	// expectedClientMessages: sessionID -> client identity for the next
 	// main-agent user_message (see ExpectClientUserMessage). Guarded by mu.
 	expectedClientMessages map[string]expectedClientMessage
-	mu                     sync.RWMutex
-	maxEvents              int // Maximum events per session
-	cleanupTicker          *time.Ticker
-	stopCh                 chan struct{}
+	// expectedSenders: sessionID -> the agent sending the next user_message
+	// (Pulse messaging a Builder chat), so the chat can show who sent it.
+	expectedSenders map[string]expectedSender
+	mu              sync.RWMutex
+	maxEvents       int // Maximum events per session
+	cleanupTicker   *time.Ticker
+	stopCh          chan struct{}
 	// journalMaintenanceStarted guards the single compaction/size-guard loop.
 	journalMaintenanceStarted bool
 	// steerOrdering holds answer rows behind a deferred steered message.
@@ -978,6 +981,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	}
 	event.ensureExecutionOwnership(sessionID, es.events[sessionID])
 	es.stampExpectedClientUserMessage(sessionID, &event)
+	es.stampExpectedSender(sessionID, &event)
 	if event.TerminalOwnerID == "" {
 		event.TerminalOwnerID = ResolveTerminalOwnerID(sessionID, event, nil)
 	}
