@@ -41,7 +41,6 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 		"run-plan-drift":   `kind="review-artifact-drift"`,
 		"design-dashboard": `kind="design-reporting-ui"`,
 		"setup-goals":      `kind="setup-goals"`,
-		"review-code":      `kind="design-plan"`,
 	} {
 		prompt, ok := byName[name]
 		if !ok {
@@ -67,7 +66,9 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	// Owner 2026-10-08: one Pulse, no separate reviewers. The old reviewer
 	// commands and their aliases are gone; #pulse in the Builder chat asks Pulse.
 	for _, retired := range []string{"run-goal-work", "strategy-auditor", "goal-advisor", "run-technical-review", "pulse-review",
-		"run-architecture-review", "pulse-review-execution-health", "pulse-review-database", "pulse-fixer", "merge-pulse-issues"} {
+		"run-architecture-review", "pulse-review-execution-health", "pulse-review-database", "pulse-fixer", "merge-pulse-issues",
+		// Saved-code quality is part of Workflow Review (owner, 2026-10-08).
+		"review-code"} {
 		if len(aliases[retired]) > 0 {
 			t.Fatalf("%s is retired with the old reviewers but is still a command", retired)
 		}
@@ -75,7 +76,7 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	if !slices.Equal(aliases["define-success"], []string{"setup-goals"}) {
 		t.Fatalf("setup-goals alias define-success = %v", aliases["define-success"])
 	}
-	if len(byName) != 8 {
-		t.Fatalf("product.yaml carries %d commands, want 8", len(byName))
+	if len(byName) != 7 {
+		t.Fatalf("product.yaml carries %d commands, want 7", len(byName))
 	}
 }

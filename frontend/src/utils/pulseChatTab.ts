@@ -1,4 +1,5 @@
 import type { ActiveSessionInfo } from '../services/api-types'
+import { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
 import { activateTab } from './activateTab'
 import { openGlobalActivitySession } from './globalProductNavigation'
@@ -30,4 +31,16 @@ export async function openPulseChatTab(workspacePath: string, sessionId: string)
     triggered_by: 'schedule',
   }
   await openGlobalActivitySession(session)
+}
+
+/** Opens the workflow's Pulse chat tab when only the workflow is known (after
+ * "Run goal check now" or "Run Goal Work now"): looks up its session first. */
+export async function openWorkflowPulseChatTab(workspacePath: string): Promise<void> {
+  try {
+    const lead = await agentApi.getGoalLead(workspacePath)
+    const sessionId = lead.success ? lead.conversation?.session_id || '' : ''
+    if (sessionId) await openPulseChatTab(workspacePath, sessionId)
+  } catch {
+    // The status line already says where the result shows; opening is a convenience.
+  }
 }

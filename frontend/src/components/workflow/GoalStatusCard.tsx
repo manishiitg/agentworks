@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { schedulerApi } from '../../api/scheduler'
+import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import type { PulseGoalStatus } from '../../services/api-types'
 
 type Tone = 'good' | 'warn' | 'bad' | 'muted'
@@ -86,7 +87,7 @@ export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus 
             onClick={() => {
               setCheckState('starting')
               schedulerApi.runGoalCheck(workspacePath)
-                .then(() => setCheckState('started'))
+                .then(() => { setCheckState('started'); void openWorkflowPulseChatTab(workspacePath) })
                 .catch((err: unknown) => {
                   const data = (err as { response?: { data?: unknown } })?.response?.data
                   setCheckState(typeof data === 'string' && data.trim() ? data.trim() : 'Could not start the goal check')
@@ -96,7 +97,7 @@ export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus 
             {checkState === 'starting' ? 'Starting…' : 'Run goal check now'}
           </button>
         )}
-        {checkState === 'started' && <span className="text-[10px] text-muted-foreground">Started; the result shows here and in the Pulse chat tab in a minute or two.</span>}
+        {checkState === 'started' && <span className="text-[10px] text-muted-foreground">Started in the Pulse chat tab; the result shows here in a minute or two.</span>}
         {checkState !== 'idle' && checkState !== 'starting' && checkState !== 'started' && <span className="text-[10px] text-red-600 dark:text-red-400">{checkState}</span>}
       </div>
     </section>

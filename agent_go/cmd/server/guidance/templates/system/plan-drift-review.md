@@ -234,6 +234,21 @@ Then inspect only the dependencies the actual change could affect:
   not promise it or apply managed agent-browser control/capture to a test session.
   Keep method details in that reference and preserve explicit language/runner choices;
   do not migrate an unaffected suite or deploy missing support as a drift repair.
+- **Saved code quality** (a scripted step whose `main.py`, contract or plan
+  entry changed; was `/review-code`): read `references/code-authoring.md` and
+  check the script against its step: it does what the step's Goal and Done when
+  say; it reads its inputs as positional `sys.argv` paths
+  (`context_dependencies`), configuration from `VAR_*` and secrets from the
+  environment; it writes the declared output; declared `script_parameters`
+  (keys, types, required, defaults, enums) match how it parses
+  `STEP_PARAMS_JSON` and what callers (`execute_step`,
+  `call_scripted_sub_agent`) send; errors fail loudly instead of writing an
+  empty or partial output; no hardcoded per-run values, dead branches or
+  copies of another step's code. A workflow still on the legacy
+  `learnings/<step-id>/main.py` layout gets one proposal to move to `code/`
+  (code-authoring.md, Deliberate migration); never migrate implicitly. Fix a
+  real defect within this review's limits and record it; propose larger
+  rewrites.
 - **Schedules and downstream handoffs:** trace changed IDs, routes, inputs,
   outputs, and intended order. Preserve delivery and approval boundaries.
 

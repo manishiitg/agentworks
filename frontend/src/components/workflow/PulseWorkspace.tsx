@@ -43,6 +43,7 @@ import {
   pulseWorkspaceQueueCounts,
   type PulseFocus,
 } from './pulseWorkspaceUtils'
+import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import {
   PULSE_MODULE_COMMANDS,
 } from './canvas/pulseSections'
@@ -310,6 +311,7 @@ export function PulseWorkspace({
     try {
       await schedulerApi.runPulse(workspacePath)
       useChatStore.getState().addToast('Goal Work started in the Pulse chat tab', 'success')
+      void openWorkflowPulseChatTab(workspacePath)
     } catch (err) {
       const data = (err as { response?: { data?: unknown } })?.response?.data
       useChatStore.getState().addToast(typeof data === 'string' && data.trim() ? data.trim() : 'Could not start Goal Work', 'error')

@@ -49,10 +49,6 @@ profile:
       icon: target
       aliases: [define-success]
       file: commands/setup-goals.md
-    - name: review-code
-      description: Review saved code and JSON parameters; propose code/ migration with focused tests
-      icon: file-text
-      file: commands/review-code.md
     - name: backup
       description: Set up, run, or restore this automation's backup
       icon: cloud
