@@ -8,6 +8,7 @@ import { Loader2, KeyRound, Mail, User, Lock, AlertCircle } from 'lucide-react'
 import type { AuthProvider } from '../services/api'
 import { RunloopMark } from '../components/branding/RunloopLogo'
 import { getRuntimeAppName, runtimeBrandAsset } from '../runtime-branding'
+import { hasGatewaySSO } from '../products/productSurfaceConfig'
 
 const runtimeAppName =
   getRuntimeAppName(
@@ -191,6 +192,12 @@ export function Login() {
 
   // No providers configured
   if (providers.length === 0) {
+    const gatewaySSO = hasGatewaySSO()
+    const requestedNext = window.location.pathname === '/login'
+      ? new URLSearchParams(window.location.search).get('next') || '/'
+      : window.location.pathname + window.location.search
+    const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') && !requestedNext.includes('\\')
+      ? requestedNext : '/'
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
         <Card className="w-full max-w-md">
@@ -198,11 +205,21 @@ export function Login() {
             <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="w-8 h-8 text-destructive" />
             </div>
-            <CardTitle>Configuration Error</CardTitle>
+            <CardTitle>{gatewaySSO ? 'Sign in to continue' : error ? 'Could not check sign-in' : 'Configuration Error'}</CardTitle>
             <CardDescription>
-              No authentication providers have been configured. Please contact your administrator.
+              {gatewaySSO
+                ? `${runtimeAppName} uses Google sign-in. Try again, or sign in with your approved Google account.`
+                : error || 'No authentication providers have been configured. Please contact your administrator.'}
             </CardDescription>
           </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Button onClick={() => void checkAuthMode()} disabled={isLoading}>Try again</Button>
+            {gatewaySSO && (
+              <a className="flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium" href={`/auth/google/start?next=${encodeURIComponent(next)}`}>
+                <GoogleIcon /> Continue with Google
+              </a>
+            )}
+          </CardContent>
         </Card>
       </div>
     )

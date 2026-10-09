@@ -65,4 +65,13 @@ describe('authentication conversation boundary', () => {
     expect(useAuthStore.getState().error).toContain('Cannot verify')
   })
 
+  it('recovers single-user mode after a temporary authentication-mode failure', async () => {
+    mocks.getAuthMode.mockRejectedValueOnce(new Error('temporarily offline'))
+      .mockResolvedValueOnce({ multi_user_mode: false, providers: [] })
+    await useAuthStore.getState().checkAuthMode()
+    await useAuthStore.getState().checkAuthMode()
+    expect(useAuthStore.getState().isMultiUserMode).toBe(false)
+    expect(useAuthStore.getState().error).toBeNull()
+  })
+
 })

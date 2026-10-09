@@ -95,7 +95,8 @@ export const useAuthStore = create<AuthState>()(
             set({
               isMultiUserMode: response.multi_user_mode,
               isMultiUserModeChecked: true,
-              providers: response.providers || []
+              providers: response.providers || [],
+              error: null,
             })
           } catch (error) {
             console.error('[AUTH] Failed to check auth mode:', error)
