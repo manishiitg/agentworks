@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -38,7 +39,12 @@ func (api *StreamingAPI) crewOwnChatAskRequest(ctx context.Context, userID strin
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Crew profile: %w", err)
 	}
-	binding, owned, err := resolveConversationBindingForUser(ctx, userID, profile, target.CrewID)
+	// A side chat the caller named (ask_crew chat_id) is a conversation of its own; without it the ask goes to the main chat.
+	chatKey := target.CrewID
+	if target.Chat != nil {
+		chatKey = target.Chat.Key
+	}
+	binding, owned, err := resolveConversationBindingForUser(ctx, userID, profile, chatKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("open your chat of %q: %w", target.Label, err)
 	}
@@ -50,6 +56,9 @@ func (api *StreamingAPI) crewOwnChatAskRequest(ctx context.Context, userID strin
 	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, userID, profile, binding, "")
 	if err != nil {
 		return nil, "", fmt.Errorf("open your chat of %q: %w", target.Label, err)
+	}
+	if target.Chat != nil && conversation.SessionID != target.Chat.SessionID {
+		return nil, "", fmt.Errorf("that chat is no longer available")
 	}
 	reqMap, sessionID, _, err := productBotTurnRequest(ctx, userID, profile, conversation, services.BotIncomingMessage{Text: message}, services.ThreadID{})
 	if err != nil {
@@ -74,6 +83,15 @@ func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target trigge
 		call.settle("failed", nil, err.Error())
 		return
 	}
+	// One ask at a time per chat. A second ask sent while the chat answers the first was delivered into the running turn as live
+	// input, which records no execution of its own: its caller waited for one that never appeared ("was not registered", Citymall
+	// acceptance run, PLAT-796). Waiting here makes each ask its own turn.
+	release, ok := acquireCrewAskChat(ctx, sessionID)
+	if !ok {
+		call.settle("failed", nil, fmt.Sprintf("the Crew's chat was still busy after %s", hardCap))
+		return
+	}
+	defer release()
 	call.mu.Lock()
 	call.Status = "running"
 	call.RunID, call.RunIDs = sessionID, []string{sessionID}
@@ -102,4 +120,19 @@ func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target trigge
 		return
 	}
 	call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
+}
+
+// crewAskChats holds one slot per chat session: the asks being answered there.
+var crewAskChats sync.Map // session id -> chan struct{}
+
+// acquireCrewAskChat waits for the chat's turn to come up (or ctx to end) and returns how to give it back.
+func acquireCrewAskChat(ctx context.Context, sessionID string) (func(), bool) {
+	value, _ := crewAskChats.LoadOrStore(sessionID, make(chan struct{}, 1))
+	slot := value.(chan struct{})
+	select {
+	case slot <- struct{}{}:
+		return func() { <-slot }, true
+	case <-ctx.Done():
+		return func() {}, false
+	}
 }
