@@ -16,11 +16,13 @@ chat:
       - mutate_vault_db
       - list_vault_mcp_servers
       - call_vault_mcp_tool
+      - manage_vault_tools
+      - read_vault_audit
     external_tools: *vault_tools
 profile:
   id: caplayer
   name: Vault
-  version: 11
+  version: 12
   scope: project
   skills: [vault-access]
   tools:
@@ -31,6 +33,8 @@ profile:
     - {id: caplayer.database.mutate}
     - {id: caplayer.mcp.list}
     - {id: caplayer.mcp.call}
+    - {id: caplayer.tools.review}
+    - {id: caplayer.audit}
   tool_policy:
     mode: allowlist
     enabled: *vault_tools

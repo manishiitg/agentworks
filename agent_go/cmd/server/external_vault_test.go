@@ -71,7 +71,7 @@ func TestExternalVaultGroupsReuseIdentityBindingAndRejectPaths(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin"},{"id":"active","email":"a@example.com"},{"id":"disabled","disabled":true}]}`)
 	paths := []string{}
 	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.Method+" "+r.URL.Path)
+		paths = append(paths, strings.TrimSuffix(r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery, "?"))
 		if (r.URL.Path != "/api/admin/users/sync" && r.Header.Get("X-CapLayer-Actor") != "admin") || r.Header.Get("Authorization") != "Bearer "+strings.Repeat("s", 32) || r.Header.Get("Cookie") != "" {
 			t.Error("identity/credential forwarding")
 		}
@@ -121,6 +121,16 @@ func TestExternalVaultGroupsReuseIdentityBindingAndRejectPaths(t *testing.T) {
 	w = call("manage_vault_secret_access", map[string]any{"operation": "list", "value": "secret"})
 	if w.Code != 400 || len(paths) != 2 {
 		t.Fatal("secret values accepted")
+	}
+	// Re-approving a changed tool approves exactly the reviewed definition.
+	if w = call("manage_vault_tools", map[string]any{"operation": "approve", "public_name": "crm_search"}); w.Code != 400 || len(paths) != 2 {
+		t.Fatal("approve without the reviewed fingerprint reached the service")
+	}
+	if w = call("manage_vault_tools", map[string]any{"operation": "approve", "public_name": "crm_search", "fingerprint": "abc", "version": 3}); w.Code != 200 || paths[2] != "POST /api/admin/tools/crm_search/approve" {
+		t.Fatalf("approve: %d %s %v", w.Code, w.Body, paths)
+	}
+	if w = call("read_vault_audit", map[string]any{"operation": "events", "tool": "crm_search", "limit": 5}); w.Code != 200 || paths[3] != "GET /api/admin/audit?limit=5&tool=crm_search" {
+		t.Fatalf("audit: %d %s %v", w.Code, w.Body, paths)
 	}
 }
 
@@ -183,6 +193,7 @@ func TestExternalVaultThroughMainMCPDiscoveryAndInvocation(t *testing.T) {
 	}
 	*directory = `{"users":[{"id":"admin","role":"viewer","products":["mcp-gateway"]}]}`
 	invalidateUserDirectoryCache()
+	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL)
 	result = callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "manage_vault_secret_access", "arguments": map[string]any{"operation": "list"}})
 	requireRemoteError(t, result, "revoked management", "insufficient_scope")
 }

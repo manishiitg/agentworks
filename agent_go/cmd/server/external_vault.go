@@ -3,10 +3,12 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 )
@@ -30,7 +32,7 @@ func externalVaultDefinitions(add func(string, string, bool, bool, map[string]an
 		for _, name := range schema["required"].([]any) {
 			required = append(required, name.(string))
 		}
-		write := spec.Name != "query_vault_db" && spec.Name != "list_vault_mcp_servers"
+		write := spec.Name != "query_vault_db" && spec.Name != "list_vault_mcp_servers" && spec.Name != "read_vault_audit"
 		add(spec.Name, spec.Description, write, false, schema["properties"].(map[string]any), required...)
 	}
 }
@@ -103,7 +105,47 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 	}
 	path, method := "/api/admin/groups", http.MethodGet
 	var payload any
-	if name == "manage_vault_groups" {
+	query := url.Values{}
+	if name == "manage_vault_tools" {
+		publicName := externalArg(args, "public_name")
+		if op != "list" && (publicName == "" || strings.ContainsAny(publicName, "/?#") || strings.Contains(publicName, "..")) {
+			fail("An exact public_name from operation=list is required.")
+			return
+		}
+		switch op {
+		case "list":
+			path = "/api/admin/tools"
+		case "versions":
+			path = "/api/admin/tools/" + url.PathEscape(publicName) + "/versions"
+		case "approve":
+			version, ok := args["version"].(float64)
+			if externalArg(args, "fingerprint") == "" || !ok {
+				fail("approve requires the fingerprint and version of the reviewed definition, from operation=versions.")
+				return
+			}
+			path, method = "/api/admin/tools/"+url.PathEscape(publicName)+"/approve", http.MethodPost
+			payload = map[string]any{"fingerprint": externalArg(args, "fingerprint"), "version": int(version)}
+		default:
+			fail("Unknown tool review operation.")
+			return
+		}
+	} else if name == "read_vault_audit" {
+		path = "/api/admin/audit"
+		if op == "usage" {
+			path = "/api/admin/usage"
+		} else if op != "events" {
+			fail("operation must be events or usage.")
+			return
+		}
+		for _, key := range []string{"user", "group", "client", "connector", "tool", "decision", "outcome", "after", "before"} {
+			if value := externalArg(args, key); value != "" {
+				query.Set(key, value)
+			}
+		}
+		if op == "events" {
+			query.Set("limit", fmt.Sprint(externalInt(args, "limit", 100)))
+		}
+	} else if name == "manage_vault_groups" {
 		switch op {
 		case "list":
 		case "create":
@@ -192,7 +234,7 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 	// Reuse the UI's active-directory binding and service transport. The client
 	// cannot choose an arbitrary administration path or receive gateway credentials.
 	req := r.Clone(r.Context())
-	req.URL = &url.URL{Path: "/api/caplayer" + path}
+	req.URL = &url.URL{Path: "/api/caplayer" + path, RawQuery: query.Encode()}
 	req.Method, req.Body, req.ContentLength = method, http.NoBody, 0
 	if payload != nil {
 		req.Body, req.ContentLength = io.NopCloser(bytes.NewReader(data)), int64(len(data))

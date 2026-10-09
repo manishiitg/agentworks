@@ -41,6 +41,18 @@ func dialExternalMCP(t *testing.T, ctx context.Context, url string) *client.Clie
 	return cli
 }
 
+// reconnectAfterCatalogChange checks that a session whose tools changed (a
+// revoked role) ends with 404, and returns a fresh initialized connection.
+func reconnectAfterCatalogChange(t *testing.T, ctx context.Context, cli *client.Client, url string) *client.Client {
+	t.Helper()
+	if _, err := cli.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: externalMCPToolSpec, Arguments: map[string]any{}}}); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("a session whose tools changed must end with 404, got %v", err)
+	}
+	fresh := dialExternalMCP(t, ctx, url)
+	initializeExternalMCP(t, ctx, fresh)
+	return fresh
+}
+
 func initializeExternalMCP(t *testing.T, ctx context.Context, cli *client.Client) *mcp.InitializeResult {
 	t.Helper()
 	result, err := cli.Initialize(ctx, mcp.InitializeRequest{

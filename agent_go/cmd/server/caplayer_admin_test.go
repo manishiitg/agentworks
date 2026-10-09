@@ -215,10 +215,10 @@ func TestCapLayerProfileUsesSharedNativeToolsAndGovernanceBridge(t *testing.T) {
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if len(profile.Tools) != 7 || profile.Tools[0].ID != "caplayer.access" {
+	if len(profile.Tools) != 9 || profile.Tools[0].ID != "caplayer.access" {
 		t.Fatal("unexpected governance tool surface")
 	}
-	if len(profile.Runtime.BridgeTools) != 7 || profile.Runtime.BridgeTools[0] != "manage_vault_access" {
+	if len(profile.Runtime.BridgeTools) != 9 || profile.Runtime.BridgeTools[0] != "manage_vault_access" {
 		t.Fatal("tool is not directly reachable without shell")
 	}
 	if profile.Runtime.Workspace.Root != "Chats/CapLayer" || profile.Runtime.Conversation.Mode != "singleton" {

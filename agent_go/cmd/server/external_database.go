@@ -15,7 +15,7 @@ import (
 // 2026-10-09: the app gives people no direct row edits either).
 
 func externalDatabaseDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("query_database", "Read a workflow's, Relay's or Crew's database (db/db.sqlite) read-only: pass sql for one SELECT, WITH or EXPLAIN statement (params bind ? placeholders), action=describe (optional table) for tables and columns, or action=integrity_check. Results are paged: give the query an ORDER BY and pass offset for the next page. Anyone who can open the workflow or Crew may read it. To change data, ask the Builder with builder_chat.", false, false, map[string]any{
+	add("query_database", "Read a workflow's, Relay's or Crew's database (db/db.sqlite) read-only: pass sql for one SELECT, WITH or EXPLAIN statement (params bind ? placeholders), action=describe (optional table) for tables and columns, or action=integrity_check. Results are paged: give the query an ORDER BY and pass offset for the next page. Anyone who can open the workflow or Crew may read it. To change data, ask the Builder.", false, false, map[string]any{
 		"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"sql":         map[string]any{"type": "string", "minLength": 1, "maxLength": 20000},

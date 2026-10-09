@@ -151,6 +151,7 @@ func TestExternalVaultSetupUsesSharedLiveMCPAndSQL(t *testing.T) {
 	requireRemoteError(t, invoke("call_vault_mcp_tool", map[string]any{"server": "http://arbitrary-host", "tool": "notion-fetch", "arguments": map[string]any{}}), "foreign server", "exact active Vault")
 	*directory = `{"users":[{"id":"admin","role":"viewer","products":["mcp-gateway"]}]}`
 	invalidateUserDirectoryCache()
+	cli = reconnectAfterCatalogChange(t, ctx, cli, host.URL)
 	requireRemoteError(t, invoke("call_vault_mcp_tool", map[string]any{"server": "vault_notion", "tool": "notion-fetch", "arguments": map[string]any{}}), "revoked admin", "insufficient_scope")
 	if _, err := builderTool.Execute(builderCtx, arguments); err == nil {
 		t.Fatal("builder retained revoked administrator")

@@ -463,6 +463,7 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 		t.Fatalf("missing cancel acknowledgement: %s", marshalStructured(t, canceled))
 	}
 	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "false")
+	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL+externalMCPPath)
 	hidden := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, hidden, "disabled catalog")
 	if strings.Contains(marshalStructured(t, hidden), "builder_chat") {

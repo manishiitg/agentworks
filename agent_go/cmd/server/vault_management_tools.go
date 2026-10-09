@@ -58,6 +58,19 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 		agentprofiles.ToolSpec{Name: "call_vault_mcp_tool", Category: "vault", Description: "Execute an active approved Vault MCP tool as the administrator for setup, independently of group/regex grants. Discover its exact server, tool and input schema using list_vault_mcp_servers first. Use searches/fetches to resolve canonical IDs before configuring permissions. Upstream writes require the user's explicit request. Every call rechecks administrator access and is audited as that user. Ordinary product and Vault runtime calls remain group scoped.", Parameters: object(map[string]any{
 			"server": externalString("Exact vault_<connection ID> from list_vault_mcp_servers."), "tool": externalString("Exact discovered public tool name."), "arguments": map[string]any{"type": "object"},
 		}, "server", "tool", "arguments")},
+		agentprofiles.ToolSpec{Name: "manage_vault_tools", Category: "vault", Description: "Review a Vault connection's tools after a sync, as the Vault Servers page does. operation=list: every tool with its Status (quarantined = new or changed, not callable until approved). operation=versions with public_name: what changed. operation=approve with public_name, fingerprint and version from versions: approves exactly that reviewed definition (a later change quarantines it again).", Parameters: object(map[string]any{
+			"operation":   map[string]any{"type": "string", "enum": []string{"list", "versions", "approve"}},
+			"public_name": externalString("Exact public tool name from list."),
+			"fingerprint": externalString("Fingerprint of the reviewed version, from versions."),
+			"version":     map[string]any{"type": "integer", "minimum": 1},
+		}, "operation")},
+		agentprofiles.ToolSpec{Name: "read_vault_audit", Category: "vault", Description: "Read the Vault audit log (operation=events: who called which tool, when, the decision and outcome) or a usage summary (operation=usage). Optional filters: user, group, client, connector, tool, decision, outcome, after, before (RFC 3339). Read-only.", Parameters: object(map[string]any{
+			"operation": map[string]any{"type": "string", "enum": []string{"events", "usage"}},
+			"user":      externalString("Platform user ID."), "group": externalString("Vault group ID."), "client": externalString("Client name."),
+			"connector": externalString("Connection ID."), "tool": externalString("Public tool name."), "decision": externalString("allow or deny."),
+			"outcome": externalString("Call outcome."), "after": externalString("RFC 3339 start."), "before": externalString("RFC 3339 end."),
+			"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 500},
+		}, "operation")},
 	)
 	return specs
 }
