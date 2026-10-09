@@ -10,6 +10,9 @@ or another project view intended to organize or manage information visually.
 
 ## Contract
 
+Layout, typography, colors, charts, navigation and visual style follow the
+user's preferences and supplied references. This skill describes platform usage.
+
 - Dashboard documents are HTML files under `db/reports/`; `index.html` is the
   backward-compatible default. Supporting assets belong under `db/assets/`.
 - For multiple top-toolbar views, create one HTML document per useful view.
@@ -23,8 +26,8 @@ or another project view intended to organize or manage information visually.
   optional and should be added only when the view needs durable structured data.
 - Inspect the existing `db/reports/` folder before changing it. Preserve useful
   content and the user's established organization and visual language.
-- Build responsive documents. Use separate toolbar views for genuinely distinct
-  destinations and internal sections/tabs for closely related material.
+- Documents may use separate toolbar views or internal navigation as requested.
+  The runtime supports different pane widths; verify the requested presentation.
 - Support both app themes using `:root.dark` or `[data-theme="dark"]`.
 - Choose any CSS/component approach that fits the Dashboard, including plain CSS,
   Tailwind, Bootstrap, daisyUI, another framework, or a combination that works
@@ -32,10 +35,8 @@ or another project view intended to organize or manage information visually.
   supported. If using daisyUI, `<html data-report-ui="daisyui">` asks the host
   to inject its pinned CSS; daisyUI alone does not include Tailwind utilities.
   These are compatibility facts, not a preferred stack.
-- Choose any suitable charting approach, including Chart.js, another browser
-  library, SVG/canvas, or HTML/CSS. Match the complexity of the implementation
-  to the visualization, make it responsive and theme-aware, and show a readable
-  fallback when an external dependency fails.
+- Chart.js, other browser libraries, SVG/canvas and HTML/CSS are supported.
+  Verify the chosen dependency loads and handle load failures.
 
 ## Project data and actions
 
@@ -83,9 +84,8 @@ or another project view intended to organize or manage information visually.
 
 ## Composition widgets (optional)
 
-Prefer these over hand-rolled tables and activity feeds. Both are optional
-helpers, not mandates: a fully custom section remains valid, and mixed
-Dashboards (custom hero plus a widget table) are fine. The widgets inherit
+These optional helpers provide ready-made tables and activity feeds when desired.
+Custom rendering can use the same data APIs. The widgets inherit
 the Dashboard's theme and include responsive styling, loading/empty states,
 and touch-safe controls. Use empty `div`/`section` containers; each renderer
 replaces its own contents on refresh, returns its data, and rejects on load

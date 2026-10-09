@@ -29,8 +29,11 @@ func TestResolveFeaturesProjectsOneBundleIntoExistingProfileFields(t *testing.T)
 			t.Fatalf("feature projection omitted tool %q: %v", tool, profile.ToolPolicy.Enabled)
 		}
 	}
-	if !containsString(profile.Skills, "work-dashboard") || !containsString(profile.Skills, "ui-ux-pro-max") || !containsString(profile.Skills, "agent-browser") {
+	if !containsString(profile.Skills, "work-dashboard") || !containsString(profile.Skills, "agent-browser") {
 		t.Fatalf("feature projection omitted skills: %v", profile.Skills)
+	}
+	if containsString(profile.Skills, "ui-ux-pro-max") {
+		t.Fatal("dashboard features must not attach a platform design skill")
 	}
 	if !profile.UIPanels.Files || profile.Runtime.Capabilities.Browser != CapabilityPreferred {
 		t.Fatalf("feature projection omitted legacy fields: panels=%+v caps=%+v", profile.UIPanels, profile.Runtime.Capabilities)

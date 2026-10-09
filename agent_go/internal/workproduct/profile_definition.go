@@ -16,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/uiuxpromax"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -174,10 +173,6 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 // existing AgentWorks registry.
 func RegisterProductSkills() error {
 	registerProductSkillsOnce.Do(func() {
-		if err := uiuxpromax.Register(); err != nil {
-			registerProductSkillsErr = err
-			return
-		}
 		registerProductSkillsErr = RegisterFeatureSkills("work", "Crew")
 		if registerProductSkillsErr == nil {
 			registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(productConfigFiles, []agentprofiles.SkillFileBinding{

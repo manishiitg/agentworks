@@ -6,6 +6,8 @@ the shared top toolbar. Auto-discovery uses each document's `<title>`; an option
 `db/reports/views.json` can set stable IDs, titles, order, and default:
 `{"schema_version":1,"default":"overview","views":[{"id":"overview","title":"Overview","path":"db/reports/index.html","order":0}]}`.
 There is no Dashboard generation step or widget-layout registry.
+Layout, typography, colors, charts and navigation follow the user's preferences
+and supplied references. This policy describes platform usage and data contracts.
 
 ### Page contract
 
@@ -21,8 +23,7 @@ There is no Dashboard generation step or widget-layout registry.
   build. Pin library versions rather than using floating `latest` URLs, and
   use `preview_report` to prove the chosen stack works in the Dashboard sandbox.
   Keep Dashboard-specific CSS/JS inline when that is the simpler choice.
-  daisyUI is CDN-only. To use it, inspect/install the official
-  `saadeghi/daisyui` skill, read it, add `data-report-ui="daisyui"` to the
+  daisyUI is CDN-only. To use it, add `data-report-ui="daisyui"` to the
   document's `<html>` element, and include the pinned stylesheet
   `https://cdn.jsdelivr.net/npm/daisyui@5.7.38/daisyui.css`. The host supplies
   that same CDN link for opted-in Dashboards that omit it. Use inline CSS
@@ -31,12 +32,6 @@ There is no Dashboard generation step or widget-layout registry.
   SVG/canvas, or HTML/CSS are all valid. Match the implementation to the
   visualization, make it responsive and theme-aware, and render a readable
   fallback when an external dependency fails to load.
-- Design for the default Tablet Dashboard pane first (~768px). Use one or two
-  primary columns, responsive spacing/type, 44px minimum touch targets, no
-  hover-only interactions, and tabs that wrap or scroll without clipping.
-  Tables must reflow or stay inside an intentional horizontal scroller; the
-  page itself must never overflow. Treat 480px mobile and 1280px laptop as
-  required secondary widths, with laptop as progressive enhancement.
 - Read durable live data with `window.report.query`, `get`, `getText`,
   `getHtml`, `renderMarkdown`, `fileUrl`, `mediaUrl`, and `openFile`. Write a business
   field on an already-existing row with `window.report.updateField`/
@@ -86,38 +81,24 @@ There is no Dashboard generation step or widget-layout registry.
   visual review is requested: it opens the Dashboard in a real headless browser
   through the same runtime the Dashboard tab uses, waits for it to settle, and
   returns whether it errored, its script/data-fetch errors, its tab labels,
-  any `Loading…` placeholder still on screen, and screenshots at tablet
-  (primary), mobile, and desktop widths in both themes
+  any `Loading…` placeholder still on screen, and screenshots at tablet, mobile,
+  and desktop widths in both themes
   under `db/reports/preview/` — open them with `read_image`. Prefer it over
   asking the user to open the Dashboard tab for you.
-- Always include one section, as its own top-level tab (not a subsection
-  scrolled past within another tab, and not merely an anchored region on a
-  single scrolling page), that Dashboards what the workflow actually did, in
-  plain non-technical language (recent runs and the actions taken in
-  each) — named for the workflow's real run cadence (e.g. `Daily Action`
-  for a daily workflow, `Recent Activity` for hourly/weekly/on-demand ones).
-  A Dashboard with no other tabs still needs this one; the rest of its content
-  becomes a second tab.
-  **Default source, no extra step needed:** every `record_summary(kind="run_summary")`
-  call (required at the end of a Pulse cycle, and normal after an ordinary
-  run) already writes a row — title, status, message, structured fields,
-  timestamp — into `org_dashboard_notifications` in this same `db.sqlite`.
-  Query `notification_kind = 'run_summary'` from it for this tab; that is
-  the default and needs no new step, table, or column. The `message` is
-  agent-written markdown — render it with `window.report.renderMarkdown`,
-  never as raw text, or the reader sees `###` and stray backticks. The
-  structured `fields_json` / `sections_json` render as plain values. Build something
-  custom only if the parent explicitly asks for a different or richer
-  activity view than the run summaries already give them — never invent a
-  step or table whose sole purpose is feeding this tab. See the
-  `design-reporting-ui` skill for the full authoring requirement.
+- To display recent runs and actions, use the existing summaries in
+  `org_dashboard_notifications`. `record_summary(kind="run_summary")` writes
+  title, status, message, structured fields and timestamp to this database.
+  `window.report.renderActivity(target)` is an optional renderer; custom
+  rendering can query `notification_kind = 'run_summary'` and render markdown
+  messages with `window.report.renderMarkdown`. No additional step, table or
+  collector is needed. Presentation and navigation follow the user's request.
 
-  **Routes are sub-workflows.** When route data is present, the Daily Action /
-  Recent Activity tab groups or filters runs by `(routing_step_id, route_id)`
+  **Route identity.** When displaying route-specific activity, identify runs
+  by `(routing_step_id, route_id)`
   from `route_summaries_json` in the same notification row. Parse that JSON
   array and render each entry's label, title, status, message, fields, and
-  sections; do not display raw JSON or merge same-named routes. Keep a shared
-  workflow section for top-level facts. `branch` choices are not separate
+  sections; do not merge same-named routes or attribute shared facts to a
+  specific route. `branch` choices are not separate
   sub-workflows. Use the same grouping for any Pulse-summary history.
   Check the real schema first: absent table/column or older rows use the old
   message and explicit legacy Route field, with scope shown as not recorded
@@ -441,9 +422,8 @@ reject on read failures, which the host exposes in the Dashboard's error surface
 
 ### Composition widgets: tables and activity (optional)
 
-Prefer these over hand-rolled tables and activity feeds. Both are optional
-helpers, not mandates: a fully custom section remains valid, and mixed
-Dashboards (custom hero plus a widget table) are fine. The widgets inherit
+These helpers provide ready-made tables and activity feeds when desired.
+Custom rendering can use the same data APIs. The widgets inherit
 the Dashboard's theme and include responsive styling, loading/empty states,
 and touch-safe controls. Use empty `div`/`section` containers; each renderer
 replaces its own contents on refresh, returns its data, and rejects on load

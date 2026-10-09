@@ -21,7 +21,7 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 		if _, err := agentprofiles.LoadChatPrompt(fsys, def.Prompt); err != nil {
 			return fmt.Errorf("chat %s: %w", mode, err)
 		}
-		known := map[string]bool{"system-tools": true, "builder-reference": true, "workflow-ui-control": true, "workflow-commands": mode == "builder", "ui-ux-pro-max": mode == "builder"}
+		known := map[string]bool{"system-tools": true, "builder-reference": true, "workflow-ui-control": true, "workflow-commands": mode == "builder"}
 		seen := map[string]bool{}
 		for _, name := range def.Skills {
 			if !known[name] || seen[name] {

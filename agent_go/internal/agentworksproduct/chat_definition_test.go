@@ -40,8 +40,8 @@ func TestChatDefinitions(t *testing.T) {
 	if ChatDefinitionKey("builder") == ChatDefinitionKey("run") {
 		t.Fatal("mode definitions must differ")
 	}
-	if !containsChatSkill(ChatSkills("builder"), "ui-ux-pro-max") || containsChatSkill(ChatSkills("run"), "ui-ux-pro-max") {
-		t.Fatal("UI/UX Pro Max must be available to Builder only")
+	if containsChatSkill(ChatSkills("builder"), "ui-ux-pro-max") || containsChatSkill(ChatSkills("run"), "ui-ux-pro-max") {
+		t.Fatal("dashboard design skills must not be attached by the platform")
 	}
 	for _, mode := range []string{"builder", "run"} {
 		if !containsChatSkill(ChatSkills(mode), "workflow-ui-control") {

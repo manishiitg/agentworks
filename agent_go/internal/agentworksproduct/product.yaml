@@ -299,7 +299,7 @@ chat:
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
-    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, ui-ux-pro-max]
+    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands]
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:

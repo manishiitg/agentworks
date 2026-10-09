@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Dashboard guidance documents usage; design belongs to the user
+
+Remove the bundled UI/UX Pro Max skill and its automatic attachment in workflow
+Builder and project dashboards. Dashboard/HTML guidance describes documents,
+runtime APIs, data contracts and validation, without prescribing layouts,
+typography, colors, charts or tab arrangements. Follow the user's preferences
+and supplied references. Owner decision: platform instructions should explain
+how to use the capability rather than impose a design.
+Ticket: [PLAT-739](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-739.md).
+
 ### 2026-10-09 — record_summary: the agent records a run or Pulse summary, the server delivers it
 
 - **Decided.** `record_summary` (`virtual-tools/record_summary_tool.go`) replaces the summary use of `notify_user`

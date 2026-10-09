@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/uiuxpromax"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -199,7 +198,7 @@ func AttachConfiguredReferenceSurface(mode string, mcpManagement bool, names []s
 		}
 		seen[name] = true
 		switch name {
-		case "system-tools", "builder-reference", "workflow-ui-control", "workflow-commands", "ui-ux-pro-max":
+		case "system-tools", "builder-reference", "workflow-ui-control", "workflow-commands":
 		default:
 			return fmt.Errorf("unknown reference skill %q", name)
 		}
@@ -222,12 +221,6 @@ func AttachConfiguredReferenceSurface(mode string, mcpManagement bool, names []s
 			}
 		case "workflow-commands":
 			skill = MaterializeGuidanceSkill(mode)
-		case "ui-ux-pro-max":
-			var err error
-			skill, err = uiuxpromax.Materialize()
-			if err != nil {
-				return fmt.Errorf("materialize %s: %w", name, err)
-			}
 		}
 		if skill != nil {
 			if err := attach(skill); err != nil {

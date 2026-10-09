@@ -88,7 +88,7 @@ var allKinds = map[string]kindMeta{
 	"run-plan-drift":       {Group: "review", AliasOf: "review-artifact-drift", Description: "Same as review-artifact-drift: the /run-plan-drift command", Modes: []string{"workshop"}},
 	"run-goal-work":        {Group: "review", AliasOf: "strategy-auditor", Description: "Same as strategy-auditor: the /run-goal-work command", Modes: []string{"workshop"}},
 	"run-technical-review": {Group: "improve", AliasOf: "engineering-review", Description: "Same as engineering-review: the /run-technical-review command's review phase", Modes: []string{"workshop"}},
-	"design-reporting-ui":  {Group: "report", Description: "Design one or more workflow-owned db/reports/*.html views with shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
+	"design-reporting-ui":  {Group: "report", Description: "Create or update user-designed db/reports/*.html views using the platform runtime and shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
 }
 
 // referenceKinds is the registry of system reference docs — content that

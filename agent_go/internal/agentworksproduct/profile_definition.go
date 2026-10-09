@@ -2,7 +2,6 @@ package agentworksproduct
 
 import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/uiuxpromax"
 )
 
 // BuiltinAgentProfile returns the agentworks profile. Brand new, so only
@@ -19,9 +18,8 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 	return []agentprofiles.Profile{BuiltinAgentProfile()}
 }
 
-// RegisterProductSkills registers shared optional expertise that is selected by
-// chat.<mode>.skills. Builder/Run core bundles are still materialized per
-// session with capability and mode filtering in the workflow-phase setup path.
+// RegisterProductSkills has no global skills to register. Builder/Run bundles
+// are materialized per session with capability and mode filtering.
 func RegisterProductSkills() error {
-	return uiuxpromax.Register()
+	return nil
 }

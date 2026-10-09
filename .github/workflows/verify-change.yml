@@ -51,7 +51,12 @@ jobs:
         run: |
           go build ./...
           pkgs="$(sed -n 's#^agent_go/\(.*\)/[^/]*\.go$#./\1#p' ../changed.txt | sort -u)"
-          if [ -n "$pkgs" ]; then go vet $pkgs; fi
+          # Deleted packages have no source left to vet.
+          existing_pkgs=""
+          for pkg in $pkgs; do
+            if [ -d "$pkg" ]; then existing_pkgs="$existing_pkgs $pkg"; fi
+          done
+          if [ -n "$existing_pkgs" ]; then go vet $existing_pkgs; fi
 
       # Lint only what this change adds (unused code, vet, ineffassign,
       # errorlint per agent_go/.golangci.yml); main's existing issues are
