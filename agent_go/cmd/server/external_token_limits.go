@@ -95,7 +95,7 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 func externalTokenLimitDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
 	date := map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`}
 	who := func(props map[string]any) map[string]any {
-		props["user_id"] = externalString("Person's user ID (from get_token_usage).")
+		props["user_id"] = externalString("Person's user ID (from account action=usage).")
 		props["email"] = map[string]any{"type": "string", "maxLength": 254, "description": "Person's email, instead of user_id."}
 		return props
 	}

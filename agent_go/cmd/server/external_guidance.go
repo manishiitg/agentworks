@@ -167,7 +167,7 @@ func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
 		"This connection reads and runs: tools read, and run-mode tools execute in pinned Run-mode sessions. Nothing creates, edits, or authors.",
 		"Call list_workflows to discover workflow IDs; IDs are never filesystem paths.",
-		"Load only the guidance topics relevant to the task; topic list via list_guidance_topics.",
+		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
 		"Use get_file_link for preview/download URLs; links identify a file and never grant permission.",
 		"Use files download (not read_file) for a local copy; downloads refuse to overwrite existing files.",
 	}
@@ -206,7 +206,7 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 	name := externalArg(args, "topic")
 	allowed := externalGuidanceTopicByName(name)
 	if allowed == nil {
-		externalError(w, 404, "unknown_topic", "Topic is not part of the external guidance profile. Use list_guidance_topics.")
+		externalError(w, 404, "unknown_topic", "Topic is not part of the external guidance profile. Use help action=topics.")
 		return
 	}
 	description, body, err := externalGuidanceContent(name)

@@ -171,7 +171,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "get_api_spec")
 	listed := marshalStructured(t, spec)
-	for _, name := range []string{"list_workflows", "get_plan", "read_file", "execute_step", "get_agent_context"} {
+	for _, name := range []string{"list_workflows", "get_plan", "read_file", "execute_step", "help"} {
 		if !strings.Contains(listed, name) {
 			t.Fatalf("spec list missing %q: %s", name, listed)
 		}
@@ -257,7 +257,7 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "read-only spec list")
 	listed := marshalStructured(t, spec)
-	for _, name := range []string{"list_workflows", "read_file", "get_agent_context"} {
+	for _, name := range []string{"list_workflows", "read_file", "help"} {
 		if !strings.Contains(listed, name) {
 			t.Fatalf("read-only spec missing %q", name)
 		}
@@ -303,7 +303,7 @@ func TestExternalMCPToolMenuNamesToolsAndExpiresWhenToolsChange(t *testing.T) {
 	}
 	list := post(session, `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`)
 	body, _ := io.ReadAll(list.Body)
-	if list.StatusCode != 200 || !strings.Contains(string(body), "Tools you can use now") || !strings.Contains(string(body), "update_settings") {
+	if list.StatusCode != 200 || !strings.Contains(string(body), "Tools you can use now") || !strings.Contains(string(body), "settings") {
 		t.Fatalf("tools/list: %d %s", list.StatusCode, body)
 	}
 	if stale := post("aw1-000000000000000000000000", `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`); stale.StatusCode != http.StatusNotFound {

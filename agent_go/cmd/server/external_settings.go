@@ -46,7 +46,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	add("get_settings", "Read a workflow's, Relay's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Relays), plus a version for update_settings.", false, false, target())
 	props := target()
 	for key, value := range map[string]any{
-		"expected_version": externalString("Version from get_settings; the update is refused if the settings changed since."),
+		"expected_version": externalString("Version from settings action=get; the update is refused if the settings changed since."),
 		"models":           map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
 		"mcp_servers":      addRemove("MCP servers to attach or detach, by name."),
 		"tools":            addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
@@ -425,7 +425,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
-		externalError(w, 409, "version_conflict", "Settings changed since get_settings; read them again and reapply your change.")
+		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")
 		return
 	}
 	changed, pending, failure := api.applyExternalSettings(ctx, claims.UserID, target, &state, args)
@@ -577,7 +577,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
-		externalError(w, 409, "version_conflict", "Settings changed since get_settings; read them again and reapply your change.")
+		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")
 		return
 	}
 	changed, pending, failure := api.applyExternalSettings(ctx, claims.UserID, target, &state, args)

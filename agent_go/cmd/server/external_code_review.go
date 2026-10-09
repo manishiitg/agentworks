@@ -44,8 +44,8 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 		if props == nil {
 			props = map[string]any{}
 		}
-		props["owner_id"] = externalString("Owner ID from list_code_workspaces.")
-		props["project_id"] = externalString("Code workspace ID from list_code_workspaces.")
+		props["owner_id"] = externalString("Owner ID from code_review action=workspaces.")
+		props["project_id"] = externalString("Code workspace ID from code_review action=workspaces.")
 		return props
 	}
 	const suffix = " Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account."

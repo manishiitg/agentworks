@@ -723,7 +723,7 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 	for _, tool := range catalog {
 		found[tool.Name] = true
 	}
-	for _, name := range []string{"get_plan", "read_file", "get_agent_context"} {
+	for _, name := range []string{"get_plan", "read_file", "help"} {
 		if !found[name] {
 			t.Fatalf("read tool %s missing from client catalog", name)
 		}

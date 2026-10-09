@@ -133,7 +133,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "get_token_usage" {
-			instructions += " Shared-account token limits: get_token_usage shows each person's tokens on the server's shared accounts today and this week (UTC, Monday weeks) against their daily/weekly limits, or totals for a from/to range; set_token_limits (administrators, users:manage) changes a person's limits (0 or null = unlimited, omitted = unchanged; in a person's account override 0 falls back to the account default and -1 is unlimited even when the account has a default). Allowed models: get_token_usage also lists each shared account's models (account_allowed_models) and each person's effective models per account (allowed_models); set_allowed_models (administrators, users:manage) sets an account's list (null = all models) or, with a person, their override (a list replaces the account's; null clears it; [\"*\"] or all_models = every model). Every call is recorded in the Code review audit log."
+			instructions += " Shared-account token limits: account action=usage shows each person's tokens on the server's shared accounts today and this week (UTC, Monday weeks) against their daily/weekly limits, or totals for a from/to range; action=set_limits (administrators, users:manage) changes a person's limits (0 or null = unlimited, omitted = unchanged; in a person's account override 0 falls back to the account default and -1 is unlimited even when the account has a default). Allowed models: action=usage also lists each shared account's models (account_allowed_models) and each person's effective models per account (allowed_models); action=set_allowed_models (administrators, users:manage) sets an account's list (null = all models) or, with a person, their override (a list replaces the account's; null clears it; [\"*\"] or all_models = every model). Every call is recorded in the Code review audit log."
 			break
 		}
 	}
@@ -387,7 +387,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		switch {
 		case strings.Contains(name, "dashboard") || name == "get_report_link":
 			group = "Dashboards"
-		case strings.HasSuffix(name, "_needs_you"):
+		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
 			group = "Needs you"
 		case strings.HasPrefix(name, "builder_pulse") || name == "manage_pulse":
 			group = "Pulse"
@@ -401,11 +401,11 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Brain"
 		case strings.Contains(name, "vault"):
 			group = "Vault"
-		case strings.Contains(name, "_code_"):
+		case name == "code_review" || strings.Contains(name, "_code_"):
 			group = "Code review"
-		case name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
+		case name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
 			group = "Account"
-		case name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
+		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
 			group = "Help"
 		}
 		groups[group] = append(groups[group], name)

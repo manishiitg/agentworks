@@ -24,7 +24,7 @@ func TestExternalGuidanceCatalogIncludesNewTools(t *testing.T) {
 	for _, raw := range body["tools"].([]any) {
 		names[raw.(map[string]any)["name"].(string)] = true
 	}
-	for _, name := range []string{"get_agent_context", "list_guidance_topics", "get_guidance_topic", "list_workflow_knowledge", "read_workflow_knowledge"} {
+	for _, name := range []string{"help", "list_workflow_knowledge", "read_workflow_knowledge"} {
 		if !names[name] {
 			t.Fatalf("missing tool %s", name)
 		}
@@ -57,7 +57,7 @@ func TestExternalGuidanceTopicScopeSplit(t *testing.T) {
 	for _, raw := range body["tools"].([]any) {
 		names[raw.(map[string]any)["name"].(string)] = true
 	}
-	for _, name := range []string{"get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill"} {
+	for _, name := range []string{"help"} {
 		if !names[name] {
 			t.Fatalf("workflows:read token missing %s", name)
 		}
@@ -296,7 +296,7 @@ func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
 	for _, item := range prep {
 		joined += item.(string) + "\n"
 	}
-	if !strings.Contains(joined, "reads and runs") || !strings.Contains(joined, "list_guidance_topics") || !strings.Contains(joined, "run_status") {
+	if !strings.Contains(joined, "reads and runs") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "run_status") {
 		t.Fatalf("preparation does not describe guidance and run flow: %v", prep)
 	}
 }

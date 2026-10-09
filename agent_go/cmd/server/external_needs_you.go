@@ -24,7 +24,7 @@ func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string
 	}
 	add("list_needs_you", "List what is waiting on you across workflows, Relays and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
 	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
-		"id":      externalString("Item id from list_needs_you."),
+		"id":      externalString("Item id from needs_you action=list."),
 		"option":  externalString("Chosen option id or title."),
 		"answer":  map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer or note."},
 		"dismiss": map[string]any{"type": "boolean", "description": "Dismiss a decision without answering."},
@@ -215,7 +215,7 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 				}
 			}
 			if req.SelectedOptionID == "" {
-				externalError(w, 400, "invalid_arguments", "Unknown option; use an option id or title from list_needs_you.")
+				externalError(w, 400, "invalid_arguments", "Unknown option; use an option id or title from needs_you action=list.")
 				return
 			}
 		}
@@ -246,5 +246,5 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 		externalJSON(w, out)
 		return
 	}
-	externalError(w, 404, "not_found", "No open item with that id for you; it may be answered, expired, or not yours. Use list_needs_you.")
+	externalError(w, 404, "not_found", "No open item with that id for you; it may be answered, expired, or not yours. Use needs_you action=list.")
 }

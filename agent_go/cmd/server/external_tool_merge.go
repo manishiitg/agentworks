@@ -23,6 +23,22 @@ var externalToolMerges = []externalToolMerge{
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
+	{"settings", "Read and change the setup of a workflow, Relay or Crew: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
+		{"get", "get_settings"}, {"update", "update_settings"},
+	}},
+	{"needs_you", "What is waiting on you across workflows and Crews: agent questions and open decisions. List them, then answer or dismiss one.", [][2]string{
+		{"list", "list_needs_you"}, {"answer", "answer_needs_you"},
+	}},
+	{"account", "Shared-account token use, daily and weekly limits, and which models an account may use. Limits and models are admin-only.", [][2]string{
+		{"usage", "get_token_usage"}, {"set_limits", "set_token_limits"}, {"set_allowed_models", "set_allowed_models"},
+	}},
+	{"help", "Guidance for using this connection: your access context, guidance topics to load, and the AgentWorks skill to install.", [][2]string{
+		{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skill", "get_skill"},
+	}},
+	{"code_review", "Read-only, audited review of every Code workspace for admins and Code reviewers: workspaces, costs, files, chats and the audit log.", [][2]string{
+		{"workspaces", "list_code_workspaces"}, {"costs", "get_code_costs"}, {"files", "list_code_files"}, {"file", "read_code_file"},
+		{"chats", "list_code_chats"}, {"chat", "read_code_chat"}, {"audit", "get_code_audit"},
+	}},
 }
 
 // Hidden with no merged tool: a narrower duplicate of a merged action.
