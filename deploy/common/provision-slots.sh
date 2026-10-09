@@ -384,7 +384,39 @@ cmd_userns() {
   echo "installed $USERNS_PROFILE"
 }
 
+# Make the host match its user directory: slots exist, every account has one, and the service sees its slot groups. Safe to run
+# on every deploy (nothing changes when it is already right). A new account gets its slot here, so no one is left without.
+cmd_ensure() {
+  [[ -f "$TABLE" ]] && getent group "$(slot_name 1)" >/dev/null || cmd_init
+  local ids user_id
+  ids="$(python3 - "$DOCS/config/users.json" <<'PY'
+import json, sys
+try:
+    users = json.load(open(sys.argv[1])).get("users", [])
+except FileNotFoundError:
+    users = []
+for user in users:
+    if user.get("id") and not user.get("disabled"):
+        print(user["id"])
+PY
+)"
+  for user_id in $ids; do cmd_assign "$user_id"; done
+  # A systemd user manager gives its services the groups it had when it started: a service restart alone never picks up
+  # slot groups added by usermod (PLAT-650). Restart the manager once when it lacks them; its enabled services come back.
+  local uid manager_pid gid
+  uid="$(id -u "$PRODUCT")"
+  gid="$(getent group "$(slot_name 1)" | cut -d: -f3)"
+  manager_pid="$(systemctl show "user@$uid.service" -p MainPID --value 2>/dev/null || echo 0)"
+  if [[ "$manager_pid" != 0 && -n "$manager_pid" ]] && ! grep -E '^Groups:' "/proc/$manager_pid/status" | tr -s '[:space:]' '\n' | grep -qx "$gid"; then
+    echo "The service account's user manager lacks the slot groups: restarting it (the product's services come back with it)."
+    systemctl restart "user@$uid.service"
+    sleep 5
+  fi
+  echo "Every account in $DOCS/config/users.json has a slot."
+}
+
 case "${1:-}" in
+  ensure) cmd_ensure ;;
   userns) shift; cmd_userns "$@" ;;
   init) cmd_init ;;
   shared) cmd_shared ;;
@@ -393,5 +425,5 @@ case "${1:-}" in
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | userns [--print] | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | ensure | userns [--print] | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac

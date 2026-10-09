@@ -5,6 +5,7 @@ values come from PRODUCT and EXPECTED_PUBLIC_URL in the environment, both
 already exported by build-and-activate.sh before this runs.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -83,6 +84,37 @@ def systemctl_value(property_name):
     ).strip()
 
 
+def check_user_slots(env_path=ENV_FILE, users_path=None):
+    """A server with more than one account runs every account in its own Linux slot.
+
+    Citymall went live on 2026-10-09 with five accounts and no slots at all (every person's commands ran as one Linux user, with
+    the server's secrets readable to it), and nothing failed: slotcheck skipped itself ("slots are not enabled on this host").
+    So this check is part of every deploy. It needs the product's own env file and its user directory; a server with a single
+    account is a personal install and needs no slots.
+    """
+    users_path = users_path or Path(f"/srv/{PRODUCT}/data/docs/config/users.json")
+    if not users_path.exists():
+        return
+    users = [u for u in json.loads(users_path.read_text()).get("users", []) if not u.get("disabled") and u.get("id")]
+    if len(users) < 2:
+        return
+    values = env_file_values(env_path)
+    mode = (values.get("AGENTWORKS_SLOTS") or [""])[-1].lower()
+    if mode not in ("on", "optin"):
+        raise ValueError(
+            f"this server has {len(users)} accounts but AGENTWORKS_SLOTS is not on, so everyone's commands run as one Linux user. "
+            "Fix: set SLOTS_ENABLED=true and \"AGENTWORKS_SLOTS=on\" in the product's product.env and deploy again"
+        )
+    table = Path((values.get("AGENTWORKS_SLOTS_FILE") or ["/etc/agentworks/slots.json"])[-1])
+    held = set(json.loads(table.read_text()).get("slots", {}).values())
+    without = sorted(u.get("email") or u.get("username") or u["id"] for u in users if u["id"] not in held)
+    if without:
+        raise ValueError(
+            f"{len(without)} of {len(users)} accounts have no slot: {', '.join(without)}. "
+            f"Fix: as root on the host, run: PRODUCT={PRODUCT} bash -s -- ensure < deploy/common/provision-slots.sh"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=["preflight", "running"])
@@ -102,6 +134,7 @@ def main():
         environ = Path(f"/proc/{pid}/environ").read_bytes()
         check_process_environment(environ)
         check_gog_keyring_process(environ)
+        check_user_slots()
     print(f"PASS {args.phase}: {PRODUCT} deployment configuration")
 
 

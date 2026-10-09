@@ -231,6 +231,12 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   # scoped to this product's own launcher and nothing else. The activation then proves the sandbox works, or stops the deploy.
   echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+  # Per-user Linux accounts: every account in the user directory gets its own slot, on every deploy (a new account is covered by
+  # the next deploy). The deploy's final check fails if any account still has none.
+  if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
+    echo "==> [$PRODUCT] Giving every account its own Linux slot"
+    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+  fi
 fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"

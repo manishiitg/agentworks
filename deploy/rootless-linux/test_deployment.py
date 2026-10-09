@@ -122,3 +122,43 @@ class GogKeyringDeploymentCheckTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UserSlotsDeploymentCheckTest(unittest.TestCase):
+    """A server with several accounts must give every one its own Linux slot, or the deploy fails (Citymall, 2026-10-09)."""
+
+    def setUp(self):
+        import importlib.util
+        import json
+        import tempfile
+        spec = importlib.util.spec_from_file_location("deployment_checks", ROOT / "deployment_checks.py")
+        self.checks = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.checks)
+        self.json = json
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def setup_server(self, env, users, slots):
+        table = self.tmp / "slots.json"
+        table.write_text(self.json.dumps({"slots": slots}))
+        env_path = self.tmp / ".env"
+        env_path.write_text(env.replace("TABLE", str(table)))
+        users_path = self.tmp / "users.json"
+        users_path.write_text(self.json.dumps({"users": users}))
+        return env_path, users_path
+
+    def test_every_account_needs_a_slot_when_there_are_several(self):
+        users = [{"id": "a", "email": "a@example.com"}, {"id": "b", "email": "b@example.com"}, {"id": "c", "email": "c@example.com", "disabled": True}]
+        good = self.setup_server("AGENTWORKS_SLOTS=on\nAGENTWORKS_SLOTS_FILE=TABLE\n", users, {"slot01": "a", "slot02": "b"})
+        self.checks.check_user_slots(*good)  # a disabled account needs none
+        missing = self.setup_server("AGENTWORKS_SLOTS=on\nAGENTWORKS_SLOTS_FILE=TABLE\n", users, {"slot01": "a"})
+        with self.assertRaisesRegex(ValueError, "b@example.com"):
+            self.checks.check_user_slots(*missing)
+        off = self.setup_server("PUBLIC_URL=x\n", users, {"slot01": "a", "slot02": "b"})
+        with self.assertRaisesRegex(ValueError, "AGENTWORKS_SLOTS is not on"):
+            self.checks.check_user_slots(*off)
+
+    def test_a_single_account_server_needs_no_slots(self):
+        env_path, users_path = self.setup_server("PUBLIC_URL=x\n", [{"id": "a", "email": "a@example.com"}], {})
+        self.checks.check_user_slots(env_path, users_path)
+        self.checks.check_user_slots(env_path, self.tmp / "no-directory.json")
+
