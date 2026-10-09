@@ -588,6 +588,7 @@ func (api *StreamingAPI) handleGetCurrentUser(w http.ResponseWriter, r *http.Req
 	acc := userAccessForClaims(user)
 	response["is_admin"] = acc.Admin
 	response["can_create"] = acc.CanCreate
+	response["can_create_in"] = canCreateInProducts(acc)
 	if access, err := effectiveWorkflowAccessMap(r.Context(), user); err == nil {
 		response["workflows"] = access
 	}

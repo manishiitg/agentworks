@@ -158,6 +158,9 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 		http.Error(w, "workspace_path is required", http.StatusBadRequest)
 		return
 	}
+	if !requireCreateIn(w, r, workflowKindProduct(req.Kind)) {
+		return
+	}
 	if err := enforceDeploymentBrowserCapability(req.Capabilities); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -891,6 +894,9 @@ func (api *StreamingAPI) handleDuplicateWorkflowManifest(w http.ResponseWriter, 
 	}
 
 	// Deep-copy and assign new identity
+	if !requireCreateIn(w, r, workflowKindProduct(srcManifest.Kind)) {
+		return
+	}
 	if workflowAccessForManifest(GetUserFromContext(r.Context()), srcManifest) == WorkflowAccessNone {
 		writeWorkflowPermissionDenied(w, "read")
 		return

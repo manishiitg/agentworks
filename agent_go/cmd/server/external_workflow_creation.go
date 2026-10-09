@@ -13,7 +13,7 @@ const externalWorkflowCreatorDescription = "Create a workflow you own using the 
 func externalWorkflowCreationAllowed(claims *UserClaims) bool {
 	return externalBuilderEnabled() && claims != nil && claims.AccessToken != nil &&
 		claims.AccessToken.BuilderAccess() && claims.AccessToken.AllWorkflows &&
-		userAccessForClaims(claims).CanCreate && userAllowedProduct(claims, "agentworks")
+		userAccessForClaims(claims).CanCreateIn("agentworks") && userAllowedProduct(claims, "agentworks")
 }
 
 func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.Request, args map[string]any) {

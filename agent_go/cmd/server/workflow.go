@@ -858,6 +858,9 @@ func (api *StreamingAPI) handleCreateWorkflow(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if !requireCreateIn(w, r, "agentworks") {
+		return
+	}
 	var req WorkflowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)

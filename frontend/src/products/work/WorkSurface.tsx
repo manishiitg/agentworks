@@ -53,6 +53,7 @@ import { usePresentationEvents } from '../../platform/presentations/usePresentat
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { hasProductCreateAccess } from '../../utils/workflowPermissions'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
@@ -761,6 +762,7 @@ function WorkTopBarControl({
   onNewProject,
   onDelete,
   creating,
+  canCreate,
   deletingProjectId,
 }: {
   product: ProjectProductConfig
@@ -770,6 +772,8 @@ function WorkTopBarControl({
   onNewProject: () => void
   onDelete: (session: WorkSession) => void
   creating: boolean
+  /** The account may create in this product (PLAT-767). */
+  canCreate: boolean
   deletingProjectId: string | null
 }) {
   const [open, setOpen] = useState(false)
@@ -816,13 +820,15 @@ function WorkTopBarControl({
       onClose={() => setOpen(false)}
       onAdd={onNewProject}
       addLabel={`New ${product.itemNoun}`}
-      addDisabled={creating}
+      addTitle={canCreate ? `New ${product.itemNoun}` : `Your account cannot create a ${product.itemNoun}. Ask an administrator to allow it.`}
+      addDisabled={creating || !canCreate}
     >
       <div role="menu" aria-label="Projects" className="max-h-96 space-y-1 overflow-y-auto p-2">
         <button
           type="button"
           onClick={() => { setOpen(false); onNewProject() }}
-          disabled={creating}
+          disabled={creating || !canCreate}
+          title={canCreate ? undefined : `Your account cannot create a ${product.itemNoun}. Ask an administrator to allow it.`}
           className="w-full rounded-md p-2 text-left text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-slate-700"
         >
           <span className="flex items-center gap-2 font-medium">
@@ -1271,17 +1277,29 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
   }, [create, creating, product.itemNoun, product.profileId])
 
+  const canCreateProjects = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, product.profileId))
+  const refuseCreate = useCallback(() => {
+    useChatStore.getState().addToast(`Your account cannot create a ${product.itemNoun}. Ask an administrator to allow it.`, 'info')
+  }, [product.itemNoun])
   const openCreateProject = useCallback(() => {
+    if (!canCreateProjects) {
+      refuseCreate()
+      return
+    }
     setCreateError(null)
     setCreateMode('dev')
     setCreateOpen(true)
-  }, [])
+  }, [canCreateProjects, refuseCreate])
   useProductCreateRequest(product.profileId === 'code' ? 'code' : 'work', openCreateProject)
 
   // "Switch mode" in a project's settings sends people here: a project keeps the mode it was created in, so they make a new one.
   useEffect(() => {
     if (product.profileId !== 'code') return
     const open = (event: Event) => {
+      if (!canCreateProjects) {
+        refuseCreate()
+        return
+      }
       const mode = (event as CustomEvent<{ mode?: ProductMode }>).detail?.mode
       setCreateError(null)
       setCreateMode(mode ?? 'dev')
@@ -1289,7 +1307,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
     window.addEventListener('agentworks:new-code-project', open)
     return () => window.removeEventListener('agentworks:new-code-project', open)
-  }, [product.profileId])
+  }, [canCreateProjects, product.profileId, refuseCreate])
 
   const deleteProject = useCallback(async () => {
     if (!deleteCandidate || deletingProjectId) return
@@ -1314,11 +1332,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       selected={selected}
       onSelect={select}
       onNewProject={openCreateProject}
+      canCreate={canCreateProjects}
       onDelete={setDeleteCandidate}
       creating={creating}
       deletingProjectId={deletingProjectId}
     />
-  ), [creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
+  ), [canCreateProjects, creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
 
   const error = sessionsError || chatError
 

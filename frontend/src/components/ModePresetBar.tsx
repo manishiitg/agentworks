@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
-import { hasWorkflowCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
+import { hasProductCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
 import { useModeStore } from '../stores/useModeStore'
 import { useGlobalPresetStore, usePresetApplication, usePresetManagement } from '../stores/useGlobalPresetStore'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
@@ -113,7 +113,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     agentMode: state.agentMode,
   })))
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
-  const canCreateWorkflows = useAuthStore(state => hasWorkflowCreateAccess(state.user, state.isMultiUserMode))
+  // Workflows and Relays each have their own create permission (PLAT-767).
+  const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, isRelaySurface ? 'relays' : 'agentworks'))
   const schedulerPaused = useGlobalSchedulerPaused()
   // Use toolList to get all available servers, not just enabled ones
   const toolList = useMCPStore(state => state.toolList)

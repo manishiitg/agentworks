@@ -253,6 +253,9 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
   )
 }
 
+// Products in which an account creates something (a workflow, Relay, Crew, Code project, video).
+const CREATABLE_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'video-studio', 'sparkquill']
+
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
 
 interface UsersAdminPanelProps {
@@ -336,6 +339,10 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   }, [refresh])
 
   const toggleProduct = (list: string[], id: string) => (list.includes(id) ? list.filter((p) => p !== id) : [...list, id])
+  // Per-product create permission (PLAT-767): the products an account may open that have something to create, and
+  // where it may create now (no list yet: a creator everywhere it may open, an editor nowhere).
+  const creatableFor = (u: AdminUser, role: Role) => products.filter((p) => CREATABLE_PRODUCTS.includes(p) && (u.products.includes(p) || (role === 'creator' && u.products.length === 0)))
+  const createListFor = (u: AdminUser, role: Role) => u.create_products ?? (role === 'creator' ? creatableFor(u, role) : [])
 
   // Turning Code review on also opens the Code product (the inspector lives
   // there) for an account whose products are a restricted list.
@@ -522,6 +529,22 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                           {(role === 'viewer' || role === 'editor') && u.products.length === 0 && <span className="text-muted-foreground">(none)</span>}
                         </div>
                         )
+                      )}
+                      {!vaultOnly && (role === 'creator' || role === 'editor') && creatableFor(u, role).length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Relays, Crews or projects. Editing what already exists is not affected.">
+                          <span className="text-muted-foreground">May create in:</span>
+                          {creatableFor(u, role).map((p) => (
+                            <label key={p} className="inline-flex items-center gap-1.5">
+                              <Checkbox
+                                disabled={busy}
+                                checked={createListFor(u, role).includes(p)}
+                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { create_products: toggleProduct(createListFor(u, role), p) })) }}
+                                aria-label={`May create in ${productLabel(p)} for ${u.username}`}
+                              />
+                              {productLabel(p)}
+                            </label>
+                          ))}
+                        </div>
                       )}
                     </td>
                     {!vaultOnly && (

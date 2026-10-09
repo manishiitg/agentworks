@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Each product has its own create permission (PLAT-767)
+- Replaces the single "can create" switch of PLAT-760. An admin sets, per account, where it may create: Goals
+  workflows, Relays, Crews, Code, Video Studio, SparkQuill. The role still decides whether an account creates at all:
+  admins always, viewers never, creators everywhere unless narrowed, editors nowhere unless granted. Editing what
+  already exists is unaffected; accounts with no list follow their role as before.
+- One check, `UserAccess.CanCreateIn(product)`, on every create path (app create and duplicate, chat and MCP
+  `create_workflow`/`create_relay`, Crew creation, the shared project reservation). `/api/auth/me` returns
+  `can_create_in`; the app disables each "New ..." with a reason; the admin screen has "May create in".
+  Ticket: [PLAT-767](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/accounts/plat-767.md).
+
 ### 2026-10-09 — Someone else using the Builder gives you Run mode, not an error (PLAT-766)
 - One person at a time uses the Builder on a workflow (so edits cannot overwrite each other). A second person's
   Builder message now runs in Run mode, and the agent and the app tell them who has the Builder; the 409 stays only for

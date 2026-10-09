@@ -2797,6 +2797,8 @@ export interface AuthUser {
   /** Reviews every Code workspace's cost, chats and files (read-only, audited). */
   is_code_reviewer?: boolean
   can_create?: boolean
+  /** Per product, whether this account may create there (PLAT-767). */
+  can_create_in?: Record<string, boolean>
   can_edit?: boolean
   /** Effective access per visible workflow id. Gate workflow actions on this, never on the global flags alone. */
   workflows?: Record<string, 'owner' | 'write' | 'read'>
@@ -2814,6 +2816,8 @@ export interface AdminUser {
   can_edit: boolean
   role: 'admin' | 'creator' | 'editor' | 'viewer'
   products: string[]
+  /** Products this account may create in; null follows the role (creators: all, editors and viewers: none). */
+  create_products?: string[] | null
   /** A permission on top of the role: reviews every Code, read-only and audited. */
   code_reviewer?: boolean
   disabled: boolean
@@ -2871,6 +2875,10 @@ export interface AdminUserWrite {
   can_edit?: boolean
   role?: 'admin' | 'creator' | 'editor' | 'viewer'
   products?: string[]
+  /** Sets the products this account may create in (PLAT-767). */
+  create_products?: string[]
+  /** Returns create permissions to the role's default. */
+  clear_create_products?: boolean
   code_reviewer?: boolean
   disabled?: boolean
   /** Replaces both limits; 0 is unlimited. */

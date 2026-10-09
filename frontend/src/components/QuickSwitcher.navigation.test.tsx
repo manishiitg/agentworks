@@ -292,8 +292,9 @@ it('retains a Code creation request through lazy mounting, opens the real form o
 })
 
 it('hides creation for unavailable products and respects the workflow create gate at activation time', async () => {
+  // Each product has its own create permission (PLAT-767): this account may create Code projects only.
   const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'code'], false, () => {
-    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'code'] } as never })
+    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { code: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'code'] } as never })
   })
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:code'])
   await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: true } }))

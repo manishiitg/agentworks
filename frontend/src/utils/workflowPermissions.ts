@@ -24,17 +24,34 @@ export function hasWorkflowOwnerAccess(user: AuthUser | null | undefined, isMult
 // edit an automation assigned to them while still being unable to create a
 // new one, so workflow write access must not be used as a substitute here.
 export function hasWorkflowCreateAccess(user: AuthUser | null | undefined, isMultiUserMode: boolean): boolean {
+  return hasProductCreateAccess(user, isMultiUserMode, 'agentworks')
+}
+
+// Creating is allowed per product (PLAT-767): 'agentworks' (workflows), 'relays', 'work' (Crews), 'code',
+// 'video-studio'. The server sends the answer per product; older servers only send can_create.
+export function hasProductCreateAccess(user: AuthUser | null | undefined, isMultiUserMode: boolean, product: string): boolean {
   if (!isMultiUserMode) {
     return true
   }
   if (user?.is_admin) {
     return true
   }
-  if (user?.can_create !== undefined) {
+  const perProduct = user?.can_create_in?.[product]
+  if (perProduct !== undefined) {
+    return perProduct
+  }
+  return accountCreateAccess(user)
+}
+
+function accountCreateAccess(user: AuthUser | null | undefined): boolean {
+  if (!user) {
+    return false
+  }
+  if (user.can_create !== undefined) {
     return user.can_create
   }
   // Compatibility with older servers that did not return can_create.
-  return user?.workflow_access === 'owner'
+  return user.workflow_access === 'owner'
 }
 
 // True only once the backend has actually confirmed non-write access (PLAT-262

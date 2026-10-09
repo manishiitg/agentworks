@@ -264,8 +264,28 @@ func currentUserCanWriteWorkflows(r *http.Request) bool {
 	return workflowPermissionInfoForClaims(GetUserFromContext(r.Context())).CanWriteWorkflows
 }
 
+// currentUserCanCreateWorkflows admits the create endpoints for an account that may create workflows or Relays; each
+// handler then checks the product it creates (requireCreateIn).
 func currentUserCanCreateWorkflows(r *http.Request) bool {
-	return userAccessForClaims(GetUserFromContext(r.Context())).CanCreate
+	acc := userAccessForClaims(GetUserFromContext(r.Context()))
+	return acc.CanCreateIn("agentworks") || acc.CanCreateIn("relays")
+}
+
+// requireCreateIn refuses the request unless the account may create in product (PLAT-767). It reports whether to go on.
+func requireCreateIn(w http.ResponseWriter, r *http.Request, product string) bool {
+	if userAccessForClaims(GetUserFromContext(r.Context())).CanCreateIn(product) {
+		return true
+	}
+	writeWorkflowPermissionDenied(w, "create")
+	return false
+}
+
+// workflowKindProduct is the product a workflow manifest of this kind belongs to.
+func workflowKindProduct(kind string) string {
+	if strings.EqualFold(strings.TrimSpace(kind), "relay") {
+		return "relays"
+	}
+	return "agentworks"
 }
 
 func requireWorkflowCreateAccess(next http.HandlerFunc) http.HandlerFunc {

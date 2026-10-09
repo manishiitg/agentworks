@@ -73,6 +73,11 @@ type UserRecord struct {
 	// admin ignores it (all products), a member with an empty list gets all
 	// products, a read-only user with an empty list gets none.
 	Products []string `json:"products"`
+	// CreateProducts is the per-product create permission (PLAT-767): the products in which this account may create
+	// workflows, Relays, Crews, Code projects and the like. Absent: a creator creates in every product it may open,
+	// an editor or viewer in none. Present (even empty): exactly these, for a creator or an editor; a viewer never
+	// creates and an admin always may.
+	CreateProducts *[]string `json:"create_products,omitempty"`
 	// CodeReviewer is a permission on top of the role: the account may review
 	// every Code workspace's cost, chats and files, read-only, with each view
 	// audited (code_admin.go), and read that audit log. It grants no write
@@ -403,6 +408,33 @@ type UserAccess struct {
 	// otherwise (all products).
 	Products           []string
 	ProductsRestricted bool
+	// CreateProducts: see UserRecord.CreateProducts; nil follows the role.
+	CreateProducts []string
+}
+
+// CanCreateIn reports whether the account may create in a product ("agentworks" for workflows, "relays", "work" for
+// Crews, "code", ...). It is the one create check: the role says whether the account creates at all, CreateProducts
+// narrows (or, for an editor, grants) it per product (PLAT-767).
+func (acc UserAccess) CanCreateIn(product string) bool {
+	if acc.Disabled {
+		return false
+	}
+	if acc.Admin {
+		return true
+	}
+	if acc.CreateProducts == nil {
+		return acc.CanCreate
+	}
+	if !acc.CanCreate && !acc.CanEdit {
+		return false
+	}
+	product = strings.ToLower(strings.TrimSpace(product))
+	for _, allowed := range acc.CreateProducts {
+		if strings.EqualFold(strings.TrimSpace(allowed), product) {
+			return true
+		}
+	}
+	return false
 }
 
 // Standardized account roles. Exactly one applies per account:
@@ -477,6 +509,9 @@ func accessForRecord(rec *UserRecord) UserAccess {
 		canEdit = true
 	}
 	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CodeReviewer: rec.CodeReviewer}
+	if rec.CreateProducts != nil {
+		acc.CreateProducts = append([]string{}, (*rec.CreateProducts)...)
+	}
 	switch {
 	case acc.Admin:
 		acc.ProductsRestricted = false
@@ -706,18 +741,20 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 
 // userAdminView is what the admin page sees; never the hash.
 type userAdminView struct {
-	ID           string   `json:"id"`
-	Username     string   `json:"username"`
-	Email        string   `json:"email,omitempty"`
-	Provider     string   `json:"provider"`
-	HasPassword  bool     `json:"has_password"`
-	Admin        bool     `json:"admin"`
-	CanCreate    bool     `json:"can_create"`
-	CanEdit      bool     `json:"can_edit"`
-	Role         string   `json:"role"`
-	Products     []string `json:"products"`
-	CodeReviewer bool     `json:"code_reviewer"`
-	Disabled     bool     `json:"disabled"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email,omitempty"`
+	Provider    string   `json:"provider"`
+	HasPassword bool     `json:"has_password"`
+	Admin       bool     `json:"admin"`
+	CanCreate   bool     `json:"can_create"`
+	CanEdit     bool     `json:"can_edit"`
+	Role        string   `json:"role"`
+	Products    []string `json:"products"`
+	// CreateProducts is the per-product create list; null follows the role (PLAT-767).
+	CreateProducts *[]string `json:"create_products"`
+	CodeReviewer   bool      `json:"code_reviewer"`
+	Disabled       bool      `json:"disabled"`
 	// Invited: added by email, no password, not signed in with SSO yet.
 	Invited            bool                        `json:"invited"`
 	TokenLimits        *UserTokenLimits            `json:"token_limits,omitempty"`
@@ -743,7 +780,7 @@ func viewOf(rec UserRecord) userAdminView {
 		ID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: provider,
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
-		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Products: products, CreateProducts: rec.CreateProducts, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 		Invited:              rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
 		TokenLimits:          rec.TokenLimits.normalized(),
 		AccountTokenLimits:   normalizedAccountTokenLimits(rec.AccountTokenLimits),
@@ -833,16 +870,20 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 // userWriteRequest is the body for create and update. Pointer fields are
 // "unchanged" when absent on update.
 type userWriteRequest struct {
-	Username     string    `json:"username"`
-	Email        *string   `json:"email"`
-	Password     *string   `json:"password"`
-	Admin        *bool     `json:"admin"`
-	CanCreate    *bool     `json:"can_create"`
-	CanEdit      *bool     `json:"can_edit"`
-	Role         *string   `json:"role"`
-	Products     *[]string `json:"products"`
-	CodeReviewer *bool     `json:"code_reviewer"`
-	Disabled     *bool     `json:"disabled"`
+	Username  string    `json:"username"`
+	Email     *string   `json:"email"`
+	Password  *string   `json:"password"`
+	Admin     *bool     `json:"admin"`
+	CanCreate *bool     `json:"can_create"`
+	CanEdit   *bool     `json:"can_edit"`
+	Role      *string   `json:"role"`
+	Products  *[]string `json:"products"`
+	// CreateProducts sets the per-product create list when present; ClearCreateProducts returns it to the role's
+	// default (JSON null cannot be told apart from absent).
+	CreateProducts      *[]string `json:"create_products"`
+	ClearCreateProducts bool      `json:"clear_create_products"`
+	CodeReviewer        *bool     `json:"code_reviewer"`
+	Disabled            *bool     `json:"disabled"`
 	// TokenLimits replaces both limits when present; zero is unlimited.
 	TokenLimits *UserTokenLimits `json:"token_limits"`
 	// AccountTokenLimits sets this person's override for each named shared
@@ -963,6 +1004,15 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	if req.Products != nil {
 		rec.Products = normalizeProducts(*req.Products)
 	}
+	if req.ClearCreateProducts {
+		rec.CreateProducts = nil
+	} else if req.CreateProducts != nil {
+		create := normalizeProducts(*req.CreateProducts)
+		if create == nil {
+			create = []string{}
+		}
+		rec.CreateProducts = &create
+	}
 	if req.CodeReviewer != nil {
 		rec.CodeReviewer = *req.CodeReviewer
 	}
@@ -1049,6 +1099,15 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	}
 	if req.Products != nil {
 		rec.Products = normalizeProducts(*req.Products)
+	}
+	if req.ClearCreateProducts {
+		rec.CreateProducts = nil
+	} else if req.CreateProducts != nil {
+		create := normalizeProducts(*req.CreateProducts)
+		if create == nil {
+			create = []string{}
+		}
+		rec.CreateProducts = &create
 	}
 	if req.CodeReviewer != nil {
 		rec.CodeReviewer = *req.CodeReviewer
@@ -1166,6 +1225,16 @@ func (api *StreamingAPI) handleChangeOwnPassword(w http.ResponseWriter, r *http.
 
 // knownProductIDs lists the product surfaces an admin can enable per user:
 // AgentWorks itself plus every registered product profile.
+// canCreateInProducts is, for each product, whether the account may create there (PLAT-767): the app enables or
+// disables each product's "New ..." from it.
+func canCreateInProducts(acc UserAccess) map[string]bool {
+	out := map[string]bool{}
+	for _, product := range append(knownProductIDs(), "agentworks", "relays", "work", "code", "video-studio", "sparkquill") {
+		out[product] = acc.CanCreateIn(product)
+	}
+	return out
+}
+
 func knownProductIDs() []string {
 	ids := []string{"agentworks"}
 	for _, id := range registeredProductIDs() {

@@ -2,10 +2,10 @@ import { Workflow } from 'lucide-react'
 import { ProductIntro } from '../ProductIntro'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCommandDialogStore } from '../../stores/useCommandDialogStore'
-import { hasWorkflowCreateAccess } from '../../utils/workflowPermissions'
+import { hasProductCreateAccess } from '../../utils/workflowPermissions'
 
 export function RelayIntro() {
-  const canCreate = useAuthStore(state => hasWorkflowCreateAccess(state.user, state.isMultiUserMode))
+  const canCreate = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, 'relays'))
   return (
     <ProductIntro
       tour="relay-empty-state"

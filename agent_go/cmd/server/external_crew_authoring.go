@@ -338,8 +338,8 @@ func crewCreateGate(claims *UserClaims) (int, string) {
 	if status, message := externalCrewAuthorGate(claims); status != 0 {
 		return status, message
 	}
-	if !userAccessForClaims(claims).CanCreate {
-		return http.StatusForbidden, "This account cannot create Crews or workflows. An administrator can give it the create permission."
+	if !userAccessForClaims(claims).CanCreateIn("work") {
+		return http.StatusForbidden, "This account cannot create Crews. An administrator can allow it under the account's create permissions."
 	}
 	return 0, ""
 }

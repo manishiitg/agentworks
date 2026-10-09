@@ -54,7 +54,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		claims = live
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, live))
 	}
-	if claims == nil || claims.AccessToken == nil || !claims.AccessToken.RelayBuilderAccess() || !claims.AccessToken.AllWorkflows || !userAccessForClaims(claims).CanCreate || !userAllowedProduct(claims, "relays") {
+	if claims == nil || claims.AccessToken == nil || !claims.AccessToken.RelayBuilderAccess() || !claims.AccessToken.AllWorkflows || !userAccessForClaims(claims).CanCreateIn("relays") || !userAllowedProduct(claims, "relays") {
 		externalError(w, 403, "forbidden", "Creation needs account create rights, Relay product access and relays:write consent covering all accessible workflows.")
 		return
 	}

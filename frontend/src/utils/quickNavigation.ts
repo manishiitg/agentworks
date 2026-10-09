@@ -1,6 +1,6 @@
 import type { AuthUser } from '../services/api'
 import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
-import { hasWorkflowCreateAccess } from './workflowPermissions'
+import { hasProductCreateAccess } from './workflowPermissions'
 import { gatewayAdminUrl, PRODUCT_SURFACE_LABELS, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -57,7 +57,7 @@ export function quickNavigationItems(
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
   const creationSurfaces = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)
-    .filter(surface => (surface !== 'agentworks' && surface !== 'relays') || hasWorkflowCreateAccess(user, isMultiUserMode))
+    .filter(surface => hasProductCreateAccess(user, isMultiUserMode, surface))
   if (creationSurfaces.length) browse('create', 'Create new…')
   for (const surface of creationSurfaces) {
     items.push({ ...common, type: 'menu', id: `create:${surface}`, label: CREATION_LABELS[surface],

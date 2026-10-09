@@ -247,13 +247,16 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		return
 	}
 	isCrew := strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID)
-	// The app reserves every new Crew here first, so this refuses an account without the create permission in both
-	// layouts (shared root or the owner's own tree).
+	// The app reserves every new project here first (Crews, Code, Video Studio), so this refuses an account without
+	// the create permission for that product in both layouts (PLAT-760, PLAT-767).
 	if isCrew {
 		if status, msg := crewCreateGate(claims); status != 0 {
 			writeAgentProfileError(w, status, msg)
 			return
 		}
+	} else if !userAccessForClaims(claims).CanCreateIn(profile.Product) {
+		writeAgentProfileError(w, http.StatusForbidden, "This account cannot create new projects in this product. An administrator can allow it under the account's create permissions.")
+		return
 	}
 	if !isCrew || !crewSharedRootEnabled() {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
