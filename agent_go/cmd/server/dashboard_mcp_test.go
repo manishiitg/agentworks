@@ -38,7 +38,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	requireRemoteSuccess(t, spec, "dashboard schemas")
 	created := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "title": "Overview", "files": map[string]any{"index.html": "<!doctype html><html><head><title>Overview</title></head><body><p>First</p></body></html>"}})
 	rev1 := created["dashboard"].(map[string]any)["revision"].(string)
-	validation := call("validate_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "revision": rev1})
+	validation := call("validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "revision": rev1})
 	if validation["valid"] != true {
 		t.Fatalf("validation: %v", validation)
 	}

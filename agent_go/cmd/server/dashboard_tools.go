@@ -19,6 +19,8 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 			return
 		}
 		delete(props, "workspace")
+		delete(props, "workflow_id")
+		delete(props, "crew_id")
 		keys := []any{}
 		for _, key := range required {
 			if key != "workspace" {

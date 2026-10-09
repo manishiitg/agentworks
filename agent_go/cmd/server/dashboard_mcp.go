@@ -18,13 +18,17 @@ func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
-		props := map[string]any{"workspace": externalString("Authorized project root from list_dashboards, list_workflows or list_crews. Owned Code roots are also supported.")}
-		required := []string{"workspace"}
+		props := map[string]any{
+			"workflow_id": externalString("Workflow or Relay ID from list_workflows or list_dashboards. Pass one of workflow_id, crew_id or workspace."),
+			"crew_id":     externalString("Crew ID from list_crews or list_dashboards."),
+			"workspace":   externalString("Project root from list_dashboards; needed only for an owned Code project."),
+		}
+		required := []string{}
 		if action == "list" {
 			props["limit"] = externalInteger(1, 200)
 			props["offset"] = externalInteger(0, 10000)
 			required = nil
-			props["workspace"] = externalString("Optional project root. Omit to discover dashboards across accessible projects.")
+			props["workspace"] = externalString("Optional project root. Omit (and workflow_id/crew_id) to discover dashboards across accessible projects.")
 		}
 		if action != "list" {
 			props["document_path"] = externalString("Existing HTML dashboard path from list_dashboards, for get/validate/preview/link.")
@@ -77,6 +81,39 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	for key, value := range args {
 		payload[key] = value
 	}
+	// Projects are named by ID like every other MCP tool; dashboardTarget
+	// re-checks access on the resolved root.
+	if name != "get_report_link" {
+		workflowID, crewID, workspace := externalArg(args, "workflow_id"), externalArg(args, "crew_id"), externalArg(args, "workspace")
+		named := 0
+		for _, value := range []string{workflowID, crewID, workspace} {
+			if value != "" {
+				named++
+			}
+		}
+		if named > 1 || (named == 0 && dashboardActions[name] != "list") {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id, crew_id or workspace.")
+			return
+		}
+		delete(payload, "workflow_id")
+		delete(payload, "crew_id")
+		switch {
+		case workflowID != "":
+			root, ok := dashboardWorkflowRoot(r, workflowID)
+			if !ok {
+				externalError(w, 404, "not_found", "project unavailable")
+				return
+			}
+			payload["workspace"] = root
+		case crewID != "":
+			crew, _, _, ok := api.externalCrewResolve(r.Context(), GetUserFromContext(r.Context()), crewID)
+			if !ok {
+				externalError(w, 404, "not_found", "project unavailable")
+				return
+			}
+			payload["workspace"] = crew.Binding.WorkspacePath
+		}
+	}
 	if name == "get_report_link" {
 		discovered, err := DiscoverWorkflowManifests(r.Context())
 		if err != nil {
@@ -110,6 +147,21 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	clone.Body = io.NopCloser(bytes.NewReader(encoded))
 	api.handleDashboards(w, clone)
 }
+
+// dashboardWorkflowRoot is the workspace of a workflow or Relay ID.
+func dashboardWorkflowRoot(r *http.Request, workflowID string) (string, bool) {
+	discovered, err := DiscoverWorkflowManifests(r.Context())
+	if err != nil {
+		return "", false
+	}
+	for _, item := range discovered {
+		if item.Manifest != nil && item.Manifest.ID == workflowID {
+			return item.WorkspacePath, true
+		}
+	}
+	return "", false
+}
+
 func parseDashboardURL(raw, p string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -190,6 +242,12 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 
 func dashboardDiscoveryRow(target dashboardTarget, d dashboards.Dashboard) map[string]any {
 	row := map[string]any{"dashboard_id": d.ID, "title": d.Title, "workspace": target.Root, "project_id": target.ID, "project_title": target.Title, "product": target.Kind, "document_path": d.DocumentPath, "revision": d.Revision, "published_revision": d.Published, "managed": d.Managed, "can_edit": target.Edit}
+	switch target.Kind {
+	case "workflow", "relay":
+		row["workflow_id"] = target.ID
+	case "crew":
+		row["crew_id"] = target.ID
+	}
 	if (!d.Managed || d.Published != "") && effectiveShareBaseURL() != "" {
 		raw := sharedAssetPublicURLForUser(effectiveShareBaseURL(), "report", target.Root, "")
 		link, err := parseDashboardURL(raw, d.DocumentPath)
