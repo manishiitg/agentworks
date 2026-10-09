@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -250,6 +252,34 @@ func adminRequest(method, path, body string, claims *UserClaims, vars map[string
 		req = mux.SetURLVars(req, vars)
 	}
 	return req
+}
+
+// Where every account needs a slot, the Users panel must not create one that has none (Excellence 2026-10-09).
+func TestAdminCreateUserNeedsASlotWhereSlotsAreOn(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]}]}`)
+	table := filepath.Join(t.TempDir(), "slots.json")
+	t.Setenv("AGENTWORKS_SLOTS", "on")
+	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
+	api := &StreamingAPI{}
+	alice := &UserClaims{UserID: "a1", Username: "alice"}
+	add := func(username string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", `{"username":"`+username+`","password":"davepass123"}`, alice, nil))
+		return rec
+	}
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"someone-else"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if rec := add("dave"); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "slot") {
+		t.Fatalf("no slot: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"`+userIDForUsername("dave")+`"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if rec := add("dave"); rec.Code != http.StatusCreated {
+		t.Fatalf("with a slot: %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestAdminUserCRUDAndGuards(t *testing.T) {

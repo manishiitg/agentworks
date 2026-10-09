@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -983,6 +984,14 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	}
 	if msg := adminEmailError(dir, rec.Email, ""); msg != "" {
 		writeUsersError(w, http.StatusBadRequest, msg)
+		return
+	}
+	// Where every account needs a slot, an account without one cannot run a single command (Excellence 2026-10-09: a
+	// new person's Goal setup failed with "No account slot for this user"). Slots are assigned only by root on the
+	// host, never by this service, so the Users panel cannot give one: refuse unless the person already holds one.
+	if _, enabled, slotErr := slots.For(rec.ID); enabled && slotErr != nil {
+		log.Printf("[USERS] refused to add %q: no slot for %s: %v", username, rec.ID, slotErr)
+		writeUsersError(w, http.StatusConflict, fmt.Sprintf("This server gives every account its own slot and %s has none. Add the person on the server with `provision-slots.sh adduser <email>` (it creates the account and assigns the slot together), or assign a slot to user id %s first and then add them here.", username, rec.ID))
 		return
 	}
 	if req.Password != nil && *req.Password != "" {
