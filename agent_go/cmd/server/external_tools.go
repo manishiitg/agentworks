@@ -102,7 +102,7 @@ func externalTools() ([]externalTool, error) {
 		add("get_skill", "Return the AgentWorks skill (SKILL.md) for this server so you can install it: save `content` to <your skills folder>/agentworks/SKILL.md (Claude Code: ~/.claude/skills/agentworks/SKILL.md). Read-only; no workflow required.", false, false, nil)
 		add("list_workflow_knowledge", "List a workflow's learnings, knowledgebase notes, workspace skills, and skill wiring (workflow-selected skills plus per-step enabled_skills). Page the file inventories with limit and offset; has_more signals another page.", false, true, page())
 		add("read_workflow_knowledge", "Read one knowledge file: learnings/ or knowledgebase/ paths from the workflow, or skills/<folder>/<file> from the workspace skill catalog. Nothing else is addressable.", false, true, map[string]any{"path": externalString("Knowledge path: learnings/..., knowledgebase/..., or skills/<folder>/<file>.")}, "path")
-		relayVersion := externalString("Relays only: a published version from get_relay_releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
+		relayVersion := externalString("Relays only: a published version from relay action=releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
 		p = page()
 		p["version"] = relayVersion
 		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run. For a Relay, pass version to see a published version's production runs.", false, true, p)
@@ -158,8 +158,8 @@ func externalTools() ([]externalTool, error) {
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, status, times, duration, error and run folder per run. Pass false for group lists, final responses and usage."}
 		addRun("get_schedule_runs", "Page a schedule's retained run history with limit and offset, including after schedule deletion: status, duration, run folder, errors, and webhook deploy metadata when present. Workflow runs are kept for at least 90 days.", false, p, "schedule_id")
 		addRun("trigger_schedule", "Trigger a schedule to run immediately, outside its normal timing. Requires the runs:execute scope.", true, map[string]any{"schedule_id": externalString("Schedule ID from list_schedules.")}, "schedule_id")
-		addRun("chat", "Chat with the workflow assistant in a pinned Run-mode session: ask questions, request analysis, or direct runs conversationally. Starts a new session, or continues session_id for multi-turn conversation. Requires the runs:execute scope. Pass wait_seconds to get the reply in the same call; otherwise poll run_status for it.", true, map[string]any{"message": externalString("The question or instruction to send."), "session_id": map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new conversation."}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the reply or a question before returning (default 0: return at once; max 25). The result then carries final_answer, or pending_inputs if the assistant asked something."}}, "message")
-		addRun("run_reply_input", "Answer a pending human-input request in a run session (see run_status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from run_status."), "request_id": externalString("Pending input request ID from run_status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
+		addRun("chat", "Chat with the workflow assistant in a pinned Run-mode session: ask questions, request analysis, or direct runs conversationally. Starts a new session, or continues session_id for multi-turn conversation. Requires the runs:execute scope. Pass wait_seconds to get the reply in the same call; otherwise poll runs action=status for it.", true, map[string]any{"message": externalString("The question or instruction to send."), "session_id": map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new conversation."}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the reply or a question before returning (default 0: return at once; max 25). The result then carries final_answer, or pending_inputs if the assistant asked something."}}, "message")
+		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
 		addRun("stop_step", "Stop one running step or background execution by its execution ID from execute_step, query_step, or list_executions. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or query_step."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
@@ -712,13 +712,13 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if selected.Manifest.Kind == "relay" {
 		switch tool.Name {
 		case "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs":
-			externalError(w, 400, "relay_api_only", "Relays use API function triggers. Use test_relay or run_relay and get_relay_run.")
+			externalError(w, 400, "relay_api_only", "Relays use API function triggers. Use relay action=test or relay action=run and relay action=get_run.")
 			return
 		}
 	}
 	// Relay chat is Builder-only; direct API tools handle published execution.
 	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use builder_chat to edit a Relay, test_relay for draft tests, or run_relay for published versions.")
+		externalError(w, 400, "relay_builder_only", "Use builder action=chat to edit a Relay, relay action=test for draft tests, or relay action=run for published versions.")
 		return
 	}
 	// Conversation access follows the builder runtime: workflow readers may
@@ -772,7 +772,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.executes {
 		if selected.Manifest.Kind == "relay" {
-			externalError(w, 400, "relay_builder_only", "Use test_relay or run_relay; Relay does not expose Run chat tools.")
+			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Relay does not expose Run chat tools.")
 			return
 		}
 		api.externalRunProxy(w, r, tool.Name, args, *selected)
@@ -867,7 +867,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		}
 		root := relayReleaseWorkspace(workflow.WorkspacePath, version)
 		if draft, err := relayDraftWorkspaceForRelease(r.Context(), root); err != nil || draft != workflow.WorkspacePath {
-			externalError(w, 404, "version_not_found", "No published version "+version+"; see get_relay_releases.")
+			externalError(w, 404, "version_not_found", "No published version "+version+"; see relay action=releases.")
 			return
 		}
 		req.Root = root

@@ -290,7 +290,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 		}
 		// The run surface proxies run-mode tools, including execution.
-		for _, name := range []string{"run_full_workflow", "execute_step", "run_status", "trigger_schedule"} {
+		for _, name := range []string{"run_full_workflow", "execute_step", "runs", "trigger_schedule"} {
 			if !names[name] {
 				t.Fatalf("run tool missing: %s", name)
 			}

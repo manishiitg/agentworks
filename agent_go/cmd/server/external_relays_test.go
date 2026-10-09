@@ -192,11 +192,10 @@ func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
-	body := marshalStructured(t, spec)
-	for _, name := range []string{"create_relay", "builder_chat", "publish_relay", "test_relay", "run_relay", "get_relay_run"} {
-		if !strings.Contains(body, name) {
-			t.Fatalf("missing %s: %s", name, body)
+	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"relay", "builder"}}))
+	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`, `"chat"`} {
+		if !strings.Contains(relaySpec, want) {
+			t.Fatalf("relay/builder spec missing action %s: %s", want, relaySpec)
 		}
 	}
 	created := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "create_relay", "arguments": map[string]any{"label": "MCP hello", "submission_id": "transport"}})

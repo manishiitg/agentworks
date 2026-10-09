@@ -18,13 +18,13 @@ func externalRelayDefinitions(add func(string, string, bool, bool, map[string]an
 	id := map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
 	key := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
 	label := map[string]any{"type": "string", "minLength": 1, "maxLength": 80}
-	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Build the Python program with builder_chat; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
+	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Build the Python program with builder action=chat; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
 	add("update_relay", "Rename a Relay. Python Relays return the value of run(INPUT, ctx); output_step_id applies only to older graph Relays. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
 	add("get_relay_releases", "Inspect a Relay's active and previous published versions.", false, true, nil)
 	add("publish_relay", "Publish the validated draft as an immutable Relay version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
-	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll get_relay_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
-	add("run_relay", "Run a published Relay version with JSON input. Omit version for the active release. Requires runs:execute and current Relay/function access. Reuse idempotency_key on retries; poll get_relay_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
-	add("get_relay_run", "Poll your Relay run or draft test by durable run ID. Returns final JSON result, step outputs, status and version (empty for a draft test). Requires runs:execute.", false, true, map[string]any{"run_id": externalString("run_id from test_relay or run_relay.")}, "run_id")
+	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
+	add("run_relay", "Run a published Relay version with JSON input. Omit version for the active release. Requires runs:execute and current Relay/function access. Reuse idempotency_key on retries; poll relay action=get_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
+	add("get_relay_run", "Poll your Relay run or draft test by durable run ID. Returns final JSON result, step outputs, status and version (empty for a draft test). Requires runs:execute.", false, true, map[string]any{"run_id": externalString("run_id from relay action=test or relay action=run.")}, "run_id")
 }
 func isExternalRelayTool(name string) bool {
 	switch name {
@@ -146,7 +146,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
-	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder_chat to build relay.py. The returned value of run(INPUT, ctx) is the API result; function: " + function + "."})
+	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder action=chat to build relay.py. The returned value of run(INPUT, ctx) is the API result; function: " + function + "."})
 }
 
 func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, selected DiscoveredWorkflow) {

@@ -32,7 +32,7 @@ var externalRunToolHints = map[string]string{
 // every other argument passes through to the run-mode tool call verbatim,
 // flat, so a future native implementation keeps the same call shape.
 func externalRunProxyTool(name string) externalTool {
-	description := "Run-mode tool `" + name + "` (requires the runs:execute scope): start a new pinned Run-mode session, or continue session_id, and instruct it to call this tool with the remaining arguments as its parameters. Poll run_status for completion."
+	description := "Run-mode tool `" + name + "` (requires the runs:execute scope): start a new pinned Run-mode session, or continue session_id, and instruct it to call this tool with the remaining arguments as its parameters. Poll runs action=status for completion."
 	if hint, ok := externalRunToolHints[name]; ok {
 		description += " " + hint
 	}
@@ -269,7 +269,7 @@ func (api *StreamingAPI) externalStopStep(w http.ResponseWriter, r *http.Request
 	}
 	api.trackedWorkflowExecutionsMux.RUnlock()
 	if targetSessionID == "" {
-		externalError(w, http.StatusNotFound, "execution_not_found", "No running execution with that ID in this workflow; see run_status or list_executions")
+		externalError(w, http.StatusNotFound, "execution_not_found", "No running execution with that ID in this workflow; see runs action=status or list_executions")
 		return
 	}
 	if sessionFilter != "" && sessionFilter != targetSessionID {

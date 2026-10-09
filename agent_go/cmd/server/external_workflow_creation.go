@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const externalWorkflowCreatorDescription = "Create a workflow you own using the same creator as app chat. Requires account creation rights, AgentWorks product access and builder:chat covering all workflows. Supply folder_name (kebab-case), workflow_json and plan_json; the complete plan graph is validated before writing and existing folders/IDs are never overwritten. Ownership is assigned to the authenticated user. Configure folder/KB/project access separately after creation. Returns workflow_id for builder_chat, KB bindings and run tools. Structure creation does not run the workflow or author scripted-step code."
+const externalWorkflowCreatorDescription = "Create a workflow you own using the same creator as app chat. Requires account creation rights, AgentWorks product access and builder:chat covering all workflows. Supply folder_name (kebab-case), workflow_json and plan_json; the complete plan graph is validated before writing and existing folders/IDs are never overwritten. Ownership is assigned to the authenticated user. Configure folder/KB/project access separately after creation. Returns workflow_id for builder action=chat, KB bindings and run tools. Structure creation does not run the workflow or author scripted-step code."
 
 func externalWorkflowCreationAllowed(claims *UserClaims) bool {
 	return externalBuilderEnabled() && claims != nil && claims.AccessToken != nil &&
@@ -49,7 +49,7 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 		}
 	}
 	if kind, _ := workflow["kind"].(string); kind != "" {
-		externalError(w, 400, "invalid_arguments", "Use create_relay to create a Relay.")
+		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Relay.")
 		return
 	}
 	workflowID, _ := workflow["id"].(string)
@@ -70,7 +70,7 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 		err = json.Unmarshal(encoded, &manifest)
 	}
 	if err == nil && manifest.Kind != "" {
-		externalError(w, 400, "invalid_arguments", "Use create_relay to create a Relay.")
+		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Relay.")
 		return
 	}
 	if err == nil {

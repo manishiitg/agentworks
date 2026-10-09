@@ -23,25 +23,25 @@ func externalBuilderEnabled() bool {
 }
 
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder_status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
+	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
 		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
 	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
 	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
-		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from builder_file_history."), "expected_revision": externalString("Current revision from read_file, or missing.")}, "path", "edit_id", "expected_revision")
+		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from builder action=file_history."), "expected_revision": externalString("Current revision from read_file, or missing.")}, "path", "edit_id", "expected_revision")
 	// The workflow's Pulse, from MCP (never from Slack). Same grant as
 	// builder_chat: talking to Pulse can make the Builder act within Pulse's
 	// autonomy levels.
-	add("builder_pulse_chat", "Send a message to the selected workflow's Pulse (the agent that owns its goal) and start its turn. Use for the goal: how it is doing, what Pulse is working on, direction for it. Poll builder_pulse_status for the reply. Requires builder:chat and write access; the workflow's Pulse must be on with a goal in soul.md.", true, true,
+	add("builder_pulse_chat", "Send a message to the selected workflow's Pulse (the agent that owns its goal) and start its turn. Use for the goal: how it is doing, what Pulse is working on, direction for it. Poll builder action=pulse_status for the reply. Requires builder:chat and write access; the workflow's Pulse must be on with a goal in soul.md.", true, true,
 		map[string]any{"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}}, "message")
-	add("builder_pulse_status", "Read the selected workflow's Pulse conversation: whether it is busy, its latest messages (newest last), the latest goal check and pending decisions. Use after builder_pulse_chat.", false, true,
+	add("builder_pulse_status", "Read the selected workflow's Pulse conversation: whether it is busy, its latest messages (newest last), the latest goal check and pending decisions. Use after builder action=pulse_chat.", false, true,
 		map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 40}})
 	for _, name := range []string{"builder_status", "builder_reply_input", "builder_cancel"} {
-		props := map[string]any{"operation_id": externalString("Operation ID returned by builder_chat.")}
+		props := map[string]any{"operation_id": externalString("Operation ID returned by builder action=chat.")}
 		required := []string{"operation_id"}
 		desc := "Poll your connection's Builder operation: status, final answer, error and pending_inputs. Does not expose unrelated turns in the shared chat."
 		if name == "builder_reply_input" {
-			props["request_id"] = externalString("Pending input unique_id from builder_status.")
+			props["request_id"] = externalString("Pending input unique_id from builder action=status.")
 			props["response"] = externalString("Answer to the pending question.")
 			required = append(required, "request_id", "response")
 			desc = "Answer this Builder operation's pending question. Requires current Builder permission."
@@ -57,7 +57,7 @@ func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]
 
 // externalBuilderWaitSchema lets a caller wait for a Builder operation in one
 // call instead of polling. Capped like every MCP wait, under the proxy timeout.
-var externalBuilderWaitSchema = map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the final answer or a pending question before returning (max 25). On status queued/running, call builder_status with wait_seconds again."}
+var externalBuilderWaitSchema = map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the final answer or a pending question before returning (max 25). On status queued/running, call builder action=status with wait_seconds again."}
 
 type externalBuilderOperation struct {
 	ID           string    `json:"operation_id"`

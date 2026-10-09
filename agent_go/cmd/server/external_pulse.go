@@ -25,7 +25,7 @@ func (api *StreamingAPI) externalPulseCall(w http.ResponseWriter, r *http.Reques
 			externalError(w, http.StatusServiceUnavailable, "pulse_unavailable", err.Error())
 			return
 		}
-		externalJSON(w, map[string]interface{}{"status": "started", "next": "Poll builder_pulse_status until busy is false; Pulse's reply is the newest message."})
+		externalJSON(w, map[string]interface{}{"status": "started", "next": "Poll builder action=pulse_status until busy is false; Pulse's reply is the newest message."})
 	case "builder_pulse_status":
 		limit := 10
 		if v, ok := args["limit"].(float64); ok && v >= 1 && v <= 40 {

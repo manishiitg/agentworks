@@ -296,7 +296,7 @@ func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
 	for _, item := range prep {
 		joined += item.(string) + "\n"
 	}
-	if !strings.Contains(joined, "reads and runs") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "run_status") {
+	if !strings.Contains(joined, "reads and runs") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "runs action=status") {
 		t.Fatalf("preparation does not describe guidance and run flow: %v", prep)
 	}
 }

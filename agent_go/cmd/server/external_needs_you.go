@@ -240,7 +240,7 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 		if !dismiss && input != nil {
 			if message := decisionApplyChatMessage(*input); message != "" {
 				out["apply_message"] = message
-				out["next"] = "To apply it now, send apply_message to the workflow's Builder with builder_chat; otherwise the Builder or Pulse applies it on its next turn."
+				out["next"] = "To apply it now, send apply_message to the workflow's Builder with builder action=chat; otherwise the Builder or Pulse applies it on its next turn."
 			}
 		}
 		externalJSON(w, out)

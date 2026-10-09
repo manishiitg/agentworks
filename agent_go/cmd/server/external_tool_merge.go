@@ -57,6 +57,18 @@ var externalToolMerges = []externalToolMerge{
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
 		{"suggest", "suggest_workflow_change|suggest_crew_change"},
 	}},
+	{"runs", "Runs of a workflow or Relay: list them, read one, its logs, poll a session started externally and answer a pending input.", [][2]string{
+		{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"status", "run_status"}, {"reply_input", "run_reply_input"},
+	}},
+	{"builder", "Edit a workflow or Relay through its Builder model in your existing workflow chat, and talk to its Pulse. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
+		{"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
+		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
+		{"pulse_chat", "builder_pulse_chat"}, {"pulse_status", "builder_pulse_status"},
+	}},
+	{"relay", "Relays: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code with builder action=chat.", [][2]string{
+		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
+		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"releases", "get_relay_releases"},
+	}},
 	{"code_review", "Read-only, audited review of every Code workspace for admins and Code reviewers: workspaces, costs, files, chats and the audit log.", [][2]string{
 		{"workspaces", "list_code_workspaces"}, {"costs", "get_code_costs"}, {"files", "list_code_files"}, {"file", "read_code_file"},
 		{"chats", "list_code_chats"}, {"chat", "read_code_chat"}, {"audit", "get_code_audit"},

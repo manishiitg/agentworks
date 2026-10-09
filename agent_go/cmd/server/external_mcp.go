@@ -39,7 +39,7 @@ const (
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPRelayInstructions = " Relays: discover IDs with list_workflows and kind=relay. When authorized, use builder_chat to edit, test_relay to test the draft, and publish_relay to freeze a version. Use run_relay for a published version and get_relay_run to poll durable results. Relays have Builder-only chat. Creation requires separate relays:write consent."
+const externalMCPRelayInstructions = " Relays: discover IDs with list_workflows and kind=relay. When authorized, use builder action=chat to edit, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Relays have Builder-only chat. Creation requires separate relays:write consent."
 
 const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; source and documentation edits require files:write consent and revision checks; plans and workflow configuration require separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With explicit dashboards:read/dashboards:write consent, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog.`
 
@@ -145,13 +145,13 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "create_workflow" {
-			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for builder_chat and authorized KB project bindings. Creation does not run it."
+			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for builder action=chat and authorized KB project bindings. Creation does not run it."
 		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions
 		}
 		if tool.Name == "builder_chat" {
-			instructions += " Builder: use builder_chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll builder_status by operation_id, and answer pending questions with builder_reply_input. builder_cancel stops only that operation. Check get_agent_context(workflow_id) for current effective tools."
+			instructions += " Builder: use builder action=chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll builder action=status by operation_id, and answer pending questions with builder action=reply_input. builder action=cancel stops only that operation. Check get_agent_context(workflow_id) for current effective tools."
 			break
 		}
 	}
@@ -400,7 +400,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Needs you"
 		case strings.HasPrefix(name, "builder_pulse") || name == "manage_pulse":
 			group = "Pulse"
-		case strings.HasPrefix(name, "builder_"):
+		case name == "builder" || strings.HasPrefix(name, "builder_"):
 			group = "Builder"
 		case strings.Contains(name, "relay"):
 			group = "Relays"

@@ -119,7 +119,7 @@ func (api *StreamingAPI) externalWaitForTurn(started map[string]interface{}, ses
 		}
 		if !time.Now().Before(deadline) {
 			started["turn_status"] = "running"
-			started["next"] = "Still running: poll run_status with this session_id for the answer or a pending question."
+			started["next"] = "Still running: poll runs action=status with this session_id for the answer or a pending question."
 			return
 		}
 		time.Sleep(300 * time.Millisecond)
