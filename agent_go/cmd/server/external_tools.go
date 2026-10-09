@@ -216,6 +216,7 @@ func externalTools() ([]externalTool, error) {
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
+		externalSettingsDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -522,6 +523,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
 	if tool.mutates && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 		externalError(w, 403, "forbidden", "Workflow write access is required.")
+		return
+	}
+	if isExternalSettingsTool(tool.Name) {
+		api.externalSettingsCall(w, r, tool.Name, args, *selected, access)
 		return
 	}
 	if isExternalRelayTool(tool.Name) {

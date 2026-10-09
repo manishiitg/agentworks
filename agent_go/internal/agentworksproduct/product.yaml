@@ -383,6 +383,8 @@ chat:
     external_tools:
       - list_workflows
       - get_workflow
+      - get_settings
+      - update_settings
       - list_files
       - search_files
       - list_step_code
