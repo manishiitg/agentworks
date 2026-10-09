@@ -11688,8 +11688,20 @@ func (api *StreamingAPI) handleSubmitHumanFeedback(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Get human feedback store and submit response
+	// Get human feedback store and submit response. Only a question the
+	// caller may see can be answered; anything else reads as not found.
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
+	allowed := false
+	for _, pending := range feedbackStore.ListPending(time.Now()) {
+		if pending.UniqueID == req.UniqueID {
+			allowed = api.humanFeedbackVisibleTo(r.Context(), pending)
+			break
+		}
+	}
+	if !allowed {
+		http.Error(w, "feedback request not found", http.StatusNotFound)
+		return
+	}
 	if err := feedbackStore.SubmitResponse(req.UniqueID, req.Response); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -11719,7 +11731,7 @@ func (api *StreamingAPI) handleListPendingHumanFeedback(w http.ResponseWriter, r
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"requests": virtualtools.GetHumanFeedbackStore().ListPending(time.Now()),
+		"requests": api.visibleHumanFeedback(r.Context(), virtualtools.GetHumanFeedbackStore().ListPending(time.Now())),
 	})
 }
 
