@@ -173,6 +173,15 @@ func buildDebugReport(ctx context.Context, o *options) string {
 				b.WriteString(l + "\n")
 			}
 		}
+		crashes, _ := filepath.Glob(filepath.Join(dir, "*.crash"))
+		for _, path := range crashes {
+			if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+				section("output outside the log: " + filepath.Base(path))
+				for _, l := range tailLines(path, 100) {
+					b.WriteString(l + "\n")
+				}
+			}
+		}
 		if len(logs) == 0 {
 			section("recent activity")
 			line("no log yet: start sharing with `agentworks start`, reproduce the problem, then run `agentworks debug` again")

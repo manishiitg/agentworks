@@ -271,3 +271,42 @@ func TestDebugReportRemovesSecrets(t *testing.T) {
 		t.Fatalf("the useful activity lines must stay, and the home folder is shortened:\n%s", report)
 	}
 }
+
+// Logs must not fill a disk: a file stops at its limit, only a few older files are kept, and a new run starts a new file.
+func TestShareLogIsBoundedAndRotates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "k.log")
+	rot, err := openRotatingLog(path, 1000, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Repeat("x", 99) + "\n"
+	for i := 0; i < 100; i++ { // 10 KB written in total
+		if _, err := rot.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rot.Close()
+	files, _ := filepath.Glob(path + "*")
+	if len(files) != 3 { // k.log, k.log.1, k.log.2
+		t.Fatalf("expected the current file and 2 older ones, got %v", files)
+	}
+	var total int64
+	for _, f := range files {
+		info, _ := os.Stat(f)
+		if info.Size() > 1100 {
+			t.Fatalf("%s grew past its limit: %d", f, info.Size())
+		}
+		total += info.Size()
+	}
+	if total > 3300 {
+		t.Fatalf("total %d is not bounded", total)
+	}
+	again, err := openRotatingLog(path, 1000, 2) // a new run
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if info, _ := os.Stat(path); info.Size() != 0 {
+		t.Fatal("a new run must start an empty log")
+	}
+}

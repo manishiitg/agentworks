@@ -219,6 +219,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	}
 	key := shareKey(folder)
 	statePath := filepath.Join(dir, key+".json")
+	pruneStaleLogs(dir, runningShares(dir))
 
 	cfg, cfgPath, err := o.connection(false)
 	if err != nil {
@@ -301,12 +302,12 @@ func shareParams(f startFlags, device, alias, folder string) executorParams {
 }
 
 func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, statePath string, openWeb bool) error {
-	// A terminal that stays open also writes the same log a background share does, so `agentworks debug` has something to send.
+	// A terminal that stays open also writes the same (size-limited) log a background share does, so `agentworks debug` has something to send.
 	logPath := strings.TrimSuffix(statePath, ".json") + ".log"
-	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
-		defer logFile.Close()
+	if rot, err := openRotatingLog(logPath, shareLogMaxBytes, shareLogKeep); err == nil {
+		defer rot.Close()
 		teed := *o
-		teed.stderr = io.MultiWriter(o.stderr, logFile)
+		teed.stderr = io.MultiWriter(o.stderr, rot)
 		o = &teed
 	}
 	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
@@ -335,8 +336,9 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 		return err
 	}
 	logPath := filepath.Join(dir, key+".log")
+	crashPath := filepath.Join(dir, key+".crash") // only what the child prints outside its log (a crash before the log opens)
 	for attempt := 0; ; attempt++ {
-		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		logFile, err := os.OpenFile(crashPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {
 			return err
 		}
@@ -406,6 +408,12 @@ func serveShareCommand(o *options) *cobra.Command {
 	var alias, workspace, folder, statePath, logPath string
 	cmd := &cobra.Command{Use: "share-serve", Hidden: true, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o.stderr = os.Stderr
+		if logPath != "" {
+			if rot, err := openRotatingLog(logPath, shareLogMaxBytes, shareLogKeep); err == nil {
+				defer rot.Close()
+				o.stderr = rot
+			}
+		}
 		server := o.serverURL
 		st := shareState{PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 		writeShareState(statePath, st)
@@ -652,7 +660,7 @@ func watchCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { file.Close() }()
 		reader := bufio.NewReader(file)
 		if info, err := file.Stat(); err == nil && info.Size() > 4096 {
 			_, _ = file.Seek(info.Size()-4096, 0)
@@ -668,6 +676,18 @@ func watchCommand(o *options) *cobra.Command {
 				continue
 			}
 			pending += line // a line still being written
+			// The log was rotated (a new file at the same path): follow the new one.
+			if opened, err1 := file.Stat(); err1 == nil {
+				if current, err2 := os.Stat(logPath); err2 == nil && !os.SameFile(opened, current) {
+					if next, err3 := os.Open(logPath); err3 == nil {
+						file.Close()
+						file = next
+						reader = bufio.NewReader(file)
+						pending = ""
+						continue
+					}
+				}
+			}
 			select {
 			case <-cmd.Context().Done():
 				return nil
