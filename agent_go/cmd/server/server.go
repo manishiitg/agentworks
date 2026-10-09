@@ -4312,13 +4312,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
 		}); running != nil && running.SessionID != sessionID {
 			logfWithContext(queryLogCtx, "[WORKFLOW_BUSY] Rejected workflow_builder chat for workspace %q: running session %s started %s (triggered_by=%s)", req.SelectedFolder, running.SessionID, running.StartedAt.Format(time.RFC3339), running.TriggeredBy)
+			holderName, busyMessage := workflowBusyMessage(running, currentUserID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":          "workflow_busy",
-				"message":        "Workflow builder chat is already running on this workflow. Stop the running chat before starting a new one.",
-				"workspace_path": running.WorkspacePath,
+				"error":   "workflow_busy",
+				"message": busyMessage,
+				// Shown as the error's details too, in place of "Request failed with status code 409".
+				"technical_details": busyMessage,
+				"workspace_path":    running.WorkspacePath,
 				"running": map[string]interface{}{
+					"holder":       holderName,
 					"session_id":   running.SessionID,
 					"execution_id": running.ExecutionID,
 					"triggered_by": running.TriggeredBy,
@@ -11431,13 +11435,17 @@ func (api *StreamingAPI) startNextTurnFromLiveInput(w http.ResponseWriter, r *ht
 			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
 		}); running != nil && running.SessionID != sessionID {
 			log.Printf("[LIVE INPUT] Refusing queued next turn for session %s: workflow builder is busy with session %s", sessionID, running.SessionID)
+			holderName, busyMessage := workflowBusyMessage(running, baseReq.userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":          "workflow_busy",
-				"message":        "Workflow builder chat is already running on this workflow. Stop the running chat before starting a new one.",
-				"workspace_path": running.WorkspacePath,
+				"error":   "workflow_busy",
+				"message": busyMessage,
+				// Shown as the error's details too, in place of "Request failed with status code 409".
+				"technical_details": busyMessage,
+				"workspace_path":    running.WorkspacePath,
 				"running": map[string]interface{}{
+					"holder":       holderName,
 					"session_id":   running.SessionID,
 					"execution_id": running.ExecutionID,
 					"triggered_by": running.TriggeredBy,

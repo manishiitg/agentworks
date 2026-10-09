@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 const (
@@ -161,7 +163,32 @@ func trackedExecutionBlocksNewWorkflowBuilderChat(exec *TrackedWorkflowExecution
 	if normalizeChatHistoryWorkshopMode(exec.Metadata["workshop_mode"]) == "run" {
 		return false
 	}
+	// Work started from a Run-mode session (an MCP run, ask, a Run chat) runs steps and never edits the workflow, so it
+	// does not hold the Builder lock. A step it starts carries no mode of its own; its session says Run.
+	if cfg := common.GetSessionShellConfig(exec.SessionID); cfg != nil && cfg.WorkflowReadOnly {
+		return false
+	}
 	return true
+}
+
+// workflowBusyMessage tells the person who was refused who holds the workflow's Builder lock and what to do.
+func workflowBusyMessage(running *TrackedWorkflowExecution, currentUserID string) (string, string) {
+	since := ""
+	if running != nil && !running.StartedAt.IsZero() {
+		since = " (since " + running.StartedAt.UTC().Format("15:04") + " UTC)"
+	}
+	holder := ""
+	if running != nil {
+		holder = strings.TrimSpace(running.UserID)
+	}
+	if holder == "" || sanitizeUserIDForPath(holder) == sanitizeUserIDForPath(currentUserID) {
+		return "", "You are already using the Builder on this workflow in another chat" + since + ". Wait for it to finish, or stop it, then try again."
+	}
+	name := holder
+	if rec := directoryUserFor(holder, "", ""); rec != nil && strings.TrimSpace(rec.Username) != "" {
+		name = strings.TrimSpace(rec.Username)
+	}
+	return name, name + " is using the Builder on this workflow right now" + since + ", and only one person can use it at a time. Try again when " + name + " is done, or switch to Run mode to run steps and ask questions now."
 }
 
 // trackedExecutionBlocksScheduledWorkflow distinguishes producing workflow
