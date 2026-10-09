@@ -5,7 +5,7 @@ import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { useChatStore } from '../../stores/useChatStore'
 import { getApiBaseUrl } from '../../services/api'
-import { cliUpdateNeeded, shortCliVersion, useCodeFilesPreference, useLatestCliVersion, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
+import { cliUpdateNeeded, useCodeFilesPreference, useLatestCliVersion, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
 
@@ -98,7 +98,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   const connectedDevice = devices.find(device => device.device_id === selected?.device_id) ?? devices[0]
   const updateNotice = cliUpdateNeeded(connectedDevice, latestCli) ? <div role="status" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5">
     <p className="font-medium text-amber-700 dark:text-amber-300">Update your CLI</p>
-    <p className="text-muted-foreground">{connectedDevice?.cli_version ? `Your CLI (${shortCliVersion(connectedDevice.cli_version)}) is older than this server's (${shortCliVersion(latestCli)}).` : 'Your CLI is older than this server\'s.'} In a terminal run <code className="font-mono">agentworks update</code>, then restart it with <code className="font-mono">agentworks stop</code> and <code className="font-mono">agentworks start</code>.</p>
+    <p className="text-muted-foreground">Your CLI is older than this server's. In a terminal run <code className="font-mono">agentworks update</code>, then restart it with <code className="font-mono">agentworks stop</code> and <code className="font-mono">agentworks start</code>.</p>
   </div> : null
   const draftResource = devices.flatMap(device => device.resources.map(folder => ({ ...folder, deviceId: device.device_id }))).find(folder => JSON.stringify([folder.deviceId, folder.id]) === draftKey)
   // The saved folder is not connected but exactly one other folder is (the user started the CLI somewhere else): offer it,

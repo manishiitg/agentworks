@@ -264,15 +264,16 @@ it('a project made in Local mode is Local before any folder is linked, and Dev o
 })
 
 it('asks the person to update a CLI that is not the build this server offers, and says nothing when it is current', async () => {
-  const devices = (cli_version?: string) => ({ data: { devices: [{ device_id: 'laptop', ...(cli_version ? { cli_version } : {}), resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
-  const serve = (cli_version: string | undefined, latest: string) => transport.get.mockImplementation(async (url: string) => String(url).includes('version.json') ? { data: { version: latest } } : devices(cli_version))
-  for (const [mine, latest, notice] of [['aaaaaaa111', 'bbbbbbb222', true], [undefined, 'bbbbbbb222', true], ['bbbbbbb222', 'bbbbbbb222', false], ['dev', 'bbbbbbb222', false]] as const) {
+  const devices = (cli_version?: string, cli_build?: string) => ({ data: { devices: [{ device_id: 'laptop', ...(cli_version ? { cli_version } : {}), ...(cli_build ? { cli_build } : {}), resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
+  const serve = (cli_version: string | undefined, latest: string, mineBuild?: string, latestBuild?: string) => transport.get.mockImplementation(async (url: string) => String(url).includes('version.json') ? { data: { version: latest, ...(latestBuild ? { cli_build: latestBuild } : {}) } } : devices(cli_version, mineBuild))
+  // [my revision, server revision, my build, server build, notice?]: the build decides when both have one, so a server-only deploy is not "older".
+  for (const [mine, latest, mineBuild, latestBuild, notice] of [['aaaaaaa111', 'bbbbbbb222', undefined, undefined, true], [undefined, 'bbbbbbb222', undefined, undefined, true], ['bbbbbbb222', 'bbbbbbb222', undefined, undefined, false], ['dev', 'bbbbbbb222', undefined, undefined, false], ['aaaaaaa111', 'bbbbbbb222', 'build1', 'build1', false], ['aaaaaaa111', 'bbbbbbb222', 'build1', 'build2', true], ['aaaaaaa111', 'bbbbbbb222', undefined, 'build2', true]] as const) {
     resetLatestCliVersionForTests()
-    serve(mine, latest)
+    serve(mine, latest, mineBuild, latestBuild)
     writeCodeFilesPreference(session, { location: 'computer', target })
     const { host } = await render(true)
     await act(async () => { await Promise.resolve() })
-    expect(host.textContent?.includes('Update your CLI'), `${mine} vs ${latest}`).toBe(notice)
+    expect(host.textContent?.includes('Update your CLI'), `${mine}/${mineBuild} vs ${latest}/${latestBuild}`).toBe(notice)
     if (notice) expect(host.textContent).toContain('agentworks update')
     act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''
   }
