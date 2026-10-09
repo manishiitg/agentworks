@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Accounts are added by DevOps on the server only (PLAT-777)
+
+An account and its slot always go together, and only DevOps creates them, with
+`provision-slots.sh adduser <email>` (the server's `add-user` command plus the slot, in one step). Not normal
+users, and not administrators in the app: the Add user form is removed from Admin > Users,
+`POST /api/admin/users` refuses for everyone, and the Builder user tool has no `create_user`. Why: where slots are on, an
+account without one cannot run a single command, and only root can assign a slot, so an account made in the app was
+a broken account (Excellence, 2026-10-09). Role and product changes of existing accounts stay in the app. Servers without
+a provisioning script use `agentworks server add-user`. Code: `handleAdminCreateUser` (user_directory.go),
+`user_access_tools.go`, `UsersAdminPanel.tsx`.
+
 ### 2026-10-09 — Open global navigation expires after ten idle minutes
 
 Hide the rail after ten minutes without navigation activity, including when
