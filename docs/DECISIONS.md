@@ -318,6 +318,11 @@ Ticket: [PLAT-740](https://github.com/runloop-workflows/deployments/blob/main/ti
   browser profiles and credential stores, and writes only in the shared folders, temp folders, `/dev` and the home folder, except shell
   startup files, `LaunchAgents` and the CLI binary. `--block` and read-only paths still hold. The strict profile (private home and
   `/tmp`, listed Mach services) stays for servers and Linux; Windows has none.
+- **Git logins stay readable (later the same day).** The GitHub CLI login (`~/.config/gh`) and the login keychain
+  (`~/Library/Keychains`) are not hidden: a command that cannot read them cannot `git push`, and Local mode should work as the
+  person's own terminal does. SSH keys (`~/.ssh`), cloud logins, browser profiles and mail stay hidden, so a push needs an HTTPS
+  remote with the gh login or the keychain; an SSH remote fails. The trade-off: a prompt-injected agent could read and send out the
+  GitHub token. Owner choice among three options, 2026-10-09.
 - **Why.** The strict profile kept breaking ordinary tools (file watching, temp files) in Local mode, and a command on the person's
   own computer should behave as in their terminal. Owner decision. Ticket: PLAT-735.
 

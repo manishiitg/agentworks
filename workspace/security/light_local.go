@@ -24,9 +24,12 @@ type LightLocalPolicy struct {
 }
 
 // lightSecretPaths are never readable, relative to the home folder: keys, cloud logins, browser profiles and credential stores.
+// The GitHub CLI login (.config/gh) and the login keychain (Library/Keychains, what git's osxkeychain helper reads) are NOT here: a
+// command that cannot read them cannot `git push`, and Local mode should work as the person's own terminal does (owner,
+// 2026-10-09). SSH keys stay hidden, so a push over SSH needs the HTTPS remote or the gh login.
 var lightSecretPaths = []string{
-	".ssh", ".aws", ".gnupg", ".kube", ".azure", ".config/gcloud", ".config/gh", ".docker/config.json", ".netrc",
-	"Library/Keychains", "Library/Cookies", "Library/Safari", "Library/Mail", "Library/Messages",
+	".ssh", ".aws", ".gnupg", ".kube", ".azure", ".config/gcloud", ".docker/config.json", ".netrc",
+	"Library/Cookies", "Library/Safari", "Library/Mail", "Library/Messages",
 	"Library/Application Support/Google/Chrome", "Library/Application Support/Firefox", "Library/Application Support/BraveSoftware",
 	"Library/Application Support/Microsoft Edge", "Library/Application Support/Arc", "Library/Application Support/Vivaldi",
 }
