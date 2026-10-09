@@ -58,7 +58,8 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
           placeholder="e.g. billing-service"
           className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
-        <RunsOnPicker profileId={profileId} onChange={setRunsOn} disabled={submitting} />
+        {/* A Code workspace is private, so the account it was created on is saved when no server account is ready: a Claude or Codex account someone shared with you is not picked up by default, and without it the workspace's first message fails. */}
+        <RunsOnPicker profileId={profileId} onChange={setRunsOn} disabled={submitting} saveAccount="when-needed" />
         {error ? <p className="mt-3 flex items-center gap-1.5 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} disabled={submitting} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50">Cancel</button>
