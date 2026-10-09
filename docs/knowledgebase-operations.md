@@ -4,8 +4,11 @@ Brain is the product name. The stable product ID remains `knowledgebase`; API ro
 
 Brain is a built-in product (`knowledgebase`). The app reads content and
 shows content and access settings. Its chat manages folder access, initial backup configuration and shared Files Git requests. The reader and Git controls reuse the platform Files view.
-Content saves and explicit Git backups happen through MCP, including in Crews,
-Code and workflows. An authorized reader sees a successful save immediately.
+Content saves happen through MCP, including in Crews, Code and workflows. An
+authorized reader sees a successful save immediately. Every save is a Git
+commit by the person who made it, and Brain pushes its commits to the
+configured backup remote automatically a few minutes after the last save;
+there is no separate backup step.
 
 ## Installation
 
