@@ -163,6 +163,7 @@ func (s *MemoryStore) revokeVaultOwnedFromPlatformLocked(workspace string) int {
 		}
 		if s.groupServers[id][cid] {
 			delete(s.groupServers[id], cid)
+			delete(s.serverReadOnly[id], cid)
 			revoked++
 		}
 		s.platformRevoked["server:"+cid] = true

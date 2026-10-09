@@ -22,12 +22,14 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 	}
 	specs := []agentprofiles.ToolSpec{
 		{Name: "manage_vault_access", Category: "vault", Description: caplayerproduct.AccessToolDescription, Parameters: caplayerproduct.AccessToolParameters()},
-		{Name: "manage_vault_groups", Category: "vault", Description: "List/create/edit Vault groups and list/add/remove active platform members. Resolve IDs using manage_vault_access list_users. Changes apply immediately. Does not create accounts or provision product slots.", Parameters: object(map[string]any{
-			"operation":   map[string]any{"type": "string", "enum": []string{"list", "create", "update", "list_members", "add_member", "remove_member"}},
-			"group_id":    externalString("Existing group ID, or a new unique ID for create."),
-			"name":        map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
-			"description": map[string]any{"type": "string", "maxLength": 2000, "description": "Shown to every member of the group. Say what the group is for; never name people, emails or who is excluded (membership is the member list)."},
-			"user_id":     externalString("Exact active platform user ID returned by list_users."),
+		{Name: "manage_vault_groups", Category: "vault", Description: "List/create/edit Vault groups and list/add/remove active platform members. attach_server gives the group a whole connection (connector_id), read_only=true for only its read tools (see manage_vault_tools labels); detach_server removes it. Resolve IDs using manage_vault_access list_users and inspect_environment. Changes apply immediately. Does not create accounts or provision product slots.", Parameters: object(map[string]any{
+			"operation":    map[string]any{"type": "string", "enum": []string{"list", "create", "update", "list_members", "add_member", "remove_member", "attach_server", "detach_server"}},
+			"connector_id": externalString("For attach_server/detach_server: the connection ID from inspect_environment."),
+			"read_only":    map[string]any{"type": "boolean", "description": "For attach_server: only the connection's read tools. Omit to keep the current level (new grants are full)."},
+			"group_id":     externalString("Existing group ID, or a new unique ID for create."),
+			"name":         map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
+			"description":  map[string]any{"type": "string", "maxLength": 2000, "description": "Shown to every member of the group. Say what the group is for; never name people, emails or who is excluded (membership is the member list)."},
+			"user_id":      externalString("Exact active platform user ID returned by list_users."),
 		}, "operation")},
 		{Name: "manage_vault_secret_access", Category: "vault", Description: "Vault secrets. operation=list: secret names (optionally those assigned to group_id). operation=set with group_id, name and allowed: group access. operation=share with name, source_workflow_id or source_crew_id, group_ids and optional vault_name: copies that project's secret into Vault on the server and grants the groups (the project copy stays; copies rotate independently). operation=delete with name and confirm repeating it. Values are never returned or accepted; add or rotate values in Vault's Secrets panel.", Parameters: object(map[string]any{
 			"operation": map[string]any{"type": "string", "enum": []string{"list", "set", "share", "delete"}},
@@ -62,8 +64,9 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 		agentprofiles.ToolSpec{Name: "call_vault_mcp_tool", Category: "vault", Description: "Execute an active approved Vault MCP tool as the administrator for setup, independently of group/regex grants. Discover its exact server, tool and input schema using list_vault_mcp_servers first. Use searches/fetches to resolve canonical IDs before configuring permissions. Upstream writes require the user's explicit request. Every call rechecks administrator access and is audited as that user. Ordinary product and Vault runtime calls remain group scoped.", Parameters: object(map[string]any{
 			"server": externalString("Exact vault_<connection ID> from list_vault_mcp_servers."), "tool": externalString("Exact discovered public tool name."), "arguments": map[string]any{"type": "object"},
 		}, "server", "tool", "arguments")},
-		agentprofiles.ToolSpec{Name: "manage_vault_tools", Category: "vault", Description: "Review a Vault connection's tools after a sync, as the Vault Servers page does. operation=list: every tool with its Status (quarantined = new or changed, not callable until approved). operation=versions with public_name: what changed. operation=approve with public_name, fingerprint and version from versions: approves exactly that reviewed definition (a later change quarantines it again).", Parameters: object(map[string]any{
-			"operation":   map[string]any{"type": "string", "enum": []string{"list", "versions", "approve"}},
+		agentprofiles.ToolSpec{Name: "manage_vault_tools", Category: "vault", Description: "Review a Vault connection's tools after a sync, as the Vault Servers page does. operation=list: every tool with its Status (quarantined = new or changed, not callable until approved). operation=versions with public_name: what changed. operation=approve with public_name, fingerprint and version from versions: approves exactly that reviewed definition (a later change quarantines it again). operation=set_access with public_name and access=read|write labels the tool for read-only server grants (empty returns to the server's readOnlyHint; unmarked tools are write); list shows each tool's access.", Parameters: object(map[string]any{
+			"operation":   map[string]any{"type": "string", "enum": []string{"list", "versions", "approve", "set_access"}},
+			"access":      map[string]any{"type": "string", "enum": []string{"read", "write", ""}},
 			"public_name": externalString("Exact public tool name from list."),
 			"fingerprint": externalString("Fingerprint of the reviewed version, from versions."),
 			"version":     map[string]any{"type": "integer", "minimum": 1},

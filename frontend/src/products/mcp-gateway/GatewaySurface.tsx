@@ -20,6 +20,7 @@ import SchedulesPage from '../../components/SchedulesPage'
 import AdminPages from '../../components/AdminPages'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { GatewayServersPanel } from './GatewayServersPanel'
+import { VaultReadOnlyContext } from './vaultReadOnly'
 import { GatewayWorkspacePane, gatewayPanels, type GatewayPanel } from './GatewayWorkspacePane'
 import { GatewayModelSettings } from './GatewayModelSettings'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
@@ -245,9 +246,11 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
     window.addEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
     return () => window.removeEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
   }, [checkAuth])
-  return <div className="flex h-screen min-h-0 bg-background" data-testid="gateway-surface">
+  // Vault readers see every Vault screen with nothing they can change.
+  const canViewVault = user?.is_admin === true || user?.is_vault_reader === true
+  return <VaultReadOnlyContext.Provider value={user?.is_admin !== true}><div className="flex h-screen min-h-0 bg-background" data-testid="gateway-surface">
     <UpdateProgressToast /><GlobalHumanFeedbackPrompt />
-    <ModePresetBar reduced walkthroughPaused productActions={base && user?.is_admin === true ? <TooltipProvider delayDuration={150}>
+    <ModePresetBar reduced walkthroughPaused productActions={base && canViewVault ? <TooltipProvider delayDuration={150}>
       <div aria-label="Vault pages" data-product-navigation-section="product-actions" className="flex flex-col gap-1">
         {([{ id: 'audit', label: 'Audit logs', icon: ScrollText }, { id: 'connect', label: 'Vault MCP endpoint', icon: PlugZap }] as const).map(item => <Tooltip key={item.id}>
           <TooltipTrigger asChild><button type="button" data-product-navigation-action aria-label={item.label}
@@ -262,12 +265,12 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
       <LlmModalHost />
       {showSchedules && !showProviders && <SchedulesPage />}
       {adminPage && !showProviders && <AdminPages />}
-      {base && user?.is_admin === true && page && !showProviders && !showSchedules && !adminPage && <GatewayFullWidthPage base={base} page={page} onBack={() => setPage(null)} />}
+      {base && canViewVault && page && !showProviders && !showSchedules && !adminPage && <GatewayFullWidthPage base={base} page={page} onBack={() => setPage(null)} />}
       <div className={page || showProviders || showSchedules || adminPage ? 'hidden' : 'h-full'}>
         {!base ? <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">Vault needs an MCP Gateway endpoint for this deployment.</div>
-          : user?.is_admin === true ? <GatewayAdminWorkspace base={base} standalone={standalone} />
-          : <main className="grid h-full place-items-center p-6 text-sm text-muted-foreground" role="status">Vault management requires an administrator account. Your product administrator manages this access in Users &amp; access.</main>}
+          : canViewVault ? <GatewayAdminWorkspace base={base} standalone={standalone} />
+          : <main className="grid h-full place-items-center p-6 text-sm text-muted-foreground" role="status">Vault needs an administrator or a Vault reader account. Your product administrator manages this access in Users &amp; access.</main>}
       </div>
     </div>
-  </div>
+  </div></VaultReadOnlyContext.Provider>
 }

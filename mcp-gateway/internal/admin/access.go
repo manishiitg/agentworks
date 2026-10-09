@@ -126,6 +126,7 @@ type groupConnectorSummary struct {
 	ConnectorID       string `json:"connector_id"`
 	Name              string `json:"name"`
 	ServerGrantActive bool   `json:"server_grant_active"`
+	ServerReadOnly    bool   `json:"server_read_only,omitempty"`
 	Assigned          bool   `json:"assigned"`
 	AllowedToolCount  int    `json:"allowed_tool_count"`
 	TotalToolCount    int    `json:"total_tool_count"`
@@ -145,7 +146,7 @@ func (a *Admin) groupAccessSummary(groupID string, permissions []groupPermission
 		if name == "" {
 			name = connector.ID
 		}
-		entry := groupConnectorSummary{ConnectorID: connector.ID, Name: name, ServerGrantActive: a.Store.GroupHasServer(groupID, connector.ID)}
+		entry := groupConnectorSummary{ConnectorID: connector.ID, Name: name, ServerGrantActive: a.Store.GroupHasServer(groupID, connector.ID), ServerReadOnly: a.Store.GroupServerReadOnly(groupID, connector.ID)}
 		entry.Assigned = entry.ServerGrantActive
 		for _, permission := range byConnector[connector.ID] {
 			entry.TotalToolCount++
@@ -176,12 +177,12 @@ func (a *Admin) groupPermissions(groupID string) []groupPermission {
 		source := ""
 		if governed {
 			source = "policy"
-		} else if a.Store.GroupHasServer(groupID, tool.ConnectorID) {
+		} else if a.Store.GroupServerAllows(groupID, tool) {
 			source = "server"
 		} else if a.Store.GroupHasTool(groupID, tool.PublicName) {
 			source = "tool"
 		}
-		assigned := assignedRules[tool.PublicName] || a.Store.GroupHasServer(groupID, tool.ConnectorID) || a.Store.GroupHasTool(groupID, tool.PublicName)
+		assigned := assignedRules[tool.PublicName] || a.Store.GroupServerAllows(groupID, tool) || a.Store.GroupHasTool(groupID, tool.PublicName)
 		permissions = append(permissions, groupPermission{tool.PublicName, tool.ConnectorID, err == nil, governed, source, assigned})
 	}
 	return permissions
@@ -217,8 +218,12 @@ func (a *Admin) userAccess(userID string) (map[string]any, error) {
 		_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
 		via := []string{}
 		for _, group := range groups {
-			if a.Store.GroupHasServer(group, tool.ConnectorID) {
-				via = append(via, group+" (whole server)")
+			if a.Store.GroupServerAllows(group, tool) {
+				level := " (whole server)"
+				if a.Store.GroupServerReadOnly(group, tool.ConnectorID) {
+					level = " (whole server, read-only)"
+				}
+				via = append(via, group+level)
 			} else if a.Store.GroupHasTool(group, tool.PublicName) {
 				via = append(via, group)
 			}

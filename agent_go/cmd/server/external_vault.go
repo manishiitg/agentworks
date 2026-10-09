@@ -123,6 +123,14 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 			path = "/api/admin/tools"
 		case "versions":
 			path = "/api/admin/tools/" + url.PathEscape(publicName) + "/versions"
+		case "set_access":
+			access, ok := args["access"].(string)
+			if !ok {
+				fail("set_access requires access: read, write, or empty to use the server's hint.")
+				return
+			}
+			path, method = "/api/admin/tools/"+url.PathEscape(publicName)+"/access", http.MethodPost
+			payload = map[string]any{"access": access}
 		case "approve":
 			version, ok := args["version"].(float64)
 			if externalArg(args, "fingerprint") == "" || !ok {
@@ -153,6 +161,22 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		}
 	} else if name == "manage_vault_groups" {
 		switch op {
+		case "attach_server", "detach_server":
+			connector := externalArg(args, "connector_id")
+			if group == "" || !externalVaultID.MatchString(connector) {
+				fail(op + " requires group_id and connector_id.")
+				return
+			}
+			path += "/" + url.PathEscape(group) + "/servers"
+			if op == "detach_server" {
+				method, path = http.MethodDelete, path+"/"+url.PathEscape(connector)
+			} else {
+				body := map[string]any{"connector_id": connector}
+				if readOnly, ok := args["read_only"].(bool); ok {
+					body["read_only"] = readOnly
+				}
+				method, payload = http.MethodPost, body
+			}
 		case "list":
 		case "create":
 			if group == "" || externalArg(args, "name") == "" {

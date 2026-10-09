@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Read-only server grants in Vault
+
+A group's whole-server grant can be read-only: the group may call only that
+server's read tools. A tool is read when an admin labels it so, else when the
+server marks it `readOnlyHint`; an unmarked tool counts as write. Set over MCP
+(`manage_vault_groups attach_server read_only`, `manage_vault_tools
+set_access`) or in the Groups and Servers screens. Vault readers see every
+Vault screen with nothing they can change. Code:
+`mcp-gateway/internal/store/store.go` (ServerGrantAllows, ToolIsRead),
+`internal/policy/policy.go`; ticket PLAT-738.
+
 ### 2026-10-09 — Vault has two levels: manage and read
 
 A person is a Vault manager (admin with Vault) or a Vault reader (the

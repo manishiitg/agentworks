@@ -7,7 +7,7 @@ const auth = vi.hoisted(() => ({ user: { is_admin: true } as { is_admin: boolean
 const globalPage = vi.hoisted(() => ({ adminPage: null as string | null, showLLMModal: false }))
 
 const chatRuntime = vi.hoisted(() => {
-  const state = { chatTabs: {} as Record<string, any>, tabEvents: {}, createChatTab: vi.fn(), setTabConfig: vi.fn(), setTabMetadata: vi.fn() }
+  const state = { chatTabs: {} as Record<string, any>, tabEvents: {}, activeSessionsCache: [] as any[], createChatTab: vi.fn(), setTabConfig: vi.fn(), setTabMetadata: vi.fn() }
   return { state, resolve: vi.fn(), startNew: vi.fn(), hydrate: vi.fn(), activate: vi.fn() }
 })
 vi.mock('../../services/api', () => ({
@@ -84,7 +84,8 @@ describe('GatewaySurface', () => {
     globalPage.adminPage = null
     globalPage.showLLMModal = false
     sessionStorage.clear()
-    window.localStorage?.removeItem(`caplayer_setup_model:${BASE}`)
+    // The selected Vault panel is remembered here; one test must not start on another's.
+    window.localStorage?.clear()
   })
 
   async function renderSurface(standalone = false): Promise<void> {
@@ -289,7 +290,7 @@ describe('GatewaySurface', () => {
     const fetchMock = vi.fn((url: string, _init?: RequestInit) => healthyFetch()(url))
     vi.stubGlobal('fetch', fetchMock)
     await renderSurface()
-    expect(container!.textContent).toContain('requires an administrator account')
+    expect(container!.textContent).toContain('needs an administrator or a Vault reader account')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -302,7 +303,9 @@ describe('GatewaySurface', () => {
     expect(container!.querySelector('[data-testid="gateway-groups"]')).not.toBeNull()
     expect(container!.textContent).not.toContain('Access packages')
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/api/admin/access/packages'))).toBe(false)
-    await act(async () => { (container!.querySelector('[aria-label="People"]') as HTMLButtonElement).click() })
+    const sections = container!.querySelector('[aria-label="Vault sections"]')!
+    await act(async () => { (sections.querySelector('[aria-label="People"]') as HTMLButtonElement).click() })
+    await act(async () => {})
     expect(container!.querySelector('[data-testid="gateway-users"]')).not.toBeNull()
     expect(container!.querySelector('[data-testid="gateway-groups"]')).toBeNull()
   })

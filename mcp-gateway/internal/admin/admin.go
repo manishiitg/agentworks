@@ -777,7 +777,13 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 				writeErr(w, 400, errors.New("unknown group"))
 				return
 			}
-			writeJSON(w, 200, map[string]any{"servers": a.Store.GroupServersFor(g.ID)})
+			readOnly := []string{}
+			for _, cid := range a.Store.GroupServersFor(g.ID) {
+				if a.Store.GroupServerReadOnly(g.ID, cid) {
+					readOnly = append(readOnly, cid)
+				}
+			}
+			writeJSON(w, 200, map[string]any{"servers": a.Store.GroupServersFor(g.ID), "read_only": readOnly})
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -786,16 +792,28 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		var in struct {
 			ConnectorID string `json:"connector_id"`
+			// ReadOnly: only the server's read tools. Omitted keeps the current level
+			// (a new grant is full).
+			ReadOnly *bool `json:"read_only,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
-		if err := a.SetGroupServer(r.PathValue("id"), in.ConnectorID, true); err != nil {
+		groupID := r.PathValue("id")
+		if err := a.SetGroupServer(groupID, in.ConnectorID, true); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
-		writeJSON(w, 200, map[string]string{"status": "attached"})
+		level := "full"
+		if in.ReadOnly != nil {
+			a.Store.SetGroupServerReadOnly(groupID, in.ConnectorID, *in.ReadOnly)
+		}
+		if a.Store.GroupServerReadOnly(groupID, in.ConnectorID) {
+			level = "read-only"
+		}
+		a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: adminActor(r), Action: "attach_server_to_group", GroupID: groupID, ConnectorID: in.ConnectorID, Detail: level})
+		writeJSON(w, 200, map[string]string{"status": "attached", "level": level})
 	}))
 	mux.HandleFunc("/api/admin/groups/{id}/servers/{cid}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
@@ -915,7 +933,23 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"tools": a.Store.ListTools(a.WorkspaceID)})
+		tools := a.Store.ListTools(a.WorkspaceID)
+		// access: each tool's effective read/write (label = the admin's own
+		// label, else the server's readOnlyHint decides; unmarked tools are write).
+		type toolAccess struct {
+			PublicName string `json:"public_name"`
+			Access     string `json:"access"`
+			Label      string `json:"label,omitempty"`
+		}
+		access := make([]toolAccess, 0, len(tools))
+		for _, t := range tools {
+			row := toolAccess{PublicName: t.PublicName, Access: "write", Label: a.Store.ToolAccessLabel(t.PublicName)}
+			if a.Store.ToolIsRead(t) {
+				row.Access = "read"
+			}
+			access = append(access, row)
+		}
+		writeJSON(w, 200, map[string]any{"tools": tools, "access": access})
 	}))
 	mux.HandleFunc("/api/admin/tools/{name}/versions", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -929,6 +963,33 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"versions": a.Store.ListToolVersions(a.WorkspaceID, name)})
+	}))
+	// An admin's read/write label for a tool, used by read-only server grants;
+	// "" returns to the server's own readOnlyHint.
+	mux.HandleFunc("/api/admin/tools/{name}/access", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Access string `json:"access"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || (in.Access != "" && in.Access != "read" && in.Access != "write") {
+			writeErr(w, http.StatusBadRequest, errors.New("access must be read, write or empty"))
+			return
+		}
+		t, ok := a.Store.GetTool(r.PathValue("name"))
+		if !ok || t.WorkspaceID != a.WorkspaceID {
+			writeErr(w, http.StatusNotFound, errors.New("unknown tool"))
+			return
+		}
+		a.Store.SetToolAccess(t.PublicName, in.Access)
+		a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: adminActor(r), Action: "set_tool_access", PackageID: t.PublicName, Detail: in.Access})
+		effective := "write"
+		if a.Store.ToolIsRead(t) {
+			effective = "read"
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"public_name": t.PublicName, "label": in.Access, "access": effective})
 	}))
 	mux.HandleFunc("/api/admin/tools/{name}/approve", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

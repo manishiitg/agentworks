@@ -11,6 +11,7 @@ import type { ToolDefinition, ToolDetail } from '../../stores/types'
 import { createConnector, approveTool, deleteConnector, listCatalog, listConnectors, listTools, syncConnector, setConnectorBearer, type GatewayConnector, type GatewayTool } from './gatewayAdminApi'
 import { gatewayErrorMessage, mergeServerRows, plural, useAttempt, useGatewayLoader, type AgentWorksServer, type ServerRow } from './gatewayConsoleUtils'
 import { GatewayToolReviewActions } from './GatewayToolReviewActions'
+import { useVaultReadOnly } from './vaultReadOnly'
 
 function agentWorksServers(toolList: ToolDefinition[]): AgentWorksServer[] {
   const groups = new Map<string, ToolDefinition[]>()
@@ -53,10 +54,11 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
   revision?: string
   chatSessionId?: string
 }) {
+  const readOnly = useVaultReadOnly()
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
     const [connectors, catalog, tools] = await Promise.all([listConnectors(base), listCatalog(base), listTools(base)])
-    return { connectors: connectors.connectors, providers: catalog.providers, tools: tools.tools }
+    return { connectors: connectors.connectors, providers: catalog.providers, tools: tools.tools, access: new Map((tools.access ?? []).map(row => [row.public_name, row])) }
   }, attempt)
   const toolList = useMCPStore((state) => state.toolList)
   const refreshTools = useMCPStore((state) => state.refreshTools)
@@ -194,14 +196,15 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       return {
         id: c.ID, name, source: c.OAuthCredentialID ? `Vault · ${c.OAuthServer}` : 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
         statusDot: gatewayStatusDot(c.Status), toolCount: c.Status === 'authentication_required' ? undefined : tools.length,
-        controls: c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
+        controls: !readOnly && c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
         toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${name}`,
         tools: c.Status === 'authentication_required' && tools.length === 0 ? undefined : tools.map(tool => ({ id: tool.PublicName, name: tool.UpstreamName, description: tool.Description, schema: tool.InputSchema,
           status: tool.Status === 'quarantined' ? 'Needs review' : tool.Status === 'active' ? 'Approved' : tool.Status === 'disabled' ? 'Disabled' : tool.Status,
-          details: <GatewayToolReviewActions tool={tool} base={base} onApprove={onApprove} approving={approving === tool.PublicName} />,
+          details: <GatewayToolReviewActions tool={tool} base={base} onApprove={onApprove} approving={approving === tool.PublicName}
+            access={data?.access.get(tool.PublicName)?.access} label={data?.access.get(tool.PublicName)?.label} onAccessChanged={bump} />,
         })),
         toolsNotice: <>{needsReview > 0 && <p className="text-muted-foreground">{needsReview} need review. Tools changed since connection. Review before approving. Group access is assigned separately.</p>}{approved > 0 && <p className="text-muted-foreground">{approved} approved</p>}</>,
-        actions: [
+        actions: readOnly ? [] : [
           { label: 'Refresh tool list', ariaLabel: `Sync ${name}`, icon: <RefreshCw />, disabled: syncing === c.ID, run: () => onSync(c.ID) },
           { label: 'Connection settings', icon: <KeyRound />, run: () => { setCredentialFor(c.ID); setCredentialValue('') } },
           { label: 'Disconnect server', icon: <Trash2 />, destructive: true, run: () => setDeleting(c) },
@@ -228,13 +231,13 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     connect: namingKey === row.key ? undefined : { label: 'Add connection', disabled: addingKey === row.key, run: () => setNamingKey(row.key) },
     details: namingKey === row.key ? <McpNamedConnectionForm provider={row.catalogMatch!.Name} busy={addingKey === row.key} cancel={() => setNamingKey(null)} submit={name => onAddToGateway(row, name)} /> : undefined,
   }))
-  return <McpConnectionsPanel servers={servers} catalog={catalog} view={view} loading={loading} refresh={bump} searchTestId="gateway-servers-search"
+  return <McpConnectionsPanel servers={servers} catalog={readOnly ? [] : catalog} view={view} loading={loading} refresh={bump} searchTestId="gateway-servers-search"
     notices={[
       ...(error ? [{ message: data ? `Could not refresh: ${error}. Saved data may be outdated.` : error, retry: bump }] : []),
       ...(actionError ? [{ message: actionError, retry: bump }] : []),
       ...(!standalone && agentWorksError ? [{ message: `This place's connections could not be refreshed: ${agentWorksError}`, retry: () => void refreshTools() }] : []),
     ]}
-    addCustom={{ label: 'Add custom server', disabled: !onAddCustom || chatRequestBusy, run: requestCustomServer }}>
+    addCustom={readOnly ? undefined : { label: 'Add custom server', disabled: !onAddCustom || chatRequestBusy, run: requestCustomServer }}>
     <ConfirmationDialog isOpen={deleting !== null} onClose={() => setDeleting(null)} onConfirm={() => void onDelete()} title="Disconnect server"
       message={`Disconnect "${deleting?.Label || deleting?.Provider}" from Vault? Its tools will become unavailable, and its group permissions will be removed. Reconnecting requires assigning permissions again.`}
       confirmText="Disconnect" loadingText="Disconnecting…" isLoading={deleteBusy} />

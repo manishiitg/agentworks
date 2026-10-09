@@ -56,7 +56,11 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 		tools := a.Store.ListTools(a.WorkspaceID)
 		brief := make([]map[string]any, 0, len(tools))
 		for _, t := range tools {
-			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "fingerprint": t.Fingerprint, "description": t.Description, "annotations": json.RawMessage(t.Annotations)})
+			access := "write"
+			if a.Store.ToolIsRead(t) {
+				access = "read"
+			}
+			brief = append(brief, map[string]any{"public_name": t.PublicName, "connector_id": t.ConnectorID, "status": t.Status, "access": access, "fingerprint": t.Fingerprint, "description": t.Description, "annotations": json.RawMessage(t.Annotations)})
 		}
 		return map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID), "connectors": a.Store.ListConnectors(a.WorkspaceID), "tools": brief, "packages": a.Store.ListAppliedPackages(a.WorkspaceID), "providers": a.Catalog.Providers}, nil
 	case "inspect_group", "remove_group_mcp":

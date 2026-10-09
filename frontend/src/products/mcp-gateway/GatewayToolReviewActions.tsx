@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
-import { listToolVersions, type GatewayTool } from './gatewayAdminApi'
+import { listToolVersions, setToolAccess, type GatewayTool } from './gatewayAdminApi'
 import { gatewayErrorMessage } from './gatewayConsoleUtils'
+import { useVaultReadOnly } from './vaultReadOnly'
 
 function toolJSON(encoded: string | null | undefined): string {
   if (!encoded) return 'Not provided.'
@@ -10,12 +11,20 @@ function toolJSON(encoded: string | null | undefined): string {
   catch { return 'Schema could not be displayed.' }
 }
 
-export function GatewayToolReviewActions({ tool, base, onApprove, approving }: {
+export function GatewayToolReviewActions({ tool, base, onApprove, approving, access, label, onAccessChanged }: {
   tool: GatewayTool
   base: string
   onApprove: (tool: GatewayTool) => Promise<void>
   approving: boolean
+  /** Effective read/write label used by read-only server grants. */
+  access?: 'read' | 'write'
+  /** The admin's own label, if any (otherwise the server's readOnlyHint decides). */
+  label?: 'read' | 'write'
+  onAccessChanged?: () => void
 }) {
+  const readOnly = useVaultReadOnly()
+  const [accessBusy, setAccessBusy] = useState(false)
+  const [accessError, setAccessError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [versions, setVersions] = useState<GatewayTool[] | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
@@ -34,10 +43,26 @@ export function GatewayToolReviewActions({ tool, base, onApprove, approving }: {
   return (
     <>
       <span className="flex flex-wrap items-center gap-2">
+        {access && (readOnly
+          ? <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{access === 'read' ? 'Read' : 'Write'}</span>
+          : <select aria-label={`Read or write: ${tool.PublicName}`} value={label ?? ''} disabled={accessBusy}
+            title="Read-only server grants allow only read tools. Unmarked tools count as write."
+            className="h-6 rounded border border-border bg-background px-1 text-[11px]"
+            onChange={e => {
+              const next = e.target.value as 'read' | 'write' | ''
+              setAccessBusy(true)
+              setAccessError(null)
+              setToolAccess(base, tool.PublicName, next).then(() => onAccessChanged?.()).catch(err => setAccessError(gatewayErrorMessage(err))).finally(() => setAccessBusy(false))
+            }}>
+            <option value="">{label ? "Use the server's mark" : `Server's mark: ${access === 'read' ? 'read' : 'write'}`}</option>
+            <option value="read">Read</option>
+            <option value="write">Write</option>
+          </select>)}
+        {accessError && <span className="text-[11px] text-destructive">{accessError}</span>}
         <Button variant="ghost" size="xs" onClick={() => open ? setOpen(false) : void openReview()}>
           {open ? 'Hide details' : 'Review details'}
         </Button>
-        {open && tool.Status === 'quarantined' && (
+        {open && !readOnly && tool.Status === 'quarantined' && (
           <Button size="xs" disabled={approving} onClick={() => void onApprove(tool)}>
             {approving && <Loader2 className="animate-spin" />}Approve v{tool.Version}
           </Button>

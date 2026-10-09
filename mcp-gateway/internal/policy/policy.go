@@ -87,7 +87,7 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 		if !ok || group.WorkspaceID != id.WorkspaceID {
 			return store.ToolSnapshot{}, ErrUnknownGroup
 		}
-		if !s.GroupHasTool(id.ViaGroup, publicName) && !s.GroupHasServer(id.ViaGroup, t.ConnectorID) {
+		if !s.GroupHasTool(id.ViaGroup, publicName) && !s.GroupServerAllows(id.ViaGroup, t) {
 			return store.ToolSnapshot{}, ErrNoGrant
 		}
 		return t, nil
@@ -97,7 +97,7 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 		return store.ToolSnapshot{}, ErrUnknownUser
 	}
 	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
-		!s.HasServerGrant(id.UserID, t.ConnectorID) {
+		!s.ServerGrantAllows(id.UserID, t) {
 		return store.ToolSnapshot{}, ErrNoGrant
 	}
 	return t, nil

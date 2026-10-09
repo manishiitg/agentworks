@@ -211,7 +211,13 @@ type MemoryStore struct {
 	groupGrants     map[string]map[string]bool // group ID -> public names
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
-	groupServers  map[string]map[string]bool // group ID -> connector IDs
+	groupServers map[string]map[string]bool // group ID -> connector IDs
+	// serverReadOnly marks a whole-server grant as read-only: the group may
+	// call only that server's read tools (group ID -> connector IDs).
+	serverReadOnly map[string]map[string]bool
+	// toolAccess is an admin's read/write label for a tool, overriding the
+	// server's readOnlyHint (public name -> "read" or "write").
+	toolAccess    map[string]string
 	packageDrafts map[string]access.Package
 	packageLive   map[string]access.Package
 	governedTools map[string]map[string]bool // workspace -> names ever governed by a live package
@@ -240,6 +246,8 @@ func NewMemoryStore() *MemoryStore {
 		grants:          map[string]map[string]bool{},
 		groupGrants:     map[string]map[string]bool{},
 		groupServers:    map[string]map[string]bool{},
+		serverReadOnly:  map[string]map[string]bool{},
+		toolAccess:      map[string]string{},
 		packageDrafts:   map[string]access.Package{},
 		packageLive:     map[string]access.Package{},
 		governedTools:   map[string]map[string]bool{},
@@ -878,6 +886,7 @@ func (s *MemoryStore) RevokeGroupServerGrant(groupID, connectorID string) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	delete(s.groupServers[groupID], connectorID)
+	delete(s.serverReadOnly[groupID], connectorID)
 	if s.isPlatformGroupLocked(groupID) {
 		s.platformRevoked["server:"+connectorID] = true
 	}
@@ -895,6 +904,7 @@ func (s *MemoryStore) RemoveGroupConnectorAccess(workspaceID, groupID, connector
 		return false
 	}
 	delete(s.groupServers[groupID], connectorID)
+	delete(s.serverReadOnly[groupID], connectorID)
 	if s.isPlatformGroupLocked(groupID) {
 		s.platformRevoked["server:"+connectorID] = true
 	}
@@ -959,7 +969,7 @@ func (s *MemoryStore) RemoveGroupConnectorAccess(workspaceID, groupID, connector
 }
 
 // HasServerGrant reports whether any of the user's groups is attached to
-// the whole connector.
+// the whole connector (at any level).
 func (s *MemoryStore) HasServerGrant(userID, connectorID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -969,6 +979,98 @@ func (s *MemoryStore) HasServerGrant(userID, connectorID string) bool {
 		}
 	}
 	return false
+}
+
+// ServerGrantAllows reports whether one of the user's whole-server grants
+// covers this tool: a full grant covers every tool, a read-only grant only
+// the server's read tools.
+func (s *MemoryStore) ServerGrantAllows(userID string, t ToolSnapshot) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for gid, users := range s.members {
+		if users[userID] && s.groupServerAllowsLocked(gid, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// GroupServerAllows is ServerGrantAllows for one group.
+func (s *MemoryStore) GroupServerAllows(groupID string, t ToolSnapshot) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.groupServerAllowsLocked(groupID, t)
+}
+
+func (s *MemoryStore) groupServerAllowsLocked(groupID string, t ToolSnapshot) bool {
+	if !s.groupServers[groupID][t.ConnectorID] {
+		return false
+	}
+	return !s.serverReadOnly[groupID][t.ConnectorID] || s.toolIsReadLocked(t)
+}
+
+// SetGroupServerReadOnly marks an existing whole-server grant read-only or full.
+func (s *MemoryStore) SetGroupServerReadOnly(groupID, connectorID string, readOnly bool) bool {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	if !s.groupServers[groupID][connectorID] {
+		return false
+	}
+	if !readOnly {
+		delete(s.serverReadOnly[groupID], connectorID)
+		return true
+	}
+	if s.serverReadOnly[groupID] == nil {
+		s.serverReadOnly[groupID] = map[string]bool{}
+	}
+	s.serverReadOnly[groupID][connectorID] = true
+	return true
+}
+
+// GroupServerReadOnly reports whether the group's grant of the server is read-only.
+func (s *MemoryStore) GroupServerReadOnly(groupID, connectorID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.serverReadOnly[groupID][connectorID]
+}
+
+// ToolIsRead: the admin's label if set, else the server's readOnlyHint. A tool
+// the server does not mark read-only counts as write.
+func (s *MemoryStore) ToolIsRead(t ToolSnapshot) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.toolIsReadLocked(t)
+}
+
+func (s *MemoryStore) toolIsReadLocked(t ToolSnapshot) bool {
+	switch s.toolAccess[t.PublicName] {
+	case "read":
+		return true
+	case "write":
+		return false
+	}
+	var hints struct {
+		ReadOnly *bool `json:"readOnlyHint"`
+	}
+	return json.Unmarshal(t.Annotations, &hints) == nil && hints.ReadOnly != nil && *hints.ReadOnly
+}
+
+// SetToolAccess sets an admin's read/write label; "" returns to the server's hint.
+func (s *MemoryStore) SetToolAccess(publicName, access string) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	if access == "" {
+		delete(s.toolAccess, publicName)
+		return
+	}
+	s.toolAccess[publicName] = access
+}
+
+// ToolAccessLabel returns the admin's label, or "".
+func (s *MemoryStore) ToolAccessLabel(publicName string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.toolAccess[publicName]
 }
 
 // GroupHasTool reports whether the group directly grants the tool.

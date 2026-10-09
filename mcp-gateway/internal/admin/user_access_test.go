@@ -55,3 +55,50 @@ func TestInspectUserAndMemberHistory(t *testing.T) {
 		t.Fatalf("membership change not in history: %+v", last)
 	}
 }
+
+// A read-only server grant lets the group call only the server's read tools:
+// read per the server's readOnlyHint, unmarked tools count as write, and an
+// admin's label overrides both.
+func TestReadOnlyServerGrant(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	st.AddUser(store.User{ID: "priya", WorkspaceID: "w"})
+	st.AddGroup(store.Group{ID: "sales", WorkspaceID: "w", Name: "Sales"})
+	st.AddMember("sales", "priya")
+	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "Mail", Provider: "mail", Status: store.StatusActive, UpstreamURL: "https://mail.example.com/mcp"})
+	add := func(name, annotations string) {
+		tool := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`), Annotations: []byte(annotations)})
+		st.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	}
+	add("mail__search", `{"readOnlyHint":true}`)
+	add("mail__send", `{}`)
+	a := &Admin{Store: st, WorkspaceID: "w"}
+	if err := a.SetGroupServer("sales", "c", true); err != nil {
+		t.Fatal(err)
+	}
+	st.SetGroupServerReadOnly("sales", "c", true)
+	allowed := func() []string {
+		out, err := a.userAccess("priya")
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := []string{}
+		for _, tool := range out["tools"].([]userToolAccess) {
+			if tool.Allowed {
+				names = append(names, tool.PublicName)
+			}
+		}
+		return names
+	}
+	if got := allowed(); len(got) != 1 || got[0] != "mail__search" {
+		t.Fatalf("read-only grant allows %v", got)
+	}
+	st.SetToolAccess("mail__search", "write")
+	if got := allowed(); len(got) != 0 {
+		t.Fatalf("admin write label ignored: %v", got)
+	}
+	st.SetGroupServerReadOnly("sales", "c", false)
+	if got := allowed(); len(got) != 2 {
+		t.Fatalf("full grant allows %v", got)
+	}
+}

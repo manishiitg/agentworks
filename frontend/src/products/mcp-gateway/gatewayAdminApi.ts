@@ -243,12 +243,13 @@ export function removeMember(base: string, groupId: string, userId: string): Pro
   })
 }
 
-export function listGroupServers(base: string, groupId: string): Promise<{ servers: string[] }> {
+export function listGroupServers(base: string, groupId: string): Promise<{ servers: string[]; read_only?: string[] }> {
   return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers`)
 }
 
-export function attachGroupServer(base: string, groupId: string, connectorId: string): Promise<{ status: string }> {
-  return post(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers`, { connector_id: connectorId })
+/** readOnly: only the server's read tools; omitted keeps the current level. */
+export function attachGroupServer(base: string, groupId: string, connectorId: string, readOnly?: boolean): Promise<{ status: string; level?: string }> {
+  return post(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers`, { connector_id: connectorId, ...(readOnly === undefined ? {} : { read_only: readOnly }) })
 }
 
 export function detachGroupServer(base: string, groupId: string, connectorId: string): Promise<void> {
@@ -281,12 +282,18 @@ export function deleteConnector(base: string, id: string): Promise<void> {
   return request(base, `/api/admin/connectors/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export function listTools(base: string): Promise<{ tools: GatewayTool[] }> {
+/** access: each tool's effective read/write; label is the admin's own, if any. */
+export function listTools(base: string): Promise<{ tools: GatewayTool[]; access?: { public_name: string; access: 'read' | 'write'; label?: 'read' | 'write' }[] }> {
   return request(base, '/api/admin/tools')
 }
 
 export function listToolVersions(base: string, publicName: string): Promise<{ versions: GatewayTool[] }> {
   return request(base, `/api/admin/tools/${encodeURIComponent(publicName)}/versions`)
+}
+
+/** An admin's read/write label for read-only server grants; '' returns to the server's hint. */
+export function setToolAccess(base: string, publicName: string, access: 'read' | 'write' | ''): Promise<{ access: 'read' | 'write' }> {
+  return post(base, `/api/admin/tools/${encodeURIComponent(publicName)}/access`, { access })
 }
 
 export function approveTool(base: string, tool: GatewayTool): Promise<GatewayTool> {

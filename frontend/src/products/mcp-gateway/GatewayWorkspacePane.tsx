@@ -6,6 +6,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { SettingsCardLayout } from '../../components/ui/SettingsCard'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
+import { useVaultReadOnly } from './vaultReadOnly'
 import { GatewayFeedbackBoundary } from './gatewayConsoleShared'
 
 // The list lives in products/productPanels.ts with every other product's panels.
@@ -20,6 +21,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
   const [peopleTab, setPeopleTab] = useState<'users' | 'groups'>(peopleTabRequest?.tab ?? 'users')
   useEffect(() => { if (peopleTabRequest) setPeopleTab(peopleTabRequest.tab) }, [peopleTabRequest])
   const currentPanel = gatewayPanels.find(item => item.id === panel) ?? gatewayPanels[0]
+  const readOnly = useVaultReadOnly()
   return <div className="flex h-full min-h-0 flex-col">
     <WorkspaceViewHeader hideHeader={hideHeader} icon={currentPanel.icon} title={currentPanel.label} showWalkthrough={false}
       tabs={panel === 'people' ? {
@@ -31,11 +33,16 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
       <GatewayFeedbackBoundary>
       {(panel === 'servers' || panel === 'available-mcps') && servers}
       {panel === 'access' && <GatewayGroupsPanel base={base} revision={revision} chatBusy={chatBusy} />}
-      {panel === 'people' && (peopleTab === 'users' ? <GatewayUsersPanel base={base} /> : <GatewayGroupsPanel base={base} directoryOnly revision={revision} />)}
-      {panel === 'secrets' && <SecretSelectionSection key={revision} mode="vault" selectedSecrets={[]} onSecretChange={() => {}} />}
-      {panel === 'models' && modelSettings}
+      {panel === 'people' && (peopleTab === 'users' ? (readOnly ? <ReaderNote>Accounts are managed by administrators. To see what one person can reach, ask the Vault chat (inspect a person).</ReaderNote> : <GatewayUsersPanel base={base} />) : <GatewayGroupsPanel base={base} directoryOnly revision={revision} />)}
+      {panel === 'secrets' && (readOnly ? <ReaderNote>Secret values are managed by Vault managers. Each group's Secrets tab lists the secret names it can use.</ReaderNote>
+        : <SecretSelectionSection key={revision} mode="vault" selectedSecrets={[]} onSecretChange={() => {}} />)}
+      {panel === 'models' && (readOnly ? <ReaderNote>The Vault chat's model is set by Vault managers.</ReaderNote> : modelSettings)}
       </GatewayFeedbackBoundary>
       </SettingsCardLayout>
     </div>
   </div>
+}
+
+function ReaderNote({ children }: { children: ReactNode }) {
+  return <p className="rounded-md border border-border/60 p-3 text-xs text-muted-foreground" role="status">{children}</p>
 }

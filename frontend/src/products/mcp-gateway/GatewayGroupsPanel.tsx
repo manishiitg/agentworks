@@ -14,6 +14,7 @@ import { McpToolCard } from '../../components/integrations/McpToolCard'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import {
   addMember,
+  attachGroupServer,
   createGroup,
   createGroupKey,
   listConnectors,
@@ -35,6 +36,7 @@ import {
   type GatewayTool,
 } from './gatewayAdminApi'
 import { ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
+import { useVaultReadOnly } from './vaultReadOnly'
 import {
   codeClass,
   formatDateTime,
@@ -50,6 +52,7 @@ const memberLabel = (id: string, email?: string) => email || (id === 'default' ?
 export function GatewayGroupsPanel({ base, revision, chatBusy = false, directoryOnly = false, allowLegacyAPIKeys = false }: {
   base: string; revision?: string; chatBusy?: boolean; directoryOnly?: boolean; allowLegacyAPIKeys?: boolean
 }) {
+  const readOnly = useVaultReadOnly()
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
     const [groups, users] = await Promise.all([listGroups(base), listUsers(base)])
@@ -197,7 +200,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
         title="Access groups"
         count={<SettingsCount>{plural(data.groups.length, 'group')}</SettingsCount>}
         actions={
-          directoryOnly ? <Button variant="outline" size="xs" onClick={() => { setAddError(null); setShowCreate(true) }}>New group</Button> : undefined
+          directoryOnly && !readOnly ? <Button variant="outline" size="xs" onClick={() => { setAddError(null); setShowCreate(true) }}>New group</Button> : undefined
         }
       >
         {data.groups.length > 0 && <div className="space-y-2" data-testid="gateway-group-select" aria-label="Choose a group">
@@ -222,10 +225,10 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
           <div data-testid="gateway-group-detail">
             <Button variant="ghost" size="xs" className="mb-3" onClick={() => setSelectedId(null)} aria-label="Back to groups"><ArrowLeft />Groups</Button>
             <div className="space-y-2">
-              <Input aria-label="Group name" value={renameDraft} onChange={e => setRenameDraft(e.target.value)} disabled={renameBusy || group.BuiltIn}
+              <Input aria-label="Group name" value={renameDraft} onChange={e => setRenameDraft(e.target.value)} disabled={renameBusy || group.BuiltIn || readOnly}
                 className="h-9 text-sm font-semibold" data-testid="gateway-group-rename-input" />
               <Textarea aria-label="Group description" placeholder="Add a description…" value={descriptionDraft} onChange={e => setDescriptionDraft(e.target.value)}
-                maxLength={1000} rows={2} disabled={renameBusy} className="text-xs md:text-xs" data-testid="gateway-group-description" />
+                maxLength={1000} rows={2} disabled={renameBusy || readOnly} className="text-xs md:text-xs" data-testid="gateway-group-description" />
               {(renameDraft !== (group.Name || group.ID) || descriptionDraft !== (group.Description || '')) && <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="xs" disabled={renameBusy} onClick={() => { setRenameDraft(group.Name || group.ID); setDescriptionDraft(group.Description || ''); setRenameError(null) }} aria-label="Cancel group edit">Cancel</Button>
                 <Button size="xs" disabled={renameBusy || !renameDraft.trim()} onClick={() => void onRename()} aria-label="Save group details">
@@ -252,7 +255,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                   {members.map((m) => (
                     <li key={m} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px]">
                       {memberLabel(m, data.users.find(u => u.ID === m)?.Email)}
-                      {directoryOnly && !group.BuiltIn && <button
+                      {directoryOnly && !readOnly && !group.BuiltIn && <button
                         onClick={() => void onRemoveMember(m)}
                         disabled={memberBusy || membersLoading}
                         className="text-muted-foreground hover:text-destructive disabled:opacity-50"
@@ -264,7 +267,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                   ))}
                 </ul>
               )}
-              {directoryOnly && !group.BuiltIn && candidates.length > 0 && (
+              {directoryOnly && !readOnly && !group.BuiltIn && candidates.length > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   <Select value={memberPick} onValueChange={setMemberPick} disabled={memberBusy || membersLoading}>
                     <SelectTrigger aria-label={`Add member to ${group.ID}`} className="h-8 min-w-0 flex-1 bg-background text-xs">
@@ -282,7 +285,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                   </Button>
                 </div>
               )}
-              {directoryOnly && allowLegacyAPIKeys && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
+              {directoryOnly && !readOnly && allowLegacyAPIKeys && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
               {allowLegacyAPIKeys && showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
             </div>}
             {!directoryOnly && detailTab === 'secrets' && <div role="tabpanel" aria-label="Group secrets tab" className="mt-4">
@@ -521,6 +524,7 @@ function GroupPermissions({
   attempt: number
   onChanged: () => void
 }) {
+  const readOnly = useVaultReadOnly()
   const { data, loading, error } = useGatewayLoader(async () => {
     const [connectors, tools, servers, permissions, policies] = await Promise.all([
       listConnectors(base),
@@ -533,6 +537,7 @@ function GroupPermissions({
       connectors: connectors.connectors,
       tools: tools.tools,
       servers: new Set(servers.servers ?? []),
+      readOnlyServers: new Set(servers.read_only ?? []),
       permissions: new Map(permissions.permissions.map(p => [p.public_name, p])),
       policies: policies.packages.filter(p => p.group_id === groupId),
     }
@@ -624,10 +629,18 @@ function GroupPermissions({
                   toolSummary={<span className="inline-flex items-center gap-1.5 rounded bg-primary/10 px-2 py-0.5 text-primary" title={`${allowedTools} of ${tools.length} tools allowed for this group`}><span>Tools</span><strong className="tabular-nums">{allowedTools}/{tools.length}</strong></span>}
                   detail={<>
                     {regexRules > 0 && <span className="rounded bg-muted px-2 py-0.5" title="Saved regular-expression conditions">{regexRules} regex {regexRules === 1 ? 'rule' : 'rules'}</span>}
-                    {full && <span className="text-xs text-muted-foreground">Server-wide grant active</span>}
+                    {full && (readOnly
+                      ? <span className="text-xs text-muted-foreground">{data.readOnlyServers.has(c.ID) ? 'Whole server · read tools only' : 'Whole server · all tools'}</span>
+                      : <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Read tools only: the server's own read-only marks, or your labels on the Servers page. Unmarked tools count as write.">
+                        Whole server
+                        <Checkbox checked={data.readOnlyServers.has(c.ID)} disabled={busy !== null}
+                          onCheckedChange={v => void run(`level:${c.ID}`, () => attachGroupServer(base, groupId, c.ID, v === true))}
+                          aria-label={`Read tools only on ${c.Label || c.Provider}`} />
+                        read tools only
+                      </label>)}
                     {!assigned && <span className="text-xs text-muted-foreground">Not in this group</span>}
                   </>}
-                  actions={<Button variant="ghost" size="xs" disabled={!assigned || busy !== null}
+                  actions={readOnly ? undefined : <Button variant="ghost" size="xs" disabled={!assigned || busy !== null}
                     className="text-muted-foreground hover:text-destructive"
                     aria-label={`Remove ${c.Label || c.Provider} from group`}
                     onClick={() => setRemoveServer({ id: c.ID, name: c.Label || c.Provider })}>
@@ -646,7 +659,7 @@ function GroupPermissions({
                       return (
                         <McpToolCard key={t.PublicName} name={t.UpstreamName} description={t.Description} schema={t.InputSchema}
                           status={t.Status !== 'active' ? 'Unavailable — tool needs approval' : granted ? restricted ? 'Allowed with restrictions' : 'Allowed' : 'No access'}
-                          selection={<Checkbox checked={granted} disabled={full || governed || busy !== null || t.Status !== 'active'}
+                          selection={<Checkbox checked={granted} disabled={readOnly || full || governed || busy !== null || t.Status !== 'active'}
                             onCheckedChange={v => void run(`tool:${t.PublicName}`, () => setGrant(base, { group: groupId }, t.PublicName, v === true))}
                             aria-label={`Grant ${t.PublicName}`} className="mt-0.5" />}>
                           {policies.length > 0 && <div className="mt-3 space-y-3 border-t border-border pt-3" aria-label={`${t.UpstreamName} permission details`}>
@@ -670,7 +683,7 @@ function GroupPermissions({
               </div>
             )
           })}
-          {availableCount > 0 && <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAvailable(value => !value)}>
+          {availableCount > 0 && !readOnly && <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAvailable(value => !value)}>
             <Server className="h-3.5 w-3.5" />
             {showAvailable ? 'Hide available MCPs' : `Add MCPs (${availableCount})`}
           </Button>}
@@ -698,6 +711,7 @@ function GroupPermissions({
 function GroupSecretPermissions({ base, groupId, attempt, onChanged }: {
   base: string; groupId: string; attempt: number; onChanged: () => void
 }) {
+  const readOnly = useVaultReadOnly()
   const [names, setNames] = useState<string[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -718,6 +732,10 @@ function GroupSecretPermissions({ base, groupId, attempt, onChanged }: {
   }, [base, groupId, attempt])
   if (loading && !hasLoaded.current) return <ConsoleLoading label="Loading secret permissions…" />
   if (error && !hasLoaded.current) return <ConsoleError message={error} onRetry={onChanged} />
+  if (readOnly) return <div className="text-xs">
+    {names.length === 0 ? <p className="text-muted-foreground">This group can use no Vault secrets.</p>
+      : <ul className="flex flex-wrap gap-1.5" aria-label="Secrets this group can use">{names.map(n => <li key={n} className="rounded bg-muted px-2 py-0.5 font-mono">{n}</li>)}</ul>}
+  </div>
   return <div>
     {error && <ConsoleStale message={error} onRetry={onChanged} />}
     <SecretSelectionSection mode="group" selectedSecrets={[]} onSecretChange={() => {}} groupSelectedNames={names}
