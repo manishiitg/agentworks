@@ -124,7 +124,10 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Signing in the shared login changes the account everyone allowed uses:
   // confirm, and point to Add my account for a private one.
   const [confirmSharedLogin, setConfirmSharedLogin] = useState<ProviderConnection | null>(null)
-  const [authMethod, setAuthMethod] = useState('api_key')
+  // These CLIs sign in with the person's own browser login in a terminal, as an admin does for the server account; that is what
+  // most people want, so it is the default. An API key stays one choice away.
+  const defaultAuthMethod = ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) ? 'cli_login' : 'api_key'
+  const [authMethod, setAuthMethod] = useState(defaultAuthMethod)
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
   const [usageText, setUsageText] = useState<{ rowId: string; text: string } | null>(null)
@@ -180,7 +183,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     catch (signOutError) { setError(providerApiErrorText(signOutError, 'Could not sign out.')) }
     finally { setBusy(false) }
   }
-  const resetForm = () => { setName(''); setCredential(''); setAuthMethod('api_key'); setNewSharing({ mode: 'private' }); setError(null) }
+  const resetForm = () => { setName(''); setCredential(''); setAuthMethod(defaultAuthMethod); setNewSharing({ mode: 'private' }); setError(null) }
   useEffect(() => {
     if (!addRequest) return
     setAdding(true)
@@ -526,7 +529,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <button disabled={busy} type="button" aria-label="Cancel account form" className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={cancel}><X className="h-4 w-4" /></button>
       </div>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Account name<input required maxLength={120} placeholder="e.g. Personal account" value={name} onChange={event => setName(event.target.value)} className={inputClass} /></label>
-      {!editingId && ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}><option value="api_key">API key</option><option value="cli_login">Browser login</option></select></label>}
+      {!editingId && ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}><option value="cli_login">Browser login (sign in with your own account)</option><option value="api_key">API key</option></select></label>}
       {authMethod !== 'cli_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
       {provider === 'claude-code' && authMethod !== 'cli_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Generate a token with <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">claude setup-token</code> for the account you want to add.</p>}
       {provider === 'pi-cli' && !editingId && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Pi provider ID<input required value={underlyingProvider} onChange={event => setUnderlyingProvider(event.target.value)} className={inputClass} /></label>}

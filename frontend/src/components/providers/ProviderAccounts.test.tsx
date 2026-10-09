@@ -144,6 +144,10 @@ it('adds an account shared with a workflow after showing the billing warning', a
   const container = await render(<ProviderAccounts provider="claude-code" />)
   await click(buttonByText(container, 'Add my account'))
   expect(container.textContent).not.toContain(SHARING_WARNING)
+  // Browser login is the default (the person signs in with their own account); a key is a choice.
+  const authentication = container.querySelector('select option[value="cli_login"]')!.parentElement as HTMLSelectElement
+  expect(authentication.value).toBe('cli_login')
+  await setValue(authentication, 'api_key')
   await setValue(container.querySelector<HTMLInputElement>('input[placeholder="e.g. Personal account"]')!, 'Team key')
   await setValue(container.querySelector<HTMLInputElement>('input[type="password"]')!, 'sk-token')
   const sharedRadio = [...container.querySelectorAll('label')].find(label => label.textContent?.includes('Shared with workflows, Crews and people'))?.querySelector('input')
