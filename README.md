@@ -2,11 +2,11 @@
 
 **Give an AI agent a goal and a metric. It keeps working until it hits the target.**
 
-AgentWorks is an open-source platform for goal-driven AI agents. You describe an outcome, pick the number that proves it, and set a target. Agents plan the work, run it on a schedule, measure every run, and change their own plan until the metric moves. It runs on the coding-agent CLIs you already use: Claude Code, Codex, Cursor, Pi, and Muse.
+AgentWorks is a source-available platform for goal-driven AI agents. You describe an outcome, pick the number that proves it, and set a target. Agents plan the work, run it on a schedule, measure every run, and change their own plan until the metric moves. It runs on the coding-agent CLIs you already use: Claude Code, Codex, Cursor, Pi, and Muse.
 
 [![Latest Release](https://img.shields.io/github/v/release/manishiitg/coding-agent-loop?label=release)](https://github.com/manishiitg/coding-agent-loop/releases/latest)
 ![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
-[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 
 [Website](https://agentworkshq.com) · [Docs](docs/README.md) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/coding-agent-loop/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
 
@@ -113,6 +113,12 @@ Issues and pull requests are welcome. Start with the [docs index](docs/README.md
 
 ## License
 
-[MIT](LICENSE).
+AgentWorks is source-available under the [Business Source License 1.1](LICENSE), from 2026-10-09.
 
-Built on the [Model Context Protocol](https://modelcontextprotocol.io/), our open-source engine libraries [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), and [React Flow](https://reactflow.dev/) for the workflow canvas.
+- **Free:** read the code, modify it, and run it locally for personal projects, development, testing, evaluation, education and research.
+- **Commercial license required:** using AgentWorks in the operation of a business or organization, or offering it or a service based on it to others. Contact us through [agentworkshq.com/about](https://agentworkshq.com/about/).
+- **Later:** each version converts to the Apache License 2.0 on the Change Date stated in the license.
+
+Versions published before 2026-10-09 were released under the MIT License and remain available under it.
+
+Built on the [Model Context Protocol](https://modelcontextprotocol.io/), our engine libraries [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), and [React Flow](https://reactflow.dev/) for the workflow canvas.
