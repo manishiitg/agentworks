@@ -554,6 +554,11 @@ function App() {
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
 
+  useEffect(() => {
+    // Every entry point (Ctrl/Cmd+K, hint click, or a panel) dismisses the rail hint.
+    if (showQuickSwitcher) window.dispatchEvent(new CustomEvent('quick-switcher-opened'))
+  }, [showQuickSwitcher])
+
   
   // Ref to prevent duplicate default tab creation (React StrictMode runs effects twice)
 

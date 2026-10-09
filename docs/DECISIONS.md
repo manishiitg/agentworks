@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Navigation uses one hint per hide cycle
+
+Both idle hiding and the manual pin show the same compact shortcut hint. Opening
+quick navigation through Ctrl+K, Command+K or a click dismisses it until the next
+hide cycle, including across product remounts. The left-edge reopen target stays
+available. Replace the manual hide toast to keep the behavior consistent.
+Ticket: [PLAT-779](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-779.md).
+
 ### 2026-10-09 — Accounts are added by DevOps on the server only (PLAT-777)
 
 An account and its slot always go together, and only DevOps creates them, with

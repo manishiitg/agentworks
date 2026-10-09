@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { PanelLeft, Pin, PinOff, X } from 'lucide-react'
+import { PanelLeft, Pin, PinOff } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 
 const NAVIGATION_IDLE_MS = 10 * 60 * 1000
 const NAVIGATION_ACTIVITY_KEY = 'product_navigation_last_activity'
+const NAVIGATION_HINT_DISMISSED_KEY = 'product_navigation_hint_dismissed'
 
 const ProductNavigationContext = createContext(false)
 export const useProductNavigationSidebar = () => useContext(ProductNavigationContext)
@@ -15,11 +16,24 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   )
   const autoHide = navigationMode === 'auto-hide'
   const [revealed, setRevealed] = useState(false)
+  const [navigationHintDismissed, setNavigationHintDismissed] = useState(() => {
+    try { return window.sessionStorage.getItem(NAVIGATION_HINT_DISMISSED_KEY) === 'true' } catch { return false }
+  })
+  const rememberHintDismissed = useCallback((dismissed: boolean) => {
+    setNavigationHintDismissed(dismissed)
+    try { window.sessionStorage.setItem(NAVIGATION_HINT_DISMISSED_KEY, String(dismissed)) } catch { /* Storage is optional. */ }
+  }, [])
+  useEffect(() => {
+    const dismissHint = () => rememberHintDismissed(true)
+    window.addEventListener('quick-switcher-opened', dismissHint)
+    return () => window.removeEventListener('quick-switcher-opened', dismissHint)
+  }, [rememberHintDismissed])
   // Session storage carries the deadline across product remounts and reloads.
   const lastActivity = useRef<number | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
   const expireNavigation = useRef(() => {})
   expireNavigation.current = () => {
+    if (!autoHide || revealed) rememberHintDismissed(false)
     setRevealed(false)
     setNavigationMode('auto-hide')
   }
@@ -54,12 +68,6 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
       window.removeEventListener('focus', checkDeadline)
     }
   }, [sidebar, scheduleIdle])
-  const [showNavigationHint, setShowNavigationHint] = useState(false)
-  useEffect(() => {
-    if (!showNavigationHint) return
-    const timer = window.setTimeout(() => setShowNavigationHint(false), 8000)
-    return () => window.clearTimeout(timer)
-  }, [showNavigationHint])
   return <ProductNavigationContext.Provider value={sidebar}>
     {/* Navigation flyouts sit above workspace toolbars (z-30), below dialogs (z-50). */}
     {sidebar ? <div data-terminal-focus-chrome="header" data-product-navigation-mode={navigationMode}
@@ -84,7 +92,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
             navigationActivity()
             setRevealed(false)
             setNavigationMode(autoHide ? 'fixed' : 'auto-hide')
-            setShowNavigationHint(!autoHide)
+            if (!autoHide) rememberHintDismissed(false)
           }}
           className="mt-2 grid h-7 w-full shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
           {autoHide ? <PinOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Pin className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -93,26 +101,17 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     </div> : <div data-terminal-focus-chrome="header" className="shrink-0 border-b border-border bg-muted px-4 py-2">
       <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">{children}</div>
     </div>}
-    {sidebar && autoHide && !revealed && <div data-terminal-focus-chrome="header"
+    {sidebar && autoHide && !revealed && !navigationHintDismissed && <div data-terminal-focus-chrome="header" data-navigation-shortcut-hint
       className="fixed bottom-3 left-3 z-40 flex items-center gap-1 rounded-md border border-border bg-popover p-1 text-muted-foreground shadow-sm">
       <button type="button" aria-label="Reopen navigation" title="Reopen navigation · hides after 10 minutes without navigation activity"
         className="rounded p-1 hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         onClick={() => { navigationActivity(); setNavigationMode('fixed') }}><PanelLeft className="h-3.5 w-3.5" /></button>
       <button type="button" aria-label="Open quick navigation (Ctrl+K or Command+K)" title="Search products, projects, chats and panels"
         className="rounded px-1.5 py-1 text-[10px] hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}><kbd>Ctrl+K / ⌘K</kbd></button>
-    </div>}
-    {showNavigationHint && <div data-terminal-focus-chrome="header" role="status"
-      className="fixed bottom-3 left-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg">
-      <div className="text-xs leading-5">
-        <p>Navigation hidden. Press <kbd className="font-semibold">Ctrl+K</kbd> (<kbd className="font-semibold">⌘K</kbd> on Mac) to switch running work, products, or menus.</p>
-        <button type="button" className="font-medium text-primary hover:underline" onClick={() => {
-          setShowNavigationHint(false)
+        onClick={() => {
+          rememberHintDismissed(true)
           window.dispatchEvent(new CustomEvent('open-quick-switcher'))
-        }}>Open quick navigation</button>
-      </div>
-      <button type="button" aria-label="Dismiss navigation hint" onClick={() => setShowNavigationHint(false)}
-        className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+        }}><kbd>Ctrl+K / ⌘K</kbd></button>
     </div>}
   </ProductNavigationContext.Provider>
 }
