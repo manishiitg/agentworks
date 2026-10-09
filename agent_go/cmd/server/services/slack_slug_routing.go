@@ -26,6 +26,9 @@ type slackChannelPick struct {
 	bind *SlackTarget
 	// handled: nothing more to do (e.g. a blocked sender).
 	handled bool
+	// nudgeFor is set when choices re-ask a thread whose "who should answer" question is still open: the person who
+	// wrote there instead of picking. Only that person is asked again.
+	nudgeFor string
 }
 
 func containsIndex(indexes []int, index int) bool {
@@ -123,7 +126,11 @@ func (s *SlackService) selectChannelTarget(ctx context.Context, channelID, threa
 		// default never applies to people (owner, 2026-10-07).
 		chosen = 0
 	case !isMention:
-		// A plain reply in a thread no target holds starts nothing.
+		// A plain reply in a thread no target holds starts nothing, unless the bot asked "who should answer" here and
+		// is still waiting: then the sender is asked again, and this message waits for the pick.
+		if pending, open := peekSlackPendingPick(thread); open && len(pending.choices) > 0 {
+			return slackChannelPick{text: text, choices: pending.choices, nudgeFor: pending.msg.UserID}
+		}
 		return slackChannelPick{text: text}
 	default:
 		all := make([]int, len(set.Targets))
@@ -158,9 +165,16 @@ func (s *SlackService) deliverChannelPick(ctx context.Context, msg BotIncomingMe
 		}
 	}
 	if len(pick.choices) > 0 {
+		prompt := slackPickPrompt(pick.choices, pick.slug)
+		if pick.nudgeFor != "" {
+			if msg.UserID != pick.nudgeFor {
+				return false // only the person who asked is asked again
+			}
+			prompt = slackNudgePrompt
+		}
 		msg.Text = pick.text
 		rememberSlackPendingPick(thread, msg, raw, pick.choices)
-		if _, err := s.SendThreadMessageWithBlocks(ctx, thread, slackPickPrompt(pick.choices, pick.slug), slackPickBlocks(pick.choices)); err != nil {
+		if _, err := s.SendThreadMessageWithBlocks(ctx, thread, prompt, slackPickBlocks(pick.choices)); err != nil {
 			log.Printf("[SLACK_SLUG] target prompt failed: %v", err)
 		}
 		return false

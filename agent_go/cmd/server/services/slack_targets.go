@@ -574,6 +574,20 @@ func takeSlackPendingPick(thread ThreadID) (slackPendingPick, bool) {
 	return pending, true
 }
 
+// peekSlackPendingPick reports a thread's open "who should answer" question without taking it.
+func peekSlackPendingPick(thread ThreadID) (slackPendingPick, bool) {
+	slackPendingPicksMu.Lock()
+	defer slackPendingPicksMu.Unlock()
+	pending, ok := slackPendingPicks[slackTargetBindingThread(thread).Key()]
+	if !ok || time.Since(pending.at) > slackPendingPickTTL {
+		return slackPendingPick{}, false
+	}
+	return pending, true
+}
+
+// slackNudgePrompt is the answer to a message written in a thread before a target was picked.
+const slackNudgePrompt = "Pick who should answer first. Your message runs once you pick, and this thread stays with it."
+
 // slackPickActionPrefix starts the action ID of a target button.
 const slackPickActionPrefix = "slack_pick_"
 
