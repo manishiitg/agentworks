@@ -135,7 +135,10 @@ Defaults:$PRODUCT secure_path="/usr/bin:/bin"
 Runas_Alias $ALIAS = $names
 $PRODUCT ALL=($ALIAS) NOPASSWD: $LIBEXEC/slotctl exec, $LIBEXEC/slotctl exec --request-file *
 SUDO
-  visudo -cf "$SUDOERS.new" >/dev/null || { echo "sudoers did not validate; nothing installed." >&2; rm -f "$SUDOERS.new"; exit 1; }
+  # sudo-rs (Ubuntu 26.04's sudo) has no `requiretty` setting at all; it never requires a terminal, which is what the line asked
+  # for. Drop it where the installed sudo rejects it, and validate again.
+  if ! visudo -cf "$SUDOERS.new" >/dev/null 2>&1; then sed -i '/!requiretty/d' "$SUDOERS.new"; fi
+  visudo -cf "$SUDOERS.new" >/dev/null || { visudo -cf "$SUDOERS.new" >&2 || true; echo "sudoers did not validate; nothing installed." >&2; rm -f "$SUDOERS.new"; exit 1; }
   install -o root -g root -m 0440 "$SUDOERS.new" "$SUDOERS" && rm -f "$SUDOERS.new"
 
   # Nobody but the service account reads another person's tree, even before it is assigned.
