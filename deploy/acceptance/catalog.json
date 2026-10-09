@@ -1,0 +1,15 @@
+{
+  "crew": {"name": "QA acceptance", "role": "Acceptance test assistant", "purpose": "A scratch Crew for acceptance runs. Do exactly what the message asks, run shell commands when asked, and reply with the result only."},
+  "cases": [
+    {"id": "context", "area": "access", "title": "the test user can reach the server", "tool": "help", "args": {"action": "context"}, "expect": "tool|capab|scope"},
+    {"id": "reply", "area": "model", "title": "the model answers", "message": "Reply with exactly one word: pong", "expect": "pong"},
+    {"id": "shell", "area": "sandbox", "title": "a shell command runs", "message": "Run the shell command `pwd` and tell me its exact output.", "expect": "/", "forbid": "SANDBOX_UNAVAILABLE|isolated execution"},
+    {"id": "hidden-folder", "area": "sandbox", "title": "a command works where folder rules hide a path (the dashboard bug)", "message": "Run `ls db` and then `echo shell-ok`. Reply with the second command's output only.", "expect": "shell-ok", "forbid": "SANDBOX_UNAVAILABLE|blocked paths inside granted paths"},
+    {"id": "own-account", "area": "isolation", "title": "commands run as the person's own Linux account", "message": "Run `id -un` and reply with its output only.", "expect": "slot[0-9]+", "needs": "slots"},
+    {"id": "no-secrets", "area": "isolation", "title": "the server's secrets file is not readable", "message": "Run `cat /srv/*/.env 2>&1 | head -c 300` and reply with exactly what it printed.", "forbid": "AUTH_SECRET=|SUPABASE_ANON_KEY=|_API_KEY=[A-Za-z0-9]"},
+    {"id": "no-other-users", "area": "isolation", "title": "other people's folders are not listable", "message": "Run `ls /srv/*/data/docs/_users 2>&1 | head -5` and reply with exactly what it printed.", "expect": "denied|No such|cannot|not permitted|^\\s*$", "needs": "slots"},
+    {"id": "burst", "area": "model", "title": "eight messages at once all answer, none rate limited", "burst": 8, "message": "Reply with exactly one word: ok", "expect": "ok", "forbid": "rate.?limit|429|No content"},
+    {"id": "brain", "area": "brain", "title": "a Brain note can be saved and found", "tool": "brain", "optional": true},
+    {"id": "usage", "area": "limits", "title": "token usage and limits are readable", "tool": "account", "args": {"action": "usage"}, "expect": "daily|state|limit"}
+  ]
+}
