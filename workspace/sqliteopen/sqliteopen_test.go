@@ -3,6 +3,7 @@ package sqliteopen
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -41,5 +42,15 @@ func TestDSNProducesWALModeAndBusyTimeout(t *testing.T) {
 	}
 	if busyTimeoutMs <= 0 {
 		t.Fatalf("busy_timeout = %d, want > 0", busyTimeoutMs)
+	}
+}
+
+// A Windows drive-letter path must be a valid SQLite file address (file:///C:/dir/file), not file:C:%5Cdir%5Cfile.
+func TestDSNForADriveLetterPath(t *testing.T) {
+	if got := DSN(`C:/Users/me/lock.sqlite`); !strings.HasPrefix(got, "file:///C:/Users/me/lock.sqlite?") {
+		t.Fatalf("got %q", got)
+	}
+	if got := DSN("/var/lib/x/lock.sqlite"); !strings.HasPrefix(got, "file:///var/lib/x/lock.sqlite?") {
+		t.Fatalf("got %q", got)
 	}
 }

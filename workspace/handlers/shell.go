@@ -643,10 +643,7 @@ func configureShellCommandProcessGroup(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
 	}
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Setpgid = true
+	setProcessGroup(cmd)
 }
 
 func killShellCommandProcessGroup(cmd *exec.Cmd) {
@@ -663,15 +660,15 @@ func killShellCommandProcessGroup(cmd *exec.Cmd) {
 		// whole group and kills what is left after its grace period; the hard kill below is the last resort.
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		time.AfterFunc(slots.StopGrace*3, func() {
-			if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
-				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			if pgid, err := getProcessGroup(pid); err == nil && pgid > 0 {
+				_ = signalProcessGroup(pgid, syscall.SIGKILL)
 			}
 			_ = cmd.Process.Kill()
 		})
 		return
 	}
-	if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
-		if err := syscall.Kill(-pgid, syscall.SIGKILL); err == nil {
+	if pgid, err := getProcessGroup(pid); err == nil && pgid > 0 {
+		if err := signalProcessGroup(pgid, syscall.SIGKILL); err == nil {
 			return
 		}
 	}

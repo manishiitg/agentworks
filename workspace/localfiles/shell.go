@@ -62,8 +62,10 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if err != nil || !os.SameFile(held, actual) {
 		return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
 	}
+	// Windows has no command sandbox (owner decision, 2026-10-09): commands run as the user through Git Bash, and the folder rules
+	// bind the file tools only.
 	capability := security.CurrentSandboxCapability()
-	if !capability.Available || runtime.GOOS == "linux" && capability.Backend != "landlock" {
+	if runtime.GOOS != "windows" && (!capability.Available || runtime.GOOS == "linux" && capability.Backend != "landlock") {
 		return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: local commands require sandbox-exec on macOS or the Landlock launcher on Linux"}
 	}
 	operationCtx, cancel := context.WithTimeout(ctx, time.Duration(r.ShellTimeout())*time.Second)
@@ -116,64 +118,76 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	iso := &security.Isolator{BaseDir: root, WorkDir: workDir, StrictAllowlist: true, AllowNetwork: true, PrivateScratch: true}
-	commandGrants := []Grant{g}
-	if downloads != nil {
-		commandGrants = append(commandGrants, *downloads)
-	}
-	for _, grant := range commandGrants {
-		grantRoot, err := filepath.EvalSymlinks(grant.Root)
-		if err != nil {
-			return nil, err
+	var cmd *exec.Cmd
+	var cleanup func()
+	if runtime.GOOS == "windows" {
+		var windowsErr error
+		cmd, cleanup, windowsErr = windowsShellCommand(operationCtx, workDir, r.Command)
+		if windowsErr != nil {
+			return nil, &wf.FileError{Status: 503, Message: windowsErr.Error()}
 		}
-		held, err := e.roots[grant.ID].Stat(".")
-		if err != nil {
-			return nil, err
+		defer cleanup()
+	} else {
+		iso := &security.Isolator{BaseDir: root, WorkDir: workDir, StrictAllowlist: true, AllowNetwork: true, PrivateScratch: true}
+		commandGrants := []Grant{g}
+		if downloads != nil {
+			commandGrants = append(commandGrants, *downloads)
 		}
-		actual, err := os.Stat(grantRoot)
-		if err != nil || !os.SameFile(held, actual) {
-			return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
-		}
-		for _, path := range append(append([]string{}, grant.Guard.ReadPaths...), grant.Guard.ReadOnlyPaths...) {
-			iso.ReadPaths = append(iso.ReadPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-		}
-		if !grant.Writable {
-			// A writable companion must not override a read-only project nested within it.
-			iso.BlockedWritePaths = append(iso.BlockedWritePaths, grantRoot)
-		}
-		for _, path := range grant.Guard.WritePaths {
-			iso.WritePaths = append(iso.WritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-		}
-		for _, path := range grant.Guard.BlockedPaths {
-			iso.BlockedPaths = append(iso.BlockedPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-		}
-		for _, path := range append(append([]string{}, grant.Guard.ReadOnlyPaths...), grant.Guard.BlockedWritePaths...) {
-			iso.BlockedWritePaths = append(iso.BlockedWritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-		}
-		if runtime.GOOS == "linux" {
-			exclusions := append(append([]string{}, grant.Guard.BlockedPaths...), grant.Guard.ReadOnlyPaths...)
-			exclusions = append(exclusions, grant.Guard.BlockedWritePaths...)
-			for _, path := range exclusions {
-				if _, err := os.Lstat(filepath.Join(grantRoot, filepath.FromSlash(path))); err != nil {
-					return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: Linux shell exclusions must exist before commands run"}
+		for _, grant := range commandGrants {
+			grantRoot, err := filepath.EvalSymlinks(grant.Root)
+			if err != nil {
+				return nil, err
+			}
+			held, err := e.roots[grant.ID].Stat(".")
+			if err != nil {
+				return nil, err
+			}
+			actual, err := os.Stat(grantRoot)
+			if err != nil || !os.SameFile(held, actual) {
+				return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
+			}
+			for _, path := range append(append([]string{}, grant.Guard.ReadPaths...), grant.Guard.ReadOnlyPaths...) {
+				iso.ReadPaths = append(iso.ReadPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+			}
+			if !grant.Writable {
+				// A writable companion must not override a read-only project nested within it.
+				iso.BlockedWritePaths = append(iso.BlockedWritePaths, grantRoot)
+			}
+			for _, path := range grant.Guard.WritePaths {
+				iso.WritePaths = append(iso.WritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+			}
+			for _, path := range grant.Guard.BlockedPaths {
+				iso.BlockedPaths = append(iso.BlockedPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+			}
+			for _, path := range append(append([]string{}, grant.Guard.ReadOnlyPaths...), grant.Guard.BlockedWritePaths...) {
+				iso.BlockedWritePaths = append(iso.BlockedWritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
+			}
+			if runtime.GOOS == "linux" {
+				exclusions := append(append([]string{}, grant.Guard.BlockedPaths...), grant.Guard.ReadOnlyPaths...)
+				exclusions = append(exclusions, grant.Guard.BlockedWritePaths...)
+				for _, path := range exclusions {
+					if _, err := os.Lstat(filepath.Join(grantRoot, filepath.FromSlash(path))); err != nil {
+						return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: Linux shell exclusions must exist before commands run"}
+					}
 				}
 			}
 		}
-	}
-	for _, grant := range e.grants {
-		if grant.State != "" {
-			iso.BlockedPaths = append(iso.BlockedPaths, grant.State)
+		for _, grant := range e.grants {
+			if grant.State != "" {
+				iso.BlockedPaths = append(iso.BlockedPaths, grant.State)
+			}
+			iso.BlockedPaths = append(iso.BlockedPaths, grant.PrivatePaths...)
+			if lockState, err := wf.DefaultStateDir(grant.Root); err == nil {
+				iso.BlockedPaths = append(iso.BlockedPaths, lockState)
+			}
 		}
-		iso.BlockedPaths = append(iso.BlockedPaths, grant.PrivatePaths...)
-		if lockState, err := wf.DefaultStateDir(grant.Root); err == nil {
-			iso.BlockedPaths = append(iso.BlockedPaths, lockState)
+		var isoErr error
+		cmd, cleanup, isoErr = iso.ExecuteIsolated(operationCtx, r.Command, nil)
+		if isoErr != nil {
+			return nil, &wf.FileError{Status: 503, Message: isoErr.Error()}
 		}
+		defer cleanup()
 	}
-	cmd, cleanup, err := iso.ExecuteIsolated(operationCtx, r.Command, nil)
-	if err != nil {
-		return nil, &wf.FileError{Status: 503, Message: err.Error()}
-	}
-	defer cleanup()
 	// Keep only local tool lookup, locale and sandbox cache paths. Login tokens,
 	// server/provider secrets and arbitrary CLI environment never reach commands.
 	cmd.Env = shellEnvironment(cmd.Env)
@@ -205,7 +219,7 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if err != nil {
 		return nil, err
 	}
-	err = cmd.Run()
+	err = runShellCommand(cmd)
 	result := &ShellResult{RequestID: r.RequestID, Identity: r.Identity, Stdout: stdout.String(), Stderr: stderr.String(), Truncated: stdout.truncated || stderr.truncated, TimedOut: errors.Is(operationCtx.Err(), context.DeadlineExceeded)}
 	if err != nil {
 		result.ExitCode = -1
@@ -246,12 +260,18 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	return result, nil
 }
 
+// What Windows programs need to start (system folders, the user's profile, program locations); no tokens or secrets.
+var windowsShellEnv = map[string]bool{"SYSTEMROOT": true, "WINDIR": true, "SYSTEMDRIVE": true, "COMSPEC": true, "PATHEXT": true, "USERPROFILE": true, "HOMEDRIVE": true,
+	"HOMEPATH": true, "APPDATA": true, "LOCALAPPDATA": true, "PROGRAMDATA": true, "PROGRAMFILES": true, "PROGRAMFILES(X86)": true, "PROGRAMW6432": true,
+	"COMMONPROGRAMFILES": true, "COMMONPROGRAMFILES(X86)": true, "COMMONPROGRAMW6432": true, "ALLUSERSPROFILE": true, "USERNAME": true, "USERDOMAIN": true,
+	"COMPUTERNAME": true, "OS": true, "PROCESSOR_ARCHITECTURE": true, "NUMBER_OF_PROCESSORS": true}
+
 func shellEnvironment(env []string) []string {
 	allowed := map[string]bool{"PATH": true, "HOME": true, "TMPDIR": true, "TMP": true, "TEMP": true, "LANG": true, "LC_ALL": true, "TZ": true, "XDG_CACHE_HOME": true, "XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "GOCACHE": true, "GOMODCACHE": true, "GOPATH": true, "NPM_CONFIG_CACHE": true, "npm_config_cache": true, "PIP_CACHE_DIR": true, "PYTHONUNBUFFERED": true, "CARGO_HOME": true, "RUSTUP_HOME": true}
 	result := []string{}
 	for _, value := range env {
 		key, _, _ := strings.Cut(value, "=")
-		if allowed[key] {
+		if allowed[key] || runtime.GOOS == "windows" && windowsShellEnv[strings.ToUpper(key)] {
 			result = append(result, value)
 		}
 	}

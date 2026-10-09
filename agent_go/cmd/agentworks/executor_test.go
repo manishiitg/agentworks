@@ -22,6 +22,8 @@ func TestExecutorEnablesShellForEverySharedFolder(t *testing.T) {
 		t.Run(fmt.Sprintf("downloads=%v", downloads), func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			t.Setenv("APPDATA", home) // the config folder on Windows
+			t.Setenv("USERPROFILE", home)
 			if err := os.Mkdir(filepath.Join(home, "Downloads"), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -161,6 +163,8 @@ func TestExecutorRetriesAStaleDeviceConnection(t *testing.T) {
 func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", home) // the config folder on Windows
+	t.Setenv("USERPROFILE", home)
 	project := filepath.Join(t.TempDir(), "My App")
 	if err := os.Mkdir(project, 0700); err != nil {
 		t.Fatal(err)
@@ -231,7 +235,10 @@ func TestStartRemembersItsFirstRunAnswers(t *testing.T) {
 
 // Without a workspace the CLI refuses to start: which Code workspace uses a folder is never guessed.
 func TestStartRequiresAWorkspace(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("APPDATA", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	project := filepath.Join(t.TempDir(), "app")
 	if err := os.Mkdir(project, 0700); err != nil {
 		t.Fatal(err)

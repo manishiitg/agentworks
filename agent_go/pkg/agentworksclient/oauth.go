@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -180,10 +179,11 @@ func ConfigTokenProvider(server, path string) func(context.Context) (string, err
 			return "", err
 		}
 		defer lock.Close()
-		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		unlock, err := lockFileExclusive(lock)
+		if err != nil {
 			return "", err
 		}
-		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		defer unlock()
 		cfg, err = LoadConfig(path)
 		if err != nil {
 			return "", err

@@ -238,6 +238,19 @@ it('a link from `agentworks start` names its workspace, is handed out once, and 
   expect(codeChatModeForChat('fresh-chat')).toBe('server')
 })
 
+it('the setup page also gives Windows commands, with the no-sandbox note', async () => {
+  transport.get.mockResolvedValue({ data: { devices: [] } })
+  const { host } = await render(true)
+  await click(host, 'Connect local files')
+  expect(host.textContent).not.toContain('install-agentworks.ps1')
+  await click(host, 'Windows')
+  expect(host.textContent).toContain('install-agentworks.ps1')
+  expect(host.textContent).toContain('agentworks.exe" start --server')
+  expect(host.textContent).toContain('commands the agent runs are not sandboxed')
+  await click(host, 'macOS / Linux')
+  expect(host.textContent).not.toContain('agentworks.exe')
+})
+
 it('shows Downloads permission before switching and on the connected summary', async () => {
   transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'project', writable: false, shell: true, downloads: true, guard: {} }] }] } })
   const { host } = await render(true)

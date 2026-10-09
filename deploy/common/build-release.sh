@@ -203,16 +203,17 @@ vault_build "$REPO_ROOT" "$OUT"
 install -m 0755 "$REPO_ROOT/deploy/aws-ec2/server/update-coding-clis.sh" "$OUT/bin/update-coding-clis"
 
 step "Building AgentWorks CLI downloads"
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-  os="${target%-*}"; arch="${target#*-}"; name="agentworks-$target"
+for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
+  os="${target%-*}"; arch="${target#*-}"; name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
   (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=${REV[mcp-agent-builder-go]}" -o "$OUT/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
-  chmod +x "$OUT/downloads/$name"
+  [[ "$os" == windows ]] || chmod +x "$OUT/downloads/$name"
   (cd "$OUT/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
-  case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; esac
+  case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac
   actual="$(file -b "$OUT/downloads/$name")"
   [[ "$actual" == *"$expected"* ]] || { echo "Invalid $name binary: $actual" >&2; exit 1; }
 done
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$OUT/downloads/install-agentworks.sh"
+install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$OUT/downloads/install-agentworks.ps1"
 bash -n "$OUT/downloads/install-agentworks.sh"
 
 step "Building frontend"

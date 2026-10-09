@@ -1,8 +1,12 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package localfiles
 
-import "os/exec"
+import (
+	"context"
+	"errors"
+	"os/exec"
+)
 
 func configureShellProcess(cmd *exec.Cmd) func() {
 	return func() {
@@ -10,4 +14,10 @@ func configureShellProcess(cmd *exec.Cmd) func() {
 			_ = cmd.Process.Kill()
 		}
 	}
+}
+
+func runShellCommand(cmd *exec.Cmd) error { return cmd.Run() }
+
+func windowsShellCommand(context.Context, string, string) (*exec.Cmd, func(), error) {
+	return nil, nil, errors.New("not Windows")
 }

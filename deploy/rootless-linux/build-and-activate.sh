@@ -183,21 +183,23 @@ vault_build "$REPO_ROOT" "$BUILD_DIR"
 
 echo "==> [$RELEASE_ID] Building AgentWorks CLI downloads"
 mkdir -p "$BUILD_DIR/downloads"
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"
   arch="${target#*-}"
-  name="agentworks-$target"
+  name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
   (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
-  chmod +x "$BUILD_DIR/downloads/$name"
+  [[ "$os" == windows ]] || chmod +x "$BUILD_DIR/downloads/$name"
   (cd "$BUILD_DIR/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
 done
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$BUILD_DIR/downloads/install-agentworks.sh"
+install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$BUILD_DIR/downloads/install-agentworks.ps1"
 printf '{"version":"%s","release":"%s"}\n' "$builder_revision" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
 bash -n "$BUILD_DIR/downloads/install-agentworks.sh"
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-  case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; esac
-  actual="$(file -b "$BUILD_DIR/downloads/agentworks-$target")"
-  [[ "$actual" == *"$expected"* ]] || { echo "Invalid agentworks-$target binary: $actual" >&2; exit 1; }
+for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
+  case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac
+  suffix=""; [[ "$target" != windows-* ]] || suffix=".exe"
+  actual="$(file -b "$BUILD_DIR/downloads/agentworks-$target$suffix")"
+  [[ "$actual" == *"$expected"* ]] || { echo "Invalid agentworks-$target$suffix binary: $actual" >&2; exit 1; }
 done
 
 echo "==> [$RELEASE_ID] Building frontend"

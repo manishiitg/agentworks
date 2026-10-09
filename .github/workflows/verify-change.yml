@@ -99,3 +99,37 @@ jobs:
       - name: Ticket check
         if: hashFiles('scripts/tickets.py') != ''
         run: python3 scripts/tickets.py check
+
+  # Windows: runs only when the commit names tests for it. Each line is "Verify-Windows-Test: <directory> <go test arguments>",
+  # for example: Verify-Windows-Test: workspace ./localfiles -run '^TestWindowsShell'. The CLI is always built for Windows.
+  windows:
+    if: contains(github.event.head_commit.message, 'Verify-Windows-Test:')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - name: Build the CLI for Windows
+        shell: bash
+        working-directory: agent_go
+        env:
+          GOWORK: "off"
+        run: |
+          go build -o agentworks.exe ./cmd/agentworks
+          ./agentworks.exe version
+      - name: Windows tests named in the commit
+        shell: bash
+        env:
+          GOWORK: "off"
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "$COMMIT_MESSAGE" | grep -E '^Verify-Windows-Test:' | sed 's/^Verify-Windows-Test:[[:space:]]*//' > tests.txt || true
+          while IFS= read -r line; do
+            dir="${line%% *}"; args="${line#* }"
+            echo "::group::(cd $dir) go test $args"
+            (cd "$dir" && eval "go test $args -count=1")
+            echo "::endgroup::"
+          done < tests.txt

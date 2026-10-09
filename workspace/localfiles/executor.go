@@ -30,8 +30,8 @@ type Executor struct {
 }
 
 func Open(deviceID string, grants []Grant) (*Executor, error) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		return nil, fmt.Errorf("the local executor supports macOS and Linux")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		return nil, fmt.Errorf("the local executor supports macOS, Linux and Windows")
 	}
 	grants = append([]Grant(nil), grants...)
 	for i := range grants {

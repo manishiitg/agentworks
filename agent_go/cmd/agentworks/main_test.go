@@ -1,3 +1,7 @@
+//go:build !windows
+
+// These contract tests need the server product definition, which does not build on Windows; the Windows CLI tests are in
+// executor_test.go.
 package main
 
 import (

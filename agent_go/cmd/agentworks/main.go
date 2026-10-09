@@ -334,11 +334,15 @@ func (o *options) browserLogin(ctx context.Context, cfg agentworksclient.Config,
 }
 
 func openLoginBrowser(link string) {
-	command := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		command = "open"
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", link)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", link)
+	default:
+		cmd = exec.Command("xdg-open", link)
 	}
-	cmd := exec.Command(command, link)
 	if err := cmd.Start(); err != nil {
 		return
 	}

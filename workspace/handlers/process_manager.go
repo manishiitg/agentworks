@@ -78,7 +78,7 @@ func registerShellProcess(cmd *exec.Cmd, owner ProcessOwner, command, workingDir
 	}
 	if cmd != nil && cmd.Process != nil {
 		record.PID = cmd.Process.Pid
-		if pgid, err := syscall.Getpgid(record.PID); err == nil {
+		if pgid, err := getProcessGroup(record.PID); err == nil {
 			record.PGID = pgid
 		}
 	}
@@ -477,21 +477,21 @@ func terminateProcessGroup(pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("invalid pid %d", pid)
 	}
-	if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
-		if currentPGID, currentErr := syscall.Getpgid(os.Getpid()); currentErr != nil || pgid != currentPGID {
-			_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	if pgid, err := getProcessGroup(pid); err == nil && pgid > 0 {
+		if currentPGID, currentErr := getProcessGroup(os.Getpid()); currentErr != nil || pgid != currentPGID {
+			_ = signalProcessGroup(pgid, syscall.SIGTERM)
 			time.Sleep(750 * time.Millisecond)
 			if !processExists(pid) {
 				return nil
 			}
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			_ = signalProcessGroup(pgid, syscall.SIGKILL)
 			return nil
 		}
 	}
-	_ = syscall.Kill(pid, syscall.SIGTERM)
+	_ = signalProcess(pid, syscall.SIGTERM)
 	time.Sleep(750 * time.Millisecond)
 	if processExists(pid) {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		_ = signalProcess(pid, syscall.SIGKILL)
 	}
 	return nil
 }
@@ -500,8 +500,7 @@ func processExists(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	err := syscall.Kill(pid, 0)
-	return err == nil
+	return processRunning(pid)
 }
 
 func staleWorkflowProcessAge() time.Duration {

@@ -11,19 +11,24 @@ import (
 )
 
 // cliDownloadFiles is the exact set of CLI distribution files served from the
-// release downloads directory: darwin/linux binaries, their sha256 sidecars,
-// and the installer. Anything else 404s — no listing, no traversal.
+// release downloads directory: darwin/linux/windows binaries, their sha256 sidecars,
+// and the installers. Anything else 404s — no listing, no traversal.
 var cliDownloadFiles = map[string]string{
-	"agentworks-darwin-arm64":        "application/octet-stream",
-	"agentworks-darwin-amd64":        "application/octet-stream",
-	"agentworks-linux-amd64":         "application/octet-stream",
-	"agentworks-linux-arm64":         "application/octet-stream",
-	"agentworks-darwin-arm64.sha256": "text/plain; charset=utf-8",
-	"agentworks-darwin-amd64.sha256": "text/plain; charset=utf-8",
-	"agentworks-linux-amd64.sha256":  "text/plain; charset=utf-8",
-	"agentworks-linux-arm64.sha256":  "text/plain; charset=utf-8",
-	"install-agentworks.sh":          "text/x-shellscript; charset=utf-8",
-	"version.json":                   "application/json",
+	"agentworks-darwin-arm64":             "application/octet-stream",
+	"agentworks-darwin-amd64":             "application/octet-stream",
+	"agentworks-linux-amd64":              "application/octet-stream",
+	"agentworks-linux-arm64":              "application/octet-stream",
+	"agentworks-windows-amd64.exe":        "application/octet-stream",
+	"agentworks-windows-arm64.exe":        "application/octet-stream",
+	"agentworks-windows-amd64.exe.sha256": "text/plain; charset=utf-8",
+	"agentworks-windows-arm64.exe.sha256": "text/plain; charset=utf-8",
+	"install-agentworks.ps1":              "text/plain; charset=utf-8",
+	"agentworks-darwin-arm64.sha256":      "text/plain; charset=utf-8",
+	"agentworks-darwin-amd64.sha256":      "text/plain; charset=utf-8",
+	"agentworks-linux-amd64.sha256":       "text/plain; charset=utf-8",
+	"agentworks-linux-arm64.sha256":       "text/plain; charset=utf-8",
+	"install-agentworks.sh":               "text/x-shellscript; charset=utf-8",
+	"version.json":                        "application/json",
 }
 
 // cliDownloadsDirOverride pins the downloads directory in tests. Production

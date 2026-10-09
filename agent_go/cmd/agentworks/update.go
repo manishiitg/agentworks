@@ -94,13 +94,18 @@ func updateAssetName() (string, error) {
 		osName = "darwin"
 	case "linux":
 		osName = "linux"
+	case "windows":
+		osName = "windows"
 	default:
-		return "", fmt.Errorf("self-update supports macOS and Linux, not %s", runtime.GOOS)
+		return "", fmt.Errorf("self-update supports macOS, Linux and Windows, not %s", runtime.GOOS)
 	}
 	switch runtime.GOARCH {
 	case "arm64", "amd64":
 	default:
 		return "", fmt.Errorf("self-update supports arm64 and amd64, not %s", runtime.GOARCH)
+	}
+	if osName == "windows" {
+		return "agentworks-windows-" + runtime.GOARCH + ".exe", nil
 	}
 	return "agentworks-" + osName + "-" + runtime.GOARCH, nil
 }

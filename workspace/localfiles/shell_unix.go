@@ -3,6 +3,8 @@
 package localfiles
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"syscall"
@@ -28,4 +30,10 @@ func configureShellProcess(cmd *exec.Cmd) func() {
 	}
 	cmd.WaitDelay = time.Second
 	return kill
+}
+
+func runShellCommand(cmd *exec.Cmd) error { return cmd.Run() }
+
+func windowsShellCommand(context.Context, string, string) (*exec.Cmd, func(), error) {
+	return nil, nil, errors.New("not Windows")
 }

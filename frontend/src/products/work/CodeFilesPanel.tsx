@@ -38,23 +38,39 @@ function SetupStep({ number, title, children }: { number: number; title: string;
   </div>
 }
 
+// PowerShell single-quoted string: a quote inside is doubled.
+function psQuote(value: string) { return `'${value.replace(/'/g, "''")}'` }
+const looksLikeWindows = () => typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent || '')
+
 function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: boolean; reconnecting: boolean; workspaceName?: string }) {
   const base = getApiBaseUrl() || window.location.origin
-  const cli = '"$HOME/.local/bin/agentworks"'
+  const [windows, setWindows] = useState(looksLikeWindows)
+  const name = workspaceName || 'your workspace name'
+  const installCommand = windows
+    ? `& ([scriptblock]::Create((irm ${psQuote(`${base}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${psQuote(base)} -NoLogin`
+    : `curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`
+  const startCommand = windows
+    ? `cd C:\\path\\to\\your\\project; & "$env:LOCALAPPDATA\\agentworks\\agentworks.exe" start --server ${psQuote(base)} --workspace ${psQuote(name)}`
+    : `cd /path/to/your/project && "$HOME/.local/bin/agentworks" start --server ${shellQuote(base)} --workspace ${shellQuote(name)}`
   return <details className="group" open={!connected && !reconnecting}>
-    <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux</span></summary>
+    <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux · Windows</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
-      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects your project folder. Already installed? Start at step 2.</p>
+      <div role="group" aria-label="Your computer" className="flex gap-1.5">
+        <Button size="sm" variant={windows ? 'ghost' : 'secondary'} aria-pressed={!windows} onClick={() => setWindows(false)}>macOS / Linux</Button>
+        <Button size="sm" variant={windows ? 'secondary' : 'ghost'} aria-pressed={windows} onClick={() => setWindows(true)}>Windows</Button>
+      </div>
+      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer{windows ? ' in PowerShell' : ''}. Your model stays on this server; the CLI connects your project folder. Already installed? Start at step 2.</p>
       <SetupStep number={1} title="Install the CLI">
-        <CopyCommand label="install command" command={`curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`} />
-        <p className="text-xs text-muted-foreground">Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.</p>
+        <CopyCommand label="install command" command={installCommand} />
+        <p className="text-xs text-muted-foreground">{windows ? 'Installs AgentWorks in %LOCALAPPDATA%\\agentworks and adds it to your PATH; no administrator rights. Running commands on your computer needs Git for Windows (git-scm.com). No model or server runs on your computer.' : 'Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.'}</p>
       </SetupStep>
       <SetupStep number={2} title="Go to your project folder and start">
-        <CopyCommand label="start command" command={`cd /path/to/your/project && ${cli} start --server ${shellQuote(base)} --workspace ${shellQuote(workspaceName || 'your workspace name')}`} />
-        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with this workspace (the name after --workspace, as shown in Settings), with read and write access, and the agent can run commands there. The CLI remembers the workspace for that folder. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and whether to open this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
+        <CopyCommand label="start command" command={startCommand} />
+        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with this workspace (the name after --workspace, as shown in Settings), with read and write access, and the agent can run commands there. The CLI remembers the workspace for that folder. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and opens this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
       </SetupStep>
       <SetupStep number={3} title="Check it, stop it, or fix it">
-        <p className="text-xs leading-5 text-muted-foreground">Press <span className="font-medium">Verify connection</span> below to confirm this computer is connected. <code className="font-mono">agentworks stop</code> ends sharing for the current folder, <code className="font-mono">agentworks status</code> lists what is shared, and <code className="font-mono">agentworks start --debug</code> prints diagnostics and every request from the server if something does not work. Add <code className="font-mono">--block .env</code> to hide a file, or <code className="font-mono">--downloads</code> to also share ~/Downloads.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Press <span className="font-medium">Verify connection</span> below to confirm this computer is connected. <code className="font-mono">agentworks stop</code> ends sharing for the current folder, <code className="font-mono">agentworks status</code> lists what is shared, <code className="font-mono">agentworks watch</code> follows a background share, and <code className="font-mono">agentworks debug</code> writes one file to send to support. <code className="font-mono">agentworks start --debug</code> prints diagnostics and every request from the server. Add <code className="font-mono">--block .env</code> to hide a file from the file tools, or <code className="font-mono">--downloads</code> to also share your Downloads folder.</p>
+        {windows && <p className="text-xs leading-5 text-muted-foreground">On Windows, commands the agent runs are not sandboxed: they run with your account&rsquo;s permissions. The folder rules protect file reads and edits only.</p>}
       </SetupStep>
     </div>
   </details>
