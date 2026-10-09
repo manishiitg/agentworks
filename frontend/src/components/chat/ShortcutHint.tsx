@@ -14,9 +14,7 @@ function Key({ children }: { children: ReactNode }) {
 export function ShortcutHint({ extra }: { extra?: ReactNode }) {
   return <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-border pt-3 text-xs leading-5 text-muted-foreground" data-testid="shortcut-hint">
     <Keyboard className="h-3.5 w-3.5 shrink-0" aria-hidden />
-    <span><Key>⌘K</Key> / <Key>Ctrl+K</Key> jump to any product, project or chat</span>
-    <span aria-hidden>·</span>
-    <span><Key>⌘J</Key> / <Key>Ctrl+J</Key> open a panel</span>
+    <span><Key>⌘K</Key> / <Key>Ctrl+K</Key> search products, projects, chats, panels and tabs</span>
     <span aria-hidden>·</span>
     <span><Key>Esc</Key> stop a running chat</span>
     <span aria-hidden>·</span>

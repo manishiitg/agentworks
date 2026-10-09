@@ -14,7 +14,7 @@ export type GatewayPanel = (typeof gatewayPanels)[number]['id']
 
 export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSettings, revision, hideHeader = true, peopleTabRequest }: {
   base: string; servers: ReactNode; panel: GatewayPanel; chatBusy: boolean; modelSettings: ReactNode; revision?: string; hideHeader?: boolean
-  /** ⌘/Ctrl+J opens People on Users or Groups; the token lets the same request repeat. */
+  /** ⌘/Ctrl+K opens People on Users or Groups; the token lets the same request repeat. */
   peopleTabRequest?: { tab: 'users' | 'groups'; token: number }
 }) {
   const [peopleTab, setPeopleTab] = useState<'users' | 'groups'>(peopleTabRequest?.tab ?? 'users')

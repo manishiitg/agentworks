@@ -5,7 +5,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
-export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products'
+export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products' | 'panels'
 export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
@@ -46,6 +46,7 @@ export function quickNavigationItems(
   if (products.includes('work')) browse('crew', 'All Crews')
   if (products.includes('code')) browse('code', 'All Code projects')
   if (products.length) browse('products', 'All products')
+  if (products.includes(current)) browse('panels', 'All panels and tabs')
   if (products.includes('agentworks')) menu('activity', 'Activity', 'Automation activity and recent runs')
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
     menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')

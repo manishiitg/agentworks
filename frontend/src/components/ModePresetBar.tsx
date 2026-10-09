@@ -886,18 +886,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                     <kbd className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 text-xs rounded font-mono font-semibold">⌘K / Ctrl+K</kbd>
                   </div>
                   <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
-                    Jump to any product, project, workflow or chat. Use @active or @events to narrow the list.
-                  </p>
-                </div>
-
-                {/* Panel search (owner 2026-10-07): the right-hand toolbar by keyboard. */}
-                <div className="rounded-lg border border-border bg-muted/30 p-3.5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold">Open a panel</span>
-                    <kbd className="rounded bg-muted px-2 py-1 font-mono text-xs font-semibold">⌘J / Ctrl+J</kbd>
-                  </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Search this page's right-hand panels (Dashboard, Files, Costs, Integrations…) and open one. Works with the toolbar hidden.
+                    Search products, projects, workflows, chats, toolbar panels and their tabs. Use @active or @panels to narrow the list. Panels open even with the toolbar hidden.
                   </p>
                 </div>
 

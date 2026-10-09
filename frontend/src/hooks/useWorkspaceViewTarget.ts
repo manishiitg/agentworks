@@ -7,7 +7,7 @@ import type { WorkspaceViewId } from '../components/workflow/workspaceViews'
 const appliedTokens = new Map<string, number>()
 
 /** Calls apply(target) once for each new target aimed at this view, including
- * one set just before the panel mounted (⌘/Ctrl+J opens a panel on a tab). */
+ * one set just before the panel mounted (⌘/Ctrl+K opens a panel on a tab). */
 export function useWorkspaceViewTarget(view: WorkspaceViewId, apply: (target: string) => void, enabled = true) {
   const target = useWorkflowStore(state => state.workspaceViewTarget)
   const applyRef = useRef(apply)

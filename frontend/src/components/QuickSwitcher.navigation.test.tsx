@@ -24,6 +24,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useChatStore } from '../stores/useChatStore'
 import { useAppStore } from '../stores/useAppStore'
+import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigation'
 
@@ -33,6 +34,7 @@ afterEach(() => {
   cleanups.splice(0).forEach(fn => fn())
   delete (window as Window & { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__
   useAuthStore.setState({ user: null })
+  usePanelSwitcherStore.setState({ entries: {}, toolbarMinimized: false })
 })
 
 async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'code', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
@@ -182,4 +184,53 @@ it('rechecks access if a menu was selected after permission changed', async () =
   useAuthStore.setState({ user: { is_admin: false, allowed_products: ['code'] } as never })
   expect(openQuickNavigation(users)).toBe(false)
   expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
+})
+
+
+it('browses current toolbar panels and opens a nested tab from unified search while the toolbar is hidden', async () => {
+  const open = vi.fn()
+  const { host, onClose } = await renderNavigation('', undefined, true, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    usePanelSwitcherStore.setState({ toolbarMinimized: true })
+    usePanelSwitcherStore.getState().register('code', { panels: [
+      { id: 'files', label: 'Files' },
+      { id: 'integrations', label: 'Integrations', sections: [{ id: 'slack', label: 'Slack', keywords: 'channels messages' }] },
+    ], open })
+    usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'crew-only', label: 'Crew only panel' }], open: vi.fn() })
+  })
+  expect(host.querySelector('[data-navigation-id="panel:files"]')).not.toBeNull()
+  expect(host.querySelector('[data-navigation-id="panel:integrations:slack"]')).not.toBeNull()
+  expect(host.querySelector('[data-navigation-id="panel:crew-only"]')).toBeNull()
+  await act(async () => host.querySelector('[data-navigation-id="browse:panels"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['panel:files', 'panel:integrations', 'panel:integrations:slack'])
+  await act(async () => host.querySelector('[aria-label="Show all work and navigation"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  const input = host.querySelector('input')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'messages integrations')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(host.querySelectorAll('[data-navigation-id]')).toHaveLength(1)
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(open).toHaveBeenCalledWith('integrations', 'slack')
+  expect(usePanelSwitcherStore.getState().toolbarMinimized).toBe(false)
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
+it('opens a parent panel with @panels and refuses stale panel selections after access changes', async () => {
+  const open = vi.fn()
+  const { host, onClose } = await renderNavigation('@panels Files', undefined, true, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'files', label: 'Files' }], open })
+  })
+  await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(open).toHaveBeenCalledWith('files', undefined)
+  expect(onClose).toHaveBeenCalledOnce()
+  open.mockClear(); onClose.mockClear()
+  const row = host.querySelector('[data-navigation-id="panel:files"]')!
+  await act(async () => {
+    useAuthStore.setState({ user: { allowed_products: ['work'] } as never })
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+  })
+  expect(open).not.toHaveBeenCalled()
+  expect(onClose).not.toHaveBeenCalled()
 })

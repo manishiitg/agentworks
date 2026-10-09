@@ -1,8 +1,8 @@
 // The one place to add, rename or remove a right-panel view in any product.
-// Each product's toolbar renders its buttons from here, and the ⌘/Ctrl+J
+// Each product's toolbar renders its buttons from here, and the ⌘/Ctrl+K
 // panel search lists what those toolbars show, so nothing else needs editing.
 //
-// Sections are the tabs inside a panel. ⌘/Ctrl+J lists them too ("Slack",
+// Sections are the tabs inside a panel. ⌘/Ctrl+K lists them too ("Slack",
 // "Models", "Gmail") and opens the panel on that tab; keywords add search words.
 //
 // Workflows and Relays keep their richer registry in
@@ -63,7 +63,7 @@ export const VAULT_PANELS = [
   { id: 'models', label: 'Models', icon: BrainCircuit },
 ] as const
 
-/** A tab inside a panel. The panel opens on it from ⌘/Ctrl+J. */
+/** A tab inside a panel. The panel opens on it from ⌘/Ctrl+K. */
 export interface PanelSection { id: string; label: string; keywords?: string }
 
 /** Integrations (workflows, Relays, Crew and Code). The MCP sub-tabs live under "Tools & secrets". */

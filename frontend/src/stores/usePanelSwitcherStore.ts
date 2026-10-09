@@ -36,7 +36,7 @@ export const usePanelSwitcherStore = create<PanelSwitcherState>(set => ({
   },
 }))
 
-/** Registers a product toolbar's panels for the ⌘/Ctrl+J panel search. */
+/** Registers a product toolbar's panels for the ⌘/Ctrl+K panel search. */
 export function useRegisterPanelSwitcher(surface: ProductSurface | null | undefined, panels: PanelSwitcherPanel[], open: (id: string, section?: string) => void) {
   const openRef = useRef(open)
   openRef.current = open

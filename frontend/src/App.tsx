@@ -42,7 +42,6 @@ import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher from './components/QuickSwitcher'
 import { WelcomeHome } from './components/WelcomeHome'
 import { setPendingLocalLink } from './products/work/codeLocalFiles'
-import { PanelSwitcher } from './components/PanelSwitcher'
 import { markFeatureUsed } from './utils/featureUsage'
 
 const queryClient = new QueryClient();
@@ -553,7 +552,6 @@ function App() {
   }, [])
 
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
-  const [showPanelSwitcher, setShowPanelSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
 
   
@@ -697,23 +695,12 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Cmd/Ctrl+K opens shared navigation from every product surface. It is
-      // the one app-wide shortcut (owner 2026-10-06): the old number shortcuts
-      // were Goals-only and took the browser's own tab keys.
+      // Cmd/Ctrl+K searches work, products, toolbar panels and nested tabs. (PLAT-746)
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
-        setShowPanelSwitcher(false)
         markFeatureUsed('quick-switcher')
         setShowQuickSwitcher(prev => !prev)
-        return
-      }
-      // Cmd/Ctrl+J searches the current product's right-panel views (owner 2026-10-07).
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.code === 'KeyJ') {
-        event.preventDefault()
-        setShowQuickSwitcher(false)
-        markFeatureUsed('panel-switcher')
-        setShowPanelSwitcher(prev => !prev)
         return
       }
     }
@@ -784,7 +771,6 @@ function App() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {showPanelSwitcher && <PanelSwitcher onClose={() => setShowPanelSwitcher(false)} />}
         {productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (

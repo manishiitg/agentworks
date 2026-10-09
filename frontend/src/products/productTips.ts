@@ -22,14 +22,13 @@ export interface ProductTip {
 }
 
 export const PRODUCT_TIPS: ProductTip[] = [
-  { id: 'panel-search', text: '⌘J / Ctrl+J opens any panel or tab. Try typing “slack”.', skipIfUsed: 'panel-switcher' },
-  { id: 'quick-switcher', text: '⌘K / Ctrl+K jumps to any product, project or chat.', skipIfUsed: 'quick-switcher' },
+  { id: 'quick-switcher', text: '⌘K / Ctrl+K searches products, projects, chats, panels and tabs. Try typing “slack”.', skipIfUsed: 'quick-switcher' },
   { id: 'code-new-tab', text: '⌥⇧T / Alt+Shift+T opens another chat tab, so two tasks run side by side.', products: ['code'], skipIfUsed: 'chat-tab-new', when: c => c.codeTabs <= 1 },
   { id: 'code-tab-keys', text: 'Switch chat tabs with ⌘1–5 in the desktop app, or ⌥1–5 in a browser.', products: ['code'], skipIfUsed: 'chat-tab-keys', when: c => c.codeTabs >= 2 },
   { id: 'code-ask-chat', text: 'Chats in a Code can ask each other, e.g. “ask Chat 2 to review this”.', products: ['code'], when: c => c.codeTabs >= 2 },
   { id: 'reminders', text: 'Ask for a reminder, e.g. “check the deploy in 15 minutes”.', products: ['code', 'work'] },
   { id: 'step-test-mode', text: 'Changed a step? Ask to run it in test mode: nothing is sent and the data is a copy.', products: ['agentworks'] },
-  { id: 'toolbar-hide', text: 'The icon at the end of the toolbar hides it; ⌘J still opens any panel.', skipIfUsed: 'toolbar-hide' },
+  { id: 'toolbar-hide', text: 'The icon at the end of the toolbar hides it; ⌘K still opens any panel.', skipIfUsed: 'toolbar-hide' },
 ]
 
 const STATE_KEY = 'agentworks.working-tip'

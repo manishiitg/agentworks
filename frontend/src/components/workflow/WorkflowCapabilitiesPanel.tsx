@@ -127,7 +127,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
-  // ⌘/Ctrl+J opens this panel on a tab (Slack, Gmail, Secrets, Models…).
+  // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets, Models…).
   useWorkspaceViewTarget('mcp', target => {
     if (mcpTabs.some(option => option.value === target)) { setTab(target as McpTab); setIntegrationMenu(false) }
     else if (PROJECT_PLUGIN_TABS.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }

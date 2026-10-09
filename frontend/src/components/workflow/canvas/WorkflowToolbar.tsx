@@ -192,7 +192,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const [notificationState, setNotificationState] = useState<WorkflowNotificationState | 'loading'>('loading')
   // Share is for this workflow's owners (or an admin), multi-user mode only.
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
-  // ⌘/Ctrl+J searches the same panels this toolbar shows (owner, 2026-10-07).
+  // ⌘/Ctrl+K searches the same panels this toolbar shows (owner, 2026-10-07).
   const panelSwitcherPanels = useMemo<PanelSwitcherPanel[]>(() => withPanelSections([
     ...(relayMode ? [] : [{ id: 'report', label: 'Dashboard', group: 'Views' }, { id: 'pulse', label: 'Pulse', group: 'Views' }, { id: 'human-actions', label: 'Human actions', group: 'Views' }]),
     ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Graph' : view.label, group: 'Views' })),

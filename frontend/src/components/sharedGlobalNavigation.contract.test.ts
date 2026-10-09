@@ -7,6 +7,8 @@ describe('shared AgentWorks and Crew global navigation shell', () => {
     const switcher = source.indexOf('{showQuickSwitcher && (')
     const surfaceSwitch = source.indexOf("{productSurface === 'video-studio' ? (")
 
+    expect(source).not.toContain('PanelSwitcher')
+    expect(source).not.toContain("event.code === 'KeyJ'")
     expect(switcher).toBeGreaterThan(0)
     expect(switcher).toBeLessThan(surfaceSwitch)
     expect(source).not.toContain("surface !== 'agentworks' && surface !== 'work'")

@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — One search shortcut for navigation and toolbar panels
+
+Cmd/Ctrl+K lists the current product's registered toolbar panels and nested tabs
+alongside work, products and menus; `@panels` and All panels and tabs narrow the list.
+Selecting a panel reveals the toolbar and opens the requested tab through its existing
+registration. Remove Cmd/Ctrl+J and its separate dialog so one shortcut reaches every
+existing destination. Owner request; ticket:
+[PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 ### 2026-10-09 — Retire Dominion; trading is a workflow in Goals
 
 Remove the standalone trading product, its frontend surface, backend profile and tools, and legacy installer.

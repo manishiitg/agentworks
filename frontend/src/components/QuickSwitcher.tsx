@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -18,6 +18,7 @@ import { isCodeProductSession, isWorkProductSession, openGlobalActivitySession, 
 import type { WorkSession } from '../products/work/workSessions'
 import { CODE_PRODUCT } from '../products/work/projectProduct'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { intersectAllowedProductSurfaces, isEnabledProductSurface } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
@@ -96,7 +97,21 @@ interface CrewChatItem {
   icon?: string
 }
 
-type QuickSwitcherItem = WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+interface PanelItem {
+  type: 'panel'
+  id: string
+  label: string
+  subtitle: string
+  searchText: string
+  isActive: false
+  lastAccessedAt: 0
+  activeSession?: undefined
+  hasLocalActivity: false
+  panelId: string
+  sectionId?: string
+}
+
+type QuickSwitcherItem = PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
 
 const EMPTY_CHAT_TABS: Record<string, ChatTab> = {}
 const EMPTY_ACTIVE_SESSIONS: ActiveSessionInfo[] = []
@@ -199,7 +214,7 @@ const activeSessionSearchText = (session?: ActiveSessionInfo): string =>
 function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
   const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : item.scope === 'code' ? 'code' : undefined)
   if (surface) return <ProductSurfaceIcon surface={surface} />
-  const Icon = item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
+  const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
     : item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug
     : item.action === 'schedules' ? CalendarClock : item.action === 'activity' ? NotebookText
     : item.action === 'vault-audit' ? ScrollText : item.action === 'vault-connect' ? PlugZap : Activity
@@ -219,6 +234,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
+  const panelEntry = usePanelSwitcherStore(state => isOpen ? state.entries[productSurface] : undefined)
   const isWorkflowMode = selectedModeCategory === 'workflow'
   const isChatMode = selectedModeCategory === 'multi-agent'
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
@@ -281,6 +297,20 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       setTimeout(() => searchInputRef.current?.focus(), 50)
     }
   }, [isOpen, initialQuery])
+
+  const panelItems = useMemo<PanelItem[]>(() => {
+    if (!isOpen || !navigationItems.some(item => item.surface === productSurface)) return []
+    return (panelEntry?.panels ?? []).flatMap(panel => {
+      const common = { type: 'panel' as const, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const, panelId: panel.id }
+      return [
+        { ...common, id: `panel:${panel.id}`, label: panel.label, subtitle: `Panel${panel.group ? ` · ${panel.group}` : ''}`, searchText: `${panel.label} ${panel.id} ${panel.group ?? ''}` },
+        ...(panel.sections ?? []).map(section => ({
+          ...common, id: `panel:${panel.id}:${section.id}`, label: section.label, subtitle: `Panel tab · ${panel.label}`, sectionId: section.id,
+          searchText: `${section.label} ${section.id} ${section.keywords ?? ''} ${panel.label}`,
+        })),
+      ]
+    })
+  }, [isOpen, navigationItems, productSurface, panelEntry])
 
   // All products share navigation; stable product metadata owns project routing.
   const allItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -489,13 +519,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         if (isCodeProductSession(item.session)) return visibleProducts.has('code')
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
-    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope)]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems])
+    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems, panelItems])
 
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?)\s*/)
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?|panels?)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
@@ -506,7 +536,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'workflow' || scope === 'workflows') return item.type === 'workflow' && item.preset.workflowKind !== 'relay'
           if (scope === 'relay' || scope === 'relays') return item.type === 'workflow' && item.preset.workflowKind === 'relay'
           if (scope === 'product' || scope === 'products') return item.type === 'product'
-          if (scope === 'menu' || scope === 'menus') return item.type === 'menu'
+          if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
+          if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
           if (scope === 'crew') return item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
           if (scope === 'code') return item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && isCodeProductSession(item.session))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
@@ -516,7 +547,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
     if (!q) return scoped
 
-    const filtered = scoped.filter(item =>
+    const filtered = scoped.filter(item => item.type === 'panel'
+      ? q.split(/\s+/).every(word => `${item.label} ${item.subtitle} ${item.searchText}`.toLowerCase().includes(word))
+      :
       item.label.toLowerCase().includes(q) ||
       item.subtitle.toLowerCase().includes(q) ||
       ('searchText' in item && !!item.searchText?.toLowerCase().includes(q))
@@ -571,6 +604,17 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
+    if (item.type === 'panel') {
+      const current = useProductSurfaceStore.getState().productSurface
+      if (current !== productSurface || !quickNavigationItems(useAuthStore.getState().user, current).some(candidate => candidate.surface === current)) return
+      const entry = usePanelSwitcherStore.getState().entries[current]
+      const panel = entry?.panels.find(candidate => candidate.id === item.panelId)
+      if (!panel || (item.sectionId && !panel.sections?.some(section => section.id === item.sectionId))) return
+      onClose()
+      usePanelSwitcherStore.getState().setToolbarMinimized(false)
+      entry?.open(item.panelId, item.sectionId)
+      return
+    }
     if (item.type === 'product' || item.type === 'menu') {
       if (item.scope) {
         const current = useProductSurfaceStore.getState().productSurface
@@ -634,7 +678,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     })
     console.timeEnd('[QuickSwitcher] workflow-switch-total')
     onClose()
-  }, [onClose])
+  }, [onClose, productSurface])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -656,7 +700,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   if (!isOpen) return null
 
-  const placeholder = 'Search running work, projects, products, or menus...'
+  const placeholder = 'Search work, products, panels, or tabs...'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
@@ -703,7 +747,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           ) : (
             filteredItems.map((item, index) => {
               const isSelected = index === selectedIndex
-              const ItemIcon = item.type === 'workflow'
+              const ItemIcon = item.type === 'panel' ? PanelRight : item.type === 'workflow'
                 ? Layers
                 : item.type === 'product'
                   ? LayoutGrid
@@ -777,7 +821,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           <div className="px-4 py-2 text-[11px] text-gray-400 dark:text-gray-500 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex items-center gap-3 min-w-0">
               <span><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">↑↓</kbd> navigate</span>
-              <span><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">↵</kbd> switch</span>
+              <span><kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-[10px]">↵</kbd> open</span>
             </div>
             <TooltipProvider delayDuration={150}>
               <nav aria-label="Quick navigation shortcuts" className="order-last flex w-full min-w-0 flex-wrap items-center justify-center gap-1 sm:order-none sm:w-auto sm:flex-1">
