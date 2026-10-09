@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,6 +131,11 @@ func reportPreviewWorkspace(r *http.Request, claims *UserClaims, requested strin
 	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace != "" && claims.ScopeWorkspace != workspacePath {
 		return "", fmt.Errorf("this preview token is bound to another workflow")
 	}
+	if claims != nil {
+		if crew, ok := resolveCrewPath(r.Context(), claims.UserID, workspacePath); ok && crew.Rest == "" {
+			workspacePath = crew.Root
+		}
+	}
 	return workspacePath, nil
 }
 
@@ -168,10 +174,16 @@ func reportPreviewWorkspaceErrorStatus(err error) int {
 	return http.StatusBadRequest
 }
 
-func (api *StreamingAPI) reportPreviewWorkspaceClient(claims *UserClaims) *workspace.Client {
+// Called only after reportPreviewReadable: legacy Crew databases still live in
+// the owner's tree. Read them with that storage identity, while report scripts
+// and their Vault/MCP calls retain the viewer's execution authority.
+func (api *StreamingAPI) reportPreviewWorkspaceClient(ctx context.Context, claims *UserClaims, workspacePath string) *workspace.Client {
 	userID := GetDefaultUserID()
 	if claims != nil && claims.UserID != "" {
 		userID = claims.UserID
+	}
+	if crew, ok := resolveCrewPath(ctx, userID, workspacePath); ok && crew.Rest == "" && !crew.Shared && crew.OwnerID != "" {
+		userID = crew.OwnerID
 	}
 	return workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
 }
@@ -195,7 +207,7 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 		return
 	}
 	full := filepath.ToSlash(filepath.Join(workspacePath, relative))
-	data, err := api.reportPreviewWorkspaceClient(claims).DownloadFile(r.Context(), full)
+	data, err := api.reportPreviewWorkspaceClient(r.Context(), claims, workspacePath).DownloadFile(r.Context(), full)
 	if err != nil {
 		status := http.StatusNotFound
 		if !strings.Contains(strings.ToLower(err.Error()), "not found") && !strings.Contains(err.Error(), "404") {
@@ -220,8 +232,9 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 func (api *StreamingAPI) handleReportPreviewQuery(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	var body struct {
-		Workspace string `json:"workspace"`
-		SQL       string `json:"sql"`
+		Workspace string        `json:"workspace"`
+		SQL       string        `json:"sql"`
+		Params    []interface{} `json:"params,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -240,9 +253,10 @@ func (api *StreamingAPI) handleReportPreviewQuery(w http.ResponseWriter, r *http
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "sql is required"})
 		return
 	}
-	result, err := api.reportPreviewWorkspaceClient(claims).QueryAuthorizedWorkflowDB(r.Context(), workspace.QueryWorkflowDBParams{
+	result, err := api.reportPreviewWorkspaceClient(r.Context(), claims, workspacePath).QueryAuthorizedWorkflowDB(r.Context(), workspace.QueryWorkflowDBParams{
 		DBPath: filepath.ToSlash(filepath.Join(workspacePath, "db", "db.sqlite")),
 		SQL:    body.SQL,
+		Params: body.Params,
 	})
 	if err != nil {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})

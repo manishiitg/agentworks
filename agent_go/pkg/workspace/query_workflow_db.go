@@ -15,6 +15,8 @@ type QueryWorkflowDBParams struct {
 	SQL string `json:"sql"`
 	// Params binds positional values for ? placeholders, exactly like mutations.
 	Params []interface{} `json:"params,omitempty"`
+	// PrepareOnly validates schema and syntax without executing or requiring bindings.
+	PrepareOnly bool `json:"prepare_only,omitempty"`
 	// MaxRows bounds returned rows. Zero uses the workspace service default.
 	MaxRows int `json:"max_rows,omitempty"`
 }

@@ -31,10 +31,11 @@ it("renders query rows as a themed table with an empty state", async () => {
   ]);
   const container = host();
   const rows = await renderReportTable(document, data.query, container, {
-    query: "SELECT name, leads FROM leads",
+    query: "SELECT name, leads FROM leads WHERE status = ?",
+    params: ["open"],
   });
   expect(rows).toHaveLength(2);
-  expect(data.query).toHaveBeenCalledWith("SELECT name, leads FROM leads");
+  expect(data.query).toHaveBeenCalledWith("SELECT name, leads FROM leads WHERE status = ?", ["open"]);
   const root = container.shadowRoot!;
   expect(root.querySelectorAll("tbody tr")).toHaveLength(2);
   expect(root.textContent).toContain("Acme");

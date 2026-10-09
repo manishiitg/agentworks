@@ -43,10 +43,10 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if err := api.installWorkflowPhaseTools(context.Background(), draft, "relay-surface", "test-user", "workflow-builder", "Workflow/relay-test", "", map[string]string{"WorkshopMode": "workshop", "WorkflowKind": "relay"}, nil, nil, nil, nil, nil, QueryRequest{}, false); err != nil {
 		t.Fatal(err)
 	}
-	if len(draft.skills) != 1 || draft.skills[0].Name != "relay-builder" {
+	if len(draft.skills) != 2 || draft.skills[0].Name != "relay-builder" || draft.skills[1].Name != "relay-dashboard" {
 		t.Fatalf("Relay skills: %v", draft.skills)
 	}
-	for _, name := range []string{"test_relay", "get_relay_run", "manage_workflow_webhook", "get_relay_releases", "publish_relay"} {
+	for _, name := range []string{"test_relay", "get_relay_run", "manage_workflow_webhook", "get_relay_releases", "publish_relay", "validate_report_html", "preview_report", "get_report_link"} {
 		if _, registered := draft.tools[name]; !registered {
 			t.Errorf("shared workflow registration did not provide Relay tool %s", name)
 		}
@@ -56,7 +56,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := newProductToolGateForAllowlist("relays", tools)
-	if !gate.Admit("test_relay") || !gate.Admit("publish_relay") || gate.Admit("create_slack_bot_route") {
+	if !gate.Admit("test_relay") || !gate.Admit("publish_relay") || !gate.Admit("preview_report") || !gate.Admit("query_workflow_db") || gate.Admit("create_slack_bot_route") {
 		t.Fatal("Relay tool admission differs from product.yaml")
 	}
 }

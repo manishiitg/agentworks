@@ -18,7 +18,7 @@ chat:
     external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, publish_relay, test_relay, run_relay, get_relay_run]
     prompt:
       file: prompts/builder.md
-    skills: [relay-builder]
+    skills: [relay-builder, relay-dashboard]
     tools:
       - execute_shell_command
       - diff_patch_workspace_file
@@ -57,6 +57,12 @@ chat:
       - list_ui_capabilities
       - perform_ui_action
       - get_file_link
+      - get_report_link
+      - validate_report_html
+      - preview_report
+      - query_workflow_db
+      - mutate_workflow_db
+      - apply_workflow_db_migration
       - agent_browser
 profile:
   id: relays
@@ -70,6 +76,12 @@ profile:
       icon: git-branch
       prompt: |
         Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. Use async def run(INPUT, ctx), fresh ctx.call_agent calls, exact authored prompts, tools and explicit return JSON. Preserve user choices. Maintain structured @relay node/edge comments in relay.py following the skill: readable inputs, steps, branches and output; match agent ids to named call_agent calls. Do not create or require relay.md. Explain it for a user who does not program. Test with a supplied example before claiming it works.
+        {{context}}
+    - name: design-dashboard
+      description: Create or update this Relay's live Dashboard
+      icon: layout-dashboard
+      prompt: |
+        Create or update this Relay's Dashboard using the relay-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output

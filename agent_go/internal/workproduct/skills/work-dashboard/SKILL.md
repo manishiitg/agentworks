@@ -64,21 +64,24 @@ presentation tools; check the active capabilities before offering an export.
   user-initiated edits. Keep SQL parameterized and scope updates to stable keys.
 - For data that must be current from an outside system (Notion, a CRM, an
   API behind the project's MCP servers or secrets), write a small read-only
-  script at `code/reports/<name>.py` and call
+  `.py`, `.js` or `.mjs` script under `code/`, commonly `code/reports/<name>.py` and call
   `await window.report.run('code/reports/<name>.py', args)` inside
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Runs on the server as the project, never as the viewer: the project's selected
-    MCP servers and secrets (`$SECRET_*`). The owner and anyone viewing the
-    project can trigger it; published copies cannot.
+  - Supported in Goals/Workflow, Relays, Crew and Code project roots. Crew
+    readers follow the existing project access rules; Code scripts are owner-only.
+    Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
+    the authenticated viewer's live MCP/Vault permissions. Viewing a project does
+    not grant access to its credentials. Published static copies cannot run scripts.
   - Args arrive as JSON in `$REPORT_ARGS` (`{}` when none). Treat them as
     untrusted and validate them.
   - Print exactly one JSON value on stdout; logs go to stderr. Limits: 60 s
     and 2 MB. A failure reaches the page as an error with the stderr tail.
   - Call MCP tools with `POST $MCP_MCP/<server>/<tool>` and the `$MCP_AUTH`
     header.
-  - `$DB_PATH` is a read-only snapshot. The only writable folder is
+  - `$DB_PATH` is a read-only snapshot, unset when no database exists. Python
+    can import helpers under `code/` and installed sandbox dependencies. The only writable folder is
     `$REPORT_CACHE_DIR`.
   - There is no platform cache. Cache per query in `$REPORT_CACHE_DIR`:
     include `fetched_at`, write atomically, let `{"refresh": true}` bypass it,
@@ -117,11 +120,12 @@ window.report.ready(async function () {
 </script>
 ```
 
-- `renderTable(target, { query, searchable, sortable })` runs read-only SQL
+- `renderTable(target, { query, params, searchable, sortable })` runs read-only SQL
   and renders a themed, responsive table with an empty state. Columns come
   from the returned rows; numeric columns align right. `searchable` adds a
   filter box matching every cell; `sortable` makes headers toggle
-  ascending/descending sort. `query` is required.
+  ascending/descending sort. `query` is required; optional `params` binds `?`
+  placeholders without interpolating viewer input.
 - `renderActivity(target, { limit })` renders the activity section from the
   run and Pulse summaries in `org_dashboard_notifications`, route-grouped
   via `route_summaries_json` and markdown-rendered, with the execution-log

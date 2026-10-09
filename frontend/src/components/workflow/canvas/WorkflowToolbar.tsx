@@ -194,7 +194,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
   // ⌘/Ctrl+K searches the same panels this toolbar shows (owner, 2026-10-07).
   const panelSwitcherPanels = useMemo<PanelSwitcherPanel[]>(() => withPanelSections([
-    ...(relayMode ? [] : [{ id: 'report', label: 'Dashboard', group: 'Views' }, { id: 'pulse', label: 'Pulse', group: 'Views' }, { id: 'human-actions', label: 'Human actions', group: 'Views' }]),
+    { id: 'report', label: 'Dashboard', group: 'Views' },
+    ...(relayMode ? [] : [{ id: 'pulse', label: 'Pulse', group: 'Views' }, { id: 'human-actions', label: 'Human actions', group: 'Views' }]),
     ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Graph' : view.label, group: 'Views' })),
     ...operationsWorkspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'workshop' ? 'Triggers' : view.label, group: 'Ops' })),
     ...(relayMode ? [] : [{ id: 'backup', label: 'Backup', group: 'Ops' }, { id: 'publish', label: 'Publish', group: 'Ops' }, { id: 'notify', label: 'Notifications', group: 'Ops' }]),
@@ -412,7 +413,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
         <TooltipProvider delayDuration={150}>
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
           {/* Report stays visible beside the expanded tool groups. */}
-          {workspacePath && !relayMode && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
+          {workspacePath && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
 
           {/* One continuous pill: frequent views | operations | setup icons. */}
           {(workspacePath || canWriteWorkflow) && (

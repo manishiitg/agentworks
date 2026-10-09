@@ -1,3 +1,4 @@
+import { createReportQuery } from '../components/workflow/reportWidgets/reportQuery'
 // Headless preview page for a workflow report (preview_report tool).
 //
 // Served by the Go server at /report-preview/ (embedded), loaded by a headless
@@ -119,16 +120,16 @@ function createPreviewDataApi(): ReportDataApi {
   return {
     workspacePath: workspace,
     getCosts: options => fetchReportMetrics<WorkflowCostsResponse>('costs', { days: String(options.days || 30), before: options.before || '' }),
-    query: async (sql: string) => {
+    query: createReportQuery(workspace, async body => {
       const response = await fetch(apiUrl('query', {}), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ workspace, sql }),
+        body: JSON.stringify(body),
       })
-      const body = await response.json().catch(() => ({})) as { success?: boolean; error?: string; data?: { rows?: Record<string, unknown>[] } }
-      if (!response.ok || !body.success || !body.data) throw new Error(body.error || `Query failed (HTTP ${response.status}).`)
-      return body.data.rows ?? []
-    },
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok && !result.error) throw new Error(`Query failed (HTTP ${response.status}).`)
+      return result
+    }),
     getText: async (path: string) => {
       const result = await fetchFile(path)
       return result.ok ? result.text : null

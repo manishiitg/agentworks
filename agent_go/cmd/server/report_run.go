@@ -19,13 +19,14 @@ import (
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Live report data (window.report.run).
 //
-// A report page (a workflow's, or a crew project's Dashboard) can run one of
+// A Workflow, Relay, Crew or Code Dashboard can run one of
 // its own scripts under code/ and use
 // the JSON it prints. The script runs in the same sandbox as a scripted step:
 // read access to the workflow, a read-only DB snapshot, the workflow's
@@ -71,20 +72,32 @@ func isReportRunWorkflowRoot(workspacePath string) bool {
 // reportRunSelectionFor reads the selection without migrating or writing
 // anything: a reader's refresh must never touch the owner's manifest.
 func reportRunSelectionFor(ctx context.Context, workspacePath string) (reportRunSelection, error) {
-	if _, isCrew := parseCrewPath("", workspacePath); isCrew {
-		servers, _, err := productSelectedServers(ctx, "work", workspacePath)
+	if product, _, isProject := projectProductForPath(workspacePath); isProject {
+		servers, _, err := productSelectedServers(ctx, product.ProfileID, workspacePath)
 		if err != nil {
 			return reportRunSelection{}, err
 		}
-		secrets, _, err := productSelectedSecrets(ctx, "work", workspacePath)
+		secrets, _, err := productSelectedSecrets(ctx, product.ProfileID, workspacePath)
 		if err != nil {
 			return reportRunSelection{}, err
 		}
-		globals, err := productSelectedGlobalSecrets(ctx, "work", workspacePath)
+		globals, err := productSelectedGlobalSecrets(ctx, product.ProfileID, workspacePath)
 		if err != nil {
 			return reportRunSelection{}, err
 		}
-		return reportRunSelection{servers: servers, secrets: secrets, globalSecrets: globals}, nil
+		raw, _, err := readProjectRuntimeManifest(ctx, product.ProfileID, workspacePath)
+		if err != nil {
+			return reportRunSelection{}, err
+		}
+		var manifest struct {
+			Capabilities WorkflowCapabilities `json:"capabilities"`
+		}
+		if raw != "" {
+			if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
+				return reportRunSelection{}, err
+			}
+		}
+		return reportRunSelection{servers: servers, tools: manifest.Capabilities.SelectedTools, secrets: secrets, globalSecrets: globals}, nil
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found {
@@ -135,31 +148,55 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	workspacePath, err := reportPreviewWorkspace(r, claims, body.Workspace)
-	crew, isCrew := crewPathRef{}, false
-	if err == nil {
-		crew, isCrew = resolveCrewPath(r.Context(), claims.UserID, workspacePath)
-		if isCrew && crew.Rest == "" {
-			workspacePath = crew.Root
-		}
-	}
-	if err != nil || (isCrew && crew.Rest != "") || (!isCrew && !isReportRunWorkflowRoot(workspacePath)) {
-		http.Error(w, "a workflow or crew workspace is required", http.StatusBadRequest)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	clean, valid := cleanWorkspaceReadPath(workspacePath, false)
+	if !valid {
+		http.Error(w, "a Workflow, Relay, Crew or Code project root is required", http.StatusBadRequest)
+		return
+	}
+	crew, isCrew := resolveCrewPath(r.Context(), claims.UserID, clean)
+	ref := workspaceref.MustParse(clean)
+	root, project, projectRoot := ref.ProjectRoot()
+	isCode := projectRoot && root == workspaceref.CodeProjectsRoot && !strings.HasPrefix(project, ".")
+	if (isCrew && crew.Rest != "") || (!isCrew && !isCode && !isReportRunWorkflowRoot(clean)) {
+		http.Error(w, "a Workflow, Relay, Crew or Code project root is required", http.StatusBadRequest)
+		return
+	}
+	if isCrew {
+		workspacePath = crew.Root
+	} else if isCode {
+		owner := ref.Owner()
+		if owner == "" {
+			owner = sanitizeUserIDForPath(claims.UserID)
+		}
+		// Code dashboards follow ordinary Code ownership, including for admins.
+		// Read-only administrative inspection never authorizes script execution.
+		if codeRoleFor(r.Context(), claims.UserID, owner, project) != codeRoleOwner {
+			writeWorkflowPermissionDenied(w, "read")
+			return
+		}
+		workspacePath = workspaceref.PhysicalPathOf(owner, ref.Logical())
+		if resolveProjectOwner(r.Context(), workspacePath) != owner {
+			writeWorkflowPermissionDenied(w, "read")
+			return
+		}
 	}
 	script, ok := reportRunScriptPath(body.Path)
 	if !ok {
-		http.Error(w, "path must be a .py or .js script under code/", http.StatusBadRequest)
+		http.Error(w, "path must be a .py, .js or .mjs script under code/", http.StatusBadRequest)
 		return
 	}
-	// Owners and read-only users alike: the script runs as the workflow or
-	// crew. A crew is readable by its owner and by anyone with the Crew
-	// product (Crew Run mode).
+	// Project capabilities are selected by the owner; live viewer permissions
+	// still govern every secret and MCP call made by the script.
 	if isCrew {
 		if crewAccessFor(claims, crew) == crewAccessNone {
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}
-	} else if !requireWorkflowVisible(w, r, workspacePath) {
+	} else if !isCode && !requireWorkflowVisible(w, r, workspacePath) {
 		return
 	}
 	args := "{}"
@@ -172,6 +209,24 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 
 	docsRoot := workshop.GetPromptDocsRoot()
+	if isCode {
+		docs, err := os.OpenRoot(docsRoot)
+		if err != nil {
+			http.Error(w, "workspace unavailable", http.StatusNotFound)
+			return
+		}
+		code, err := openProjectDir(docs, productOwnerFromPath(workspacePath), root, project, "code")
+		_ = docs.Close()
+		if err != nil {
+			status := http.StatusBadRequest
+			if os.IsNotExist(err) {
+				status = http.StatusNotFound
+			}
+			http.Error(w, "Code script directory is missing or unsafe", status)
+			return
+		}
+		defer code.Close()
+	}
 	codeRoot := filepath.Join(docsRoot, workspacePath, "code")
 	absScript := filepath.Join(docsRoot, workspacePath, script)
 	// A symlink must not lead a report outside its own code/ folder.

@@ -413,9 +413,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			reportHooks := todo_creation_human.ReportHTMLValidationHooks{
 				ExplainSQL: func(ctx context.Context, sqlText string) error {
 					_, err := reportWSClient.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{
-						DBPath:  reportDBPath,
-						SQL:     "EXPLAIN " + sqlText,
-						MaxRows: 1,
+						DBPath:      reportDBPath,
+						SQL:         "EXPLAIN " + sqlText,
+						PrepareOnly: true,
 					})
 					return err
 				},

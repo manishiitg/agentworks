@@ -44,7 +44,7 @@ func TestBuilderSurfaceIsRelaySpecific(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) == 0 || !BuilderAllowsTool("test_relay") || !BuilderAllowsTool("manage_workflow_webhook") || !BuilderAllowsTool("google_workspace_cli") || !BuilderAllowsTool("list_gmail_connections") {
+	if len(tools) == 0 || !BuilderAllowsTool("test_relay") || !BuilderAllowsTool("manage_workflow_webhook") || !BuilderAllowsTool("google_workspace_cli") || !BuilderAllowsTool("list_gmail_connections") || !BuilderAllowsTool("preview_report") || !BuilderAllowsTool("query_workflow_db") {
 		t.Fatal("Relay Builder is missing Python or trigger tools")
 	}
 	for _, excluded := range []string{"create_plan", "add_step", "execute_step", "run_full_workflow", "manage_step_route", "get_contract_upgrades", "slack", "send_slack_message", "create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user", "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs"} {
@@ -79,7 +79,7 @@ func TestRelayCommandCatalog(t *testing.T) {
 		}
 		commands[command.Name] = command.Prompt
 	}
-	for _, name := range []string{"build-relay", "test", "publish", "versions", "setup-api"} {
+	for _, name := range []string{"build-relay", "design-dashboard", "test", "publish", "versions", "setup-api"} {
 		if commands[name] == "" {
 			t.Errorf("missing Relay command %s", name)
 		}
@@ -87,7 +87,7 @@ func TestRelayCommandCatalog(t *testing.T) {
 	if !strings.Contains(commands["publish"], "publish_relay") {
 		t.Fatal("publishes the wrong artifact")
 	}
-	for _, name := range []string{"design-dashboard", "setup-goals", "run-goal-work", "pulse", "backup", "schedule"} {
+	for _, name := range []string{"setup-goals", "run-goal-work", "pulse", "backup", "schedule"} {
 		if commands[name] != "" {
 			t.Errorf("workflow command leaked: %s", name)
 		}

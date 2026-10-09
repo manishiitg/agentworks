@@ -23,8 +23,11 @@ comments. The Graph displays these comments; Python alone controls execution. Ru
 come only from named recorded calls, not annotations. Do not create or require relay.md;
 existing copies are unused. Missing/invalid graph comments affect display, never execution.
 Do not create planning/plan.json or use workflow
-step, goal, Pulse, dashboard, schedule, group, migration or recovery tools. There is only
-Builder chat. Existing graph Relays remain on their saved legacy runtime; do not silently
+step, goal, Pulse, schedule, group or recovery tools. There is only
+Builder chat. When the user requests a Dashboard, follow the attached relay-dashboard
+skill and use the shared HTML authoring, validation and preview tools. Dashboard data
+may come from files, read-only scripts or an optional managed database; creating a
+Dashboard does not change relay.py, trigger behavior or the API's JSON result. Existing graph Relays remain on their saved legacy runtime; do not silently
 convert them. New Relays use relay_runtime: python.
 
 Python owns chaining, conditions, loops and data transformations. Each await

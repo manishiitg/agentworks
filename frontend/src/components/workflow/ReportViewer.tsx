@@ -16,6 +16,7 @@ import ModalPortal from '../ui/ModalPortal'
 import { FilePreviewModal } from './reportWidgets/FilePreviewModal'
 import { HtmlReportFrame } from './reportWidgets/HtmlWidgetFrame'
 import { ReportEmbedProvider, type ReportDataApi } from './reportWidgets/reportEmbedContext'
+import { createReportQuery } from './reportWidgets/reportQuery'
 import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
 import { allowedReportPath, normalizeReportSource, renderReportMarkdown, reportMarkdownBasePath } from './reportWidgets/reportMarkdown'
 import { useReportChat } from './reportWidgets/useReportChat'
@@ -107,11 +108,10 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
       workspacePath,
       getCosts: (options) => agentApi.getCosts(workspacePath, { ...options, view: 'summary' }),
       sendChatMessage: (...args: Parameters<ReportDataApi['sendChatMessage']>) => sendChatMessageRef.current(...args),
-      query: async (sql: string) => {
-        const response = await agentApi.queryWorkflowDB(`${workspacePath}/db/db.sqlite`, sql)
-        if (!response.success || !response.data) throw new Error(response.error || 'Query failed.')
-        return response.data.rows
-      },
+      query: createReportQuery(workspacePath, async body => {
+        const response = await api.post('/api/workflow/report-preview/query', body)
+        return response.data
+      }),
       getText,
       get: async (path: string) => {
         const text = await getText(path)

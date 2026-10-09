@@ -500,6 +500,20 @@ func QueryWorkflowDB(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), queryTimeout)
 	defer cancel()
 
+	if req.PrepareOnly {
+		statement, err := db.PrepareContext(ctx, req.SQL)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Query preparation failed", Error: err.Error()})
+			return
+		}
+		if err := statement.Close(); err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Query preparation failed", Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, models.APIResponse[models.QueryResponse]{Success: true, Data: models.QueryResponse{Columns: []string{}, Rows: []map[string]interface{}{}}})
+		return
+	}
+
 	rows, err := db.QueryContext(ctx, req.SQL, req.Params...)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{

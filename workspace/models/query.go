@@ -10,6 +10,8 @@ type QueryRequest struct {
 	SQL string `json:"sql" binding:"required"`
 	// Params binds positional values for ? placeholders.
 	Params []interface{} `json:"params,omitempty"`
+	// PrepareOnly validates schema and syntax without executing or requiring bindings.
+	PrepareOnly bool `json:"prepare_only,omitempty"`
 	// MaxRows bounds rows returned to the caller. Zero uses the server default.
 	MaxRows int `json:"max_rows,omitempty"`
 }
@@ -59,7 +61,7 @@ type MutationResponse struct {
 // workspace service token and is intended for trusted platform initializers,
 // never arbitrary agent SQL.
 type InitializeDatabaseRequest struct {
-	DBPath     string   `json:"db_path" binding:"required"`
+	DBPath string `json:"db_path" binding:"required"`
 	// An empty list is the platform initializer's explicit request to create a
 	// valid, empty managed SQLite database before the first product task runs.
 	Migrations []string `json:"migrations"`

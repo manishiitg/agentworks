@@ -152,6 +152,8 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 			vars := `{"variables":[{"name":"REGION","value":"eu"}],"groups":[{"name":"main","enabled":true,"values":{"REGION":"us"}}]}`
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"content": vars}})
 		case r.URL.Path == "/api/execute":
+			// json.Decoder reuses non-nil maps; capture only this request's env.
+			sent.ExtraEnv = nil
 			if err := json.NewDecoder(r.Body).Decode(&sent); err != nil {
 				t.Error(err)
 			}
@@ -195,6 +197,77 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	}
 	if sent.Timeout != 60 || sent.WorkingDirectory != "Workflow/deals/code" || !strings.HasPrefix(sent.Command, "python3 '") {
 		t.Fatalf("exec: %+v", sent)
+	}
+
+	// Code uses the same real HTTP entry point, canonical owner path and sandbox
+	// envelope; neither another user nor an admin inspection may execute it.
+	codeRoot := "_users/reader/Chats/Code/projects/dashboard"
+	codeScript := filepath.Join(docs, codeRoot, "code/reports/open.py")
+	if err := os.MkdirAll(filepath.Dir(codeScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codeScript, []byte("print(1)"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []string{codeRoot, "Chats/Code/projects/dashboard"} {
+		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+address+`","path":"code/reports/open.py","args":{"days":7}}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "reader"}))
+		w := httptest.NewRecorder()
+		api.handleReportRun(w, r)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"success":true`) {
+			t.Fatalf("Code run %s: %d %s", address, w.Code, w.Body.String())
+		}
+		if sent.WorkingDirectory != codeRoot+"/code" || strings.Join(sent.FolderGuard.WritePaths, ",") != codeRoot+"/.report-cache" || sent.ExtraEnv["VAR_REGION"] != "" {
+			t.Fatalf("Code escaped its project scope: %+v", sent)
+		}
+		selection, err := reportRunSelectionFor(context.Background(), codeRoot)
+		if err != nil || strings.Join(selection.servers, ",") != "notion" || selection.globalSecrets == nil || len(*selection.globalSecrets) != 0 {
+			t.Fatalf("Code selection: %+v %v", selection, err)
+		}
+	}
+	postCode := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+codeRoot+`","path":"code/reports/open.py"}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "reader"}))
+		w := httptest.NewRecorder()
+		api.handleReportRun(w, r)
+		return w
+	}
+	// An owner-controlled code/ symlink must not turn another project's script
+	// into an executable under this project's permissions.
+	codeDir := filepath.Join(docs, codeRoot, "code")
+	if err := os.Rename(codeDir, codeDir+"-saved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(docs, "Workflow/deals/code"), codeDir); err != nil {
+		t.Fatal(err)
+	}
+	if w := postCode(); w.Code != http.StatusBadRequest {
+		t.Fatalf("symlinked Code directory: %d %s", w.Code, w.Body.String())
+	}
+	if err := os.Remove(codeDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(codeDir+"-saved", codeDir); err != nil {
+		t.Fatal(err)
+	}
+	// A copied Code with a conflicting server-controlled owner is refused.
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "code", Folder: "dashboard", OwnerID: "registered-owner"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := postCode(); w.Code != http.StatusForbidden {
+		t.Fatalf("Code owner registry conflict: %d %s", w.Code, w.Body.String())
+	}
+
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin-viewer","username":"admin","admin":true,"can_create":true}]}`)
+	for _, caller := range []string{"other", "admin-viewer"} {
+		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+codeRoot+`","path":"code/reports/open.py"}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: caller}))
+		w := httptest.NewRecorder()
+		api.handleReportRun(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("non-owner Code run (%s): %d %s", caller, w.Code, w.Body.String())
+		}
 	}
 
 	// With a DB, the script reads a snapshot, never the live store.

@@ -12,6 +12,8 @@ import type { ReportDataApi } from "./reportEmbedContext";
 export interface ReportTableOptions {
   /** Read-only SQL. Columns are inferred from the returned rows. */
   query: string;
+  /** Positional values for SQL placeholders. */
+  params?: unknown[];
   /** Show a filter box that matches every cell. Default false. */
   searchable?: boolean;
   /** Make headers toggle ascending/descending sort. Default false. */
@@ -120,7 +122,7 @@ export async function renderReportTable(
   host.setAttribute("aria-busy", "true");
   showMessage("Loading table…");
   try {
-    const rows = await query(sql);
+    const rows = options.params === undefined ? await query(sql) : await query(sql, options.params);
     if (renders.get(host) !== version) return rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       showMessage("No rows returned for this table.");

@@ -71,7 +71,7 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 	dbPath := filepath.ToSlash(filepath.Join(publicWorkspacePath, "db", "db.sqlite"))
 	hooks := todo_creation_human.ReportHTMLValidationHooks{
 		ExplainSQL: func(ctx context.Context, sqlText string) error {
-			_, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: "EXPLAIN " + sqlText, MaxRows: 1})
+			_, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: "EXPLAIN " + sqlText, PrepareOnly: true})
 			return err
 		},
 		FileExists: func(ctx context.Context, relativePath string) (bool, error) {

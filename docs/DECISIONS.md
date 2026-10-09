@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — One dashboard runtime across Goals, Relays, Crew and Code
+
+Use the shared HTML documents, toolbar discovery and live query/script bridge
+for all four project types. App and headless preview queries preserve positional
+SQL bindings; optional table widgets accept the same params. SQL validation
+prepares against the live schema without executing or requiring runtime values.
+Code report scripts use the owner's private canonical project root and cannot be
+run through admin inspection; project selections remain bounded by the viewer's
+live MCP/Vault permissions. Relays exposes Dashboard and authoring tools while
+retaining its Graph landing view and independent JSON API execution, with no
+automatic workflow database/knowledge/learnings stages. Design follows user choice.
+Tickets: [PLAT-744](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-744.md),
+[PLAT-745](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-745.md),
+[PLAT-747](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/reports/plat-747.md).
+
 ### 2026-10-09 — Working tips may appear every four hours
 
 Reduce the per-browser cooldown from 24 hours to four hours at the owner's request.
@@ -33,6 +48,7 @@ Selecting a panel reveals the toolbar and opens the requested tab through its ex
 registration. Remove Cmd/Ctrl+J and its separate dialog so one shortcut reaches every
 existing destination. Owner request; ticket:
 [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 
 ### 2026-10-09 — Retire Dominion; trading is a workflow in Goals
 

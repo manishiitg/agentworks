@@ -22,7 +22,7 @@ export interface ReportDataApi {
   // Reuses an interactive automation chat, or creates one only if none exists.
   // Queued is not proof of execution or completion.
   sendChatMessage: (message: string, options?: ReportChatOptions) => Promise<ReportChatReceipt>
-  query: (sql: string) => Promise<Record<string, unknown>[]>
+  query: (sql: string, params?: unknown[]) => Promise<Record<string, unknown>[]>
   get: (path: string) => Promise<unknown>
   getText: (path: string) => Promise<string | null>
   // getHtml renders a markdown (db/ knowledgebase/ docs/) file to an HTML string
@@ -67,8 +67,8 @@ export interface ReportDataApi {
     rowId: string | number,
     fields: Record<string, string | number | boolean | null>,
   ) => Promise<{ oldValues: Record<string, unknown>; newValues: Record<string, unknown> }>
-  // Runs one of the workflow's own scripts under code/ on the server (with the
-  // workflow's MCP servers, secrets and a read-only DB snapshot) and resolves
+  // Runs a project script under code/ on the server (with the project's
+  // selection, the viewer's live permissions and a read-only DB snapshot) and resolves
   // the JSON it printed. Live data: every call runs the script again.
   run: (path: string, args?: unknown) => Promise<unknown>
 }

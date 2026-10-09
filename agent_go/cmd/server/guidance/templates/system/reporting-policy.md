@@ -36,7 +36,8 @@ The reference covers both paths using available capabilities; it prescribes no v
   SVG/canvas, or HTML/CSS are all valid. Match the implementation to the
   visualization, make it responsive and theme-aware, and render a readable
   fallback when an external dependency fails to load.
-- Read durable live data with `window.report.query`, `get`, `getText`,
+- Read durable live data with `window.report.query(sql, params)` (positional `?`
+  bindings; never interpolate viewer input), `get`, `getText`,
   `getHtml`, `renderMarkdown`, `fileUrl`, `mediaUrl`, and `openFile`. Write a business
   field on an already-existing row with `window.report.updateField`/
   `updateFields` (see below). Do not bake changing run results into the
@@ -193,9 +194,11 @@ that script on the server and resolves the one JSON value it printed. Use it
 when the Dashboard must show the latest state of an outside system (the
 workflow's MCP servers or an API behind its secrets) rather than what the last
 run stored. Anyone who can open the workflow — owner or read-only — can
-trigger it, and it always runs **as the workflow**: its selected MCP servers
-and tools, its selected secrets (`$SECRET_*`), its variables (`$VAR_*`), never
-the viewer's own connections. Published static copies cannot run scripts.
+trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
+variables (`$VAR_*`); the authenticated viewer's live MCP/Vault permissions
+still govern access. Viewing a workspace does not grant credentials.
+The same runner supports Workflow/Goals, Relays, Crew and owner-only Code
+project roots. Published static copies cannot run scripts.
 
 The script contract:
 
@@ -450,7 +453,7 @@ window.report.ready(async function () {
 </script>
 ```
 
-- `renderTable(target, { query, searchable, sortable })` runs read-only SQL
+- `renderTable(target, { query, params, searchable, sortable })` runs read-only SQL
   and renders a themed, responsive table with an empty state. Columns come
   from the returned rows; numeric columns align right. `searchable` adds a
   filter box matching every cell; `sortable` makes headers toggle

@@ -1957,8 +1957,8 @@ export const agentApi = {
   // service opens the existing WAL database mode=rw + query_only, so SQLite can
   // maintain sidecars while SQL mutations remain rejected.
   // Returns { success, data: { columns, rows } } — rows are objects keyed by column.
-  queryWorkflowDB: async (dbPath: string, sql: string) => {
-    const response = await workspaceApi.post('/api/query', { db_path: dbPath, sql })
+  queryWorkflowDB: async (dbPath: string, sql: string, params?: unknown[]) => {
+    const response = await workspaceApi.post('/api/query', { db_path: dbPath, sql, params })
     return response.data as {
       success: boolean
       error?: string

@@ -130,7 +130,8 @@ Direct shell execution is not a platform test and does not verify triggers, agen
 credentials or publication; report that distinction and the exact failing tool error.
 A failed run is terminal. Testing again creates a new invocation and may repeat effects;
 use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
-DB/KB/learnings closing turns, Pulse or migrations apply to Python Relays.
+DB/KB/learnings closing turns or Pulse apply to Python Relays.
+Optional dashboard database migrations are authoring actions, separate from execution.
 
 Use get_relay_releases and publish_relay when the user asks. Published source, helpers,
 skill files and configuration are immutable. Runtime secrets/connection permissions
@@ -139,7 +140,8 @@ always use draft. Report the actual returned version/hash, not an assumed deploy
 
 Builder remains the shared scoped chat runtime with this product-owned prompt, skill
 and tool list. Vault/MCP tools retain their normal authorization. Brain is not an
-implicit Relay store or runtime; do not create workflow knowledgebase/database assets.
+implicit Relay store or runtime. Do not create workflow knowledgebase assets.
+A requested Dashboard may use an optional managed database as described by relay-dashboard.
 
 MVP custom Python tools must not call `ctx.call_agent` or `ctx.call_mcp` inside
 the tool callback; nested calls fail immediately. Put those calls in `run`, or
