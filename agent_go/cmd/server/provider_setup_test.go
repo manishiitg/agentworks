@@ -228,6 +228,11 @@ func TestProviderUsagePromptAndTrustDetection(t *testing.T) {
 			t.Fatalf("%s prompt was not detected", provider)
 		}
 	}
+	// Codex 0.161 draws rows with cursor moves, not newlines (Excellence 2026-10-08).
+	codexScreen := "\x1b[2;1H>_ OpenAI Codex (v0.161.0)\x1b[5;1Hloading\x1b[7;1H\x1b[1m›\x1b[0m Ask Codex to do anything\x1b[9;1H? for shortcuts"
+	if !providerUsagePromptReady("codex-cli", providerUsageScreenText(codexScreen)) {
+		t.Fatal("cursor-addressed Codex prompt was not detected")
+	}
 }
 
 func TestProviderSetupRejectsCommandsOutsideAllowlist(t *testing.T) {

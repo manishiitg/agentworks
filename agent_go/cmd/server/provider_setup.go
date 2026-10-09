@@ -122,6 +122,16 @@ func providerSetupCommandFor(provider, action string) (providerSetupCommand, err
 // Muse's colour queries behind as "10;?11;?4;0;?..." in the usage text.
 var providerSetupANSI = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.|\x07`)
 
+// providerSetupCursorMoves are the escapes a full-screen CLI draws rows with instead of newlines (move to row/column,
+// next line, line down). Codex 0.161 draws its whole screen this way, so with escapes simply removed its "›" prompt was
+// never at the start of a line, /status was never sent and Check usage returned the start screen (Excellence 2026-10-08).
+var providerSetupCursorMoves = regexp.MustCompile(`\x1b\[[0-9;]*[HfEBd]`)
+
+// providerUsageScreenText is a usage terminal's output as plain text, one screen row per line.
+func providerUsageScreenText(raw string) string {
+	return providerSetupANSI.ReplaceAllString(providerSetupCursorMoves.ReplaceAllString(raw, "\n"), "")
+}
+
 // terminalQueryPattern finds what a full-screen CLI asks its terminal before it
 // draws: cursor position, device attributes, and foreground/background/palette
 // colours.
@@ -582,7 +592,7 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 		case <-deadline.C:
 			return
 		case <-ticker.C:
-			output := providerSetupANSI.ReplaceAllString(session.outputText(), "")
+			output := providerUsageScreenText(session.outputText())
 			if !trustHandled && providerUsageTrustPrompt(session.provider, output) {
 				if !acceptProviderUsageTrust(session, session.provider, output) {
 					return
@@ -912,7 +922,7 @@ func collectProviderUsageOutput(session *providerSetupSession, timeout time.Dura
 }
 
 func cleanProviderUsageText(raw string) string {
-	text := providerSetupANSI.ReplaceAllString(raw, "")
+	text := providerUsageScreenText(raw)
 	text = strings.ReplaceAll(text, "\r", "")
 	return strings.TrimSpace(text)
 }
