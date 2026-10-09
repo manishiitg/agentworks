@@ -54,3 +54,29 @@ func TestSchedulerPauseChangesAreRecorded(t *testing.T) {
 		t.Fatalf("an unchanged save must not add an event, got %d", n)
 	}
 }
+
+// PLAT-782: the scheduler pause is per product. The pause of everything holds every product, a product's own pause
+// holds only that product, and an older client that sends only globally_paused cannot wipe the per-product list.
+func TestSchedulerPauseIsPerProduct(t *testing.T) {
+	cfg := sanitizeSchedulerConfig(&SchedulerConfig{PausedProducts: []string{"work", "Crew", "work", " CODE "}})
+	if got := strings.Join(cfg.PausedProducts, ","); got != "work,code" {
+		t.Fatalf("paused products = %q, want work,code (unknown names dropped, duplicates merged)", got)
+	}
+	for product, want := range map[string]bool{"work": true, "code": true, "agentworks": false, "relays": false} {
+		if got := cfg.ProductPaused(product); got != want {
+			t.Errorf("ProductPaused(%q) = %v, want %v", product, got, want)
+		}
+	}
+	all := &SchedulerConfig{GloballyPaused: true}
+	for _, product := range schedulerPauseProducts {
+		if !all.ProductPaused(product) {
+			t.Errorf("the pause of everything does not hold %q", product)
+		}
+	}
+	if (*SchedulerConfig)(nil).ProductPaused("work") {
+		t.Error("no config must mean not paused")
+	}
+	if workflowPauseProduct("relay") != "relays" || workflowPauseProduct("") != "agentworks" {
+		t.Error("a workflow's timed runs belong to Goals, a Relay's to Relays")
+	}
+}

@@ -157,15 +157,28 @@ describe('schedule panel views', () => {
   })
 
   it('banners the global pause with a resume action', async () => {
-    const { state } = buildPanelState({ isSchedulerPaused: true })
+    const { state } = buildPanelState({ isSchedulerPaused: true, isGloballyPaused: true, pauseProductLabel: 'Crew' })
     const { host, root } = await renderPanel(state)
     try {
       const banner = host.querySelector('[aria-label="All schedules paused"]')
       expect(banner).not.toBeNull()
-      expect(host.textContent).toContain("Timed runs won't start until you resume them.")
-      const resume = Array.from(banner!.querySelectorAll('button')).find(b => b.textContent?.includes('Resume schedules'))!
+      expect(host.textContent).toContain("Timed runs of every product won't start until you resume them.")
+      const resume = Array.from(banner!.querySelectorAll('button')).find(b => b.textContent?.includes('Resume all schedules'))!
       await act(async () => resume.click())
       expect(state.handleToggleGlobalPause as ReturnType<typeof vi.fn>).toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  // PLAT-782: a product paused on its own says so, and says the other products keep running.
+  it('banners a single product pause by its name', async () => {
+    const { state } = buildPanelState({ isSchedulerPaused: true, isGloballyPaused: false, pauseProductLabel: 'Crew' })
+    const { host, root } = await renderPanel(state)
+    try {
+      const banner = host.querySelector('[aria-label="Crew schedules paused"]')
+      expect(banner).not.toBeNull()
+      expect(host.textContent).toContain('Crew schedules are paused.')
+      expect(host.textContent).toContain('Other products keep running.')
+      expect(Array.from(banner!.querySelectorAll('button')).some(b => b.textContent?.includes('Resume Crew schedules'))).toBe(true)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -175,11 +188,11 @@ describe('schedule panel views', () => {
     try {
       expect(r1.host.querySelector('[aria-label="All schedules paused"]')).toBeNull()
     } finally { await act(async () => r1.root.unmount()); r1.host.remove() }
-    const ro = buildPanelState({ isSchedulerPaused: true, isReadOnlyUser: true })
+    const ro = buildPanelState({ isSchedulerPaused: true, isGloballyPaused: true, isReadOnlyUser: true })
     const r2 = await renderPanel(ro.state)
     try {
       expect(r2.host.querySelector('[aria-label="All schedules paused"]')).not.toBeNull()
-      expect(Array.from(r2.host.querySelectorAll('button')).some(b => b.textContent?.includes('Resume schedules'))).toBe(false)
+      expect(Array.from(r2.host.querySelectorAll('button')).some(b => b.textContent?.includes('Resume all schedules'))).toBe(false)
     } finally { await act(async () => r2.root.unmount()); r2.host.remove() }
   })
 

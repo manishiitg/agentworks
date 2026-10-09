@@ -12,10 +12,10 @@ const getConfig = schedulerApi.getConfig as ReturnType<typeof vi.fn>
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.unstubAllGlobals(); vi.useRealTimers() })
 
-function mountPaused(pollMs = 30_000) {
+function mountPaused(pollMs = 30_000, product?: string) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   function Probe() {
-    const paused = useGlobalSchedulerPaused(pollMs)
+    const paused = useGlobalSchedulerPaused(product, pollMs)
     return <span data-testid="paused">{paused === null ? 'unknown' : paused ? 'paused' : 'running'}</span>
   }
   const host = document.createElement('div'); document.body.append(host)
@@ -50,4 +50,15 @@ it('keeps the last known value when a poll fails', async () => {
   getConfig.mockRejectedValueOnce(new Error('offline'))
   await act(async () => { vi.advanceTimersByTime(1_000); await Promise.resolve() })
   expect(text()).toBe('paused')
+})
+
+// PLAT-782: a product's own pause shows on that product only; the pause of everything shows everywhere.
+it('follows the pause of its own product, not the others', async () => {
+  getConfig.mockResolvedValue({ globally_paused: false, paused_products: ['work'] })
+  const crew = mountPaused(30_000, 'work')
+  await act(async () => { await Promise.resolve() })
+  expect(crew.text()).toBe('paused')
+  const goals = mountPaused(30_000, 'agentworks')
+  await act(async () => { await Promise.resolve() })
+  expect(goals.text()).toBe('running')
 })

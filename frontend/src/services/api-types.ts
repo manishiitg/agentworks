@@ -3722,7 +3722,10 @@ export interface SkippedWhilePaused {
 }
 
 export interface SchedulerConfig {
+  /** Holds the timed runs of every product. */
   globally_paused: boolean
+  /** Products paused on their own: 'agentworks' (Goals), 'relays', 'work' (Crews), 'code'. */
+  paused_products?: string[]
   paused_at?: string
   paused_by?: string
   updated_at?: string

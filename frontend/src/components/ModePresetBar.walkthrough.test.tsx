@@ -33,7 +33,7 @@ vi.mock('../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore:
 vi.mock('../stores', () => ({ useChatStore: mocks.store, useLLMStore: mocks.store }))
 vi.mock('../services/api', () => ({ agentApi: {}, workflowManifestApi: {} }))
 vi.mock('../utils/workflowSessionRestore', () => ({ openWorkflowPresetPage: vi.fn() }))
-vi.mock('../utils/workflowPermissions', () => ({ hasWorkflowCreateAccess: () => mocks.state.canCreate, isWorkflowReadOnly: () => false }))
+vi.mock('../utils/workflowPermissions', () => ({ hasWorkflowCreateAccess: () => mocks.state.canCreate, hasProductCreateAccess: () => mocks.state.canCreate, isWorkflowReadOnly: () => false }))
 vi.mock('../hooks/useGlobalSchedulerPaused', () => ({ useGlobalSchedulerPaused: () => false }))
 vi.mock('./PresetModal', () => ({ default: ({ isOpen, editingPreset, fixedWorkflowKind }: any) => isOpen ? <div data-testid="preset-modal">{editingPreset ? 'edit' : 'create'}:{fixedWorkflowKind}</div> : null }))
 vi.mock('./GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => null }))

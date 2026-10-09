@@ -385,7 +385,7 @@ func decideGoalCheckDue(facts goalcheck.Facts, nextDue, lastStarted, now time.Ti
 // fix-run launchers. It shares their concurrency cap and the full Pulse's
 // runtime key, so it never runs beside a Pulse pass on the same workflow.
 func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
-	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
+	if paused, _, err := s.IsProductPaused(ctx, "agentworks"); err != nil || paused {
 		return
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)

@@ -10,7 +10,7 @@ import { useCanPauseSchedules } from '../../../hooks/useCanPauseSchedules'
 type ScheduleRunsHeaderProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'panelTitle' | 'isLoading' | 'isWorkflowScoped' | 'workflowScheduleSummary' | 'summary'
-    | 'isSchedulerPaused' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
+    | 'isSchedulerPaused' | 'isGloballyPaused' | 'pauseProductLabel' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
   >
   onClose: () => void
   /** Embedded workspace views are closed by their parent layout, not here. */
@@ -29,6 +29,8 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
     workflowScheduleSummary,
     summary,
     isSchedulerPaused,
+    isGloballyPaused,
+    pauseProductLabel,
     isReadOnlyUser,
     handleToggleGlobalPause,
     isUpdatingSchedulerPause,
@@ -45,7 +47,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
       helpTopic={helpTopic ?? (compact ? 'Schedules' : panelTitle)}
       context={compact ? <>
         {navigation}
-        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ' · Scheduling paused' : ''}</span>
+        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ` · ${isGloballyPaused ? 'All' : pauseProductLabel} schedules paused` : ''}</span>
       </> : undefined}
       below={!compact ? statusPills : undefined}
       actions={<>
@@ -66,7 +68,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
             ) : (
               <Pause className="w-3.5 h-3.5" />
             )}
-            {isSchedulerPaused ? 'Resume schedules' : 'Pause all schedules'}
+            {isGloballyPaused ? 'Resume all schedules' : isSchedulerPaused ? `Resume ${pauseProductLabel} schedules` : `Pause ${pauseProductLabel} schedules`}
           </button>
         )}
         {headerAction}

@@ -124,7 +124,7 @@ func recentGoalLeadQAResults(ctx context.Context, workspacePath string, limit in
 // launchers: it starts a fix run for a pending request and reports a finished
 // one back to the Pulse conversation.
 func (s *SchedulerService) launchGoalLeadQARequests(ctx context.Context) {
-	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
+	if paused, _, err := s.IsProductPaused(ctx, "agentworks"); err != nil || paused {
 		return
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)

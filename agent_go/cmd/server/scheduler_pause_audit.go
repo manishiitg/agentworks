@@ -22,7 +22,8 @@ const schedulerPauseLogKeep = 200
 // SchedulerPauseEvent is one pause or resume.
 type SchedulerPauseEvent struct {
 	At          time.Time  `json:"at"`
-	Action      string     `json:"action"` // "paused" | "resumed"
+	Action      string     `json:"action"`            // "paused" | "resumed"
+	Product     string     `json:"product,omitempty"` // set when one product was paused or resumed on its own
 	UserID      string     `json:"user_id,omitempty"`
 	Username    string     `json:"username,omitempty"`
 	Via         string     `json:"via,omitempty"` // the client's paused_by label, e.g. frontend-user

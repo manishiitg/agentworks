@@ -86,7 +86,7 @@ func isPulseFixFailedRunStatus(status string) bool {
 
 // launchDueFixRuns runs on every scheduler tick.
 func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
-	if paused, _, err := s.IsGloballyPaused(ctx); err != nil || paused {
+	if paused, _, err := s.IsProductPaused(ctx, "agentworks"); err != nil || paused {
 		return
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)

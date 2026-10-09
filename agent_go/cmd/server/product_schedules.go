@@ -854,6 +854,11 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 			users[userID] = struct{}{}
 		}
 	}
+	// The scheduler pause holds timed runs here too: for every product (the global pause) or one at a time (PLAT-782).
+	pauseConfig, pauseErr := LoadSchedulerConfig(ctx)
+	if pauseErr != nil {
+		scheduleLogf("[PRODUCT-SCHEDULE] cannot read the scheduler pause, timed runs continue: %v", pauseErr)
+	}
 	for userID := range users {
 		jobs, err := s.JobsForUser(ctx, userID)
 		if err != nil {
@@ -861,6 +866,9 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 			continue
 		}
 		for _, job := range jobs {
+			if pauseConfig.ProductPaused(job.Profile.ID) {
+				continue
+			}
 			activatedAt := job.activatedAt()
 			if strings.TrimSpace(job.Schedule.CronExpression) != "" && job.lastRun().IsZero() && strings.TrimSpace(job.State.ActivatedAt) == "" {
 				// Persist the baseline once. Using this tick's Now without saving it

@@ -25,7 +25,7 @@ function pausedByText(event?: SchedulerPauseEvent): string {
 
 type ScheduleOverviewViewProps = {
   panel: Pick<ScheduleRunsPanelState,
-    | 'isSchedulerPaused' | 'schedulerConfig' | 'summary' | 'setActiveFilter' | 'setActiveView'
+    | 'isSchedulerPaused' | 'isGloballyPaused' | 'pauseProductLabel' | 'schedulerConfig' | 'summary' | 'setActiveFilter' | 'setActiveView'
     | 'missedJobs' | 'presetMap' | 'showJobInWorkflowGroups' | 'upcomingJobs'
     | 'pauseCatchUp' | 'isRunningCatchUp' | 'runPauseCatchUp' | 'dismissPauseCatchUp' | 'isReadOnlyUser'
   >
@@ -34,6 +34,8 @@ type ScheduleOverviewViewProps = {
 export const ScheduleOverviewView: React.FC<ScheduleOverviewViewProps> = ({ panel }) => {
   const {
     isSchedulerPaused,
+    isGloballyPaused,
+    pauseProductLabel,
     schedulerConfig,
     summary,
     setActiveFilter,
@@ -57,9 +59,9 @@ export const ScheduleOverviewView: React.FC<ScheduleOverviewViewProps> = ({ pane
         <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-medium text-foreground">All scheduled automation triggers are paused</div>
+              <div className="text-sm font-medium text-foreground">{isGloballyPaused ? 'All scheduled automation triggers are paused' : `${pauseProductLabel} scheduled triggers are paused`}</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Existing manual runs still work. Cron-triggered executions will not start until you resume schedules.
+                Existing manual runs still work. Cron-triggered executions will not start until you resume schedules.{isGloballyPaused ? '' : ' Other products keep running.'}
               </div>
             </div>
             {schedulerConfig?.paused_at && (

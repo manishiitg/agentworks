@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — The scheduler pause is per product and holds Crews and Code too (PLAT-782)
+- "All schedules are paused" was true for Goals workflows only: the Crew and Code scheduler never read the pause, so
+  their timed runs kept firing on RTS. The pause of everything now holds every product, and a product can be paused on
+  its own (Goals, Relays, Crews, Code): `paused_products` in `config/scheduler.json`. Manual runs and webhooks are
+  never held.
+- Each product's Schedules page shows its own banner and button. While everything is paused, resuming from a product
+  page resumes everything. An older client that sends only `globally_paused` does not wipe the per-product list.
+- Code: `scheduler_config_store.go`, `scheduler.go`, `product_schedules.go` (`tick`), the Schedules panel.
+  Ticket: [PLAT-782](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/schedules/pause/plat-782.md).
+
 ### 2026-10-09 — Shared secrets are Vault secrets, managed only in Vault
 
 "Global" secrets are Vault secrets. Builder and Crew chats no longer get
