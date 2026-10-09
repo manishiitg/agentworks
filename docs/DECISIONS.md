@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Vault access is group-only
+
+Vault tool access is given to groups, never directly to one person (a group
+may have one member). The admin API, the old admin page and SQL edits refuse
+new direct grants; old direct grants keep working, show as "old" in
+inspect_user and can be revoked or deleted. Why: one place to look and audit
+access. Code: `mcp-gateway/internal/admin/admin.go` (SetUserGrant),
+`internal/store/sql_tools.go`; ticket PLAT-738.
+
 ### 2026-10-09 — The scheduler pause is per product and holds Crews and Code too (PLAT-782)
 - "All schedules are paused" was true for Goals workflows only: the Crew and Code scheduler never read the pause, so
   their timed runs kept firing on RTS. The pause of everything now holds every product, and a product can be paused on

@@ -413,8 +413,16 @@ func (a *Admin) checkTool(publicName string) error {
 	return nil
 }
 
-// SetUserGrant grants or revokes one tool for one user.
+// ErrGroupOnlyAccess: Vault access is given to groups only (owner,
+// 2026-10-09). Old direct grants still work and can be revoked.
+var ErrGroupOnlyAccess = errors.New("Vault access is group-only: add the person to a group that has the tool (a group can have one member)")
+
+// SetUserGrant revokes one tool granted directly to one user. New direct
+// grants are refused.
 func (a *Admin) SetUserGrant(userID, publicName string, grant bool) error {
+	if grant {
+		return ErrGroupOnlyAccess
+	}
 	u, ok := a.Store.GetUser(userID)
 	if !ok || u.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown user")

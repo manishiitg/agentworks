@@ -2,6 +2,8 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
@@ -33,6 +35,19 @@ func TestInspectUserAndMemberHistory(t *testing.T) {
 	tools := result["tools"].([]userToolAccess)
 	if result["allowed_tool_count"] != 1 || len(tools) != 1 || tools[0].PublicName != "crm__search" || !tools[0].Allowed || tools[0].Via[0] != "sales" {
 		t.Fatalf("inspect_user: %+v", result)
+	}
+	// Access is group-only: no new direct grant; an old one still shows, marked.
+	if err := a.SetUserGrant("priya", "crm__delete", true); !errors.Is(err, ErrGroupOnlyAccess) {
+		t.Fatalf("direct grant accepted: %v", err)
+	}
+	st.AddGrant(store.Grant{UserID: "priya", PublicName: "crm__delete"})
+	out, err = a.setupTool(t.Context(), "inspect_user", json.RawMessage(`{"user_id":"priya"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools = out.(map[string]any)["tools"].([]userToolAccess)
+	if len(tools) != 2 || tools[0].PublicName != "crm__delete" || !strings.Contains(tools[0].Via[0], "old") {
+		t.Fatalf("old direct grant not shown: %+v", tools)
 	}
 	events := st.ListPolicyEvents("w")
 	last := events[len(events)-1]

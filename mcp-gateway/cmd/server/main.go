@@ -331,7 +331,12 @@ func run() (runErr error) {
 				log.Printf("gateway: grant target %q not discovered, skipping", name)
 				continue
 			}
-			st.AddGrant(store.Grant{UserID: human.ID, PublicName: public})
+			// Vault access is group-only: the local user gets these through a group.
+			if _, ok := st.GetGroup("local-tools"); !ok {
+				st.AddGroup(store.Group{ID: "local-tools", WorkspaceID: "w1", Name: "Local tools", Description: "Tools granted by GATEWAY_GRANT_TOOLS for local debugging."})
+			}
+			st.AddMember("local-tools", human.ID)
+			st.AddGroupGrant(store.GroupGrant{GroupID: "local-tools", PublicName: public})
 			log.Printf("gateway: granted %s (tool still requires admin approval)", public)
 		}
 

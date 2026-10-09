@@ -439,7 +439,7 @@ func (s *MemoryStore) MutateSQL(ctx context.Context, workspaceID, actor string, 
 			return empty, err
 		}
 		if !editableTables[table] {
-			return empty, fmt.Errorf("%s is read-only; mutable tables: groups, group_members, user_tool_grants, group_tool_grants", table)
+			return empty, fmt.Errorf("%s is read-only; mutable tables: groups, group_members, group_tool_grants, user_tool_grants (delete only)", table)
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -627,6 +627,10 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 			wasGranted := old.GroupGrants[id][value]
 			if table == "user_tool_grants" {
 				wasGranted = old.Grants[id][value]
+				if !wasGranted {
+					rows.Close()
+					return errors.New("Vault access is group-only: user_tool_grants rows can only be deleted; grant the tool to a group instead")
+				}
 			}
 			if !wasGranted && (tool.Status != StatusActive || tool.Fingerprint != tool.ApprovedFingerprint || state.Governed[w][value]) {
 				rows.Close()

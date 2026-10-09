@@ -53,7 +53,7 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 		name := strings.Replace(definition.Function.Name, "workflow", "vault", 1)
 		description := "Query the Vault governance database; use action=describe first. Only read-only SQL is accepted."
 		if name == "mutate_vault_db" {
-			description = "Apply an atomic parameterized SQL mutation to the Vault governance database. Mutable tables: groups, group_members, user_tool_grants, group_tool_grants. Prefer manage_vault_groups for active directory-bound membership changes and manage_vault_access for MCP removals and validated regex rules. Users, credentials, connectors, approvals and policy history are read-only."
+			description = "Apply an atomic parameterized SQL mutation to the Vault governance database. Mutable tables: groups, group_members, group_tool_grants, and user_tool_grants for deleting old direct grants only (Vault access is group-only). Prefer manage_vault_groups for active directory-bound membership changes and manage_vault_access for MCP removals and validated regex rules. Users, credentials, connectors, approvals and policy history are read-only."
 		}
 		specs = append(specs, agentprofiles.ToolSpec{Name: name, Category: "vault", Description: description + " The gateway owns SQLite and enforces table/row restrictions. Never supply a database path or edit physical files. Secret values are excluded.", Parameters: params})
 	}
