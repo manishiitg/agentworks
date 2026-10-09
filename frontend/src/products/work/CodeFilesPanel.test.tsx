@@ -63,7 +63,7 @@ it('shows server files with no header or label, and keeps connection controls in
 it('connects the current session and shows only CLI connection controls', async () => {
   const { host, showFiles } = await render(true)
   await click(host, 'Connect local files')
-  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('agentworks start --server')
   expect(codeLocalFilesForChat(session)).toBeUndefined()
   await choose(host, 'Computer and shared folder', JSON.stringify(['laptop', 'project']))
   expect(codeLocalFilesForChat(session)).toBeUndefined()
@@ -106,7 +106,7 @@ it('preserves offline selections without rendering server files or silently wide
   // Every time this opens in Local mode with the CLI not running, the user is asked.
   expect(document.body.textContent).toContain('Your computer is not connected')
   expect(document.body.textContent).toContain('agentworks start')
-  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('agentworks start --server')
   expect(host.textContent).toContain('Costs and Models')
   expect(host.textContent).not.toContain('Server source')
   expect(codeLocalFilesForChat(session)).toEqual(target)
@@ -175,7 +175,7 @@ it('shows shell capability and a CLI command that enables local builds and tests
   const { host } = await render(true)
   expect(host.textContent).toContain('Shell commands enabled on this computer')
   await click(host, 'Details')
-  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('agentworks start --server')
   expect(host.textContent).not.toContain('--write-folder')
   expect(host.textContent).not.toContain('Read only')
   expect(host.textContent).toContain('Files and commands')
@@ -187,7 +187,7 @@ it('shows one start command with no folder form, and Verify connection says what
   transport.get.mockResolvedValue({ data: { devices: [] } })
   const { host } = await render(true)
   await click(host, 'Connect local files')
-  expect(host.textContent).toContain('/agentworks" start --server')
+  expect(host.textContent).toContain('agentworks start --server')
   expect(host.textContent).toContain('--workspace')
   expect(host.textContent).toContain('agentworks stop')
   expect(host.textContent).toContain('agentworks start --debug')
@@ -245,10 +245,11 @@ it('the setup page also gives Windows commands, with the no-sandbox note', async
   expect(host.textContent).not.toContain('install-agentworks.ps1')
   await click(host, 'Windows')
   expect(host.textContent).toContain('install-agentworks.ps1')
-  expect(host.textContent).toContain('agentworks.exe" start --server')
+  expect(host.textContent).toContain('agentworks start --server')
+  expect(host.textContent).not.toContain('$HOME') // the folder is a separate cd step; the command is just agentworks start
   expect(host.textContent).toContain('commands the agent runs are not sandboxed')
   await click(host, 'macOS / Linux')
-  expect(host.textContent).not.toContain('agentworks.exe')
+  expect(host.textContent).not.toContain('install-agentworks.ps1')
 })
 
 it('a project made in Local mode is Local before any folder is linked, and Dev or Cowork projects are not', () => {

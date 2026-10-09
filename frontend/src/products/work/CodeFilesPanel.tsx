@@ -50,8 +50,8 @@ function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: 
     ? `& ([scriptblock]::Create((irm ${psQuote(`${base}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${psQuote(base)} -NoLogin`
     : `curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`
   const startCommand = windows
-    ? `cd C:\\path\\to\\your\\project; & "$env:LOCALAPPDATA\\agentworks\\agentworks.exe" start --server ${psQuote(base)} --workspace ${psQuote(name)}`
-    : `cd /path/to/your/project && "$HOME/.local/bin/agentworks" start --server ${shellQuote(base)} --workspace ${shellQuote(name)}`
+    ? `agentworks start --server ${psQuote(base)} --workspace ${psQuote(name)}`
+    : `agentworks start --server ${shellQuote(base)} --workspace ${shellQuote(name)}`
   return <details className="group" open={!connected && !reconnecting}>
     <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux · Windows</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
