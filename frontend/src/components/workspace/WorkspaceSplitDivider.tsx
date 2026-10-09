@@ -37,8 +37,9 @@ export function WorkspaceSplitDivider({ ratio, onPointerDown, onStep, children, 
           <GripVertical className="h-3 w-3" />
         </span>
       </button>
+      {/* The size and collapse buttons sit above the middle, where the grip is: when they covered it the rail could not be dragged from there. */}
       {children ? (
-        <div className="pointer-events-none absolute left-0 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 rounded-md border border-border bg-background/95 p-0.5 shadow-lg backdrop-blur-sm opacity-0 transition-opacity group-hover/split:opacity-100 group-focus-within/split:opacity-100">
+        <div className="pointer-events-none absolute left-0 top-[22%] z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 rounded-md border border-border bg-background/95 p-0.5 shadow-lg backdrop-blur-sm opacity-0 transition-opacity group-hover/split:opacity-100 group-focus-within/split:opacity-100">
           {children}
         </div>
       ) : null}
